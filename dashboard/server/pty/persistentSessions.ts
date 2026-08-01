@@ -26,6 +26,8 @@ import type { HostOpenRequest, PtyHost } from './host.ts';
  *  cover a generous xterm scrollback (a few thousand 80-col rows) without letting an idle-but-noisy shell
  *  grow unbounded memory. Overridable for tests. */
 export const DEFAULT_RING_BYTES = 512_000;
+/** Bounded exit acknowledgements bridge the tiny natural-exit -> closeAndWait call race. */
+const MAX_CONFIRMED_EXIT_TOMBSTONES = 512;
 
 /** Shape of the sessionId the host mints (`pty-<epoch>-<counter>`). Used to reject a malformed id in a
  *  URL/path before it ever reaches a Map lookup. Test hosts inject ids like `pty-test-1`, also accepted. */
@@ -65,6 +67,12 @@ export type AttachResult = { ok: true } | { ok: false; reason: 'not-found' | 'no
 
 /** Typed close outcome — `not-found`/`not-owner` map to a REST 404 (never leaking another owner's ids). */
 export type CloseResult = { ok: true } | { ok: false; reason: 'not-found' | 'not-owner' };
+
+/** A kill request is not proof the PTY process group exited. This result is reserved for callers that
+ * must hold a security boundary until the host's real `onExit` acknowledgement arrives. */
+export type CloseAndWaitResult =
+  | { ok: true; exited: true }
+  | { ok: false; reason: 'not-found' | 'not-owner' | 'timeout' | 'unconfirmed' };
 
 /**
  * A server-side, NON-EXCLUSIVE output tap on one session (added for run-roster work-order delivery).
@@ -108,6 +116,12 @@ export interface PersistentSessionRegistry {
   observe(owner: string, sessionId: string, observer: SessionObserver, onGone?: SessionObserverGone): () => void;
   /** Kill the shell (host.stop) and forget it. */
   close(owner: string, sessionId: string): CloseResult;
+  /**
+   * Kill the shell but retain its registry entry until the underlying PTY emits `onExit`. The promise
+   * resolves successfully only on that acknowledgement; timeout is an explicit refusal, never an
+   * optimistic close. Existing browser/Claude teardown keeps using synchronous {@link close}.
+   */
+  closeAndWait(owner: string, sessionId: string, timeoutMs: number): Promise<CloseAndWaitResult>;
   /** Forward raw stdin to the shell. Owner-checked; a no-op for unknown/foreign/dead sessions. */
   write(owner: string, sessionId: string, data: string): boolean;
   /** Resize the shell's window. Owner-checked; a no-op for unknown/foreign/dead sessions. */
@@ -139,8 +153,11 @@ interface SessionEntry {
   sink: SessionSink | null;
   /** Non-exclusive server-side taps (see {@link SessionObserver}); independent of `sink`. */
   observers: Set<{ observer: SessionObserver; onGone?: SessionObserverGone }>;
+  /** Exit-confirmation waiters installed before host.stop, so even a synchronous onExit cannot race them. */
+  exitWaiters: Set<(confirmed: boolean) => void>;
   exited: boolean;
   disposed: boolean;
+  closing: boolean;
 }
 
 /** Create an owner-bound persistent PTY session registry over an existing {@link PtyHost}. */
@@ -148,6 +165,17 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
   const now = deps.now ?? Date.now;
   const maxBytes = deps.maxBytes ?? DEFAULT_RING_BYTES;
   const sessions = new Map<string, SessionEntry>();
+  const confirmedExits = new Map<string, string>();
+
+  const rememberConfirmedExit = (entry: SessionEntry): void => {
+    confirmedExits.delete(entry.sessionId);
+    confirmedExits.set(entry.sessionId, entry.owner);
+    while (confirmedExits.size > MAX_CONFIRMED_EXIT_TOMBSTONES) {
+      const oldest = confirmedExits.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      confirmedExits.delete(oldest);
+    }
+  };
 
   /** Append a chunk to the ring, dropping whole oldest chunks until back under the byte ceiling. A lone
    *  chunk larger than the ceiling is retained (it is the freshest output; there is nothing older left). */
@@ -170,6 +198,12 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
     }
   };
 
+  const resolveExitWaiters = (entry: SessionEntry, confirmed: boolean): void => {
+    const waiters = [...entry.exitWaiters];
+    entry.exitWaiters.clear();
+    for (const waiter of waiters) waiter(confirmed);
+  };
+
   return {
     create(owner, host, openRequest) {
       const session = host.open(openRequest);
@@ -183,9 +217,12 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
         bytes: 0,
         sink: null,
         observers: new Set(),
+        exitWaiters: new Set(),
         exited: false,
         disposed: false,
+        closing: false,
       };
+      confirmedExits.delete(entry.sessionId);
       sessions.set(entry.sessionId, entry);
 
       // ONE data listener for the session's whole life: ALWAYS buffer, then forward live if attached,
@@ -209,6 +246,8 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
         entry.sink = null;
         notifyGone(entry);
         sessions.delete(entry.sessionId);
+        rememberConfirmedExit(entry);
+        resolveExitWaiters(entry, true);
         if (sink && !sink.closed() && sink.onExit) sink.onExit(info);
       });
 
@@ -219,6 +258,7 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
       const entry = sessions.get(sessionId);
       if (!entry || entry.disposed) return { ok: false, reason: 'not-found' };
       if (entry.exited) return { ok: false, reason: 'exited' };
+      if (entry.closing) return { ok: false, reason: 'exited' };
       if (entry.owner !== owner) return { ok: false, reason: 'not-owner' };
       return { ok: true };
     },
@@ -227,6 +267,7 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
       const entry = sessions.get(sessionId);
       if (!entry || entry.disposed) return { ok: false, reason: 'not-found' };
       if (entry.exited) return { ok: false, reason: 'exited' };
+      if (entry.closing) return { ok: false, reason: 'exited' };
       if (entry.owner !== owner) return { ok: false, reason: 'not-owner' };
 
       // Evict any currently-attached sink FIRST (single-sink discipline). Clear the slot before firing
@@ -279,6 +320,7 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
       entry.sink = null;
       notifyGone(entry);
       sessions.delete(sessionId);
+      resolveExitWaiters(entry, false);
       try {
         entry.host.stop(sessionId); // kills the shell's whole process group
       } catch {
@@ -287,9 +329,52 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
       return { ok: true };
     },
 
+    closeAndWait(owner, sessionId, timeoutMs) {
+      const entry = sessions.get(sessionId);
+      if (!entry || entry.disposed) {
+        if (confirmedExits.get(sessionId) === owner) {
+          confirmedExits.delete(sessionId);
+          return Promise.resolve({ ok: true, exited: true });
+        }
+        return Promise.resolve({ ok: false, reason: 'not-found' });
+      }
+      if (entry.owner !== owner) return Promise.resolve({ ok: false, reason: 'not-owner' });
+      const boundedTimeout = Number.isFinite(timeoutMs) ? Math.max(0, Math.round(timeoutMs)) : 0;
+      return new Promise<CloseAndWaitResult>((resolve) => {
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const waiter = (confirmed: boolean): void => {
+          if (settled) return;
+          settled = true;
+          entry.exitWaiters.delete(waiter);
+          if (timer) clearTimeout(timer);
+          if (confirmed) confirmedExits.delete(entry.sessionId);
+          resolve(confirmed ? { ok: true, exited: true } : { ok: false, reason: 'unconfirmed' });
+        };
+        entry.exitWaiters.add(waiter);
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          entry.exitWaiters.delete(waiter);
+          resolve({ ok: false, reason: 'timeout' });
+        }, boundedTimeout);
+        if (typeof timer.unref === 'function') timer.unref();
+        if (entry.closing) return;
+        entry.closing = true;
+        entry.sink = null;
+        notifyGone(entry);
+        try {
+          // Do not delete/dispose here. Only the registered onExit callback may turn this into success.
+          entry.host.stop(sessionId);
+        } catch {
+          // The timeout remains authoritative when a host cannot even issue the kill.
+        }
+      });
+    },
+
     write(owner, sessionId, data) {
       const entry = sessions.get(sessionId);
-      if (!entry || entry.disposed || entry.owner !== owner) return false;
+      if (!entry || entry.disposed || entry.closing || entry.owner !== owner) return false;
       try {
         entry.handle.write(data);
         return true;
@@ -300,7 +385,7 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
 
     resize(owner, sessionId, cols, rows) {
       const entry = sessions.get(sessionId);
-      if (!entry || entry.disposed || entry.owner !== owner) return false;
+      if (!entry || entry.disposed || entry.closing || entry.owner !== owner) return false;
       try {
         entry.handle.resize(cols, rows);
         return true;
@@ -312,7 +397,7 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
     list(owner) {
       const out: SessionSummary[] = [];
       for (const entry of sessions.values()) {
-        if (entry.owner !== owner || entry.disposed) continue;
+        if (entry.owner !== owner || entry.disposed || entry.closing) continue;
         out.push({ sessionId: entry.sessionId, createdAt: entry.createdAt, attached: entry.sink !== null });
       }
       return out;
@@ -326,6 +411,7 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
       for (const entry of sessions.values()) {
         entry.disposed = true;
         notifyGone(entry);
+        resolveExitWaiters(entry, false);
       }
       sessions.clear();
     },

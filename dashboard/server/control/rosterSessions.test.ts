@@ -21,6 +21,7 @@ import {
   createRosterSessionManager,
   createRosterWorkerAdapter,
   detectReplReadiness,
+  detectRuntimeReplReadiness,
   detectReplReadinessFresh,
   detectReplReadinessSettled,
   detectTurnEngaged,
@@ -47,6 +48,11 @@ const PROFILES: ExecutionProfile[] = [
     id: 'worker:claude:claude-fable-5', role: 'worker', runtime: 'claude', model: 'claude-fable-5',
     capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'],
   },
+  { id: 'manager:codex:gpt-5.6-sol', role: 'manager', runtime: 'codex', model: 'gpt-5.6-sol', capabilities: ['read', 'emit-events'] },
+  {
+    id: 'worker:codex:gpt-5.6-sol', role: 'worker', runtime: 'codex', model: 'gpt-5.6-sol',
+    capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'],
+  },
 ];
 
 function assignment(agentId: string, role: 'manager' | 'worker'): ResolvedAgentAssignment {
@@ -57,6 +63,17 @@ function assignment(agentId: string, role: 'manager' | 'worker'): ResolvedAgentA
     profileId: role === 'manager' ? 'manager:claude:claude-fable-5' : 'worker:claude:claude-fable-5',
     runtime: 'claude',
     model: 'claude-fable-5',
+  };
+}
+
+function codexAssignment(agentId: string, role: 'manager' | 'worker'): ResolvedAgentAssignment {
+  return {
+    agentId,
+    declarationPath: `agents/${agentId}.md`,
+    declarationHash: 'a'.repeat(64),
+    profileId: role === 'manager' ? 'manager:codex:gpt-5.6-sol' : 'worker:codex:gpt-5.6-sol',
+    runtime: 'codex',
+    model: 'gpt-5.6-sol',
   };
 }
 
@@ -107,6 +124,24 @@ function proposalFixture(): PlanProposal {
       }),
     ],
     parameters: { channel: 'the-second-take', slug: 'st-042', slice: '2min' },
+  };
+}
+
+function codexProposalFixture(): PlanProposal {
+  const plan = proposalFixture();
+  return {
+    ...plan,
+    manager: {
+      ...plan.manager,
+      runtime: 'codex',
+      model: 'gpt-5.6-sol',
+      assignment: codexAssignment('fyt-runner', 'manager'),
+    },
+    stages: plan.stages.map((item) => ({
+      ...item,
+      worker: { runtime: 'codex', model: 'gpt-5.6-sol' },
+      assignment: codexAssignment(item.assignment!.agentId, 'worker'),
+    })),
   };
 }
 
@@ -213,7 +248,7 @@ interface FakeHost {
   opened: HostOpenRequest[];
 }
 
-function fakeHost(): FakeHost {
+function fakeHost(options: { confirmExitOnStop?: boolean } = {}): FakeHost {
   let counter = 0;
   const writes = new Map<string, string[]>();
   const killed = new Set<string>();
@@ -237,7 +272,14 @@ function fakeHost(): FakeHost {
       };
       return { sessionId, handle };
     },
-    stop(sessionId) { killed.add(sessionId); return true; },
+    stop(sessionId) {
+      if (!writes.has(sessionId)) return false;
+      killed.add(sessionId);
+      if (options.confirmExitOnStop !== false) {
+        for (const cb of [...(exits.get(sessionId) ?? [])]) cb({ exitCode: 0 });
+      }
+      return true;
+    },
     stopAll() { for (const id of writes.keys()) killed.add(id); },
     sessions() { return [...writes.keys()]; },
   };
@@ -379,6 +421,12 @@ function harness(options: {
   autoEngage?: boolean;
   /** Simulate the binding-following agent writing its server-minted boot sentinel after spawn. */
   autoBootReady?: boolean;
+  /** Hermetic server-side view of an isolated Codex attempt workspace. */
+  openCodexWorkspace?: NonNullable<Parameters<typeof createRosterSessionManager>[0]['openCodexWorkspace']>;
+  /** When false, host.stop requests a kill but the test must emit the process exit acknowledgement. */
+  confirmExitOnStop?: boolean;
+  /** Codex-only post-receipt process exit deadline. */
+  codexExitTimeoutMs?: number;
 } = {}) {
   const plan = options.plan ?? proposalFixture();
   const store = createInMemoryControlPlaneStore({ newId: () => `id-${++sequence}` });
@@ -389,7 +437,7 @@ function harness(options: {
   registry.canAttach = (owner, sessionId) => attachable
     ? registryCanAttach(owner, sessionId)
     : { ok: false, reason: 'exited' };
-  const host = fakeHost();
+  const host = fakeHost({ confirmExitOnStop: options.confirmExitOnStop });
   const fs = fakeFs(options.existingPaths ?? [], options.seed ?? {});
   const resolve = vi.fn((input: Parameters<AssignedAgentResolver['resolve']>[0]) => ({
     assignment: { ...input.assignment },
@@ -426,6 +474,12 @@ function harness(options: {
       }
     },
     resolveWorkflowTools: options.workflowTools ?? (() => ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep']),
+    openCodexWorkspace: options.openCodexWorkspace ?? (() => ({
+      revision: () => 'b'.repeat(40),
+      changedPaths: () => [],
+      inspectArtifact: fs.inspectArtifact,
+    })),
+    ...(options.codexExitTimeoutMs === undefined ? {} : { codexExitTimeoutMs: options.codexExitTimeoutMs }),
     ...(options.deliveryTimeoutMs === undefined ? {} : { deliveryTimeoutMs: options.deliveryTimeoutMs }),
     ...(options.replReadyTimeoutMs === undefined ? {} : { replReadyTimeoutMs: options.replReadyTimeoutMs }),
   });
@@ -592,6 +646,69 @@ describe('roster spawn lifecycle', () => {
     expect(host.writes.get(sessionId)?.[0]).toContain('binding.md');
   });
 
+  it('launches Codex only on a server-planned isolated attempt workspace with its closed posture', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let primed = false;
+    item = harness({
+      plan: codexProposalFixture(),
+      onSleep: () => {
+        if (!item) return;
+        const sessionId = [...item.host.writes.keys()].at(-1);
+        if (!sessionId) return;
+        if (!primed) {
+          primed = true;
+          writeBootReady(item.fs, item.runRef);
+          item.host.emit(sessionId, `OpenAI Codex\r\n\u203a Ask Codex to do anything\r\n`);
+          // A real idle composer has already painted before the next delivery poll. Settle that frame in
+          // the fake clock too, rather than accidentally exercising the unrelated readiness-timeout path.
+          item.advanceClock(STALE_BUSY_QUIET_MS);
+          return;
+        }
+        if ((item.host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r')) {
+          item.host.emit(sessionId, '\u273b Working\u2026 esc to interrupt\r\n');
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    // On-demand is deliberate: no Codex terminal is ever rooted in the canonical project during roster boot.
+    expect(item.host.opened).toEqual([]);
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = item.sessions.deliver({ ...deliverInput(item.store, item.runRef, item.plan, 'story'), worktreePath: '/attempt/story' });
+    await vi.waitFor(() => { expect(item?.host.opened).toHaveLength(1); });
+    const sessionId = [...item.host.writes.keys()].at(-1);
+    if (!sessionId) throw new Error('Codex stage session missing');
+    const launch = item.host.writes.get(sessionId)?.[0] ?? '';
+
+    expect(launch).toContain("codex.cmd --model 'gpt-5.6-sol'");
+    expect(launch).toContain('--sandbox workspace-write');
+    expect(launch).toContain('--ask-for-approval never');
+    expect(launch).toContain('--no-alt-screen');
+    expect(launch).toContain(`-c 'forced_login_method="chatgpt"'`);
+    expect(launch).toContain(`-c 'mcp_servers={}'`);
+    expect(launch).toContain(`-c 'sandbox_workspace_write.network_access=false'`);
+    expect(launch).toContain(`-c 'web_search="disabled"'`);
+    expect(norm(launch)).toContain("--cd 'C:/attempt/story'");
+    expect(launch).not.toContain("--cd '/repo/orgs/faceless-youtube'");
+    expect(launch).toContain(`--add-dir '/state/control/roster/${item.runRef}/fyt-story'`);
+    expect(launch).toContain('binding.md');
+    expect(launch).not.toContain('claude --model');
+    expect(launch).not.toContain('--settings');
+    expect(launch).not.toContain('--search');
+    // Claude settings/MCP JSON is never passed to a Codex terminal as if it were its configuration grammar.
+    expect(item.fs.files.has(`/state/control/roster/${item.runRef}/fyt-story/settings.json`)).toBe(false);
+    expect(item.fs.files.has(`/state/control/roster/${item.runRef}/fyt-story/mcp.json`)).toBe(false);
+    const orderPath = completionPaths(item.runRef, 'story').orderPath;
+    await vi.waitFor(() => { expect(item.fs.files.has(orderPath)).toBe(true); });
+    const order = norm(item.fs.files.get(orderPath) ?? '');
+    expect(order).toContain('- work directory: C:/attempt/story');
+    expect(order).not.toContain('- work directory: /repo/orgs/faceless-youtube');
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'isolated Codex complete');
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
+    // Receipt read -> terminal reaped before engine inspection/canonical promotion can begin.
+    expect(item.sessions.state('operator', item.runRef).find((row) => row.agentId === 'fyt-story')?.sessionId).toBeNull();
+  });
+
   it('refuses to spawn an agent whose declaration no longer verifies', () => {
     const { plan, store, runRef, registry, host, fs } = harness();
     const sessions = createRosterSessionManager({
@@ -700,6 +817,40 @@ describe('gated work-order delivery', () => {
     expect(observedBeforeReady).toBe(true);
     await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'only after boot handshake');
     await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
+  it('keeps the boot-ready and completion-status handshakes authoritative for a Codex roster terminal', async () => {
+    let item: ReturnType<typeof harness> | null = null;
+    let sessionId = '';
+    let booted = false;
+    item = harness({
+      plan: codexProposalFixture(),
+      coldTerminals: true,
+      onSleep: () => {
+        if (!item) return;
+        sessionId ||= [...item.host.writes.keys()].at(-1) ?? '';
+        if (!sessionId) return;
+        if (!booted) {
+          expect(item.fs.files.has(completionPaths(item.runRef, 'story').orderPath)).toBe(false);
+          writeBootReady(item.fs, item.runRef);
+          item.host.emit(sessionId, `OpenAI Codex\r\n\u203a Ask Codex to do anything\r\n`);
+          booted = true;
+          return;
+        }
+        if ((item.host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r')) {
+          item.host.emit(sessionId, '✻ Working… esc to interrupt\r\n');
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: item.plan });
+    item.host.emit(sessionId, 'OpenAI Codex\r\n› Ask Codex to do anything\r\n');
+    item.advanceClock(STALE_BUSY_QUIET_MS);
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+
+    const pending = item.sessions.deliver({ ...deliverInput(item.store, item.runRef, item.plan, 'story'), worktreePath: '/attempt/story' });
+    await writeCompletionStatus(item.fs, item.runRef, 'story', 'DONE', 'Codex status receipt accepted');
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded', summary: 'Codex status receipt accepted' });
   });
 
   it('fails closed for stale, wrong-token, torn, or absent boot-ready files without writing an order', async () => {
@@ -1001,6 +1152,79 @@ describe('gated work-order delivery', () => {
     };
   }
 
+  /**
+   * Codex is intentionally not backed by the canonical fake filesystem: its isolated attempt is what
+   * the server later inspects and the engine promotes. Keep that boundary explicit in the test model so
+   * a passing Codex result cannot accidentally rely on canonical `/repo` state.
+   */
+  async function codexArtifactHarness(options: { confirmExitOnStop?: boolean; codexExitTimeoutMs?: number } = {}) {
+    const plan = codexProposalFixture();
+    plan.stages[1].artifacts = [{ id: 'script', path: SCRIPT_PATH, description: 'the script' }];
+    const attemptFiles = new Map<string, string>();
+    let changed: string[] = [];
+    let booted = false;
+    let item: ReturnType<typeof harness> | null = null;
+    const inspectArtifact = (path: readonly string[], hashMode: 'always' | 'never' | number) => {
+      const value = attemptFiles.get(path.join('/'));
+      if (value === undefined) return null;
+      const size = Buffer.byteLength(value, 'utf8');
+      const includeHash = hashMode === 'always' || (typeof hashMode === 'number' && hashMode === size);
+      return {
+        size,
+        sha256: includeHash ? createHash('sha256').update(value).digest('hex') : null,
+        identity: `attempt:${path.join('/')}`,
+      };
+    };
+    item = harness({
+      plan,
+      ...(options.confirmExitOnStop === undefined ? {} : { confirmExitOnStop: options.confirmExitOnStop }),
+      ...(options.codexExitTimeoutMs === undefined ? {} : { codexExitTimeoutMs: options.codexExitTimeoutMs }),
+      openCodexWorkspace: () => ({
+        revision: () => 'c'.repeat(40),
+        changedPaths: () => changed,
+        inspectArtifact,
+      }),
+      onSleep: () => {
+        if (!item) return;
+        const sessionId = [...item.host.writes.keys()].at(-1);
+        if (!sessionId) return;
+        if (!booted) {
+          booted = true;
+          writeBootReady(item.fs, item.runRef);
+          item.host.emit(sessionId, `OpenAI Codex\r\n\u203a Ask Codex to do anything\r\n`);
+          item.advanceClock(STALE_BUSY_QUIET_MS);
+          return;
+        }
+        if ((item.host.writes.get(sessionId) ?? []).some((chunk) => chunk === '\r')) {
+          item.host.emit(sessionId, '\u273b Working\u2026 esc to interrupt\r\n');
+        }
+      },
+    });
+    item.sessions.ensureRoster({ subject: 'operator', runRef: item.runRef, proposal: plan });
+    succeedStage(item.store, item.runRef, 'idea');
+    resolveGate(item.store, item.runRef, 'story', 'g0-idea-pick', 'approved');
+    const pending = item.sessions.deliver({
+      ...deliverInput(item.store, item.runRef, plan, 'story'),
+      worktreePath: '/attempt/story',
+    });
+    await vi.waitFor(() => {
+      expect(item?.fs.files.has(completionPaths(item!.runRef, 'story').orderPath)).toBe(true);
+    });
+    return {
+      item,
+      pending,
+      writeAttemptFile(path: string, contents: string) { attemptFiles.set(path, contents); },
+      setChanged(paths: string[]) { changed = paths; },
+      async writeDoneStatus() {
+        await writeCompletionStatus(item!.fs, item!.runRef, 'story', 'DONE', 'Codex isolated attempt complete');
+      },
+      async complete() {
+        await writeCompletionStatus(item!.fs, item!.runRef, 'story', 'DONE', 'Codex isolated attempt complete');
+        return pending;
+      },
+    };
+  }
+
   it('refuses a completion whose declared artifact is not on disk', async () => {
     const run = await artifactHarness();
     const result = await run.complete();
@@ -1013,6 +1237,70 @@ describe('gated work-order delivery', () => {
     const run = await artifactHarness();
     run.fs.put(`/repo/${SCRIPT_PATH}`, '# the script\n\nreal content the stage produced.\n');
     expect(await run.complete()).toMatchObject({ state: 'succeeded', summary: 'all done honest' });
+  });
+
+  it('accepts an in-scope undeclared support file but returns digest evidence only for declared artifacts', async () => {
+    const run = await codexArtifactHarness();
+    run.writeAttemptFile(SCRIPT_PATH, '# isolated script\n');
+    run.setChanged([
+      SCRIPT_PATH,
+      'orgs/faceless-youtube/channels/x/videos/y/render-support.json',
+    ]);
+    const result = await run.complete();
+    expect(result).toMatchObject({ state: 'succeeded' });
+    expect(result.artifacts).toEqual([{
+      path: SCRIPT_PATH,
+      digest: createHash('sha256').update('# isolated script\n').digest('hex'),
+    }]);
+    // The short-lived stage terminal is reaped before the engine can inspect/promote this attempt.
+    expect(run.item.sessions.state('operator', run.item.runRef)
+      .find((row) => row.agentId === 'fyt-story')?.sessionId).toBeNull();
+  });
+
+  it('refuses a Codex attempt that changes a sibling outside the compiled write scope', async () => {
+    const run = await codexArtifactHarness();
+    run.writeAttemptFile(SCRIPT_PATH, '# isolated script\n');
+    run.setChanged([SCRIPT_PATH, 'orgs/faceless-youtube/knowledge/forged.md']);
+    const result = await run.complete();
+    expect(result.state).toBe('waiting-human');
+    expect(result.summary).toContain('outside its approved write scope');
+    expect(result.artifacts).toEqual([]);
+  });
+
+  it('withholds Codex success until the PTY process exit is acknowledged', async () => {
+    const run = await codexArtifactHarness({ confirmExitOnStop: false, codexExitTimeoutMs: 60_000 });
+    run.writeAttemptFile(SCRIPT_PATH, '# isolated script\n');
+    run.setChanged([SCRIPT_PATH]);
+    const sessionId = [...run.item.host.writes.keys()].at(-1);
+    if (!sessionId) throw new Error('Codex stage session missing');
+    let settled = false;
+    const completion = run.complete();
+    void completion.then(() => { settled = true; }, () => { settled = true; });
+
+    await vi.waitFor(() => { expect(run.item.host.killed.has(sessionId)).toBe(true); });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    run.item.host.exit(sessionId);
+    await expect(completion).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
+  it('rejects Codex delivery when process exit remains unconfirmed, preventing engine integration', async () => {
+    const run = await codexArtifactHarness({ confirmExitOnStop: false, codexExitTimeoutMs: 5 });
+    run.writeAttemptFile(SCRIPT_PATH, '# isolated script\n');
+    run.setChanged([SCRIPT_PATH]);
+
+    await expect(run.complete()).rejects.toThrow(/exit was not confirmed \(timeout\)/);
+  });
+
+  it('still refuses integration when a concurrent roster retirement consumes the Codex session', async () => {
+    const run = await codexArtifactHarness({ confirmExitOnStop: false, codexExitTimeoutMs: 5 });
+    run.writeAttemptFile(SCRIPT_PATH, '# isolated script\n');
+    run.setChanged([SCRIPT_PATH]);
+
+    await run.writeDoneStatus();
+    run.item.sessions.retire(run.item.runRef, 'concurrent daemon shutdown');
+    await expect(run.pending).rejects.toThrow(/exit was not confirmed \(not-found\)/);
   });
 
   it('CANNOT succeed on a pre-existing artifact it did not write', async () => {
@@ -1309,6 +1597,17 @@ describe('roster worker adapter (the engine seam)', () => {
     expect(fallback.execute).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses an unassigned Codex stage rather than falling back to the Claude headless adapter', async () => {
+    const fallback = { execute: vi.fn() };
+    const sessions = { hasRoster: () => false, deliver: vi.fn() } as unknown as RosterSessionManager;
+    const adapter = createRosterWorkerAdapter({ sessions, fallback });
+    const codexProfile = PROFILES.find((profile) => profile.id === 'worker:codex:gpt-5.6-sol');
+    if (!codexProfile) throw new Error('missing Codex worker profile');
+
+    await expect(adapter.execute({ ...base, profile: codexProfile })).rejects.toThrow(/routes to Codex without a live managed roster/);
+    expect(fallback.execute).not.toHaveBeenCalled();
+  });
+
   it('REFUSES to go headless for a stage that declares a roster agent but has no live roster', async () => {
     // `lock()` → `retireAll` → `runs.delete` makes `hasRoster` false while an in-flight `runToBoundary`
     // keeps iterating. Routing on live state alone therefore spawned a headless `claude` subprocess AFTER
@@ -1353,7 +1652,7 @@ describe('roster worker adapter (the engine seam)', () => {
     });
     expect(result.summary).toBe('delivered');
     expect(deliver.mock.calls[0][0]).toMatchObject({
-      stageId: 'story', project: 'faceless-youtube',
+      stageId: 'story', project: 'faceless-youtube', worktreePath: '/wt',
       assignedAgent: { assignment: { agentId: 'fyt-story' } },
     });
   });
@@ -1765,6 +2064,19 @@ describe('roster scoped per-run permissions', () => {
  * toward the delivery deadline with nothing delivered.
  */
 describe('roster REPL-readiness gate', () => {
+  it('accepts only Codex idle-composer frames and withholds sign-in, trust, and busy screens', () => {
+    expect(detectRuntimeReplReadiness('codex', 'OpenAI Codex\r\n› Ask Codex to update the binding\r\n'))
+      .toEqual({ state: 'ready' });
+    expect(detectRuntimeReplReadiness('codex', 'Sign in with ChatGPT to use Codex\r\n'))
+      .toMatchObject({ state: 'modal', marker: 'Sign in with ChatGPT' });
+    expect(detectRuntimeReplReadiness('codex', 'Do you trust this folder?\r\n'))
+      .toMatchObject({ state: 'modal', marker: 'trust this folder' });
+    expect(detectRuntimeReplReadiness('codex', '✻ Working… esc to interrupt\r\n› \r\n'))
+      .toMatchObject({ state: 'busy', marker: 'esc to interrupt' });
+    // Claude-specific chrome is not a cross-runtime readiness signal.
+    expect(detectRuntimeReplReadiness('codex', IDLE_FRAME)).toMatchObject({ state: 'silent' });
+  });
+
   it('classifies a permission menu, a mid-turn frame, and an idle prompt', () => {
     expect(detectReplReadiness('\u256d\u2500 Do you want to proceed? \u2500\u256e\n\u2502 \u276f 1. Yes')).toMatchObject({ state: 'modal' });
     expect(detectReplReadiness("  2. Yes, and don't ask again for Read commands")).toMatchObject({ state: 'modal' });

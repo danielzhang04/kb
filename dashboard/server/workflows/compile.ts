@@ -62,6 +62,10 @@ function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): s
     id: def.id,
     project: def.project,
     title: def.title,
+    // Omitted standard mode preserves pre-existing definition proposal identities. The non-default
+    // validation mode is explicitly committed, so weakening/removing its publication prohibition
+    // always forces a fresh approval.
+    ...(def.executionMode === 'validation-slice' ? { executionMode: def.executionMode } : {}),
     profile: def.profile,
     // The effective read scope is part of the approved proposal identity: a changed read scope changes
     // the proposalId, forcing re-approval. Without this the scan roots would be tamper-silent. (§4.2)
@@ -193,6 +197,21 @@ function highestTier(stages: readonly { riskTier: ProposalRiskTier }[]): Proposa
  * `validatePlanProposal` / the store; this function only assembles the closed shape and picks routing.
  */
 export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnvironment): CompileWorkflowResult {
+  // Parser validation is the first boundary. Keep this independent compiler assertion because callers
+  // can construct a WorkflowDef programmatically: a validation slice must never acquire a release
+  // stage through a bypassed parser, an approved G4, or a forged completion artifact.
+  if (def.executionMode === 'validation-slice') {
+    const forbidden = def.stages.find((stage) => stage.action.startsWith('publish:')
+      || stage.riskTier === 'T3'
+      || stage.humanGates?.some((gate) => gate.publicationAuthorization === true));
+    if (forbidden) {
+      return {
+        ok: false,
+        reason: 'validation-slice-publication-forbidden',
+        detail: `validation-slice workflow cannot compile publication-capable stage '${forbidden.id}'`,
+      };
+    }
+  }
   const reviewStageIds = new Set(def.stages.filter((stage) => stage.review !== undefined).map((stage) => stage.id));
   const reviewSubjects = new Set<string>();
   for (const stage of def.stages) {

@@ -1,13 +1,13 @@
 ---
 id: fyt-checker
 role: inspect
-runtime: claude
-model: claude-fable-5
-default-profile: worker:claude:claude-fable-5
-allowed-profiles: [worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
+runtime: codex
+model: gpt-5.6-sol
+default-profile: worker:codex:gpt-5.6-sol
+allowed-profiles: [worker:codex:gpt-5.6-sol, worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
 projects: [faceless-youtube]
 runner-bound: true
-description: Cross-cutting fresh-context gate service for one faceless-youtube video run — judge-gate, image-review (gained from fyt-runner), render-verify, compliance-check, and the two staging→root merge/re-lint nodes (shots-merge, audio-plan-merge). Not a phase; a service every phase's output passes through before its human gate. Never produces the artifact it reviews, never converts an inconclusive result into a pass.
+description: Cross-cutting Codex fresh-context gate service for one faceless-youtube video run — judge-gate, image-review (gained from fyt-runner), render-verify, compliance-check, thin-slice validation, and the two staging→root merge/re-lint nodes (shots-merge, audio-plan-merge). Not a phase; a service every phase's output passes through before its human gate. Never produces the artifact it reviews, never converts an inconclusive result into a pass.
 ---
 
 # fyt-checker — fresh-context gate service
@@ -28,7 +28,7 @@ authors `shots.json`, a different identity (you) promotes and re-lints it. `fyt-
 both nodes' place in the gate spine — it launches, sequences, and gates around them — but it cannot
 execute them itself: it is declared with a manager-role default execution profile, and the compiler
 requires a stage's agent to have a worker-role one, which is exactly what your own default profile
-(`worker:claude:claude-fable-5`) already is. See `video-run.md`'s single-writer section for the full
+(`worker:codex:gpt-5.6-sol`) already is. See `video-run.md`'s single-writer section for the full
 ruling.
 
 ## Owned stages + skills driven
@@ -121,9 +121,8 @@ pass.
 
 ## Subagent dispatch policy
 
-- **haiku** — mechanical: crop-battery generation, manifest field reads.
-- **sonnet** — the default tier for a single review mandate's drafting/write-up.
-- **opus** — the default tier for this agent's own top-level review judgment (identity/rig, fidelity,
-  style rulings; the script judge-gate; the compliance read) — fresh-context grading is exactly the
-  T3-adjacent judgment call the model-routing policy reserves the strong tier for.
-- **codex** — only via a queue card on `ops`; never self-claimed.
+The resolved runtime binding governs every subordinate. In a Codex-bound run, use Codex-native
+subagents only: Terra for mechanical crop/manifest reads and review write-up, Sol for the fresh-context
+top-level judgment. Never invoke a Claude tier or create an ops queue card to re-dispatch work already
+inside this governed Codex run. In an explicitly Claude-bound run, Haiku remains mechanical, Sonnet
+remains the drafting tier, and Opus remains the fresh-context judgment tier.

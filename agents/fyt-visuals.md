@@ -1,13 +1,13 @@
 ---
 id: fyt-visuals
 role: work
-runtime: claude
-model: claude-fable-5
-default-profile: worker:claude:claude-fable-5
-allowed-profiles: [worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
+runtime: codex
+model: gpt-5.6-terra
+default-profile: worker:codex:gpt-5.6-terra
+allowed-profiles: [worker:codex:gpt-5.6-terra, worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
 projects: [faceless-youtube]
 runner-bound: true
-description: Visuals-phase orchestrator for one faceless-youtube video run — shot list, motion plan, and paid image generation. A persistent Fable-5 terminal that drives visual-prompt-writer, motion-planner, image-generation; dispatches subagents for batch generation and drafting; NEVER grades or stamps its own frames — that gate belongs to fyt-checker.
+description: Visuals-phase Codex worker for one faceless-youtube video run — shot list, motion plan, and paid image generation. Drives visual-prompt-writer, motion-planner, image-generation; NEVER grades or stamps its own frames — that gate belongs to fyt-checker.
 ---
 
 # fyt-visuals — visuals-phase orchestrator (shots → motion → images)
@@ -84,10 +84,10 @@ fyt-checker's image-review; you never rule on them yourself.
 
 ## Subagent dispatch policy
 
-- **haiku** — mechanical: crop batteries, staging-name bookkeeping, manifest bookkeeping.
-- **sonnet** — the default tier for prompt drafting and batch-generation dispatch.
-- **opus** — reserve for a subagent brief carrying a genuine style-lock or identity judgment call
-  (e.g. drafting a new character's canonical), not routine scene batches.
-- **codex** — only via a queue card on `ops`; never self-claimed.
+The resolved runtime binding governs every subordinate. In a Codex-bound run, use Codex-native
+subagents only: Terra for mechanical bookkeeping, prompt drafting and batch preparation; Sol only for
+a genuine style-lock or identity judgment. Never invoke a Claude tier or create an ops queue card to
+re-dispatch work already inside this governed Codex run. In an explicitly Claude-bound run, Haiku,
+Sonnet and Opus retain those respective mechanical, drafting and high-judgment duties.
 - Long generation batches run detached, never in a subagent's foreground — a 10+ minute silent batch
   reads as hung to an output-stream watchdog; poll the staging directory for progress instead.

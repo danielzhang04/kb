@@ -458,6 +458,59 @@ describe('buildActivatedExecution — unlock grants and the roster substrate', (
     expect(roster.retire).toHaveBeenCalledWith('run-7', 'run cancelled');
   });
 
+  it('refuses a Codex route without a resolved managed roster assignment before the Claude worker can run', async () => {
+    const deps = spyDeps();
+    const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const engine = (deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const proposal = {
+      manager: { runtime: 'claude', model: 'claude-opus', requiredSkills: [] },
+      stages: [{ id: 'codex-stage', worker: { runtime: 'codex', model: 'gpt-5.6-sol' } }],
+    };
+
+    await expect(built?.runAutomatic({ subject: 'operator', runRef: 'run-codex-unmanaged', proposal } as never))
+      .rejects.toThrow(/Codex execution refused: stage 'codex-stage' routes to Codex without a resolved Codex roster assignment/);
+    expect(engine.runToBoundary).not.toHaveBeenCalled();
+  });
+
+  it('refuses a resolved Codex roster run when the PTY substrate is absent, never selecting the Claude headless path', async () => {
+    const deps = spyDeps();
+    const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const engine = (deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const assignment = {
+      agentId: 'fyt-codex', declarationPath: 'agents/fyt-codex.md', declarationHash: 'a'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex', model: 'gpt-5.6-sol',
+    };
+    const proposal = {
+      manager: { runtime: 'claude', model: 'claude-opus', requiredSkills: [] },
+      stages: [{ id: 'codex-stage', worker: { runtime: 'codex', model: 'gpt-5.6-sol' }, assignment }],
+    };
+
+    await expect(built?.runAutomatic({ subject: 'operator', runRef: 'run-codex-no-pty', proposal } as never))
+      .rejects.toThrow(/Codex execution requires the managed roster PTY runtime/);
+    expect(engine.runToBoundary).not.toHaveBeenCalled();
+  });
+
+  it('spawns the persistent roster for a resolved Codex manager even with no assigned worker stage', async () => {
+    const deps = spyDeps();
+    const built = buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      ptyHost: { open: vi.fn(), stop: vi.fn(), stopAll: vi.fn(), sessions: () => [] } as never,
+      ptySessions: {} as never,
+    });
+    const roster = (deps.createRoster as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const assignment = {
+      agentId: 'fyt-manager-codex', declarationPath: 'agents/fyt-manager-codex.md', declarationHash: 'a'.repeat(64),
+      profileId: 'manager:codex:gpt-5.6-sol', runtime: 'codex', model: 'gpt-5.6-sol',
+    };
+    const proposal = {
+      manager: { runtime: 'codex', model: 'gpt-5.6-sol', requiredSkills: [], assignment },
+      stages: [{ id: 'legacy-claude', worker: { runtime: 'claude', model: 'claude-opus' } }],
+    };
+
+    await built?.runAutomatic({ subject: 'operator', runRef: 'run-codex-manager', proposal } as never);
+    expect(roster.ensureRoster).toHaveBeenCalledWith({ subject: 'operator', runRef: 'run-codex-manager', proposal });
+  });
+
   it('leaves a run WITHOUT assigned stages entirely on the headless path (no roster spawn)', async () => {
     const deps = spyDeps();
     const built = buildActivatedExecution({

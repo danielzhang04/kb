@@ -64,6 +64,7 @@ import {
 import { settleFleetLedgerForRun } from './queueBridge.ts';
 import { createRosterSessionManager, createRosterWorkerAdapter, type RosterSessionManager } from './rosterSessions.ts';
 import { loadExecutionProfiles } from './environment.ts';
+import type { PlanProposal } from './proposal.ts';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { brandInternalServiceCaller } from '../auth/session.ts';
@@ -252,6 +253,38 @@ export interface BuildActivatedExecutionOptions {
 const dormantResolveLaunch = (_spec: ManagedStartSpec): ClaudeSessionLaunch => {
   throw new ActivationError('no managed manager session is started under D3(b); resolveLaunch is dormant');
 };
+
+/** Every Codex route is roster-only in this wave; no Claude headless adapter may receive one. */
+function codexRosterRequirement(proposal: PlanProposal): string | null {
+  const manager = proposal.manager;
+  if (manager?.runtime === 'codex' && manager.assignment?.runtime !== 'codex') {
+    return 'manager routes to Codex without a resolved Codex roster assignment';
+  }
+  if (manager?.assignment?.runtime === 'codex' && manager.runtime !== 'codex') {
+    return 'manager has a Codex roster assignment but non-Codex manager routing';
+  }
+  for (const stage of proposal.stages ?? []) {
+    const workerRuntime = stage.worker?.runtime;
+    if (workerRuntime === 'codex' && stage.assignment?.runtime !== 'codex') {
+      return `stage '${stage.id}' routes to Codex without a resolved Codex roster assignment`;
+    }
+    if (stage.assignment?.runtime === 'codex' && workerRuntime !== 'codex') {
+      return `stage '${stage.id}' has a Codex roster assignment but non-Codex worker routing`;
+    }
+  }
+  return null;
+}
+
+/** The roster must exist for a resolved Codex runtime; its persistent session is the only supported transport. */
+function proposalUsesCodexRoster(proposal: PlanProposal): boolean {
+  return proposal.manager?.assignment?.runtime === 'codex'
+    || (proposal.stages ?? []).some((stage) => stage.assignment?.runtime === 'codex');
+}
+
+/** A manager assignment is itself a persistent roster participant, even when no worker assignment exists. */
+function proposalHasRosterAssignment(proposal: PlanProposal): boolean {
+  return Boolean(proposal.manager?.assignment) || (proposal.stages ?? []).some((stage) => Boolean(stage.assignment));
+}
 
 function defaultResolveBaseCommit(repoRoot: string): string {
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
@@ -442,6 +475,17 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const settleLedgerForRun = deps.settleLedgerForRun;
   const readUsageMicros = options.readUsageMicros;
   const runAutomatic = async (input: ExecuteRunInput): Promise<ExecutionOutcome> => {
+    // Codex has NO broad headless adapter in this wave. A concrete Codex route must have the approved,
+    // resolved assignment that creates its persistent interactive roster session; otherwise it is refused
+    // before the engine can reach the Claude headless worker. This also catches malformed snapshots where
+    // routing and immutable assignment provenance disagree.
+    const codexRequirement = codexRosterRequirement(input.proposal);
+    if (codexRequirement !== null) {
+      throw new ActivationError(`Codex execution refused: ${codexRequirement}`);
+    }
+    if (proposalUsesCodexRoster(input.proposal) && !rosterSessions) {
+      throw new ActivationError('Codex execution requires the managed roster PTY runtime; refusing Claude headless fallback');
+    }
     // C2: register this run's sparse materialization set (effectiveRead ∪ writeScope) BEFORE the engine
     // provisions any worktree, so `resolveSparsePaths` (above) can find it at `ensure` time. Read from the
     // approved, hash-covered proposal scope. Guarded: a proposal without a `scope` (e.g. a test double)
@@ -459,7 +503,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     // one after a daemon restart, which no pty child survives) converge on one idempotent spawn call, and
     // a terminal run retires its terminals exactly once. A roster failure must not silently execute the
     // run headlessly: an assignment that no longer verifies is a refusal, and it propagates.
-    if (rosterSessions && input.proposal.stages.some((stage) => stage.assignment)) {
+    if (rosterSessions && proposalHasRosterAssignment(input.proposal)) {
       rosterSessions.ensureRoster({ subject: input.subject, runRef: input.runRef, proposal: input.proposal });
     }
     try {

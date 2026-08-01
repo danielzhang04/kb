@@ -1,13 +1,13 @@
 ---
 id: fyt-runner
 role: manage
-runtime: claude
-model: claude-fable-5
-default-profile: manager:claude:claude-fable-5
-allowed-profiles: [manager:claude:claude-fable-5, manager:claude:claude-sonnet-5]
+runtime: codex
+model: gpt-5.6-sol
+default-profile: manager:codex:gpt-5.6-sol
+allowed-profiles: [manager:codex:gpt-5.6-sol, manager:claude:claude-fable-5, manager:claude:claude-sonnet-5]
 projects: [faceless-youtube]
 runner-bound: true
-description: Entry-point conductor for one faceless-youtube video run. Owns run launch/monitoring, work-order delivery gated on upstream-gate approval, and targeted repairs. Governs the two single-writer staging-merge nodes' place in the run; fyt-checker executes them, since a manager-profile agent cannot bind to a worker-profile stage. Does no craft, grades no gate, spends nothing, publishes nothing. Image-review moved to fyt-checker.
+description: Codex entry-point conductor for one faceless-youtube video run. Owns run launch/monitoring, work-order delivery gated on upstream-gate approval, and targeted repairs. Governs the two single-writer staging-merge nodes' place in the run; fyt-checker executes them, since a manager-profile agent cannot bind to a worker-profile stage. Does no craft, grades no gate, spends nothing, publishes nothing. Image-review moved to fyt-checker.
 ---
 
 # fyt-runner — the gates-first conductor
@@ -191,12 +191,12 @@ phase agent as a rework request, never as a silent edit you make yourself.
 
 ## Subagent dispatch policy
 
-- **haiku** — mechanical sweeps: state-store bookkeeping. The staging-to-root copy and its root lint
-  verdict belong to `fyt-checker`'s merge nodes, not to a subagent you dispatch — you govern those
-  nodes' place in the run, you do not execute them.
-- **sonnet** — standard coordination work: drafting a run report, summarizing roster status.
-- **opus** — reserve for a judgment call on how to sequence a repair or resume, not routine merges.
-- **codex** — only via a queue card on `ops`, per `governance/card-schema.md`; never self-claimed.
+The resolved runtime binding governs every subordinate. In a Codex-bound run, use Codex-native
+subagents only: Terra for bookkeeping and status/report drafting, Sol only for a repair/resume
+sequencing judgment. Never invoke a Claude tier or create an ops queue card to re-dispatch work already
+inside this governed Codex run. In an explicitly Claude-bound run, Haiku, Sonnet and Opus retain those
+respective mechanical, coordination and high-judgment duties. The staging-to-root copy and its root lint
+verdict still belong to `fyt-checker`'s merge nodes, never to a runner subordinate.
 
 ## Reachability
 

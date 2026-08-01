@@ -66,6 +66,12 @@ const PROFILES: ExecutionProfile[] = [
   { id: 'manager:claude:claude-fable-5', role: 'manager', runtime: 'claude', model: 'claude-fable-5', capabilities: ['read', 'emit-events'] },
   { id: 'worker:claude:claude-fable-5', role: 'worker', runtime: 'claude', model: 'claude-fable-5', capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'] },
   { id: 'worker:claude:claude-sonnet-5', role: 'worker', runtime: 'claude', model: 'claude-sonnet-5', capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'] },
+  // The canonical workflow still selects Claude explicitly, while the checked-out roster now declares
+  // Codex defaults. Assignment validation resolves both the selected profile and each agent's declared
+  // default, so the synthetic environment must contain both sets without changing canonical routing.
+  { id: 'manager:codex:gpt-5.6-sol', role: 'manager', runtime: 'codex', model: 'gpt-5.6-sol', capabilities: ['read', 'emit-events'] },
+  { id: 'worker:codex:gpt-5.6-sol', role: 'worker', runtime: 'codex', model: 'gpt-5.6-sol', capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'] },
+  { id: 'worker:codex:gpt-5.6-terra', role: 'worker', runtime: 'codex', model: 'gpt-5.6-terra', capabilities: ['read', 'write-approved-scope', 'run-approved-commands', 'emit-events'] },
 ];
 const BINDING_ENVIRONMENT: CompileWorkflowEnvironment = {
   registry: REGISTRY,

@@ -96,6 +96,20 @@ describe('patchWorkflowAssignment', () => {
       '    agentId: fyt-story$1    profileId: worker:claude:claude-fable-5$2',
     )).toBe(actual);
   });
+
+  it('preserves validation-slice non-publication mode through a narrow assignment amendment', () => {
+    const path = fileURLToPath(new URL('../../../orgs/faceless-youtube/workflows/thin-slice-run.md', import.meta.url));
+    const source = readFileSync(path, 'utf8');
+    const patched = patchWorkflowAssignment(source, { kind: 'stage', stageId: 'idea' }, {
+      agentId: 'fyt-story', profileId: 'worker:codex:gpt-5.6-terra',
+    });
+    // A no-op assignment returns the source unchanged; parse it to prove amendment tooling cannot drop
+    // the server-enforced non-publication mode while handling a thin workflow.
+    expect(patched?.source).toBe(source);
+    const parsed = parseWorkflowDef(patched?.source ?? '');
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed.ok) expect(parsed.value.executionMode).toBe('validation-slice');
+  });
 });
 
 describe('patchWorkflowGovernance', () => {

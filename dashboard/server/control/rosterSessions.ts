@@ -33,19 +33,21 @@
  * session" a property of the delivery path itself. Policy is NOT re-evaluated here: duplicating that
  * decision would fork the authority that `stageBoundary` owns.
  *
- * TRUST POSTURE (read before widening anything). A roster session is an interactive Claude terminal in
+ * TRUST POSTURE (read before widening anything). Claude roster sessions remain interactive terminals in
  * the canonical checkout, spawned only after a passkey unlock (`activation.ts`), owned by the operator
- * `sub` that launched the run, with the pty host's credential denylist applied to its environment. It is
- * NOT sandboxed the way a headless attempt worktree is: the agent works where the project's
- * single-writer staging law says it must. Completion is accepted only through a freshly cleared,
+ * `sub` that launched the run, with the pty host's credential denylist applied to its environment. Codex
+ * is different by design: it has no persistent canonical terminal. The server creates one stage-local
+ * terminal only after the engine has provisioned its pinned attempt worktree, then closes it before the
+ * engine inspects and promotes that worktree. Completion is accepted only through a freshly cleared,
  * server-owned status path bound to the delivery token; terminal output is never an authorization
- * channel. The canonical stage result recorded for a delivered stage is a completion receipt (summary +
- * server-verified declared artifacts), never a worktree diff.
+ * channel. The canonical stage result recorded for a delivered stage is server-verified evidence, never
+ * terminal prose.
  *
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
  */
+import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { openNoReparseFileTree, type NoReparseFileInfo, type NoReparseHashMode } from '../win32/noReparseFiles.ts';
@@ -55,7 +57,7 @@ import { createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
 import { isSafeRepoRelativePath, type PlanProposal, type ProposalScope, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { ControlPlaneStore } from './store.ts';
 import type { RunDetail } from './types.ts';
-import type { WorkerAdapter, WorkerExecutionResult } from './execution.ts';
+import type { WorkerAdapter, WorkerArtifactResult, WorkerExecutionResult } from './execution.ts';
 
 /** Terminal geometry for a roster session until the browser attaches and resizes it. */
 const DEFAULT_COLS = 120;
@@ -79,6 +81,9 @@ const SAFE_PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const DEFAULT_DELIVERY_TIMEOUT_MS = 4 * 60 * 60 * 1_000;
 const MIN_DELIVERY_TIMEOUT_MS = 60 * 1_000;
 const MAX_DELIVERY_TIMEOUT_MS = 24 * 60 * 60 * 1_000;
+/** Bound for the post-receipt Codex process-exit acknowledgement before canonical inspection may start. */
+const DEFAULT_CODEX_EXIT_TIMEOUT_MS = 10_000;
+const MAX_CODEX_EXIT_TIMEOUT_MS = 60_000;
 /** Named, greppable settle reason so an operator can find every timed-out delivery in the event log. */
 export const DELIVERY_TIMEOUT_REASON = 'roster-delivery-timeout';
 /**
@@ -194,6 +199,28 @@ export interface RosterFileSystem {
 }
 
 /**
+ * A server-opened, isolated Codex attempt workspace. This is deliberately smaller than the control
+ * filesystem seam: the agent can write the workspace, but only the server inspects its changed-path
+ * envelope and turns regular declared outputs into canonical result evidence.
+ */
+export interface RosterCodexWorkspace {
+  /** The pinned Git revision before delivery; a worker commit/reset is a refusal, never a promotion. */
+  revision(): string;
+  /** Every changed worktree path, including untracked files, from Git's NUL-delimited porcelain. */
+  changedPaths(): readonly string[];
+  /** Handle-bound regular-file inspection rooted at the server-planned attempt worktree. */
+  inspectArtifact(path: RosterPath, hashMode: NoReparseHashMode): NoReparseFileInfo | null;
+}
+
+type RosterArtifactInspector = Pick<RosterFileSystem, 'inspectArtifact'>;
+
+/** Opens only an engine-planned attempt workspace; proposals never select this path. */
+export type RosterCodexWorkspaceOpener = (input: {
+  worktreePath: string;
+  project: string;
+}) => RosterCodexWorkspace;
+
+/**
  * What a declared artifact looked like at DELIVERY time — the baseline the completion is judged against.
  * Captured before the order file exists, so before the agent can have touched anything.
  */
@@ -231,10 +258,17 @@ export interface RosterSessionsOptions {
   rows?: number;
   /** The single line that boots the interactive agent terminal. */
   launchLine?: (input: {
+    runtime: 'claude' | 'codex';
     model: string;
     bindingPath: string;
-    settingsPath: string;
-    mcpConfigPath: string;
+    /** Claude-only per-run settings file. Codex receives its closed posture as CLI flags. */
+    settingsPath?: string;
+    /** Claude-only empty MCP configuration. Codex does not consume Claude MCP configuration. */
+    mcpConfigPath?: string;
+    /** The canonical project root both the shell and runtime are pinned to. */
+    workDir: string;
+    /** Server-owned binding/status directory, added to Codex's sandboxed writable roots. */
+    agentDir: string;
     runRef: string;
     agentId: string;
   }) => string;
@@ -261,6 +295,13 @@ export interface RosterSessionsOptions {
    * to {@link DEFAULT_DELIVERY_TIMEOUT_MS}.
    */
   deliveryTimeoutMs?: number | ((input: { runRef: string; stageId: string; agentId: string }) => number);
+  /**
+   * Opens the server-planned isolated attempt workspace for a Codex delivery. The default is Windows
+   * handle-rooted I/O plus Git's change list; tests inject a hermetic model. Claude never calls this.
+   */
+  openCodexWorkspace?: RosterCodexWorkspaceOpener;
+  /** Codex-only PTY exit-ack deadline. A timeout throws so the engine cannot inspect or integrate. */
+  codexExitTimeoutMs?: number;
 }
 
 export interface RosterEnsureInput {
@@ -279,6 +320,8 @@ export interface RosterDeliveryInput {
   attemptRef: string;
   proposalStage: ProposalStage;
   project: string;
+  /** Engine-planned isolated attempt worktree. Required for Codex; never browser/proposal input. */
+  worktreePath?: string;
   /** Present only when the engine's resolver verified this stage's declaration. */
   assignedAgent?: ResolvedAssignedAgent;
   /** Per-delivery completion-status deadline override, in ms. Clamped exactly like the manager-level option. */
@@ -303,11 +346,14 @@ interface RosterSessionEntry {
   agentId: string;
   sessionId: string;
   owner: string;
+  /** The verified runtime this particular persistent terminal is running. */
+  runtime: 'claude' | 'codex';
   model: string;
   /** Rooted control directory; display strings below are never used for server I/O. */
   controlDir: string[];
   bindingPath: string;
-  settingsPath: string;
+  /** Present only for Claude, whose per-run policy is a settings JSON file. */
+  settingsPath?: string;
   /** Fresh server-minted capability proving this particular terminal completed its binding turn. */
   bootToken: string;
   readyPath: string;
@@ -360,6 +406,8 @@ interface RosterRunEntry {
   project: string;
   parameters: RosterRunParameters;
   workDir: string;
+  /** Immutable approved proposal used only to re-spawn a Codex stage terminal in its attempt workspace. */
+  proposal: PlanProposal;
   sessions: Map<string, RosterSessionEntry>;
   /** Last one-line activity per agent id (durably mirrored as `roster:` store events). */
   activity: Map<string, string>;
@@ -379,6 +427,113 @@ function createRosterFileSystem(stateRoot: string, repoRoot: string): RosterFile
     inspectArtifact: (path, hashMode) => repo.inspectRegularFile(path, hashMode),
     displayControlPath: (path) => control.displayPath(path),
   };
+}
+
+const GIT_COMMIT = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
+const MAX_CODEX_WORKSPACE_STATUS_BYTES = 1024 * 1024;
+
+/** A closed environment for server-owned Git inspection; no ambient credential or config path survives. */
+function rosterGitEnvironment(): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const name of ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL']) {
+    if (process.env[name] !== undefined) environment[name] = process.env[name];
+  }
+  return environment;
+}
+
+/** Reject Git status shapes that could conceal a rename, deletion, conflict, or path traversal. */
+function parseCodexWorkspaceStatus(raw: Buffer): string[] {
+  const records = raw.toString('utf8').split('\0');
+  if (records.at(-1) === '') records.pop();
+  const paths: string[] = [];
+  for (const record of records) {
+    if (record.length < 4 || record[2] !== ' ') {
+      throw new RosterSessionError('Codex workspace returned an unsafe Git status record');
+    }
+    const status = record.slice(0, 2);
+    const path = record.slice(3);
+    // Only ordinary tracked modifications/additions and untracked regular outputs can be promoted.
+    // Renames, deletions, conflicts, type changes and submodules have a second path or no regular-file
+    // promotion semantics, so fail closed before any later integrator sees them.
+    if (!(status === '??' || [...status].every((value) => value === ' ' || value === 'M' || value === 'A'))
+      || !isSafeRepoRelativePath(path) || paths.includes(path)) {
+      throw new RosterSessionError('Codex workspace contains an unsupported changed path');
+    }
+    paths.push(path);
+  }
+  return paths.sort();
+}
+
+/**
+ * Open the engine-created attempt worktree without ever traversing a user-supplied filesystem path.
+ *
+ * The attempt worktree is created by `GitWorktreeAdapter` from the pinned lineage commit BEFORE a worker
+ * runs. Git therefore contributes tracked content only: no canonical untracked files, ignored `.env`, or
+ * ambient secret material are copied into this Codex workspace. With sparse read scope enabled, the
+ * attempt materializes the declared governance/skill/channel reads alongside the project; without it,
+ * Codex can read the complete *isolated tracked attempt*. `workspace-write` is not a per-path read
+ * sandbox, so isolation plus the server's post-run changed-path check are the explicit boundary: every
+ * changed path is rejected unless it remains inside the compiled stage's approved write scope; declared
+ * artifacts remain the returned digest evidence.
+ */
+function openCodexAttemptWorkspace(input: { worktreePath: string; project: string }): RosterCodexWorkspace {
+  if (!isAbsolute(input.worktreePath) || input.worktreePath.includes('\0') || !SAFE_PATH_SEGMENT.test(input.project)) {
+    throw new RosterSessionError('Codex attempt workspace is not a safe server-owned path');
+  }
+  const root = resolve(input.worktreePath);
+  const projectRoot = resolve(root, 'orgs', input.project);
+  const child = relative(root, projectRoot);
+  if (child === '' || child === '..' || child.startsWith(`..${sep}`) || isAbsolute(child)) {
+    throw new RosterSessionError('Codex project workspace escapes its attempt root');
+  }
+  // Both opens are load-bearing: projectRoot proves the terminal cwd itself is a regular directory under
+  // the attempt root, while rootTree handles every result artifact relative to the repository root.
+  openNoReparseFileTree(projectRoot, { createRoot: false });
+  const rootTree = openNoReparseFileTree(root, { createRoot: false });
+  const git = (args: readonly string[]): Buffer => {
+    try {
+      return execFileSync('git', [
+        '-c', 'protocol.allow=never', '--no-optional-locks', ...args,
+      ], {
+        cwd: root,
+        encoding: 'buffer',
+        windowsHide: true,
+        env: rosterGitEnvironment(),
+        maxBuffer: MAX_CODEX_WORKSPACE_STATUS_BYTES,
+      });
+    } catch {
+      throw new RosterSessionError('Codex attempt workspace Git inspection failed');
+    }
+  };
+  return {
+    revision() {
+      const revision = git(['rev-parse', 'HEAD']).toString('utf8').trim();
+      if (!GIT_COMMIT.test(revision)) throw new RosterSessionError('Codex attempt workspace revision is not immutable');
+      return revision;
+    },
+    changedPaths() {
+      return parseCodexWorkspaceStatus(git([
+        'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all',
+      ]));
+    },
+    inspectArtifact(path, hashMode) {
+      return rootTree.inspectRegularFile(path, hashMode);
+    },
+  };
+}
+
+/** The isolated attempt cwd handed to Codex after `openCodexAttemptWorkspace` validated its project child. */
+function resolveCodexAttemptWorkDir(worktreePath: string, project: string): string {
+  if (!isAbsolute(worktreePath) || worktreePath.includes('\0') || !SAFE_PATH_SEGMENT.test(project)) {
+    throw new RosterSessionError('Codex attempt work directory is unsafe');
+  }
+  const root = resolve(worktreePath);
+  const projectRoot = resolve(root, 'orgs', project);
+  const child = relative(root, projectRoot);
+  if (child === '' || child === '..' || child.startsWith(`..${sep}`) || isAbsolute(child)) {
+    throw new RosterSessionError('Codex attempt work directory escapes its workspace');
+  }
+  return root;
 }
 
 /** Drop ANSI/OSC control sequences and bare carriage returns from terminal text. */
@@ -485,7 +640,7 @@ function stripForScreenWindow(chunk: string): string {
  * then a named `waiting-human` park; a false negative costs a swallowed work order — so this errs toward
  * waiting.
  */
-const MODAL_MARKERS: readonly RegExp[] = [
+const CLAUDE_MODAL_MARKERS: readonly RegExp[] = [
   /\bDo you want to\b/i,
   /\bWould you like to\b/i,
   /\bNo, and tell Claude\b/i,
@@ -523,7 +678,7 @@ const MODAL_MARKERS: readonly RegExp[] = [
  * an idle prompt does not. A false positive costs a bounded wait and a named `waiting-human` park; a
  * false negative costs a swallowed work order.
  */
-const BUSY_MARKERS: readonly RegExp[] = [
+const CLAUDE_BUSY_MARKERS: readonly RegExp[] = [
   /\b(?:esc|escape|ctrl\+?-?c) to (?:interrupt|cancel|stop)\b/i,
   // `(3s · thinking)` — the spinner's elapsed-time footer, independent of every word around it.
   /\(\d+s\s*[·|]/,
@@ -551,9 +706,57 @@ const BUSY_MARKERS: readonly RegExp[] = [
  * gated live test catches) rather than SWALLOW an order into a screen it cannot read. A loud park beats a
  * silent stall that reads "running" forever.
  */
-const READY_MARKERS: readonly RegExp[] = [
+const CLAUDE_READY_MARKERS: readonly RegExp[] = [
   /shift\s*\+?\s*tab\s*to\s*cycle/i,
 ];
+
+/**
+ * Codex's interactive TUI has different chrome from Claude Code. Its command line starts in the
+ * subscription-only, no-approval posture below, so a login/onboarding screen is a configuration/auth
+ * failure, never a screen the roster may type through. The lone accepted idle signal is Codex's isolated
+ * composer prompt (`›` / `❯`); every other non-empty frame parks fail-closed.
+ */
+const CODEX_MODAL_MARKERS: readonly RegExp[] = [
+  /\b(?:sign|log)\s*in\b.*\b(?:chatgpt|openai|account|browser)\b/i,
+  /\b(?:chatgpt|openai)\b.*\b(?:sign|log)\s*in\b/i,
+  /\b(?:choose|select)\b.*\b(?:authentication|login|sign-in|account)\b/i,
+  /\b(?:welcome|onboarding|setup)\b.*\b(?:codex|account|login|sign-in)\b/i,
+  /\btrust\b.*\b(?:folder|project|workspace)\b/i,
+  /\b(?:allow|approve|permission)\b.*\b(?:codex|command|access|continue)\b/i,
+];
+
+/** Deliberately conservative Codex busy evidence; it is also the post-Enter engagement proof. */
+const CODEX_BUSY_MARKERS: readonly RegExp[] = [
+  /\b(?:esc|escape|ctrl\+?-?c)\s+to\s+(?:interrupt|cancel|stop)\b/i,
+  /\b(?:working|thinking|running|processing)\b\s*(?:\.{3}|…)/i,
+  /[✢✣✤✥✦✧✩✪✫✬✭✮✯✰✱✲✳✴✵✶✷✸✹✺✻✼✽✾✿]\s*(?:working|thinking|running|processing)\b/i,
+];
+
+/** A Codex idle composer is one isolated chevron line, not a chevron in transcript prose. */
+const CODEX_READY_MARKERS: readonly RegExp[] = [
+  /(?:^|\n)\s*[›❯](?:\s+(?:(?:ask|describe|tell|type|try|write)\b[^\n]{0,160}))?\s*(?=$|\n)/im,
+];
+
+export type RosterRuntime = 'claude' | 'codex';
+
+interface RosterRuntimePolicy {
+  readonly modalMarkers: readonly RegExp[];
+  readonly busyMarkers: readonly RegExp[];
+  readonly readyMarkers: readonly RegExp[];
+  launchLine(input: RosterLaunchInput): string;
+}
+
+interface RosterLaunchInput {
+  runtime: RosterRuntime;
+  model: string;
+  bindingPath: string;
+  settingsPath?: string;
+  mcpConfigPath?: string;
+  workDir: string;
+  agentDir: string;
+  runRef: string;
+  agentId: string;
+}
 
 export type ReplReadiness =
   | { state: 'ready' }
@@ -603,7 +806,12 @@ function currentFrame(tail: string): string {
  * rather than typing into the void.
  */
 export function detectReplReadiness(tail: string): ReplReadiness {
-  return classifyFrame(tail, false);
+  return detectRuntimeReplReadiness('claude', tail);
+}
+
+/** Runtime-dispatched terminal readiness. Unknown or changed runtime chrome is never accepted. */
+export function detectRuntimeReplReadiness(runtime: RosterRuntime, tail: string): ReplReadiness {
+  return classifyRuntimeFrame(runtime, tail, false);
 }
 
 /**
@@ -611,20 +819,21 @@ export function detectReplReadiness(tail: string): ReplReadiness {
  * {@link detectReplReadinessFresh}. MODAL precedence is unconditional (a menu is never typed into, however
  * long it has sat), so it is honoured even when busy markers are skipped; only the BUSY class is gateable.
  */
-function classifyFrame(tail: string, skipBusy: boolean): ReplReadiness {
+function classifyRuntimeFrame(runtime: RosterRuntime, tail: string, skipBusy: boolean): ReplReadiness {
+  const policy = rosterRuntimePolicy(runtime);
   const frame = currentFrame(tail);
   if (frame === '') return { state: 'silent', marker: 'no output yet' };
-  for (const pattern of MODAL_MARKERS) {
+  for (const pattern of policy.modalMarkers) {
     const match = pattern.exec(frame);
     if (match) return { state: 'modal', marker: match[0].trim().slice(0, 80) };
   }
   if (!skipBusy) {
-    for (const pattern of BUSY_MARKERS) {
+    for (const pattern of policy.busyMarkers) {
       const match = pattern.exec(frame);
       if (match) return { state: 'busy', marker: match[0].trim().slice(0, 80) };
     }
   }
-  for (const pattern of READY_MARKERS) {
+  for (const pattern of policy.readyMarkers) {
     if (pattern.test(frame)) return { state: 'ready' };
   }
   // Non-empty, not a recognised menu, not mid-turn — but the REPL input line has not appeared. A
@@ -660,8 +869,17 @@ export const STALE_BUSY_QUIET_MS = 2_000;
  * PURE: `quietMs` is passed in (no clock read here), so the whole decision is unit-testable without a pty.
  */
 export function detectReplReadinessFresh(tail: string, quietMs: number): ReplReadiness {
-  const base = classifyFrame(tail, false);
-  if (base.state === 'busy' && quietMs >= STALE_BUSY_QUIET_MS) return classifyFrame(tail, true);
+  return detectRuntimeReplReadinessFresh('claude', tail, quietMs);
+}
+
+/** Freshness-gated readiness for one verified runtime. */
+export function detectRuntimeReplReadinessFresh(
+  runtime: RosterRuntime,
+  tail: string,
+  quietMs: number,
+): ReplReadiness {
+  const base = classifyRuntimeFrame(runtime, tail, false);
+  if (base.state === 'busy' && quietMs >= STALE_BUSY_QUIET_MS) return classifyRuntimeFrame(runtime, tail, true);
   return base;
 }
 
@@ -683,7 +901,17 @@ export function detectReplReadinessSettled(
   semanticQuietMs: number,
   continuouslyReadyMs = semanticQuietMs,
 ): ReplReadiness {
-  const readiness = detectReplReadinessFresh(tail, semanticQuietMs);
+  return detectRuntimeReplReadinessSettled('claude', tail, semanticQuietMs, continuouslyReadyMs);
+}
+
+/** Delivery-only settled readiness for one verified runtime. */
+export function detectRuntimeReplReadinessSettled(
+  runtime: RosterRuntime,
+  tail: string,
+  semanticQuietMs: number,
+  continuouslyReadyMs = semanticQuietMs,
+): ReplReadiness {
+  const readiness = detectRuntimeReplReadinessFresh(runtime, tail, semanticQuietMs);
   if (readiness.state === 'ready' && continuouslyReadyMs < STALE_BUSY_QUIET_MS) {
     return { state: 'settling', marker: 'REPL input prompt is visible but the screen is still painting' };
   }
@@ -697,10 +925,14 @@ const BUSY_OVERLAP_CHARS = 160;
  * marker wholly inside `overlap` never re-counts, which keeps an old busy footer from becoming false
  * post-Enter engagement. The returned tail is bounded and belongs to exactly one session entry.
  */
-export function nextBusySemanticState(overlap: string, decoded: string): { busy: boolean; overlap: string } {
+export function nextBusySemanticState(
+  overlap: string,
+  decoded: string,
+  runtime: RosterRuntime = 'claude',
+): { busy: boolean; overlap: string } {
   const combined = overlap + decoded;
   const boundary = overlap.length;
-  const busy = BUSY_MARKERS.some((pattern) => {
+  const busy = rosterRuntimePolicy(runtime).busyMarkers.some((pattern) => {
     const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
     const scan = new RegExp(pattern.source, flags);
     for (;;) {
@@ -1108,14 +1340,19 @@ export function resolveRosterWorkDir(repoRoot: string, project: string): string 
   return join(repoRoot, 'orgs', project);
 }
 
-function defaultLaunchLine(input: {
-  model: string;
-  bindingPath: string;
-  settingsPath: string;
-  mcpConfigPath: string;
-  runRef: string;
-  agentId: string;
-}): string {
+/** Reject control bytes before a server-derived value is interpolated into the PowerShell PTY command. */
+function powerShellArgument(value: string, label: string): string {
+  if (typeof value !== 'string' || value.length === 0 || /[\0\r\n]/.test(value)) {
+    throw new RosterSessionError(`roster ${label} is not safe for terminal launch`);
+  }
+  // Single-quoted PowerShell strings are literal; doubling a quote is its only escape sequence.
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function claudeLaunchLine(input: RosterLaunchInput): string {
+  if (!input.settingsPath || !input.mcpConfigPath) {
+    throw new RosterSessionError('Claude roster launch requires its per-run settings and MCP config paths');
+  }
   // `--settings` takes a file path (or inline JSON). The path is quoted because the dashboard state root
   // is an absolute OS path that may contain spaces.
   return `claude --model ${input.model} --settings "${input.settingsPath}" `
@@ -1125,6 +1362,63 @@ function defaultLaunchLine(input: {
     + `"Read ${input.bindingPath} now. It is your binding context for run `
     + `${input.runRef} as ${input.agentId}: follow it exactly, then wait — work orders arrive in this terminal `
     + `as file paths, one at a time."`;
+}
+
+/**
+ * Start an interactive Windows Codex session under the closed roster posture. `codex.cmd` is deliberate:
+ * the fleet PTY runs PowerShell, where the npm `codex.ps1` shim can be blocked by execution policy. The
+ * explicit flags win over project/user defaults: subscription auth only, correct pinned model, workspace
+ * sandbox, no approval prompts, explicit command-network and web-search disablement, inline output for
+ * readiness inspection, and the server-owned control directory as the sole extra writable root for
+ * boot/status handshakes. `mcp_servers={}` is an empty server table, so inherited user/project MCP
+ * configuration cannot exceed the workflow tool cap.
+ *
+ * Codex's `workspace-write` sandbox is deliberately scoped to this stage's server-created attempt
+ * worktree project directory rather than a proposal's semantic `scope.write` paths: the compiled orders
+ * use project-relative paths and the CLI has no per-turn path-rule grammar equivalent to Claude's settings
+ * JSON. The durable scope, gate, declared-output and token-bound receipt checks remain authoritative; this
+ * launch makes no stronger filesystem claim.
+ */
+function codexLaunchLine(input: RosterLaunchInput): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.model)) {
+    throw new RosterSessionError('Codex roster model is not a safe registered model id');
+  }
+  const prompt = `Read ${input.bindingPath} now. It is your binding context for run ${input.runRef} as ${input.agentId}: `
+    + 'follow it exactly, then wait — work orders arrive in this terminal as file paths, one at a time.';
+  return `codex.cmd --model ${powerShellArgument(input.model, 'model')} --sandbox workspace-write `
+    + '--ask-for-approval never --no-alt-screen '
+    + `-c ${powerShellArgument('forced_login_method="chatgpt"', 'subscription auth policy')} `
+    + `-c ${powerShellArgument('mcp_servers={}', 'MCP policy')} `
+    + `-c ${powerShellArgument('sandbox_workspace_write.network_access=false', 'network policy')} `
+    + `-c ${powerShellArgument('web_search="disabled"', 'web search policy')} `
+    + `--cd ${powerShellArgument(input.workDir, 'workspace path')} `
+    + `--add-dir ${powerShellArgument(input.agentDir, 'control directory')} `
+    + powerShellArgument(prompt, 'binding prompt');
+}
+
+/** One closed policy table governs launch syntax, terminal markers, and fail-closed runtime selection. */
+function rosterRuntimePolicy(runtime: RosterRuntime): RosterRuntimePolicy {
+  if (runtime === 'claude') {
+    return {
+      modalMarkers: CLAUDE_MODAL_MARKERS,
+      busyMarkers: CLAUDE_BUSY_MARKERS,
+      readyMarkers: CLAUDE_READY_MARKERS,
+      launchLine: claudeLaunchLine,
+    };
+  }
+  if (runtime === 'codex') {
+    return {
+      modalMarkers: [...CLAUDE_MODAL_MARKERS, ...CODEX_MODAL_MARKERS],
+      busyMarkers: CODEX_BUSY_MARKERS,
+      readyMarkers: CODEX_READY_MARKERS,
+      launchLine: codexLaunchLine,
+    };
+  }
+  throw new RosterSessionError(`roster runtime '${String(runtime)}' is unsupported`);
+}
+
+function defaultLaunchLine(input: RosterLaunchInput): string {
+  return rosterRuntimePolicy(input.runtime).launchLine(input);
 }
 
 function defaultDeliveryLine(input: { orderPath: string; stageId: string }): string {
@@ -1203,6 +1497,10 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
   const launchLine = options.launchLine ?? defaultLaunchLine;
   const deliveryLine = options.deliveryLine ?? defaultDeliveryLine;
   const resolveWorkflowTools = options.resolveWorkflowTools ?? defaultWorkflowTools;
+  const openCodexWorkspace = options.openCodexWorkspace ?? openCodexAttemptWorkspace;
+  const codexExitTimeoutMs = typeof options.codexExitTimeoutMs === 'number' && Number.isFinite(options.codexExitTimeoutMs)
+    ? Math.min(MAX_CODEX_EXIT_TIMEOUT_MS, Math.max(1, Math.round(options.codexExitTimeoutMs)))
+    : DEFAULT_CODEX_EXIT_TIMEOUT_MS;
   const sleep = options.sleep ?? defaultSleep;
   const runs = new Map<string, RosterRunEntry>();
   /**
@@ -1220,6 +1518,8 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     const parts = declared.split('/');
     return parts.length > 0 && parts.every((part) => part !== '' && part !== '.' && part !== '..') ? parts : null;
   };
+  const withinWriteScope = (path: string, roots: readonly string[]): boolean => roots.some((root) =>
+    path === root || path.startsWith(`${root.replace(/\/$/, '')}/`));
 
   const record = (subject: string, runRef: string, agentId: string, activity: string, status: 'pending' | 'success' | 'failure' | 'waiting' | 'interrupted', stageRef?: string): void => {
     const entry = runs.get(runRef);
@@ -1269,8 +1569,8 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       `- execution profile: ${input.verified.assignment.profileId}`,
       `- runtime/model: ${input.verified.assignment.runtime}/${input.verified.assignment.model}`,
       '',
-      'The declaration below is the verbatim body the server verified against that hash. Re-read the',
-      'canonical file if you need it, and refuse to act as any other agent.',
+      'The declaration below is the verbatim body the server verified against that hash. It is authoritative',
+      'for this isolated attempt; refuse to act as any other agent.',
       '',
       '<<<DECLARATION',
       input.verified.instructionMarkdown,
@@ -1445,13 +1745,13 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
    * existence. A 0-byte file or a directory standing where the artifact belongs is treated as no baseline
    * at all: whatever real file the stage writes over it is new work.
    */
-  const snapshotDeclaredArtifacts = (proposalStage: ProposalStage): ArtifactSnapshot[] =>
+  const snapshotDeclaredArtifacts = (proposalStage: ProposalStage, artifacts: RosterArtifactInspector = fs): ArtifactSnapshot[] =>
     proposalStage.artifacts.map((artifact) => {
       const path = artifactPath(artifact.path);
       if (path === null) return { path: artifact.path, unsafe: 'path', before: null };
       try {
         // An inherited nonempty artifact is hashed during THIS handle-bound probe, never by a later pathname open.
-        const file = fs.inspectArtifact(path, 'always');
+        const file = artifacts.inspectArtifact(path, 'always');
         if (file === null || file.size === 0) return { path: artifact.path, unsafe: null, before: null };
         if (file.sha256 === null) return { path: artifact.path, unsafe: 'filesystem', before: null };
         return { path: artifact.path, unsafe: null, before: { size: file.size, hash: file.sha256 } };
@@ -1480,7 +1780,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
    * re-run can read what happened and release it. A false PASS here spends real money on an unverified
    * promise; a false PARK costs one human glance.
    */
-  const unsatisfiedArtifacts = (snapshots: readonly ArtifactSnapshot[]): string[] => {
+  const unsatisfiedArtifacts = (snapshots: readonly ArtifactSnapshot[], artifacts: RosterArtifactInspector = fs): string[] => {
     const problems: string[] = [];
     for (const snapshot of snapshots) {
       if (snapshot.unsafe === 'path') {
@@ -1499,7 +1799,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       let after: NoReparseFileInfo | null;
       try {
         // When the inherited size is unchanged, this very same opened handle is also hashed for comparison.
-        after = fs.inspectArtifact(path, snapshot.before === null ? 'never' : snapshot.before.size);
+        after = artifacts.inspectArtifact(path, snapshot.before === null ? 'never' : snapshot.before.size);
       } catch {
         problems.push(`${snapshot.path} (link or reparse point, hardlink, directory, or unsafe file)`);
         continue;
@@ -1522,6 +1822,26 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     return problems;
   };
 
+  /** Turn already-verified declared regular files into the exact digest evidence the engine integrates. */
+  const verifiedArtifactResults = (
+    snapshots: readonly ArtifactSnapshot[],
+    artifacts: RosterArtifactInspector,
+  ): WorkerArtifactResult[] | null => {
+    const verified: WorkerArtifactResult[] = [];
+    for (const snapshot of snapshots) {
+      const path = artifactPath(snapshot.path);
+      if (path === null) return null;
+      try {
+        const file = artifacts.inspectArtifact(path, 'always');
+        if (file === null || file.size === 0 || file.sha256 === null) return null;
+        verified.push({ path: snapshot.path, digest: file.sha256 });
+      } catch {
+        return null;
+      }
+    }
+    return verified;
+  };
+
   const resolveDeliveryTimeout = (input: { runRef: string; stageId: string; agentId: string; timeoutMs?: number }): number => {
     const configured = typeof options.deliveryTimeoutMs === 'function'
       ? options.deliveryTimeoutMs({ runRef: input.runRef, stageId: input.stageId, agentId: input.agentId })
@@ -1541,13 +1861,14 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     if (entry.controlSuffix !== '') {
       return { state: 'settling', marker: 'the terminal is in the middle of a control-sequence repaint' };
     }
-    const readiness = detectReplReadinessFresh(entry.screen, observedAt - entry.lastSemanticAt);
+    const readiness = detectRuntimeReplReadinessFresh(entry.runtime, entry.screen, observedAt - entry.lastSemanticAt);
     if (readiness.state !== 'ready') {
       entry.readySince = null;
       return readiness;
     }
     if (entry.readySince === null) entry.readySince = observedAt;
-    return detectReplReadinessSettled(
+    return detectRuntimeReplReadinessSettled(
+      entry.runtime,
       entry.screen,
       observedAt - entry.lastSemanticAt,
       observedAt - entry.readySince,
@@ -1623,14 +1944,14 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     entry.screen = (entry.screen + screenStripped).slice(-SCREEN_WINDOW_CHARS);
     if (screenStripped.trim() !== '') {
       entry.lastSemanticAt = now();
-      const readiness = detectReplReadinessFresh(entry.screen, 0);
+      const readiness = detectRuntimeReplReadinessFresh(entry.runtime, entry.screen, 0);
       if (readiness.state === 'ready') {
         if (entry.readySince === null) entry.readySince = entry.lastSemanticAt;
       } else {
         entry.readySince = null;
       }
     }
-    const busy = nextBusySemanticState(entry.busyOverlap, screenStripped);
+    const busy = nextBusySemanticState(entry.busyOverlap, screenStripped, entry.runtime);
     entry.busyOverlap = busy.overlap;
     if (busy.busy) entry.busyObservationGeneration += 1;
   };
@@ -1647,6 +1968,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     agentId: string,
     verified: ResolvedAssignedAgent,
     proposal: PlanProposal,
+    workDir: string = run.workDir,
   ): RosterSessionEntry => {
     const controlDir = controlPath(runRef, agentId);
     const ordersDir = [...controlDir, 'orders'];
@@ -1662,7 +1984,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     // Stale readiness is as unsafe as stale completion: clear it before the launch exposes a new token.
     fs.removeControlFile(readyFile);
     fs.writeControlFile(bindingFile, bindingMarkdown({
-      runRef, agentId, verified, project: run.project, parameters: run.parameters, workDir: run.workDir,
+      runRef, agentId, verified, project: run.project, parameters: run.parameters, workDir,
       readyPath, bootToken,
     }));
     // THE SCOPED PER-RUN PERMISSIONS. Written BEFORE the launch line is typed, from the compiled
@@ -1670,33 +1992,40 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     // pre-trusted path, never anything outside `scope.read ∪ scope.write` plus this agent's own order/status
     // channels. It lives inside the roster run directory and retirement removes only its finite,
     // server-authored leaves, so the grant cannot outlive the run it was minted for.
-    const scope = rosterAgentScope(proposal, agentId);
-    const settingsFile = [...controlDir, 'settings.json'];
-    const settingsPath = displayControlPath(settingsFile);
     const stageIds = proposal.stages
       .filter((stage) => stage.assignment?.agentId === agentId)
       .map((stage) => stage.id);
     const statusPaths = stageIds.map((stageId) => displayControlPath([...statusDir, `${stageId}.json`]));
-    fs.writeControlFile(settingsFile, buildRosterPermissionSettings({
-      repoRoot: options.repoRoot,
-      agentDir: displayControlPath(controlDir),
-      statusPaths,
-      readyPath,
-      read: scope.read,
-      write: scope.write,
-      tools: rosterAgentTools(proposal, agentId, resolveWorkflowTools),
-      disabledMcpjsonServers: disabledProjectMcpjsonServers(fs),
-    }).json);
-    const mcpConfigFile = [...controlDir, 'mcp.json'];
-    const mcpConfigPath = displayControlPath(mcpConfigFile);
-    fs.writeControlFile(mcpConfigFile, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
+    let settingsPath: string | undefined;
+    let mcpConfigPath: string | undefined;
+    if (verified.assignment.runtime === 'claude') {
+      // Claude's per-run settings and empty MCP config are a CLI-specific grammar. Codex receives its
+      // closed subscription/sandbox/approval posture as direct flags instead, never as Claude JSON.
+      const scope = rosterAgentScope(proposal, agentId);
+      const settingsFile = [...controlDir, 'settings.json'];
+      settingsPath = displayControlPath(settingsFile);
+      fs.writeControlFile(settingsFile, buildRosterPermissionSettings({
+        repoRoot: options.repoRoot,
+        agentDir: displayControlPath(controlDir),
+        statusPaths,
+        readyPath,
+        read: scope.read,
+        write: scope.write,
+        tools: rosterAgentTools(proposal, agentId, resolveWorkflowTools),
+        disabledMcpjsonServers: disabledProjectMcpjsonServers(fs),
+      }).json);
+      const mcpConfigFile = [...controlDir, 'mcp.json'];
+      mcpConfigPath = displayControlPath(mcpConfigFile);
+      fs.writeControlFile(mcpConfigFile, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
+    }
     const created = options.registry.create(run.owner, options.host, {
-      requestId: '', cwd: run.workDir, cols, rows,
+      requestId: '', cwd: workDir, cols, rows,
     });
     const entry: RosterSessionEntry = {
       agentId,
       sessionId: created.sessionId,
       owner: run.owner,
+      runtime: verified.assignment.runtime,
       model: verified.assignment.model,
       controlDir,
       bindingPath,
@@ -1724,11 +2053,72 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       () => settlePending(run, runRef, entry, `delivery abandoned: session ${created.sessionId} ended`),
     );
     options.registry.write(run.owner, created.sessionId, `${launchLine({
-      model: verified.assignment.model, bindingPath, settingsPath, mcpConfigPath, runRef, agentId,
+      runtime: verified.assignment.runtime,
+      model: verified.assignment.model,
+      bindingPath,
+      ...(settingsPath ? { settingsPath } : {}),
+      ...(mcpConfigPath ? { mcpConfigPath } : {}),
+      workDir,
+      agentDir: displayControlPath(controlDir),
+      runRef,
+      agentId,
     })}\r`);
     run.sessions.set(agentId, entry);
     record(run.subject, runRef, agentId, `session ${created.sessionId} spawned at ${new Date(now()).toISOString()}`, 'pending');
     return entry;
+  };
+
+  /** Delete one session's finite server-authored control leaves. Never recurses through agent content. */
+  const cleanupSessionControl = (entry: RosterSessionEntry): void => {
+    try {
+      for (const name of ['binding.md', 'settings.json', 'mcp.json', 'ready.json']) {
+        fs.removeControlFile([...entry.controlDir, name]);
+      }
+      for (const stageId of entry.stageIds) {
+        fs.removeControlFile([...entry.controlDir, 'orders', `${stageId}.md`]);
+        fs.removeControlFile([...entry.controlDir, 'status', `${stageId}.json`]);
+      }
+      fs.removeEmptyControlDir([...entry.controlDir, 'orders']);
+      fs.removeEmptyControlDir([...entry.controlDir, 'status']);
+      fs.removeEmptyControlDir(entry.controlDir);
+    } catch { /* a locked or unexpectedly populated control directory remains for an operator */ }
+  };
+
+  /** Reap one ordinary persistent session synchronously, preserving the established Claude/UI behavior. */
+  const retireSession = (run: RosterRunEntry, runRef: string, entry: RosterSessionEntry, reason: string): string => {
+    settlePending(run, runRef, entry, `delivery abandoned: roster retired (${reason})`);
+    entry.unobserve();
+    try { options.registry.write(entry.owner, entry.sessionId, '/exit\r'); } catch { /* already gone */ }
+    options.registry.close(entry.owner, entry.sessionId);
+    run.sessions.delete(entry.agentId);
+    record(run.subject, runRef, entry.agentId, `session ${entry.sessionId} retired (${reason})`, 'success');
+    cleanupSessionControl(entry);
+    return entry.sessionId;
+  };
+
+  /**
+   * Codex-only security boundary. `host.stop()` merely requests a process-group kill; the attempt remains
+   * writable until node-pty's actual exit event arrives. Hold the worker result here so the engine cannot
+   * inspect/integrate during that window. Timeout throws and converts the attempt to failure upstream.
+   */
+  const retireCodexSessionConfirmed = async (
+    run: RosterRunEntry,
+    runRef: string,
+    entry: RosterSessionEntry,
+    reason: string,
+  ): Promise<string> => {
+    settlePending(run, runRef, entry, `delivery abandoned: roster retired (${reason})`);
+    entry.unobserve();
+    run.sessions.delete(entry.agentId);
+    const closed = await options.registry.closeAndWait(entry.owner, entry.sessionId, codexExitTimeoutMs);
+    if (!closed.ok) {
+      const detail = `Codex session ${entry.sessionId} exit was not confirmed (${closed.reason})`;
+      record(run.subject, runRef, entry.agentId, detail, 'failure');
+      throw new RosterSessionError(detail);
+    }
+    record(run.subject, runRef, entry.agentId, `session ${entry.sessionId} retired (${reason}; exit confirmed)`, 'success');
+    cleanupSessionControl(entry);
+    return entry.sessionId;
   };
 
   const retireRun = (runRef: string, reason: string): string[] => {
@@ -1736,15 +2126,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     if (!run) return [];
     const retired: string[] = [];
     const entries = [...run.sessions.values()];
-    for (const entry of entries) {
-      settlePending(run, runRef, entry, `delivery abandoned: roster retired (${reason})`);
-      entry.unobserve();
-      // Graceful stop first (the REPL exits cleanly and flushes), then reap the process group.
-      try { options.registry.write(entry.owner, entry.sessionId, '/exit\r'); } catch { /* already gone */ }
-      options.registry.close(entry.owner, entry.sessionId);
-      retired.push(entry.sessionId);
-      record(run.subject, runRef, entry.agentId, `session ${entry.sessionId} retired (${reason})`, 'success');
-    }
+    for (const entry of entries) retired.push(retireSession(run, runRef, entry, reason));
     run.sessions.clear();
     runs.delete(runRef);
     recoveredActivity.delete(runRef);
@@ -1753,19 +2135,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     // never recurse: an unexpected file or a busy directory remains for an operator rather than making
     // cleanup traverse an attacker-controlled namespace.
     try {
-      // Delete only finite server-authored leaves, then empty directories by handle. Unknown content is retained.
-      for (const entry of entries) {
-        for (const name of ['binding.md', 'settings.json', 'mcp.json', 'ready.json']) {
-          fs.removeControlFile([...entry.controlDir, name]);
-        }
-        for (const stageId of entry.stageIds) {
-          fs.removeControlFile([...entry.controlDir, 'orders', `${stageId}.md`]);
-          fs.removeControlFile([...entry.controlDir, 'status', `${stageId}.json`]);
-        }
-        fs.removeEmptyControlDir([...entry.controlDir, 'orders']);
-        fs.removeEmptyControlDir([...entry.controlDir, 'status']);
-        fs.removeEmptyControlDir(entry.controlDir);
-      }
+      // Entries above deleted only their finite server-authored leaves; now remove the empty run dir.
       fs.removeEmptyControlDir([runRef]);
     } catch { /* a locked or unexpectedly populated path must never block the reap */ }
     return retired;
@@ -1786,6 +2156,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
           project: input.proposal.project,
           parameters,
           workDir: resolveRosterWorkDir(options.repoRoot, input.proposal.project),
+          proposal: input.proposal,
           sessions: new Map(),
           activity: new Map(),
         };
@@ -1811,6 +2182,12 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         const verified = options.assignedAgents.resolve({
           assignment: found.assignment, role: found.role, project: input.proposal.project, profiles,
         });
+        // Codex is deliberately ON-DEMAND rather than a canonical persistent terminal: the engine has
+        // not provisioned a pinned per-attempt worktree yet, so any session started here could only be
+        // rooted in the canonical checkout. Keep the roster identity/activity visible, re-use this same
+        // verified declaration at delivery, and launch only after the server supplies that attempt path.
+        // Claude retains its established persistent canonical lifecycle unchanged.
+        if (verified.assignment.runtime === 'codex') continue;
         spawnSession(run, input.runRef, agentId, verified, input.proposal);
         spawned.push(agentId);
       }
@@ -1824,15 +2201,15 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
     async deliver(input) {
       const run = runs.get(input.runRef);
       if (!run) throw new RosterSessionError(`run '${input.runRef}' has no live roster`);
-      const agentId = input.assignedAgent?.assignment.agentId;
-      if (!agentId) {
+      const assignedAgent = input.assignedAgent;
+      const agentId = assignedAgent?.assignment.agentId;
+      if (!agentId || !assignedAgent) {
         // Fail closed: without a server-verified assignment there is no owning agent to deliver to, and
         // guessing one from prose would be exactly the smuggling this design forbids.
         throw new RosterSessionError(`stage '${input.stageId}' has no verified agent assignment to deliver to`);
       }
-      const entry = run.sessions.get(agentId);
-      if (!entry) throw new RosterSessionError(`roster agent '${agentId}' has no live session on run '${input.runRef}'`);
-      if (entry.pending) throw new RosterSessionError(`roster agent '${agentId}' already has an outstanding work order`);
+      let entry = run.sessions.get(agentId);
+      if (entry?.pending) throw new RosterSessionError(`roster agent '${agentId}' already has an outstanding work order`);
 
       // THE STRUCTURAL HALT. Re-read durable state and refuse before authoring the order file or
       // writing anything into the session.
@@ -1848,6 +2225,38 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
         return { state: 'waiting-human', summary: `roster delivery withheld: ${refusal}`, usage: zeroUsage(), artifacts: [], checkpoints: [] };
       }
+
+      // The engine created `worktreePath` from the pinned dependency lineage before it called us. A
+      // Codex terminal is launched only now, with that isolated worktree as its workspace, never with
+      // the canonical `orgs/<project>` directory. Its lifecycle is one stage: closing it before this
+      // adapter returns removes its ability to mutate the attempt while the engine inspects/integrates.
+      const codexDelivery = assignedAgent.assignment.runtime === 'codex';
+      let codexWorkspace: RosterCodexWorkspace | null = null;
+      let codexWorkspaceRevision: string | null = null;
+      let ephemeralCodexSession = false;
+      let deliveryWorkDir = run.workDir;
+      if (codexDelivery) {
+        if (!input.worktreePath) throw new RosterSessionError(`Codex stage '${input.stageId}' lacks its server-planned attempt workspace`);
+        if (entry) retireSession(run, input.runRef, entry, 'replacing Codex terminal for isolated stage workspace');
+        codexWorkspace = openCodexWorkspace({ worktreePath: input.worktreePath, project: input.project });
+        codexWorkspaceRevision = codexWorkspace.revision();
+        if (codexWorkspace.changedPaths().length !== 0) {
+          throw new RosterSessionError(`Codex stage '${input.stageId}' attempt workspace is not clean before delivery`);
+        }
+        deliveryWorkDir = resolveCodexAttemptWorkDir(input.worktreePath, input.project);
+        entry = spawnSession(
+          run,
+          input.runRef,
+          agentId,
+          assignedAgent,
+          run.proposal,
+          deliveryWorkDir,
+        );
+        ephemeralCodexSession = true;
+      }
+      if (!entry) throw new RosterSessionError(`roster agent '${agentId}' has no live session on run '${input.runRef}'`);
+
+      try {
 
       const timeoutMs = resolveDeliveryTimeout({
         runRef: input.runRef, stageId: input.stageId, agentId,
@@ -1967,7 +2376,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       // yet: this is what "the stage changed its declared artifacts" is measured against on completion.
       let snapshots: ArtifactSnapshot[];
       try {
-        snapshots = snapshotDeclaredArtifacts(input.proposalStage);
+        snapshots = snapshotDeclaredArtifacts(input.proposalStage, codexWorkspace ?? fs);
       } catch {
         return settleLeaseError('declared-artifact snapshot could not be safely captured');
       }
@@ -2000,7 +2409,7 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         if (!live()) return settleLivenessLoss('before writing the order channel');
         fs.writeControlFile(orderFile, orderMarkdown({
           runRef: input.runRef, stageId: input.stageId, attemptRef: input.attemptRef, token,
-          statusPath, proposalStage: input.proposalStage, parameters: run.parameters, workDir: run.workDir,
+          statusPath, proposalStage: input.proposalStage, parameters: run.parameters, workDir: deliveryWorkDir,
         }));
       } catch (error) {
         if (entry.pending === pending) {
@@ -2118,15 +2527,42 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
       } else {
         return settleLivenessLoss('during the submit delay');
       }
-      const result = await settled;
+      let result = await settled;
       if (result.state === 'succeeded') {
         // Declared artifacts are verified SERVER-SIDE before the completion is accepted; a status alone
         // never satisfies a stage that promised files, and neither does a file the stage did not write.
-        const problems = unsatisfiedArtifacts(snapshots);
+        const artifactInspector = codexWorkspace ?? fs;
+        const problems = unsatisfiedArtifacts(snapshots, artifactInspector);
         if (problems.length > 0) {
           const summary = `stage ${input.stageId} reported done but its declared artifacts are not satisfied: ${problems.join(', ')}`;
           record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
           return { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] };
+        }
+        if (codexWorkspace) {
+          let changed: readonly string[];
+          try {
+            if (codexWorkspace.revision() !== codexWorkspaceRevision) {
+              throw new RosterSessionError('the Codex worker changed its attempt Git revision');
+            }
+            changed = codexWorkspace.changedPaths();
+          } catch (error) {
+            const summary = `stage ${input.stageId} reported done but its isolated workspace is unsafe: `
+              + `${error instanceof Error ? error.message : 'inspection failed'}`;
+            record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+            return { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] };
+          }
+          if (changed.some((path) => !withinWriteScope(path, input.proposalStage.scope.write))) {
+            const summary = `stage ${input.stageId} reported done but its isolated workspace changed a path outside its approved write scope`;
+            record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+            return { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] };
+          }
+          const artifacts = verifiedArtifactResults(snapshots, codexWorkspace);
+          if (artifacts === null) {
+            const summary = `stage ${input.stageId} reported done but its declared artifact digests could not be safely captured`;
+            record(run.subject, input.runRef, agentId, summary, 'waiting', input.stageRef);
+            return { state: 'waiting-human', summary: summary.slice(0, MAX_SUMMARY_CHARS), usage: zeroUsage(), artifacts: [], checkpoints: [] };
+          }
+          result = { ...result, artifacts };
         }
       }
       record(
@@ -2136,6 +2572,17 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
         input.stageRef,
       );
       return result;
+      } finally {
+        // Closing the transient Codex terminal is load-bearing: after its receipt has been read, only the
+        // engine may inspect and promote the isolated attempt worktree. A later terminal write cannot race
+        // canonical integration, and an unsuccessful attempt is reclaimed by the engine's normal cleanup.
+        // Always demand the exit acknowledgement for an ephemeral Codex process, even if a concurrent
+        // Stop/daemon retirement already removed it from the run roster. That older synchronous path is
+        // not proof of exit; closeAndWait will refuse `not-found`, which safely prevents integration.
+        if (ephemeralCodexSession) {
+          await retireCodexSessionConfirmed(run, input.runRef, entry, 'isolated Codex stage delivery settled');
+        }
+      }
     },
 
     retire(runRef, reason) {
@@ -2291,6 +2738,12 @@ export function createRosterWorkerAdapter(options: RosterWorkerAdapterOptions): 
             + `'${input.runRef}' has no live roster (retired, locked, or drained): refusing to run it headless`,
           );
         }
+        if (input.profile.runtime === 'codex') {
+          throw new RosterSessionError(
+            `stage '${input.proposalStage?.id ?? input.stageRef}' routes to Codex without a live managed roster: `
+            + 'refusing Claude headless fallback',
+          );
+        }
         return options.fallback.execute(input);
       }
       // Fail closed: roster delivery is defined by the compiled stage (its gates, dependencies and
@@ -2306,6 +2759,7 @@ export function createRosterWorkerAdapter(options: RosterWorkerAdapterOptions): 
         stageId: input.proposalStage.id,
         attemptRef: input.attemptRef,
         project: input.project,
+        worktreePath: input.worktreePath,
         proposalStage: input.proposalStage,
         ...(input.assignment && input.instructionMarkdown
           ? { assignedAgent: { assignment: input.assignment, instructionMarkdown: input.instructionMarkdown } }

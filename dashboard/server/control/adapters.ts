@@ -1,17 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  closeSync,
   existsSync,
-  fsyncSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readFileSync,
   realpathSync,
-  renameSync,
-  rmSync,
   statSync,
-  writeFileSync,
 } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -32,6 +26,7 @@ import {
   type WorktreeAdapter,
 } from './execution.ts';
 import { parseReviewOutcome, type ReviewContract, type ReviewOutcome } from './reviewOutcome.ts';
+import { createAtomicJsonDocument } from './atomicJsonDocument.ts';
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_FILE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -430,13 +425,6 @@ interface ResultDocument {
   results: ResultRecord[];
 }
 
-interface AtomicDocumentOptions<T> {
-  path: string;
-  empty: () => T;
-  validate: (value: unknown) => asserts value is T;
-  lockTimeoutMs?: number;
-}
-
 function canonical(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -595,68 +583,6 @@ function assertResultDocument(value: unknown): asserts value is ResultDocument {
   }
 }
 
-function createAtomicDocument<T>(options: AtomicDocumentOptions<T>): {
-  read(): T;
-  mutate<R>(callback: (document: T) => R | Promise<R>): Promise<R>;
-} {
-  const lockPath = `${options.path}.lock`;
-  const timeout = options.lockTimeoutMs ?? 5_000;
-  requireSafeInteger(timeout, 'lockTimeoutMs', 1);
-  mkdirSync(dirname(options.path), { recursive: true, mode: 0o700 });
-
-  const read = (): T => {
-    if (!existsSync(options.path)) return options.empty();
-    if (statSync(options.path).size > MAX_STATE_BYTES) throw new ExecutionAdapterError('execution adapter state exceeds its limit');
-    const parsed: unknown = JSON.parse(readFileSync(options.path, 'utf8'));
-    options.validate(parsed);
-    return clone(parsed);
-  };
-  const save = (document: T): void => {
-    const encoded = `${JSON.stringify(document)}\n`;
-    if (Buffer.byteLength(encoded, 'utf8') > MAX_STATE_BYTES) throw new ExecutionAdapterError('execution adapter state exceeds its limit');
-    const temp = `${options.path}.${process.pid}.${randomUUID()}.tmp`;
-    let fd: number | null = null;
-    try {
-      fd = openSync(temp, 'wx', 0o600);
-      writeFileSync(fd, encoded, 'utf8');
-      fsyncSync(fd);
-      closeSync(fd);
-      fd = null;
-      renameSync(temp, options.path);
-    } finally {
-      if (fd !== null) closeSync(fd);
-      if (existsSync(temp)) rmSync(temp, { force: true });
-    }
-  };
-  const acquire = async (): Promise<number> => {
-    const deadline = Date.now() + timeout;
-    while (true) {
-      try {
-        return openSync(lockPath, 'wx', 0o600);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        if (Date.now() >= deadline) throw new ExecutionAdapterError('execution adapter state is busy');
-        await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
-      }
-    }
-  };
-  return {
-    read,
-    async mutate(callback) {
-      const lockFd = await acquire();
-      try {
-        const document = read();
-        const result = await callback(document);
-        save(document);
-        return result;
-      } finally {
-        closeSync(lockFd);
-        rmSync(lockPath, { force: true });
-      }
-    },
-  };
-}
-
 function assertBudget(value: ExecutionBudget, label: string): void {
   requireSafeInteger(value.maxAttempts, `${label}.maxAttempts`, 1);
   requireSafeInteger(value.maxInputTokens, `${label}.maxInputTokens`, 0);
@@ -711,10 +637,16 @@ export function createFileAccountingAdapter(options: FileAccountingAdapterOption
   const policyHash = digest({ maxConcurrency: options.maxConcurrency, globalBudget: options.globalBudget });
   const now = options.now ?? (() => new Date());
   const newId = options.newId ?? randomUUID;
-  const document = createAtomicDocument<AccountingDocument>({
+  const document = createAtomicJsonDocument<AccountingDocument>({
     path: join(stateRoot, 'control', 'execution-accounting', `${options.windowId}.json`),
     empty: () => ({ schema: 'kb.execution-accounting/v1', revision: 0, policyHash, windowId: options.windowId, reservations: [] }),
     validate: assertAccountingDocument,
+    error: (message) => new ExecutionAdapterError(message === 'atomic document state exceeds its limit'
+      ? 'execution adapter state exceeds its limit'
+      : message === 'atomic document state is busy'
+        ? 'execution adapter state is busy'
+        : message),
+    maxBytes: MAX_STATE_BYTES,
     lockTimeoutMs: options.lockTimeoutMs,
   });
   const requirePolicy = (value: AccountingDocument): void => {
@@ -827,10 +759,16 @@ export interface FileResultIntegratorOptions {
 export function createFileResultIntegrator(options: FileResultIntegratorOptions): ResultIntegrator {
   const stateRoot = requireAbsolute(options.stateRoot, 'stateRoot');
   const now = options.now ?? (() => new Date());
-  const document = createAtomicDocument<ResultDocument>({
+  const document = createAtomicJsonDocument<ResultDocument>({
     path: join(stateRoot, 'control', 'execution-results.json'),
     empty: () => ({ schema: 'kb.execution-results/v1', revision: 0, results: [] }),
     validate: assertResultDocument,
+    error: (message) => new ExecutionAdapterError(message === 'atomic document state exceeds its limit'
+      ? 'execution adapter state exceeds its limit'
+      : message === 'atomic document state is busy'
+        ? 'execution adapter state is busy'
+        : message),
+    maxBytes: MAX_STATE_BYTES,
     lockTimeoutMs: options.lockTimeoutMs,
   });
   return {

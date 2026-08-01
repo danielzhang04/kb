@@ -211,6 +211,13 @@ export interface WorkflowDef {
   id: string;
   project: string;
   title: string;
+  /**
+   * `validation-slice` is a server-enforced non-publication workflow class. It exists for bounded
+   * live validation runs: no stage may be a T3 publish action or carry a publication gate, even if
+   * a later human request or a forged artifact tries to make a release path look available.
+   * Omitted keeps the normal production-workflow behaviour.
+   */
+  executionMode?: 'validation-slice';
   /** Existing workflow tool profile; distinct from the optional execution-profile assignment below. */
   profile: string;
   /** Durable workflow governor. Distinct from the optional executable manager assignment. */
@@ -456,8 +463,8 @@ function validateStage(
     return { ok: false, detail: `${label}.action '${action}' is refused: ${classified.reason}` };
   }
   const target = raw.target;
-  if (!isSafeRepoRelativePath(target)) {
-    return { ok: false, detail: `${label}.target must be a canonical safe repo-relative path` };
+  if (typeof target !== 'string' || !isSafeRepoRelativePath(target.replace(PATH_PLACEHOLDER_RE, 'x'))) {
+    return { ok: false, detail: `${label}.target must be a canonical safe repo-relative path (parameter placeholders allowed)` };
   }
   // ORG CONTAINMENT. compile.ts derives the proposal's write scope FROM these targets, so without this
   // the downstream scope checks (compiler.ts's widening refusal, policy.ts's `within(target, scope.write)`)
@@ -640,7 +647,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['id', 'project', 'title', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages']);
+  const allowed = new Set(['id', 'project', 'title', 'executionMode', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -651,6 +658,13 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   const title = asString(frontmatter.title);
   if (title === null || title.trim() === '' || title.length > MAX_TITLE_CHARS) {
     return { ok: false, detail: `title must be a non-empty string of at most ${MAX_TITLE_CHARS} characters` };
+  }
+  let executionMode: WorkflowDef['executionMode'];
+  if (hasOwn(frontmatter, 'executionMode')) {
+    if (frontmatter.executionMode !== 'validation-slice') {
+      return { ok: false, detail: "executionMode must be 'validation-slice' when present" };
+    }
+    executionMode = 'validation-slice';
   }
   const profile = asString(frontmatter.profile);
   if (profile === null || profile.trim() === '' || profile.length > MAX_PROFILE_CHARS) {
@@ -713,17 +727,31 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
       if (dep === stage.id) return { ok: false, detail: `stage '${stage.id}' cannot depend on itself` };
     }
   }
+  if (executionMode === 'validation-slice') {
+    for (const stage of stages) {
+      if (stage.action.startsWith('publish:') || stage.riskTier === 'T3') {
+        return { ok: false, detail: `validation-slice workflow must not declare publish or T3 stage '${stage.id}'` };
+      }
+      if (stage.humanGates?.some((gate) => gate.publicationAuthorization === true)) {
+        return { ok: false, detail: `validation-slice workflow must not declare publication gate on stage '${stage.id}'` };
+      }
+    }
+  }
   const parameters = frontmatter.parameters === undefined ? [] : frontmatter.parameters;
   if (!Array.isArray(parameters) || parameters.some((value) => typeof value !== 'string' || !SAFE_ID_RE.test(value))) {
     return { ok: false, detail: 'parameters must be an array of safe identifiers' };
   }
   if (new Set(parameters).size !== parameters.length) return { ok: false, detail: 'parameters must not contain duplicates' };
-  // A placeholder in a declared artifact path that is NOT a launch parameter would survive substitution
+  // A placeholder in a declared target or artifact path that is NOT a launch parameter would survive substitution
   // as a literal `<name>`, which no file on disk can ever be — the stage would report done, the server
   // would look for a path containing `<`, and the run would park at every stage. Refuse it here, where
   // the message can name the offender, instead of at proposal validation.
   const declaredParameters = new Set(parameters as string[]);
   for (const stage of stages) {
+    const unknownTarget = pathPlaceholders(stage.target).find((name) => !declaredParameters.has(name));
+    if (unknownTarget) {
+      return { ok: false, detail: `stage '${stage.id}' target uses undeclared parameter '<${unknownTarget}>'` };
+    }
     for (const artifact of stage.artifacts ?? []) {
       const unknown = pathPlaceholders(artifact.path).find((name) => !declaredParameters.has(name));
       if (unknown) {
@@ -762,7 +790,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   return {
     ok: true,
     value: {
-      id, project, title, profile, readScope: readScope.value, parameters: [...parameters],
+      id, project, title, ...(executionMode ? { executionMode } : {}), profile, readScope: readScope.value, parameters: [...parameters],
       ...(governedBy ? { governedBy } : {}), ...(manager ? { manager } : {}), description, stages,
     },
   };

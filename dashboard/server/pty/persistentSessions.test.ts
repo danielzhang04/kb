@@ -54,7 +54,6 @@ function fakeHost(prefix = 'pty-test') {
       const ctrl = controllers.get(sessionId);
       if (!ctrl) return false;
       ctrl.killed = true;
-      controllers.delete(sessionId);
       return true;
     },
     stopAll() {
@@ -62,7 +61,7 @@ function fakeHost(prefix = 'pty-test') {
       controllers.clear();
     },
     sessions() {
-      return [...controllers.keys()];
+      return [...controllers.entries()].filter(([, ctrl]) => !ctrl.killed).map(([id]) => id);
     },
   };
 
@@ -223,6 +222,44 @@ describe('createPersistentSessionRegistry — lifecycle', () => {
     expect(registry.liveCount()).toBe(0);
     expect(registry.list('op')).toEqual([]);
     expect(registry.canAttach('op', sessionId)).toEqual({ ok: false, reason: 'not-found' });
+  });
+
+  it('closeAndWait withholds confirmation until the PTY emits its real exit event', async () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry();
+    const { sessionId } = registry.create('op', fh.host, OPEN_REQ);
+    let settled = false;
+    const closing = registry.closeAndWait('op', sessionId, 60_000);
+    void closing.then(() => { settled = true; });
+
+    expect(fh.killed(sessionId)).toBe(true);
+    expect(registry.canAttach('op', sessionId)).toEqual({ ok: false, reason: 'exited' });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    fh.emitExit(sessionId, 0);
+    await expect(closing).resolves.toEqual({ ok: true, exited: true });
+    expect(registry.liveCount()).toBe(0);
+  });
+
+  it('closeAndWait fails closed when the kill receives no exit acknowledgement', async () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry();
+    const { sessionId } = registry.create('op', fh.host, OPEN_REQ);
+
+    await expect(registry.closeAndWait('op', sessionId, 5)).resolves.toEqual({ ok: false, reason: 'timeout' });
+    // A timed-out, potentially live process is quarantined rather than re-exposed as attachable.
+    expect(registry.canAttach('op', sessionId)).toEqual({ ok: false, reason: 'exited' });
+    expect(registry.list('op')).toEqual([]);
+  });
+
+  it('closeAndWait consumes an already-confirmed natural exit without losing the acknowledgement race', async () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry();
+    const { sessionId } = registry.create('op', fh.host, OPEN_REQ);
+    fh.emitExit(sessionId, 0);
+
+    await expect(registry.closeAndWait('op', sessionId, 5)).resolves.toEqual({ ok: true, exited: true });
   });
 
   it('clear drops every entry without individually killing (the host stopAll drains the PTYs)', () => {
