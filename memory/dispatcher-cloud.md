@@ -286,3 +286,24 @@
   outside the nightly-review carve-out allow-list — reported in the audit card (P2/P3), not fixed.
 - Push path: DIRECT-PUSH (see run summary). Surfaced the desktop-scheduler finding to Daniel via the
   run's wake/notification channel since it's the actionable systemic issue this week.
+
+## 2026-08-02 nightly-review (dispatcher-cloud)
+- Ran clean: preamble OK, pyyaml OK, sync_skills --check exit 0, dispatch emitted the single
+  nightly-review card (6a6ede8d-25b45492), self-executed and dashboards regenerated. $0 spent.
+- Daemon-dir gate: script still ABSENT on ops (ran main copy); --check BYTE-IDENTICAL to the
+  07-31 report (same 9 fyt files). Per my own dedup rule, filed NO new wake-me — both aspects
+  already tracked by open cards 6a6c3d8e (drift) + 6a605ebb (missing script). Reference-and-move-on
+  held up a second night; the rule is sound.
+- ACTED on a recurring stray this run instead of only reporting it: moved the 4 done-in-inbox
+  nightly cards (6a5dbb3e/6a5f0cef/6a605e40/6a65a3cd) into queue/done/. This is pure card-lifecycle
+  housekeeping within the queue/ coordination scope and finally clears the "done-in-inbox" anomaly
+  prior runs kept carrying forward. Lesson: a completed card belongs in queue/done/ — moving it is
+  part of the card lifecycle, not out-of-scope; don't perpetuate a trivial mess for 4 nights.
+- GOTCHA (cloud checkout): every file's mtime reads as the fresh-clone time (~06:05 today), so a
+  `date -r`/mtime-based ">48h in working/" check is USELESS here. Judge working-card staleness by
+  ULID/history instead. The halted iter-smoke 6a6bc3dd has sat in working/ since ~07-31 = genuinely
+  stale; left it (archival is outside the nightly carve-out) — tracked in audit card 6a6d8e1e (P3).
+- Untracked-card gotcha: the dispatcher-emitted card is untracked, so `git mv` on it fails
+  ("not under version control"); use plain `mv` for the freshly-emitted card, `git mv` for
+  already-tracked strays.
+- Push path: recorded in the run summary.
