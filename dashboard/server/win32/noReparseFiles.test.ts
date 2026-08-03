@@ -70,6 +70,56 @@ describe.skipIf(process.platform !== 'win32')('native no-reparse file tree', () 
     expectUnsafe(() => tree.inspectRegularFile(['hardlink.txt'], 'always'));
   });
 
+  it('resumes an injected short card write only when the durable bytes are an exact prefix', () => {
+    const root = makeTemp('kb-no-reparse-complete-');
+    mkdirSync(join(root, 'queue'));
+    const faulting = openNoReparseFileTree(root, { createRoot: false, testShortWriteBytesOnce: 7 });
+    expect(() => faulting.completeUtf8FromPrefix(['queue', 'card.md'], 'exact terminal card bytes'))
+      .toThrow(NoReparseFileError);
+    expect(readFileSync(join(root, 'queue', 'card.md'), 'utf8')).toBe('exact t');
+
+    const recovered = openNoReparseFileTree(root, { createRoot: false });
+    recovered.completeUtf8FromPrefix(['queue', 'card.md'], 'exact terminal card bytes');
+    expect(recovered.readUtf8(['queue', 'card.md'])).toBe('exact terminal card bytes');
+    writeFileSync(join(root, 'queue', 'card.md'), 'arbitrary drift', 'utf8');
+    expectUnsafe(() => recovered.completeUtf8FromPrefix(['queue', 'card.md'], 'exact terminal card bytes'));
+  });
+
+  it('same-handle audit append resumes a short suffix without truncating its exact baseline', () => {
+    const root = makeTemp('kb-no-reparse-append-');
+    mkdirSync(join(root, 'ledgers'));
+    const path = join(root, 'ledgers', 'audit.ndjson');
+    const baseline = '{"existing":true}\n';
+    const suffix = '{"authorized":true}\n';
+    writeFileSync(path, baseline, 'utf8');
+    const faulting = openNoReparseFileTree(root, { createRoot: false, testShortWriteBytesOnce: 5 });
+    expect(() => faulting.appendUtf8IfExact(['ledgers', 'audit.ndjson'], baseline, suffix))
+      .toThrow(NoReparseFileError);
+    expect(readFileSync(path, 'utf8')).toBe(`${baseline}${suffix.slice(0, 5)}`);
+
+    const recovered = openNoReparseFileTree(root, { createRoot: false });
+    recovered.appendUtf8IfExact(['ledgers', 'audit.ndjson'], baseline, suffix);
+    expect(recovered.readUtf8(['ledgers', 'audit.ndjson'])).toBe(`${baseline}${suffix}`);
+    writeFileSync(path, `${baseline}unrelated\n`, 'utf8');
+    expectUnsafe(() => recovered.appendUtf8IfExact(['ledgers', 'audit.ndjson'], baseline, suffix));
+  });
+
+  it('inspects absence and proves directory emptiness without following intermediate junctions', () => {
+    const root = makeTemp('kb-no-reparse-empty-');
+    const outside = makeTemp('kb-no-reparse-empty-outside-');
+    mkdirSync(join(root, 'control', 'empty'), { recursive: true });
+    const tree = openNoReparseFileTree(root, { createRoot: false });
+    expect(tree.pathKind(['control', 'missing'])).toBeNull();
+    expect(tree.pathKind(['control', 'empty'])).toBe('directory');
+    expect(() => tree.assertEmptyDirectory(['control', 'empty'])).not.toThrow();
+    writeFileSync(join(root, 'control', 'empty', 'entry.txt'), 'present', 'utf8');
+    expectUnsafe(() => tree.assertEmptyDirectory(['control', 'empty']));
+    rmSync(join(root, 'control', 'empty'), { recursive: true, force: true });
+    symlinkSync(outside, join(root, 'control', 'empty'), 'junction');
+    expectUnsafe(() => tree.pathKind(['control', 'empty']));
+    expectUnsafe(() => tree.assertEmptyDirectory(['control', 'empty']));
+  });
+
   it('rejects unsafe relative components before native path resolution', () => {
     const root = makeTemp('kb-no-reparse-components-');
     const tree = openNoReparseFileTree(root, { createRoot: false });

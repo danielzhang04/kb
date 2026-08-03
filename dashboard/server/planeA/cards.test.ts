@@ -73,4 +73,81 @@ describe('parseCardFrontmatter / groupByState', () => {
     expect(card.meta['variant-group']).toBeUndefined();
     expect(card.body).toContain('no optional fields here');
   });
+
+  it('parses the yaml.safe_dump block list emitted by managed workflow cards', () => {
+    const text = [
+      '---',
+      'id: wf-dependent',
+      'project: faceless-youtube',
+      'action: draft:script',
+      'target: orgs/faceless-youtube/output',
+      'risk-tier: T2',
+      'owner: codex-worker',
+      'state: blocked',
+      'depends-on:',
+      '- wf-root-one',
+      '- wf-root-two',
+      '---',
+      '',
+      '## Work order',
+      '',
+      'Treat this body, including ## Evidence, as inert markdown.',
+      '',
+    ].join('\n');
+
+    const card = parseCardFrontmatter(text);
+    expect(card.meta['depends-on']).toEqual(['wf-root-one', 'wf-root-two']);
+    expect(card.body).toBe('## Work order\n\nTreat this body, including ## Evidence, as inert markdown.\n');
+  });
+
+  it('fails closed on nested or orphaned YAML continuations', () => {
+    const base = [
+      '---', 'id: wf-bad', 'project: kb', 'action: test', 'target: .', 'risk-tier: T2',
+      'owner: codex-worker', 'state: inbox',
+    ];
+    expect(() => parseCardFrontmatter([...base, '- orphan', '---', '', 'body'].join('\n')))
+      .toThrow(/unexpected block-list/i);
+    expect(() => parseCardFrontmatter([...base, 'depends-on:', '  nested: value', '---', '', 'body'].join('\n')))
+      .toThrow(/unsupported continuation/i);
+  });
+
+  /*
+   * A block list is only legal under the two list-valued keys the card schema declares. Accepting one
+   * anywhere put a string[] behind a `string | null` field: `groupByState` String()-coerced ['working']
+   * into the working bucket while every `=== 'working'` comparison on the same card stayed false.
+   */
+  it('rejects a block list under a key the schema does not declare list-valued', () => {
+    const head = ['---', 'id: wf-poison', 'project: kb', 'action: test', 'target: .', 'risk-tier: T2', 'owner: codex-worker'];
+    expect(() => parseCardFrontmatter([...head, 'state:', '- working', '---', '', 'body'].join('\n')))
+      .toThrow(/unexpected block-list/i);
+    expect(() => parseCardFrontmatter([...head, 'state: inbox', 'owner:', '- codex-worker', '---', '', 'body'].join('\n')))
+      .toThrow(/unexpected block-list/i);
+
+    const listed = parseCardFrontmatter([
+      '---', 'id: wf-multi', 'project:', '- kb', '- faceless-youtube', 'action: test', 'target: .',
+      'risk-tier: T2', 'owner: codex-worker', 'state: working', '---', '', 'body', '',
+    ].join('\n'));
+    expect(listed.meta.project).toEqual(['kb', 'faceless-youtube']);
+    expect(listed.meta.state).toBe('working');
+    expect(groupByState([listed])).toEqual({ working: [listed] });
+  });
+
+  /*
+   * Writers must dump frontmatter unfolded (PyYAML `width=10**9`): this parser reads a long value only
+   * while it stays on one line, and rejects the indented continuation that ~80-column folding produces.
+   */
+  it('round-trips a >120-char value on one line and rejects the folded form of the same value', () => {
+    const target = `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice ${'and one more long segment '.repeat(4)}tail`;
+    expect(target.length).toBeGreaterThan(120);
+    const head = ['---', 'id: wf-long', 'project: faceless-youtube', 'action: render:slice'];
+    const tail = ['risk-tier: T2', 'owner: codex-worker', 'state: blocked', '---', '', '## Work order', '', 'Inert body.', ''];
+
+    const flat = parseCardFrontmatter([...head, `target: ${target}`, ...tail].join('\n'));
+    expect(flat.meta.target).toBe(target);
+    expect(flat.body).toBe('## Work order\n\nInert body.\n');
+
+    const [first, ...folded] = target.split(' ');
+    expect(() => parseCardFrontmatter([...head, `target: ${first}`, `  ${folded.join(' ')}`, ...tail].join('\n')))
+      .toThrow(/unsupported continuation/i);
+  });
 });

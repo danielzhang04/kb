@@ -6,9 +6,10 @@
  * SECURITY INVARIANT: only the frontmatter is parsed into `meta`. The body — and in particular the
  * `## Evidence` block — is retained verbatim and NEVER interpreted. Evidence is inert data.
  *
- * We intentionally do NOT pull in a YAML dependency (none is available and D0.2 adds no deps). Card
- * frontmatter is a flat map of scalars, `null`, and simple inline lists (`depends-on: []` /
- * `[a, b]`) — a minimal, self-contained parser covers it exactly.
+ * We intentionally do NOT pull in a YAML dependency. Card frontmatter is a flat map of scalars,
+ * `null`, inline lists, and the scalar block lists `yaml.safe_dump` emits for the two schema-declared
+ * list keys (`project`, `depends-on`). The narrow parser below recognises only those shapes — every
+ * other block list or indented continuation is a parse error — and it never interprets body text.
  */
 
 export type CardFieldValue = string | number | boolean | null | string[];
@@ -39,6 +40,14 @@ export const CARD_STATES = [
   'approved',
   'rejected',
 ] as const;
+
+/**
+ * The only list-valued keys governance/card-schema.md declares (`project: <org>|[orgs]`,
+ * `depends-on: [ids]`). A block list under any other key is a parse error, never a silent string[]
+ * behind a `string | null` field — `groupByState` would then String()-coerce `['working']` into a
+ * bucket no `=== 'working'` comparison can ever match.
+ */
+const CARD_LIST_KEYS = new Set(['project', 'depends-on']);
 
 /** Coerce a raw frontmatter scalar/list token into a JS value. */
 function coerceScalar(raw: string): CardFieldValue {
@@ -83,13 +92,32 @@ export function parseCardFrontmatter(text: string): ParsedCard {
   const body = head.slice(fenceIdx).replace(/^\r?\n---\r?\n/, '').replace(/^\r?\n+/, '');
 
   const meta: Record<string, CardFieldValue> = {};
+  let pendingBlockList: string | null = null;
   for (const line of fm.split(/\r?\n/)) {
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
+    // `yaml.safe_dump` emits sequence items at column zero beneath a scalar
+    // key (`depends-on:\n- wf-root`).  Accept that canonical shape only;
+    // indented continuations are deliberately rejected below so nested YAML
+    // cannot be mistaken for card metadata.
+    const blockItem = /^-\s+(.+?)\s*$/.exec(line);
+    if (blockItem) {
+      // `pendingBlockList` is only ever set for a schema-declared list key, so a block list under any
+      // other key (`state:` followed by `- working`) lands here and is rejected.
+      if (!pendingBlockList) throw new Error('card frontmatter has an unexpected block-list item');
+      const item = coerceScalar(blockItem[1]);
+      if (typeof item !== 'string') throw new Error('card frontmatter block-list items must be strings');
+      const values = meta[pendingBlockList];
+      if (!Array.isArray(values)) meta[pendingBlockList] = [];
+      (meta[pendingBlockList] as string[]).push(item);
+      continue;
+    }
+    if (/^\s/.test(line)) throw new Error('card frontmatter has an unsupported continuation');
     const colon = line.indexOf(':');
     if (colon === -1) continue; // skip malformed / continuation lines defensively
     const key = line.slice(0, colon).trim();
     const rawValue = line.slice(colon + 1);
     meta[key] = coerceScalar(rawValue);
+    pendingBlockList = rawValue.trim() === '' && CARD_LIST_KEYS.has(key) ? key : null;
   }
 
   return { meta: meta as CardMeta, body };

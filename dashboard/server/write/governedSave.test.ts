@@ -753,6 +753,38 @@ runtimes:
     });
     expect(result.ok).toBe(true);
   });
+
+  // The guard must FAIL CLOSED on a parse throw. Swallowing it ADMITTED the save, so a declaration the
+  // shared reader cannot parse (an indented continuation, a block list under a non-list key) bypassed
+  // the model check entirely — while `readDeclaredAgents` classified the same file malformed and
+  // dropped the agent from the roster.
+  it('refuses an agents/*.md whose frontmatter the shared reader cannot parse', async () => {
+    const repo = await scratch();
+    seedPolicy(repo);
+    for (const content of [
+      '---\nid: foo\nruntime: claude\nmodel: claude-sonnet-5\n  indented: continuation\n---\nnested yaml\n',
+      '---\nid: foo\nruntime: claude\nmodel:\n- claude-sonnet-5\n---\nblock list under a non-list key\n',
+      '---\nid: foo\nruntime: claude\nmodel: claude-sonnet-5\nunterminated frontmatter\n',
+    ]) {
+      const { runner, calls } = recorder();
+      const result = await save({
+        repoRoot: repo,
+        relpath: 'agents/foo.md',
+        content,
+        sessionToken: validToken(),
+        sessionConfig: CONFIG,
+        runGit: runner,
+        openPr: noopPrOpener,
+      });
+      expect(result.ok, content).toBe(false);
+      if (!result.ok) {
+        expect(result.status, content).toBe(400);
+        expect(result.reason, content).toMatch(/agent-declaration-unparsable/);
+      }
+      expect(calls, content).toHaveLength(0);
+      expect(existsSync(join(repo, 'agents', 'foo.md')), content).toBe(false);
+    }
+  });
 });
 
 describe('save — path confinement is realpath, not lexical (symlink escape)', () => {

@@ -54,6 +54,10 @@ export interface RunCockpitProps {
   onStop?: () => void | Promise<void>;
   onResume?: () => void | Promise<void>;
   onRetry?: () => void | Promise<void>;
+  /** Why Retry is standing-refused, when the reason is not simply the run's current state. */
+  retryRefusal?: string;
+  /** A server-fixed historical settlement, deliberately separate from Retry/activation. */
+  onHistoricalReconciliation?: () => void | Promise<void>;
   onManagerSuccessor?: () => void | Promise<void>;
   onSteer?: (checkpoint: string, instruction: string) => void | Promise<void>;
   onReroute?: (stage: StageDto, attempt: AttemptDto, runtime: string, model: string) => void | Promise<void>;
@@ -395,6 +399,8 @@ export function RunCockpit({
   onStop,
   onResume,
   onRetry,
+  retryRefusal,
+  onHistoricalReconciliation,
   onManagerSuccessor,
   onSteer,
   onReroute,
@@ -654,14 +660,34 @@ export function RunCockpit({
       >
         Stop run
       </button>
+      {/*
+        * Rendered-disabled, never conditionally rendered: an action the operator knows exists must not
+        * vanish, or its absence reads as a UI bug rather than as "not available here". `retryRefusal`
+        * names a STANDING refusal (the store would refuse the mutation), so it is stated in the row
+        * instead of being discovered by a click.
+        */}
       <button
         type="button"
         className="mc-btn"
-        disabled={busy || !onRetry || !['failed', 'stopped', 'interrupted'].includes(detail.run.state)}
+        disabled={busy || !onRetry || !!retryRefusal || !['failed', 'stopped', 'interrupted'].includes(detail.run.state)}
+        title={retryRefusal}
         onClick={() => void onRetry?.()}
       >
         Retry as successor
       </button>
+      {retryRefusal ? (
+        <span className="control-help" data-testid="run-retry-refusal">{retryRefusal}</span>
+      ) : null}
+      {onHistoricalReconciliation ? (
+        <button
+          type="button"
+          className="mc-btn"
+          disabled={busy}
+          onClick={() => void onHistoricalReconciliation()}
+        >
+          Reconcile historical failed run
+        </button>
+      ) : null}
     </>
   );
 

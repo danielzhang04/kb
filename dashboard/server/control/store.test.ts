@@ -7,16 +7,50 @@ import {
   AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
   AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+  AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
+  AUTHORIZED_20260801_FAILED_RUN_INPUT,
+  AUTHORIZED_20260801_FAILED_RUN_REF,
   MAX_HUMAN_REQUESTS_PER_RUN,
   createFileControlPlaneStore,
   createInMemoryControlPlaneStore,
+  exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
 } from './store.ts';
 import type { ControlPlaneStore } from './store.ts';
-import type { JsonObject } from './types.ts';
+import type { JsonObject, ProposalRevision } from './types.ts';
 
 const roots: string[] = [];
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
+
+describe('authorized 2026-08-01 proposal provenance', () => {
+  const snapshot = JSON.parse(readFileSync(join(
+    process.cwd(), 'server', 'control', 'test-fixtures', 'authorized-20260801-fyt-proposal.json',
+  ), 'utf8')) as JsonObject;
+  const exact: ProposalRevision = {
+    proposalRef: 'proposal-3725fb98-e20e-4619-b6e7-c9055138a50d', sourceComposerRef: 'workflow-registry',
+    sourceTurnId: 'thin-slice-run', revision: 1,
+    hash: '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9', previousHash: null,
+    title: 'Validate one all-Codex faceless-video opening slice', createdAt: '2026-08-01T02:04:02.673Z', snapshot,
+    approval: {
+      revision: 1, decision: 'approved', decidedBy: 'operator',
+      idempotencyKey: 'agent-workspace-launch:4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960:thin-slice-run:f481bfb5-584d-4200-b0f1-8b1fc0556209:decision',
+      decidedAt: '2026-08-01T02:04:03.315Z', note: null,
+    },
+  };
+
+  it('pins every historical source, title, timestamp, and approval field', () => {
+    expect(exactAuthorized20260801ProposalRevision(exact)).toBe(true);
+    for (const drifted of [
+      { ...exact, sourceComposerRef: 'other-registry' },
+      { ...exact, sourceTurnId: 'other-turn' },
+      { ...exact, title: `${exact.title} drift` },
+      { ...exact, createdAt: '2026-08-01T02:04:02.674Z' },
+      { ...exact, approval: { ...exact.approval!, decidedAt: '2026-08-01T02:04:03.316Z' } },
+      { ...exact, approval: { ...exact.approval!, note: 'unexpected' } },
+      { ...exact, approval: { ...exact.approval!, extra: true } as unknown as ProposalRevision['approval'] },
+    ]) expect(exactAuthorized20260801ProposalRevision(drifted)).toBe(false);
+  });
+});
 const MANAGER_ASSIGNMENT = {
   agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'a'.repeat(64),
   profileId: 'claude:manager', runtime: 'claude' as const, model: 'claude-sonnet-5',
@@ -2596,7 +2630,9 @@ describe('durability, crash recovery, and retention', () => {
       writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
       expect(() => createFileControlPlaneStore(root, deterministicOptions()), testCase.name).toThrow(/invalid control-plane/);
     }
-  });
+    // ~40 tampered graphs, each a real file-backed store in a fresh temp root: the default 5s ceiling
+    // is under the real cost of this case whenever the whole suite competes for the same disk/CPU.
+  }, 30_000);
 
   it('fails closed on a persisted queued-generation result tamper', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
@@ -3046,5 +3082,134 @@ describe('durability, crash recovery, and retention', () => {
   it('enforces a hard document byte ceiling before replacing durable state', () => {
     const store = createInMemoryControlPlaneStore({ ...deterministicOptions(), maxDocumentBytes: 200 });
     expect(() => createApprovedProposal(store)).toThrow(ControlStoreLimitError);
+  });
+});
+
+/**
+ * The settlement receipt used to pin the WHOLE historical run graph at load time, so every legitimate
+ * later mutation — a successor run, a quarantine restore, any unrelated concurrent event — made the
+ * document unloadable and the daemon unbootable. Durability is now receipt-scoped and finality is
+ * enforced at mutation time; these cases hold both halves of that trade in place.
+ */
+describe('authorized 2026-08-01 settlement durability', () => {
+  const SETTLED_AT = '2026-08-01T09:00:00.000Z';
+  const SETTLEMENT_SUMMARY =
+    'authorized one-off reconciliation settled the failed 2026-07-31 FYT thin-slice predecessor';
+
+  type MutableDocument = {
+    nextEventCursor: number;
+    runs: Array<Record<string, any>>;
+    events: Array<Record<string, any>>;
+    [key: string]: any;
+  };
+
+  /** A real store whose one terminal run has been relabelled as the settled historical run. */
+  function seedSettledStore(phase: 'claimed' | 'committed' = 'committed') {
+    const root = mkdtempSync(join(tmpdir(), 'control-settlement-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const seeded = settleRetryPredecessor(store, 'alice');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as MutableDocument;
+    for (const key of ['runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events']) {
+      for (const record of document[key] as Array<Record<string, unknown>>) {
+        if (record.runRef === seeded.run.runRef) record.runRef = AUTHORIZED_20260801_FAILED_RUN_REF;
+      }
+    }
+    const run = document.runs[0] as Record<string, any>;
+    run.authorizedFailedRunReconciliation = {
+      idempotencyKey: AUTHORIZED_20260801_FAILED_RUN_INPUT.idempotencyKey,
+      fingerprint: AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
+      phase,
+      claimedAt: SETTLED_AT,
+      updatedAt: SETTLED_AT,
+      canonicalCommit: phase === 'committed' ? 'a'.repeat(40) : null,
+      eventCursor: phase === 'committed' ? document.nextEventCursor : null,
+    };
+    if (phase === 'committed') {
+      document.events.push({
+        subject: 'alice', cursor: document.nextEventCursor, runRef: AUTHORIZED_20260801_FAILED_RUN_REF,
+        kind: 'governance', source: 'human', stageRef: null, attemptRef: null, sessionRef: null,
+        status: 'success', summary: SETTLEMENT_SUMMARY,
+        command: null, toolName: null, path: null, diff: null, checkpoint: null, createdAt: SETTLED_AT,
+      });
+      document.nextEventCursor += 1;
+    }
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    return { root, path, run: { ...seeded.run, runRef: AUTHORIZED_20260801_FAILED_RUN_REF } };
+  }
+
+  function successorInput(run: { proposalRef: string; proposalRevision: number; proposalHash: string; version: number }) {
+    return {
+      title: 'Successor of the settled run',
+      proposalRef: run.proposalRef,
+      proposalRevision: run.proposalRevision,
+      expectedProposalHash: run.proposalHash,
+      managerRuntime: 'claude',
+      managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'settled-successor',
+      predecessorRunRef: AUTHORIZED_20260801_FAILED_RUN_REF,
+      expectedPredecessorVersion: run.version,
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [] },
+        { stageId: 'verify', title: 'Verify', dependsOn: ['build'] },
+      ],
+    };
+  }
+
+  it('refuses a successor for the settled run and stays loadable afterwards', () => {
+    const { root, run } = seedSettledStore();
+    const store = createFileControlPlaneStore(root);
+    const successor = store.createRun('alice', successorInput(run));
+    expect(successor).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(successor.ok ? '' : successor.detail).toMatch(/settled failed run/);
+    expect(store.listRuns('alice')).toHaveLength(1);
+    // The brick: a document that moved on must still load, refusal or not.
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+  });
+
+  it('restores the settled run from quarantine without breaking load or reopening Retry', () => {
+    const { root, run } = seedSettledStore();
+    const store = createFileControlPlaneStore(root);
+    const plan = store.dryRunQuarantine('alice', [AUTHORIZED_20260801_FAILED_RUN_REF]);
+    if (!plan.ok) throw new Error(plan.detail);
+    expect(store.quarantineRuns('alice', [AUTHORIZED_20260801_FAILED_RUN_REF], plan.value.planHash)).toMatchObject({ ok: true });
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+
+    const restored = store.restoreRun('alice', AUTHORIZED_20260801_FAILED_RUN_REF);
+    expect(restored).toMatchObject({ ok: true });
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+    const reopened = createFileControlPlaneStore(root);
+    const detail = reopened.getRun('alice', AUTHORIZED_20260801_FAILED_RUN_REF);
+    if (!detail.ok) throw new Error(detail.detail);
+    // The receipt travels with the run, so finality survives the quarantine round trip.
+    const successor = reopened.createRun('alice', { ...successorInput(run), expectedPredecessorVersion: detail.value.run.version });
+    expect(successor).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(successor.ok ? '' : successor.detail).toMatch(/settled failed run/);
+  });
+
+  it('survives an unrelated concurrent event while the settlement is only claimed', () => {
+    const { root } = seedSettledStore('claimed');
+    const store = createFileControlPlaneStore(root);
+    expect(store.appendEvent('alice', AUTHORIZED_20260801_FAILED_RUN_REF, {
+      kind: 'lifecycle', source: 'system', summary: 'unrelated concurrent event',
+    })).toMatchObject({ ok: true });
+    // nextEventCursor is a GLOBAL counter; a claimed receipt must never depend on its exact value.
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+  });
+
+  it('still rejects a receipt whose own invariants are incoherent', () => {
+    const { root, path } = seedSettledStore();
+    const original = JSON.parse(readFileSync(path, 'utf8')) as MutableDocument;
+
+    const forgedFingerprint = structuredClone(original);
+    forgedFingerprint.runs[0].authorizedFailedRunReconciliation.fingerprint = 'f'.repeat(64);
+    writeFileSync(path, `${JSON.stringify(forgedFingerprint)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized failed-run reconciliation receipt/);
+
+    const missingEvent = structuredClone(original);
+    missingEvent.events = missingEvent.events.filter((event) => event.summary !== SETTLEMENT_SUMMARY);
+    writeFileSync(path, `${JSON.stringify(missingEvent)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized failed-run reconciliation event/);
   });
 });

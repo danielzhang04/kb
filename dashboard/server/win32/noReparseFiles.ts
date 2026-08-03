@@ -44,6 +44,7 @@ const STATUS_OBJECT_NAME_NOT_FOUND = 0xc0000034 | 0;
 const STATUS_OBJECT_PATH_NOT_FOUND = 0xc000003a | 0;
 const STATUS_STOPPED_ON_SYMLINK = 0x8000002d | 0;
 const STATUS_REPARSE_POINT_ENCOUNTERED = 0xc000050b | 0;
+const STATUS_NO_MORE_FILES = 0x80000006 | 0;
 const INVALID_HANDLE = -1n;
 
 type KoffiFn = (...args: unknown[]) => unknown;
@@ -69,6 +70,7 @@ interface NativeBindings {
   write(handle: unknown, bytes: Buffer): void;
   truncate(handle: unknown): void;
   delete(handle: unknown): void;
+  directoryEmpty(handle: unknown): boolean;
 }
 
 interface NativeOpen {
@@ -116,17 +118,29 @@ export interface NoReparseFileTree {
   readUtf8(parts: readonly string[], maxBytes?: number): string | null;
   /** Opens/creates, validates, truncates, and writes through one file handle. */
   writeUtf8(parts: readonly string[], contents: string): void;
+  /** Create or resume one exact UTF-8 file. Existing bytes must be a byte-prefix of `contents`. */
+  completeUtf8FromPrefix(parts: readonly string[], contents: string): void;
+  /** Same-handle exact-baseline append; a prior short append resumes only from the exact suffix prefix. */
+  appendUtf8IfExact(parts: readonly string[], expected: string, suffix: string): void;
   /** Removes a regular, non-reparse, non-hardlinked file if present. */
   deleteFileIfPresent(parts: readonly string[]): void;
   /** Removes an empty, non-reparse, non-hardlinked directory if present. */
   deleteEmptyDirIfPresent(parts: readonly string[]): void;
   /** Opens and validates a regular file; hash is from the same handle when requested. */
   inspectRegularFile(parts: readonly string[], hashMode: NoReparseHashMode): NoReparseFileInfo | null;
+  /** Handle-rooted kind inspection; null means the exact final path is absent. */
+  pathKind(parts: readonly string[]): 'file' | 'directory' | null;
+  /** Prove through the opened directory handle that the exact directory exists and has no entries. */
+  assertEmptyDirectory(parts: readonly string[]): void;
   /** Render-only path for terminal arguments and permission settings. Never use it for I/O. */
   displayPath(parts: readonly string[]): string;
 }
 
-interface TreeOptions { createRoot: boolean; }
+interface TreeOptions {
+  createRoot: boolean;
+  /** Direct native-layer fault injection for crash-recovery tests; never set by production wiring. */
+  testShortWriteBytesOnce?: number;
+}
 
 function isBadHandle(koffi: Koffi, handle: unknown): boolean {
   try {
@@ -170,6 +184,9 @@ function loadNativeBindings(): NativeBindings {
   });
   const NtCreateFile = ntdll.func('__stdcall', 'NtCreateFile', 'int32', [
     HANDLE, 'uint32', HANDLE, HANDLE, HANDLE, 'uint32', 'uint32', 'uint32', 'uint32', HANDLE, 'uint32',
+  ]);
+  const NtQueryDirectoryFile = ntdll.func('__stdcall', 'NtQueryDirectoryFile', 'int32', [
+    HANDLE, HANDLE, HANDLE, HANDLE, HANDLE, HANDLE, 'uint32', 'uint32', 'uint8', HANDLE, 'uint8',
   ]);
   const RtlNtStatusToDosError = ntdll.func('__stdcall', 'RtlNtStatusToDosError', 'uint32', ['int32']);
   const CloseHandle = kernel32.func('__stdcall', 'CloseHandle', 'bool', [HANDLE]);
@@ -251,6 +268,25 @@ function loadNativeBindings(): NativeBindings {
         throw new NoReparseFileError('io', 'delete');
       }
     },
+    directoryEmpty(handle) {
+      let restart = 1;
+      while (true) {
+        const statusBlock = koffi.alloc(IO_STATUS_BLOCK, 1);
+        const entry = Buffer.alloc(4096);
+        const status = NtQueryDirectoryFile(
+          handle, null, null, null, statusBlock, entry, entry.length, 12, 1, null, restart,
+        ) as number;
+        restart = 0;
+        if (status === STATUS_NO_MORE_FILES) return true;
+        if (status < 0) throw nativeStatusError(status, 'enumerate-directory', RtlNtStatusToDosError);
+        const nameLength = entry.readUInt32LE(8);
+        if (nameLength > entry.length - 12 || nameLength % 2 !== 0) {
+          throw new NoReparseFileError('io', 'enumerate-directory');
+        }
+        const name = entry.subarray(12, 12 + nameLength).toString('utf16le');
+        if (name !== '.' && name !== '..') return false;
+      }
+    },
   };
 }
 
@@ -324,6 +360,19 @@ export function openNoReparseFileTree(root: string, options: TreeOptions): NoRep
     }
   };
   const relativeName = (parts: readonly string[]): string => validateParts(parts).join('\\');
+  let shortWriteBytesOnce = options.testShortWriteBytesOnce;
+  if (shortWriteBytesOnce !== undefined && (!Number.isSafeInteger(shortWriteBytesOnce) || shortWriteBytesOnce < 0)) {
+    throw new NoReparseFileError('io', 'test-short-write');
+  }
+  const writeWithFault = (bindings: NativeBindings, handle: unknown, bytes: Buffer): void => {
+    if (shortWriteBytesOnce !== undefined) {
+      const length = Math.min(shortWriteBytesOnce, bytes.length);
+      shortWriteBytesOnce = undefined;
+      if (length > 0) bindings.write(handle, bytes.subarray(0, length));
+      throw new NoReparseFileError('io', 'injected-short-write');
+    }
+    bindings.write(handle, bytes);
+  };
   const withFile = <T>(parts: readonly string[], input: Omit<NativeOpen, 'root' | 'name'>, operation: (bindings: NativeBindings, handle: unknown) => T): T =>
     withRoot((bindings, rootHandle) => {
       const handle = bindings.openFile({ ...input, root: rootHandle, name: relativeName(parts) });
@@ -380,6 +429,43 @@ export function openNoReparseFileTree(root: string, options: TreeOptions): NoRep
         bindings.write(handle, bytes);
       });
     },
+    completeUtf8FromPrefix(parts, contents) {
+      const expected = Buffer.from(contents, 'utf8');
+      if (expected.length > MAX_UTF8_FILE_BYTES) throw new NoReparseFileError('io', 'complete');
+      withFile(parts, {
+        desiredAccess: FILE_READ_DATA | FILE_READ_ATTRIBUTES | FILE_WRITE_DATA | SYNCHRONIZE,
+        shareAccess: FILE_SHARE_READ, disposition: FILE_OPEN_IF,
+        options: FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, attributes: FILE_ATTRIBUTE_NORMAL,
+      }, (bindings, handle) => {
+        const info = assertSafeRegularFile(bindings, handle);
+        if (info.size > expected.length) throw new NoReparseFileError('unsafe-path', 'complete-prefix');
+        const current = bindings.read(handle, info.size);
+        if (!expected.subarray(0, current.length).equals(current)) {
+          throw new NoReparseFileError('unsafe-path', 'complete-prefix');
+        }
+        if (current.length < expected.length) writeWithFault(bindings, handle, expected.subarray(current.length));
+      });
+    },
+    appendUtf8IfExact(parts, expected, suffix) {
+      const baseline = Buffer.from(expected, 'utf8');
+      const replacement = Buffer.from(`${expected}${suffix}`, 'utf8');
+      if (replacement.length > MAX_UTF8_FILE_BYTES) throw new NoReparseFileError('io', 'append');
+      withFile(parts, {
+        desiredAccess: FILE_READ_DATA | FILE_READ_ATTRIBUTES | FILE_WRITE_DATA | SYNCHRONIZE,
+        shareAccess: FILE_SHARE_READ, disposition: baseline.length === 0 ? FILE_OPEN_IF : FILE_OPEN,
+        options: FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, attributes: FILE_ATTRIBUTE_NORMAL,
+      }, (bindings, handle) => {
+        const info = assertSafeRegularFile(bindings, handle);
+        if (info.size < baseline.length || info.size > replacement.length) {
+          throw new NoReparseFileError('unsafe-path', 'append-baseline');
+        }
+        const current = bindings.read(handle, info.size);
+        if (!replacement.subarray(0, current.length).equals(current)) {
+          throw new NoReparseFileError('unsafe-path', 'append-baseline');
+        }
+        if (current.length < replacement.length) writeWithFault(bindings, handle, replacement.subarray(current.length));
+      });
+    },
     deleteFileIfPresent(parts) {
       try {
         withFile(parts, {
@@ -424,6 +510,31 @@ export function openNoReparseFileTree(root: string, options: TreeOptions): NoRep
         if (error instanceof NoReparseFileError && error.code === 'missing') return null;
         throw error;
       }
+    },
+    pathKind(parts) {
+      try {
+        return withFile(parts, {
+          desiredAccess: FILE_READ_ATTRIBUTES | FILE_TRAVERSE | SYNCHRONIZE,
+          shareAccess: FILE_SHARE_READ | FILE_SHARE_WRITE, disposition: FILE_OPEN,
+          options: FILE_SYNCHRONOUS_IO_NONALERT, attributes: 0,
+        }, (bindings, handle) => {
+          const info = bindings.inspect(handle);
+          if (!info.disk || info.reparse || info.links !== 1) throw new NoReparseFileError('unsafe-path', 'path-kind');
+          return info.directory ? 'directory' as const : 'file' as const;
+        });
+      } catch (error) {
+        if (error instanceof NoReparseFileError && error.code === 'missing') return null;
+        throw error;
+      }
+    },
+    assertEmptyDirectory(parts) {
+      withFile(parts, {
+        desiredAccess: DIRECTORY_ACCESS, shareAccess: FILE_SHARE_READ | FILE_SHARE_WRITE,
+        disposition: FILE_OPEN, options: FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, attributes: 0,
+      }, (bindings, handle) => {
+        assertSafeDirectory(bindings, handle);
+        if (!bindings.directoryEmpty(handle)) throw new NoReparseFileError('unsafe-path', 'directory-not-empty');
+      });
     },
     displayPath(parts) { return win32.join(displayRoot, ...validateParts(parts)); },
   };

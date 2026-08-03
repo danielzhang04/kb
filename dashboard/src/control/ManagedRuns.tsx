@@ -11,6 +11,7 @@ import {
   resolveReviewCompletionGate,
   respondToHumanRequest,
   rerouteManagedStage,
+  reconcileAuthorizedFailedRun,
   resumeRunAfterHumanResponse,
   sendManagerMessage,
   steerManagerAtCheckpoint,
@@ -22,6 +23,9 @@ import {
   type RunDetailDto,
   type RunMetadataDto,
   type StageDto,
+  isAuthorizedFailedRunPublishedUncommitted,
+  isAuthorizedFailedRunReconciliationCandidate,
+  isAuthorizedFailedRunSettled,
 } from './controlClient';
 import { listProposalRevisions, type ProposalRevisionMetadataDto } from './controlClient';
 import '../styles/views/entity.css';
@@ -337,6 +341,27 @@ export function ManagedRuns({
     } finally { setBusy(false); }
   };
 
+  /**
+   * A one-off historical settlement, intentionally not composed with Retry, successor creation,
+   * or activation. The response is reloaded from the server so v8/replay removes this action.
+   */
+  const reconcileHistoricalFailedRun = async (): Promise<void> => {
+    if (!token || !detail || busy || !isAuthorizedFailedRunReconciliationCandidate(detail, events)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await reconcileAuthorizedFailedRun(token);
+      await loadRun(detail.run.runRef, token);
+      setRuns(await listRuns(token));
+    } catch (cause) {
+      // Truthful, not merely safe: a durable settlement whose control-plane record is outstanding is
+      // NOT a refusal, and telling the operator it was refused would hide a completed ops write.
+      setError(isAuthorizedFailedRunPublishedUncommitted(cause)
+        ? 'The settlement is published on ops; only its control-plane record is outstanding — run it again to finalize.'
+        : cause instanceof Error ? cause.message : 'Historical reconciliation was refused.');
+    } finally { setBusy(false); }
+  };
+
   const resume = async (): Promise<void> => {
     if (!token || !detail || busy) return;
     setBusy(true);
@@ -402,6 +427,14 @@ export function ManagedRuns({
    */
   const focused = detail && openRunRef && detail.run.runRef === openRunRef ? detail : null;
   const resumeAvailable = focused ? canResumePublishedRun(focused) : false;
+  const historicalReconciliationAvailable = focused
+    ? isAuthorizedFailedRunReconciliationCandidate(focused, events)
+    : false;
+  // The settlement leaves a terminal run with every stage stopped — the exact profile Retry accepts.
+  // The store refuses a successor for it, so the cockpit states that instead of offering the click.
+  const settlementRefusal = focused && isAuthorizedFailedRunSettled(focused, events)
+    ? 'Settled by the authorized 2026-08-01 reconciliation; this run can never have a successor.'
+    : undefined;
 
   return (
     <section className="control-managed-runs" aria-label="Managed runs">
@@ -425,7 +458,10 @@ export function ManagedRuns({
             onSteer={managerRunning ? steer : undefined}
             onStop={focused.sessions.some((session) => session.state === 'running') ? stop : undefined}
             onResume={resumeAvailable ? resume : undefined}
-            onRetry={['failed', 'stopped', 'interrupted'].includes(focused.run.state) ? retry : undefined}
+            onRetry={!historicalReconciliationAvailable && !settlementRefusal
+              && ['failed', 'stopped', 'interrupted'].includes(focused.run.state) ? retry : undefined}
+            retryRefusal={settlementRefusal}
+            onHistoricalReconciliation={historicalReconciliationAvailable ? reconcileHistoricalFailedRun : undefined}
             onManagerSuccessor={!resumeAvailable && focused.sessions.some((session) => session.sessionRef === focused.run.managerSessionRef
               && ['interrupted', 'failed', 'stopped', 'completed'].includes(session.state)) ? recoverManager : undefined}
             onReroute={reroute}

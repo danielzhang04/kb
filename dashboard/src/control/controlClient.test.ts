@@ -11,6 +11,9 @@ import {
   parseExecutionPosture,
   quarantineRuns,
   recoverAuthorized20260731ExecutionLock,
+  reconcileAuthorizedFailedRun,
+  AUTHORIZED_FAILED_RUN_PUBLISHED_UNCOMMITTED_CODE,
+  isAuthorizedFailedRunPublishedUncommitted,
   rerouteManagedStage,
   resolveReviewCompletionGate,
   respondToHumanRequest,
@@ -409,6 +412,56 @@ describe('control client run and retention writes', () => {
       expectedRequestRevision: 1,
       idempotencyKey: 'authorized-repair',
     });
+  });
+
+  it('posts only the fixed historical reconciliation CAS to its dedicated route', async () => {
+    const fetchImpl = recordedFetch({ ok: true, value: { run: { runRef: 'run-0aa72053-b9d7-41fa-a034-19871b66d214' } } });
+    await reconcileAuthorizedFailedRun('bearer', fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/control/recovery/2026-08-01/failed-run-reconciliation', expect.objectContaining({ method: 'POST' }),
+    );
+    expect(requestBody(fetchImpl as unknown as ReturnType<typeof vi.fn>)).toEqual({
+      expectedRunVersion: 7,
+      expectedManagerGeneration: 1,
+      expectedRequestRevision: 2,
+      expectedNextEventCursor: 6,
+      expectedProposalHash: '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9',
+      idempotencyKey: 'reconcile:2026-08-01:run-0aa72053-b9d7-41fa-a034-19871b66d214:failed-launch:v7',
+    });
+    expect((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.map((call) => String(call[0]))).not.toContain(
+      '/api/control/proposals/proposal-3725fb98-e20e-4619-b6e7-c9055138a50d/revisions/1/launch',
+    );
+  });
+
+  it('keeps the historical action on the normal session boundary when its bearer is no longer valid', async () => {
+    const removeItem = vi.fn();
+    vi.stubGlobal('window', {
+      sessionStorage: { getItem: vi.fn(() => 'saved'), setItem: vi.fn(), removeItem },
+      dispatchEvent: vi.fn(),
+    });
+    await expect(reconcileAuthorizedFailedRun(
+      'expired-bearer',
+      vi.fn(async () => response({ error: 'unauthenticated', reason: 'expired' }, 401)) as unknown as FetchLike,
+    )).rejects.toThrow('control request refused: 401 (expired)');
+    expect(removeItem).toHaveBeenCalledWith(SESSION_STORAGE_KEY);
+    vi.unstubAllGlobals();
+  });
+
+  // A settlement that reached origin/ops but not the control-plane record is recoverable by
+  // re-invoking. Collapsing it into "refused" would tell the operator the opposite of the truth.
+  it('separates a published-but-unfinalized settlement from a genuine refusal', async () => {
+    const published = await reconcileAuthorizedFailedRun('bearer', vi.fn(async () => response({
+      error: AUTHORIZED_FAILED_RUN_PUBLISHED_UNCOMMITTED_CODE,
+      detail: 'the settlement is published on origin/ops but its control-plane record is not final; re-invoke to finalize it',
+    }, 409)) as unknown as FetchLike).catch((cause: unknown) => cause);
+    expect(isAuthorizedFailedRunPublishedUncommitted(published)).toBe(true);
+
+    const refused = await reconcileAuthorizedFailedRun('bearer', vi.fn(async () => response({
+      error: 'authorized-failed-run-reconciliation-refused',
+      detail: 'a required reconciliation safety proof did not hold',
+    }, 409)) as unknown as FetchLike).catch((cause: unknown) => cause);
+    expect(isAuthorizedFailedRunPublishedUncommitted(refused)).toBe(false);
+    expect(isAuthorizedFailedRunPublishedUncommitted(new Error('unrelated'))).toBe(false);
   });
 
   it('keeps a durable Human Request response successful when the exact execution latch remains locked', async () => {

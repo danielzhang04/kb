@@ -12,9 +12,59 @@ import { ManagedSessionBroker } from './broker.ts';
 import { createSubjectBrokerPersistence } from './brokerStore.ts';
 import type { JsonObject } from './types.ts';
 import type { ExecuteRunInput } from './execution.ts';
+import type { SurfaceContext } from '../http/context.ts';
+import { authorizedFailedRunReconciliationGrant, authorizedFailedRunReconciliationRefusal } from './routes.ts';
+import { AuthorizedFailedRunPublishedUncommittedError } from './authorizedFailedRunReconciliation.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
+
+describe('authorized failed-run route grant', () => {
+  function exactContext(liveSession = false): SurfaceContext {
+    const controlBroker = { isRunning: () => liveSession };
+    const rosterSessions = { hasRoster: () => false };
+    const runAutomatic = vi.fn();
+    const cancelAutomatic = vi.fn();
+    const containManagerStart = vi.fn();
+    const verifyCanonicalResult = vi.fn();
+    const wiring = {
+      controlBroker, rosterSessions, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
+    };
+    const executionLatch = {
+      snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z' }),
+      current: () => wiring,
+    };
+    return {
+      executionLatch, controlBroker, rosterSessions, runAutomatic, cancelAutomatic,
+      containManagerStart, verifyCanonicalResult,
+    } as unknown as SurfaceContext;
+  }
+
+  it('refuses a context whose in-place broker identity differs from the captured wiring', () => {
+    const ctx = exactContext();
+    ctx.controlBroker = { isRunning: () => false } as unknown as NonNullable<SurfaceContext['controlBroker']>;
+    expect(authorizedFailedRunReconciliationGrant(ctx, 'operator')).toBeNull();
+  });
+
+  it('refuses an otherwise exact passkey grant while any fixed run session is live', () => {
+    expect(authorizedFailedRunReconciliationGrant(exactContext(true), 'operator')).toBeNull();
+  });
+
+  it('reports a published-but-unfinalized settlement as its own code, never as a refusal', () => {
+    const published = authorizedFailedRunReconciliationRefusal(
+      new AuthorizedFailedRunPublishedUncommittedError('a'.repeat(40), new Error('control-plane commit failed')),
+    );
+    expect(published.error).toBe('authorized-failed-run-reconciliation-published-uncommitted');
+    expect(published.detail).toMatch(/published on origin\/ops/);
+    expect(published.detail).toMatch(/re-invoke/);
+    // Nothing internal leaks, and a genuine refusal keeps its own code.
+    expect(published.detail).not.toMatch(/control-plane commit failed/);
+    expect(authorizedFailedRunReconciliationRefusal(new Error('a proof did not hold'))).toEqual({
+      error: 'authorized-failed-run-reconciliation-refused',
+      detail: 'a required reconciliation safety proof did not hold',
+    });
+  });
+});
 
 const proposal: PlanProposal = {
   schema: 'kb.plan-proposal/v1', proposalId: 'control-route', project: 'kb-ops', title: 'Control route',
@@ -108,6 +158,31 @@ describe('control proposal routes', () => {
   });
 
   afterEach(async () => app.close());
+
+  it('refuses every non-exact historical reconciliation body before any audit, proposal, or filesystem runner', async () => {
+    const base = {
+      expectedRunVersion: 7, expectedManagerGeneration: 1, expectedRequestRevision: 2, expectedNextEventCursor: 6,
+      expectedProposalHash: '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9',
+      idempotencyKey: 'reconcile:2026-08-01:run-0aa72053-b9d7-41fa-a034-19871b66d214:failed-launch:v7',
+    };
+    for (const body of [
+      { ...base, unexpected: true },
+      { ...base, expectedRunVersion: 8 },
+      { ...base, expectedManagerGeneration: 2 },
+      { ...base, expectedRequestRevision: 3 },
+      { ...base, expectedNextEventCursor: 7 },
+      { ...base, expectedProposalHash: 'f'.repeat(64) },
+      { ...base, idempotencyKey: 'different-key' },
+    ]) {
+      const response = await app.inject({
+        method: 'POST', url: '/api/control/recovery/2026-08-01/failed-run-reconciliation', headers: headers(token), payload: body,
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({ error: 'authorized-failed-run-reconciliation-cas-mismatch' });
+    }
+    expect(auditRows).toEqual([]);
+    expect(routingWrites).toEqual([]);
+  });
 
   function mockCompletionGate() {
     const request = {
