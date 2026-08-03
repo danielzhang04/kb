@@ -1,0 +1,319 @@
+{
+  "schema": "tranche-b-selection-plan/v1",
+  "planning_only": true,
+  "video": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh",
+  "source_snapshot": {
+    "target_universe": 142,
+    "tranche_a_completed": 27,
+    "verified_free": ["L45", "L116", "L143"],
+    "word_sync_reserved": ["L02", "L03", "L197"],
+    "eligible_pool": 109,
+    "forge_command": "py -3 orgs/faceless-youtube/.claude/skills/image-generation/scripts/forge.py batch --kit orgs/faceless-youtube/channels/the-second-take/visual-kit --batch orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json --out C:\\NUL",
+    "forge_result": "exit 1 after the expected SEEDING-LAW report; its full seed slate was parsed without persisting output"
+  },
+  "selection": {
+    "selected_ids": [
+      "L05", "L06", "L07", "L08", "L09", "L17", "L18", "L25", "L31", "L32", "L33", "L36", "L46", "L47", "L51", "L52", "L53", "L54", "L63", "L70", "L71", "L72", "L73", "L83", "L102", "L112", "L114", "L196"
+    ],
+    "count": 28,
+    "strata": {
+      "recurring_place_heads": 6,
+      "standalone_plates": 8,
+      "delta_or_composite_shots": 14,
+      "vpw_repairs": 6
+    },
+    "items": [
+      {
+        "id": "L05",
+        "class": ["recurring_place_candidate", "as_authored"],
+        "stage": "pc-store-1983",
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate_candidate", "count": 2, "tier": "2K", "seeds": ["prop-beige-pc", "lettering-marker-italic"]}]
+      },
+      {
+        "id": "L06",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L05"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["_staging/L05.png", "lettering-marker-italic"]}]
+      },
+      {
+        "id": "L07",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L06"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["_staging/L06.png", "crowd-exemplar", "lettering-marker-italic"]}]
+      },
+      {
+        "id": "L08",
+        "class": ["delta_composite", "vpw_anon_foreground_to_crowd"],
+        "parent_edges": ["L07"],
+        "vpw_scope": "Replace the large anonymous counter shopper with a small crowd-tier counter-side participant; retain the handbag-and-banknotes beat, but do not introduce a named cast or a prose-only individual rig.",
+        "gen_plan": [{"kind": "composite_after_vpw", "count": 1, "tier": "2K", "seeds": ["_staging/L07.png", "crowd-exemplar", "lettering-marker-italic"]}]
+      },
+      {
+        "id": "L09",
+        "class": ["standalone_plate", "as_authored"],
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["prop-beige-pc"]}]
+      },
+      {
+        "id": "L17",
+        "class": ["recurring_place_candidate", "vpw_anon_foreground_to_crowd"],
+        "stage": "storefront-brawl",
+        "parent_edges": [],
+        "vpw_scope": "Restage the two anonymous large foreground rivals as a small crowd-tier tug tableau around the unbranded computer. Remove the separate anonymous body descriptions and their individual rig claim; no named cast is needed for this analogy beat.",
+        "gen_plan": [{"kind": "plate_candidate_after_vpw", "count": 2, "tier": "2K", "seeds": ["crowd-exemplar", "prop-beige-pc"]}]
+      },
+      {
+        "id": "L18",
+        "class": ["delta_composite", "vpw_anon_foreground_to_crowd"],
+        "parent_edges": ["L17"],
+        "vpw_scope": "Carry the repaired crowd-tier tableau from L17; the only change remains the blank modern smartphone replacing the computer.",
+        "gen_plan": [{"kind": "composite_after_vpw", "count": 1, "tier": "2K", "seeds": ["_staging/L17.png", "crowd-exemplar"]}]
+      },
+      {
+        "id": "L25",
+        "class": ["standalone_plate", "as_authored"],
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["PLATE"]}]
+      },
+      {
+        "id": "L31",
+        "class": ["recurring_place_candidate", "as_authored"],
+        "stage": "cash-stack",
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate_candidate", "count": 2, "tier": "2K", "seeds": ["fig-miniscribe-rep--action-powerstance--expr-smug (REUSED from tranche A)"]}]
+      },
+      {
+        "id": "L32",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L31"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["miniscribe-rep", "_staging/L31.png", "action-powerstance", "expr-smug", "lettering-marker-italic"]}]
+      },
+      {
+        "id": "L33",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L32"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["miniscribe-rep", "_staging/L32.png", "action-powerstance", "expr-smug", "lettering-marker-italic"]}]
+      },
+      {
+        "id": "L36",
+        "class": ["standalone_plate", "as_authored"],
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["PLATE"]}]
+      },
+      {
+        "id": "L46",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L45 (verified-free dogfood frame)"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["hq-banker", "_staging/L45.png", "action-armscrossed", "expr-deadpan"]}]
+      },
+      {
+        "id": "L47",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L46"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["hq-banker", "_staging/L46.png", "action-offering", "expr-smug"]}]
+      },
+      {
+        "id": "L51",
+        "class": ["standalone_plate", "as_authored"],
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["fig-qt-wiles--action-armscrossed--expr-smug (REUSED from tranche A)"]}]
+      },
+      {
+        "id": "L52",
+        "class": ["recurring_place_candidate", "as_authored"],
+        "stage": "doctor-fixit-clinic",
+        "parent_edges": [],
+        "gen_plan": [
+          {"kind": "step1_figure", "name": "fig-qt-wiles--hold-paper-by-sides--expr-smug", "count": 1, "tier": "1K", "seeds": ["qt-wiles", "expr-smug", "hold-paper-by-sides"]},
+          {"kind": "step1_figure", "name": "fig-miniscribe-rep--expr-worried", "count": 1, "tier": "1K", "seeds": ["miniscribe-rep", "expr-worried"]},
+          {"kind": "plate_candidate", "count": 2, "tier": "2K", "seeds": ["_staging/fig-qt-wiles--hold-paper-by-sides--expr-smug.png", "_staging/fig-miniscribe-rep--expr-worried.png"]}
+        ]
+      },
+      {
+        "id": "L53",
+        "class": ["delta_composite", "vpw_over_cap_restage"],
+        "parent_edges": ["L52"],
+        "vpw_scope": "Keep the clinic continuity and the one added dish, but replace the six-seed current slate with the two already-resolved STEP-1 figures plus the parent plate (three seeds).",
+        "gen_plan": [{"kind": "composite_after_vpw", "count": 1, "tier": "2K", "seeds": ["_staging/fig-qt-wiles--hold-paper-by-sides--expr-smug.png", "_staging/fig-miniscribe-rep--expr-worried.png", "_staging/L52.png"]}]
+      },
+      {
+        "id": "L54",
+        "class": ["delta_composite", "vpw_over_cap_restage"],
+        "parent_edges": ["L53"],
+        "vpw_scope": "Keep the clinic continuity and the chart-only delta; retain the same two resolved figures and parent plate, never the redundant canonical, pose, and expression seeds.",
+        "gen_plan": [{"kind": "composite_after_vpw", "count": 1, "tier": "2K", "seeds": ["_staging/fig-qt-wiles--hold-paper-by-sides--expr-smug.png", "_staging/fig-miniscribe-rep--expr-worried.png", "_staging/L53.png"]}]
+      },
+      {
+        "id": "L63",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L61 (verified tranche-A frame)"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["qt-wiles", "brick-foreman", "_staging/L61.png", "expr-deadpan"]}]
+      },
+      {
+        "id": "L70",
+        "class": ["recurring_place_candidate", "as_authored"],
+        "stage": "quota-room",
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate_candidate", "count": 2, "tier": "2K", "seeds": ["PLATE"]}]
+      },
+      {
+        "id": "L71",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L70"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["_staging/L70.png"]}]
+      },
+      {
+        "id": "L72",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L71"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["_staging/L71.png"]}]
+      },
+      {
+        "id": "L73",
+        "class": ["delta_composite", "as_authored"],
+        "parent_edges": ["L72"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["_staging/L72.png", "crowd-exemplar"]}]
+      },
+      {
+        "id": "L83",
+        "class": ["standalone_plate", "as_authored"],
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["fig-auditor-rep--hold-paper-by-sides--expr-skeptical (REUSED from tranche A)"]}]
+      },
+      {
+        "id": "L102",
+        "class": ["standalone_plate", "as_authored"],
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["PLATE"]}]
+      },
+      {
+        "id": "L112",
+        "class": ["standalone_plate", "as_authored"],
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["PLATE"]}]
+      },
+      {
+        "id": "L114",
+        "class": ["standalone_plate", "as_authored"],
+        "parent_edges": [],
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["PLATE"]}]
+      },
+      {
+        "id": "L196",
+        "class": ["recurring_place_candidate", "vpw_prose_vs_seed_cut"],
+        "stage": "defense-vs-testimony",
+        "parent_edges": [],
+        "vpw_scope": "Keep the `surrender` pose seed and delete the competing prose that specifies both palms raised/open. The later word-sync edit changes L197/L198, not this stage-head candidate batch.",
+        "gen_plan": [
+          {"kind": "step1_figure", "name": "fig-qt-wiles--surrender--expr-pleading", "count": 1, "tier": "1K", "seeds": ["qt-wiles", "expr-pleading", "surrender"]},
+          {"kind": "plate_candidate_after_vpw", "count": 2, "tier": "2K", "seeds": ["_staging/fig-qt-wiles--surrender--expr-pleading.png"]}
+        ]
+      }
+    ]
+  },
+  "leg_0_tranche_a_parked_repairs": [
+    {
+      "id": "L28",
+      "kind": "retry_overlay_place_anchor_composite",
+      "count": 1,
+      "tier": "2K",
+      "parent_edges": ["L27 (approved anchor)"],
+      "seeds": ["fig-miniscribe-rep--action-powerstance--expr-smug", "fig-terry-johnson--hold-one-hand--expr-delighted", "assets/scenes/L27.png", "prop-drive"],
+      "repair": "Terry must retain the named-cast eye rig and one-hand drive hold; generate against the approved L27 anchor."
+    },
+    {
+      "id": "L60",
+      "kind": "retry_overlay_place_anchor_composite",
+      "count": 1,
+      "tier": "2K",
+      "parent_edges": ["assets/scenes/L60.png (approved anchor)"],
+      "seeds": ["fig-qt-wiles--action-powerstance--expr-deadpan", "fig-brick-foreman--sit--expr-worried", "assets/scenes/L60.png", "crowd-exemplar"],
+      "repair": "Crowd has visible hair variation rather than an all-bald mass; Wiles is at the table head inside the lamp cone with his gold tie clip visible."
+    },
+    {
+      "id": "L108",
+      "kind": "retry_overlay_composite",
+      "count": 1,
+      "tier": "2K",
+      "parent_edges": ["L107 (repaired tranche-A frame)"],
+      "seeds": ["_staging/L107.png", "crowd-exemplar"],
+      "repair": "Crowd-tier rig only: fewer workers, no invented text."
+    },
+    {
+      "id": "L109",
+      "kind": "retry_overlay_composite",
+      "count": 1,
+      "tier": "2K",
+      "parent_edges": ["L108 (this leg's repaired output)"],
+      "seeds": ["_staging/L108.png", "crowd-exemplar"],
+      "repair": "Chain directly from repaired L108; retain the crowd-tier treatment and no invented text."
+    },
+    {
+      "id": "L161",
+      "kind": "retry_overlay_composite",
+      "count": 1,
+      "tier": "2K",
+      "parent_edges": ["L160 (approved anchor)"],
+      "seeds": ["_staging/L160.png", "crowd-exemplar"],
+      "repair": "Continue the approved L160 composition with a varied-haired crowd, never all bald or all cream."
+    },
+    {
+      "id": "L162",
+      "kind": "retry_overlay_composite",
+      "count": 1,
+      "tier": "2K",
+      "parent_edges": ["L161 (this leg's repaired output)"],
+      "seeds": ["_staging/L161.png", "crowd-exemplar"],
+      "repair": "Same varied-haired crowd continuity; the lantern is visibly raised toward the cabinets."
+    },
+    {
+      "id": "L184",
+      "kind": "full_regen_composite",
+      "count": 1,
+      "tier": "2K",
+      "parent_edges": ["L183 (approved tranche-A courtroom frame)"],
+      "seeds": ["hq-banker", "qt-wiles", "_staging/L183.png", "expr-fear"],
+      "repair": "Regenerate to the authored courtroom prompt; the ghostly silhouette is explicitly Wiles."
+    }
+  ],
+  "closure": {
+    "method": "Parsed every forge seed slate token named _staging/Lnn.png as a parent edge. A selected parent is either selected in this tranche or an explicitly verified frame.",
+    "selected_parent_edges": ["L05->L06", "L06->L07", "L07->L08", "L17->L18", "L31->L32", "L32->L33", "L45(verified)->L46", "L46->L47", "L52->L53", "L53->L54", "L61(verified tranche A)->L63", "L70->L71", "L71->L72", "L72->L73"],
+    "closure_missing": 0
+  },
+  "vpw_workload": {
+    "not_yet_repaired_before_word_sync_exclusion": 26,
+    "word_sync_reserved": ["L02", "L03", "L197"],
+    "non_word_sync_remaining": 23,
+    "in_scope": ["L08", "L17", "L18", "L53", "L54", "L196"],
+    "in_scope_count": 6,
+    "left_after_b": ["L19", "L20", "L21", "L22", "L34", "L93", "L115", "L123", "L133", "L144", "L163", "L169", "L170", "L179", "L199", "L200", "L201"],
+    "left_after_b_count": 17
+  },
+  "cost": {
+    "rates_usd": {"step1_figure_1k": 0.039, "plate_or_composite_2k": 0.134, "contingency_rate": 0.15},
+    "line_items": [
+      {"line": "STEP-1 figures", "count": 3, "rate": 0.039, "subtotal": 0.117},
+      {"line": "Recurring-place candidates (6 places x 2)", "count": 12, "rate": 0.134, "subtotal": 1.608},
+      {"line": "Standalone plates", "count": 8, "rate": 0.134, "subtotal": 1.072},
+      {"line": "Selected deltas/composites", "count": 14, "rate": 0.134, "subtotal": 1.876},
+      {"line": "Leg 0 parked-repair gens", "count": 7, "rate": 0.134, "subtotal": 0.938}
+    ],
+    "total_gens": 44,
+    "subtotal": 5.611,
+    "contingency_15pct": 0.84165,
+    "total_with_contingency": 6.45265,
+    "recommended_sub_cap": 6.5,
+    "remainder_budget_b_to_e": 25.0,
+    "remainder_after_recommended_b": 18.5,
+    "crowds_remainder_budget": false
+  },
+  "left_for_c_d_e": {
+    "nominal_eligible_pool_count": 81,
+    "sequencable_before_final_word_sync_count": 80,
+    "ids": ["L01", "L12", "L13", "L14", "L15", "L16", "L19", "L20", "L21", "L22", "L34", "L35", "L39", "L40", "L64", "L65", "L80", "L81", "L82", "L85", "L86", "L87", "L88", "L89", "L90", "L93", "L97", "L98", "L99", "L103", "L104", "L105", "L115", "L117", "L118", "L119", "L122", "L123", "L126", "L127", "L128", "L129", "L130", "L131", "L133", "L136", "L137", "L138", "L144", "L146", "L147", "L148", "L152", "L153", "L154", "L155", "L156", "L157", "L158", "L163", "L169", "L170", "L171", "L172", "L173", "L174", "L175", "L179", "L180", "L181", "L182", "L192", "L193", "L194", "L199", "L200", "L201", "L206", "L207", "L208"],
+    "defer_to_final_word_sync": ["L02", "L03", "L197", "L198"],
+    "note": "L198 is nominally eligible, but its current forge parent is L197. Keep it with the three word-sync edits so no C/D/E tranche relies on an unverified reserved parent."
+  }
+}

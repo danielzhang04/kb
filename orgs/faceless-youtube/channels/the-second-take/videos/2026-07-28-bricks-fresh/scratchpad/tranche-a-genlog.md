@@ -96,3 +96,10 @@ All reviewed attempts below were materialized to `assets/scenes/` for the Gate-2
 - Hash-verified the human picks into the canonical scene folder: `L26-cand-a → L26`, `L49-retry-b → L49`, `L66-retry-b → L66`, `L100-retry-b → L100`, `L107-cand-b → L107`, `L160-cand-a → L160`, `L183-cand-b → L183`, `L78-channel-style-v3 → L78`, and `L190-A-128-million → L190`.
 - Hash-verified the clean standalone repairs `L91` and `L215` into canonical. `L205` remains parked on its latest reviewed retry because both available attempts show fifteen tally strokes rather than the authored three.
 - Final Tranche-A Gate-2 stamp: **17 verified / 10 parked** across all 27 tranche shots.
+
+## Daniel parked rulings — 2026-08-03
+
+- Accepted as shown on the review board: L67 (oversized foreground crowd), L68 (oversized crowd and missed shut-door delta), and L205 (canonical `assets/scenes/L205.png` pixels).
+- Still parked: L28 — Terry Johnson is NAMED CAST, not a crowd rig; crowd-tier dot eyes are the defect; named-cast eye-rig retry. L60 — additional defect: the crowd is entirely bald. L108/L109 — rig very off and too many people; crowd count must come down. L161/L162 — very different from approved L160 place and base rig; crowd all bald/cream, with hair variation missing. L184 — completely wrong; full regen, courtroom and Wiles ghost anchored to L183.
+- Accepted-pixel SHA-256: `L205.png` `53939fd9afa23f3a2f9c7a12062d028920c956459d4f04670d121ff91a7fe328`; `L67.png` `4aaaa72d225ef2847cb9efa057bd7939b2ee2126b54c98c65ba03b25b88573e6`; `L68.png` `1383d2a6f2a9fcd22dc5a724f62052464b87a10ff7b35a327bb3d55e5d01ac3f`.
+- Resulting Tranche-A stamp: **20 verified / 7 parked** across all 27 tranche shots (L26 carried-forward verified; parked: L28, L60, L108, L109, L161, L162, L184).

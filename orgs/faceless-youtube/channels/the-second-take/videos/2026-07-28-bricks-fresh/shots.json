@@ -166,19 +166,15 @@
         ],
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "The same shop interior, same locked framing: the beige computer half-buried in its prised-open crate on the felt plinth, the street crowd pressed three deep against the front window, pine shelving, terrazzo floor, '1983' lettered on the card propped square to camera on the counter. Only this changes: the shopper at the counter, a large foreground figure in a boxy pastel blazer, now stands `hold-both-hands` gripping a fat handbag upended and emptied over the counter top, one solid banded slab of banknotes already landed square on the counter top below it; everything else exactly as established.",
-        "figures": {
-          "anon_foreground": [
-            "the shopper at the counter"
-          ],
-          "crowd": true
-        },
-        "notes": "'1983' re-quoted per L-1. [F-28] The shopper has no slug and does not recur, so it is declared per shot rather than minted as cast.",
-        "assets": {
-          "hold-both-hands": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
-          "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-          "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-        }
+      "still_prompt": "The same shop interior, same locked framing: the beige computer half-buried in its prised-open crate on the felt plinth, the street crowd pressed three deep against the front window, pine shelving, terrazzo floor, '1983' lettered on the card propped square to camera on the counter. Only this changes: a small, varied-haired crowd of late-1980s shoppers now clusters at the counter at crowd scale; one counter-side shopper holds a fat handbag tipped over the counter top, with one solid banded slab of banknotes already landed squarely below it; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "'1983' re-quoted per L-1. [F-28] The counter-side shopper is part of the crowd-scale, varied-haired purchase rush; this analogy beat has no story-bearing individual to mint as cast.",
+      "assets": {
+        "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+      }
       },
       {
         "id": "L09",
@@ -320,19 +316,14 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "The rival stage-left, a heavy-set large foreground figure with dark swept-back hair in a charcoal double-breasted suit, and the rival stage-right, a lean balding large foreground figure in a pale-grey single-breasted suit, face each other in `action-tugofwar` on the pavement directly in front of the little computer shop, both `expr-annoyed`, each gripping one end of a single oversized beige home computer held taut between them at chest height with a full stride of pavement between their front feet. The shop's pine-framed window and open door sit behind them, mid-morning daylight, kerb and gutter in the immediate foreground. Palette is charcoal, oatmeal and warm pine. Wide flat side-on medium at chest height so both figures and the stretched machine read as one horizontal line; depth reads kerb foreground, the two figures and the machine mid-ground, shopfront background. Every shop and window sign is blank and unlettered.",
-        "figures": {
-          "anon_foreground": [
-            "The rival stage-left",
-            "The rival stage-right"
-          ]
-        },
-        "notes": "Two figures in physical interaction, under the >3-in-interaction high-risk threshold. The two bodies are separated on build, hair AND garment cut as well as suit tone, not on value alone, so neither can bleed into the other and so the style-bible 2e give-each-figure-its-own-outfit expansion is not contradicted by the prose.",
-        "assets": {
-          "action-tugofwar": "channels/the-second-take/visual-kit/refs/base/action-tugofwar.png",
-          "expr-annoyed": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
-          "prop-beige-pc": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png"
-        }
+      "still_prompt": "A small, varied-haired crowd of late-1980s shoppers forms a crowd-scale tug tableau on the pavement directly in front of the little computer shop: two crowd participants hold opposite ends of one oversized beige home computer taut at chest height, with a full stride of pavement separating them. The shop's pine-framed window and open door sit behind them, mid-morning daylight, kerb and gutter in the immediate foreground. Palette is charcoal, oatmeal and warm pine. Wide flat side-on medium at chest height makes the stretched machine the horizontal centre; depth reads kerb foreground, crowd and machine mid-ground, shopfront background. Every shop and window sign is blank and unlettered.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The computer-company rivalry is an analogy, not a story-bearing identity beat: the participants stay crowd-scale, with varied hair and late-1980s dress; no anonymous foreground body is authored.",
+      "assets": {
+        "prop-beige-pc": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png"
+      }
       },
       {
         "id": "L18",
@@ -347,18 +338,11 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same pavement tug-of-war outside the little computer shop, same locked framing: the heavy-set dark-haired rival stage-left in his charcoal double-breasted suit and the lean balding rival stage-right in his pale-grey single-breasted one, both `expr-annoyed` and both in `action-tugofwar`, a full stride of pavement between their front feet, pine-framed shopfront behind, kerb in the foreground, mid-morning daylight, charcoal and oatmeal against warm pine, every shop and window sign blank and unlettered. Only this changes: the object held taut between their hands is now a single oversized glossy black modern smartphone, its cold-white screen turned to the viewer and completely blank, in place of the beige computer; everything else exactly as established.",
-        "figures": {
-          "anon_foreground": [
-            "the heavy-set dark-haired rival stage-left",
-            "the lean balding rival stage-right"
-          ]
-        },
-        "notes": "The anachronistic object IS the simile — no brand marks, no lettering. THE RULE, stated once for the file: a company that is a party to the story's own transactions is lettered on a diegetic surface (IBM at L30, Compaq at L34, both in the ledger as MiniScribe's customers [F-29]); a company invoked only as an ANALOGY (Apple and Samsung here, Reddit at L36) is never lettered, because putting a brand on screen the story never transacted with is the image extending the VO. Screen authored completely blank (schema 4 resolution 3).",
-        "assets": {
-          "expr-annoyed": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
-          "action-tugofwar": "channels/the-second-take/visual-kit/refs/base/action-tugofwar.png"
-        }
+      "still_prompt": "The same pavement crowd-scale tug tableau outside the little computer shop, same locked framing: a small, varied-haired crowd of late-1980s shoppers, two crowd participants holding opposite ends of the contested object at chest height with a full stride of pavement between them, pine-framed shopfront behind, kerb in the foreground, mid-morning daylight, charcoal and oatmeal against warm pine, every shop and window sign blank and unlettered. Only this changes: the object held taut between the two participants is now a single oversized glossy black modern smartphone, its cold-white screen turned to the viewer and completely blank, in place of the beige computer; everything else exactly as established.",
+      "figures": {
+        "crowd": true
+      },
+      "notes": "The anachronistic object IS the simile — no brand marks or lettering. Apple and Samsung are analogy-only names, never diegetic brands; the smartphone screen is deliberately blank. The crowd tableau carries forward with varied hair and no anonymous foreground body."
       },
       {
         "id": "L19",
@@ -623,12 +607,10 @@
         ],
         "shot_class": "number-glued-to-object",
         "source": "ai-gen",
-        "still_prompt": "The same plant-office floor, same locked framing: `miniscribe-rep` (`expr-smug`, `action-powerstance`) on top of the stack of four shrink-wrapped cash bales widening as it rises, grey office wall with its high window, the metal desk stage-left, cool daylight from stage-right, banknote green and warm tan against office grey. Only this changes: the plain paper band round the lowest bale is now lettered '125 MILLION'; everything else exactly as established.",
-        "notes": "[F-26, F-28] MiniScribe's 1984 revenue high of about $125M. Supplied literal '125 MILLION' (2 words), word form preferred over a punctuated numeral (lettering law L-4). It is the delta's one change and sits as the final clause.",
+        "still_prompt": "The same plant-office floor, same locked framing: `miniscribe-rep` on top of the stack of four shrink-wrapped cash bales widening as it rises, grey office wall with its high window, the metal desk stage-left, cool daylight from stage-right, banknote green and warm tan against office grey. Only this changes: the plain paper band round the lowest bale is now lettered '125 MILLION'; everything else exactly as established.",
+        "notes": "[F-26, F-28] MiniScribe's 1984 revenue high of about $125M. Supplied literal '125 MILLION' (2 words), word form preferred over a punctuated numeral (lettering law L-4). It is the delta's one change and sits as the final clause. The carried `expr-smug` and `action-powerstance` are not re-authored because neither changes on this delta; the canonical plus L31 parent preserve the established pose and expression within the cap.",
         "assets": {
           "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
           "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
         }
       },
@@ -645,12 +627,10 @@
         ],
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "The same plant-office floor, same locked framing: the stack of shrink-wrapped cash bales widening as it rises with '125 MILLION' lettered on the lowest bale's paper band, grey office wall, high window, metal desk stage-left, cool daylight, banknote green and warm tan against office grey. Only this changes: the stack has grown into a tower whose topmost bale sits just under the frame's upper edge, bale on bale, with `miniscribe-rep` (`expr-smug`, `action-powerstance`) now tiny on that distant summit; everything else exactly as established.",
-        "notes": "'125 MILLION' re-quoted verbatim in the same case per lettering law L-1 — this delta redraws that band, and it was deliberately placed on the LOWEST bale at L31 so a growing tower cannot carry it out of frame. [F-28] the 1988 peak.",
+        "still_prompt": "The same plant-office floor, same locked framing: the stack of shrink-wrapped cash bales widening as it rises with '125 MILLION' lettered on the lowest bale's paper band, grey office wall, high window, metal desk stage-left, cool daylight, banknote green and warm tan against office grey. Only this changes: the stack has grown into a tower whose topmost bale sits just under the frame's upper edge, bale on bale, with `miniscribe-rep` now tiny on that distant summit; everything else exactly as established.",
+        "notes": "'125 MILLION' re-quoted verbatim in the same case per lettering law L-1 — this delta redraws that band, and it was deliberately placed on the LOWEST bale at L31 so a growing tower cannot carry it out of frame. [F-28] the 1988 peak. The carried `expr-smug` and `action-powerstance` are not re-authored because neither changes on this delta; the canonical plus L32 parent preserve the established pose and expression within the cap.",
         "assets": {
           "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
           "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
         }
       },
@@ -995,15 +975,13 @@
         "synthetic": false,
         "vo_ref": "Instead of shitting on your risotto,",
         "vo_text": "Instead of shitting on your risotto,",
-        "stage": "doctor-fixit-clinic",
-        "stage_role": "delta",
-        "changed_elements": [
-          "+ a plated dish sits pushed aside, untouched, on a rolling tray"
-        ],
+      "stage": "doctor-fixit-clinic-dish",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L52.png",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same clinic room, same locked framing: `qt-wiles` (`expr-smug`, `hold-paper-by-sides`) beside the table, `miniscribe-rep` (`expr-worried`) lying under the paper drape, the exam lamp, pale clinic-green walls, the instruments tray. Only this changes: a single plated dish of food now sits pushed to the far edge of a rolling side tray, untouched and cooling, well clear of the table; everything else exactly as established.",
-        "notes": "The restaurant-critique half of the joke handled by the dish's presence and neglect, never the profanity itself — analysis, not the word.",
+      "still_prompt": "`qt-wiles`, in his steel-grey suit, stands `expr-smug`, `hold-paper-by-sides`, beside the raised examination table in the same plain clinic room. `miniscribe-rep` (`expr-worried`) lies flat under the paper drape, with the overhead exam lamp, pale clinic-green walls, and wheeled instruments tray held exactly from the approved place. A single plated dish of food sits pushed to the far edge of a rolling side tray, untouched and cooling, well clear of the table.",
+      "notes": "Rebased over approved L52 so the two resolved STEP-1 figures and clinic plate are the complete three-seed slate. The restaurant-critique half of the joke is handled by the dish's presence and neglect, never the profanity itself — analysis, not the word.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
@@ -1018,15 +996,13 @@
         "synthetic": false,
         "vo_ref": "he's reading your quarterly statements.",
         "vo_text": "he's reading your quarterly statements.",
-        "stage": "doctor-fixit-clinic",
-        "stage_role": "delta",
-        "changed_elements": [
-          "hold-paper-by-sides now holds a clipboard chart with a red line plunging across it"
-        ],
+      "stage": "doctor-fixit-clinic-chart",
+      "stage_role": "base",
+      "place_anchor": "assets/scenes/L53.png",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same clinic room, same locked framing: `qt-wiles` (`expr-smug`) beside the table, `miniscribe-rep` (`expr-worried`) under the drape, the pushed-aside dish on the tray, the exam lamp, pale clinic-green walls. Only this changes: the paper he holds is now a hospital-style clipboard chart, one jagged red #d7402b line plunging steeply across its grid from top-left to bottom-right; everything else exactly as established.",
-        "notes": "The chart's plunging line carries the beat without a supplied number — a heart-rate readout standing in for a quarterly figure.",
+      "still_prompt": "`qt-wiles`, in his steel-grey suit, stands `expr-smug`, `hold-paper-by-sides`, beside the raised examination table in the same plain clinic room. `miniscribe-rep` (`expr-worried`) lies flat under the paper drape, with the pushed-aside dish on the rolling tray, the overhead exam lamp, and pale clinic-green walls held exactly from the approved place. The paper Wiles holds is a hospital-style clipboard chart with one jagged red #d7402b line plunging steeply across its blank grid from top-left to bottom-right.",
+      "notes": "Rebased over approved L53 so the same two resolved STEP-1 figures and clinic plate remain the complete three-seed slate. The chart's plunging line carries the beat without a supplied number — a heart-rate readout standing in for a quarterly figure.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
@@ -1197,19 +1173,23 @@
         "synthetic": false,
         "vo_ref": "Miss them, and your head was on the chopping block.",
         "vo_text": "Miss them, and your head was on the chopping block.",
-        "stage": "fear-boardroom",
-        "stage_role": "delta",
-        "changed_elements": [
-          "+ a wooden chopping block and cleaver at the table's far end, one chair pushed back"
-        ],
+        "stage": "fear-boardroom-chopping-block",
+        "stage_role": "base",
+        "place_anchor": "assets/scenes/L61.png",
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "The same shadowed boardroom, same locked framing: the archery target behind `qt-wiles` (`expr-deadpan`), `brick-foreman` with his envelope, the seated crowd, the harsh lamp cone. Only this changes: at the table's far end an ordinary wooden chopping block now sits with a plain cleaver laid flat across it, the chair that faced it pushed back and empty; everything else exactly as established.",
-        "notes": "The idiom drawn literally but bloodless — an empty chair and a still cleaver, analysis not gore.",
+        "figures": {
+          "crowd": true
+        },
+        "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`action-powerstance`, `expr-deadpan`) stands at the head of the long shadowed boardroom table beneath one harsh lamp cone. `brick-foreman` (`sit`, `expr-worried`) sits tense at the near end while a varied-haired seated crowd ranks down the table; the plain archery target remains mounted on the dark wall behind Wiles. Palette is near-black shadow and hard white light. Wide framing at table height holds the lit table as one bright line; depth reads table foreground, seated figures mid-ground, Wiles and target background. At the table's far end, an ordinary wooden chopping block holds a plain cleaver laid flat across it, and the chair that faced it is pushed back and empty.",
+        "notes": "Re-based as a new anchored stage over verified L61 after L62's interleaved bonus tableau; it does not claim a non-contiguous delta. The idiom is drawn literally but bloodless — an empty chair and a still cleaver, analysis not gore.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
-          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+          "sit": "channels/the-second-take/visual-kit/refs/base/sit.png",
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png"
         }
       },
       {
@@ -3494,8 +3474,8 @@
         "stage_role": "base",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, `expr-pleading`, `surrender`, stands stage-left at a witness stand, both palms raised open toward the room in a blameless gesture. A tall blank wall fills the frame behind him, otherwise bare. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at stand height with Wiles occupying the near half of the frame, the bare wall filling the far half.",
-        "notes": "The bare far half of the wall is left deliberately empty, awaiting the delta's testimony crowd.",
+      "still_prompt": "`qt-wiles`, `expr-pleading`, `surrender`, stands stage-left at a witness stand, facing the room in a blameless defense. A tall blank wall fills the frame behind him, otherwise bare. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at stand height with Wiles occupying the near half of the frame, the bare wall filling the far half.",
+      "notes": "The `surrender` pose is the sole authoring of Wiles's defense posture. The bare far half of the wall is left deliberately empty, awaiting the delta's testimony crowd.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-pleading": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
