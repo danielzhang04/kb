@@ -447,9 +447,11 @@ def test_a_place_anchor_cannot_escape_through_a_windows_junction_or_posix_symlin
                 os.rmdir(linked) if os.name == "nt" else os.unlink(linked)
 
 
-def _retry(shots_path, out, overlay):
+def _retry(shots_path, out, overlay, staged=None):
     k = Kit(str(KIT_DIR), dry=True)
     k.staging = os.path.join(tempfile.mkdtemp(), "_staging"); os.makedirs(k.staging)
+    for name, data in (staged or {}).items():
+        open(os.path.join(k.staging, name), "wb").write(data)
     overlay_path = os.path.join(os.path.dirname(shots_path), "retry-overlay.json")
     json.dump(overlay, open(overlay_path, "w", encoding="utf-8"))
     try:
@@ -495,6 +497,78 @@ def test_retry_overlay_derives_duplicate_scenes_and_one_step1_only_request():
     step = spec[-1]
     assert step["name"].startswith("fig-") and "T02" not in [r["name"] for r in spec], spec
     assert "Both visible hands are open and empty." in step["delta"], step["delta"]
+
+
+def test_retry_overlay_accepts_its_verified_video_local_place_anchor():
+    v, shots, out = _retry_fixture()
+    scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
+    open(os.path.join(scenes, "T00.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
+    json.dump({"video_slug": "retry-t", "shots": [{
+        "shot_id": "T00", "file": "assets/scenes/T00.png", "review_status": "verified"
+    }]}, open(os.path.join(scenes, "manifest.json"), "w", encoding="utf-8"))
+    doc = json.load(open(shots, encoding="utf-8"))
+    doc["long_form"]["shots"][0]["place_anchor"] = "assets/scenes/T00.png"
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+        {"kind": "scene", "shot": "T01", "name": "T01-anchor-retry",
+         "instruction": "Keep workers small while preserving the approved place."}
+    ]}
+    spec, err = _retry(shots, out, overlay)
+    assert err is None, err
+    assert any(str(s).replace("\\", "/").endswith("assets/scenes/T00.png")
+               for s in spec[0]["seed"]), spec[0]["seed"]
+
+
+def test_retry_overlay_still_rejects_a_nonverified_video_scene_frame():
+    v, shots, out = _retry_fixture()
+    scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
+    open(os.path.join(scenes, "T00.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
+    json.dump({"video_slug": "retry-t", "shots": [{
+        "shot_id": "T00", "file": "assets/scenes/T00.png", "review_status": "parked"
+    }]}, open(os.path.join(scenes, "manifest.json"), "w", encoding="utf-8"))
+    overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+        {"kind": "scene", "shot": "T01", "name": "T01-stale-retry",
+         "instruction": "Keep workers small.", "prepend_seeds": ["assets/scenes/T00.png"]}
+    ]}
+    spec, err = _retry(shots, out, overlay)
+    assert spec is None and "old video scene output" in err and "verified" in err, err
+
+
+def test_retry_overlay_accepts_a_digest_pinned_repaired_predecessor_and_drops_the_stale_parent():
+    for repaired in ("_staging/T01-repair.png", "assets/scenes/T01-repair.png"):
+        v, shots, out = _retry_fixture()
+        scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
+        open(os.path.join(scenes, "T01.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
+        json.dump({"video_slug": "retry-t", "shots": [{
+            "shot_id": "T01", "file": "assets/scenes/T01.png", "review_status": "parked"
+        }]}, open(os.path.join(scenes, "manifest.json"), "w", encoding="utf-8"))
+        doc = json.load(open(shots, encoding="utf-8"))
+        doc["long_form"]["shots"][0].update({"stage": "factory", "stage_role": "base"})
+        doc["long_form"]["shots"][1].update({
+            "stage": "factory", "stage_role": "delta",
+            "still_prompt": "The same factory and locked frame; only the gate is now open."
+        })
+        json.dump(doc, open(shots, "w", encoding="utf-8"))
+        repaired_bytes = b"\x89PNG\r\n\x1a\nrepaired"
+        staged = {"T01-repair.png": repaired_bytes} if repaired.startswith("_staging/") else None
+        if not staged:
+            repaired_path = os.path.join(v, *repaired.split("/"))
+            os.makedirs(os.path.dirname(repaired_path), exist_ok=True)
+            open(repaired_path, "wb").write(repaired_bytes)
+        digest = hashlib.sha256(repaired_bytes).hexdigest()
+        overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+            {"kind": "scene", "shot": "T02", "name": "T02-retry",
+             "instruction": "Continue from the repaired predecessor.",
+             "prepend_seeds": [{"path": repaired, "sha256": digest}]}
+        ]}
+        spec, err = _retry(shots, out, overlay, staged)
+        assert err is None, f"{repaired}: {err}"
+        normalized = [str(s).replace("\\", "/") for s in spec[0]["seed"]]
+        assert any(s.endswith(repaired) for s in normalized), normalized
+        assert not any(s.endswith("assets/scenes/T01.png") for s in normalized), normalized
+        repaired_seed = next(s for s in spec[0]["seed"]
+                             if str(s).replace("\\", "/").endswith(repaired))
+        assert spec[0]["seed_sha256"][repaired_seed] == digest, spec[0]
 
 
 def test_retry_overlay_rejects_unknown_keys_output_collisions_and_old_scene_seeds():

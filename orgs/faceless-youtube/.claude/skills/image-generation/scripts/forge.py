@@ -1004,6 +1004,25 @@ def _dedupe(seq):
     return out
 
 
+def _inside_real(path, root):
+    try:
+        return os.path.commonpath((os.path.realpath(path), os.path.realpath(root))) == os.path.realpath(root)
+    except ValueError:
+        return False
+
+
+def _video_scene_frame(video, candidate, root, name, field):
+    """Resolve one existing frame through the video's real assets/scenes boundary."""
+    scenes = os.path.realpath(os.path.join(video, "assets", "scenes"))
+    path = os.path.realpath(candidate)
+    if not _inside_real(path, scenes):
+        raise SystemExit(f"{name}: {field} must stay inside this video's assets/scenes/, "
+                         "never a cross-video environment reference.")
+    if not os.path.isfile(path):
+        raise SystemExit(f"{name}: {field} frame not found: {os.path.relpath(path, video)}")
+    return os.path.relpath(path, root).replace("\\", "/")
+
+
 def place_anchor_for(video, anchor, root, name):
     """Resolve one human-approved, video-local place frame for a regenerated base.
 
@@ -1016,18 +1035,7 @@ def place_anchor_for(video, anchor, root, name):
     if not isinstance(anchor, str) or not anchor.strip() or os.path.isabs(anchor):
         raise SystemExit(f"{name}: `place_anchor` must be a non-empty video-relative "
                          "`assets/scenes/<approved-frame>.png` path.")
-    scenes = os.path.realpath(os.path.join(video, "assets", "scenes"))
-    path = os.path.realpath(os.path.join(video, anchor))
-    try:
-        inside_scenes = os.path.commonpath((path, scenes)) == scenes
-    except ValueError:
-        inside_scenes = False
-    if not inside_scenes:
-        raise SystemExit(f"{name}: `place_anchor` must stay inside this video's assets/scenes/, "
-                         "never a cross-video environment reference.")
-    if not os.path.isfile(path):
-        raise SystemExit(f"{name}: `place_anchor` frame not found: {anchor}")
-    return os.path.relpath(path, root).replace("\\", "/")
+    return _video_scene_frame(video, os.path.join(video, anchor), root, name, "`place_anchor`")
 
 
 def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candidates=None):
@@ -1206,13 +1214,6 @@ RETRY_OVERLAY_SCHEMA = "faceless-youtube/forge-retry-overlay@1"
 _RETRY_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 
 
-def _inside_real(path, root):
-    try:
-        return os.path.commonpath((os.path.realpath(path), os.path.realpath(root))) == os.path.realpath(root)
-    except ValueError:
-        return False
-
-
 def retry_seed_for(k, video, raw, label):
     """Resolve a retry-owned seed only from this video or its kit, never arbitrary disk."""
     digest = None
@@ -1224,9 +1225,19 @@ def retry_seed_for(k, video, raw, label):
             raise SystemExit(f"{label}: retry seed `sha256` must be a lowercase 64-hex digest.")
     if not isinstance(raw, str) or not raw or os.path.isabs(raw):
         raise SystemExit(f"{label}: retry seed must be a non-empty relative path in this video or kit.")
-    for candidate in (os.path.join(video, raw), os.path.join(k.kit, raw)):
+    normalized = raw.replace("\\", "/")
+    if normalized.startswith("_staging/"):
+        staged_name = normalized.split("/", 1)[1]
+        if (os.path.basename(staged_name) != staged_name or
+                os.path.splitext(staged_name)[1].lower() != ".png" or
+                not _RETRY_NAME.fullmatch(os.path.splitext(staged_name)[0])):
+            raise SystemExit(f"{label}: `_staging/` retry seed must name one direct staged PNG.")
+        candidates = ((os.path.join(k.staging, staged_name), k.staging),)
+    else:
+        candidates = ((os.path.join(video, raw), video), (os.path.join(k.kit, raw), k.kit))
+    for candidate, boundary in candidates:
         resolved = os.path.realpath(candidate)
-        if os.path.isfile(resolved) and (_inside_real(resolved, video) or _inside_real(resolved, k.kit)):
+        if os.path.isfile(resolved) and _inside_real(resolved, boundary):
             return os.path.relpath(resolved, k.root).replace("\\", "/"), digest
     raise SystemExit(f"{label}: retry seed not found inside this video or kit: {raw}")
 
@@ -1260,7 +1271,35 @@ def _is_scene_seed(seed):
     return "/assets/scenes/" in ("/" + str(seed).replace("\\", "/").lstrip("/"))
 
 
-def _retry_scene(item, entry, k, video, label):
+def _scene_review_status(video, seed, root):
+    """Return the manifest review status for this exact video-local scene frame."""
+    path = os.path.realpath(os.path.join(root, seed))
+    rel = os.path.relpath(path, video).replace("\\", "/")
+    manifest_path = os.path.join(video, "assets", "scenes", "manifest.json")
+    try:
+        manifest = json.load(open(manifest_path, encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    for scene in manifest.get("shots", []) if isinstance(manifest, dict) else []:
+        if (isinstance(scene, dict) and str(scene.get("file", "")).replace("\\", "/") == rel):
+            return scene.get("review_status")
+    return None
+
+
+def _repaired_parent_matches(k, video, seed, parent_seeds):
+    """Name-bound repaired frames may replace only the canonical parent they identify."""
+    path = os.path.realpath(os.path.join(k.root, seed))
+    scenes = os.path.join(video, "assets", "scenes")
+    video_staging = os.path.join(video, "_staging")
+    if not (_inside_real(path, scenes) or _inside_real(path, k.staging)
+            or _inside_real(path, video_staging)):
+        return []
+    stem = os.path.splitext(os.path.basename(path))[0]
+    return [parent for parent in parent_seeds
+            if re.fullmatch(re.escape(_stem(parent)) + r"[-.].+", stem)]
+
+
+def _retry_scene(item, source, entry, k, video, label):
     allowed = {"kind", "shot", "name", "instruction", "prepend_seeds", "extra_seeds", "replace"}
     unknown = set(entry) - allowed
     if unknown:
@@ -1282,10 +1321,27 @@ def _retry_scene(item, entry, k, video, label):
         raise SystemExit(f"{label}: `prepend_seeds` and `extra_seeds` must be lists when present.")
     added_first = [retry_seed_for(k, video, s, label) for s in prepend]
     added_last = [retry_seed_for(k, video, s, label) for s in extra]
-    seeds = _dedupe([p for p, _ in added_first] + list(item.get("seed") or []) +
+    native = list(item.get("seed") or [])
+    place_anchor = place_anchor_for(video, source.get("place_anchor"), k.root,
+                                    source.get("id") or entry["shot"])
+    native_scenes = [s for s in native if _is_scene_seed(s) and s != place_anchor]
+    repaired = {}
+    for path, _ in added_first + added_last:
+        matches = _repaired_parent_matches(k, video, path, native_scenes)
+        if matches:
+            repaired[path] = matches
+    replaced = {parent for matches in repaired.values() for parent in matches}
+    seeds = _dedupe([p for p, _ in added_first] + [s for s in native if s not in replaced] +
                     [p for p, _ in added_last])
-    if any(_is_scene_seed(s) for s in seeds):
-        raise SystemExit(f"{label}: fresh retry may not seed an old video scene output.")
+    for seed in (s for s in seeds if _is_scene_seed(s)):
+        checked = _video_scene_frame(video, os.path.join(k.root, seed), k.root, label,
+                                     "retry scene seed")
+        if checked == place_anchor or seed in repaired:
+            continue
+        status = _scene_review_status(video, checked, k.root)
+        if status != "verified":
+            raise SystemExit(f"{label}: fresh retry may not seed an old video scene output unless "
+                             "its manifest `review_status` is `verified`.")
     digest_by_path = {}
     for path, digest in added_first + added_last:
         if digest and path in digest_by_path and digest_by_path[path] != digest:
@@ -1367,7 +1423,7 @@ def cmd_retry_batch(k, shots_path, out_path, retry_path, video_dir=None):
         if entry["kind"] == "scene":
             if shot not in by_name:
                 raise SystemExit(f"{label}: canonical `{shot}` did not emit a scene request.")
-            spec.append(_retry_scene(by_name[shot], entry, k, video, label))
+            spec.append(_retry_scene(by_name[shot], sources[shot], entry, k, video, label))
         else:
             spec.append(_retry_step1(entry, sources[shot], k, label))
     preflight_batch(k, spec, True, True)
