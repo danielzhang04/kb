@@ -307,3 +307,14 @@
   ("not under version control"); use plain `mv` for the freshly-emitted card, `git mv` for
   already-tracked strays.
 - Push path: recorded in the run summary.
+
+## 2026-08-03 nightly run
+- Clean run: preamble PASS, sync_skills --check clean, dashboards regenerated, $0 cost.
+- step 2b `sync_daemon_dirs.py` STILL absent on ops but present on origin/main — run it via
+  `git show origin/main:scripts/sync_daemon_dirs.py > scratchpad/x.py && python x.py --check`
+  (refs-fallback: it diffs origin/main vs origin/ops, needs no working-tree copy). Drift
+  unchanged from 07-31 (same 9 fyt files); already tracked by 6a6c3d8e + 6a605ebb, no dup filed.
+- Two weekly-audit findings now stacked unowned (6a645395 07-25, 6a6d8e1e 08-01) — same root:
+  desktop scheduler dark since 07-22. Surfaced both in Action-required, not just the latest.
+- Halted card 6a6bc3dd still parked in working/ (>48h); archival is outside the nightly
+  carve-out, left for a desk sweep.
