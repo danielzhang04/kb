@@ -56,3 +56,11 @@
   same-user process authored it. When the human accepts same-user cross-agent forgery, document that
   attribution limit precisely; do not say artifact stages establish identity and do not silently grow
   the wave into IPC/accounts/ACL isolation.
+
+## 2026-07-31 — Qualitative behavior corrections need a cold authoring probe
+- A VPW change intended to slightly reduce anonymous character-led shots coupled a useful binary cast rule to “humans are expensive” and figure-share pressure; the resulting full plan swung to 78% cast-free shots, omitted a named founder on his beat, and produced zero stage chains.
+- Root cause: the policy optimized a population proxy instead of selecting the narrative subject, so a local preference became a global bias and masked continuity loss.
+- Next time I will preserve valid structural constraints, replace one-sided population language with a two-sided semantic check, and run a clean 60–90 second authoring slice before paying for a full rerun.
+- Signal to recognize: a sharp population-distribution swing, story-bearing identities hidden behind objects, or recurring settings collapsing to independent frames.
+- Do not add governance prose for isolated shot-taste misses already covered by existing rules; repair execution and collect another sample first.
+
