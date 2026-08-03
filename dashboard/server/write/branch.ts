@@ -342,9 +342,12 @@ export interface PublishPreparedCoordinationCommitOptions {
  */
 export class PublishedCoordinationCommitError extends Error {
   readonly published = true;
-  constructor(readonly commit: string, cause: unknown) {
+  readonly commit: string;
+  // No TS parameter property here: the daemon runs under Node strip-only mode, which rejects them.
+  constructor(commit: string, cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause));
     this.name = 'PublishedCoordinationCommitError';
+    this.commit = commit;
   }
 }
 

@@ -156,9 +156,12 @@ export interface AuthorizedFailedRunReconciliationOutcome {
  * report it as its own state, because telling the operator "refused" here is the opposite of the truth.
  */
 export class AuthorizedFailedRunPublishedUncommittedError extends Error {
-  constructor(readonly canonicalCommit: string, cause: unknown) {
+  readonly canonicalCommit: string;
+  // No TS parameter property here: the daemon runs under Node strip-only mode, which rejects them.
+  constructor(canonicalCommit: string, cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause));
     this.name = 'AuthorizedFailedRunPublishedUncommittedError';
+    this.canonicalCommit = canonicalCommit;
   }
 }
 
