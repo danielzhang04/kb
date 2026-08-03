@@ -537,10 +537,11 @@
         "vo_text": "by a guy named Terry Johnson.",
       "stage": "miniscribe-plant-founder",
       "stage_role": "base",
+      "place_anchor": "assets/scenes/L27.png",
         "shot_class": "personified-character",
         "source": "ai-gen",
-      "still_prompt": "`miniscribe-rep` (`action-powerstance`, `expr-smug`) and `terry-johnson` (`hold-one-hand`, `expr-delighted`) share the head of a pale-green conveyor on a bright MiniScribe plant floor, with a finished steel-grey drive held at chest height between the conveyor's row of four drives. Pale-green machine housings, empty parts trays, and far windows filled by a saw-toothed snow-capped range complete the room. Palette is pale plant green, steel grey, and warm tan. Wide view at chest height square to the belt; depth reads plant apron foreground, the two figures and belt mid-ground, housings and windows background. Every machine housing and parts tray is blank and unlettered.",
-      "notes": "[F-25] Terry Johnson's founder reveal lands on his naming line. Re-based as a fresh two-cast plant tableau: both named figures have inventory pose and expression frames, share eye-line and height, and remain within the fresh two-cast seed slate.",
+      "still_prompt": "`miniscribe-rep` (`action-powerstance`, `expr-smug`) and `terry-johnson` (`hold-one-hand`, `expr-delighted`) share the head of a pale-green conveyor on a bright MiniScribe plant floor. MiniScribe-rep's drive-shaped lapel badge is clearly visible on his jacket. Terry holds one finished steel-grey drive at chest height with exactly one hand; his other hand is visible, open, empty, and not touching the drive. Four more steel-grey drives sit in a row on the conveyor. Pale-green machine housings, empty parts trays, and far windows filled by a saw-toothed snow-capped range complete the room. Palette is pale plant green, steel grey, and warm tan. Wide view at chest height square to the belt; depth reads plant apron foreground, the two figures and belt mid-ground, housings and windows background. Every machine housing and parts tray is blank and unlettered.",
+      "notes": "[F-25] Terry Johnson's founder reveal lands on his naming line. Re-based as a fresh two-cast plant tableau anchored to approved L27: both named figures have inventory pose and expression frames, share eye-line and height, and remain within the fresh two-cast seed slate. The identity badge and one-hand hold are explicit after the first unanchored composite omitted them.",
         "assets": {
           "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
           "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
@@ -1125,13 +1126,14 @@
         "vo_text": "Wiles ran MiniScribe with fear.",
         "stage": "fear-boardroom",
         "stage_role": "base",
+        "place_anchor": "assets/scenes/L60.png",
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
         "still_prompt": "`qt-wiles` (`expr-deadpan`, `action-powerstance`) stands at the head of a long conference table in a bare MiniScribe boardroom, squarely inside one harsh interrogation-style lamp's cone of light hung low above him, the room's edges falling to deep shadow beyond the table. `brick-foreman` (`sit`, `expr-worried`) sits tense at the near end, along with several more seated figures down the table's length, the lamplight reaching just far enough to catch their faces too. Palette is near-black shadow and one harsh white cone. Wide flat framing at table height so the lit table reads as one bright line down a dark room; depth reads table foreground, seated figures mid-ground, Wiles lit at the head, background falling to shadow. Every wall is blank and unlettered.",
         "figures": {
           "crowd": true
         },
-        "notes": "New cast slug `brick-foreman` — a recurring MiniScribe middle manager, the ground-level executor of the escalating fraud across the quota, lockbox, brick, and packing beats. Fear staged as a single interrogation lamp rather than an invented cruelty. REPAIR-WAVE PREP (dogfood slice, r3 law): added the missing backticked `sit` pose for brick-foreman (was bare prose 'sits tense' -- no registry vocabulary name, so forge's STEP-1 frame for him would have carried no pose primitive at all). 2 named cast + crowd, fresh base -- STEP 2 slate is [step-1 qt-wiles, step-1 brick-foreman, crowd-exemplar], no plate (this is the fear-boardroom PLACE-FIRST -> forge batch marks plate:true, 2-3 candidates, human-picked).",
+        "notes": "New cast slug `brick-foreman` — a recurring MiniScribe middle manager, the ground-level executor of the escalating fraud across the quota, lockbox, brick, and packing beats. Fear staged as a single interrogation lamp rather than an invented cruelty. REPAIR-WAVE PREP (dogfood slice, r3 law): added the missing backticked `sit` pose for brick-foreman (was bare prose 'sits tense' -- no registry vocabulary name, so forge's STEP-1 frame for him would have carried no pose primitive at all). 2 named cast + crowd; preserve the human-approved fear-boardroom place with `place_anchor`, then regenerate the composite from [step-1 qt-wiles, step-1 brick-foreman, approved L60 place, crowd-exemplar].",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
@@ -1151,6 +1153,9 @@
         "changed_elements": [
           "+ a plain archery target mounted on the wall behind Wiles"
         ],
+        "figures": {
+          "crowd": true
+        },
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
         "still_prompt": "The same shadowed boardroom, same locked framing: `qt-wiles` at the table's head under the harsh lamp cone, `brick-foreman` and the seated crowd tense down the table. Only this changes: a plain concentric archery target now hangs mounted on the dark wall directly behind Wiles, its rings barely visible in the gloom; everything else exactly as established.",
@@ -1170,6 +1175,7 @@
         "vo_text": "Hit them, and you got a fat bonus.",
       "stage": "fear-boardroom-bonus",
       "stage_role": "base",
+      "place_anchor": "assets/scenes/L60.png",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
       "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`action-offering`, `expr-smug`) faces `brick-foreman` (`hold-both-hands`, `expr-delighted`) across the near end of a long MiniScribe boardroom table. A fat envelope of banknotes rests between them, while a seated crowd of late-1980s office workers ranks down the table beneath one harsh lamp cone. Palette is near-black shadow and hard white light. Wide framing at table height makes the envelope the centre of the line; depth reads table foreground, the two named figures and crowd mid-ground, deep shadow background. Every wall is blank and unlettered.",
@@ -1276,6 +1282,7 @@
         "vo_text": "in the middle of a team meeting and fired them on the spot,",
       "stage": "public-firing-exit",
       "stage_role": "base",
+      "place_anchor": "assets/scenes/L66.png",
         "shot_class": "aftermath-palette-turn",
         "source": "ai-gen",
       "still_prompt": "A shadowed MiniScribe boardroom opens onto its corridor door. Two small crowd-scale office workers in late-1980s shirtsleeves carry plain cardboard boxes through the doorway while a seated crowd remains ranked at the conference table behind them. One harsh lamp cone cuts across the near table, with the corridor falling to shadow beyond the open door. Palette is near-black, hard white light, and cardboard tan. Wide framing at table height makes the open door and departing workers the payload; depth reads table foreground, crowd mid-ground, doorway background.",
@@ -1296,6 +1303,7 @@
         "vo_text": "just to show everyone who was in control.",
       "stage": "public-firing-command",
       "stage_role": "base",
+      "place_anchor": "assets/scenes/L67.png",
         "shot_class": "personified-character",
         "source": "ai-gen",
       "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`action-armscrossed`, `expr-smug`) commands the head of a shadowed MiniScribe boardroom table. The boardroom door is shut and a seated crowd of late-1980s office workers ranks down the table beneath one harsh lamp cone. Palette is near-black shadow and hard white light. Wide framing at table height makes Wiles the dominant vertical at the head of the room; depth reads table foreground, crowd mid-ground, Wiles and closed door background.",
@@ -1475,11 +1483,15 @@
         "synthetic": false,
         "vo_ref": "which means somebody counts",
         "vo_text": "which means somebody counts",
-        "shot_class": "register-shift-infographic",
+        "stage": "audit-count-insert",
+        "stage_role": "base",
+        "shot_class": "diegetic-device",
         "source": "ai-gen",
-        "still_prompt": "A clean, deliberately crude marker diagram fills the frame: a simple hand-drawn shelf icon on the left connects by one arrow to a simple hand-drawn ledger-page icon on the right, a tally mark stroke sitting on the arrow itself. Plain cream card background, the whole diagram inked in the same dark warm brown-black as every outline. Palette is cream and ink-brown only, no colour. Straight-on flat framing with the diagram centred and generous card air around it — the tally stroke on the arrow the whole picture.",
-        "notes": "The one explainer-diagram exception the grammar allows (register-shift-infographic), reserved for this single mechanism line.",
-        "assets": {}
+        "still_prompt": "The MiniScribe warehouse aisle holds a waist-high inspection cart between cold-grey steel racks, their plain boxed inventory receding softly behind it under fluorescent light. One `prop-drive` unit lies alone on the left half of the cart beside an open blank audit ledger on the right and a plain pencil between them. Palette is charcoal grey, dull steel, pale paper and cold blue-white light. Tight three-quarter framing at cart height, with the single drive and ledger equally dominant; depth reads cart foreground, near racks mid-ground, receding aisle background. The open ledger has exactly one short vertical ink tally stroke directly opposite the single drive; every other part of both pages is empty.",
+        "notes": "Boss-rejected the full-frame crude marker diagram as inconsistent with the channel. Re-authored as a cast-free diegetic warehouse insert: one physical drive beside one ledger tick makes the unit-to-book count concrete without generated words or character-rig risk.",
+        "assets": {
+          "prop-drive": "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+        }
       },
       {
         "id": "L79",
@@ -1492,7 +1504,7 @@
         "shot_class": "diegetic-device",
         "source": "ai-gen",
         "still_prompt": "The same MiniScribe warehouse interior, the racked shelving stretching away, cold overhead light, concrete floor. `auditor-rep` (`expr-skeptical`), his ledger case open in one hand, stands squarely facing the shelving, his open ledger held up beside it at shelf height, comparing page to shelf directly. A small desk calendar propped on a nearby crate is lettered '1987'. Palette holds charcoal, concrete grey and cold overhead light. Wide flat framing at shelf height with the ledger and the shelving sharing the frame; depth reads calendar foreground, auditor-rep and ledger mid-ground, racked shelving background.",
-        "notes": "Re-based (a new stage id) rather than a delta of 'audit-arrival': the register-shift infographic at L78 breaks contiguity, so this restarts the chain instead of claiming a non-contiguous delta. '1987' re-quoted per L-1 [F-12].",
+        "notes": "Re-based as a new stage after L78's tight diegetic counting insert; this restarts the wide warehouse comparison rather than claiming a locked-frame delta. '1987' re-quoted per L-1 [F-12].",
         "assets": {
           "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
@@ -1870,8 +1882,8 @@
         "vo_text": "and came up with a brilliant plan.",
         "stage": "scheme-table",
         "stage_role": "delta",
-        "changed_elements": [
-          "a single bare lightbulb over the table snaps on, brick-foreman's expression turning to a slow smile"
+      "changed_elements": [
+        "one solid red clay brick appears at the centre of the bare paper"
         ],
         "shot_class": "idiom-pun",
         "source": "ai-gen",
@@ -1992,8 +2004,8 @@
         "vo_text": "gave each one a serial number,",
         "stage": "packing-line",
         "stage_role": "delta",
-        "changed_elements": [
-          "+ brick-foreman presses a numbered stamp onto the nearest carton's flap"
+      "changed_elements": [
+        "a handheld stamp rests on the nearest closed flap and leaves one plain dark serial-style mark"
         ],
         "shot_class": "number-glued-to-object",
         "source": "ai-gen",
@@ -3388,6 +3400,7 @@
         "vo_text": "paid out by the executives, the bank, and the accountants.",
       "stage": "settlement-payers",
       "stage_role": "base",
+      "place_anchor": "assets/scenes/L190.png",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
       "still_prompt": "`hq-banker` (`action-offering`, `expr-deadpan`) occupies the second position behind a conference table's three separate stacks of banknotes. `auditor-rep` (`hold-paper-by-sides`, `expr-skeptical`) occupies the third position beside a plain settlement page. A small crowd of suited late-1980s executives gathers behind the first stack. A card propped before the row is lettered '128 MILLION'. Cool office light and a palette of banknote green and pale table wood. Wide framing at table height keeps all three stacks legible; depth reads table foreground, named payers and executive crowd mid-ground, plain wall background.",

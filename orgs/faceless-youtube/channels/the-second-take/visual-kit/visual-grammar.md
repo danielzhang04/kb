@@ -37,7 +37,7 @@ each class carries a RANGE (a staged interaction: handshake, tug-of-war, handoff
 | --- | --- |
 | an abstract force/property/state (trust, inflation, dominance, "cut off") | **symbolic stand-in object** or **personification** — one concrete object/creature that *embodies* it |
 | a relationship/deal/conflict between parties | **staged interaction** between personified parties (handshake, linked arms, tug-of-war, argument) |
-| an institution/nation/company as an actor | its **iconic landmark**, its building, its letterhead, its product — or a **personified character with one identity tag** (flag-tie, hat, uniform) |
+| an institution/nation/company as an actor | **personified character with one identity tag** (flag-tie, hat, uniform) or its **iconic landmark** |
 | a bare number/stat/date/quantity | **number glued to its referent object**, a **diegetic dateline**, or a **countable mass** |
 | a comparison or a trend | **physicalized imbalance** (tipping scale, relative size) or a **deliberately-crude in-world chart** |
 | a historical event/announcement/shock | **diegetic media** (period TV/radio/newspaper) or a **dialogue reenactment** |
@@ -58,11 +58,9 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
 - **When a line could go either way, go non-literal** — skew harder than the shipped reference set.
 - The calibration is `../example-shots.md`: match its depiction THINKING, never clone its content.
 - A shot that merely draws its line's words is a failure → reclassify it.
-- **A human figure is the expensive option** (§2 slate). Where the beat reads without one, stage the
-  object, the place, or the document.
-- **A personified object is a legitimate actor option** (`style-bible.md §5` lists money objects as
-  cast) and holds a minimal rig, so it survives generation well — use one where it fits the beat, but
-  sparingly: a board full of faced objects reads weird. Neither push for them nor avoid them.
+- **Choose the beat's subject, not a population:** use people for person, decision, relationship,
+  action, or reaction beats; use an object, place, document, or mechanism when that is the subject.
+  Neither is globally preferred; never add or remove people to satisfy a population target.
 
 **Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
 it, each `delta` changes exactly ONE element, **≤3 deltas**, then a re-base or a hard cut. A world,
@@ -77,8 +75,8 @@ what the VO has not yet said — a withheld entity is absent entirely from every
 ## 2. Staging conventions (our cast on screen)
 
 - **No on-screen narrator; the screen is a cast** (`style-bible.md §1`) that comes and goes.
-  **Institutions are personified cast**, one identity tag each (a flag necktie, a hat, an iconic
-  building — `style-bible.md §5`), reused consistently.
+  **Institutions may be personified cast** with one identity tag, or represented by their iconic
+  landmark, building, letterhead, or product as the beat requires; reused consistently.
 - **Stage poses that HOLD** — every still is a tableau readable for its full duration, never a freeze
   of mid-motion. Pose menu: a salute · a planted wide stance (triumph/arrival) · presenting an object
   · a held point at a target · arms-crossed appraisal · a slump (defeat) · leaning in (conspiracy) ·
@@ -117,9 +115,9 @@ what the VO has not yet said — a withheld entity is absent entirely from every
   member acting alone is staged as an individual.
 - **Every human in frame is either NAMED CAST or CROWD — no third tier, no promotion path.** NAMED CAST
   has a backticked slug and a canonical, and it is seeded; CROWD is declared `"crowd": true`
-  (`shots-schema.md §2`) and seeded from the crowd exemplar. **An anonymous foreground human does not
-  exist:** a beat that seems to need one either gives that person a name in the video's cast (the
-  video's pre-authoring cast list, `visual-prompt-writer/SKILL.md` Step 3a) or stages the people at
+  (`shots-schema.md §2`) and seeded from the crowd exemplar. **A story-bearing foreground individual
+  belongs in the planned cast and must not be replaced with an empty object merely to avoid a figure.**
+  An anonymous foreground human does not exist; people without a story-bearing identity are staged at
   crowd scale. The §2e clause text stays in `style-bible.md` for the legacy frames that used it, but
   nothing authors it anymore. The prose still stages crowd figures — where they stand, what they do,
   what they wear, dressed for the scene's own era and setting, never the exemplar's period dress —

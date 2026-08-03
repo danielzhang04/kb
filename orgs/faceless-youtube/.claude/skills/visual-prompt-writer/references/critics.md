@@ -68,11 +68,13 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    discloses it before the narration does; the fix is to **re-author** that shot (or its chain) with the
 >    withheld entity **absent entirely**, never merely obscured (a back-to-viewer silhouette dodges it).
 >
-> Then two plan-level checks. **Cadence taste** — flag a slow static hold with no earned progressive
+> Plan-level: **Balanced human use** — flag story-bearing people, decisions, or relationships hidden behind objects, or
+> habitual people staged where object, place, document, or mechanism is the subject; impose no share target. **Cadence taste** — flag a slow static hold with no earned progressive
 > reveal, legibility, or gravity reason, a run of conspicuously equal-duration holds, or cuts so rapid the
 > payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 4 floor). **Stage
-> grouping** — the **SEMANTIC call only**: *are these really one held set?* The mechanical caps (one
-> `base`, ≤3 `delta`s, contiguity, delta timing, order) are `lint_shots.py`'s job; do not re-flag them.
+> grouping** — the **SEMANTIC call only**: *are these really one held set?* A long-form plan revisiting a setting
+> with zero stage chains is a finding; never demand an arbitrary number. The mechanical caps (one `base`, ≤3 `delta`s,
+> contiguity, delta timing, order) are `lint_shots.py`'s job; do not re-flag them.
 >
 > **NEVER flag these — over-triggering is the failure mode:**
 > - A prompt that states *few* facts because few are load-bearing. Terse is correct; flag *missing

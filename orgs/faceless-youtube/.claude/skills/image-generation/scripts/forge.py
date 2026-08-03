@@ -24,7 +24,7 @@ Subcommands:
 
 Run with native `py -3` (msys python lacks a CA bundle). No pip deps except optional certifi/Pillow.
 """
-import json, os, re, ssl, sys, base64, urllib.request, urllib.error, time, argparse, shutil
+import json, os, re, ssl, sys, base64, hashlib, urllib.request, urllib.error, time, argparse, shutil, tempfile
 
 def load_env(root):
     env = {}
@@ -77,8 +77,17 @@ def nano(url, parts, aspect, context, image_size=IMAGE_SIZE_DEFAULT):
                 time.sleep(8); continue
             raise
 
+class SeedIntegrityError(RuntimeError):
+    """A checked seed changed after preflight: abort, rather than spending on a mixed batch."""
+
+
 def b64(p): return base64.b64encode(open(p, "rb").read()).decode()
-def ip(p): return {"inlineData": {"mimeType": "image/png", "data": b64(p)}}
+def ip(p, expected_sha256=None):
+    """Read a seed once for the request, checking its optional manifest digest on those exact bytes."""
+    data = open(p, "rb").read()
+    if expected_sha256 and hashlib.sha256(data).hexdigest() != expected_sha256:
+        raise SeedIntegrityError(f"seed SHA-256 changed before request assembly: {p}")
+    return {"inlineData": {"mimeType": "image/png", "data": base64.b64encode(data).decode()}}
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 JPEG_MAGIC = b"\xff\xd8\xff"
@@ -613,6 +622,174 @@ def resolve_request_seeds(k, r, pending=()):
     return out
 
 
+LOCK_STALE_SECONDS = 60 * 60
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _staging_png(k, name):
+    """A generation target is always a direct child of the resolved staging directory."""
+    if not isinstance(name, str) or not name or os.path.basename(name) != name:
+        raise SystemExit("generation request `name` must be a non-empty filename stem.")
+    staging = os.path.realpath(k.staging)
+    target = os.path.realpath(os.path.join(staging, name + ".png"))
+    try:
+        inside = os.path.commonpath((target, staging)) == staging
+    except ValueError:
+        inside = False
+    if not inside:
+        raise SystemExit(f"{name!r}: generation target escapes staging.")
+    return target
+
+
+def _existing_staging_png(path):
+    """A stale/partial file is never a completed survivor eligible for skip-if-exists."""
+    if not os.path.lexists(path):
+        return False
+    if not os.path.isfile(path):
+        raise SystemExit(f"staging output is not a regular PNG file: {path}")
+    try:
+        validate_png(open(path, "rb").read())
+    except Exception as e:
+        raise SystemExit(f"staging output is invalid, not a skip-if-exists survivor: {path} ({e})")
+    return True
+
+
+def _digest_for_seed(k, r, seed):
+    checks = r.get("seed_sha256")
+    if checks is None:
+        return None
+    if not isinstance(checks, dict) or not all(isinstance(p, str) and isinstance(d, str)
+                                               and _SHA256.fullmatch(d) for p, d in checks.items()):
+        raise SystemExit(f"{r['name']}: `seed_sha256` must map seed paths to lowercase SHA-256 digests.")
+    rel = os.path.relpath(os.path.realpath(seed), k.root).replace("\\", "/")
+    return checks.get(rel)
+
+
+def verify_request_seed_digests(k, r, seeds):
+    """Preflight digest checks; `ip()` repeats the check on the exact request bytes before live use."""
+    for seed in seeds:
+        expected = _digest_for_seed(k, r, seed)
+        if expected:
+            actual = hashlib.sha256(open(seed, "rb").read()).hexdigest()
+            if actual != expected:
+                raise SystemExit(f"{r['name']}: seed SHA-256 mismatch for "
+                                 f"{os.path.relpath(seed, k.root).replace(chr(92), '/')}")
+
+
+def _release_staging_lock(lock, token):
+    try:
+        if json.load(open(lock, encoding="utf-8")).get("token") == token:
+            os.unlink(lock)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+
+def _pid_is_alive(pid):
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == "nt":
+        # `os.kill(pid, 0)` is NOT a harmless probe on Windows: Python maps it to TerminateProcess.
+        # Query the handle and its exit state instead, treating inaccessible processes as live so a
+        # retry can never kill or steal a concurrent generator's reservation.
+        import ctypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        process_query_limited_information, synchronize, still_active = 0x1000, 0x00100000, 259
+        kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+        kernel32.GetExitCodeProcess.restype = ctypes.c_int
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = ctypes.c_int
+        handle = kernel32.OpenProcess(process_query_limited_information | synchronize, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == 5  # access denied: conservatively live
+        code = ctypes.c_uint32()
+        try:
+            return (not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)) or
+                    code.value == still_active)
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _reclaimable_staging_lock(lock):
+    """A valid PID lock is reclaimed only when dead; TTL is solely for malformed/ownerless legacy locks."""
+    try:
+        record = json.load(open(lock, encoding="utf-8"))
+        if isinstance(record, dict) and type(record.get("pid")) is int and record["pid"] > 0:
+            return not _pid_is_alive(record["pid"])
+    except FileNotFoundError:
+        return False
+    except (json.JSONDecodeError, OSError):
+        pass
+    try:
+        return time.time() - os.stat(lock).st_mtime > LOCK_STALE_SECONDS
+    except FileNotFoundError:
+        return False
+
+
+def _reserve_staging_output(k, name, force):
+    """Reserve a live output before a provider call; returns `(path, lock, token, skip_reason)`."""
+    out, lock = _staging_png(k, name), _staging_png(k, name) + ".lock"
+    while True:
+        if _existing_staging_png(out) and not force:
+            return out, None, None, "skip (exists in staging)"
+        token = os.urandom(16).hex()
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if _reclaimable_staging_lock(lock):
+                try:
+                    os.unlink(lock)
+                except FileNotFoundError:
+                    pass
+                continue
+            return out, None, None, "skip (reserved by concurrent generator)"
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump({"pid": os.getpid(), "token": token, "created_at": time.time()}, f)
+            if _existing_staging_png(out) and not force:
+                _release_staging_lock(lock, token)
+                return out, None, None, "skip (exists in staging)"
+            return out, lock, token, None
+        except Exception:
+            _release_staging_lock(lock, token)
+            raise
+
+
+def _publish_staging_png(k, name, out, data, force):
+    """Publish only a complete PNG. No-force uses an atomic non-clobbering hard-link."""
+    fd, tmp = tempfile.mkstemp(prefix=f".{name}.", suffix=".png.tmp", dir=os.path.realpath(k.staging))
+    try:
+        if not _staging_png(k, name) == out or os.path.commonpath((os.path.realpath(tmp),
+                                                                    os.path.realpath(k.staging))) != os.path.realpath(k.staging):
+            raise RuntimeError("staging temp/output target escaped staging")
+        with os.fdopen(fd, "wb") as f:
+            f.write(data); f.flush(); os.fsync(f.fileno())
+        if force:
+            os.replace(tmp, out)
+            return True
+        try:
+            os.link(tmp, out)       # fails atomically if a concurrent survivor appeared
+        except FileExistsError:
+            if _existing_staging_png(out):
+                return False
+            raise RuntimeError("concurrent staging output is invalid; refusing to clobber it")
+        os.unlink(tmp)
+        return True
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
 def preflight_batch(k, reqs, force, dry):
     """Resolve every seed and run the seeding law over the WHOLE batch BEFORE the first API call.
     Returns `[(request, resolved seeds or None-if-skipped), ...]`. A violation anywhere stops the
@@ -620,9 +797,11 @@ def preflight_batch(k, reqs, force, dry):
     plan, pending, bad = [], set(), []
     for r in reqs:
         name = r["name"]
-        if os.path.exists(os.path.join(k.staging, name + ".png")) and not force and not dry:
+        out = _staging_png(k, name)
+        if _existing_staging_png(out) and not force and not dry:
             plan.append((r, None)); pending.add(name); continue
         seeds = resolve_request_seeds(k, r, pending)
+        verify_request_seed_digests(k, r, seeds)
         bad.extend(seeding_law_violations(k, r, seeds))
         plan.append((r, seeds)); pending.add(name)
     if bad:
@@ -652,7 +831,6 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
 
     for r, seeds in plan:
         name = r["name"]; mode = r.get("mode", "identity")
-        out = os.path.join(k.staging, name + ".png")
         if seeds is None:
             report(name, "skip (exists in staging)"); continue
         figures = r.get("figures")
@@ -671,18 +849,30 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
                 print("      " + ln)
             print("      ----- end -----", flush=True)
             continue
-        parts = [ip(s) for s in seeds] + [{"text": text}]
+        out = lock = token = None
         try:
-            # S1-A: compute + validate the bytes BEFORE opening the file, so a failed/empty gen can
-            # never truncate `out` to a 0-byte survivor that skip-if-exists + render then treat as done.
+            out, lock, token, skip = _reserve_staging_output(k, name, force)
+            if skip:
+                report(name, skip); continue
+            # `ip` reads the checked bytes directly into the request, closing the practical gap
+            # between retry-overlay SHA-256 validation and the provider call.
+            parts = [ip(s, _digest_for_seed(k, r, s)) for s in seeds] + [{"text": text}]
+            print(f"  [{len(results) + 1}/{total}] {name}: START provider call", flush=True)
             data = nano(k.url, parts, aspect, k.ctx, size)
             data = to_png_bytes(data)  # engine returns JPEG; normalize to the pipeline's PNG contract
             validate_png(data)
-            with open(out, "wb") as f:
-                f.write(data)
-            report(name, "OK -> _staging/" + name + ".png")
+            if _publish_staging_png(k, name, out, data, force):
+                report(name, "OK -> _staging/" + name + ".png")
+            else:
+                report(name, "skip (concurrent survivor in staging)")
+        except SeedIntegrityError as e:
+            report(name, "ERR integrity " + str(e)[:150] + "; aborting remaining batch")
+            raise SystemExit(f"{name}: seed integrity failure; remaining batch aborted") from e
         except Exception as e:
             report(name, "ERR " + str(e)[:160])
+        finally:
+            if lock:
+                _release_staging_lock(lock, token)
     if dry:
         print(f"  == DRY RUN: {len(results)} prompts assembled, 0 API calls, 0 files written ==", flush=True)
         return
@@ -814,7 +1004,33 @@ def _dedupe(seq):
     return out
 
 
-def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None):
+def place_anchor_for(video, anchor, root, name):
+    """Resolve one human-approved, video-local place frame for a regenerated base.
+
+    A place is deliberately not a channel `refs/env/` asset: it belongs to the video that
+    minted it. Keep the authoring path video-relative so a copied shot cannot silently import
+    another video's environment, and fail before the batch can reach the engine if the pick moved.
+    """
+    if anchor is None:
+        return None
+    if not isinstance(anchor, str) or not anchor.strip() or os.path.isabs(anchor):
+        raise SystemExit(f"{name}: `place_anchor` must be a non-empty video-relative "
+                         "`assets/scenes/<approved-frame>.png` path.")
+    scenes = os.path.realpath(os.path.join(video, "assets", "scenes"))
+    path = os.path.realpath(os.path.join(video, anchor))
+    try:
+        inside_scenes = os.path.commonpath((path, scenes)) == scenes
+    except ValueError:
+        inside_scenes = False
+    if not inside_scenes:
+        raise SystemExit(f"{name}: `place_anchor` must stay inside this video's assets/scenes/, "
+                         "never a cross-video environment reference.")
+    if not os.path.isfile(path):
+        raise SystemExit(f"{name}: `place_anchor` frame not found: {anchor}")
+    return os.path.relpath(path, root).replace("\\", "/")
+
+
+def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candidates=None):
     """Build one deterministic slate per shot from the shot's own `assets` tags and `figures`.
 
     STEP 2's priority, stated ONCE:  [STEP-1 figure(s)]  >  [the video's plate: the in-chain parent
@@ -822,6 +1038,10 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None):
     [canonical(s)] > [the video's plate] > [pose/interaction primitive] > [expression frame].
     Nothing is ever truncated: an over-budget or under-seeded shot is a hard error naming the shot
     and the seed that did not fit, and that list is the re-authoring input."""
+    if plate_candidates is not None and plate_candidates not in (2, 3):
+        raise SystemExit("batch --plate-candidates must be 2 or 3.")
+    if plate_candidates is not None and not shots:
+        raise SystemExit("batch --plate-candidates requires an explicit plate-only --shots scope.")
     doc = json.load(open(shots_path, encoding="utf-8"))
     video = os.path.abspath(video_dir) if video_dir else video_root_for(shots_path, k.root)
     k.use_video(video)          # this video's own cast resolves alongside the channel's
@@ -856,6 +1076,11 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None):
         prompt = shot.get("still_prompt") or ""
         omitted = shot.get("assets_omitted") or {}
         place = shot.get("stage") or name
+        if (in_scope and shot.get("place_anchor") is not None
+                and str(shot.get("stage_role", "")).lower() != "base"):
+            raise SystemExit(f"{name}: `place_anchor` is only valid on a regenerated stage `base`.")
+        place_anchor = (place_anchor_for(video, shot.get("place_anchor"), k.root, name)
+                        if in_scope else None)
         delta_beat = str(shot.get("stage_role", "")).lower() == "delta" and place in place_last
         figs, canons, prims_seeds, staged, why = [], [], [], [], []
         for c, prims in shot_cast(k.reg, prompt):
@@ -897,16 +1122,24 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None):
                 why.append(f"`{c}` STEP-1 {fn} shared")
             figs.append(made[fn]); staged.append(c)
         parent = place_last.get(place) if delta_beat else place_first.get(place)
-        plate = (emitted.get(parent) or on_disk(os.path.join(scenes, (parent or "") + ".png"))
-                 ) if parent else None
+        plate = place_anchor or ((emitted.get(parent) or
+                                  on_disk(os.path.join(scenes, (parent or "") + ".png")))
+                                 if parent else None)
         crowd = _fig_declared(shot.get("figures"))[1]
-        seeds = _dedupe(figs + canons + [plate] + prims_seeds + ([crowd_ex] if crowd else []))
+        # Pass 1's explicit tags are the contract: route only non-figure assets here. Cast,
+        # primitives and the crowd exemplar already have higher-priority structural routes above.
+        tagged = [vfile(n) for n in (shot.get("assets") or {})
+                  if (reg_assets.get(n) or {}).get("kind") in ("prop", "environment")]
+        seeds = _dedupe(figs + canons + [plate] + prims_seeds
+                        + ([crowd_ex] if crowd else []) + tagged)
         text = prompt
         if staged:
             anchor = scale_anchor(prompt)
             text = placement_delta(prompt, staged, anchor, bool(plate))
             why.append(f"scale anchor = {anchor}")
-        if not parent:
+        if place_anchor:
+            why.append(f"PLACE-ANCHOR = {shot['place_anchor']}")
+        elif not parent:
             # fix 2: the video's FIRST frame for this place. It mints the place's look (there is no
             # cross-video plate to import) and every later shot in the place seeds it.
             why.append("PLACE-FIRST (mints this place's plate)")
@@ -914,7 +1147,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None):
         item = {"name": name, "mode": "environment", "aspect": aspect, "delta": text, "seed": seeds,
                 "figures": shot.get("figures"), "stage_role": shot.get("stage_role"),
                 "assets_omitted": sorted(omitted) or None, "why": why_text}
-        if not parent:
+        if not parent and not place_anchor:
             item["plate"] = True
         if in_scope:
             if staged and not (shot.get("figures") or depicts_figures(text)):
@@ -934,6 +1167,23 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None):
                          f"{os.path.basename(shots_path)}: {', '.join(sorted(scope - seen))}")
     if doc.get("thumbnail", {}).get("primary") and scope is None:
         notes.append("thumbnail: out of scope — it carries its own authored seeds + gen_prompt")
+    if plate_candidates is not None:
+        plate_names = {i["name"] for i in spec if i.get("plate")}
+        mixed = sorted(scope - plate_names)
+        if mixed:
+            raise SystemExit("batch --plate-candidates scope must contain only emitted `plate:true` "
+                             f"scene items; dependent/non-plate shot(s): {', '.join(mixed)}")
+        expanded = []
+        for item in spec:
+            if not item.get("plate"):
+                expanded.append(item)           # shared STEP 1, emitted exactly once
+                continue
+            for n in range(1, plate_candidates + 1):
+                candidate = dict(item)
+                candidate["name"] = f"{item['name']}-candidate-{n}"
+                candidate["why"] = f"{item['why']}; PLATE CANDIDATE {n}/{plate_candidates}"
+                expanded.append(candidate)
+        spec = expanded
     for n in notes:
         print("  " + n, flush=True)
     preflight_batch(k, spec, True, True)          # the SAME law the generator runs, over our output
@@ -946,6 +1196,185 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None):
         # Informational only — this is the future wave's input, not this repair's problem.
         print(f"  == scoped to {len(scope)} shot(s); {len(outside)} seeding-law violation(s) remain "
               f"OUTSIDE the scope, unaddressed by this spec ==", flush=True)
+
+
+    return spec
+
+
+# --- `batch --retry`: builder-owned surgical retry overlays --------------------------------
+RETRY_OVERLAY_SCHEMA = "faceless-youtube/forge-retry-overlay@1"
+_RETRY_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+
+
+def _inside_real(path, root):
+    try:
+        return os.path.commonpath((os.path.realpath(path), os.path.realpath(root))) == os.path.realpath(root)
+    except ValueError:
+        return False
+
+
+def retry_seed_for(k, video, raw, label):
+    """Resolve a retry-owned seed only from this video or its kit, never arbitrary disk."""
+    digest = None
+    if isinstance(raw, dict):
+        if set(raw) - {"path", "sha256"}:
+            raise SystemExit(f"{label}: retry seed object permits only `path` and optional `sha256`.")
+        raw, digest = raw.get("path"), raw.get("sha256")
+        if digest is not None and (not isinstance(digest, str) or not _SHA256.fullmatch(digest)):
+            raise SystemExit(f"{label}: retry seed `sha256` must be a lowercase 64-hex digest.")
+    if not isinstance(raw, str) or not raw or os.path.isabs(raw):
+        raise SystemExit(f"{label}: retry seed must be a non-empty relative path in this video or kit.")
+    for candidate in (os.path.join(video, raw), os.path.join(k.kit, raw)):
+        resolved = os.path.realpath(candidate)
+        if os.path.isfile(resolved) and (_inside_real(resolved, video) or _inside_real(resolved, k.kit)):
+            return os.path.relpath(resolved, k.root).replace("\\", "/"), digest
+    raise SystemExit(f"{label}: retry seed not found inside this video or kit: {raw}")
+
+
+def _retry_name(k, video, name, label, seen):
+    if not isinstance(name, str) or not _RETRY_NAME.fullmatch(name):
+        raise SystemExit(f"{label}: retry output name must be a safe filename stem.")
+    if name in seen:
+        raise SystemExit(f"{label}: duplicate retry output name `{name}`.")
+    seen.add(name)
+    for folder in (k.staging, os.path.join(video, "assets", "scenes"),
+                   os.path.join(video, "assets", "library")):
+        if os.path.exists(os.path.join(folder, name + ".png")):
+            raise SystemExit(f"{label}: retry output `{name}` collides with existing {folder} PNG.")
+
+
+def _retry_entries(path, video_slug):
+    doc = json.load(open(path, encoding="utf-8"))
+    if not isinstance(doc, dict) or set(doc) != {"schema", "video_slug", "entries"}:
+        raise SystemExit("retry overlay must contain only `schema`, `video_slug`, and `entries`.")
+    if doc["schema"] != RETRY_OVERLAY_SCHEMA:
+        raise SystemExit(f"retry overlay schema must be `{RETRY_OVERLAY_SCHEMA}`.")
+    if doc["video_slug"] != video_slug:
+        raise SystemExit(f"retry overlay video_slug `{doc['video_slug']}` does not match `{video_slug}`.")
+    if not isinstance(doc["entries"], list) or not doc["entries"]:
+        raise SystemExit("retry overlay `entries` must be a non-empty list.")
+    return doc["entries"]
+
+
+def _is_scene_seed(seed):
+    return "/assets/scenes/" in ("/" + str(seed).replace("\\", "/").lstrip("/"))
+
+
+def _retry_scene(item, entry, k, video, label):
+    allowed = {"kind", "shot", "name", "instruction", "prepend_seeds", "extra_seeds", "replace"}
+    unknown = set(entry) - allowed
+    if unknown:
+        raise SystemExit(f"{label}: scene retry has unknown key(s) {sorted(unknown)!r}.")
+    instruction = entry.get("instruction")
+    if not isinstance(instruction, str) or not instruction.strip():
+        raise SystemExit(f"{label}: scene retry needs a non-empty additive `instruction`.")
+    text = item["delta"]
+    replacement = entry.get("replace")
+    if replacement is not None:
+        if not isinstance(replacement, dict) or set(replacement) != {"from", "to"}:
+            raise SystemExit(f"{label}: `replace` must contain only non-empty `from` and `to` strings.")
+        old, new = replacement.get("from"), replacement.get("to")
+        if not isinstance(old, str) or not old or not isinstance(new, str) or not new or text.count(old) != 1:
+            raise SystemExit(f"{label}: replacement source must occur exactly once in the canonical scene delta.")
+        text = text.replace(old, new)
+    prepend, extra = entry.get("prepend_seeds", []), entry.get("extra_seeds", [])
+    if not isinstance(prepend, list) or not isinstance(extra, list):
+        raise SystemExit(f"{label}: `prepend_seeds` and `extra_seeds` must be lists when present.")
+    added_first = [retry_seed_for(k, video, s, label) for s in prepend]
+    added_last = [retry_seed_for(k, video, s, label) for s in extra]
+    seeds = _dedupe([p for p, _ in added_first] + list(item.get("seed") or []) +
+                    [p for p, _ in added_last])
+    if any(_is_scene_seed(s) for s in seeds):
+        raise SystemExit(f"{label}: fresh retry may not seed an old video scene output.")
+    digest_by_path = {}
+    for path, digest in added_first + added_last:
+        if digest and path in digest_by_path and digest_by_path[path] != digest:
+            raise SystemExit(f"{label}: the same retry seed carries conflicting SHA-256 digests.")
+        if digest:
+            digest_by_path[path] = digest
+    out = dict(item, name=entry["name"], seed=seeds,
+               delta=text + "\n\nRETRY OVERLAY. " + instruction.strip(),
+               why=item.get("why", "") + f"; RETRY overlay from `{entry['shot']}`")
+    if digest_by_path:
+        out["seed_sha256"] = digest_by_path
+    if added_first:
+        out.pop("plate", None)       # an explicit prepended anchor is not a place mint
+    return out
+
+
+def _retry_step1(entry, source, k, label):
+    allowed = {"kind", "shot", "character", "name", "instruction"}
+    unknown = set(entry) - allowed
+    if unknown:
+        raise SystemExit(f"{label}: STEP-1 retry has unknown key(s) {sorted(unknown)!r}.")
+    character = entry.get("character")
+    if not isinstance(character, str) or not character.strip():
+        raise SystemExit(f"{label}: STEP-1 `character` must be a non-empty string.")
+    cast = dict(shot_cast(k.reg, source.get("still_prompt") or ""))
+    if character not in cast or k.reg.get("characters", {}).get(character, {}).get("no_hands"):
+        raise SystemExit(f"{label}: `{character}` has no derivable named STEP-1 recipe in `{entry['shot']}`.")
+    pose, expr = _split_primitives(k.reg, cast[character], source.get("assets_omitted") or ())
+    assets = {a["name"]: a for a in k.reg.get("assets", [])}
+    def vfile(n):
+        return ((source.get("assets") or {}).get(n) or (assets.get(n) or {}).get("file")
+                or (k.reg.get("characters", {}).get(n) or {}).get("base"))
+    seeds = _dedupe([vfile(character), vfile(expr) if expr else None, vfile(pose) if pose else None])
+    instruction = entry.get("instruction")
+    if instruction is not None and (not isinstance(instruction, str) or not instruction.strip()):
+        raise SystemExit(f"{label}: STEP-1 `instruction` must be a non-empty string when present.")
+    delta = figure_card_delta(character, pose, expr)
+    if instruction:
+        delta += "\n\nRETRY OVERLAY. " + instruction.strip()
+    return {"name": entry["name"], "mode": "environment", "aspect": "2:3", "image_size": "1K",
+            "stage_role": "base", "seed": seeds, "delta": delta,
+            "why": f"STEP-1-only retry for `{character}` from `{entry['shot']}`"}
+
+
+def cmd_retry_batch(k, shots_path, out_path, retry_path, video_dir=None):
+    """Build a final retry-only slate from canonical shots plus a checked overlay manifest."""
+    shots_doc = json.load(open(shots_path, encoding="utf-8"))
+    video = os.path.abspath(video_dir) if video_dir else video_root_for(shots_path, k.root)
+    k.use_video(video)
+    entries = _retry_entries(retry_path, shots_doc.get("video_slug"))
+    sources = {name: shot for name, shot, _ in _shot_iter(shots_doc)}
+    seen, scene_ids = set(), []
+    for i, entry in enumerate(entries):
+        label = f"retry entry {i + 1}"
+        if not isinstance(entry, dict):
+            raise SystemExit(f"{label}: retry entry must be an object.")
+        kind, shot, name = entry.get("kind"), entry.get("shot"), entry.get("name")
+        if not isinstance(kind, str) or kind not in ("scene", "step1"):
+            raise SystemExit(f"{label}: `kind` must be `scene` or `step1`.")
+        if not isinstance(shot, str) or not shot.strip():
+            raise SystemExit(f"{label}: `shot` must be a non-empty string.")
+        if not isinstance(name, str) or not name.strip():
+            raise SystemExit(f"{label}: `name` must be a non-empty string.")
+        if shot not in sources:
+            raise SystemExit(f"{label}: canonical shot `{shot}` is not in {os.path.basename(shots_path)}.")
+        if name == shot:
+            raise SystemExit(f"{label}: fresh retry output name cannot equal canonical shot `{shot}`.")
+        _retry_name(k, video, name, label, seen)
+        if kind == "scene" and shot not in scene_ids:
+            scene_ids.append(shot)
+    native = []
+    if scene_ids:
+        with tempfile.TemporaryDirectory() as td:
+            native = cmd_batch(k, shots_path, os.path.join(td, "native.json"), video, scene_ids)
+    by_name = {r["name"]: r for r in native}
+    spec = []
+    for i, entry in enumerate(entries):
+        label, shot = f"retry entry {i + 1}", entry["shot"]
+        if entry["kind"] == "scene":
+            if shot not in by_name:
+                raise SystemExit(f"{label}: canonical `{shot}` did not emit a scene request.")
+            spec.append(_retry_scene(by_name[shot], entry, k, video, label))
+        else:
+            spec.append(_retry_step1(entry, sources[shot], k, label))
+    preflight_batch(k, spec, True, True)
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    json.dump(spec, open(out_path, "w", encoding="utf-8"), indent=2)
+    print(f"  == retry batch: {len(spec)} request(s), canonical shots only, -> {out_path} ==", flush=True)
+    return spec
 
 
 def cmd_montage(k, folder, out, cols):
@@ -1112,6 +1541,8 @@ def main():
     ap.add_argument("--kit", required=True, help="path to the channel's visual-kit dir")
     ap.add_argument("--batch", help="gen/register/place/manifest: JSON file with a list of "
                                     "requests/entries/names; batch: the video's shots.json")
+    ap.add_argument("--retry", help="batch: a versioned forge-retry-overlay@1 manifest; derives only "
+                                    "the named retry requests from the canonical shots.json")
     ap.add_argument("--name"); ap.add_argument("--character", default="base")
     ap.add_argument("--mode", default="identity"); ap.add_argument("--delta")
     ap.add_argument("--aspect", default="2:3"); ap.add_argument("--seed", help="comma-separated seed frames")
@@ -1129,6 +1560,9 @@ def main():
                     help="batch: OPT-IN repair scope — comma-separated shot ids (repeatable). Emits "
                          "and blocks on ONLY these shots; violations elsewhere are reported as a "
                          "count. Omit for a FULL run, which stays the default.")
+    ap.add_argument("--plate-candidates", type=int, choices=(2, 3),
+                    help="batch: emit 2-3 variants for each plate in an explicit plate-only "
+                         "--shots scope; pick/place one under the canonical id before building deltas")
     ap.add_argument("--video", help="gen/batch: the video dir, so its OWN cast (assets/library/"
                                     "manifest.json) resolves alongside the channel registry. "
                                     "Derived when omitted — from the shots.json's nearest library "
@@ -1168,9 +1602,16 @@ def main():
     elif a.cmd == "batch":
         if not a.batch or not a.out:
             raise SystemExit("batch needs --batch <videos/slug/shots.json> and --out <spec.json>")
-        ids = [i.strip() for chunk in (a.shots or []) for i in chunk.split(",") if i.strip()]
-        cmd_batch(k, a.batch, a.out if os.path.isabs(a.out) else os.path.join(k.root, a.out),
-                  a.video, ids or None)
+        out = a.out if os.path.isabs(a.out) else os.path.join(k.root, a.out)
+        if a.retry:
+            if a.shots:
+                raise SystemExit("batch --retry derives its scope from the overlay; do not also pass --shots.")
+            if a.plate_candidates is not None:
+                raise SystemExit("batch --retry cannot be combined with --plate-candidates.")
+            cmd_retry_batch(k, a.batch, out, a.retry, a.video)
+        else:
+            ids = [i.strip() for chunk in (a.shots or []) for i in chunk.split(",") if i.strip()]
+            cmd_batch(k, a.batch, out, a.video, ids or None, a.plate_candidates)
     elif a.cmd == "montage":
         cmd_montage(k, a.dir, a.out, a.cols)
     elif a.cmd == "register":

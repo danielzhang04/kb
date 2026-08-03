@@ -107,6 +107,10 @@ reverts to the engine's five-finger prior, while the frame carries the four-digi
 | **Maps are cropped, not regenerated** | A new region of an established map is a deterministic PIL crop; a regen invents a new coastline, palette and lettering hand. Regen only if the map canonical genuinely lacks the region, and then seed the map canonical + the parchment-map anchor. Borders and routes drawn onto the crop are motion layers. |
 | **Crowd with one seeded lead** | The crowd starves the lead's costume: restate its pinned costume explicitly even though it is seeded, and give the crowd a contrasting uniform/palette. Every crowd-bearing gen also seeds the **crowd exemplar** (`refs/base/crowd-exemplar.png`), which is what pins crowd proportion and face. |
 
+For a human-approved place that must survive a regenerated base composite, author its video-local
+`assets/scenes/<frame>.png` as `place_anchor`. Forge resolves links/junctions before verifying the frame
+is under that video's scenes, then seeds it instead of minting a new `plate`; it never accepts a cross-video environment frame.
+
 **Aspect — pass it explicitly, every scene; NEVER 16:9 on a cutout.** Long-form scenes inherit
 `long_form.aspect_ratio`, a short's `9:16`. `forge.py`'s default is portrait `2:3`, so 16:9 work MUST pass `--aspect
 16:9` on every scene/plate gen — forget it and the scene generates portrait, silently mis-framed. A **CUTOUT is the
@@ -146,6 +150,35 @@ a hard error naming the shot and the seed that did not fit, and that list is the
 reuses the same builder, so a retry cannot invent a seed the original never had. Behind it, **the SEEDING LAW is
 structural in `forge.py` and no caller can opt out**: a gen that cannot inherit a named figure's rig — a step-1 frame
 when fresh, the canonical plus an in-chain parent when a delta — hard-errors before the API call, at $0.
+
+### Builder-owned retry overlays
+
+An approved surgical retry is authored as a versioned `forge-retry-overlay@1` JSON manifest and passed to
+`forge.py batch --retry <manifest>` with the canonical `shots.json`. It never edits `shots.json` or a generated
+batch: each entry names its canonical `shot`, a distinct safe output `name`, and is rebuilt by forge before its
+overlay applies. The envelope is `{schema, video_slug, entries}`; unknown keys are hard errors.
+
+- A `scene` entry has `{kind: "scene", shot, name, instruction, prepend_seeds?, extra_seeds?, replace?}`.
+  `instruction` is appended verbatim as the one surgical change. `replace` is `{from, to}` and is allowed only when
+  `from` occurs exactly once in that canonical scene delta. Each seed is either a relative string or the narrow
+  `{path, sha256?}` object; a supplied `sha256` is a lowercase SHA-256 digest required at preflight and again on the
+  exact bytes read into a live provider request. A live exact-read mismatch aborts the remaining batch at non-zero
+  status after releasing its reservation; it is an integrity failure, unlike an ordinary per-item provider error.
+  Seeds are resolved existing files contained in this video or its kit,
+  prepended/appended in that order, then re-run through the normal cap and seeding law. A retry is fresh: its name
+  cannot equal its shot or collide with staging/library/scenes, and it cannot seed an old scene output.
+- A `step1` entry has `{kind: "step1", shot, character, name, instruction?}`. Forge derives that named cast
+  member's canonical + pose + expression recipe from the specified canonical shot and emits only that distinct STEP-1
+  request; it never emits the source scene or another cast member. The optional instruction is appended to the
+  reference-sheet delta.
+
+Use `batch` only to build the final retry slate, then `gen --dry-run` to inspect it. Both stay $0; a live `gen`
+without `--force` cannot overwrite a staged survivor, and retry-overlay collision checks reject such a request before
+the generator sees it. Live forge reserves each target with an exclusive PID-owned sidecar before calling the provider,
+then atomically publishes a complete PNG without replacing a concurrent survivor; failed calls clean their lock and
+temporary output. A later run reclaims a recorded lock immediately only when its owner PID is dead (legacy/unreadable
+or ownerless locks retain the one-hour fallback lease); a valid live PID is never reclaimed by timestamp, so a killed
+worker does not block the next retry behind the transport ceiling without risking a live concurrent owner.
 
 Per shot, pick the **cheapest technique that holds the locked elements**:
 

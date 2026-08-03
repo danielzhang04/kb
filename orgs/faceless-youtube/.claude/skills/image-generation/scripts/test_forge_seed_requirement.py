@@ -3,14 +3,16 @@
 the zero-seed environment/style guard, and THE SEEDING LAW — a gen that cannot inherit a figure's
 rig from an existing frame hard-errors at $0, before the API call.
 Run: py -3 .claude/skills/image-generation/scripts/test_forge_seed_requirement.py"""
-import contextlib, io, json, os, sys, tempfile
+import contextlib, hashlib, io, json, os, subprocess, sys, tempfile, time
 from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent))
+import forge as forge_module
 from forge import (Kit, cmd_batch, cmd_gen, figure_frame_name, merge_vocabulary, preflight_batch,
                    resolve_request_seeds, scale_anchor, seeding_law_violations, shot_cast,
-                   placement_delta, depicts_figures, video_root_for)
+                   placement_delta, depicts_figures, place_anchor_for, video_root_for,
+                   cmd_retry_batch, RETRY_OVERLAY_SCHEMA)
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
@@ -251,12 +253,14 @@ def _scope_fixture():
     return v, os.path.join(v, "shots.json"), os.path.join(v, "spec.json")
 
 
-def _batch(shots_path, out, scope):
+def _batch(shots_path, out, scope, plate_candidates=None):
     """Run cmd_batch quietly; return (spec or None, SystemExit text or None)."""
     k = Kit(str(KIT_DIR), dry=True)
+    k.staging = os.path.join(tempfile.mkdtemp(), "_staging")
+    os.makedirs(k.staging)  # never let a live run's staged frames alter this slate fixture
     try:
         with contextlib.redirect_stdout(io.StringIO()):
-            cmd_batch(k, shots_path, out, None, scope)
+            cmd_batch(k, shots_path, out, None, scope, plate_candidates)
     except SystemExit as e:
         return None, str(e)
     return json.load(open(out, encoding="utf-8")), None
@@ -285,6 +289,70 @@ def test_a_scoped_run_emits_only_its_shots_and_is_not_blocked_from_outside():
     assert any(_stem_ok(s, "miniscribe-rep") for s in t02["seed"]), t02["seed"]
 
 
+def test_explicit_nonfigure_tags_route_without_duplicating_figure_or_crowd_seeds():
+    v, shots, out = _scope_fixture()
+    doc = json.load(open(shots, encoding="utf-8"))
+    tagged = doc["long_form"]["shots"][0]
+    tagged["figures"] = {"crowd": True}
+    tagged["assets"] = {
+        "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+        "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "prop-beige-pc": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+        "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    }
+    doc["long_form"]["shots"].append({
+        "id": "T04", "source": "ai-gen", "stage": "stamp-desk", "stage_role": "base",
+        "still_prompt": "A red approval stamp sits on a blank desk.",
+        "assets": {"stamp-block-outlined":
+                   "channels/the-second-take/visual-kit/refs/env/stamp-block-outlined.png"},
+    })
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["T01", "T04"])
+    assert err is None, err
+    scene = next(i for i in spec if i["name"] == "T01")
+    assert [Path(s).stem for s in scene["seed"]] == [
+        figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug"),
+        "crowd-exemplar", "prop-beige-pc", "lettering-marker-italic"], scene["seed"]
+    assert [Path(s).stem for s in next(i for i in spec if i["name"] == "T04")["seed"]] == \
+        ["stamp-block-outlined"]
+
+
+def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
+    _, shots, out = _scope_fixture()
+    doc = json.load(open(shots, encoding="utf-8"))
+    shot = doc["long_form"]["shots"][0]
+    shot["figures"] = {"crowd": True}
+    shot["assets"] = {n: f"channels/the-second-take/visual-kit/refs/env/{n}.png" for n in (
+        "prop-beige-pc", "lettering-marker-italic", "stamp-block-outlined")}
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["T01"])
+    assert spec is None and "5 seeds over the cap" in err, err
+    assert "stamp-block-outlined did not fit" in err and not os.path.exists(out), err
+
+
+def test_plate_candidates_expand_only_the_plate_and_share_step1_while_default_stays_canonical():
+    _, shots, out = _scope_fixture()
+    default, err = _batch(shots, out, ["T01"])
+    assert err is None, err
+    fig = figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug")
+    assert [i["name"] for i in default] == [fig, "T01"] and default[-1].get("plate") is True
+    candidates, err = _batch(shots, out, ["T01"], 3)
+    assert err is None, err
+    assert [i["name"] for i in candidates] == [
+        fig, "T01-candidate-1", "T01-candidate-2", "T01-candidate-3"], candidates
+    assert sum(i["name"] == fig for i in candidates) == 1
+    assert all(i.get("plate") is True for i in candidates[1:])
+
+
+def test_plate_candidates_reject_a_scope_containing_a_dependent_delta():
+    _, shots, out = _scope_fixture()
+    spec, err = _batch(shots, out, ["T01", "T02"], 2)
+    assert spec is None and "plate:true" in err and "T02" in err, err
+    assert not os.path.exists(out)
+
+
 def _stem_ok(seed, char):
     return f"/refs/{char}/" in str(seed).replace("\\", "/")
 
@@ -311,6 +379,321 @@ def test_scoping_to_a_delta_alone_reuses_its_parent_instead_of_regenerating_it()
     assert [i["name"] for i in spec] == ["T02"], spec
     assert any(str(s).replace("\\", "/").endswith("assets/scenes/T01.png") for s in spec[0]["seed"]), \
         spec[0]["seed"]
+
+
+def test_a_base_can_seed_its_videos_approved_place_after_two_step1_figures():
+    v = tempfile.mkdtemp()
+    scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
+    approved = os.path.join(scenes, "L60.png")
+    open(approved, "wb").write(b"\x89PNG\r\n\x1a\n")
+    doc = {"schema": "shots/1", "video_slug": "t", "long_form": {"aspect_ratio": "16:9", "shots": [{
+        "id": "L60", "source": "ai-gen", "stage": "brickyard", "stage_role": "base",
+        "place_anchor": "assets/scenes/L60.png", "figures": {"crowd": True},
+        "still_prompt": "`miniscribe-rep` and `ibm-suit` face a waiting crowd in the brickyard."}]}}
+    shots, out = os.path.join(v, "shots.json"), os.path.join(v, "spec.json")
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["L60"])
+    assert err is None, err
+    scene = [i for i in spec if i["name"] == "L60"][0]
+    assert scene.get("plate") is None, scene
+    assert len(scene["seed"]) == 4, scene["seed"]
+    assert [Path(s).stem for s in scene["seed"][:2]] == ["fig-miniscribe-rep", "fig-ibm-suit"], scene["seed"]
+    assert scene["seed"][2].replace("\\", "/").endswith("assets/scenes/L60.png"), scene["seed"]
+    assert Path(scene["seed"][3]).stem == "crowd-exemplar", scene["seed"]
+
+
+def test_a_missing_or_cross_video_place_anchor_hard_errors_before_emission():
+    v, shots, out = _scope_fixture()
+    doc = json.load(open(shots, encoding="utf-8"))
+    doc["long_form"]["shots"][0]["place_anchor"] = "assets/scenes/missing.png"
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["T01"])
+    assert spec is None and "T01" in err and "place_anchor" in err and "not found" in err, err
+    doc["long_form"]["shots"][0]["place_anchor"] = "../other-video/assets/scenes/L60.png"
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["T01"])
+    assert spec is None and "cross-video" in err, err
+
+
+def test_a_place_anchor_cannot_escape_through_a_windows_junction_or_posix_symlink():
+    with tempfile.TemporaryDirectory() as v, tempfile.TemporaryDirectory() as foreign:
+        scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
+        open(os.path.join(foreign, "foreign.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
+        linked = os.path.join(scenes, "linked")
+        temp_root = os.path.abspath(tempfile.gettempdir())
+        for path in (v, foreign, scenes, linked):
+            assert os.path.commonpath((os.path.abspath(path), temp_root)) == temp_root, path
+        if os.name == "nt":
+            result = subprocess.run(
+                ["cmd.exe", "/d", "/c", "mklink", "/J", linked, foreign],
+                capture_output=True, text=True, check=False, shell=False)
+            assert result.returncode == 0 and os.path.isdir(linked), (
+                f"mklink /J junction setup failed (rc={result.returncode}): "
+                f"stdout={result.stdout!r} stderr={result.stderr!r}")
+        else:
+            try:
+                os.symlink(foreign, linked, target_is_directory=True)
+            except (NotImplementedError, OSError) as e:
+                assert False, f"symlink escape regression setup failed: {e}"
+        try:
+            try:
+                place_anchor_for(v, "assets/scenes/linked/foreign.png", v, "L60")
+            except SystemExit as e:
+                assert "cross-video" in str(e), str(e)
+            else:
+                assert False, "a linked foreign place frame must hard-error"
+        finally:
+            if os.path.lexists(linked):
+                os.rmdir(linked) if os.name == "nt" else os.unlink(linked)
+
+
+def _retry(shots_path, out, overlay):
+    k = Kit(str(KIT_DIR), dry=True)
+    k.staging = os.path.join(tempfile.mkdtemp(), "_staging"); os.makedirs(k.staging)
+    overlay_path = os.path.join(os.path.dirname(shots_path), "retry-overlay.json")
+    json.dump(overlay, open(overlay_path, "w", encoding="utf-8"))
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            cmd_retry_batch(k, shots_path, out, overlay_path)
+    except SystemExit as e:
+        return None, str(e)
+    return json.load(open(out, encoding="utf-8")), None
+
+
+def _retry_fixture():
+    v = tempfile.mkdtemp()
+    os.makedirs(os.path.join(v, "assets"))
+    for name in ("prep.png", "extra.png"):
+        open(os.path.join(v, "assets", name), "wb").write(b"\x89PNG\r\n\x1a\n")
+    doc = {"schema": "shots/1", "video_slug": "retry-t", "long_form": {"aspect_ratio": "16:9", "shots": [
+        {"id": "T01", "source": "ai-gen", "stage_role": "base", "figures": {"crowd": True},
+         "still_prompt": "A small crowd waits at a factory gate under clear morning light."},
+        {"id": "T02", "source": "ai-gen", "stage_role": "base",
+         "still_prompt": "`miniscribe-rep`, `expr-smug`, `action-powerstance`, at a brickyard gate."}
+    ]}}
+    shots, out = os.path.join(v, "shots.json"), os.path.join(v, "retry-spec.json")
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    return v, shots, out
+
+
+def test_retry_overlay_derives_duplicate_scenes_and_one_step1_only_request():
+    v, shots, out = _retry_fixture()
+    overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+        {"kind": "scene", "shot": "T01", "name": "T01-retry-a", "instruction": "Keep workers small.",
+         "prepend_seeds": ["assets/prep.png"], "extra_seeds": ["assets/extra.png"]},
+        {"kind": "scene", "shot": "T01", "name": "T01-retry-b", "instruction": "Keep the gate clear."},
+        {"kind": "step1", "shot": "T02", "character": "miniscribe-rep",
+         "name": "fig-miniscribe-rep-retry", "instruction": "Both visible hands are open and empty."}
+    ]}
+    spec, err = _retry(shots, out, overlay)
+    assert err is None, err
+    assert [r["name"] for r in spec] == ["T01-retry-a", "T01-retry-b", "fig-miniscribe-rep-retry"], spec
+    first = spec[0]
+    assert first.get("plate") is None and "RETRY OVERLAY. Keep workers small." in first["delta"], first
+    assert first["seed"][0].replace("\\", "/").endswith("assets/prep.png"), first["seed"]
+    assert Path(first["seed"][-1]).name == "extra.png", first["seed"]
+    step = spec[-1]
+    assert step["name"].startswith("fig-") and "T02" not in [r["name"] for r in spec], spec
+    assert "Both visible hands are open and empty." in step["delta"], step["delta"]
+
+
+def test_retry_overlay_rejects_unknown_keys_output_collisions_and_old_scene_seeds():
+    v, shots, out = _retry_fixture()
+    base = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+        {"kind": "scene", "shot": "T01", "name": "T01-retry", "instruction": "Keep workers small."}
+    ]}
+    bad = json.loads(json.dumps(base)); bad["entries"][0]["unexpected"] = True
+    spec, err = _retry(shots, out, bad)
+    assert spec is None and "unknown key" in err, err
+    bad = json.loads(json.dumps(base)); bad["entries"][0]["name"] = "T01"
+    spec, err = _retry(shots, out, bad)
+    assert spec is None and "cannot equal canonical" in err, err
+    scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
+    open(os.path.join(scenes, "T01.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
+    bad = json.loads(json.dumps(base)); bad["entries"][0]["prepend_seeds"] = ["assets/scenes/T01.png"]
+    spec, err = _retry(shots, out, bad)
+    assert spec is None and "old video scene output" in err, err
+    open(os.path.join(scenes, "T01-retry.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
+    spec, err = _retry(shots, out, base)
+    assert spec is None and "collides with existing" in err, err
+
+
+def test_retry_overlay_replaces_one_exact_canonical_clause_only_once():
+    v, shots, out = _retry_fixture()
+    doc = json.load(open(shots, encoding="utf-8"))
+    original = "A single card reads 'OLD'."
+    doc["long_form"]["shots"][0]["still_prompt"] = original
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+        {"kind": "scene", "shot": "T01", "name": "T01-card-retry", "instruction": "Keep the card central.",
+         "replace": {"from": original, "to": "A single card reads 'NEW'."}}
+    ]}
+    spec, err = _retry(shots, out, overlay)
+    assert err is None, err
+    assert "A single card reads 'NEW'." in spec[0]["delta"], spec[0]["delta"]
+    assert original not in spec[0]["delta"], spec[0]["delta"]
+
+    doc["long_form"]["shots"][0]["still_prompt"] = original + " " + original
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _retry(shots, out, overlay)
+    assert spec is None and "exactly once" in err, err
+
+
+def test_retry_overlay_digest_is_emitted_and_mismatch_is_a_zero_cost_error():
+    v, shots, out = _retry_fixture()
+    prep = os.path.join(v, "assets", "prep.png")
+    digest = hashlib.sha256(open(prep, "rb").read()).hexdigest()
+    overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+        {"kind": "scene", "shot": "T01", "name": "T01-digest-retry", "instruction": "Keep workers small.",
+         "prepend_seeds": [{"path": "assets/prep.png", "sha256": digest}]}
+    ]}
+    spec, err = _retry(shots, out, overlay)
+    assert err is None, err
+    assert spec[0]["seed_sha256"][spec[0]["seed"][0]] == digest, spec[0]
+    open(prep, "wb").write(b"changed")
+    spec, err = _retry(shots, out, overlay)
+    assert spec is None and "SHA-256 mismatch" in err, err
+
+
+def test_retry_overlay_malformed_identity_fields_fail_as_controlled_errors():
+    v, shots, out = _retry_fixture()
+    base = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+        {"kind": "scene", "shot": "T01", "name": "T01-retry", "instruction": "Keep workers small."}
+    ]}
+    bad = json.loads(json.dumps(base)); bad["entries"][0]["shot"] = []
+    spec, err = _retry(shots, out, bad)
+    assert spec is None and "`shot` must be a non-empty string" in err, err
+    bad = json.loads(json.dumps(base)); bad["entries"][0]["name"] = {}
+    spec, err = _retry(shots, out, bad)
+    assert spec is None and "`name` must be a non-empty string" in err, err
+    bad = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+        {"kind": "step1", "shot": "T02", "name": "fig-retry", "character": []}
+    ]}
+    spec, err = _retry(shots, out, bad)
+    assert spec is None and "`character` must be a non-empty string" in err, err
+
+
+_LIVE_PNG = b"\x89PNG\r\n\x1a\n" + (b"x" * 2048)
+
+
+def _live_kit(seed, mutate_prompt=None):
+    staging = tempfile.mkdtemp()
+    root = os.path.dirname(staging)
+    def prompt_for(mode, delta, **kwargs):
+        if mutate_prompt:
+            mutate_prompt()
+        return delta
+    return SimpleNamespace(staging=staging, root=root, reg={}, url="offline", ctx=None,
+                           resolve_seed=lambda value: value, prompt_for=prompt_for)
+
+
+def _live_req(k, seed, name="retry-live", digest=None):
+    req = {"name": name, "mode": "identity", "delta": "a checked offline frame", "seed": [seed]}
+    if digest:
+        req["seed_sha256"] = {os.path.relpath(seed, k.root).replace("\\", "/"): digest}
+    return req
+
+
+def test_live_gen_reservation_never_clobbers_a_concurrent_survivor_and_cleans_failures():
+    seed_dir = tempfile.mkdtemp(); seed = os.path.join(seed_dir, "seed.png")
+    open(seed, "wb").write(_LIVE_PNG)
+    k = _live_kit(seed); out = os.path.join(k.staging, "retry-live.png")
+    survivor = b"\x89PNG\r\n\x1a\n" + (b"s" * 2048)
+    old_nano = forge_module.nano
+    def concurrent_provider(*args):
+        open(out, "wb").write(survivor)  # another producer finishes while this provider is in flight
+        return _LIVE_PNG
+    forge_module.nano = concurrent_provider
+    try:
+        cmd_gen(k, [_live_req(k, seed)], False)
+    finally:
+        forge_module.nano = old_nano
+    assert open(out, "rb").read() == survivor
+    assert not os.path.exists(out + ".lock")
+
+    k = _live_kit(seed); out = os.path.join(k.staging, "retry-live.png")
+    forge_module.nano = lambda *args: (_ for _ in ()).throw(RuntimeError("offline provider failure"))
+    try:
+        cmd_gen(k, [_live_req(k, seed)], False)
+    finally:
+        forge_module.nano = old_nano
+    assert not os.path.exists(out) and not os.path.exists(out + ".lock")
+    assert not list(Path(k.staging).glob("*.png.tmp"))
+    try:
+        cmd_gen(k, [_live_req(k, seed, name="../escaped")], False)
+    except SystemExit as e:
+        assert "filename stem" in str(e), str(e)
+    else:
+        assert False, "a generation target must never escape the resolved staging directory"
+
+
+def test_live_gen_reclaims_a_dead_owner_lock_and_rechecks_digest_before_provider_use():
+    seed_dir = tempfile.mkdtemp(); seed = os.path.join(seed_dir, "seed.png")
+    open(seed, "wb").write(_LIVE_PNG)
+    k = _live_kit(seed); out = os.path.join(k.staging, "retry-live.png")
+    json.dump({"pid": 99999999, "token": "killed-owner", "created_at": 0},
+              open(out + ".lock", "w", encoding="utf-8"))
+    old_nano = forge_module.nano; forge_module.nano = lambda *args: _LIVE_PNG
+    try:
+        cmd_gen(k, [_live_req(k, seed)], False)
+    finally:
+        forge_module.nano = old_nano
+    assert open(out, "rb").read() == _LIVE_PNG and not os.path.exists(out + ".lock")
+
+    original = hashlib.sha256(open(seed, "rb").read()).hexdigest()
+    k = _live_kit(seed, mutate_prompt=lambda: open(seed, "wb").write(b"changed"))
+    called = []
+    forge_module.nano = lambda *args: called.append(True) or _LIVE_PNG
+    try:
+        try:
+            cmd_gen(k, [_live_req(k, seed, digest=original)], False)
+        except SystemExit as e:
+            assert "seed integrity failure" in str(e), str(e)
+        else:
+            assert False, "a post-preflight digest mismatch must abort before the provider"
+    finally:
+        forge_module.nano = old_nano
+    assert not called and not os.path.exists(os.path.join(k.staging, "retry-live.png"))
+
+
+def test_live_seed_integrity_failure_aborts_remaining_batch_and_cleans_reservation():
+    seed_dir = tempfile.mkdtemp(); seed = os.path.join(seed_dir, "seed.png")
+    open(seed, "wb").write(_LIVE_PNG)
+    digest = hashlib.sha256(open(seed, "rb").read()).hexdigest()
+    k = _live_kit(seed, mutate_prompt=lambda: open(seed, "wb").write(b"changed"))
+    called = []
+    old_nano = forge_module.nano; forge_module.nano = lambda *args: called.append(True) or _LIVE_PNG
+    try:
+        try:
+            cmd_gen(k, [_live_req(k, seed, name="first", digest=digest),
+                        _live_req(k, seed, name="second")], False)
+        except SystemExit as e:
+            assert "remaining batch aborted" in str(e), str(e)
+        else:
+            assert False, "a live exact-read digest mismatch must abort the batch"
+    finally:
+        forge_module.nano = old_nano
+    assert not called
+    for name in ("first", "second"):
+        assert not os.path.exists(os.path.join(k.staging, name + ".png"))
+        assert not os.path.exists(os.path.join(k.staging, name + ".png.lock"))
+    assert not list(Path(k.staging).glob("*.png.tmp"))
+
+
+def test_windows_live_owner_lock_is_not_reclaimed_or_signalled():
+    if os.name != "nt":
+        return
+    k = _live_kit("")
+    out = os.path.join(k.staging, "retry-live.png")
+    json.dump({"pid": os.getpid(), "token": "live-owner", "created_at": 0},
+              open(out + ".lock", "w", encoding="utf-8"))
+    old = time.time() - forge_module.LOCK_STALE_SECONDS - 1
+    os.utime(out + ".lock", (old, old))
+    assert forge_module._pid_is_alive(os.getpid())
+    assert not forge_module._reclaimable_staging_lock(out + ".lock")
+    _, lock, token, skip = forge_module._reserve_staging_output(k, "retry-live", False)
+    assert lock is None and token is None and "reserved by concurrent" in skip
+    assert os.path.exists(out + ".lock") and forge_module._pid_is_alive(os.getpid())
 
 
 if __name__ == "__main__":

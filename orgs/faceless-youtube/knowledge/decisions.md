@@ -3696,3 +3696,28 @@ review fixes → a full deep review (5 root causes, 24 r2 directives, 11 pipelin
 - **Caveats carried.** Chris consistency proof still owed (variance across takes: F0/wpm/pause%);
   premade-voice fingerprint caveat on record in HM voice-lab.md §Round 1. ST's next real VO render
   is the re-proof point.
+
+## 2026-08-03 — Tranche-A close: subject-not-population doctrine + forge anchor/retry layer (Daniel-confirmed)
+
+- **Decision: codify subject-not-population, replacing the population-proxy "humans are expensive"
+  language.** `visual-grammar.md` §1/§2 no longer bias against staging a human figure by cost; the
+  rule is now two-sided — choose the beat's subject (person, decision, relationship, action, reaction
+  → people; object, place, document, mechanism → non-human), never add or remove people to hit a
+  population target. **Rejected alternative:** keeping the one-sided population-pressure wording
+  ("a human figure is the expensive option"); it caused the tranche-A plan to swing 78% cast-free
+  before this correction, which the doctrine change exists to prevent from recurring.
+- **Decision: accept the forge `place_anchor` / retry-overlay / seed-integrity / staging-lock layer.**
+  `forge.py` gained `place_anchor_for` (pins a regenerated `base` composite to an approved plate
+  in-scope, not an unrelated frame), a `batch --retry` surgical overlay path
+  (`RETRY_OVERLAY_SCHEMA = faceless-youtube/forge-retry-overlay@1`), seed SHA-256 integrity checks
+  (`SeedIntegrityError`, `verify_request_seed_digests`) so a seed can't silently drift between request
+  assembly and the provider call, and race-safe staging locks (`_reserve_staging_output`,
+  `_release_staging_lock`, `_reclaimable_staging_lock`) so concurrent forge runs can't clobber the same
+  output. Covered by 38 tests (`test_forge_seed_requirement.py`). **Rejected alternative:** unanchored
+  composite regens (no `place_anchor`), which is what caused the tranche-A continuity parks this layer
+  fixes.
+- **Tranche A closed.** 17 verified / 10 parked across all 27 tranche shots, final spend $7.251 —
+  exactly the boss-approved cap. Source: `channels/the-second-take/videos/2026-07-28-bricks-fresh/
+  scratchpad/tranche-a-genlog.md`.
+- **Daniel set a $25 cap for the wave remainder** and chose **board-first review before the 4/5
+  release** — the Gate-2 board gets a human pass before any further wave shots ship.

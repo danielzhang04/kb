@@ -57,4 +57,20 @@ none = [{"id": "L01"}, {"id": "L02"}, {"id": "L03"}, {"id": "L04"}, {"id": "L05"
 hard, _ = caps(none)
 assert hard == [], "no-stage standalone shots are clean: %r" % hard
 
+# Strict v2 long-form plans at the configured size need a planned stage chain, but no quota.
+long_none = [{"id": f"L{i:02d}"} for i in range(1, 41)]
+hard, _ = [], []
+lint_shots.stage_check("long-form", long_none, hard, _, require_stage=True)
+assert any("zero stage-bearing shots/base roles" in h for h in hard), hard
+
+short_none = [{"id": f"L{i:02d}"} for i in range(1, 40)]
+hard, _ = [], []
+lint_shots.stage_check("long-form", short_none, hard, _, require_stage=False)
+assert hard == [], "the zero guard is limited to configured long-form plans: %r" % hard
+
+stage_bearing = [_base("L01", "g")] + [{"id": f"L{i:02d}"} for i in range(2, 41)]
+hard, _ = [], []
+lint_shots.stage_check("long-form", stage_bearing, hard, _, require_stage=True)
+assert hard == [], "one planned stage chain satisfies the zero guard: %r" % hard
+
 print("PASS test_stage_check")

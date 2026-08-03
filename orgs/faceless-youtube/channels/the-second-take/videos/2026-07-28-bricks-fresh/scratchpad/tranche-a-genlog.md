@@ -1,5 +1,11 @@
 # Tranche-A leg 1 generation log
 
+## Daniel plate rulings — 2026-07-31
+
+- Selected and copied (candidates preserved): `L26-cand-a.png` → `L26.png`; `L107-cand-b.png` → `L107.png`; `L160-cand-a.png` → `L160.png`; `L183-cand-b.png` → `L183.png`.
+- Final boss selections: L49-B, L66-B, and L100-B. L78 was re-authored as a channel-style physical warehouse insert; L190-A received the exact anchored `128 MILLION` correction.
+- Final boss-approved Tranche-A cap: $7.251.
+
 | name | tier | cost (USD) | seeds used | §3 rig verdict | defect flag / reason |
 | --- | --- | ---: | --- | --- | --- |
 | L100-cand-b | 2K | $0.134 | crowd-exemplar | PASS — crowd faces hold dot eyes/one mouth with no ears/noses; squat crowd proportion | none — candidate B, not human-picked |
@@ -31,7 +37,7 @@
 | fig-brick-foreman--action-shrug--expr-smug | 1K | $0.039 | brick-foreman canonical; expr-smug; action-shrug | N/A — no PNG landed for inspection | FLAG — generator request timed out after 360.7 s; no staged output; no retry per tranche rule (cost reserved at $0.039 pending provider settlement) |
 | fig-hq-banker--action-recoil--expr-fear | 1K | $0.039 | hq-banker canonical; expr-fear; action-recoil | N/A — no PNG landed for inspection | FLAG — hidden worker exited without output or staged PNG; no retry per tranche rule (cost reserved at $0.039 pending provider settlement) |
 | L78 | 2K | $0.134 | none | N/A — no character rig | FLAG — palette defect: grey shelf fill/drop shadows appear although the authored plate requires cream and ink-brown only, no colour; no content retry authorized |
-| L91 | 2K | $0.134 | fig-brick-foreman--action-shrug--expr-smug | PASS — foreman retains warm-brown tone, brown side-part, white shirt/tie, brown trousers, squat earless/noseless rig and four-digit shrug hands | none |
+| L91 | 2K | $0.134 | fig-brick-foreman--action-shrug--expr-smug | PASS — foreman retains warm-brown tone, brown side-part, white shirt/tie, brown trousers, squat earless/noseless rig and four-digit shrug hands | materialized to canonical `assets/scenes/L91.png` (SHA-256 `2e1b14c1e27cd7010e1e01c6d2e72e46df29269378cad1896d3159a0a0d01726`) |
 | L107-cand-a | 2K | $0.134 | crowd-exemplar | PASS — crowd holds dot eyes/one mouth, no ears/noses, squat crowd proportion; cartons, foam recesses, clay bricks, bulb/corrugated palette present | none — candidate A, not human-picked |
 | L107-cand-b | 2K | $0.134 | crowd-exemplar | PASS — crowd holds dot eyes/one mouth, no ears/noses, squat crowd proportion; three distinct open cartons have foam recesses and one clay brick each | none — candidate B, not human-picked |
 | L160-cand-a | 2K | $0.134 | crowd-exemplar | PASS — suited crowd maintains dot eyes/one mouth, no ears/noses and squat proportion; lantern, filing cabinets, doorway, and readable 1989 calendar present | none — candidate A, not human-picked |
@@ -41,4 +47,52 @@
 | L183-cand-b | 2K | $0.134 | fig-hq-banker--action-recoil--expr-fear | PASS — banker preserves silver hair, pale tone, chocolate pinstripe suit, gold chain, fear expression, recoil pose, earless/noseless squat rig, and four-digit hands | none — candidate B, not human-picked |
 | L190-cand-a | 2K | $0.134 | none | N/A — no character rig | FLAG — required card text '128 MILLION' is absent (blank card); no content retry authorized |
 | L190-cand-b | 2K | $0.134 | none | N/A — no character rig | PASS — three distinct banknote stacks and the required card text '128 MILLION' are present | none — candidate B, not human-picked |
-| L215 | 2K | $0.134 | none | N/A — no character rig | PASS — open drive carton, moulded foam recess, coarse red clay brick, and cold grey-green industrial setting are present | none |
+| L215 | 2K | $0.134 | none | N/A — no character rig | PASS — open drive carton, moulded foam recess, coarse red clay brick, and cold grey-green industrial setting are present | materialized to canonical `assets/scenes/L215.png` (SHA-256 `e1787f3ac5fa0b0ca26e3cc7ffcc0b63e4d08390776cf6b54dc1c28694286801`) |
+| L49-retry-a | 2K | $0.134 | crowd-exemplar | FLAG — chef hats/whites hold, but workers remain foreground-large rather than background-scale | FLAG — readable `BILLS` text; dish not the largest read; fresh-eyes ranks A over B but neither ships |
+| L49-retry-b | 2K | $0.134 | crowd-exemplar | FLAG — giant chef crowd dominates the right half rather than holding background scale | BOSS PICK — selected B and materialized to canonical `assets/scenes/L49.png`; readable `MENU`/`BILL` text and off-centre dish remain known compromises |
+| L66-retry-a | 2K | $0.134 | fig-qt-wiles--point-at-thing--expr-smug; crowd-exemplar | FLAG — Wiles identity/costume/point hold, but crowd is foreground-large | FLAG — Wiles is visibly standing on the tabletop; fresh-eyes ranks below B |
+| L66-retry-b | 2K | $0.134 | fig-qt-wiles--point-at-thing--expr-smug; crowd-exemplar | FLAG — Wiles identity/costume/point hold, but several managers remain foreground-large | BOSS PICK — selected B and materialized to canonical `assets/scenes/L66.png`; hidden feet/floor contact remain a known compromise |
+| L100-retry-a | 2K | $0.134 | crowd-exemplar | FLAG — manager wall remains foreground-large and detailed | FLAG — central paper is small/non-dominant; fresh-eyes ranks A over B overall but neither ships |
+| L100-retry-b | 2K | $0.134 | crowd-exemplar | FLAG — giant head wall remains the dominant read | BOSS PICK — selected B and materialized to canonical `assets/scenes/L100.png`; giant head wall remains a known compromise |
+| L78-retry | 2K | $0.134 | none | N/A — no character rig | BOSS REJECT — the whole crude infographic is inconsistent with the channel's established scene language; replace the concept rather than retrying the same art direction |
+| L78-channel-style | 2K | $0.134 | prop-drive | N/A — cast-free physical insert | FLAG — warehouse/cel style passes, but four drives map to roughly eight ledger marks |
+| L78-channel-style-v2 | 2K | $0.134 | L78-channel-style (SHA-256 4c4939d7ee0bdf144b9453dc9955d79930c0623379b1a2cefe0dd3011333e1fc); prop-drive | N/A — cast-free physical insert | FLAG — warehouse/cel style holds, but four drives still map to six ledger marks |
+| L78-channel-style-v3 | 2K | $0.134 | L78-channel-style-v2 (SHA-256 5346d2893b109402cca1d19040b29907edb7f29948c32f964ed274e764bfdf6a); prop-drive | N/A — cast-free physical insert | PASS — exactly one drive maps to one isolated ledger tally; physical warehouse scene matches channel style; sole known nuance is the tally's diagonal lean; materialized to canonical `assets/scenes/L78.png` (SHA-256 aa134cb04d918efb288a6e90a2a7d44e0486b755f4a9ae6fe344ee5011c66956) |
+| L190-A-128-million | 2K | $0.134 | L190-cand-a (SHA-256 6b57ebc204229c814ab43dc34789af6103728c4b15abe70ef45f4f92ff40e831); lettering-marker-italic | N/A — no character rig | PASS — exact `128 MILLION`; three stacks and picked-A composition preserved; whole MAD 2.962/255, card MAD 15.826/255, outside-card MAD 2.219/255 |
+| fig-hq-banker--action-offering--expr-deadpan | 1K | $0.039 | hq-banker canonical; expr-deadpan; action-offering | PASS — identity/costume, deadpan face, offering pose, full figure, squat earless/noseless rig, and four-digit empty hands hold | none — clean studio isolation with no props |
+| L27-composite | 2K | $0.134 | miniscribe-rep canonical; L26-A parent; action-powerstance; expr-smug | PASS WITH KNOWN DRIFT — character/conveyor/drives/mountain change and overall plant continuity hold; lower factory floor shifts from pale green to warm tan | materialized to canonical `assets/scenes/L27.png` (SHA-256 b7d2ceba570070b39b07eb2c2a69f8573b98ae5ecf0de06afcd42a42187a2650) |
+| L28-composite | 2K | $0.134 | miniscribe-rep STEP-1; terry-johnson STEP-1 | FLAG — environment continuity is strong, but miniscribe-rep loses his required drive-shaped lapel identity badge and Terry grips the drive with both hands instead of the authored one-hand hold | not materialized; metadata corrected to preserve L27 on the replacement call |
+| L50-composite | 2K | $0.134 | L49-B parent; crowd-exemplar | PASS — split-room renovation reads immediately while camera, crowd, dish, boom mic, bills, upturned tables, and left-side decay remain continuous | materialized to canonical `assets/scenes/L50.png` (SHA-256 a0bd9fe808fa85553d393efa379733ca19977e991e63094618a3a958338f81c2) |
+| L60-composite (interrupted) | 2K | $0.134 reserved | Wiles powerstance/deadpan STEP-1; foreman sit/worried STEP-1; approved L60 place anchor; crowd-exemplar | N/A — no PNG landed | stopped during provider call when semantic preflight found later batch entries missing required place parents; reserve cost pending settlement |
+
+## Tranche-A composite completion — 2026-07-31
+
+All reviewed attempts below were materialized to `assets/scenes/` for the Gate-2 board. `stamp_review.py` is authoritative: PASS rows are `verified`; FLAG rows are `parked` with the fresh-eyes reason. The pre-existing canonical frames were preserved in `scratchpad/tranche-a-pre-composite-canonical/` before replacement.
+
+| name | tier | cost (USD) | seeds used | §3 rig verdict | defect flag / reason |
+| --- | --- | ---: | --- | --- | --- |
+| L28-composite-corrected | 2K | $0.134 | miniscribe-rep STEP-1; terry-johnson STEP-1; L27 place anchor | FLAG — the two named identities, badge, one-hand drive hold, empty hand, and four additional drives hold; Terry's delighted eyes render as crowd-tier dots | PARKED — residual named-cast eye-rig miss; canonical SHA-256 `69e4f0fa8d6868476d136e54f07e8194e719f4a2749ca13018a79ee605a3742d` |
+| L60-composite-final | 2K | $0.134 | Wiles STEP-1; foreman STEP-1; approved L60 place anchor; crowd-exemplar | FLAG — foreman/crowd hold, but Wiles loses the gold tie clip | PARKED — Wiles is staged along the table side, mostly outside the lamp cone, rather than squarely at the head; SHA-256 `29d911396b4f6a4a458aaefd545fe38916c850fc8ce597cbf6bf69608c275881` |
+| L67-composite | 2K | $0.134 | L66-B place anchor; crowd-exemplar | FLAG — two foreground figures are far larger and more detailed than the authored small crowd scale | PARKED — oversized standing foreground crowd dominates; SHA-256 `4aaaa72d225ef2847cb9efa057bd7939b2ee2126b54c98c65ba03b25b88573e6` |
+| L101-composite | 2K | $0.134 | L100-B place anchor; crowd-exemplar | PASS — same nine crowd figures and crowd rig hold | PASS — exactly one red brick, locked table continuity, no text; SHA-256 `f6dc942e1a33c1c8987d89076a9ddf420c61d4e94c117e4554f1f883d32cb364` |
+| L108-composite | 2K | $0.134 | L107-B place anchor; crowd-exemplar | FLAG — workers become large detailed figures rather than crowd-tier figures | PARKED — bricks disappear and invented `ACME 458-B` text replaces the plain mark; SHA-256 `1c111e87d48c3c51c784d9955396f66b5e417996ae52fddb7ce4d3ecb99c904b` |
+| L109-composite | 2K | $0.134 | staged L108 parent; crowd-exemplar | FLAG — foreground rig violations persist | PARKED — continuity, brick/box count, and plain-mark requirements fail; SHA-256 `11215faca60e68e5435f62ec89b2b3e3999bfcbcb53d192dc240b1eff741cd94` |
+| L161-composite | 2K | $0.134 | L160-A place anchor; crowd-exemplar | PASS — simplified crowd rig holds | PARKED — major locked-frame continuity failure despite exact `1989`, vacant chair, and lantern payload; SHA-256 `a473951cf6a2cc80e3c21540fad4a5e7237d62c70b598b215516181efa75668e` |
+| L162-composite | 2K | $0.134 | staged L161 parent; crowd-exemplar | PASS — crowd rig and staged-parent continuity hold | PARKED — lantern is not visibly raised; only the light pool moves; SHA-256 `3e8fb41f590edf4cd707d77e16f95bf0c345d98286b8a7d7436c1336e4d714ca` |
+| L184-composite | 2K | $0.134 | banker canonical; Wiles canonical; L183-B place anchor | FLAG — banker remains recognizable, but the ghost is not Wiles | PARKED — courtroom/framing/pose/scale are replaced by a high-rise office; SHA-256 `5ad0c9b92a009016b89a9f50410d1b6650f51fb8a03f6571ba3ece57f3d03a46` |
+| L191-composite | 2K | $0.134 | banker STEP-1; auditor STEP-1; corrected L190 place anchor; crowd-exemplar | PASS — both named identities and executive crowd tier hold | PASS — three stack heights and exact `128 MILLION` hold; SHA-256 `035d93132176ff62ab159a77e7833b2b2d0185fa61d046269d159ab3cdec21e6` |
+| L61-composite | 2K | $0.134 | Wiles canonical; foreman canonical; final L60 parent; crowd-exemplar | PASS — named identities and crowd tier hold | PASS — near-exact continuity; target addition reads; SHA-256 `be4608e4b851daa5754678076388bb2ac2586a2bb56b1b566c226bb11a33ffd2` |
+| L62-composite | 2K | $0.134 | Wiles STEP-1; foreman STEP-1; final L60 place anchor; crowd-exemplar | PASS — identities, costumes, poses, expressions, and crowd tier hold | PASS — envelope and exposed banknotes read clearly; SHA-256 `59b84fedf74ee63fc6aac531b7186d17596556eece6c5c46e2d07c87758e5cd7` |
+| L68-composite | 2K | $0.134 | Wiles STEP-1; final L67 place anchor; crowd-exemplar | FLAG — Wiles holds, but oversized foreground crowd persists | PARKED — the defining shut-door delta fails; SHA-256 `1383d2a6f2a9fcd22dc5a724f62052464b87a10ff7b35a327bb3d55e5d01ac3f` |
+
+### Spend close
+
+- Pre-composite Tranche-A spend/accounted reserve: **$4.973**.
+- Composite leg: 17 × 2K calls/reserves at $0.134 = **$2.278** (includes the first flagged L28, the interrupted L60 reserve, and the 13 completion calls above).
+- Final Tranche-A spend/accounted reserve: **$7.251**, exactly the boss-approved cap.
+
+### Final canonical-source audit
+
+- Hash-verified the human picks into the canonical scene folder: `L26-cand-a → L26`, `L49-retry-b → L49`, `L66-retry-b → L66`, `L100-retry-b → L100`, `L107-cand-b → L107`, `L160-cand-a → L160`, `L183-cand-b → L183`, `L78-channel-style-v3 → L78`, and `L190-A-128-million → L190`.
+- Hash-verified the clean standalone repairs `L91` and `L215` into canonical. `L205` remains parked on its latest reviewed retry because both available attempts show fifteen tally strokes rather than the authored three.
+- Final Tranche-A Gate-2 stamp: **17 verified / 10 parked** across all 27 tranche shots.

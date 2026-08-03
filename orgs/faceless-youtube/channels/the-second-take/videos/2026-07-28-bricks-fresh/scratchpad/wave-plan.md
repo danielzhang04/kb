@@ -32,7 +32,7 @@ dependency graph) − dogfood-complete (4 of the 5; L61 stays in scope for its r
 re-mint** (see Risk 1): its picked plate seeded the old (stethoscope) `qt-wiles` canonical, now stale.
 
 **Full target list (142 ids):** L01–L03, L05–L09, L12–L22, L25–L28, L31–L36, L39, L40, L45–L47, L49–L54,
-L60–L68, L70–L73, L78, L80–L83, L85–L91, L93, L97–L101, L103–L105, L107–L109, L112, L114–L119, L122,
+L60–L68, L70–L73, L78, L80–L83, L85–L91, L93, L97–L105, L107–L109, L112, L114–L119, L122,
 L123, L126–L131, L133, L136–L138, L143, L144, L146–L148, L152–L158, L160–L163, L169–L175, L179–L184,
 L190–L194, L196–L201, L205–L208, L215.
 
