@@ -1668,15 +1668,27 @@ function exactAuthorized20260801Graph(
     const session = sessions.find((candidate) => candidate.sessionRef === expected.sessionRef);
     const proposalStage = proposalStages.find((candidate) => candidate.id === expected.stageId);
     const idea = expected.stageId === 'idea';
+    /*
+     * Compare stored provenance against the approved snapshot in the STORE'S OWN normal form, never
+     * raw value against raw value. `normalizeStoredStageCheckerContract` fills a stage's absent
+     * optional keys (workflowProfile/review/completionGate) with null at load time and PERSISTS that,
+     * while the approved snapshot simply omits them — so a raw compare read `null !== undefined` on
+     * every stage and reported the untouched historical run as drifted. Assignment carries the same
+     * hazard (absent vs null, plus key order), so it goes through the same door.
+     */
+    const storedContract = stage ? normalizeCheckerContract(stage) : undefined;
+    const proposalContract = proposalStage ? normalizeCheckerContract(proposalStage) : undefined;
+    const storedAssignment = stage ? normalizeAssignment(stage.assignment) : undefined;
+    const proposalAssignment = proposalStage ? normalizeAssignment(proposalStage.assignment) : undefined;
     if (!stage || !attempt || !session || !proposalStage
+      || !storedContract || !proposalContract
+      || storedAssignment === undefined || proposalAssignment === undefined
       || stage.stageRef !== expected.stageRef || stage.canonicalCardRef !== expected.cardRef
       || stage.currentAttemptRef !== expected.attemptRef || stage.currentGeneration !== 1
       || stage.currentGenerationRef !== null || stage.acceptedGenerationRef !== null
       || JSON.stringify(stage.dependsOn) !== JSON.stringify(proposalStage.dependsOn)
-      || JSON.stringify(stage.assignment) !== JSON.stringify(proposalStage.assignment)
-      || stage.workflowProfile !== proposalStage.workflowProfile
-      || JSON.stringify(stage.review) !== JSON.stringify(proposalStage.review)
-      || JSON.stringify(stage.completionGate) !== JSON.stringify(proposalStage.completionGate)
+      || !sameAssignment(storedAssignment, proposalAssignment)
+      || !sameCheckerContract(storedContract, proposalContract)
       || stage.state !== (idea ? 'failed' : phase === 'committed' ? 'stopped' : 'blocked')
       || stage.version !== (idea ? 5 : phase === 'committed' ? 4 : 3)
       || attempt.stageRef !== expected.stageRef || attempt.state !== (idea ? 'failed' : phase === 'committed' ? 'stopped' : 'queued')

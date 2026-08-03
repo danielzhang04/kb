@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   ControlStoreLimitError,
   AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
   AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_TITLE,
+  AUTHORIZED_20260801_FAILED_RUN_STAGES,
   AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
   AUTHORIZED_20260801_FAILED_RUN_INPUT,
   AUTHORIZED_20260801_FAILED_RUN_REF,
@@ -49,6 +51,163 @@ describe('authorized 2026-08-01 proposal provenance', () => {
       { ...exact, approval: { ...exact.approval!, note: 'unexpected' } },
       { ...exact, approval: { ...exact.approval!, extra: true } as unknown as ProposalRevision['approval'] },
     ]) expect(exactAuthorized20260801ProposalRevision(drifted)).toBe(false);
+  });
+
+  /**
+   * THE SEAM THIS SUITE WAS MISSING, and the reason a live settlement refused: the fixture snapshot
+   * OMITS the optional stage keys (`workflowProfile`/`review`/`completionGate`), while the load-time
+   * normalizer fills them with null on the stored stage and persists that. A raw compare therefore
+   * read `null !== undefined` on all 13 stages and reported the untouched historical run as drifted.
+   * The document below is written WITHOUT those keys and then loaded through the real file store, so
+   * it is checked in exactly the shape a restarted daemon holds.
+   */
+  const RUN_REF = 'run-0aa72053-b9d7-41fa-a034-19871b66d214';
+  const REQUEST_REF = 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e';
+  const MANAGER_SESSION_REF = 'session-54ef91fa-6607-4f0e-a2f6-f9edd87873bb';
+  const CREATED_AT = '2026-08-01T02:04:03.640Z';
+  const EVENT_ROWS = [
+    { cursor: 1, kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated', stageRef: null, attemptRef: null, sessionRef: null, createdAt: '2026-08-01T02:04:04.767Z' },
+    { cursor: 2, kind: 'governance', source: 'human', status: 'success', summary: 'authorized 2026-07-31 execution-lock boundary reclassified to intervention', stageRef: null, attemptRef: null, sessionRef: null, createdAt: '2026-08-01T03:31:39.866Z' },
+    { cursor: 3, kind: 'governance', source: 'human', status: 'success', summary: 'Human Request responded at revision 2', stageRef: null, attemptRef: null, sessionRef: null, createdAt: '2026-08-01T03:32:43.924Z' },
+    { cursor: 4, kind: 'lifecycle', source: 'worker', status: 'failure', summary: 'Codex workspace contains an unsupported changed path', stageRef: 'stage-ea9da6f4-2b54-4664-a4ae-f2a47885e51b', attemptRef: 'attempt-e5672116-acdb-4dfd-887a-5c0566b92ae7', sessionRef: 'session-8445469e-a733-4a66-908f-b6a58f513323', createdAt: '2026-08-01T03:32:49.322Z' },
+    { cursor: 5, kind: 'lifecycle', source: 'system', status: 'interrupted', summary: 'dashboard restarted; active control-plane records were normalized to interrupted', stageRef: null, attemptRef: null, sessionRef: null, createdAt: '2026-08-01T08:18:11.696Z' },
+  ];
+
+  /** The historical document as a restarted daemon persists it, minus the normalizer-filled keys. */
+  function historicalDocument(): Record<string, any> {
+    const snapshotStages = (snapshot as unknown as { stages: Array<Record<string, any>> }).stages;
+    const stages = AUTHORIZED_20260801_FAILED_RUN_STAGES.map((expected) => {
+      const source = snapshotStages.find((candidate) => candidate.id === expected.stageId);
+      if (!source) throw new Error(`fixture snapshot is missing stage ${expected.stageId}`);
+      const idea = expected.stageId === 'idea';
+      return {
+        stage: {
+          subject: 'operator', stageRef: expected.stageRef, runRef: RUN_REF, stageId: expected.stageId,
+          title: source.title, dependsOn: [...source.dependsOn], canonicalCardRef: expected.cardRef,
+          state: idea ? 'failed' : 'blocked', version: idea ? 5 : 3,
+          currentAttemptRef: expected.attemptRef, assignment: structuredClone(source.assignment),
+          // workflowProfile / review / completionGate deliberately ABSENT: the snapshot omits them and
+          // so did the persisted document until the load-time normalizer filled them with null.
+          currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null,
+          createdAt: CREATED_AT, updatedAt: '2026-08-01T03:32:49.635Z',
+        },
+        attempt: {
+          subject: 'operator', attemptRef: expected.attemptRef, runRef: RUN_REF, stageRef: expected.stageRef,
+          generation: 1, predecessorAttemptRef: null, runtime: expected.runtime, model: expected.model,
+          state: idea ? 'failed' : 'queued', version: idea ? 5 : 2, managedSessionRef: expected.sessionRef,
+          reviewSubjectGenerationRef: null, reviewSubjectResultHash: null, reviewSubjectCanonicalCommit: null,
+          logicalGeneration: null, baseGenerationRef: null, baseCommit: null,
+          createdAt: CREATED_AT, updatedAt: '2026-08-01T03:32:49.635Z',
+        },
+        session: {
+          subject: 'operator', operationKey: null, operationFingerprint: null, sessionRef: expected.sessionRef,
+          runRef: RUN_REF, stageRef: expected.stageRef, attemptRef: expected.attemptRef, role: 'worker',
+          generation: 1, predecessorSessionRef: null, runtime: expected.runtime, model: expected.model,
+          state: idea ? 'failed' : 'pending', version: idea ? 4 : 1,
+          createdAt: CREATED_AT, updatedAt: '2026-08-01T03:32:49.635Z',
+        },
+      };
+    });
+    return {
+      version: 1,
+      nextEventCursor: 6,
+      proposals: [{ subject: 'operator', ...structuredClone(exact) }],
+      runs: [{
+        subject: 'operator',
+        launchOperationKey: 'agent-workspace-launch:4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960:thin-slice-run:f481bfb5-584d-4200-b0f1-8b1fc0556209',
+        launchOperationFingerprint: '664ccc0a8734e5d5bdcaebb834aa656c609be49107ccfa44d784a309ff886600',
+        activationReceipts: [{
+          idempotencyKey: `activate:${RUN_REF}:4:${exact.hash}:1`,
+          fingerprint: '9e81be057acedd88e8fd4a5d9cf7c3aa0420db0ee9e274c63fd1a3e322acf205',
+          phase: 'dispatched', claimedAt: '2026-08-01T03:32:45.859Z', updatedAt: '2026-08-01T03:32:47.623Z',
+        }],
+        runRef: RUN_REF, predecessorRunRef: null, title: exact.title,
+        proposalRef: exact.proposalRef, proposalRevision: 1, proposalHash: exact.hash,
+        publicationState: 'published', state: 'failed', version: 7,
+        managerSessionRef: MANAGER_SESSION_REF, managerGeneration: 1,
+        managerAssignment: {
+          agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md',
+          declarationHash: 'ba119796897f72495ba8dadcb8ca78a4be352e88e6f7ef42c74823fe1b048fc0',
+          profileId: 'manager:codex:gpt-5.6-sol', runtime: 'codex', model: 'gpt-5.6-sol',
+        },
+        agentWorkspaceLaunch: {
+          composerRef: '4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960', agentId: 'fyt-runner',
+          declarationPath: 'agents/fyt-runner.md',
+          declarationHash: 'ba119796897f72495ba8dadcb8ca78a4be352e88e6f7ef42c74823fe1b048fc0',
+        },
+        createdAt: CREATED_AT, updatedAt: '2026-08-01T03:32:49.635Z',
+      }],
+      stages: stages.map((row) => row.stage),
+      attempts: stages.map((row) => row.attempt),
+      sessions: [
+        {
+          subject: 'operator', operationKey: null, operationFingerprint: null, sessionRef: MANAGER_SESSION_REF,
+          runRef: RUN_REF, stageRef: null, attemptRef: null, role: 'manager', generation: 1,
+          predecessorSessionRef: null, runtime: 'codex', model: 'gpt-5.6-sol', state: 'interrupted', version: 4,
+          createdAt: CREATED_AT, updatedAt: '2026-08-01T08:18:11.696Z',
+        },
+        ...stages.map((row) => row.session),
+      ],
+      humanRequests: [{
+        subject: 'operator', requestRef: REQUEST_REF, runRef: RUN_REF, stageRef: null, kind: 'intervention',
+        revision: 2, state: 'resolved', title: AUTHORIZED_20260731_EXECUTION_LOCK_TITLE,
+        prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+        response: {
+          requestRevision: 2, decision: 'responded', respondedBy: 'operator',
+          idempotencyKey: `human:${REQUEST_REF}:2:responded`, response: null,
+          respondedAt: '2026-08-01T03:32:43.921Z',
+        },
+        operationKey: null, operationFingerprint: null, resolutionOperationFingerprint: null,
+        legacyRecoveryOperationKey: `legacy-execution-lock-recovery:${RUN_REF}:${REQUEST_REF}:r1`,
+        legacyRecoveryOperationFingerprint: '67abeff66b673f7eb834236a928790c0ac4b8f73f2f9472cbeda523989cdc3c3',
+        legacyRecoveryEventCursor: 2,
+        createdAt: '2026-08-01T02:04:04.762Z', updatedAt: '2026-08-01T03:32:43.921Z',
+      }],
+      events: EVENT_ROWS.map((event) => ({
+        subject: 'operator', runRef: RUN_REF, command: null, toolName: null, path: null,
+        diff: null, checkpoint: null, ...event,
+      })),
+      stageGenerations: [], reviewLoops: [], reviewReceipts: [], generationSupersessions: [], quarantine: [],
+    };
+  }
+
+  it('classifies the historical run as claimable after the real normalizer has filled its stage keys', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-settlement-normalized-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(historicalDocument())}\n`, 'utf8');
+
+    const store = createFileControlPlaneStore(root);
+    const normalized = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>> };
+    // The normalizer really did fill and PERSIST the keys the snapshot omits — the exact asymmetry
+    // that made classify report conflict.
+    expect(normalized.stages).toHaveLength(13);
+    for (const stage of normalized.stages) {
+      expect(stage).toMatchObject({ workflowProfile: null, review: null, completionGate: null });
+    }
+
+    expect(store.preflightAuthorized20260801FailedRunReconciliation('operator', AUTHORIZED_20260801_FAILED_RUN_INPUT))
+      .toMatchObject({ ok: true, value: { disposition: 'eligible', receipt: null, result: null } });
+
+    // Re-opening changes nothing: the same document stays claimable across restarts.
+    expect(createFileControlPlaneStore(root)
+      .preflightAuthorized20260801FailedRunReconciliation('operator', AUTHORIZED_20260801_FAILED_RUN_INPUT))
+      .toMatchObject({ ok: true, value: { disposition: 'eligible' } });
+  });
+
+  it('still refuses when a stage carries a checker contract the approved snapshot never had', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-settlement-drift-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    mkdirSync(dirname(path), { recursive: true });
+    const drifted = historicalDocument();
+    drifted.stages[6].workflowProfile = 'checker-readonly';
+    writeFileSync(path, `${JSON.stringify(drifted)}\n`, 'utf8');
+
+    expect(createFileControlPlaneStore(root)
+      .preflightAuthorized20260801FailedRunReconciliation('operator', AUTHORIZED_20260801_FAILED_RUN_INPUT))
+      .toMatchObject({ ok: false, reason: 'conflict' });
   });
 });
 const MANAGER_ASSIGNMENT = {
