@@ -116,7 +116,7 @@ export function loadExecutionProfiles(repoRoot: string): ExecutionProfile[] {
   for (const [runtime, models] of Object.entries(runtimes)) {
     if (runtime !== 'claude' && runtime !== 'codex') continue;
     for (const model of models) {
-      if (runtime === 'claude') {
+      if (runtime === 'claude' || runtime === 'codex') {
         profiles.push({
           id: `manager:${runtime}:${model}`, role: 'manager', runtime, model,
           capabilities: ['read', 'emit-events'],

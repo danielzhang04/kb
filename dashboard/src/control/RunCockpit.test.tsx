@@ -205,6 +205,40 @@ describe('RunCockpit', () => {
     expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull();
   });
 
+  it('renders a separately labelled historical reconciliation only when its caller supplies it, and respects busy', () => {
+    const reconcile = vi.fn();
+    const { rerender } = render(<RunCockpit detail={detail} events={[]} onHistoricalReconciliation={reconcile} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reconcile historical failed run' }));
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    // Retry stays RENDERED-disabled (never conditionally rendered): an action the operator knows
+    // exists must not vanish, or its absence reads as a UI bug instead of "not available here".
+    expect(screen.getByRole('button', { name: 'Retry as successor' })).toHaveProperty('disabled', true);
+
+    rerender(<RunCockpit detail={detail} events={[]} onHistoricalReconciliation={reconcile} busy />);
+    expect(screen.getByRole('button', { name: 'Reconcile historical failed run' })).toHaveProperty('disabled', true);
+
+    rerender(<RunCockpit detail={detail} events={[]} />);
+    expect(screen.queryByRole('button', { name: 'Reconcile historical failed run' })).toBeNull();
+  });
+
+  it('states a standing Retry refusal instead of offering a click the store would refuse', () => {
+    const retry = vi.fn();
+    const failed: RunDetailDto = { ...detail, run: { ...detail.run, state: 'failed' } };
+    render(
+      <RunCockpit
+        detail={failed}
+        events={[]}
+        onRetry={retry}
+        retryRefusal="Settled by the authorized 2026-08-01 reconciliation; this run can never have a successor."
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Retry as successor' });
+    expect(button).toHaveProperty('disabled', true);
+    fireEvent.click(button);
+    expect(retry).not.toHaveBeenCalled();
+    expect(screen.getByTestId('run-retry-refusal').textContent).toContain('can never have a successor');
+  });
+
   // ---- arc-3: the fields that were arriving in the browser and being discarded ----
 
   it('RENDERS THE DIFF BODY that the old event flattening discarded', () => {

@@ -1,13 +1,13 @@
 ---
 id: fyt-audio-render
 role: work
-runtime: claude
-model: claude-fable-5
-default-profile: worker:claude:claude-fable-5
-allowed-profiles: [worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
+runtime: codex
+model: gpt-5.6-terra
+default-profile: worker:codex:gpt-5.6-terra
+allowed-profiles: [worker:codex:gpt-5.6-terra, worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
 projects: [faceless-youtube]
 runner-bound: true
-description: Audio+render-phase orchestrator for one faceless-youtube video run — narration, the unified audio plan, SFX/music pool sourcing, and the local Remotion render. A persistent Fable-5 terminal that drives voiceover, audio-director, render-builder (plus sfx-forge/music-forge as standing duty); never verifies or grades its own render.
+description: Audio+render-phase Codex worker for one faceless-youtube video run — narration, the unified audio plan, SFX/music pool sourcing, and the local Remotion render. Drives voiceover, audio-director, render-builder (plus sfx-forge/music-forge as standing duty); never verifies or grades its own render.
 ---
 
 # fyt-audio-render — audio+render-phase orchestrator (voiceover → audio-plan → render)
@@ -89,8 +89,8 @@ own cut.
 
 ## Subagent dispatch policy
 
-- **haiku** — mechanical: manifest bookkeeping, loudness-probe reads, pool metadata sweeps.
-- **sonnet** — the default tier for audio-plan drafting and pool audition dispatch.
-- **opus** — reserve for a subagent brief carrying a genuine placement/feel judgment call that a
-  human will ear-gate next, not routine mechanical passes.
-- **codex** — only via a queue card on `ops`; never self-claimed.
+The resolved runtime binding governs every subordinate. In a Codex-bound run, use Codex-native
+subagents only: Terra for bookkeeping, probes, pool sweeps and audio-plan drafting; Sol only for a
+genuine placement or feel judgment that a human will ear-gate next. Never invoke a Claude tier or
+create an ops queue card to re-dispatch work already inside this governed Codex run. In an explicitly
+Claude-bound run, Haiku, Sonnet and Opus retain those respective mechanical, drafting and judgment duties.

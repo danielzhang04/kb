@@ -3,7 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ManagedRuns } from './ManagedRuns';
-import type { RunMetadataDto } from './controlClient';
+import {
+  AUTHORIZED_FAILED_RUN_RECONCILIATION_EVENT_SIGNATURES,
+  AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES,
+  AUTHORIZED_FAILED_RUN_RECONCILIATION_SUMMARY,
+  type RunMetadataDto,
+} from './controlClient';
 import { backStack, pushStack, rootStack, setSectionOnStack, type NavEntry } from '../nav/stack';
 
 afterEach(() => {
@@ -51,6 +56,75 @@ const detailFor = (runRef: string) => ({
     humanRequests: [],
   },
 });
+
+const HISTORICAL_RUN: RunMetadataDto = {
+  runRef: 'run-0aa72053-b9d7-41fa-a034-19871b66d214', predecessorRunRef: null,
+  title: 'Validate one all-Codex faceless-video opening slice',
+  proposalRef: 'proposal-3725fb98-e20e-4619-b6e7-c9055138a50d', proposalRevision: 1,
+  proposalHash: '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9',
+  publicationState: 'published', state: 'failed', version: 7,
+  managerSessionRef: 'session-54ef91fa-6607-4f0e-a2f6-f9edd87873bb', managerGeneration: 1,
+  managerAssignment: null, createdAt: '2026-08-01T02:04:03.640Z', updatedAt: '2026-08-01T03:32:49.635Z',
+  stageCount: 13, attemptCount: 13, sessionCount: 14, openHumanRequestCount: 0, eventCount: 5,
+};
+
+function historicalDetail(settled = false) {
+  const run = { ...HISTORICAL_RUN, version: settled ? 8 : 7, eventCount: settled ? 6 : 5 };
+  const stages = AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES.map((expected, index) => ({
+    stageRef: expected[1], runRef: run.runRef, stageId: expected[0],
+    title: `Historical ${index}`, dependsOn: [...expected[7]],
+    state: index === 0 ? 'failed' as const : 'blocked' as const, version: index === 0 ? 5 : 3,
+    canonicalCardRef: expected[2], currentAttemptRef: expected[3], assignment: null,
+    createdAt: run.createdAt, updatedAt: run.updatedAt,
+  }));
+  const attempts = stages.map((stage, index) => ({
+    attemptRef: AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index]![3], runRef: run.runRef, stageRef: stage.stageRef, generation: 1,
+    predecessorAttemptRef: null, runtime: AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index]![5], model: AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index]![6],
+    state: index === 0 ? 'failed' as const : 'queued' as const, version: index === 0 ? 5 : 2,
+    managedSessionRef: AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index]![4], createdAt: run.createdAt, updatedAt: run.updatedAt,
+  }));
+  const sessions = [
+    {
+      sessionRef: run.managerSessionRef, runRef: run.runRef, stageRef: null, attemptRef: null,
+      role: 'manager' as const, generation: 1, predecessorSessionRef: null, runtime: 'codex', model: 'gpt-5.6-sol',
+      state: 'interrupted' as const, version: 4, createdAt: run.createdAt, updatedAt: run.updatedAt,
+    },
+    ...stages.map((stage, index) => ({
+      sessionRef: AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index]![4], runRef: run.runRef, stageRef: stage.stageRef,
+      attemptRef: AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index]![3], role: 'worker' as const, generation: 1,
+      predecessorSessionRef: null, runtime: AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index]![5], model: AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index]![6],
+      state: index === 0 ? 'failed' as const : 'pending' as const, version: index === 0 ? 4 : 1,
+      createdAt: run.createdAt, updatedAt: run.updatedAt,
+    })),
+  ];
+  return {
+    run, stages, attempts, sessions,
+    humanRequests: [{
+      requestRef: 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e', runRef: run.runRef, stageRef: null,
+      kind: 'intervention' as const, revision: 2, state: 'resolved' as const,
+      title: 'Automatic execution activation is gated', prompt: 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.',
+      response: { requestRevision: 2, decision: 'responded' as const, response: null, respondedAt: '2026-08-01T03:32:43.921Z' },
+      createdAt: '2026-08-01T02:04:04.762Z', updatedAt: '2026-08-01T03:32:43.921Z',
+    }],
+    reviewLoops: [], reviewReceipts: [],
+  };
+}
+
+/** What the store appends when the settlement commits; its presence is the browser-side settled proof. */
+const settlementEvent = {
+  cursor: 6, runRef: HISTORICAL_RUN.runRef, kind: 'governance', source: 'human',
+  stageRef: null, attemptRef: null, sessionRef: null, status: 'success',
+  summary: AUTHORIZED_FAILED_RUN_RECONCILIATION_SUMMARY,
+  command: null, toolName: null, path: null, diff: null, checkpoint: null,
+  createdAt: '2026-08-01T09:00:00.000Z',
+};
+
+const historicalEvents = AUTHORIZED_FAILED_RUN_RECONCILIATION_EVENT_SIGNATURES.map((expected, index) => ({
+  cursor: index + 1, runRef: HISTORICAL_RUN.runRef, kind: expected[0], source: expected[1],
+  stageRef: expected[4], attemptRef: expected[5], sessionRef: expected[6], status: expected[2], summary: expected[3],
+  command: null, toolName: null, path: null, diff: null, checkpoint: null,
+  createdAt: expected[7],
+}));
 
 /** Route the control-plane reads this surface performs. */
 function stubFetch(): void {
@@ -208,6 +282,116 @@ describe('ManagedRuns', () => {
     expect(calls.some((call) => call.url.includes('/launch'))).toBe(false);
     expect(calls.some((call) => call.url.includes('/successor'))).toBe(false);
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Resume run' })).toBeNull());
+  });
+
+  it('offers the fixed historical reconciliation only for the exact pre-v8 run, refreshes it, and never chains Retry or activate', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    let settled = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input); calls.push({ url, init });
+      if (url.includes('/events')) return { ok: true, status: 200, json: async () => ({
+        ok: true, value: settled ? [...historicalEvents, settlementEvent] : historicalEvents,
+      }) } as Response;
+      if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: {
+        proposalRef: HISTORICAL_RUN.proposalRef, revision: 1, hash: HISTORICAL_RUN.proposalHash, previousHash: null,
+        title: 'historical', createdAt: HISTORICAL_RUN.createdAt, approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] },
+      } }) } as Response;
+      if (url === '/api/control/recovery/2026-08-01/failed-run-reconciliation') {
+        settled = true;
+        return { ok: true, status: 200, json: async () => ({ ok: true, value: { run: historicalDetail(true).run }, replayed: false }) } as Response;
+      }
+      if (url === `/api/control/runs/${HISTORICAL_RUN.runRef}`) return { ok: true, status: 200, json: async () => ({ ok: true, value: historicalDetail(settled) }) } as Response;
+      if (url === '/api/control/runs') return { ok: true, status: 200, json: async () => ({ runs: [historicalDetail(settled).run] }) } as Response;
+      return { ok: false, status: 500, json: async () => ({ error: 'unexpected' }) } as Response;
+    }));
+
+    render(<ManagedRuns sessionToken="token-1" runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />);
+    const action = await screen.findByRole('button', { name: 'Reconcile historical failed run' });
+    expect(screen.getByRole('button', { name: 'Retry as successor' })).toHaveProperty('disabled', true);
+    fireEvent.click(action);
+
+    await waitFor(() => expect(calls.filter((call) => call.url === '/api/control/recovery/2026-08-01/failed-run-reconciliation')).toHaveLength(1));
+    const reconciliation = calls.find((call) => call.url === '/api/control/recovery/2026-08-01/failed-run-reconciliation')!;
+    expect(JSON.parse(String(reconciliation.init?.body))).toEqual({
+      expectedRunVersion: 7, expectedManagerGeneration: 1, expectedRequestRevision: 2, expectedNextEventCursor: 6,
+      expectedProposalHash: HISTORICAL_RUN.proposalHash,
+      idempotencyKey: 'reconcile:2026-08-01:run-0aa72053-b9d7-41fa-a034-19871b66d214:failed-launch:v7',
+    });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Reconcile historical failed run' })).toBeNull());
+    // The settled run is exactly the profile Retry accepts (terminal, everything stopped), and the
+    // store refuses a successor for it — so the cockpit must state the refusal, not offer the click.
+    await waitFor(() => expect(screen.getByTestId('run-retry-refusal').textContent).toContain('can never have a successor'));
+    expect(screen.getByRole('button', { name: 'Retry as successor' })).toHaveProperty('disabled', true);
+    expect(calls.some((call) => call.url.includes('/launch'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/activate'))).toBe(false);
+  });
+
+  it('reports a published-but-unfinalized settlement truthfully instead of as a refusal', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/events')) return { ok: true, status: 200, json: async () => ({ ok: true, value: historicalEvents }) } as Response;
+      if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: { proposalRef: HISTORICAL_RUN.proposalRef, revision: 1, hash: HISTORICAL_RUN.proposalHash, previousHash: null, title: 'historical', createdAt: HISTORICAL_RUN.createdAt, approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } }) } as Response;
+      if (url === '/api/control/recovery/2026-08-01/failed-run-reconciliation') {
+        return {
+          ok: false, status: 409,
+          json: async () => ({
+            error: 'authorized-failed-run-reconciliation-published-uncommitted',
+            detail: 'the settlement is published on origin/ops but its control-plane record is not final; re-invoke to finalize it',
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, value: historicalDetail() }) } as Response;
+    }));
+
+    render(<ManagedRuns sessionToken="token-1" runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reconcile historical failed run' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('published on ops');
+    expect(alert.textContent).not.toContain('refused');
+  });
+
+  it('does not expose the historical reconciliation for a near-match that is not exactly pre-v8', async () => {
+    const almost = { ...HISTORICAL_RUN, version: 6 };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/events')) return { ok: true, status: 200, json: async () => ({ ok: true, value: historicalEvents }) } as Response;
+      if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: { proposalRef: almost.proposalRef, revision: 1, hash: almost.proposalHash, previousHash: null, title: 'historical', createdAt: almost.createdAt, approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } }) } as Response;
+      return { ok: true, status: 200, json: async () => ({ ok: true, value: { ...historicalDetail(), run: almost } }) } as Response;
+    }));
+    render(<ManagedRuns sessionToken="token-1" runs={[almost]} focusRunRef={almost.runRef} onOpenRun={vi.fn()} />);
+    await screen.findByTestId('entity-detail-run');
+    expect(screen.queryByRole('button', { name: 'Reconcile historical failed run' })).toBeNull();
+  });
+
+  it('fails closed in the UI when an otherwise matching historical card or event signature drifts', async () => {
+    const drifted = historicalDetail();
+    drifted.stages[4] = { ...drifted.stages[4]!, canonicalCardRef: 'wrong-card' as never };
+    const driftedEvents = historicalEvents.map((event) => ({ ...event }));
+    driftedEvents[3] = { ...driftedEvents[3]!, summary: 'different failure' as never };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/events')) return { ok: true, status: 200, json: async () => ({ ok: true, value: driftedEvents }) } as Response;
+      if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: { proposalRef: HISTORICAL_RUN.proposalRef, revision: 1, hash: HISTORICAL_RUN.proposalHash, previousHash: null, title: 'historical', createdAt: HISTORICAL_RUN.createdAt, approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } }) } as Response;
+      return { ok: true, status: 200, json: async () => ({ ok: true, value: drifted }) } as Response;
+    }));
+    render(<ManagedRuns sessionToken="token-1" runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />);
+    await screen.findByTestId('entity-detail-run');
+    expect(screen.queryByRole('button', { name: 'Reconcile historical failed run' })).toBeNull();
+  });
+
+  it('hides reconciliation and restores normal Retry when the historical dependency graph drifts', async () => {
+    const drifted = historicalDetail();
+    drifted.stages[7] = { ...drifted.stages[7]!, dependsOn: ['slice-contract', 'shots-merge'] };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/events')) return { ok: true, status: 200, json: async () => ({ ok: true, value: historicalEvents }) } as Response;
+      if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: { proposalRef: HISTORICAL_RUN.proposalRef, revision: 1, hash: HISTORICAL_RUN.proposalHash, previousHash: null, title: 'historical', createdAt: HISTORICAL_RUN.createdAt, approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } }) } as Response;
+      return { ok: true, status: 200, json: async () => ({ ok: true, value: drifted }) } as Response;
+    }));
+    render(<ManagedRuns sessionToken="token-1" runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />);
+    await screen.findByTestId('entity-detail-run');
+    expect(screen.queryByRole('button', { name: 'Reconcile historical failed run' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retry as successor' })).toBeTruthy();
   });
 
   it('lands on the grid and shows every run title in full', () => {

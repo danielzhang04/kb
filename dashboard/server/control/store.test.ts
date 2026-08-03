@@ -1,19 +1,215 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   ControlStoreLimitError,
+  AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+  AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_TITLE,
+  AUTHORIZED_20260801_FAILED_RUN_STAGES,
+  AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
+  AUTHORIZED_20260801_FAILED_RUN_INPUT,
+  AUTHORIZED_20260801_FAILED_RUN_REF,
   MAX_HUMAN_REQUESTS_PER_RUN,
   createFileControlPlaneStore,
   createInMemoryControlPlaneStore,
+  exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
 } from './store.ts';
 import type { ControlPlaneStore } from './store.ts';
-import type { JsonObject } from './types.ts';
+import type { JsonObject, ProposalRevision } from './types.ts';
 
 const roots: string[] = [];
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
+
+describe('authorized 2026-08-01 proposal provenance', () => {
+  const snapshot = JSON.parse(readFileSync(join(
+    process.cwd(), 'server', 'control', 'test-fixtures', 'authorized-20260801-fyt-proposal.json',
+  ), 'utf8')) as JsonObject;
+  const exact: ProposalRevision = {
+    proposalRef: 'proposal-3725fb98-e20e-4619-b6e7-c9055138a50d', sourceComposerRef: 'workflow-registry',
+    sourceTurnId: 'thin-slice-run', revision: 1,
+    hash: '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9', previousHash: null,
+    title: 'Validate one all-Codex faceless-video opening slice', createdAt: '2026-08-01T02:04:02.673Z', snapshot,
+    approval: {
+      revision: 1, decision: 'approved', decidedBy: 'operator',
+      idempotencyKey: 'agent-workspace-launch:4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960:thin-slice-run:f481bfb5-584d-4200-b0f1-8b1fc0556209:decision',
+      decidedAt: '2026-08-01T02:04:03.315Z', note: null,
+    },
+  };
+
+  it('pins every historical source, title, timestamp, and approval field', () => {
+    expect(exactAuthorized20260801ProposalRevision(exact)).toBe(true);
+    for (const drifted of [
+      { ...exact, sourceComposerRef: 'other-registry' },
+      { ...exact, sourceTurnId: 'other-turn' },
+      { ...exact, title: `${exact.title} drift` },
+      { ...exact, createdAt: '2026-08-01T02:04:02.674Z' },
+      { ...exact, approval: { ...exact.approval!, decidedAt: '2026-08-01T02:04:03.316Z' } },
+      { ...exact, approval: { ...exact.approval!, note: 'unexpected' } },
+      { ...exact, approval: { ...exact.approval!, extra: true } as unknown as ProposalRevision['approval'] },
+    ]) expect(exactAuthorized20260801ProposalRevision(drifted)).toBe(false);
+  });
+
+  /**
+   * THE SEAM THIS SUITE WAS MISSING, and the reason a live settlement refused: the fixture snapshot
+   * OMITS the optional stage keys (`workflowProfile`/`review`/`completionGate`), while the load-time
+   * normalizer fills them with null on the stored stage and persists that. A raw compare therefore
+   * read `null !== undefined` on all 13 stages and reported the untouched historical run as drifted.
+   * The document below is written WITHOUT those keys and then loaded through the real file store, so
+   * it is checked in exactly the shape a restarted daemon holds.
+   */
+  const RUN_REF = 'run-0aa72053-b9d7-41fa-a034-19871b66d214';
+  const REQUEST_REF = 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e';
+  const MANAGER_SESSION_REF = 'session-54ef91fa-6607-4f0e-a2f6-f9edd87873bb';
+  const CREATED_AT = '2026-08-01T02:04:03.640Z';
+  const EVENT_ROWS = [
+    { cursor: 1, kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated', stageRef: null, attemptRef: null, sessionRef: null, createdAt: '2026-08-01T02:04:04.767Z' },
+    { cursor: 2, kind: 'governance', source: 'human', status: 'success', summary: 'authorized 2026-07-31 execution-lock boundary reclassified to intervention', stageRef: null, attemptRef: null, sessionRef: null, createdAt: '2026-08-01T03:31:39.866Z' },
+    { cursor: 3, kind: 'governance', source: 'human', status: 'success', summary: 'Human Request responded at revision 2', stageRef: null, attemptRef: null, sessionRef: null, createdAt: '2026-08-01T03:32:43.924Z' },
+    { cursor: 4, kind: 'lifecycle', source: 'worker', status: 'failure', summary: 'Codex workspace contains an unsupported changed path', stageRef: 'stage-ea9da6f4-2b54-4664-a4ae-f2a47885e51b', attemptRef: 'attempt-e5672116-acdb-4dfd-887a-5c0566b92ae7', sessionRef: 'session-8445469e-a733-4a66-908f-b6a58f513323', createdAt: '2026-08-01T03:32:49.322Z' },
+    { cursor: 5, kind: 'lifecycle', source: 'system', status: 'interrupted', summary: 'dashboard restarted; active control-plane records were normalized to interrupted', stageRef: null, attemptRef: null, sessionRef: null, createdAt: '2026-08-01T08:18:11.696Z' },
+  ];
+
+  /** The historical document as a restarted daemon persists it, minus the normalizer-filled keys. */
+  function historicalDocument(): Record<string, any> {
+    const snapshotStages = (snapshot as unknown as { stages: Array<Record<string, any>> }).stages;
+    const stages = AUTHORIZED_20260801_FAILED_RUN_STAGES.map((expected) => {
+      const source = snapshotStages.find((candidate) => candidate.id === expected.stageId);
+      if (!source) throw new Error(`fixture snapshot is missing stage ${expected.stageId}`);
+      const idea = expected.stageId === 'idea';
+      return {
+        stage: {
+          subject: 'operator', stageRef: expected.stageRef, runRef: RUN_REF, stageId: expected.stageId,
+          title: source.title, dependsOn: [...source.dependsOn], canonicalCardRef: expected.cardRef,
+          state: idea ? 'failed' : 'blocked', version: idea ? 5 : 3,
+          currentAttemptRef: expected.attemptRef, assignment: structuredClone(source.assignment),
+          // workflowProfile / review / completionGate deliberately ABSENT: the snapshot omits them and
+          // so did the persisted document until the load-time normalizer filled them with null.
+          currentGeneration: 1, currentGenerationRef: null, acceptedGenerationRef: null,
+          createdAt: CREATED_AT, updatedAt: '2026-08-01T03:32:49.635Z',
+        },
+        attempt: {
+          subject: 'operator', attemptRef: expected.attemptRef, runRef: RUN_REF, stageRef: expected.stageRef,
+          generation: 1, predecessorAttemptRef: null, runtime: expected.runtime, model: expected.model,
+          state: idea ? 'failed' : 'queued', version: idea ? 5 : 2, managedSessionRef: expected.sessionRef,
+          reviewSubjectGenerationRef: null, reviewSubjectResultHash: null, reviewSubjectCanonicalCommit: null,
+          logicalGeneration: null, baseGenerationRef: null, baseCommit: null,
+          createdAt: CREATED_AT, updatedAt: '2026-08-01T03:32:49.635Z',
+        },
+        session: {
+          subject: 'operator', operationKey: null, operationFingerprint: null, sessionRef: expected.sessionRef,
+          runRef: RUN_REF, stageRef: expected.stageRef, attemptRef: expected.attemptRef, role: 'worker',
+          generation: 1, predecessorSessionRef: null, runtime: expected.runtime, model: expected.model,
+          state: idea ? 'failed' : 'pending', version: idea ? 4 : 1,
+          createdAt: CREATED_AT, updatedAt: '2026-08-01T03:32:49.635Z',
+        },
+      };
+    });
+    return {
+      version: 1,
+      nextEventCursor: 6,
+      proposals: [{ subject: 'operator', ...structuredClone(exact) }],
+      runs: [{
+        subject: 'operator',
+        launchOperationKey: 'agent-workspace-launch:4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960:thin-slice-run:f481bfb5-584d-4200-b0f1-8b1fc0556209',
+        launchOperationFingerprint: '664ccc0a8734e5d5bdcaebb834aa656c609be49107ccfa44d784a309ff886600',
+        activationReceipts: [{
+          idempotencyKey: `activate:${RUN_REF}:4:${exact.hash}:1`,
+          fingerprint: '9e81be057acedd88e8fd4a5d9cf7c3aa0420db0ee9e274c63fd1a3e322acf205',
+          phase: 'dispatched', claimedAt: '2026-08-01T03:32:45.859Z', updatedAt: '2026-08-01T03:32:47.623Z',
+        }],
+        runRef: RUN_REF, predecessorRunRef: null, title: exact.title,
+        proposalRef: exact.proposalRef, proposalRevision: 1, proposalHash: exact.hash,
+        publicationState: 'published', state: 'failed', version: 7,
+        managerSessionRef: MANAGER_SESSION_REF, managerGeneration: 1,
+        managerAssignment: {
+          agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md',
+          declarationHash: 'ba119796897f72495ba8dadcb8ca78a4be352e88e6f7ef42c74823fe1b048fc0',
+          profileId: 'manager:codex:gpt-5.6-sol', runtime: 'codex', model: 'gpt-5.6-sol',
+        },
+        agentWorkspaceLaunch: {
+          composerRef: '4c9aa9e0-92fe-4f66-a0e3-dd36f29d7960', agentId: 'fyt-runner',
+          declarationPath: 'agents/fyt-runner.md',
+          declarationHash: 'ba119796897f72495ba8dadcb8ca78a4be352e88e6f7ef42c74823fe1b048fc0',
+        },
+        createdAt: CREATED_AT, updatedAt: '2026-08-01T03:32:49.635Z',
+      }],
+      stages: stages.map((row) => row.stage),
+      attempts: stages.map((row) => row.attempt),
+      sessions: [
+        {
+          subject: 'operator', operationKey: null, operationFingerprint: null, sessionRef: MANAGER_SESSION_REF,
+          runRef: RUN_REF, stageRef: null, attemptRef: null, role: 'manager', generation: 1,
+          predecessorSessionRef: null, runtime: 'codex', model: 'gpt-5.6-sol', state: 'interrupted', version: 4,
+          createdAt: CREATED_AT, updatedAt: '2026-08-01T08:18:11.696Z',
+        },
+        ...stages.map((row) => row.session),
+      ],
+      humanRequests: [{
+        subject: 'operator', requestRef: REQUEST_REF, runRef: RUN_REF, stageRef: null, kind: 'intervention',
+        revision: 2, state: 'resolved', title: AUTHORIZED_20260731_EXECUTION_LOCK_TITLE,
+        prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+        response: {
+          requestRevision: 2, decision: 'responded', respondedBy: 'operator',
+          idempotencyKey: `human:${REQUEST_REF}:2:responded`, response: null,
+          respondedAt: '2026-08-01T03:32:43.921Z',
+        },
+        operationKey: null, operationFingerprint: null, resolutionOperationFingerprint: null,
+        legacyRecoveryOperationKey: `legacy-execution-lock-recovery:${RUN_REF}:${REQUEST_REF}:r1`,
+        legacyRecoveryOperationFingerprint: '67abeff66b673f7eb834236a928790c0ac4b8f73f2f9472cbeda523989cdc3c3',
+        legacyRecoveryEventCursor: 2,
+        createdAt: '2026-08-01T02:04:04.762Z', updatedAt: '2026-08-01T03:32:43.921Z',
+      }],
+      events: EVENT_ROWS.map((event) => ({
+        subject: 'operator', runRef: RUN_REF, command: null, toolName: null, path: null,
+        diff: null, checkpoint: null, ...event,
+      })),
+      stageGenerations: [], reviewLoops: [], reviewReceipts: [], generationSupersessions: [], quarantine: [],
+    };
+  }
+
+  it('classifies the historical run as claimable after the real normalizer has filled its stage keys', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-settlement-normalized-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(historicalDocument())}\n`, 'utf8');
+
+    const store = createFileControlPlaneStore(root);
+    const normalized = JSON.parse(readFileSync(path, 'utf8')) as { stages: Array<Record<string, unknown>> };
+    // The normalizer really did fill and PERSIST the keys the snapshot omits — the exact asymmetry
+    // that made classify report conflict.
+    expect(normalized.stages).toHaveLength(13);
+    for (const stage of normalized.stages) {
+      expect(stage).toMatchObject({ workflowProfile: null, review: null, completionGate: null });
+    }
+
+    expect(store.preflightAuthorized20260801FailedRunReconciliation('operator', AUTHORIZED_20260801_FAILED_RUN_INPUT))
+      .toMatchObject({ ok: true, value: { disposition: 'eligible', receipt: null, result: null } });
+
+    // Re-opening changes nothing: the same document stays claimable across restarts.
+    expect(createFileControlPlaneStore(root)
+      .preflightAuthorized20260801FailedRunReconciliation('operator', AUTHORIZED_20260801_FAILED_RUN_INPUT))
+      .toMatchObject({ ok: true, value: { disposition: 'eligible' } });
+  });
+
+  it('still refuses when a stage carries a checker contract the approved snapshot never had', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-settlement-drift-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    mkdirSync(dirname(path), { recursive: true });
+    const drifted = historicalDocument();
+    drifted.stages[6].workflowProfile = 'checker-readonly';
+    writeFileSync(path, `${JSON.stringify(drifted)}\n`, 'utf8');
+
+    expect(createFileControlPlaneStore(root)
+      .preflightAuthorized20260801FailedRunReconciliation('operator', AUTHORIZED_20260801_FAILED_RUN_INPUT))
+      .toMatchObject({ ok: false, reason: 'conflict' });
+  });
+});
 const MANAGER_ASSIGNMENT = {
   agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'a'.repeat(64),
   profileId: 'claude:manager', runtime: 'claude' as const, model: 'claude-sonnet-5',
@@ -37,6 +233,140 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+describe('authorized 2026-07-31 execution-lock recovery', () => {
+  const recoveryInput = {
+    expectedRunVersion: 4,
+    expectedManagerGeneration: 1,
+    expectedRequestRevision: 1,
+    idempotencyKey: 'authorized-legacy-execution-lock-recovery',
+  };
+
+  it('atomically reclassifies only the exact never-started request and survives restart replay', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-legacy-recovery-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, authorizedLegacyOptions());
+    seedAuthorizedLegacyExecutionLock(store);
+    const normalized = createFileControlPlaneStore(root);
+    const normalizedDocument = JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
+      humanRequests: Array<Record<string, unknown>>;
+    };
+    expect(normalizedDocument.humanRequests[0]).toMatchObject({
+      legacyRecoveryOperationKey: null,
+      legacyRecoveryOperationFingerprint: null,
+      legacyRecoveryEventCursor: null,
+    });
+    expect(normalized.preflightAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({
+      ok: true, value: { disposition: 'eligible', result: null },
+    });
+    const recovered = normalized.recoverAuthorized20260731ExecutionLock('operator', recoveryInput);
+    expect(recovered).toMatchObject({
+      ok: true,
+      value: {
+        request: {
+          requestRef: AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+          runRef: AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+          kind: 'intervention', revision: 2, state: 'open', response: null,
+          prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
+        },
+        event: { kind: 'governance', source: 'human', status: 'success' },
+      },
+    });
+    expect(JSON.stringify(recovered)).not.toContain('legacyRecoveryOperation');
+    const restarted = createFileControlPlaneStore(root);
+    expect(restarted.preflightAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({
+      ok: true, value: { disposition: 'replay', result: { request: { state: 'open' } } },
+    });
+    expect(restarted.reviseHumanRequest(
+      'operator', AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF, 2,
+      'Changed', 'Changed',
+    )).toMatchObject({ ok: false, reason: 'invalid' });
+    const responded = restarted.respondHumanRequest('operator', AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF, {
+      expectedRevision: 2, decision: 'responded', idempotencyKey: 'respond-after-recovery',
+    });
+    expect(responded).toMatchObject({ ok: true, value: { state: 'resolved', response: { decision: 'responded' } } });
+    expect(restarted.recoverAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({
+      ok: true, replayed: true, value: {
+        request: { revision: 2, kind: 'intervention', state: 'resolved', response: { decision: 'responded' } },
+      },
+    });
+    expect(restarted.listEvents('operator', AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF)).toMatchObject({
+      ok: true, value: [
+        expect.objectContaining({ summary: 'canonical run published; runtime activation remains gated' }),
+        expect.objectContaining({ summary: 'authorized 2026-07-31 execution-lock boundary reclassified to intervention' }),
+      ],
+    });
+  });
+
+  it('refuses marker drift and a progressed attempt without changing the request', () => {
+    const markerStore = createInMemoryControlPlaneStore(authorizedLegacyOptions());
+    const marker = seedAuthorizedLegacyExecutionLock(markerStore);
+    const revised = markerStore.reviseHumanRequest(
+      'operator', marker.request.requestRef, marker.request.revision,
+      marker.request.title, `${marker.request.prompt} drift`,
+    );
+    if (!revised.ok) throw new Error(revised.detail);
+    expect(markerStore.preflightAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(markerStore.recoverAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(markerStore.getHumanRequest('operator', marker.request.requestRef)).toMatchObject({
+      ok: true, value: { kind: 'governance-refusal', revision: 2, state: 'open' },
+    });
+
+    const progressedStore = createInMemoryControlPlaneStore(authorizedLegacyOptions());
+    const progressed = seedAuthorizedLegacyExecutionLock(progressedStore);
+    const firstAttempt = progressed.detail.attempts[0];
+    if (!firstAttempt) throw new Error('expected attempt');
+    const starting = progressedStore.transitionAttempt('operator', firstAttempt.attemptRef, firstAttempt.version, 'starting');
+    if (!starting.ok) throw new Error(starting.detail);
+    expect(progressedStore.preflightAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(progressedStore.recoverAuthorized20260731ExecutionLock('operator', recoveryInput)).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(progressedStore.getHumanRequest('operator', progressed.request.requestRef)).toMatchObject({
+      ok: true, value: { kind: 'governance-refusal', revision: 1, state: 'open' },
+    });
+  });
+
+  it('rejects incoherent private recovery receipts in active and quarantined documents', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-legacy-recovery-validation-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, authorizedLegacyOptions());
+    seedAuthorizedLegacyExecutionLock(store);
+    const recovered = store.recoverAuthorized20260731ExecutionLock('operator', recoveryInput);
+    if (!recovered.ok) throw new Error(recovered.detail);
+    const path = join(root, 'control', 'control-plane.json');
+    const original = JSON.parse(readFileSync(path, 'utf8')) as Record<string, any>;
+
+    const partial = structuredClone(original);
+    partial.humanRequests[0].legacyRecoveryOperationFingerprint = null;
+    writeFileSync(path, `${JSON.stringify(partial)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized legacy recovery receipt/);
+
+    const wrongCursor = structuredClone(original);
+    wrongCursor.humanRequests[0].legacyRecoveryEventCursor = 999;
+    writeFileSync(path, `${JSON.stringify(wrongCursor)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized legacy recovery event/);
+
+    const quarantined = structuredClone(original);
+    const run = quarantined.runs[0];
+    const runRef = run.runRef;
+    quarantined.quarantine = [{
+      subject: 'operator', quarantinedAt: '2026-08-01T03:00:00.000Z', run,
+      stages: quarantined.stages.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      attempts: quarantined.attempts.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      sessions: quarantined.sessions.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      humanRequests: quarantined.humanRequests.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      events: quarantined.events.filter((item: Record<string, unknown>) => item.runRef === runRef),
+      stageGenerations: [], reviewLoops: [], reviewReceipts: [], generationSupersessions: [],
+    }];
+    for (const field of ['runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events', 'stageGenerations', 'reviewLoops', 'reviewReceipts', 'generationSupersessions']) {
+      quarantined[field] = (quarantined[field] as Array<Record<string, unknown>>).filter((item) => item.runRef !== runRef);
+    }
+    writeFileSync(path, `${JSON.stringify(quarantined)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+    quarantined.quarantine[0].humanRequests[0].legacyRecoveryEventCursor = null;
+    writeFileSync(path, `${JSON.stringify(quarantined)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized legacy recovery receipt/);
+  });
+});
+
 function deterministicOptions() {
   let id = 0;
   let second = 0;
@@ -44,6 +374,77 @@ function deterministicOptions() {
     newId: () => String(++id),
     now: () => new Date(Date.UTC(2026, 6, 18, 12, 0, second++)),
   };
+}
+
+const LEGACY_STAGE_IDS = [
+  'idea', 'story', 'judge-gate', 'packaging', 'visual-plan', 'shots-merge', 'slice-contract',
+  'images', 'image-review', 'audio', 'audio-plan-merge', 'render', 'verify',
+] as const;
+const LEGACY_SOL_STAGES = new Set(['judge-gate', 'shots-merge', 'slice-contract', 'image-review', 'audio-plan-merge', 'verify']);
+
+function authorizedLegacyOptions() {
+  let id = 0;
+  return {
+    newId: () => {
+      id += 1;
+      if (id === 2) return AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF.slice('run-'.length);
+      if (id === 43) return AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF.slice('request-'.length);
+      return `legacy-${id}`;
+    },
+    now: () => new Date(Date.UTC(2026, 7, 1, 2, 4, id)),
+  };
+}
+
+function seedAuthorizedLegacyExecutionLock(store: ControlPlaneStore) {
+  const stageSpecs = LEGACY_STAGE_IDS.map((stageId, index) => ({
+    id: stageId,
+    title: stageId,
+    dependsOn: index === 0 ? [] : [LEGACY_STAGE_IDS[index - 1]],
+  }));
+  const proposal = createApprovedProposal(store, 'operator', {
+    schema: 'kb.plan-proposal/v1', title: 'Validate one all-Codex faceless-video opening slice', manager: {}, stages: stageSpecs,
+  });
+  const created = store.createRun('operator', {
+    title: 'Validate one all-Codex faceless-video opening slice', proposalRef: proposal.proposalRef,
+    proposalRevision: proposal.revision, expectedProposalHash: proposal.hash,
+    managerRuntime: 'codex', managerModel: 'gpt-5.6-sol', idempotencyKey: 'legacy-launch',
+    stages: stageSpecs.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+  });
+  if (!created.ok) throw new Error(created.detail);
+  expect(created.value.run.runRef).toBe(AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF);
+  const publishing = store.transitionPublication('operator', created.value.run.runRef, created.value.run.version, 'publishing');
+  if (!publishing.ok) throw new Error(publishing.detail);
+  const published = store.transitionPublication('operator', created.value.run.runRef, publishing.value.version, 'published');
+  if (!published.ok) throw new Error(published.detail);
+  const waiting = store.transitionRun('operator', created.value.run.runRef, published.value.version, 'waiting-human');
+  if (!waiting.ok) throw new Error(waiting.detail);
+  let detail = store.getRun('operator', created.value.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  for (const stage of detail.value.stages) {
+    const linked = store.linkStageCard('operator', stage.stageRef, stage.version, `wf-${stage.stageId}`);
+    if (!linked.ok) throw new Error(linked.detail);
+    const attempt = store.createAttempt('operator', stage.stageRef, {
+      expectedStageVersion: linked.value.version,
+      runtime: 'codex',
+      model: LEGACY_SOL_STAGES.has(stage.stageId) ? 'gpt-5.6-sol' : 'gpt-5.6-terra',
+    });
+    if (!attempt.ok) throw new Error(attempt.detail);
+    const session = store.createWorkerSession('operator', attempt.value.attemptRef, { expectedAttemptVersion: attempt.value.version });
+    if (!session.ok) throw new Error(session.detail);
+  }
+  const request = store.createHumanRequest('operator', created.value.run.runRef, {
+    kind: 'governance-refusal', stageRef: null, title: 'Automatic execution activation is gated',
+    prompt: 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.',
+  });
+  if (!request.ok) throw new Error(request.detail);
+  expect(request.value.requestRef).toBe(AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF);
+  const event = store.appendEvent('operator', created.value.run.runRef, {
+    kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated',
+  });
+  if (!event.ok) throw new Error(event.detail);
+  detail = store.getRun('operator', created.value.run.runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  return { detail: detail.value, request: request.value };
 }
 
 function createApprovedProposal(
@@ -2388,7 +2789,9 @@ describe('durability, crash recovery, and retention', () => {
       writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
       expect(() => createFileControlPlaneStore(root, deterministicOptions()), testCase.name).toThrow(/invalid control-plane/);
     }
-  });
+    // ~40 tampered graphs, each a real file-backed store in a fresh temp root: the default 5s ceiling
+    // is under the real cost of this case whenever the whole suite competes for the same disk/CPU.
+  }, 30_000);
 
   it('fails closed on a persisted queued-generation result tamper', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-store-'));
@@ -2838,5 +3241,134 @@ describe('durability, crash recovery, and retention', () => {
   it('enforces a hard document byte ceiling before replacing durable state', () => {
     const store = createInMemoryControlPlaneStore({ ...deterministicOptions(), maxDocumentBytes: 200 });
     expect(() => createApprovedProposal(store)).toThrow(ControlStoreLimitError);
+  });
+});
+
+/**
+ * The settlement receipt used to pin the WHOLE historical run graph at load time, so every legitimate
+ * later mutation — a successor run, a quarantine restore, any unrelated concurrent event — made the
+ * document unloadable and the daemon unbootable. Durability is now receipt-scoped and finality is
+ * enforced at mutation time; these cases hold both halves of that trade in place.
+ */
+describe('authorized 2026-08-01 settlement durability', () => {
+  const SETTLED_AT = '2026-08-01T09:00:00.000Z';
+  const SETTLEMENT_SUMMARY =
+    'authorized one-off reconciliation settled the failed 2026-07-31 FYT thin-slice predecessor';
+
+  type MutableDocument = {
+    nextEventCursor: number;
+    runs: Array<Record<string, any>>;
+    events: Array<Record<string, any>>;
+    [key: string]: any;
+  };
+
+  /** A real store whose one terminal run has been relabelled as the settled historical run. */
+  function seedSettledStore(phase: 'claimed' | 'committed' = 'committed') {
+    const root = mkdtempSync(join(tmpdir(), 'control-settlement-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const seeded = settleRetryPredecessor(store, 'alice');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as MutableDocument;
+    for (const key of ['runs', 'stages', 'attempts', 'sessions', 'humanRequests', 'events']) {
+      for (const record of document[key] as Array<Record<string, unknown>>) {
+        if (record.runRef === seeded.run.runRef) record.runRef = AUTHORIZED_20260801_FAILED_RUN_REF;
+      }
+    }
+    const run = document.runs[0] as Record<string, any>;
+    run.authorizedFailedRunReconciliation = {
+      idempotencyKey: AUTHORIZED_20260801_FAILED_RUN_INPUT.idempotencyKey,
+      fingerprint: AUTHORIZED_20260801_FAILED_RUN_FINGERPRINT,
+      phase,
+      claimedAt: SETTLED_AT,
+      updatedAt: SETTLED_AT,
+      canonicalCommit: phase === 'committed' ? 'a'.repeat(40) : null,
+      eventCursor: phase === 'committed' ? document.nextEventCursor : null,
+    };
+    if (phase === 'committed') {
+      document.events.push({
+        subject: 'alice', cursor: document.nextEventCursor, runRef: AUTHORIZED_20260801_FAILED_RUN_REF,
+        kind: 'governance', source: 'human', stageRef: null, attemptRef: null, sessionRef: null,
+        status: 'success', summary: SETTLEMENT_SUMMARY,
+        command: null, toolName: null, path: null, diff: null, checkpoint: null, createdAt: SETTLED_AT,
+      });
+      document.nextEventCursor += 1;
+    }
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    return { root, path, run: { ...seeded.run, runRef: AUTHORIZED_20260801_FAILED_RUN_REF } };
+  }
+
+  function successorInput(run: { proposalRef: string; proposalRevision: number; proposalHash: string; version: number }) {
+    return {
+      title: 'Successor of the settled run',
+      proposalRef: run.proposalRef,
+      proposalRevision: run.proposalRevision,
+      expectedProposalHash: run.proposalHash,
+      managerRuntime: 'claude',
+      managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'settled-successor',
+      predecessorRunRef: AUTHORIZED_20260801_FAILED_RUN_REF,
+      expectedPredecessorVersion: run.version,
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [] },
+        { stageId: 'verify', title: 'Verify', dependsOn: ['build'] },
+      ],
+    };
+  }
+
+  it('refuses a successor for the settled run and stays loadable afterwards', () => {
+    const { root, run } = seedSettledStore();
+    const store = createFileControlPlaneStore(root);
+    const successor = store.createRun('alice', successorInput(run));
+    expect(successor).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(successor.ok ? '' : successor.detail).toMatch(/settled failed run/);
+    expect(store.listRuns('alice')).toHaveLength(1);
+    // The brick: a document that moved on must still load, refusal or not.
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+  });
+
+  it('restores the settled run from quarantine without breaking load or reopening Retry', () => {
+    const { root, run } = seedSettledStore();
+    const store = createFileControlPlaneStore(root);
+    const plan = store.dryRunQuarantine('alice', [AUTHORIZED_20260801_FAILED_RUN_REF]);
+    if (!plan.ok) throw new Error(plan.detail);
+    expect(store.quarantineRuns('alice', [AUTHORIZED_20260801_FAILED_RUN_REF], plan.value.planHash)).toMatchObject({ ok: true });
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+
+    const restored = store.restoreRun('alice', AUTHORIZED_20260801_FAILED_RUN_REF);
+    expect(restored).toMatchObject({ ok: true });
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+    const reopened = createFileControlPlaneStore(root);
+    const detail = reopened.getRun('alice', AUTHORIZED_20260801_FAILED_RUN_REF);
+    if (!detail.ok) throw new Error(detail.detail);
+    // The receipt travels with the run, so finality survives the quarantine round trip.
+    const successor = reopened.createRun('alice', { ...successorInput(run), expectedPredecessorVersion: detail.value.run.version });
+    expect(successor).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(successor.ok ? '' : successor.detail).toMatch(/settled failed run/);
+  });
+
+  it('survives an unrelated concurrent event while the settlement is only claimed', () => {
+    const { root } = seedSettledStore('claimed');
+    const store = createFileControlPlaneStore(root);
+    expect(store.appendEvent('alice', AUTHORIZED_20260801_FAILED_RUN_REF, {
+      kind: 'lifecycle', source: 'system', summary: 'unrelated concurrent event',
+    })).toMatchObject({ ok: true });
+    // nextEventCursor is a GLOBAL counter; a claimed receipt must never depend on its exact value.
+    expect(() => createFileControlPlaneStore(root)).not.toThrow();
+  });
+
+  it('still rejects a receipt whose own invariants are incoherent', () => {
+    const { root, path } = seedSettledStore();
+    const original = JSON.parse(readFileSync(path, 'utf8')) as MutableDocument;
+
+    const forgedFingerprint = structuredClone(original);
+    forgedFingerprint.runs[0].authorizedFailedRunReconciliation.fingerprint = 'f'.repeat(64);
+    writeFileSync(path, `${JSON.stringify(forgedFingerprint)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized failed-run reconciliation receipt/);
+
+    const missingEvent = structuredClone(original);
+    missingEvent.events = missingEvent.events.filter((event) => event.summary !== SETTLEMENT_SUMMARY);
+    writeFileSync(path, `${JSON.stringify(missingEvent)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root)).toThrow(/authorized failed-run reconciliation event/);
   });
 });

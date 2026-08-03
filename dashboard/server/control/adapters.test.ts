@@ -314,6 +314,40 @@ describe('Git worktree adapter', () => {
       .rejects.toThrow("unsupported changed-file status ' D'");
   });
 
+  it('rejects porcelain add/add conflicts without weakening ordinary M/A states', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+    mkdirSync(commonDir, { recursive: true });
+    mkdirSync(join(path, 'dashboard', 'server'), { recursive: true });
+    const files = ['unstaged.md', 'staged.md', 'both.md', 'added.md', 'added-modified.md'];
+    for (const file of files) writeFileSync(join(path, 'dashboard', 'server', file), file);
+    const fake = fakeGit(repoRoot, commonDir);
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'c'.repeat(40),
+      runner: fake.runner,
+    });
+
+    fake.setStatus(Buffer.from([
+      ' M dashboard/server/unstaged.md',
+      'M  dashboard/server/staged.md',
+      'MM dashboard/server/both.md',
+      'A  dashboard/server/added.md',
+      'AM dashboard/server/added-modified.md',
+      '',
+    ].join('\0')));
+    const inspected = await adapter.inspect({ operationKey: 'inspect:ordinary', runRef: 'run-1', path });
+    expect(inspected.changed.map((item) => item.path)).toEqual(files.map((file) => `dashboard/server/${file}`).sort());
+
+    fake.setStatus(Buffer.from('AA dashboard/server/added.md\0'));
+    await expect(adapter.inspect({ operationKey: 'inspect:add-add', runRef: 'run-1', path }))
+      .rejects.toThrow("unsupported changed-file status 'AA'");
+  });
+
   it('removes only the planned worktree through the hardened runner and rejects out-of-root paths', async () => {
     const root = temporaryRoot();
     const repoRoot = join(root, 'repo');

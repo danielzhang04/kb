@@ -106,9 +106,17 @@ export class DirtyIndexError extends Error {
   }
 }
 
+/** A restart tried to publish history other than the one exact, already-created coordination commit. */
+export class PreparedCoordinationCommitError extends Error {
+  constructor(detail: string) {
+    super(`refusing prepared coordination publication: ${detail}`);
+    this.name = 'PreparedCoordinationCommitError';
+  }
+}
+
 async function assertCleanIndex(repoRoot: string, runGit: GitRunner): Promise<void> {
   const paths = (await runGit(repoRoot, ['diff', '--cached', '--name-only', '-z']))
-    .split('\0').map((path) => path.trim()).filter(Boolean);
+    .split('\0').filter((path) => path.length > 0);
   if (paths.length > 0) throw new DirtyIndexError(paths);
 }
 
@@ -264,6 +272,259 @@ export async function commitPreparedCoordination(repoRoot: string, relpath: stri
     }
   }
   throw lastErr;
+  });
+}
+
+export interface CreatePreparedCoordinationCommitOptions {
+  runGit?: GitRunner;
+  message: string;
+  /** Test/fault boundary after exact staging and before commit. */
+  afterStage?: () => void;
+}
+
+/**
+ * Create one exact local coordination commit without fetching, rebasing, or pushing.  This is the
+ * mutation half of a strict two-phase publication: callers must hand the returned commit to
+ * {@link publishPreparedCoordinationCommit}, whose remote-range proof is the only publication path.
+ */
+export async function createPreparedCoordinationCommit(
+  repoRoot: string,
+  relpaths: string[],
+  options: CreatePreparedCoordinationCommitOptions,
+): Promise<string> {
+  const runGit = options.runGit ?? defaultGitRunner;
+  const expectedPaths = [...new Set(relpaths.map(normalize))].sort();
+  if (expectedPaths.length === 0 || expectedPaths.some((path) => classifyTarget(path) !== 'coordination')) {
+    throw new PreparedCoordinationCommitError('the exact non-empty local commit path set must contain coordination artifacts only');
+  }
+  return withOpsTransaction(async () => {
+    await assertCoordinationCheckout(repoRoot, runGit);
+    let staged = (await runGit(repoRoot, ['diff', '--cached', '--name-only', '--no-renames', '-z']))
+      .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+    if (staged.length > 0 && JSON.stringify(staged) !== JSON.stringify(expectedPaths)) {
+      throw new DirtyIndexError(staged);
+    }
+    if (staged.length === 0) {
+      await runGit(repoRoot, ['add', '--', ...expectedPaths]);
+      staged = (await runGit(repoRoot, ['diff', '--cached', '--name-only', '--no-renames', '-z']))
+        .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+    }
+    if (JSON.stringify(staged) !== JSON.stringify(expectedPaths)) {
+      throw new PreparedCoordinationCommitError('local settlement staging did not match the exact path set');
+    }
+    options.afterStage?.();
+    await runGit(repoRoot, ['commit', '-m', options.message, '--only', '--', ...expectedPaths]);
+    await assertCleanIndex(repoRoot, runGit);
+    const commit = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
+    if (!/^[a-f0-9]{40}$/.test(commit)) {
+      throw new PreparedCoordinationCommitError('local settlement commit identity is invalid');
+    }
+    return commit;
+  });
+}
+
+export interface PublishPreparedCoordinationCommitOptions {
+  runGit?: GitRunner;
+  /** The complete, exact path set the prepared commit is allowed to contain. */
+  relpaths: string[];
+  /** Re-prove caller authorization after every remote/rebase boundary. */
+  assertAuthorized?: () => void;
+  /** Re-prove exact committed content, not merely the changed-path envelope. */
+  validateCommit?: (commit: string) => void | Promise<void>;
+  maxRetryPushes?: number;
+}
+
+/**
+ * Reports a prepared commit whose `git push` exited 0 while the publish call did not complete: the
+ * commit may already be durable on origin/ops, so local history was NOT rewound and this is not a
+ * refusal. Mirrors {@link DurableRouteError}'s posture — carry the boundary that was crossed, let the
+ * caller phrase it for its own surface. Re-invoking the caller's operation finalizes it.
+ */
+export class PublishedCoordinationCommitError extends Error {
+  readonly published = true;
+  readonly commit: string;
+  // No TS parameter property here: the daemon runs under Node strip-only mode, which rejects them.
+  constructor(commit: string, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'PublishedCoordinationCommitError';
+    this.commit = commit;
+  }
+}
+
+async function isAncestor(runGit: GitRunner, repoRoot: string, commit: string, descendant: string): Promise<boolean> {
+  try {
+    await runGit(repoRoot, ['merge-base', '--is-ancestor', commit, descendant]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Undo an exact prepared commit that this publish call refused BEFORE telling the remote about it.
+ *
+ * CONSTRAINT this exists to satisfy: the coordination checkout is SHARED, and its other writers
+ * (`commitPreparedCoordination`) publish with a bare `git push origin ops`, which pushes whatever
+ * local ops history they find. A prepared commit left behind by a refused publish would therefore be
+ * published later by an unrelated save, carrying content no proof ever accepted. The two-phase
+ * contract is only sound if a refusal leaves no unpublished prepared commit behind.
+ *
+ * The authoritative safety rule lives at the CALL SITE, not here: once `git push` has exited 0 this
+ * is never called at all, because `refs/remotes/origin/ops` is a cached view that a failed confirming
+ * fetch leaves stale — trusting it there would rewind history the remote had already accepted. The
+ * checks below are the remaining ownership proof: a clean working tree (a dirty checkout belongs to
+ * another writer and is never discarded), the commit is still HEAD, it carries exactly the caller's
+ * path set, and the last known remote state does not already reach it. Any failure here is swallowed —
+ * the refusal being reported is the error that matters.
+ */
+async function rollbackUnpublishedPreparedCommit(
+  repoRoot: string,
+  runGit: GitRunner,
+  commit: string,
+  expectedPaths: string[],
+): Promise<void> {
+  try {
+    const dirty = (await runGit(repoRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']))
+      .split('\0').filter((entry) => entry.length > 0);
+    if (dirty.length > 0) return;
+    if ((await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim() !== commit) return;
+    const paths = (await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commit]))
+      .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+    if (JSON.stringify(paths) !== JSON.stringify(expectedPaths)) return;
+    const remote = (await runGit(repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+    if (/^[a-f0-9]{40}$/.test(remote) && await isAncestor(runGit, repoRoot, commit, remote)) return;
+    const parent = (await runGit(repoRoot, ['rev-parse', `${commit}^`])).trim();
+    if (!/^[a-f0-9]{40}$/.test(parent)) return;
+    await runGit(repoRoot, ['reset', '--hard', parent]);
+  } catch { /* never mask the refusal that triggered this rollback */ }
+}
+
+/**
+ * Restart-only continuation for a coordination transaction that committed locally but crashed before
+ * its push was durably observed.  Unlike the normal retry path, this function never pulls, rebases, or
+ * creates a commit.  It publishes only an exact clean `ops` HEAD whose changed-path set is caller-fixed,
+ * A concurrent remote advance is handled with the repository's bounded rebase discipline, but the
+ * rebased commit is accepted only after both its exact path envelope and caller-supplied exact-content
+ * proof pass again.
+ *
+ * Failure has exactly two shapes, and the boundary between them is `git push` exiting 0:
+ * - BEFORE that, a refusal rolls the prepared commit back ({@link rollbackUnpublishedPreparedCommit})
+ *   so it can never be published later by another writer pushing ops wholesale;
+ * - AFTER it, nothing is ever rewound and the failure is raised as {@link PublishedCoordinationCommitError},
+ *   because a confirming fetch or authorization re-check that fails leaves durability UNKNOWN, and
+ *   calling that a refusal would report the opposite of what may have happened.
+ */
+export async function publishPreparedCoordinationCommit(
+  repoRoot: string,
+  expectedCommit: string,
+  options: PublishPreparedCoordinationCommitOptions,
+): Promise<string> {
+  if (!/^[a-f0-9]{40}$/.test(expectedCommit)) {
+    throw new PreparedCoordinationCommitError('expectedCommit must be a full lowercase SHA-1');
+  }
+  const runGit = options.runGit ?? defaultGitRunner;
+  const maxRetryPushes = options.maxRetryPushes ?? 3;
+  const expectedPaths = [...new Set(options.relpaths.map(normalize))].sort();
+  if (expectedPaths.length === 0 || expectedPaths.some((path) => classifyTarget(path) !== 'coordination')) {
+    throw new PreparedCoordinationCommitError('the exact non-empty path set must contain coordination artifacts only');
+  }
+
+  return withOpsTransaction(async () => {
+    let reconciliationCommit = expectedCommit;
+    // The one-way door: set the instant a push exits 0, and never unset. Everything downstream reads
+    // it as "the remote may already have our objects", which forbids rewinding local ops history.
+    let pushed = false;
+    try {
+      await assertCoordinationCheckout(repoRoot, runGit);
+      await assertCleanIndex(repoRoot, runGit);
+      const dirty = (await runGit(repoRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']))
+        .split('\0').filter((entry) => entry.length > 0);
+      if (dirty.length > 0) throw new PreparedCoordinationCommitError(`working tree has ${dirty.length} changed entr${dirty.length === 1 ? 'y' : 'ies'}`);
+      const head = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
+      if (head !== expectedCommit) throw new PreparedCoordinationCommitError('local ops HEAD is not the prepared commit');
+      const actualPaths = (await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', expectedCommit]))
+        .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+      if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths)) {
+        throw new PreparedCoordinationCommitError('prepared commit changed an unexpected path set');
+      }
+      await options.validateCommit?.(expectedCommit);
+
+      for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
+        await runGit(repoRoot, ['fetch', 'origin', 'ops']);
+        options.assertAuthorized?.();
+        const remote = (await runGit(repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+        if (await isAncestor(runGit, repoRoot, reconciliationCommit, remote)) {
+          return reconciliationCommit; // push completed earlier (including a lost transport response)
+        }
+
+        let rebased = false;
+        if (!(await isAncestor(runGit, repoRoot, remote, reconciliationCommit))) {
+          // An unrelated coordination writer advanced ops after our local commit. Rebase the one exact
+          // bounded commit, then revalidate its path set. On conflict, abort so restart never inherits a
+          // half-open rebase.
+          try {
+            await runGit(repoRoot, ['rebase', remote]);
+            options.assertAuthorized?.();
+          } catch (error) {
+            try { await runGit(repoRoot, ['rebase', '--abort']); } catch { /* preserve the rebase error */ }
+            throw error;
+          }
+          reconciliationCommit = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
+          const rebasedPaths = (await runGit(repoRoot, ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', reconciliationCommit]))
+            .split('\0').filter((path) => path.length > 0).map(normalize).sort();
+          if (JSON.stringify(rebasedPaths) !== JSON.stringify(expectedPaths)) {
+            throw new PreparedCoordinationCommitError('rebased commit changed an unexpected path set');
+          }
+          await options.validateCommit?.(reconciliationCommit);
+          rebased = true;
+        }
+        const unpublished = (await runGit(repoRoot, ['rev-list', '--count', `${remote}..${reconciliationCommit}`])).trim();
+        if (unpublished !== '1') {
+          throw new PreparedCoordinationCommitError('prepared settlement is not the sole unpublished commit');
+        }
+        if (rebased) {
+          const parent = (await runGit(repoRoot, ['rev-parse', `${reconciliationCommit}^`])).trim();
+          if (parent !== remote) throw new PreparedCoordinationCommitError('rebased settlement is not exactly one commit atop origin/ops');
+        }
+        try {
+          await runGit(repoRoot, [
+            'push', 'origin', `${reconciliationCommit}:refs/heads/ops`,
+            `--force-with-lease=refs/heads/ops:${remote}`,
+          ]);
+        } catch (error) {
+          // Deliberately no authorization re-check here: the next attempt re-proves it at the top of
+          // the loop before any further git action, so a transient re-check can neither mask the push
+          // failure nor escape the bounded retry by throwing out of this handler.
+          if (attempt === maxRetryPushes) throw error;
+          continue;
+        }
+        pushed = true;
+
+        // Past this line the remote has accepted our objects. Do not trust a successful process exit
+        // alone — fetch and prove the exact object is reachable from the canonical remote ref — but a
+        // failure of that proof means UNKNOWN, not refused, so it is raised as the published class.
+        let reachable: boolean;
+        try {
+          options.assertAuthorized?.();
+          await runGit(repoRoot, ['fetch', 'origin', 'ops']);
+          options.assertAuthorized?.();
+          const published = (await runGit(repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+          reachable = await isAncestor(runGit, repoRoot, reconciliationCommit, published);
+        } catch (error) {
+          throw new PublishedCoordinationCommitError(reconciliationCommit, error);
+        }
+        if (reachable) return reconciliationCommit;
+        if (attempt === maxRetryPushes) {
+          throw new PreparedCoordinationCommitError('prepared commit was not reachable on origin/ops after push');
+        }
+      }
+      throw new PreparedCoordinationCommitError('prepared commit was not observed on origin/ops');
+    } catch (error) {
+      // A refusal must never strand local ops history for the next writer to push blind — but once a
+      // push has exited 0 the remote may already hold the commit, so nothing is ever rewound.
+      if (!pushed) await rollbackUnpublishedPreparedCommit(repoRoot, runGit, reconciliationCommit, expectedPaths);
+      throw error;
+    }
   });
 }
 

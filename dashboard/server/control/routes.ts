@@ -21,7 +21,23 @@ import {
 import { compileApprovedProposal } from './compiler.ts';
 import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import type { ControlResult, JsonObject, ProposalDecision, Run } from './types.ts';
-import type { RunActivationPhase } from './store.ts';
+import {
+  AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+  AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+  AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY,
+  AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH,
+  AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF,
+  AUTHORIZED_20260801_FAILED_RUN_REF,
+  AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
+  AUTHORIZED_20260801_FAILED_RUN_STAGES,
+  exactAuthorized20260801ProposalRevision,
+  type RunActivationPhase,
+} from './store.ts';
+import {
+  AuthorizedFailedRunPublishedUncommittedError,
+  reconcileAuthorized20260801FailedRun,
+} from './authorizedFailedRunReconciliation.ts';
+import type { ActivatedExecution } from './activation.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
@@ -79,6 +95,74 @@ function executionLockedRefusal(ctx: SurfaceContext): { error: string; detail: s
     detail: 'execution is locked; unlock it with your passkey before launching a run',
     execution: executionPosture(ctx),
   };
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {
+  return JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
+}
+
+/** Exact passkey grant + in-place wiring identity required by the one authorized historical repair. */
+function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): ActivatedExecution | null {
+  const latch = ctx.executionLatch;
+  const snapshot = latch?.snapshot();
+  const current = latch?.current() ?? null;
+  if (!latch || !current || snapshot?.state !== 'unlocked' || snapshot.source !== 'passkey'
+    || snapshot.unlockedBy !== sub || ctx.controlBroker !== current.controlBroker
+    || ctx.runAutomatic !== current.runAutomatic || ctx.cancelAutomatic !== current.cancelAutomatic
+    || ctx.containManagerStart !== current.containManagerStart
+    || ctx.verifyCanonicalResult !== current.verifyCanonicalResult
+    || !ctx.rosterSessions || !current.rosterSessions
+    || ctx.rosterSessions !== current.rosterSessions) return null;
+  return current;
+}
+
+/** The one settlement needs an active passkey grant and proves the captured wiring is inert for this run. */
+export type AuthorizedFailedRunReconciliationGrant = {
+  latch: NonNullable<SurfaceContext['executionLatch']>;
+  wiring: ActivatedExecution;
+  unlockedAt: string;
+};
+
+export function authorizedFailedRunReconciliationGrant(
+  ctx: SurfaceContext,
+  sub: string,
+  expected?: AuthorizedFailedRunReconciliationGrant,
+): AuthorizedFailedRunReconciliationGrant | null {
+  const latch = ctx.executionLatch;
+  if (!latch || (expected && latch !== expected.latch)) return null;
+  const snapshot = latch.snapshot();
+  const wiring = latch.current();
+  if (!wiring || ctx.controlBroker !== wiring.controlBroker || ctx.rosterSessions !== wiring.rosterSessions
+    || ctx.runAutomatic !== wiring.runAutomatic || ctx.cancelAutomatic !== wiring.cancelAutomatic
+    || ctx.containManagerStart !== wiring.containManagerStart
+    || ctx.verifyCanonicalResult !== wiring.verifyCanonicalResult) return null;
+  const hasLiveRun = !!wiring?.rosterSessions?.hasRoster(AUTHORIZED_20260801_FAILED_RUN_REF)
+    || !!wiring && [
+      AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
+      ...AUTHORIZED_20260801_FAILED_RUN_STAGES.map((stage) => stage.sessionRef),
+    ].some((sessionRef) => wiring.controlBroker.isRunning(sessionRef));
+  if (snapshot.state !== 'unlocked' || snapshot.source !== 'passkey'
+    || snapshot.unlockedBy !== sub || !snapshot.unlockedAt || hasLiveRun
+    || (expected && (snapshot.unlockedAt !== expected.unlockedAt || wiring !== expected.wiring))) return null;
+  return { latch, wiring, unlockedAt: snapshot.unlockedAt };
+}
+
+/**
+ * A failure AFTER the settlement became durable on origin/ops is NOT a refusal: the cards and the
+ * audit row are published and only the control-plane record is outstanding, which the operator fixes
+ * by re-invoking. Reporting that as 'refused' states the opposite of what happened, so it carries its
+ * own stable code. Details stay generic: refusal prose never leaks an internal proof's wording.
+ */
+export function authorizedFailedRunReconciliationRefusal(error: unknown): { error: string; detail: string } {
+  return error instanceof AuthorizedFailedRunPublishedUncommittedError
+    ? {
+        error: 'authorized-failed-run-reconciliation-published-uncommitted',
+        detail: 'the settlement is published on origin/ops but its control-plane record is not final; re-invoke to finalize it',
+      }
+    : {
+        error: 'authorized-failed-run-reconciliation-refused',
+        detail: 'a required reconciliation safety proof did not hold',
+      };
 }
 
 class CompletedRootProvenanceError extends Error {}
@@ -338,6 +422,134 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     }
     latch.lock({ subject: sub });
     return reply.send({ ok: true, execution: executionPosture(ctx) });
+  });
+
+  // One Daniel-authorized repair for one already-published, provably-never-started FYT run. This route
+  // only reclassifies the exact poisoned boundary. It cannot respond, activate, publish, or execute.
+  scope.post('/api/control/recovery/2026-07-31/execution-lock', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const body = record(req.body);
+    const input = {
+      expectedRunVersion: integer(body.expectedRunVersion),
+      expectedManagerGeneration: integer(body.expectedManagerGeneration),
+      expectedRequestRevision: integer(body.expectedRequestRevision),
+      idempotencyKey: string(body.idempotencyKey),
+    };
+    if (input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1) {
+      return reply.code(409).send({ error: 'legacy-recovery-cas-mismatch' });
+    }
+    return ctx.runControlTransactions.run(sub, AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF, async () => {
+      const preflight = ctx.controlStore.preflightAuthorized20260731ExecutionLock(sub, input);
+      if (!preflight.ok) return sendResult(reply, preflight);
+      if (preflight.value.disposition === 'replay') {
+        return reply.send({ ok: true, value: preflight.value.result, replayed: true });
+      }
+      const beforeAudit = authorizedLegacyRecoveryExecution(ctx, sub);
+      if (!beforeAudit) return reply.code(409).send({ error: 'legacy-recovery-execution-not-passkey-bound' });
+      try {
+        await auditFn(ctx)(ctx.repoRoot, {
+          action: 'control-legacy-execution-lock-reclassify-authorize',
+          owner: sub,
+          target: AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+          riskTier: 'T3',
+          result: 'authorized:governance-refusal-to-intervention',
+          detail: {
+            runRef: AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
+            requestRef: AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
+            expectedRunVersion: input.expectedRunVersion,
+            expectedManagerGeneration: input.expectedManagerGeneration,
+            expectedRequestRevision: input.expectedRequestRevision,
+          },
+        }, { runGit: ctx.opsGit, now: ctx.now });
+      } catch {
+        return reply.code(500).send({ error: 'legacy-recovery-audit-required' });
+      }
+      const afterAudit = authorizedLegacyRecoveryExecution(ctx, sub);
+      if (!afterAudit || afterAudit !== beforeAudit) {
+        return reply.code(409).send({ error: 'legacy-recovery-execution-changed-after-audit' });
+      }
+      const rechecked = ctx.controlStore.preflightAuthorized20260731ExecutionLock(sub, input);
+      if (!rechecked.ok) return sendResult(reply, rechecked);
+      if (rechecked.value.disposition === 'replay') {
+        return reply.send({ ok: true, value: rechecked.value.result, replayed: true });
+      }
+      return sendResult(reply, ctx.controlStore.recoverAuthorized20260731ExecutionLock(sub, input));
+    });
+  });
+
+  // Daniel-authorized, exact terminal settlement for the one failed FYT thin-slice predecessor.  This
+  // route has no run parameter and no body-controlled target: it cannot be repurposed as Retry, launch,
+  // spend, generation, integration, or publication.
+  scope.post('/api/control/recovery/2026-08-01/failed-run-reconciliation', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const body = record(req.body);
+    if (!hasExactKeys(body, [
+      'expectedRunVersion', 'expectedManagerGeneration', 'expectedRequestRevision', 'expectedNextEventCursor',
+      'expectedProposalHash', 'idempotencyKey',
+    ])) return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-cas-mismatch' });
+    const input = {
+      expectedRunVersion: integer(body.expectedRunVersion),
+      expectedManagerGeneration: integer(body.expectedManagerGeneration),
+      expectedRequestRevision: integer(body.expectedRequestRevision),
+      expectedNextEventCursor: integer(body.expectedNextEventCursor),
+      expectedProposalHash: string(body.expectedProposalHash),
+      idempotencyKey: string(body.idempotencyKey),
+    };
+    if (input.expectedRunVersion !== 7 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 2
+      || input.expectedNextEventCursor !== 6 || input.expectedProposalHash !== AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH
+      || input.idempotencyKey !== AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY) {
+      return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-cas-mismatch' });
+    }
+    return ctx.runControlTransactions.run(sub, AUTHORIZED_20260801_FAILED_RUN_REF, async () =>
+      withOpsTransaction(async () => {
+        const grant = authorizedFailedRunReconciliationGrant(ctx, sub);
+        if (!grant) {
+          return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-not-passkey-bound' });
+        }
+        const stored = ctx.controlStore.getProposalRevision(sub, AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF, 1);
+        if (!stored.ok || !exactAuthorized20260801ProposalRevision(stored.value)) {
+          return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-proposal-binding-lost' });
+        }
+        const proposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+        if (!proposal.ok) return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-proposal-invalid', detail: proposal.detail });
+        const compiled = compileApprovedProposal(proposal.value, stored.value.hash, stored.value.hash, {
+          policy: loadPolicyEnvironment(ctx.repoRoot, proposal.value.project, proposal.value.governanceRefs),
+          defaultWorkers: defaultWorkers(ctx.repoRoot),
+        });
+        if (!compiled.ok || !compiled.value.workflow) {
+          return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-workflow-invalid', detail: compiled.ok ? 'workflow is unavailable' : compiled.detail });
+        }
+        try {
+          const outcome = await reconcileAuthorized20260801FailedRun({
+            repoRoot: ctx.repoRoot,
+            stateRoot: ctx.stateRoot,
+            subject: sub,
+            input,
+            proposalSnapshot: stored.value.snapshot,
+            workflow: compiled.value.workflow,
+            artifactPaths: proposal.value.stages.flatMap((stage) => stage.artifacts.map((artifact) => artifact.path)),
+            store: ctx.controlStore,
+            // This is re-run around every filesystem/git boundary by the core.  It binds the same
+            // passkey grant (including its latch and in-place wiring identity).  It only reads the
+            // fixed run's broker/roster liveness; it never creates, steers, stops, or otherwise drives it.
+            assertAuthorized: () => {
+              if (!authorizedFailedRunReconciliationGrant(ctx, sub, grant)) {
+                throw new Error('authorized reconciliation passkey latch changed');
+              }
+            },
+            runGit: ctx.opsGit ?? defaultGitRunner,
+            runPy: ctx.runPy,
+          });
+          return reply.send({ ok: true, value: outcome.result, replayed: outcome.replayed, canonicalCommit: outcome.canonicalCommit });
+        } catch (error) {
+          // The HTTP reply stays generic (proof wording never crosses the surface), but the operator
+          // running the daemon owns its console — without this line a refusal is undiagnosable.
+          console.error('[authorized-failed-run-reconciliation] refused:', error instanceof Error ? error.message : error);
+          return reply.code(409).send(authorizedFailedRunReconciliationRefusal(error));
+        }
+      }));
   });
 
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {

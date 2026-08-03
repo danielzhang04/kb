@@ -35,6 +35,39 @@ describe('parseWorkflowDef', () => {
     expect(result.value.stages[0].riskTier).toBe('T2');
   });
 
+  it('makes validation-slice an explicit non-publication workflow class', () => {
+    const valid = parseWorkflowDef(md(SINGLE.replace('profile: research', 'executionMode: validation-slice\nprofile: research')), { knownProfiles: KNOWN });
+    expect(valid).toMatchObject({ ok: true });
+    if (valid.ok) expect(valid.value.executionMode).toBe('validation-slice');
+
+    const publish = SINGLE.replace('profile: research', 'executionMode: validation-slice\nprofile: research')
+      .replace('action: research:web-brief', 'action: publish:private-upload')
+      .replace('riskTier: T2', 'riskTier: T3');
+    expect(parseWorkflowDef(md(publish), { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/validation-slice workflow must not declare publish or T3/),
+    });
+  });
+
+  it('permits declared parameters in a target but refuses an undeclared scope segment', () => {
+    const scoped = SINGLE
+      .replace('profile: research', 'profile: research\nparameters: [channel]')
+      .replace('target: orgs/kb-ops/output', 'target: orgs/kb-ops/output/<channel>');
+    const parsed = parseWorkflowDef(md(scoped), { knownProfiles: KNOWN });
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed.ok) {
+      const launched = instantiateWorkflowDef(parsed.value, { channel: 'the-second-take' });
+      expect(launched).toMatchObject({ ok: true });
+      if (launched.ok) expect(launched.value.stages[0].target).toBe('orgs/kb-ops/output/the-second-take');
+    }
+
+    const unknown = scoped.replace('<channel>', '<other>');
+    expect(parseWorkflowDef(md(unknown), { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: "stage 'brief' target uses undeclared parameter '<other>'",
+    });
+  });
+
   it('raises a declared tier below the classified floor back up to the floor (prose can never lower)', () => {
     const fm = SINGLE.replace('riskTier: T2', 'riskTier: T1');
     const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });

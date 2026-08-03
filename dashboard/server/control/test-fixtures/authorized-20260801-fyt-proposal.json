@@ -1,0 +1,686 @@
+{
+  "schema": "kb.plan-proposal/v1",
+  "proposalId": "wf-097e79d2cedb6372a0ddc5cd329e28a1f23bcedcf42e8d36",
+  "project": "faceless-youtube",
+  "title": "Validate one all-Codex faceless-video opening slice",
+  "summary": "thin-slice-run — a bounded all-Codex validation experiment",
+  "manager": {
+    "runtime": "codex",
+    "model": "gpt-5.6-sol",
+    "requiredSkills": [],
+    "assignment": {
+      "agentId": "fyt-runner",
+      "declarationPath": "agents/fyt-runner.md",
+      "declarationHash": "ba119796897f72495ba8dadcb8ca78a4be352e88e6f7ef42c74823fe1b048fc0",
+      "profileId": "manager:codex:gpt-5.6-sol",
+      "runtime": "codex",
+      "model": "gpt-5.6-sol"
+    }
+  },
+  "scope": {
+    "read": [
+      "CLAUDE.md",
+      "AGENTS.md",
+      "governance",
+      "orgs/faceless-youtube"
+    ],
+    "write": [
+      "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/reviews/script",
+      "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/checks/slice",
+      "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/_review",
+      "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/verification"
+    ]
+  },
+  "governanceRefs": [
+    "CLAUDE.md",
+    "governance/agent-rules.md",
+    "governance/risk-tiers.md",
+    "orgs/faceless-youtube/contract.md"
+  ],
+  "stages": [
+    {
+      "id": "idea",
+      "title": "Generate ranked idea briefs",
+      "action": "research:idea-briefs",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "Read the project router, operating law, channel dna/performance/backlog and existing video research dossiers. Invoke idea-generator using only materialized repository sources and write ranked differentiated briefs to channels/the-second-take/videos/2026-07-31-codex-thin-slice/brief.md. Every candidate must name an exact existing repository research.md dossier that can support a fresh treatment; omit any candidate without one. This is local planning only. The human chooses one at G0.",
+      "riskTier": "T2",
+      "dependsOn": [],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "brief",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/brief.md",
+          "description": "Ranked idea briefs for the G0 human choice."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-story",
+        "declarationPath": "agents/fyt-story.md",
+        "declarationHash": "67dcfaab349d7b656593d406c8b098e47d307b7cf181a117ba086c2e5c94f44d",
+        "profileId": "worker:codex:gpt-5.6-terra",
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      }
+    },
+    {
+      "id": "story",
+      "title": "Research the picked idea and write the full script",
+      "action": "draft:long-form-script",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "After G0, invoke researcher and long-form-writer using the selected brief, channel grammar and the exact repository research dossier named by that brief. Write a fresh research.md that preserves its source links, then write the WHOLE long-form script.md directly. The slice is never a planning shortcut; fyt-story does not judge its script. Do not use the web in this validation run; if the named dossier is missing or insufficient, park rather than substituting a source.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "idea"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "research",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/research.md",
+          "description": "Cited source dossier for the selected idea."
+        },
+        {
+          "id": "script",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/script.md",
+          "description": "Full long-form script judged before production."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [
+        {
+          "id": "g0-idea-pick",
+          "kind": "approval",
+          "prompt": "GATE 0 — pick and edit one brief in brief.md. Approval releases the full research and script stage only."
+        }
+      ],
+      "assignment": {
+        "agentId": "fyt-story",
+        "declarationPath": "agents/fyt-story.md",
+        "declarationHash": "67dcfaab349d7b656593d406c8b098e47d307b7cf181a117ba086c2e5c94f44d",
+        "profileId": "worker:codex:gpt-5.6-terra",
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      }
+    },
+    {
+      "id": "judge-gate",
+      "title": "Independently judge the full script",
+      "action": "review:script-verdict",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/reviews/script",
+      "workOrder": "In fresh context, invoke proxy-judge against script.md, the channel grammar and calibration set. Write accept/revise/reject with evidence to reviews/script/judge-verdict.md; inconclusive is never a pass. Do not alter the subject artifacts.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "story"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/reviews/script"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "judge-verdict",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/reviews/script/judge-verdict.md",
+          "description": "Fresh-context script verdict for G1."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-checker",
+        "declarationPath": "agents/fyt-checker.md",
+        "declarationHash": "6610fd5a22af06c9e7477b7ba2a1c4e5474634e9427c5a85b3490cc923fced86",
+        "profileId": "worker:codex:gpt-5.6-sol",
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      }
+    },
+    {
+      "id": "packaging",
+      "title": "Author full metadata and shorts bench",
+      "action": "draft:packaging",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "After G1, invoke shorts-writer and metadata-writer for the approved full script and its reviews/script/judge-verdict.md. Write short-NN.md files and metadata.json. This stage is authoring only and stays local.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "judge-gate"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "metadata",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/metadata.json",
+          "description": "Full video and shorts metadata."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [
+        {
+          "id": "g1-script",
+          "kind": "approval",
+          "prompt": "GATE 1 — read script.md and reviews/script/judge-verdict.md; approval releases packaging and the full visual plan."
+        }
+      ],
+      "assignment": {
+        "agentId": "fyt-story",
+        "declarationPath": "agents/fyt-story.md",
+        "declarationHash": "67dcfaab349d7b656593d406c8b098e47d307b7cf181a117ba086c2e5c94f44d",
+        "profileId": "worker:codex:gpt-5.6-terra",
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      }
+    },
+    {
+      "id": "visual-plan",
+      "title": "Author and lint the full visual plan",
+      "action": "build:visual-plan",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "Invoke visual-prompt-writer, motion-planner and their lints for the WHOLE video. Stage shots.json and shots.motion.json under staging/. Do not generate pixels or call an API.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "packaging"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "staged-shots",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/staging/shots.json",
+          "description": "Full staged shot plan."
+        },
+        {
+          "id": "staged-motion",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/staging/shots.motion.json",
+          "description": "Full staged motion plan."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-visuals",
+        "declarationPath": "agents/fyt-visuals.md",
+        "declarationHash": "9200ae3942c0f8d8058293b7b58a54c3d5e0d9eac84d9b7bc99a57f1fc6eac68",
+        "profileId": "worker:codex:gpt-5.6-terra",
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      }
+    },
+    {
+      "id": "shots-merge",
+      "title": "Merge and root-lint the whole visual plan",
+      "action": "build:shots-merge",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "Copy the staged plans to root shots.json and shots.motion.json, then run lint_shots.py with --require-schema faceless-youtube/shots@2 and lint_motion_plan.py at the ROOT paths. Record both verdicts. Any hard violation or schema refusal is BLOCKED and routed back without hand editing.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "visual-plan"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "merged-shots",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/shots.json",
+          "description": "Root shot plan independently merged and linted."
+        },
+        {
+          "id": "merged-motion",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/shots.motion.json",
+          "description": "Root motion plan independently merged and linted."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-checker",
+        "declarationPath": "agents/fyt-checker.md",
+        "declarationHash": "6610fd5a22af06c9e7477b7ba2a1c4e5474634e9427c5a85b3490cc923fced86",
+        "profileId": "worker:codex:gpt-5.6-sol",
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      }
+    },
+    {
+      "id": "slice-contract",
+      "title": "Verify the bounded opening slice before spend",
+      "action": "verify:thin-slice-contract",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/checks/slice",
+      "workOrder": "Before any paid call, verify staged plans and script.md without altering them. The launch slice opening-8-shots-450-chars is legal only when it equals opening-8-shots-450-chars: earliest contiguous eight long_form ai-gen or hybrid shots in narration order, 30–40 seconds total, and <=450 exact leading spoken characters. Write checks/slice/thin-run-slice.json with hashes, ids, duration, text count, image ceiling (11 calls/USD 1.40; current price makes 10 calls effective), one <=450-character voice call, and eight-shot render ceiling. Any mismatch is a HARD PARK and zero paid calls.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "visual-plan"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/checks/slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "thin-slice-contract",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/checks/slice/thin-run-slice.json",
+          "description": "Checker-authored bounded slice contract."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-checker",
+        "declarationPath": "agents/fyt-checker.md",
+        "declarationHash": "6610fd5a22af06c9e7477b7ba2a1c4e5474634e9427c5a85b3490cc923fced86",
+        "profileId": "worker:codex:gpt-5.6-sol",
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      }
+    },
+    {
+      "id": "images",
+      "title": "Generate the bounded opening stills",
+      "action": "build:images",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "After G2, re-hash root plans against checks/slice/thin-run-slice.json. Dry-run image-generation, then generate only the ordered eight contract shots. Count every paid image/cutout/retry; stop before either ceiling and hard-park an eleventh call at the documented USD 0.134 2K rate. No thumbnails, shorts, later shots, or unrelated assets. Log planned and actual use; leave review to fyt-checker.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "shots-merge",
+        "slice-contract"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "scene-manifest",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/scenes/manifest.json",
+          "description": "Scene manifest for only the eight contract shots."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [
+        {
+          "id": "g2-visual-plan",
+          "kind": "approval",
+          "prompt": "GATE 2 — approve the root plans and checks/slice/thin-run-slice.json only. This authorizes at most 11 image calls/USD 1.40 for this image stage; nothing else.",
+          "spendAuthorization": true
+        }
+      ],
+      "assignment": {
+        "agentId": "fyt-visuals",
+        "declarationPath": "agents/fyt-visuals.md",
+        "declarationHash": "9200ae3942c0f8d8058293b7b58a54c3d5e0d9eac84d9b7bc99a57f1fc6eac68",
+        "profileId": "worker:codex:gpt-5.6-terra",
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      }
+    },
+    {
+      "id": "image-review",
+      "title": "Independently review every generated still",
+      "action": "review:image-board",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/_review",
+      "workOrder": "Review every contract scene and every declared plate/cutout without altering producer-owned assets or manifests. Apply identity/rig, fidelity and style mandates; write merged rulings and board.html under assets/_review. An unreviewed or inconclusive asset never advances.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "images"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/_review"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "review-merged",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/_review/merged.json",
+          "description": "Independent image review rulings."
+        },
+        {
+          "id": "shot-board",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/_review/board.html",
+          "description": "Human image board for G3."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-checker",
+        "declarationPath": "agents/fyt-checker.md",
+        "declarationHash": "6610fd5a22af06c9e7477b7ba2a1c4e5474634e9427c5a85b3490cc923fced86",
+        "profileId": "worker:codex:gpt-5.6-sol",
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      }
+    },
+    {
+      "id": "audio",
+      "title": "Voice one bounded long-form call and author audio",
+      "action": "build:audio",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "Recheck checks/slice/thin-run-slice.json hashes and assets/_review/merged.json rulings. Dry-run voiceover with --only long-form --limit-chars 450 --max-chunk-chars 450; proceed only for exactly one request, then make one call with no retry. Hard-park unless manifest proves one <=450-character long-form piece. Stage audio-plan.json with cues only inside the contract.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "image-review"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "voiceover-manifest",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/voiceover.manifest.json",
+          "description": "Proof of one bounded narration request."
+        },
+        {
+          "id": "staged-audio-plan",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/staging/audio-plan.json",
+          "description": "Bounded staged audio plan."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [
+        {
+          "id": "g3-image-board",
+          "kind": "approval",
+          "prompt": "GATE 3 — approve the verified eight-shot assets/_review/board.html only; parked shots return for rework."
+        },
+        {
+          "id": "g3b-narration-cost",
+          "kind": "approval",
+          "prompt": "GATE 3b — authorize exactly one <=450-character long-form narration request and no shorts.",
+          "spendAuthorization": true
+        }
+      ],
+      "assignment": {
+        "agentId": "fyt-audio-render",
+        "declarationPath": "agents/fyt-audio-render.md",
+        "declarationHash": "40e2f8c573bd19bdcedfb6151b8df8a1af13219641e6c8aa77a5b5f616c5d903",
+        "profileId": "worker:codex:gpt-5.6-terra",
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      }
+    },
+    {
+      "id": "audio-plan-merge",
+      "title": "Merge and lint bounded audio at root",
+      "action": "build:audio-plan-merge",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "Copy staging/audio-plan.json to root and run lint_audio_plan.py against channel audio tokens. Block any lint failure, cue outside the contract, or voice count/character mismatch; never hand edit to pass.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "audio"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "merged-audio-plan",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/audio-plan.json",
+          "description": "Independently merged bounded root audio plan."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-checker",
+        "declarationPath": "agents/fyt-checker.md",
+        "declarationHash": "6610fd5a22af06c9e7477b7ba2a1c4e5474634e9427c5a85b3490cc923fced86",
+        "profileId": "worker:codex:gpt-5.6-sol",
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      }
+    },
+    {
+      "id": "render",
+      "title": "Render only the bounded eight-shot prefix",
+      "action": "build:render",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice",
+      "workOrder": "Recheck contract, hashes, verified scene ids, one voice piece and bounded audio. Invoke render-builder only long-form with --max-shots 8. Write final.mp4 and render.manifest.json. Do not render shorts, thumbnails, later shots, or allow missing assets.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "audio-plan-merge"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "final-cut",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/final.mp4",
+          "description": "Local eight-shot validation cut, not publish-ready."
+        },
+        {
+          "id": "render-manifest",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/assets/render.manifest.json",
+          "description": "Bounded render record."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-audio-render",
+        "declarationPath": "agents/fyt-audio-render.md",
+        "declarationHash": "40e2f8c573bd19bdcedfb6151b8df8a1af13219641e6c8aa77a5b5f616c5d903",
+        "profileId": "worker:codex:gpt-5.6-terra",
+        "runtime": "codex",
+        "model": "gpt-5.6-terra"
+      }
+    },
+    {
+      "id": "verify",
+      "title": "Independently verify the bounded local render",
+      "action": "verify:render-compliance",
+      "target": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/verification",
+      "workOrder": "In fresh context verify final.mp4 and manifest against the contract ids/order/timing, eight-shot ceiling, voice manifest and independent scene rulings without altering the subject artifacts. Write verification/render-verify.md and verification/compliance-report.md, retaining any expected thin-slice failure honestly. This workflow ends after the local verification artifacts.",
+      "riskTier": "T2",
+      "dependsOn": [
+        "render"
+      ],
+      "worker": {
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      },
+      "requiredSkills": [],
+      "scope": {
+        "read": [
+          "CLAUDE.md",
+          "AGENTS.md",
+          "governance",
+          "orgs/faceless-youtube"
+        ],
+        "write": [
+          "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/verification"
+        ]
+      },
+      "artifacts": [
+        {
+          "id": "render-verify",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/verification/render-verify.md",
+          "description": "Independent bounded-render verification."
+        },
+        {
+          "id": "compliance-report",
+          "path": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice/verification/compliance-report.md",
+          "description": "Honest mechanical compliance/provenance report."
+        }
+      ],
+      "checkpoints": [],
+      "humanGates": [],
+      "assignment": {
+        "agentId": "fyt-checker",
+        "declarationPath": "agents/fyt-checker.md",
+        "declarationHash": "6610fd5a22af06c9e7477b7ba2a1c4e5474634e9427c5a85b3490cc923fced86",
+        "profileId": "worker:codex:gpt-5.6-sol",
+        "runtime": "codex",
+        "model": "gpt-5.6-sol"
+      }
+    }
+  ],
+  "profile": "producer",
+  "parameters": {
+    "channel": "the-second-take",
+    "slice": "opening-8-shots-450-chars",
+    "slug": "2026-07-31-codex-thin-slice"
+  }
+}

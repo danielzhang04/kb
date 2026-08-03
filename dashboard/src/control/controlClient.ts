@@ -6,6 +6,9 @@
  * public protocol. Governed mutations always carry an exact hash/version and an idempotency key.
  */
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
+import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
+import { performAssertion, realWebAuthnBrowser } from '../lib/webauthnClient';
+import type { WebAuthnBrowserLike } from '../lib/webauthnClient';
 
 export type FetchLike = typeof fetch;
 export type JsonPrimitive = string | number | boolean | null;
@@ -273,6 +276,136 @@ export interface RunDetailWithRosterDto extends RunDetailDto {
   roster: RosterAgentStateDto[];
 }
 
+/**
+ * Browser-side mirror of the single server-fixed historical settlement.  These are deliberately
+ * not inputs: the browser cannot repurpose this endpoint for another run or a fresh operation.
+ */
+export const AUTHORIZED_FAILED_RUN_RECONCILIATION = {
+  runRef: 'run-0aa72053-b9d7-41fa-a034-19871b66d214',
+  proposalRef: 'proposal-3725fb98-e20e-4619-b6e7-c9055138a50d',
+  proposalHash: '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9',
+  managerSessionRef: 'session-54ef91fa-6607-4f0e-a2f6-f9edd87873bb',
+  requestRef: 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e',
+  idempotencyKey: 'reconcile:2026-08-01:run-0aa72053-b9d7-41fa-a034-19871b66d214:failed-launch:v7',
+} as const;
+
+export const AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES = [
+  ['idea', 'stage-ea9da6f4-2b54-4664-a4ae-f2a47885e51b', 'wf-44c4644fe9fb254f8803fb48', 'attempt-e5672116-acdb-4dfd-887a-5c0566b92ae7', 'session-8445469e-a733-4a66-908f-b6a58f513323', 'codex', 'gpt-5.6-terra', []],
+  ['story', 'stage-80eefd76-49ff-4307-9c4c-c66a1339d561', 'wf-84370585b7737c38f03a01a4', 'attempt-ba96da92-a01b-4f5f-9b9e-1cca3e7881bb', 'session-4ee8bf7b-7f3d-4d99-ae5c-8c997cbfc285', 'codex', 'gpt-5.6-terra', ['idea']],
+  ['judge-gate', 'stage-cd27c97b-aa9e-44d1-beb9-d6ce652ce7e0', 'wf-ceedb44776e9f0b99fb95336', 'attempt-536e1401-aa6b-471b-9835-6769d209f53f', 'session-5e55ff31-4afc-4c17-bb9e-46355e1c425d', 'codex', 'gpt-5.6-sol', ['story']],
+  ['packaging', 'stage-d38f12d7-185d-4bd1-b8e4-f9e9f53cac4c', 'wf-6489321a47f5ec64ef65b576', 'attempt-0adcdec3-786c-4992-9a06-49d71f495016', 'session-357f7a4a-e34f-471a-988b-6ae74eee9776', 'codex', 'gpt-5.6-terra', ['judge-gate']],
+  ['visual-plan', 'stage-c4b5e74f-2198-4cac-9ae9-b1a02958aa85', 'wf-97a7a138bc0243e9f703e6f4', 'attempt-4cd57296-7228-4369-b0e7-aada10d49400', 'session-4d79b327-5ab6-4af8-a068-1ce0f21393ce', 'codex', 'gpt-5.6-terra', ['packaging']],
+  ['shots-merge', 'stage-07c4a75c-3c5e-4b02-a682-47ec20450aff', 'wf-5270609bdb7cb8c2b0100eb8', 'attempt-9021bd2e-6ae4-4855-8b63-bb18639c5d9b', 'session-cc0b4e1d-da87-4435-b8ad-135aa7968733', 'codex', 'gpt-5.6-sol', ['visual-plan']],
+  ['slice-contract', 'stage-28ed1538-43de-4e01-a99a-a4aaedc0ae1b', 'wf-ccd1e0e57af699cfd88d4dc6', 'attempt-703db9af-289a-4e7b-9c65-95a94d613b9d', 'session-a02036cd-bcaf-4dce-8099-bbad014b9361', 'codex', 'gpt-5.6-sol', ['visual-plan']],
+  ['images', 'stage-2dd2e4e4-2e26-4090-aa85-3e199f080d58', 'wf-b2474af1b1687c4a7ed2475c', 'attempt-7219abe7-739f-4701-a7a8-c2eb088f90b5', 'session-43a4a0d2-c29d-44c2-96b7-dde19a606a3f', 'codex', 'gpt-5.6-terra', ['shots-merge', 'slice-contract']],
+  ['image-review', 'stage-c9b76af0-728a-4431-a6d8-fc93ad6d3d13', 'wf-27e4f71519c58f4deceeff24', 'attempt-a605f573-df49-4b37-8e4f-0990089d608a', 'session-9da0dce9-465e-4e20-988f-d3896b5bfbd8', 'codex', 'gpt-5.6-sol', ['images']],
+  ['audio', 'stage-95f7eccd-7a2c-4c32-a9b4-c847ef7a7101', 'wf-3ab267b511946c0a21318d0d', 'attempt-56927bad-37fb-4b69-af60-6afef22ab4df', 'session-021b0f7d-2104-498f-8169-14e02d9f18ee', 'codex', 'gpt-5.6-terra', ['image-review']],
+  ['audio-plan-merge', 'stage-e7ab5eff-6f41-4851-8558-6c886aa18946', 'wf-978552383fd8f556cac9b416', 'attempt-fa5135e6-1973-4489-a529-86a1779aec0d', 'session-4c24da14-beb4-4816-b838-afc1244dc230', 'codex', 'gpt-5.6-sol', ['audio']],
+  ['render', 'stage-86f3358e-9ff1-45b5-8c81-505411bb3c83', 'wf-ad666acabdf313544d841456', 'attempt-5e44a62f-fb32-41cb-aa23-8ab5ab9167b1', 'session-76a7c42f-345d-4369-b5c7-72cbcde88195', 'codex', 'gpt-5.6-terra', ['audio-plan-merge']],
+  ['verify', 'stage-bdee2033-e216-46f4-a20e-f04ab43c09bb', 'wf-a767b15b4fd4c74c8b86b258', 'attempt-f83b955e-69d7-4905-8b00-66b532244be2', 'session-7700d49d-3941-40e5-b11f-4e313c366061', 'codex', 'gpt-5.6-sol', ['render']],
+] as const;
+
+export const AUTHORIZED_FAILED_RUN_RECONCILIATION_EVENT_SIGNATURES = [
+  ['governance', 'system', 'waiting', 'canonical run published; runtime activation remains gated', null, null, null, '2026-08-01T02:04:04.767Z'],
+  ['governance', 'human', 'success', 'authorized 2026-07-31 execution-lock boundary reclassified to intervention', null, null, null, '2026-08-01T03:31:39.866Z'],
+  ['governance', 'human', 'success', 'Human Request responded at revision 2', null, null, null, '2026-08-01T03:32:43.924Z'],
+  ['lifecycle', 'worker', 'failure', 'Codex workspace contains an unsupported changed path', 'stage-ea9da6f4-2b54-4664-a4ae-f2a47885e51b', 'attempt-e5672116-acdb-4dfd-887a-5c0566b92ae7', 'session-8445469e-a733-4a66-908f-b6a58f513323', '2026-08-01T03:32:49.322Z'],
+  ['lifecycle', 'system', 'interrupted', 'dashboard restarted; active control-plane records were normalized to interrupted', null, null, null, '2026-08-01T08:18:11.696Z'],
+] as const;
+
+/** True only for the public, pre-v8 projection of the one authorized historical predecessor. */
+export function isAuthorizedFailedRunReconciliationCandidate(
+  detail: RunDetailDto,
+  events: OperationalEventDto[],
+): boolean {
+  const { run } = detail;
+  const request = detail.humanRequests[0];
+  return run.runRef === AUTHORIZED_FAILED_RUN_RECONCILIATION.runRef
+    && run.predecessorRunRef === null
+    && run.title === 'Validate one all-Codex faceless-video opening slice'
+    && run.proposalRef === AUTHORIZED_FAILED_RUN_RECONCILIATION.proposalRef
+    && run.proposalRevision === 1
+    && run.proposalHash === AUTHORIZED_FAILED_RUN_RECONCILIATION.proposalHash
+    && run.publicationState === 'published' && run.state === 'failed' && run.version === 7
+    && run.managerSessionRef === AUTHORIZED_FAILED_RUN_RECONCILIATION.managerSessionRef
+    && run.managerGeneration === 1 && run.createdAt === '2026-08-01T02:04:03.640Z'
+    && run.updatedAt === '2026-08-01T03:32:49.635Z'
+    && detail.stages.length === 13 && detail.attempts.length === 13 && detail.sessions.length === 14
+    && detail.reviewLoops.length === 0 && detail.reviewReceipts.length === 0
+    && detail.humanRequests.length === 1 && !!request
+    && request.requestRef === AUTHORIZED_FAILED_RUN_RECONCILIATION.requestRef
+    && request.runRef === run.runRef && request.stageRef === null && request.kind === 'intervention'
+    && request.revision === 2 && request.state === 'resolved' && request.title === 'Automatic execution activation is gated'
+    && request.prompt === 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.'
+    && request.response?.requestRevision === 2 && request.response.decision === 'responded'
+    && request.response.response === null && request.response.respondedAt === '2026-08-01T03:32:43.921Z'
+    && request.createdAt === '2026-08-01T02:04:04.762Z'
+    && request.updatedAt === '2026-08-01T03:32:43.921Z'
+    && detail.stages.every((stage, index) => {
+      const expected = AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index];
+      return !!expected && stage.runRef === run.runRef && stage.stageId === expected[0] && stage.stageRef === expected[1]
+        && stage.canonicalCardRef === expected[2] && stage.currentAttemptRef === expected[3]
+        && stage.dependsOn.length === expected[7].length
+        && stage.dependsOn.every((dependency, dependencyIndex) => dependency === expected[7][dependencyIndex])
+        && stage.state === (index === 0 ? 'failed' : 'blocked') && stage.version === (index === 0 ? 5 : 3);
+    })
+    && detail.attempts.every((attempt, index) => {
+      const expected = AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index];
+      return !!expected && attempt.runRef === run.runRef && attempt.attemptRef === expected[3] && attempt.stageRef === expected[1]
+        && attempt.managedSessionRef === expected[4] && attempt.runtime === expected[5] && attempt.model === expected[6]
+        && attempt.generation === 1 && attempt.predecessorAttemptRef === null
+        && attempt.state === (index === 0 ? 'failed' : 'queued') && attempt.version === (index === 0 ? 5 : 2);
+    })
+    && detail.sessions[0]?.sessionRef === run.managerSessionRef && detail.sessions[0].runRef === run.runRef && detail.sessions[0].stageRef === null
+    && detail.sessions[0].attemptRef === null && detail.sessions[0].role === 'manager' && detail.sessions[0].generation === 1
+    && detail.sessions[0].predecessorSessionRef === null && detail.sessions[0].runtime === 'codex' && detail.sessions[0].model === 'gpt-5.6-sol'
+    && detail.sessions[0].state === 'interrupted' && detail.sessions[0].version === 4
+    && detail.sessions.slice(1).every((session, index) => {
+      const expected = AUTHORIZED_FAILED_RUN_RECONCILIATION_STAGES[index];
+      return !!expected && session.runRef === run.runRef && session.sessionRef === expected[4] && session.stageRef === expected[1] && session.attemptRef === expected[3]
+        && session.role === 'worker' && session.generation === 1 && session.predecessorSessionRef === null
+        && session.runtime === expected[5] && session.model === expected[6]
+        && session.state === (index === 0 ? 'failed' : 'pending') && session.version === (index === 0 ? 4 : 1);
+    })
+    && events.length === 5 && events.every((event, index) => {
+      const expected = AUTHORIZED_FAILED_RUN_RECONCILIATION_EVENT_SIGNATURES[index];
+      return !!expected && event.cursor === index + 1 && event.runRef === run.runRef
+        && event.kind === expected[0] && event.source === expected[1] && event.status === expected[2]
+        && event.summary === expected[3] && event.stageRef === expected[4] && event.attemptRef === expected[5]
+        && event.sessionRef === expected[6] && event.command === null && event.toolName === null && event.path === null
+        && event.diff === null && event.checkpoint === null && event.createdAt === expected[7];
+    });
+}
+
+/** The event the settlement writes; also the browser-visible proof that it completed. */
+export const AUTHORIZED_FAILED_RUN_RECONCILIATION_SUMMARY =
+  'authorized one-off reconciliation settled the failed 2026-07-31 FYT thin-slice predecessor';
+
+/**
+ * True once the one authorized run is settled. The settlement stops every stage, attempt, and session,
+ * which is exactly the shape that makes a run look like the most eligible Retry predecessor in the
+ * store — so without this the cockpit would offer a Retry the store refuses at mutation time
+ * (`retryPredecessorRefusal`). The refusal is stated in the cockpit instead of being discovered by a click.
+ */
+export function isAuthorizedFailedRunSettled(
+  detail: RunDetailDto,
+  events: OperationalEventDto[],
+): boolean {
+  return detail.run.runRef === AUTHORIZED_FAILED_RUN_RECONCILIATION.runRef
+    && detail.run.version >= 8
+    && events.some((event) => event.runRef === detail.run.runRef
+      && event.summary === AUTHORIZED_FAILED_RUN_RECONCILIATION_SUMMARY);
+}
+
+/** Stable server code for 'the ops commit is durable, only the control-plane record is outstanding'. */
+export const AUTHORIZED_FAILED_RUN_PUBLISHED_UNCOMMITTED_CODE =
+  'authorized-failed-run-reconciliation-published-uncommitted';
+
+/** Distinguish a durable-but-unfinalized settlement from a genuine refusal. */
+export function isAuthorizedFailedRunPublishedUncommitted(cause: unknown): boolean {
+  return cause instanceof ControlApiError && cause.code === AUTHORIZED_FAILED_RUN_PUBLISHED_UNCOMMITTED_CODE;
+}
+
 export interface OperationalEventDto {
   cursor: number;
   runRef: string;
@@ -320,14 +453,146 @@ export class ControlApiError extends Error {
   constructor(
     readonly status: number,
     readonly reason: string,
+    /** Stable server error discriminator; unlike `reason`, this never prefers human-readable detail. */
+    readonly code: string = reason,
   ) {
     super(reason ? `control request refused: ${status} (${reason})` : `control request refused: ${status}`);
   }
 }
 
+export interface ExecutionPostureDto {
+  state: 'locked' | 'unlocked' | 'injected';
+  source: 'passkey' | 'env-override' | null;
+  unlockedAt: string | null;
+  unlockedBy: string | null;
+  unlockRoute?: string;
+}
+
+export function parseExecutionPosture(value: unknown): ExecutionPostureDto | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const allowed = new Set(['state', 'source', 'unlockedAt', 'unlockedBy', 'unlockRoute']);
+  if (Object.keys(item).some((key) => !allowed.has(key))) return null;
+  if (item.state !== 'locked' && item.state !== 'unlocked' && item.state !== 'injected') return null;
+  if (item.state === 'locked') {
+    if (item.source !== null || item.unlockedAt !== null || item.unlockedBy !== null) return null;
+    if (item.unlockRoute !== undefined && item.unlockRoute !== '/api/control/execution/unlock') return null;
+    return {
+      state: 'locked', source: null, unlockedAt: null, unlockedBy: null,
+      ...(item.unlockRoute === '/api/control/execution/unlock' ? { unlockRoute: item.unlockRoute } : {}),
+    };
+  }
+  if (item.state === 'injected') {
+    // This is the server's no-latch posture: execution was injected directly and has no unlock event.
+    if (item.source !== null || item.unlockedAt !== null || item.unlockedBy !== null || item.unlockRoute !== undefined) {
+      return null;
+    }
+    return { state: 'injected', source: null, unlockedAt: null, unlockedBy: null };
+  }
+  if (item.source !== 'passkey' && item.source !== 'env-override') return null;
+  if (typeof item.unlockedAt !== 'string') return null;
+  const unlockedAtMs = Date.parse(item.unlockedAt);
+  if (!Number.isFinite(unlockedAtMs) || new Date(unlockedAtMs).toISOString() !== item.unlockedAt) return null;
+  if (typeof item.unlockedBy !== 'string' || item.unlockedBy.trim().length === 0) return null;
+  if (item.unlockRoute !== undefined) return null;
+  return {
+    state: 'unlocked', source: item.source, unlockedAt: item.unlockedAt, unlockedBy: item.unlockedBy,
+  };
+}
+
+/** Read the daemon execution latch. A dashboard login is necessary, but never implies this is unlocked. */
+export async function getExecutionPosture(token: string, fetchImpl?: FetchLike): Promise<ExecutionPostureDto> {
+  const body = await read<{ execution?: unknown }>('/api/control/execution', token, fetchImpl);
+  const posture = parseExecutionPosture(body.execution);
+  if (!posture) throw new Error('execution state response was invalid');
+  return posture;
+}
+
+export interface UnlockExecutionDeps {
+  fetchImpl?: FetchLike;
+  browser?: WebAuthnBrowserLike;
+}
+
+/**
+ * Run the dedicated execution-unlock ceremony. This intentionally does not call `signIn`: the server
+ * challenge is purpose-bound to `kb.execution-unlock`, and the existing bearer only authenticates who
+ * is asking. A 200 response is accepted only when the server confirms a passkey-sourced unlock.
+ */
+export async function unlockExecution(token: string, deps: UnlockExecutionDeps = {}): Promise<ExecutionPostureDto> {
+  const optionsBody = await write<{ ceremonyId?: unknown; options?: unknown }>(
+    '/api/control/execution/unlock/options', {}, token, deps.fetchImpl,
+  );
+  if (
+    typeof optionsBody.ceremonyId !== 'string'
+    || optionsBody.ceremonyId.trim().length === 0
+    || !optionsBody.options
+    || typeof optionsBody.options !== 'object'
+    || Array.isArray(optionsBody.options)
+    || Object.keys(optionsBody.options).length === 0
+  ) {
+    throw new Error('execution unlock options response was invalid');
+  }
+  const response = await performAssertion(
+    optionsBody.options as PublicKeyCredentialRequestOptionsJSON,
+    deps.browser ?? realWebAuthnBrowser,
+  );
+  const unlockedBody = await request<{ ok?: unknown; execution?: unknown }>(
+    '/api/control/execution/unlock',
+    { method: 'POST', body: JSON.stringify({ ceremonyId: optionsBody.ceremonyId, response }) },
+    { token, fetchImpl: deps.fetchImpl, preserveSessionOnAuthFailure: isExecutionAssertionRefusal },
+  );
+  const posture = parseExecutionPosture(unlockedBody.execution);
+  if (unlockedBody.ok !== true || posture?.state !== 'unlocked' || posture.source !== 'passkey') {
+    throw new Error('execution unlock response was not passkey-authorized');
+  }
+  return posture;
+}
+
+/** Stable operator copy for the explicit execution ceremony; raw server details never reach the panel. */
+export function executionUnlockErrorMessage(error: unknown): string {
+  const detail = error && typeof error === 'object'
+    ? [
+        'name' in error && typeof error.name === 'string' ? error.name : '',
+        'message' in error && typeof error.message === 'string' ? error.message : '',
+      ].filter(Boolean).join(': ')
+    : '';
+  if (/cancel|abort|notallowederror/i.test(detail)) {
+    return 'Execution unlock was cancelled. Execution remains locked.';
+  }
+  if (/not supported|webauthn.+unavailable/i.test(detail)) {
+    return 'This browser cannot use the execution passkey. Open this dashboard in a WebAuthn-capable browser.';
+  }
+  if (/not passkey-authorized|response was invalid|options response was invalid/i.test(detail)) {
+    return 'The server did not confirm a passkey-authorized unlock. Execution remains locked.';
+  }
+  if (/401|credential|unauthenticated/i.test(detail)) {
+    return 'The execution passkey was refused. Use the enrolled passkey and try again.';
+  }
+  if (/503|unconfigured/i.test(detail)) {
+    return 'Execution passkeys are not configured on this dashboard server.';
+  }
+  return 'Execution unlock failed. Execution remains locked; retry or check the dashboard server logs.';
+}
+
 interface RequestOptions {
   token?: string;
   fetchImpl?: FetchLike;
+  /** Exact protocol classifier for a second-factor refusal that is not a bearer failure. */
+  preserveSessionOnAuthFailure?: (status: number, body: Record<string, unknown>) => boolean;
+}
+
+/**
+ * The unlock handler and the bearer pre-handler both use HTTP 401. Preserve a valid bearer only for
+ * the stable assertion-refusal envelopes emitted after the pre-handler has passed. Everything
+ * else, including `expired`, `bad-signature`, `malformed`, and `missing session token`, flows through
+ * the shared session invalidator. Deliberately exact: arbitrary verifier prose never grants an
+ * exception to invalidation.
+ */
+function isExecutionAssertionRefusal(status: number, body: Record<string, unknown>): boolean {
+  if (status !== 401 || body.error !== 'unauthenticated' || typeof body.reason !== 'string') return false;
+  return body.reason === 'no registered credential for this assertion'
+    || body.reason === 'assertion failed'
+    || body.reason === 'assertion not verified';
 }
 
 async function request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
@@ -337,11 +602,28 @@ async function request<T>(path: string, init: RequestInit, options: RequestOptio
   if (init.body !== undefined) headers.set('content-type', 'application/json');
   if (options.token) headers.set('authorization', `Bearer ${options.token}`);
   const response = await fetchImpl(path, { ...init, headers });
-  await invalidateSessionOnGovernedAuthFailure(response);
+  // Only a 401 needs a preserved body for the shared invalidator. Successful and unrelated refusal
+  // responses are consumed once and never cloned (some fetch shims intentionally cannot clone them).
+  let authFailureResponse: Response | null = null;
+  if (response.status === 401) {
+    try {
+      authFailureResponse = typeof response.clone === 'function' ? response.clone() : response;
+    } catch {
+      // A broken fetch shim must not replace the endpoint's real 401 with a clone exception.
+    }
+  }
   const body = await response.json().catch(() => ({})) as T & { reason?: unknown; detail?: unknown; error?: unknown };
+  const bodyRecord = body && typeof body === 'object' && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : {};
+  const preserveSession = options.preserveSessionOnAuthFailure?.(response.status, bodyRecord) === true;
+  if (!preserveSession && authFailureResponse) {
+    await invalidateSessionOnGovernedAuthFailure(authFailureResponse);
+  }
   if (!response.ok) {
+    const code = typeof body.error === 'string' ? body.error : '';
     const reason = [body.detail, body.reason, body.error].find((value): value is string => typeof value === 'string') ?? '';
-    throw new ControlApiError(response.status, reason);
+    throw new ControlApiError(response.status, reason, code);
   }
   return body;
 }
@@ -516,7 +798,8 @@ export async function resumeRunAfterHumanResponse(
     } catch (error) {
       // The Human Request response is already durable. An intentionally inactive daemon runtime is
       // still a successful response flow; activation remains visibly gated on the refreshed run.
-      if (error instanceof ControlApiError && error.reason === 'automatic-runtime-not-activated') return;
+      if (error instanceof ControlApiError
+        && (error.code === 'automatic-runtime-not-activated' || error.code === 'execution-locked')) return;
       throw error;
     }
   }
@@ -646,6 +929,46 @@ export function respondToHumanRequest(
   return write<{ ok: true; value: HumanRequestDto }>(
     `/api/control/human-requests/${segment(requestRef)}/respond`, input, token, fetchImpl,
   ).then((body) => body.value);
+}
+
+/** One-off, server-constrained repair for the authorized 2026-07-31 execution-lock boundary. */
+export function recoverAuthorized20260731ExecutionLock(
+  input: {
+    expectedRunVersion: number;
+    expectedManagerGeneration: number;
+    expectedRequestRevision: number;
+    idempotencyKey: string;
+  },
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<HumanRequestDto> {
+  return write<{ ok: true; value: { request: HumanRequestDto } }>(
+    '/api/control/recovery/2026-07-31/execution-lock', input, token, fetchImpl,
+  ).then((body) => body.value.request);
+}
+
+/**
+ * The one fixed-CAS historical settlement. It uses the ordinary bearer/session boundary (including
+ * its 401 invalidation behavior), while the server independently requires a current passkey unlock.
+ * It has no run argument and cannot launch, activate, or Retry anything.
+ */
+export function reconcileAuthorizedFailedRun(
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<{ run: RunDto; replayed?: boolean }> {
+  return write<{ ok: true; value: { run: RunDto }; replayed?: boolean }>(
+    '/api/control/recovery/2026-08-01/failed-run-reconciliation',
+    {
+      expectedRunVersion: 7,
+      expectedManagerGeneration: 1,
+      expectedRequestRevision: 2,
+      expectedNextEventCursor: 6,
+      expectedProposalHash: AUTHORIZED_FAILED_RUN_RECONCILIATION.proposalHash,
+      idempotencyKey: AUTHORIZED_FAILED_RUN_RECONCILIATION.idempotencyKey,
+    },
+    token,
+    fetchImpl,
+  ).then((body) => ({ run: body.value.run, replayed: body.replayed }));
 }
 
 /** Resolve a server-bound review completion gate; never use the generic request endpoint for it. */

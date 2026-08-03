@@ -39,7 +39,7 @@ describe('control environment', () => {
   it('builds fixed manager/worker profiles without arbitrary browser capabilities', () => {
     const profiles = loadExecutionProfiles(fixture());
     expect(profiles).toContainEqual(expect.objectContaining({ id: 'manager:claude:claude-opus', role: 'manager' }));
-    expect(profiles).not.toContainEqual(expect.objectContaining({ role: 'manager', runtime: 'codex' }));
+    expect(profiles).toContainEqual(expect.objectContaining({ id: 'manager:codex:codex-safe', role: 'manager', runtime: 'codex' }));
     expect(profiles).toContainEqual(expect.objectContaining({ id: 'worker:codex:codex-safe', role: 'worker' }));
   });
 

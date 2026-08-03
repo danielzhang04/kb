@@ -29,6 +29,8 @@ import type { Session } from '../lib/authClient';
 import { useSse } from '../lib/sseClient';
 import { useAssignableOwners } from '../lib/assignableOwners';
 import { LaunchControls } from './launchControls';
+import { ExecutionUnlock, type ExecutionUnlockClient } from '../control/ExecutionUnlock';
+import { parseExecutionPosture, type ExecutionPostureDto } from '../control/controlClient';
 import '../styles/views/home.css';
 
 const EMPTY_INDEX: PlaneAIndex = {
@@ -372,14 +374,18 @@ export function Home({
   sessionToken,
   onNavigate,
   onRequestSession,
+  executionClient,
 }: {
   snapshot?: PlaneAIndex;
   sessionToken?: string;
   onNavigate?: (id: DestinationId) => void;
   /** U5.1 — forwarded to LaunchControls for point-of-action passkey minting (App-wired). */
   onRequestSession?: () => Promise<Session | null>;
+  /** Hermetic seam for the purpose-bound execution ceremony; production uses the real control client. */
+  executionClient?: ExecutionUnlockClient;
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
+  const [execution, setExecution] = useState<{ sessionToken: string; posture: ExecutionPostureDto } | null>(null);
   // A Plane-A delta on the hub bumps `count`; we refetch the snapshot on each tick (skipped when a
   // snapshot is supplied directly, and a no-op under jsdom where EventSource is absent).
   const { count } = useSse('/events');
@@ -405,6 +411,13 @@ export function Home({
   // can-act state so a signed-out board with no mint capability issues no roster fetch.
   const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
   const owners = useAssignableOwners(canAct);
+  const parsedExecution = parseExecutionPosture(execution?.posture);
+  const executionReady = Boolean(
+    sessionToken
+    && execution?.sessionToken === sessionToken
+    && parsedExecution?.state === 'unlocked'
+    && parsedExecution.source === 'passkey',
+  );
 
   return (
     <div className="v-home" aria-label="Home view">
@@ -415,10 +428,17 @@ export function Home({
         </div>
         <div className="v-home__col">
           <UsagePanel index={index} />
-          <LaunchControls
+          <ExecutionUnlock
             sessionToken={sessionToken}
+            client={executionClient}
+            onPostureChange={(posture) => {
+              setExecution(sessionToken && posture ? { sessionToken, posture } : null);
+            }}
+          />
+          <LaunchControls
+            sessionToken={executionReady ? sessionToken : undefined}
             variant="home"
-            onRequestSession={onRequestSession}
+            onRequestSession={executionReady ? onRequestSession : undefined}
             owners={owners}
           />
         </div>

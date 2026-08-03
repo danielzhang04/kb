@@ -8,6 +8,9 @@ import {
   DirtyIndexError,
   prepareCoordination,
   commitPreparedCoordination,
+  createPreparedCoordinationCommit,
+  publishPreparedCoordinationCommit,
+  PublishedCoordinationCommitError,
   DEFAULT_WORK_BRANCH,
   type GitRunner,
   type PrOpener,
@@ -45,6 +48,316 @@ describe('classifyTarget', async () => {
     expect(classifyTarget('skills/curated/alpha-skill/SKILL.md')).toBe('durable');
     expect(classifyTarget('docs/plans/2026-07-16-dashboard-implementation.md')).toBe('durable');
     expect(classifyTarget('orgs/demo/_index.md')).toBe('durable');
+  });
+});
+
+describe('publishPreparedCoordinationCommit', () => {
+  const settlement = 'a'.repeat(40);
+  const remote = 'b'.repeat(40);
+  const paths = ['ledgers/audit/dashboard-audit.ndjson', 'queue/done/idea.md', 'queue/working/story.md'];
+
+  it('does not return a locally committed settlement until origin/ops proves it reachable', async () => {
+    const calls: string[][] = [];
+    const markers: string[] = [];
+    let candidateReachability = 0;
+    const runner: GitRunner = (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'status --porcelain=v1 -z --untracked-files=all' || command === 'diff --cached --name-only -z') return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command.startsWith('diff-tree ')) return `${paths.join('\0')}\0`;
+      if (command === 'fetch origin ops') return '';
+      if (command === 'rev-parse refs/remotes/origin/ops') return `${remote}\n`;
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') {
+        candidateReachability += 1;
+        if (candidateReachability === 1) throw new Error('not published');
+        return '';
+      }
+      if (command === `rev-list --count ${remote}..${settlement}`) return '1\n';
+      return '';
+    };
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, {
+      runGit: runner, relpaths: paths,
+      assertAuthorized: () => { markers.push('authorized'); },
+      validateCommit: () => { markers.push('validated'); },
+    })).resolves.toBe(settlement);
+    expect(calls.filter((args) => args[0] === 'push')).toEqual([[
+      'push', 'origin', `${settlement}:refs/heads/ops`,
+      `--force-with-lease=refs/heads/ops:${remote}`,
+    ]]);
+    expect(calls.filter((args) => args[0] === 'fetch')).toHaveLength(2);
+    expect(markers).toEqual(['validated', 'authorized', 'authorized', 'authorized']);
+  });
+
+  it('treats a lost push response as a replay only after origin/ops already contains the exact commit', async () => {
+    const calls: string[][] = [];
+    const runner: GitRunner = (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'status --porcelain=v1 -z --untracked-files=all' || command === 'diff --cached --name-only -z') return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command.startsWith('diff-tree ')) return `${paths.join('\0')}\0`;
+      if (command === 'fetch origin ops') return '';
+      if (command === 'rev-parse refs/remotes/origin/ops') return `${remote}\n`;
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') return '';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, { runGit: runner, relpaths: paths }))
+      .resolves.toBe(settlement);
+    expect(calls.some((args) => args[0] === 'push')).toBe(false);
+    expect(calls.filter((args) => args[0] === 'fetch')).toEqual([['fetch', 'origin', 'ops']]);
+  });
+
+  it('does not trim a whitespace-bearing Git filename into an authorized publish path', async () => {
+    const runner: GitRunner = (_root, args) => {
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command.startsWith('diff-tree ')) return `${paths[0]} \0${paths.slice(1).join('\0')}\0`;
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, { runGit: runner, relpaths: paths }))
+      .rejects.toThrow('unexpected path set');
+  });
+
+  /*
+   * The coordination checkout is SHARED and its other writers publish with a bare `git push origin
+   * ops`. A prepared commit left behind by a refused publish would be pushed later by an unrelated
+   * save, carrying content no proof ever accepted — so a refusal must leave no unpublished prepared
+   * commit behind.
+   */
+  it('rolls the prepared commit back when the publish is refused', async () => {
+    const parent = 'd'.repeat(40);
+    const calls: string[][] = [];
+    const runner: GitRunner = (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command === `rev-parse ${settlement}^`) return `${parent}\n`;
+      if (command.startsWith('diff-tree ')) return `${paths.join('\0')}\0`;
+      if (command === 'fetch origin ops') return '';
+      if (command === 'rev-parse refs/remotes/origin/ops') return `${remote}\n`;
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor' && args[2] === settlement) throw new Error('not published');
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') return '';
+      // A pre-existing unpushed ops commit sits under the settlement.
+      if (command === `rev-list --count ${remote}..${settlement}`) return '2\n';
+      if (command === `reset --hard ${parent}`) return '';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, { runGit: runner, relpaths: paths }))
+      .rejects.toThrow('sole unpublished commit');
+    expect(calls.some((args) => args[0] === 'push')).toBe(false);
+    expect(calls.filter((args) => args[0] === 'reset')).toEqual([['reset', '--hard', parent]]);
+  });
+
+  it('rolls back a commit refused by the content proof, before any remote contact', async () => {
+    const parent = 'd'.repeat(40);
+    const calls: string[][] = [];
+    const runner: GitRunner = (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command === `rev-parse ${settlement}^`) return `${parent}\n`;
+      if (command.startsWith('diff-tree ')) return `${paths.join('\0')}\0`;
+      if (command === 'rev-parse refs/remotes/origin/ops') return `${remote}\n`;
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') throw new Error('not published');
+      if (command === `reset --hard ${parent}`) return '';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, {
+      runGit: runner, relpaths: paths,
+      validateCommit: () => { throw new Error('committed card blob differs'); },
+    })).rejects.toThrow('committed card blob differs');
+    expect(calls.some((args) => args[0] === 'push' || args[0] === 'fetch')).toBe(false);
+    expect(calls.filter((args) => args[0] === 'reset')).toEqual([['reset', '--hard', parent]]);
+  });
+
+  it('never rewrites history it does not own: a dirty checkout or a foreign HEAD is left alone', async () => {
+    const dirtyCalls: string[][] = [];
+    const dirtyRunner: GitRunner = (_root, args) => {
+      dirtyCalls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z') return '';
+      if (command.startsWith('status ')) return 'queue/inbox/other.md\0';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, { runGit: dirtyRunner, relpaths: paths }))
+      .rejects.toThrow('working tree has 1 changed entry');
+    expect(dirtyCalls.some((args) => args[0] === 'reset')).toBe(false);
+
+    const foreignCalls: string[][] = [];
+    const foreignRunner: GitRunner = (_root, args) => {
+      foreignCalls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${remote}\n`;
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, { runGit: foreignRunner, relpaths: paths }))
+      .rejects.toThrow('local ops HEAD is not the prepared commit');
+    expect(foreignCalls.some((args) => args[0] === 'reset')).toBe(false);
+  });
+
+  /*
+   * THE ONE-WAY DOOR. `refs/remotes/origin/ops` is a CACHED view, so a confirming fetch that flakes
+   * right after a successful push leaves it pointing at the pre-push remote — an ancestry probe there
+   * "proves" the commit unpublished and would rewind ops while the remote already holds it. Once a
+   * push exits 0 nothing is rewound and the failure is raised as durable-or-unknown, never a refusal.
+   */
+  function postPushRunner(calls: string[][], failAfterPush: () => void): GitRunner {
+    let pushes = 0;
+    return (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command === `rev-parse ${settlement}^`) return `${'d'.repeat(40)}\n`;
+      if (command.startsWith('diff-tree ')) return `${paths.join('\0')}\0`;
+      if (command === 'fetch origin ops') {
+        if (pushes > 0) failAfterPush();
+        return '';
+      }
+      if (command === 'rev-parse refs/remotes/origin/ops') return `${remote}\n`;
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor' && args[2] === settlement) throw new Error('not published');
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') return '';
+      if (command === `rev-list --count ${remote}..${settlement}`) return '1\n';
+      if (args[0] === 'push') { pushes += 1; return ''; }
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+  }
+
+  it('never rewinds after a successful push when the confirming fetch fails', async () => {
+    const calls: string[][] = [];
+    const runner = postPushRunner(calls, () => { throw new Error('fetch: connection reset'); });
+    const failure = await publishPreparedCoordinationCommit('/fake/repo', settlement, {
+      runGit: runner, relpaths: paths,
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(PublishedCoordinationCommitError);
+    expect((failure as PublishedCoordinationCommitError).commit).toBe(settlement);
+    expect((failure as PublishedCoordinationCommitError).published).toBe(true);
+    expect(calls.filter((args) => args[0] === 'push')).toHaveLength(1);
+    expect(calls.some((args) => args[0] === 'reset')).toBe(false);
+  });
+
+  it('never rewinds after a successful push when the authorization re-check throws', async () => {
+    const calls: string[][] = [];
+    let pushed = false;
+    const runner: GitRunner = (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command === `rev-parse ${settlement}^`) return `${'d'.repeat(40)}\n`;
+      if (command.startsWith('diff-tree ')) return `${paths.join('\0')}\0`;
+      if (command === 'fetch origin ops') return '';
+      if (command === 'rev-parse refs/remotes/origin/ops') return `${remote}\n`;
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor' && args[2] === settlement) throw new Error('not published');
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') return '';
+      if (command === `rev-list --count ${remote}..${settlement}`) return '1\n';
+      if (args[0] === 'push') { pushed = true; return ''; }
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    const failure = await publishPreparedCoordinationCommit('/fake/repo', settlement, {
+      runGit: runner, relpaths: paths,
+      assertAuthorized: () => { if (pushed) throw new Error('passkey latch changed'); },
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(PublishedCoordinationCommitError);
+    expect((failure as PublishedCoordinationCommitError).message).toBe('passkey latch changed');
+    expect(calls.filter((args) => args[0] === 'push')).toHaveLength(1);
+    expect(calls.some((args) => args[0] === 'reset')).toBe(false);
+  });
+
+  it('keeps a failed push inside the bounded retry instead of escaping through an auth re-check', async () => {
+    const calls: string[][] = [];
+    let authorizationChecks = 0;
+    const runner: GitRunner = (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command === `rev-parse ${settlement}^`) return `${'d'.repeat(40)}\n`;
+      if (command.startsWith('diff-tree ')) return `${paths.join('\0')}\0`;
+      if (command === 'fetch origin ops') return '';
+      if (command === 'rev-parse refs/remotes/origin/ops') return `${remote}\n`;
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor' && args[2] === settlement) throw new Error('not published');
+      if (args[0] === 'merge-base' && args[1] === '--is-ancestor') return '';
+      if (command === `rev-list --count ${remote}..${settlement}`) return '1\n';
+      if (args[0] === 'push') throw new Error('push rejected: stale lease');
+      if (command === `reset --hard ${'d'.repeat(40)}`) return '';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, {
+      runGit: runner, relpaths: paths, maxRetryPushes: 2,
+      // A push failure never reports an auth re-check instead of itself; the loop head re-proves
+      // authorization before the next attempt touches git again.
+      assertAuthorized: () => { authorizationChecks += 1; },
+    })).rejects.toThrow('push rejected: stale lease');
+    expect(calls.filter((args) => args[0] === 'push')).toHaveLength(3);
+    expect(authorizationChecks).toBe(3);
+    // Nothing durable was ever accepted, so the strand-prevention rollback still applies.
+    expect(calls.filter((args) => args[0] === 'reset')).toEqual([['reset', '--hard', 'd'.repeat(40)]]);
+  });
+});
+
+describe('createPreparedCoordinationCommit', () => {
+  const commit = 'c'.repeat(40);
+  const paths = ['ledgers/audit/dashboard-audit.ndjson', 'queue/done/idea.md'];
+
+  it('continues after a crash left exactly the authorized index staged', async () => {
+    let staged: string[] = [];
+    const runner: GitRunner = (_root, args) => {
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only --no-renames -z') return staged.length ? `${staged.join('\0')}\0` : '';
+      if (command === 'diff --cached --name-only -z') return '';
+      if (args[0] === 'add') { staged = [...paths].sort(); return ''; }
+      if (args[0] === 'commit') { staged = []; return ''; }
+      if (command === 'rev-parse HEAD') return `${commit}\n`;
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(createPreparedCoordinationCommit('/fake/repo', paths, {
+      runGit: runner, message: 'test settlement', afterStage: () => { throw new Error('crash after add'); },
+    })).rejects.toThrow('crash after add');
+    await expect(createPreparedCoordinationCommit('/fake/repo', paths, { runGit: runner, message: 'test settlement' }))
+      .resolves.toBe(commit);
+  });
+
+  it('refuses an index containing any path beyond the authorized set', async () => {
+    const runner: GitRunner = (_root, args) => {
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only --no-renames -z') {
+        return `${[...paths, 'queue/inbox/unrelated.md'].sort().join('\0')}\0`;
+      }
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(createPreparedCoordinationCommit('/fake/repo', paths, { runGit: runner, message: 'test settlement' }))
+      .rejects.toThrow(DirtyIndexError);
+  });
+
+  it('does not trim a whitespace-bearing staged filename into the authorized set', async () => {
+    const runner: GitRunner = (_root, args) => {
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only --no-renames -z') {
+        return `${paths[0]} \0${paths[1]}\0`;
+      }
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    await expect(createPreparedCoordinationCommit('/fake/repo', paths, { runGit: runner, message: 'test settlement' }))
+      .rejects.toThrow(DirtyIndexError);
   });
 });
 

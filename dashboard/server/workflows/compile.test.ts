@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkflowDef, type WorkflowDef, type WorkflowStageDef } from './defs.ts';
+import { instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef, type WorkflowStageDef } from './defs.ts';
 import { compileWorkflowDef } from './compile.ts';
 import { canonicalProposal, validatePlanProposal, validateServerCompiledPlanProposal } from '../control/proposal.ts';
 import type { RuntimeSkillRegistry } from '../control/environment.ts';
@@ -95,6 +95,37 @@ const CHECKER = def([
 ].join('\n'));
 
 describe('compileWorkflowDef', () => {
+  it('compiles an instantiated target to the exact launched write scope', () => {
+    const scoped = def([
+      'id: scoped-output', 'project: kb-ops', 'title: Scoped output', 'profile: research', 'parameters: [channel, slug]',
+      'stages:',
+      '  - id: brief', '    title: Write only this video', '    action: research:web-brief',
+      '    target: orgs/kb-ops/output/<channel>/videos/<slug>',
+    ].join('\n'));
+    const launched = instantiateWorkflowDef(scoped, { channel: 'the-second-take', slug: '2026-07-31-thin' });
+    expect(launched).toMatchObject({ ok: true });
+    if (!launched.ok) return;
+    const compiled = compileWorkflowDef(launched.value, { registry: REGISTRY });
+    expect(compiled).toMatchObject({ ok: true });
+    if (!compiled.ok) return;
+    const target = 'orgs/kb-ops/output/the-second-take/videos/2026-07-31-thin';
+    expect(compiled.value.scope.write).toEqual([target]);
+    expect(compiled.value.stages[0]).toMatchObject({ target, scope: { write: [target] } });
+    expect(compiled.value.scope.write).not.toContain('orgs/kb-ops/output/the-second-take/videos/other-run');
+  });
+
+  it('defence-in-depth refuses a programmatic validation slice with publication capability', () => {
+    const forged: WorkflowDef = {
+      ...SINGLE,
+      executionMode: 'validation-slice',
+      stages: [{ ...SINGLE.stages[0], action: 'publish:private-upload', riskTier: 'T3' }],
+    };
+    expect(compileWorkflowDef(forged, { registry: REGISTRY })).toMatchObject({
+      ok: false,
+      reason: 'validation-slice-publication-forbidden',
+    });
+  });
+
   it('compiles to a proposal that passes the real proposal validator (round-trip)', () => {
     const compiled = compileWorkflowDef(SINGLE, { registry: REGISTRY });
     expect(compiled.ok).toBe(true);

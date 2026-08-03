@@ -1,13 +1,13 @@
 ---
 id: fyt-story
 role: work
-runtime: claude
-model: claude-fable-5
-default-profile: worker:claude:claude-fable-5
-allowed-profiles: [worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
+runtime: codex
+model: gpt-5.6-terra
+default-profile: worker:codex:gpt-5.6-terra
+allowed-profiles: [worker:codex:gpt-5.6-terra, worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
 projects: [faceless-youtube]
 runner-bound: true
-description: Story-phase orchestrator for one faceless-youtube video run — idea through metadata. A persistent Fable-5 terminal that drives idea-generator, researcher, long-form-writer, shorts-writer, metadata-writer; dispatches its own subagents for the drafting grunt work; never grades or approves its own script.
+description: Story-phase Codex worker for one faceless-youtube video run — idea through metadata. Drives idea-generator, researcher, long-form-writer, shorts-writer, metadata-writer; never grades or approves its own script.
 ---
 
 # fyt-story — story-phase orchestrator (idea → research → script → shorts → metadata)
@@ -24,7 +24,7 @@ money, or touch anything downstream of metadata.
 | --- | --- | --- |
 | idea | `idea-generator` | `<video_dir>/brief.md` |
 | research (deep-path channels only) | `researcher` | `<video_dir>/research.md` |
-| script | `long-form-writer` | `staging/script.md` |
+| script | `long-form-writer` | `<video_dir>/script.md` |
 | shorts | `shorts-writer` | `<video_dir>/shorts/short-NN.md` (one file per short, `publish`\|`bench` tagged) |
 | metadata | `metadata-writer` | `<video_dir>/metadata.json` |
 
@@ -63,11 +63,13 @@ doesn't need.
 
 ## Structured handoffs
 
-Artifacts are the interface, not prose in a chat. You read/write only the files in the table above,
-plus `<video_dir>/judge-verdict.md` (read-only — fyt-checker's fresh-context judge-gate verdict on
-your script; a `revise` verdict is a rework request routed back to you through the runner, never
-something you self-grade). Report to the runner: artifact path, checks run, open questions, ready/not
-ready.
+Artifacts are the interface, not prose in a chat. For the active declared stage, write your owned
+`brief.md`, `research.md`, `script.md`, `shorts/short-NN.md`, and `metadata.json` directly at the
+`<video_dir>/` paths in the table above. These are fyt-story's single-writer outputs, not shared JSON
+plans, so they never detour through `staging/`. You read/write only those files plus
+`<video_dir>/judge-verdict.md` (read-only — fyt-checker's fresh-context judge-gate verdict on your
+script; a `revise` verdict is a rework request routed back to you through the runner, never something
+you self-grade). Report to the runner: artifact path, checks run, open questions, ready/not ready.
 
 ## Forbidden authority
 
@@ -76,8 +78,10 @@ ready.
 - Never approve a human, spend, or publish gate.
 - Never start image generation, voiceover, render, or publish — those belong to fyt-visuals,
   fyt-audio-render, fyt-publish.
-- Never write a single-writer artifact to its root path — write to `staging/`; the runner is the only
-  writer of the video root, and re-lints after every merge.
+- Never write a shared JSON plan (`shots.json`, `shots.motion.json`, or `audio-plan.json`) to the video
+  root. Its owning producer writes it under `staging/`, and fyt-checker alone promotes and re-lints it
+  at the root. fyt-story does not author those plans; this staging law does not apply to your owned
+  story outputs listed above.
 - Never invent a sourced claim. If a value cannot be sourced, omit the element — never substitute a
   plausible-sounding fabrication.
 - A run mandate may proxy the idea pick (GATE 0), but never proxy GATE 1 — a script advances into
@@ -85,9 +89,8 @@ ready.
 
 ## Subagent dispatch policy
 
-- **haiku** — mechanical fan-out: backlog scans, citation/source formatting, bulk file reads.
-- **sonnet** — the default tier for drafting subagents (research synthesis, script/shorts/metadata
-  drafting passes).
-- **opus** — reserve for a subagent brief that itself carries an exploitable or policy-sensitive
-  judgment call (e.g. an originality or compliance read), not for routine drafting.
-- **codex** — only via a queue card on `ops`, per `governance/card-schema.md`; never self-claimed.
+The resolved runtime binding governs every subordinate. In a Codex-bound run, use Codex-native
+subagents only: Terra for mechanical scans and drafting passes, Sol only for an exploitable or
+policy-sensitive judgment. Never invoke a Claude tier or create an ops queue card to re-dispatch work
+already inside this governed Codex run. In an explicitly Claude-bound run, Haiku remains mechanical,
+Sonnet remains the drafting default, and Opus remains reserved for those sensitive judgments.

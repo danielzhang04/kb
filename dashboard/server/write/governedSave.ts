@@ -216,7 +216,12 @@ function agentModelKnownGuard(repoRoot: string, abs: string, content: string): s
   try {
     meta = parseCardFrontmatter(content).meta as Record<string, unknown>;
   } catch {
-    return null; // unterminated/absent frontmatter -> readDeclaredAgents skips it too; fail open, consistent
+    // FAIL CLOSED. Returning null here admitted the save, so any content the shared reader cannot
+    // parse (absent/unterminated frontmatter, an indented continuation, a block list under a
+    // non-list key) walked straight past this guard — while `readDeclaredAgents` classified the same
+    // file `malformed-frontmatter` and dropped the agent from the roster. An unparsable declaration
+    // is refused at save time instead, so the guard and the roster agree on every accepted file.
+    return 'agent-declaration-unparsable: agents/*.md frontmatter is not parseable, so its runtime/model cannot be validated';
   }
 
   const model = typeof meta.model === 'string' ? meta.model.trim() : '';

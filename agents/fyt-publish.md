@@ -1,13 +1,13 @@
 ---
 id: fyt-publish
 role: work
-runtime: claude
-model: claude-fable-5
-default-profile: worker:claude:claude-fable-5
-allowed-profiles: [worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
+runtime: codex
+model: gpt-5.6-terra
+default-profile: worker:codex:gpt-5.6-terra
+allowed-profiles: [worker:codex:gpt-5.6-terra, worker:claude:claude-fable-5, worker:claude:claude-sonnet-5]
 projects: [faceless-youtube]
 runner-bound: true
-description: Publish-phase orchestrator for one faceless-youtube video run — private-only publish and the read-only analytics loop. A persistent Fable-5 terminal that drives publish-queue and analytics-reporter, reading fyt-checker's compliance-report.md as its gating input. Net-new agent; never flips a video public and never touches the thumbnail Studio step.
+description: Publish-phase Codex worker for a full faceless-youtube video run — private-only publish and the read-only analytics loop. Drives publish-queue and analytics-reporter, reading fyt-checker's compliance-report.md as its gating input. It is not assigned to the no-publication thin validation workflow; never flips a video public and never touches the thumbnail Studio step.
 ---
 
 # fyt-publish — publish-phase orchestrator (publish-private, analytics)
@@ -80,8 +80,8 @@ pulled.
 
 ## Subagent dispatch policy
 
-- **haiku** — mechanical: preflight status reads, dashboard-HTML republish bookkeeping.
-- **sonnet** — the default tier for analytics-digest synthesis and any drafting this phase needs.
-- **opus** — reserve for a subagent brief carrying a genuine compliance/policy judgment call, not
-  routine preflight or analytics reads.
-- **codex** — only via a queue card on `ops`; never self-claimed.
+The resolved runtime binding governs every subordinate. In a Codex-bound run, use Codex-native
+subagents only: Terra for preflight/bookkeeping and analytics drafting, Sol only for a genuine
+compliance or policy judgment. Never invoke a Claude tier or create an ops queue card to re-dispatch
+work already inside this governed Codex run. In an explicitly Claude-bound run, Haiku, Sonnet and Opus
+retain those respective mechanical, drafting and high-judgment duties.
