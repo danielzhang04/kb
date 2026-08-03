@@ -544,6 +544,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           });
           return reply.send({ ok: true, value: outcome.result, replayed: outcome.replayed, canonicalCommit: outcome.canonicalCommit });
         } catch (error) {
+          // The HTTP reply stays generic (proof wording never crosses the surface), but the operator
+          // running the daemon owns its console — without this line a refusal is undiagnosable.
+          console.error('[authorized-failed-run-reconciliation] refused:', error instanceof Error ? error.message : error);
           return reply.code(409).send(authorizedFailedRunReconciliationRefusal(error));
         }
       }));
