@@ -40,7 +40,6 @@ import { withOpsTransaction } from '../write/asyncGit.ts';
 import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow } from '../audit/log.ts';
 import { resolveRepoRoot } from '../http/surface.ts';
-import { createPtyHost } from './host.ts';
 import type { PtyHost } from './host.ts';
 import { createPersistentSessionRegistry, SESSION_ID_RE } from './persistentSessions.ts';
 import type { PersistentSessionRegistry, SessionSink } from './persistentSessions.ts';
@@ -94,14 +93,26 @@ export interface PtyRouteContext {
 }
 
 /** Build a full {@link PtyRouteContext}, filling every unset field with its real default. The session
- *  secret is resolved ONCE here so the token this route verifies matches the one the write surface mints. */
+ *  secret is resolved ONCE here so the token this route verifies matches the one the write surface mints.
+ *
+ *  N4 (fail-closed host, 2026-08-03): `ptyHost` has NO default. The daemon's ONE pty host is the
+ *  `fleetGatedPtyHost` built in `makeSurfaceContext`; every caller MUST pass it in. If none is supplied we
+ *  THROW rather than fabricate a raw `createPtyHost` here — an ungated fallback would silently spawn a shell
+ *  that bypasses the fleet gate (STOP/API-key/budget), so the safe failure is no context at all. Tests inject
+ *  a fake host, so they are unaffected. */
 export function makePtyRouteContext(overrides: Partial<PtyRouteContext> = {}): PtyRouteContext {
+  if (overrides.ptyHost === undefined) {
+    throw new Error(
+      'makePtyRouteContext: ptyHost is required (fail-closed) — pass the fleet-gated host; ' +
+        'no ungated fallback is created here',
+    );
+  }
   return {
     repoRoot: overrides.repoRoot ?? resolveRepoRoot(),
     sessionConfig:
       overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() },
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),
-    ptyHost: overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' }),
+    ptyHost: overrides.ptyHost,
     registry: overrides.registry ?? createPersistentSessionRegistry(),
     runPreamble: overrides.runPreamble ?? defaultPreambleRunner,
     appendAudit: overrides.appendAudit ?? defaultAppendAudit,

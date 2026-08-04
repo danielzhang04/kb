@@ -222,6 +222,24 @@ describe('tokenFromSubprotocol / sessionParamFromUrl', () => {
   });
 });
 
+describe('makePtyRouteContext fail-closed host (N4)', () => {
+  it('THROWS when no ptyHost is supplied rather than fabricating an ungated host', () => {
+    // The daemon builds ONE fleet-gated host and passes it in; a context with no host would otherwise
+    // silently fall back to a raw `createPtyHost` that bypasses the fleet gate. Construction must fail closed.
+    expect(() => makePtyRouteContext({ sessionConfig: SESSION_CONFIG })).toThrow(/ptyHost is required/);
+  });
+
+  it('builds a context when the (gated) host is supplied', () => {
+    const host = fakePtyHost();
+    const ctx = makePtyRouteContext({
+      sessionConfig: SESSION_CONFIG,
+      allowedOrigins: ALLOWED,
+      ptyHost: host.host,
+    });
+    expect(ctx.ptyHost).toBe(host.host);
+  });
+});
+
 describe('handlePtyConnection gate ordering and audit (open path)', () => {
   it('rejects a bad Origin/Host before preamble and does not audit it as an allowed-origin attempt', async () => {
     const h = harness();

@@ -119,9 +119,13 @@ export function buildApp(): FastifyInstance {
     // ONE pty host + session registry for the whole daemon, resolved on the surface context: browser
     // terminals and run-roster agent terminals live in the same registry, so the canvas can attach to a
     // roster session by id and the concurrency cap counts both.
+    // N4 (fail-closed host, 2026-08-03): the host is passed UNCONDITIONALLY. `makeSurfaceContext` always
+    // builds the fleet-gated host, so `surfaceCtx.ptyHost` is present in production; if it were ever absent,
+    // `makePtyRouteContext` THROWS (no ungated fallback) and the daemon refuses to start — the old
+    // conditional spread would instead have let the route fabricate a raw, ungated shell host.
     const ptyCtx = makePtyRouteContext({
       sessionConfig: surfaceCtx.sessionConfig,
-      ...(surfaceCtx.ptyHost ? { ptyHost: surfaceCtx.ptyHost } : {}),
+      ptyHost: surfaceCtx.ptyHost,
       ...(surfaceCtx.ptySessions ? { registry: surfaceCtx.ptySessions } : {}),
     });
     app.register(async (scope) => {
