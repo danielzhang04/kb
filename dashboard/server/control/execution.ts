@@ -264,6 +264,32 @@ export interface AutomaticExecutionOptions {
   accounting: AccountingAdapter;
   results: ResultIntegrator;
   cancellation: ExecutionCancellationController;
+  /**
+   * Optional server-owned spend-grant provisioning hook (FYT paid-action wiring, Unit D3). Called just
+   * before a stage's worker runs, with the prepared attempt worktree path, so a spending stage's opaque
+   * grant token can be minted and written into that worktree BEFORE the worker spawns. It spawns nothing
+   * and mutates no run state; it only mints a grant and writes `.kb/spend-grant.json`. Left `undefined`
+   * everywhere execution runs today (the executor is inert in production), so the default is a strict
+   * no-op and this option changes nothing about existing behaviour. Supplied ONLY behind the activation
+   * gate (see `activation.ts`). A throw from a supplied hook fails the attempt rather than running a
+   * worker that has no grant to spend against.
+   */
+  provisionSpendGrant?: (input: ProvisionSpendGrantInput) => Promise<void>;
+}
+
+/** Everything the {@link AutomaticExecutionOptions.provisionSpendGrant} hook needs to derive, server-side,
+ *  whether this stage spends and, if so, mint its grant against the run's own resolved gate approvals. All
+ *  fields are server truth (the immutable proposal stage and the run's durable human requests); none is
+ *  worker- or browser-supplied. */
+export interface ProvisionSpendGrantInput {
+  subject: string;
+  runRef: string;
+  stageRef: string;
+  stageId: string;
+  attemptRef: string;
+  worktreePath: string;
+  proposalStage: ProposalStage;
+  humanRequests: readonly RunDetail['humanRequests'][number][];
 }
 
 export interface ExecuteRunInput {
@@ -446,7 +472,7 @@ function resultIsSafe(
     && (result.reviewOutcome === undefined || validatedReviewOutcome(stage, result.reviewOutcome) !== null);
 }
 
-function stableHumanTitle(kind: 'gate' | 'policy' | 'budget' | 'execution', stageId: string, detail: string): string {
+export function stableHumanTitle(kind: 'gate' | 'policy' | 'budget' | 'execution', stageId: string, detail: string): string {
   return `automatic:${kind}:${stageId}:${detail}`.slice(0, 240);
 }
 
@@ -1740,6 +1766,24 @@ export class AutomaticExecutionEngine {
       this.transitionAttempt(input, attempt.attemptRef, 'interrupted');
       this.transitionSession(input, session.sessionRef, 'interrupted');
       return { state: 'waiting-human', stageId: stage.stageId };
+    }
+    // FYT paid-action wiring (Unit D3): mint this stage's spend grant and write its opaque token into the
+    // prepared attempt worktree BEFORE the worker spawns, so a headless worker can spend through the daemon
+    // without ever holding a provider key. No-op unless the hook is supplied (only behind the activation
+    // gate) AND the stage declares a spendAuthorization gate the run has recorded approved. Runs after the
+    // worktree exists (`worktrees.ensure` above) and before any worker delivery.
+    if (this.options.provisionSpendGrant) {
+      await this.options.provisionSpendGrant({
+        subject: input.subject,
+        runRef: input.runRef,
+        stageRef: stage.stageRef,
+        stageId: stage.stageId,
+        attemptRef: attempt.attemptRef,
+        worktreePath,
+        proposalStage,
+        humanRequests: this.detail(input).humanRequests,
+      });
+      if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
     }
     let result: WorkerExecutionResult;
     try {

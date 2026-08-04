@@ -62,6 +62,10 @@ import {
   createWorkerCancellationRegistry,
 } from './managedExecution.ts';
 import { settleFleetLedgerForRun } from './queueBridge.ts';
+import { buildPaidActionExecution, type PaidActionExecutor } from './paidActionWiring.ts';
+import { createSpendGrantProvisioner } from './spendGrantProvision.ts';
+import { PAID_ACTION_ROUTE_PATH } from './paidActionRoute.ts';
+import type { SpendGrant } from './spendGrant.ts';
 import { createRosterSessionManager, createRosterWorkerAdapter, type RosterSessionManager } from './rosterSessions.ts';
 import { loadExecutionProfiles } from './environment.ts';
 import type { PlanProposal } from './proposal.ts';
@@ -169,6 +173,11 @@ export interface ActivatedExecution {
   containManagerStart?: (input: ContainManagerStartInput) => Promise<void>;
   /** Exact g1 canonical-result proof for a terminal managed root. */
   verifyCanonicalResult: (input: { subject: string; runRef: string; stageId: string }) => Promise<boolean>;
+  /** FYT paid-action executor and its spend-grant resolver, constructed with the other activated-execution
+   *  singletons (so they exist ONLY behind the gate). The paid-action route reads both from the surface
+   *  context, which the latch binds/unbinds in place on unlock/lock. */
+  paidActionService: PaidActionExecutor;
+  spendGrantStore: { resolve(token: string, now?: Date): SpendGrant | null };
 }
 
 /**
@@ -449,6 +458,20 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const managers = deps.createManagers({ broker });
   const cancellation = deps.createCancellation({ broker, registry });
 
+  // FYT paid-action wiring (Units D1/D3), constructed ONLY here — behind the gate — with the other
+  // activated-execution singletons. One paid-action journal + grant store at `stateRoot/control`; the
+  // committer/verifier resolve each call's artifact into that call's attempt worktree under `worktreeRoot`.
+  // The provisioner hook mints a stage's grant and writes its token file into the prepared attempt worktree
+  // at launch; it is passed to the engine so a paid stage arms its worker before delivery. Provider keys are
+  // resolved server-side from OUTSIDE any worktree — never written into one.
+  const paid = buildPaidActionExecution({ stateRoot, worktreeRoot });
+  const paidActionRouteUrl = `${(env.DASHBOARD_RP_ORIGIN ?? env.DASHBOARD_DEV_ORIGIN ?? 'http://127.0.0.1:5317').replace(/\/+$/, '')}${PAID_ACTION_ROUTE_PATH}`;
+  const provisionSpendGrant = createSpendGrantProvisioner({
+    grantStore: paid.spendGrantStore,
+    routeUrl: paidActionRouteUrl,
+    ttlMs: 2 * 60 * 60 * 1_000,
+  });
+
   const engine = deps.createEngine({
     store: options.controlStore,
     policy,
@@ -465,6 +488,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     accounting,
     results,
     cancellation,
+    provisionSpendGrant,
   });
 
   // T6 wire-up: drive the run to its boundary, then — behind this same gate — settle the fleet cost
@@ -531,6 +555,8 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   return {
     controlBroker: broker,
     ...(rosterSessions ? { rosterSessions } : {}),
+    paidActionService: paid.paidActionService,
+    spendGrantStore: paid.spendGrantStore,
     runAutomatic,
     cancelAutomatic: async (input) => {
       const outcome = await engine.cancelRun(input);

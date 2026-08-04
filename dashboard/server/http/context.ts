@@ -33,6 +33,8 @@ import type {
 import type { RunControlTransactions } from '../control/runTransactions.ts';
 import type { ExecutionLatch } from '../control/activation.ts';
 import type { RosterSessionManager } from '../control/rosterSessions.ts';
+import type { PaidActionExecutor } from '../control/paidActionWiring.ts';
+import type { SpendGrant } from '../control/spendGrant.ts';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
@@ -101,6 +103,13 @@ export interface SurfaceContext {
   executionLatch?: ExecutionLatch;
   /** The live run-roster manager while unlocked; the roster-state endpoint reads it. */
   rosterSessions?: RosterSessionManager;
+  /** FYT paid-action executor (server-owned spend). Bound ONLY behind the activation gate (with the
+   *  executor fields above), so it is `undefined` while the daemon is locked/inert and the paid-action
+   *  route fails closed. Never supplied by the browser. */
+  paidActionService?: PaidActionExecutor;
+  /** The durable spend-grant resolver the paid-action route validates a worker's bearer token against.
+   *  Bound with {@link paidActionService}; the raw token never leaves the worker, only its hash is stored. */
+  spendGrantStore?: { resolve(token: string, now?: Date): SpendGrant | null };
   /** The daemon's single node-pty host and persistent session registry, shared with `/api/pty` so the
    *  canvas attaches to the very sessions the roster spawned. */
   ptyHost?: PtyHost;

@@ -170,6 +170,10 @@ export function makeSurfaceContext(
     cancelAutomatic: overrides.cancelAutomatic,
     containManagerStart: overrides.containManagerStart,
     verifyCanonicalResult: overrides.verifyCanonicalResult,
+    // Paid-action execution starts UNBOUND for the same reason as the executor fields above: the latch
+    // binds it on unlock and clears it on lock. A test may inject it directly to exercise the route.
+    paidActionService: overrides.paidActionService,
+    spendGrantStore: overrides.spendGrantStore,
     runControlTransactions: overrides.runControlTransactions ?? new RunControlTransactions(),
     managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs ?? DEFAULT_MANAGER_START_ACK_TIMEOUT_MS,
     triggerRunner: overrides.triggerRunner,
@@ -198,6 +202,8 @@ export function makeSurfaceContext(
         ctx.containManagerStart = execution?.containManagerStart;
         ctx.verifyCanonicalResult = execution?.verifyCanonicalResult;
         ctx.rosterSessions = execution?.rosterSessions;
+        ctx.paidActionService = execution?.paidActionService;
+        ctx.spendGrantStore = execution?.spendGrantStore;
       },
     });
   }
