@@ -170,7 +170,27 @@ def test_a_delta_may_not_carry_a_place_anchor():
          "place_anchor": "assets/scenes/P1.png",
          "still_prompt": "The same records room, unchanged, except the drawer is open."}),
         ["P2"], video=v)
-    assert spec is None and "not valid on a delta beat" in err, err
+    # M14 sanctioned mirror: forge's refusal carries lint's law sentence VERBATIM, so an author who
+    # fixes the shot lint described cannot read forge's message as a different rule.
+    assert spec is None and _PLACE_ANCHOR_DELTA_LAW in " ".join(err.split()), err
+
+
+_PLACE_ANCHOR_DELTA_LAW = ("a delta continues its own base's held scene via the chain parent; "
+                           "`place_anchor` is a different seed, for a base or standalone shot")
+
+
+def test_the_place_anchor_delta_law_sentence_is_byte_identical_to_lints():
+    """Drift canary for the M14 mirror. `lint_shots.py` lives in a sibling SKILL with no import
+    path to this one, so the law sentence is copied, not imported — this reads lint's source as
+    TEXT and proves the two copies have not drifted apart."""
+    lint = (Path(__file__).resolve().parents[2] / "visual-prompt-writer" / "scripts"
+            / "lint_shots.py")
+    assert lint.exists(), lint
+    for src in (lint, Path(forge_module.__file__)):
+        # the sentence lives inside a wrapped string literal in both files: drop the quoting the
+        # wrap introduces and collapse whitespace, then the two must read identically.
+        flat = " ".join(src.read_text(encoding="utf-8").replace('"', " ").split())
+        assert _PLACE_ANCHOR_DELTA_LAW in flat, src
 
 
 # --- C-9: seed-cap displacement -----------------------------------------------------------------
@@ -252,7 +272,15 @@ def test_a_staged_step1_with_no_record_a_failed_record_or_a_stale_digest_is_refu
         build(k)
         spec, err, _ = _reuse_run(k)
         assert spec is None and reason in err, (reason, err)
-        assert _FIG in err and "forge.py gen" in err and "--force" in err, err
+        # B4: the refusal routes back through the BUILDER — there is no second STEP-1 minter. A
+        # hand-typed `gen --seed a,b,c` would carry `reference` seed roles (the CLI can build no
+        # other kind), which is the untruthful-role-prose root cause the roles exist to remove.
+        assert _FIG in err and "through the BUILDER" in err, err
+        assert "forge.py batch" in err and "--shots R1" in err, err
+        assert "gen --kit" in err and "--batch" in err, err
+        assert "--delta" not in err and "--seed " not in err, err
+        # ... and it names the closing step, so the loop terminates instead of re-minting forever.
+        assert "stamp_review.py --figures" in err, err
 
 
 # --- C-10: the expression-delta gate --------------------------------------------------------------
@@ -308,6 +336,37 @@ def test_the_expression_gate_exempts_seed_and_mechanism_retries_and_no_hands_obj
     assert seeding_law_violations(k, boxy, [REFS + "pc-boxy/pc-boxy.png", PARENT]) == []
 
 
+def test_expression_state_is_keyed_on_the_stage_chain_not_the_place():
+    """R2-M7. A place hosts MANY stage chains. Keyed on the place, chain A's last expression
+    persisted into chain B, so a chain-B delta re-introducing that character at the SAME expression
+    read as unchanged and the gate never fired — the L75 mechanism, through the gate built to stop
+    it. Chain B's own base never named an expression, so its delta AUTHORS one and owes pixels."""
+    spec, err, _ = _run(_doc(
+        {"id": "X1", "place": "office", "stage": "fear", "stage_role": "base",
+         "still_prompt": f"{CAST} at the office desk."},
+        {"id": "X2", "place": "office", "stage": "fear", "stage_role": "delta",
+         "still_prompt": f"The same office with {CAST} while only the contract changes."},
+        {"id": "X3", "place": "office", "stage": "firing", "stage_role": "base",
+         "still_prompt": "`miniscribe-rep` alone at the office desk."},
+        {"id": "X4", "place": "office", "stage": "firing", "stage_role": "delta",
+         "still_prompt": "The same office, unchanged, except `miniscribe-rep` is now `expr-smug`."}))
+    assert spec is None and "X4" in err, err
+    assert "changes `miniscribe-rep` to `expr-smug`" in err, err
+
+
+def test_a_chain_root_resets_its_own_expression_record():
+    """A re-base re-establishes the beat from canonicals, so nothing the chain previously held is
+    still on the frame: the delta AFTER a re-base re-authoring the same expression owes pixels."""
+    spec, err, _ = _run(_doc(
+        {"id": "R1", "place": "office", "stage": "beat", "stage_role": "base",
+         "still_prompt": f"{CAST} at the office desk."},
+        {"id": "R2", "place": "office", "stage": "beat", "stage_role": "base",
+         "still_prompt": "`miniscribe-rep` alone at the office desk, re-based."},
+        {"id": "R3", "place": "office", "stage": "beat", "stage_role": "delta",
+         "still_prompt": "The same office, unchanged, except `miniscribe-rep` is now `expr-smug`."}))
+    assert spec is None and "R3" in err and "expr-smug" in err, err
+
+
 # --- C-11: the provenance ledger -----------------------------------------------------------------
 
 def test_every_emitted_scene_records_its_parent_depth_and_canonical_lineage():
@@ -337,6 +396,48 @@ def test_an_approved_parent_resets_the_lineage_and_a_parked_parent_is_never_inhe
     spec, err, _ = _run(doc, ["P2"], video=v)
     assert spec is None and "PARKED" in err and "P2" in err, err
     assert "review_status" not in err, "the retry-path wording must not be duplicated here: " + err
+
+
+def test_the_scenes_manifest_inherits_the_provenance_the_batch_derived():
+    """C-11 was derived and then dropped on the floor: nothing copied the counters onto
+    `scenes/manifest.json`, so `_scene_provenance` read 0 hops every run and `lineage` could never
+    climb past 1. `manifest --from-batch` copies them from the spec `batch` already wrote."""
+    k = _kit()
+    tmp = tempfile.mkdtemp()
+    batch_spec = os.path.join(tmp, "spec.json")
+    json.dump([{"name": "P1", "parent_depth": 0, "lineage": 0},
+               {"name": "P2", "parent_depth": 1, "lineage": 1},
+               {"name": "P3", "parent_depth": 2, "lineage": 2}],
+              open(batch_spec, "w", encoding="utf-8"))
+    entries = os.path.join(tmp, "entries.json")
+    json.dump([{"shot_id": "P1", "file": "assets/scenes/P1.png"},
+               {"shot_id": "P2", "file": "assets/scenes/P2.png"},
+               {"shot_id": "P3", "file": "assets/scenes/P3.png", "parent_depth": 9, "lineage": 4}],
+              open(entries, "w", encoding="utf-8"))
+    out = os.path.join(tmp, "manifest.json")
+    with contextlib.redirect_stdout(io.StringIO()):
+        forge_module.cmd_manifest(k, "scenes", entries, out, None, "t", "", batch_spec)
+    shots = json.load(open(out, encoding="utf-8"))["shots"]
+    assert [(s["parent_depth"], s["lineage"]) for s in shots] == [(0, 0), (1, 1), (9, 4)], shots
+    # an entry stating its own counters keeps them; a library manifest carries no provenance at all
+    try:
+        forge_module.cmd_manifest(k, "library", entries, out, None, "t", "", batch_spec)
+    except SystemExit as e:
+        assert "only scenes entries" in str(e), e
+    else:
+        assert False, "--from-batch on a library manifest must be refused"
+
+
+def test_one_derived_frame_binding_serves_both_the_place_law_and_the_retry_path():
+    """M12. `<id>-fix` / `<id>.v2` naming is ONE binding. Written twice, a second naming form
+    taught to only the retry path leaves the same-place law resolving a repaired frame to
+    `place=None`, which silently permits a cross-place seed."""
+    assert forge_module._derived_from("L28-fix", "L28")
+    assert forge_module._derived_from("L28.v2", "L28")
+    assert not forge_module._derived_from("L28", "L28")
+    assert not forge_module._derived_from("L280", "L28")
+    src = inspect.getsource(forge_module)
+    assert src.count('r"[-.].+"') == 1, "the binding regex must live in exactly one place"
 
 
 if __name__ == "__main__":

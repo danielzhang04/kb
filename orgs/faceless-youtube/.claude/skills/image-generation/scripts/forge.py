@@ -1126,30 +1126,23 @@ def place_anchor_for(video, anchor, root, name):
 FIGURE_REVIEW = "review.json"      # C-6: the per-figure review store, one file inside <kit>/_staging
 
 
-def figure_review_record(k, fn):
+def figure_review_record(staging_dir, fn):
     """One staged figure's review record, or None when the store holds no entry for it.
 
-    The single-writer law is untouched: `stamp_review.py` is the only writer of a verdict anywhere
-    in this pipeline; forge only ever reads."""
+    Takes the STAGING DIR rather than a `Kit` so the review side of the loop
+    (`build_review_artifact.py`, which has a video and a staging path but no key-bearing Kit) reads
+    the store through this same function instead of re-implementing it. The single-writer law is
+    untouched: `stamp_review.py` is the only writer of a verdict anywhere in this pipeline; every
+    other caller, forge included, only ever reads."""
     try:
-        doc = json.load(open(os.path.join(k.staging, FIGURE_REVIEW), encoding="utf-8"))
+        doc = json.load(open(os.path.join(staging_dir, FIGURE_REVIEW), encoding="utf-8"))
     except (OSError, ValueError):
         return None
     entry = (doc.get("figures") or {}).get(fn) if isinstance(doc, dict) else None
     return entry if isinstance(entry, dict) else None
 
 
-def figure_remint_command(k, fn, seed_roles):
-    """The one line that re-mints one STEP-1 frame on the builder's own recipe."""
-    def rel(path):
-        return os.path.relpath(path, k.root).replace("\\", "/")
-    return (f"py -3 {rel(os.path.abspath(__file__))} gen --kit {rel(k.kit)} --name {fn} "
-            f"--mode environment --aspect 2:3 --image-size 1K --force "
-            f"--seed {','.join(role['path'] for role in seed_roles)} "
-            f'--delta "{figure_card_payload()}"')
-
-
-def figure_reuse_refusal(k, fn, frame, seed_roles):
+def figure_reuse_blocker(staging_dir, fn, frame, store_label=None):
     """The ONE reason a staged STEP-1 may not seed a scene slate, or None when it is clear.
 
     `cmd_batch` reuses a staged frame BY NAME before it regenerates anything, so the name alone
@@ -1157,39 +1150,89 @@ def figure_reuse_refusal(k, fn, frame, seed_roles):
     mechanism 2, which supplied 8 of the 10 defect scenes. Reuse now requires an all-pass review
     record whose `canonical_sha256` still matches the bytes on disk. A frame nobody ruled on, a
     frame that failed an invariant, and a frame re-minted since it was ruled on all get the same
-    answer — re-mint it and review it. Nothing is grandfathered."""
-    store = os.path.relpath(os.path.join(k.staging, FIGURE_REVIEW), k.root).replace("\\", "/")
-    record = figure_review_record(k, fn)
+    answer — re-mint it and review it. Nothing is grandfathered.
+
+    This predicate is the WHOLE gate, and it is deliberately callable without a `Kit`: the review
+    board asks it which staged figures still need a fresh-eyes ruling, so the board's pending list
+    and forge's refusal can never disagree about what "reusable" means."""
+    store = store_label or os.path.join(staging_dir, FIGURE_REVIEW).replace("\\", "/")
+    record = figure_review_record(staging_dir, fn)
     verdicts = (record or {}).get("verdicts")
     scored = isinstance(verdicts, dict) and bool(verdicts)
     failed = sorted(s for s, v in verdicts.items() if v != "pass") if scored else []
     if record is None:
-        reason = f"it has no review record in {store}"
-    elif not scored:
-        reason = f"its {store} record carries no per-invariant verdicts"
-    elif failed:
-        reason = f"its {store} record FAILS {', '.join(failed)}"
-    elif record.get("canonical_sha256") != hashlib.sha256(open(frame, "rb").read()).hexdigest():
-        reason = (f"its {store} record is stale — `canonical_sha256` no longer matches the frame on "
-                  "disk, so the pixels that were reviewed are not the pixels this slate would seed")
-    else:
+        return f"it has no review record in {store}"
+    if not scored:
+        return f"its {store} record carries no per-invariant verdicts"
+    if failed:
+        return f"its {store} record FAILS {', '.join(failed)}"
+    if record.get("canonical_sha256") != hashlib.sha256(open(frame, "rb").read()).hexdigest():
+        return (f"its {store} record is stale — `canonical_sha256` no longer matches the frame on "
+                "disk, so the pixels that were reviewed are not the pixels this slate would seed")
+    return None
+
+
+def figure_remint_instruction(k, fn, frame, shots_path, out_path, shot_name):
+    """The builder invocation that re-mints one refused STEP-1 — printed, never a second minter.
+
+    There is exactly ONE STEP-1 recipe in this pipeline: `cmd_batch`'s own STEP-1 branch, which
+    emits `seed_roles` of `canonical` + `expression` + `pose` for that named character. A hand-typed
+    `gen --seed a,b,c` cannot carry it — the `gen` CLI can only build `reference` roles
+    (`main()`), and untruthful role prose is the B4 root cause `seed_roles_text` exists to remove.
+    So the refusal points at the builder rather than duplicating it: delete the refused frame, re-run
+    THIS SAME batch scoped to the shot that needs the figure, and the builder re-derives the request
+    with its own roles. One minter, one truth.
+
+    The last step closes C-6's loop: the fresh-eyes pass rules on the new frame and the orchestrator
+    records that ruling with `stamp_review.py --figures`, which is what makes the frame reusable in
+    the NEXT batch instead of being refused again."""
+    def rel(path):
+        return os.path.relpath(path, k.root).replace("\\", "/")
+    stamp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stamp_review.py")
+    return (f"    1. delete the refused frame:  {rel(frame)}\n"
+            f"    2. py -3 {rel(os.path.abspath(__file__))} batch --kit {rel(k.kit)} "
+            f"--batch {rel(shots_path)} --out {rel(out_path)} --shots {shot_name}\n"
+            f"    3. py -3 {rel(os.path.abspath(__file__))} gen --kit {rel(k.kit)} "
+            f"--batch {rel(out_path)}\n"
+            f"    4. review the frame, then record the verdicts (the ONLY writer):\n"
+            f"       py -3 {rel(stamp)} --figures <figure-verdicts.json> {rel(k.staging)}")
+
+
+def figure_reuse_refusal(k, fn, frame, shots_path, out_path, shot_name):
+    """The C-6 reuse refusal: the ONE blocking reason, plus the builder path that clears it."""
+    store = os.path.relpath(os.path.join(k.staging, FIGURE_REVIEW), k.root).replace("\\", "/")
+    reason = figure_reuse_blocker(k.staging, fn, frame, store)
+    if reason is None:
         return None
-    return (f"{fn}: staged STEP-1 refused as a seed — {reason}. Re-mint it, then review it:\n"
-            f"    {figure_remint_command(k, fn, seed_roles)}")
+    return (f"{fn}: staged STEP-1 refused as a seed — {reason}. Re-mint it through the BUILDER "
+            "(the only STEP-1 minter — a hand-typed `gen` carries `reference` seed roles, not this "
+            "figure's canonical/expression/pose roles), then review it:\n"
+            f"{figure_remint_instruction(k, fn, frame, shots_path, out_path, shot_name)}")
+
+
+def _derived_from(stem, base):
+    """True when `stem` names a frame DERIVED from the frame/shot `base` — forge's one naming
+    convention: `<base>.png` is the frame itself, `<base>-fix.png` / `<base>.v2.png` a repair of it.
+
+    ONE binding, used by both the same-place law (`_anchor_place`) and the retry path
+    (`_repaired_parent_matches`). Written twice, a second naming form taught to only one call site
+    leaves the same-place law resolving a repaired frame to `place=None` — which silently permits a
+    cross-place seed, the exact failure the law exists to refuse."""
+    return bool(re.fullmatch(re.escape(base) + r"[-.].+", stem))
 
 
 def _anchor_place(place_of_shot, anchor):
     """The declared `place` of the shot that minted an anchored frame, or None when no shot owns it.
 
     An approved frame is named for the shot that produced it (`assets/scenes/<id>.png`) or for a
-    repair of that shot (`<id>-fix.png`), which is the same binding `_repaired_parent_matches` uses
-    on the retry path. A frame no shot in this file owns is not provably same-place, so it resolves
-    to None and only a place-less shot may anchor to it."""
+    repair of that shot (`<id>-fix.png`) — `_derived_from`'s binding, the same one the retry path
+    uses. A frame no shot in this file owns is not provably same-place, so it resolves to None and
+    only a place-less shot may anchor to it."""
     stem = _stem(anchor)
     if stem in place_of_shot:
         return place_of_shot[stem]
     for shot_name in sorted(place_of_shot, key=len, reverse=True):
-        if re.fullmatch(re.escape(shot_name) + r"[-.].+", stem):
+        if _derived_from(stem, shot_name):
             return place_of_shot[shot_name]
     return None
 
@@ -1225,7 +1268,14 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
     # Every shot's declared place, read BEFORE the walk: a `place_anchor` names a frame minted by
     # another shot, and the same-place law can only be checked against that shot's own declaration.
     place_of_shot = {shot_name: shot.get("place") or None for shot_name, shot, _ in walk}
-    held_expression = {}        # (place, character) -> the expression the chain currently holds
+    # C-10 state, keyed on the STAGE CHAIN, never the place. A place hosts many chains (the
+    # boardroom's fear beat, firing beat and planning beat are three `stage`s inside one `place`),
+    # and a delta's expression is judged against ITS chain. Keyed on the place, chain A's last
+    # expression persisted into chain B: a chain-B delta that re-introduces a character at the
+    # expression chain A left on record read as UNCHANGED, so the gate that demands pixels for an
+    # authored expression change never fired — the L75 mechanism slipping through the gate built
+    # to stop it.
+    held_expression = {}        # (chain, character) -> the expression that chain currently holds
 
     def vfile(n):
         return ((shot.get("assets") or {}).get(n) or (reg_assets.get(n) or {}).get("file")
@@ -1252,8 +1302,13 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         anchor = shot.get("place_anchor")
         if in_scope and anchor is not None:
             if str(shot.get("stage_role", "")).lower() == "delta":
-                raise SystemExit(f"{name}: `place_anchor` is not valid on a delta beat — a delta "
-                                 "inherits the in-chain parent frame it is a delta OF.")
+                # ONE law sentence, byte-identical to `lint_shots.py`'s
+                # `place_anchor_legality_check` (sanctioned mirror): an author who fixes the shot
+                # lint described must not read a differently-worded rule from forge.
+                raise SystemExit(f"{name}: `place_anchor` is not valid on a stage `delta` (a "
+                                 "delta continues its own base's held scene via the chain parent; "
+                                 "`place_anchor` is a different seed, for a base or standalone "
+                                 "shot).")
             src_place = _anchor_place(place_of_shot, anchor)
             if src_place != declared_place:
                 raise SystemExit(
@@ -1263,6 +1318,12 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                     "a plate may only seed shots in its own place.")
         place_anchor = place_anchor_for(video, anchor, k.root, name) if in_scope else None
         delta_beat = str(shot.get("stage_role", "")).lower() == "delta" and place in place_last
+        chain = (place, shot.get("stage") or place)     # the C-10 expression-state key
+        if not delta_beat:
+            # A chain ROOT resets its own expression record: a re-base re-establishes the beat from
+            # canonicals, so nothing the previous run of this chain held is still on the frame.
+            for stale in [key for key in held_expression if key[0] == chain]:
+                del held_expression[stale]
         declared_delta_primitives = shot.get("delta_primitives") or {}
         if declared_delta_primitives and (not delta_beat or not isinstance(declared_delta_primitives, dict)):
             raise SystemExit(f"{name}: `delta_primitives` is a per-character object allowed only "
@@ -1277,10 +1338,10 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
             # (parent + canonical carry it in pixels). A delta naming a DIFFERENT expression is
             # authoring a change, and the law below demands pixels for it — the walk is the only
             # place that knows which of the two this is.
-            if delta_beat and expr and expr != held_expression.get((place, c)):
+            if delta_beat and expr and expr != held_expression.get((chain, c)):
                 expression_change[c] = expr
             if expr:
-                held_expression[(place, c)] = expr
+                held_expression[(chain, c)] = expr
             surplus = [p for p in prims if p not in (pose, expr) and p not in omitted]
             if surplus:
                 # Either a second pose/expression authored for this figure (only ONE can be seeded
@@ -1326,7 +1387,8 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                     + ([_seed_role(vfile(pose), "pose", c)] if pose else []))
                 reused = on_disk(os.path.join(lib, fn + ".png"), os.path.join(k.staging, fn + ".png"))
                 if reused:
-                    refusal = figure_reuse_refusal(k, fn, os.path.join(k.root, reused), step1_roles)
+                    refusal = figure_reuse_refusal(k, fn, os.path.join(k.root, reused),
+                                                   shots_path, out_path, name)
                     if refusal:
                         raise SystemExit(refusal)
                     made[fn] = reused; why.append(f"`{c}` STEP-1 {fn} REUSED")
@@ -1562,8 +1624,7 @@ def _repaired_parent_matches(k, video, seed, parent_seeds):
             or _inside_real(path, video_staging)):
         return []
     stem = os.path.splitext(os.path.basename(path))[0]
-    return [parent for parent in parent_seeds
-            if re.fullmatch(re.escape(_stem(parent)) + r"[-.].+", stem)]
+    return [parent for parent in parent_seeds if _derived_from(stem, _stem(parent))]
 
 
 def _retry_scene(item, source, entry, k, video, label):
@@ -1842,16 +1903,39 @@ def cmd_place(k, names, to_dir):
         shutil.copy2(src, dst)
         print(f"  {name}: placed -> {os.path.relpath(dst, k.root).replace(chr(92), '/')}", flush=True)
 
-def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes):
+PROVENANCE_COUNTERS = ("parent_depth", "lineage")     # C-11, derived by `batch`, copied by `manifest`
+
+
+def batch_provenance(spec_path):
+    """`{shot id: {parent_depth, lineage}}` read back from a `batch` spec — C-11's ledger at the one
+    point it is already derived. `batch` computes both counters per emitted item and writes them
+    onto the spec; without this, nothing ever copied them onto the scenes manifest, so
+    `_scene_provenance` read 0 hops on every run and `lineage` could never climb past 1. Derived
+    ONCE by the walk that knows the chain, never re-derived by hand downstream."""
+    try:
+        spec = json.load(open(spec_path, encoding="utf-8"))
+    except (OSError, ValueError):
+        raise SystemExit(f"manifest --from-batch: {spec_path} is not a readable `batch` spec.")
+    out = {}
+    for item in spec if isinstance(spec, list) else []:
+        if isinstance(item, dict) and item.get("name") and any(c in item for c in PROVENANCE_COUNTERS):
+            out[item["name"]] = {c: _hops(item.get(c)) for c in PROVENANCE_COUNTERS}
+    return out
+
+
+def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes, from_batch=None):
     """Q7: emit the manifest render-builder depends on from a small spec, instead of free-typing it
     (a drifted/forgotten manifest key silently degrades render). --kind scenes -> shots[]; library ->
     assets[]. Spec is a JSON list of entries OR an object already carrying that array; this wraps it
     in the {video_slug, generated, notes, <shots|assets>} envelope and validates the required keys.
 
-    A scenes entry additionally carries C-11's provenance the batch derived — `parent_depth` (image
-    -parent hops) and `lineage` (hops since the last APPROVED frame). They are optional so a manifest
-    written before this wave still emits, but a present counter must be a real one: a mistyped
-    provenance field would make a drifting chain read as a grounded one."""
+    A scenes entry additionally carries C-11's provenance — `parent_depth` (image-parent hops) and
+    `lineage` (hops since the last APPROVED frame). `--from-batch <spec.json>` INHERITS both from the
+    `batch` spec this run generated from, matching `name` to `shot_id`: they are derived once by the
+    walk that knows the chain and copied here, never re-derived by eye. An entry stating its own
+    counters keeps them. They stay optional so a manifest written before this wave still emits, but a
+    present counter must be a real one: a mistyped provenance field would make a drifting chain read
+    as a grounded one."""
     if kind not in ("scenes", "library"):
         raise SystemExit("manifest needs --kind scenes|library")
     key = "shots" if kind == "scenes" else "assets"
@@ -1864,11 +1948,16 @@ def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes):
         entries = spec.get(key) or spec.get("shots") or spec.get("assets") or []
     else:
         raise SystemExit("spec must be a JSON list of entries or an object with a shots/assets array")
+    if from_batch and kind != "scenes":
+        raise SystemExit("manifest --from-batch carries C-11 provenance, which only scenes entries hold.")
+    derived = batch_provenance(from_batch) if from_batch else {}
     for i, e in enumerate(entries):
         miss = [f for f in req if not e.get(f)]
         if miss:
             raise SystemExit(f"{kind} entry #{i} missing required key(s): {', '.join(miss)}")
-        for counter in ("parent_depth", "lineage") if kind == "scenes" else ():
+        for counter in PROVENANCE_COUNTERS if kind == "scenes" else ():
+            if counter not in e and e["shot_id"] in derived:
+                e[counter] = derived[e["shot_id"]][counter]
             if counter in e and e[counter] != _hops(e[counter]):
                 raise SystemExit(f"scenes entry #{i} `{counter}` must be a non-negative integer "
                                  "count of hops, as `batch` derived it.")
@@ -1977,6 +2066,10 @@ def main():
     # Q7 place / manifest
     ap.add_argument("--to", help="place/manifest: destination dir (e.g. videos/<slug>/assets/scenes)")
     ap.add_argument("--kind", choices=["scenes", "library"], help="manifest: which manifest to emit")
+    ap.add_argument("--from-batch", dest="from_batch",
+                    help="manifest --kind scenes: the `batch` spec this run generated from; each "
+                         "entry inherits C-11's `parent_depth`/`lineage` from the matching item "
+                         "(spec `name` == entry `shot_id`) unless it states its own")
     ap.add_argument("--slug", help="manifest: video_slug for the envelope")
     ap.add_argument("--notes", help="manifest: free-text notes for the envelope")
     a = ap.parse_args()
@@ -2025,7 +2118,7 @@ def main():
         names = json.load(open(a.batch, encoding="utf-8")) if a.batch else [a.name]
         cmd_place(k, names, a.to)
     elif a.cmd == "manifest":
-        cmd_manifest(k, a.kind, a.batch, a.out, a.to, a.slug, a.notes)
+        cmd_manifest(k, a.kind, a.batch, a.out, a.to, a.slug, a.notes, a.from_batch)
     elif a.cmd == "cutout":
         if not a.in_path or not a.out:
             raise SystemExit("cutout needs --in <image> and --out <png>")

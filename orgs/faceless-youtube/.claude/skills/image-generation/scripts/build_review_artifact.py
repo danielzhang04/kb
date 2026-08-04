@@ -16,17 +16,31 @@ of "machine-emitted, human-eyed" review (adversarial-review-2026-08-04.md findin
 still writes every verdict, but never has to recall or type which invariants apply to which shot.
 Filtering reads only `shots.json` + `assets/library/manifest.json` (this video's own Pass-1 identity
 ledger — never `registry.json`, per the registry-promotion rule) — no cast or place name is
-hardcoded anywhere below. Comparisons are never cropped/zoomed — `crop_battery.py` stays orphaned
-(2026-08-03 ratified: "I don't need a super crazy review process... it just burns time").
+hardcoded anywhere below. Comparisons are never cropped/zoomed: `crop_battery.py` is RETIRED — no
+review procedure calls it, and it is kept on disk only as a historical tool (2026-08-03 ratified:
+"I don't need a super crazy review process... it just burns time").
+
+C-6 closing step (`--staging <kit>/_staging`): the board also carries a card per STEP-1 figure that
+forge would REFUSE to reuse, and writes a figure-verdicts SKELETON keyed by `fig-*` id +
+`canonical_sha256`. The same fresh-eyes pass that rules on the scenes rules on those figures; the
+orchestrator fills the skeleton's verdicts and runs `stamp_review.py --figures <skeleton>
+<staging>`, which is what makes a figure minted in slice N reusable in slice N+1. The
+single-writer law is untouched — this script writes only the INPUT; `stamp_review.py` remains the
+only writer of `<staging>/review.json`, and the pending list is `forge.figure_reuse_blocker`
+itself, so the board and forge's refusal can never disagree about what "reusable" means.
 
 Usage:
   py -3 build_review_artifact.py --video <video-dir> --out <out.html> [--title T]
                                  [--shots L01 L02 ...] [--max-width 1600] [--quality 82]
+                                 [--staging <kit>/_staging] [--figures-out <skeleton.json>]
 
 Requires Pillow. Reads shots.json + shots.motion.json + assets/scenes/manifest.json +
 assets/library/manifest.json (optional — absence only narrows which rows fire, never crashes).
 """
-import argparse, base64, io, json, os, re, sys, html
+import argparse, base64, hashlib, io, json, os, re, sys, html
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import forge          # same skill, same dir: the C-6 reuse gate is imported, never re-implemented
 
 try:
     from PIL import Image
@@ -73,7 +87,18 @@ def library_assets(video):
     return assets if isinstance(assets, list) else []
 
 
-_SEATED_RE = re.compile(r"\bsit\b|\bseat", re.I)
+# C-7's seated signal, single-sourced from `lint_shots.py`. Lint decides seated-ness from the
+# PROMPT — a backticked `sit` POSE PRIMITIVE bound by backtick ORDER to the most recently named
+# character, never the English verb "sits" (this project's prose uses that verb for objects: "the
+# metal desk sits pushed aside"). The review filter now reads the SAME signal: reading it from the
+# library manifest instead meant a shot lint HARD-failed for a floating sit could reach the board
+# with no support row, and a row could appear on a shot lint never checked — two halves of one law
+# (C-7) disagreeing per shot. The two skills are separate packages with no import path between
+# them, so these lines are COPIED, not imported (the same cross-skill precedent as `_QUOTED`
+# below); `test_build_review_artifact.py`'s drift canaries read `lint_shots.py` as text and assert
+# every copied source line is byte-identical.
+_BACKTICK = re.compile(r"`([^`]+)`")
+SEATED_PRIMITIVE = "sit"
 
 
 def named_figures_by_shot(lib_assets):
@@ -89,17 +114,29 @@ def named_figures_by_shot(lib_assets):
     return {sid: sorted(n for n in names if n) for sid, names in out.items()}
 
 
-def seated_shots(lib_assets):
-    """shot ids where a SEATED pose primitive is in play, detected from the pose/action
-    vocabulary's own `name`/`tag` (matches "sit"/"seat...") — the vocabulary itself is the
-    channel's, never a per-video literal, so this stays generic across any cast."""
+def identity_names(lib_assets):
+    """This video's NAMED CAST vocabulary — the backtick names C-7's binding may anchor on."""
+    return {a["name"] for a in lib_assets
+            if isinstance(a, dict) and a.get("kind") == "identity" and a.get("name")}
+
+
+def seated_shots(shots, chars):
+    """shot ids whose `still_prompt` binds the seated POSE PRIMITIVE to a named character —
+    `lint_shots.py::seat_support_check`'s own signal, applied to the same prompts lint reads.
+
+    `chars` is this video's Pass-1 identity vocabulary (lint additionally unions the channel
+    registry's promoted characters; a video's cast never reaches `registry.json` under the
+    registry-promotion rule, so the library IS the working set here)."""
     out = set()
-    for a in lib_assets:
-        if not isinstance(a, dict) or a.get("kind") not in ("pose", "action"):
-            continue
-        label = "%s %s" % (a.get("name") or "", a.get("tag") or "")
-        if _SEATED_RE.search(label):
-            out.update(a.get("shots") or [])
+    for sid, sh in shots.items():
+        cur = None
+        for m in _BACKTICK.finditer(sh.get("still_prompt") or ""):
+            name = m.group(1)
+            if name in chars:
+                cur = name
+            elif name == SEATED_PRIMITIVE and cur:
+                out.add(sid)
+                break
     return out
 
 
@@ -110,15 +147,22 @@ def canonical_files(lib_assets):
             and a.get("name") and a.get("file")}
 
 
-# The place-owner check's REAL detection signal, landed by C-3/B4 as
-# `lint_shots.py`'s `place_owner_check` (copied here, not imported — same
-# cross-skill precedent as SEATED_PRIMITIVE below): the schema has exactly ONE
-# real place-owner field, `owner_ambiguity` (shots-schema.md) — `owner_branding`/
-# `place_owner` were never landed. An owner cue itself is not a separate field at
-# all; it is authored as an ordinary quoted, alphabetic, proper-noun-shaped
-# literal in `still_prompt` (a plaque/nameplate/lettering) — lint's own
-# `_TRACKABLE_LITERAL` signal.
-_OWNER_CUE_QUOTED = re.compile(r"['\"‘“]([A-Za-z][A-Za-z '&/-]{3,})['\"’”]")
+# The place-owner check's REAL detection signal, landed by C-3/B4 as `lint_shots.py`'s
+# `place_owner_check` (copied here, not imported — same cross-skill precedent as
+# SEATED_PRIMITIVE above): the schema has exactly ONE real place-owner field,
+# `owner_ambiguity` (shots-schema.md) — `owner_branding`/`place_owner` were never
+# landed. An owner cue itself is not a separate field at all; it is authored as an
+# ordinary quoted, alphabetic, proper-noun-shaped literal in `still_prompt` (a
+# plaque/nameplate/lettering) — lint's own `_QUOTED` + `_TRACKABLE_LITERAL` signal,
+# copied VERBATIM below including the `(?<![A-Za-z])` lookbehind and the {1,60} bound.
+# Both are load-bearing: without the lookbehind, a POSSESSIVE apostrophe opens a
+# phantom literal ("a customer's name marker-written across the top and a small 'NEW
+# ACCOUNT' tab" parses "'s name ... and a small '" as one quoted value) — the exact
+# frame whose invented name rendered as the garbled "YOU NAME". Dropping either made
+# this row fire on shots lint's own check stayed silent about.
+_QUOTED = re.compile("(?<![A-Za-z])['\"‘“][^'\"‘’“”]{1,60}"
+                     "['\"’”]")
+_TRACKABLE_LITERAL = re.compile(r"^[A-Za-z][A-Za-z '&/-]{3,}$")
 
 
 def owner_branding_declared(shot):
@@ -128,7 +172,8 @@ def owner_branding_declared(shot):
     decision recorded yet emits no row: there is nothing to check against."""
     if "owner_ambiguity" in shot:
         return True
-    return bool(_OWNER_CUE_QUOTED.search(shot.get("still_prompt") or ""))
+    return any(_TRACKABLE_LITERAL.match(m.group()[1:-1])
+               for m in _QUOTED.finditer(shot.get("still_prompt") or ""))
 
 
 # ---------- C-12: pre-filtered, machine-emitted verdict rows ----------
@@ -144,13 +189,22 @@ INVARIANTS = {
 }
 
 
+# A shot whose pixels this pipeline GENERATES or COMPOSITES carries the flat-cel style risk, and
+# that is exactly forge's own generation predicate (`cmd_batch`: `source` in `ai-gen | hybrid`,
+# absent `source` defaulting to `ai-gen`). Narrowed to `== "ai-gen"`, a generated hybrid frame — or
+# any shot whose author omitted `source` — reached the board with NO style row at all, in the one
+# wave whose headline defect is style drift. Only pure LIBRARY REUSE (`chart|screencap|stock|
+# archival`, which forge skips) is exempt: nothing generated those pixels.
+GENERATED_SOURCES = ("ai-gen", "hybrid")
+
+
 def applicable_invariants(shot, sid, named, seated):
     """The subset of `INVARIANTS` this shot needs, per C-12's pre-filter:
       * support-contact -> >=1 named figure present AND this shot uses a seated pose primitive
       * relative-scale  -> >=2 named figures present (measured, never authored)
       * place-owner     -> shot declares `place` AND its entry records an owner decision
       * crowd           -> `figures.crowd` is true
-      * flat-cel-hazard -> `source == "ai-gen"` (every ai-gen shot carries the style risk)
+      * flat-cel-hazard -> the shot's pixels are generated or composited (forge's own predicate)
     Returns an ordered list of `(slug, question)` pairs, `INVARIANTS`-order, empty when none apply.
     """
     rows = []
@@ -163,7 +217,7 @@ def applicable_invariants(shot, sid, named, seated):
     fig = shot.get("figures") if isinstance(shot.get("figures"), dict) else {}
     if fig.get("crowd"):
         rows.append("crowd")
-    if shot.get("source") == "ai-gen":
+    if shot.get("source", "ai-gen") in GENERATED_SOURCES:
         rows.append("flat-cel-hazard")
     return [(slug, INVARIANTS[slug]) for slug in rows]
 
@@ -192,12 +246,71 @@ def describe_animation(m):
     return " · ".join(bits) if bits else "—"
 
 
-def collect(video, only):
-    """One card per generated FILE (a shot may have a plate + several cutouts)."""
+# ---------- C-6: the STEP-1 figure half of the same review pass ----------
+# The invariants a STEP-1 reference frame is ruled on. `stamp_review.py` stores whatever slugs the
+# review names and forge's reuse gate requires every one of them to read "pass", so this set is the
+# review's own vocabulary, not a schema: widen it here and every later figure is ruled on the wider
+# set. `flat-cel-hazard` is the SAME question the scene rows ask, asked once per figure.
+FIGURE_INVARIANTS = {
+    "rig": "Rig holds against this character's approved canonical (bible §3, FULL rig)",
+    "expression-register": "Expression sits at the authored register, not flattened (§3 per beat)",
+    "flat-cel-hazard": INVARIANTS["flat-cel-hazard"],
+}
+
+
+def pending_figures(staging):
+    """Every staged `fig-*` frame forge would REFUSE to reuse, as `[(fig_id, path, why)]`.
+
+    The predicate is `forge.figure_reuse_blocker` itself — the reuse gate, called rather than
+    re-implemented — so the figures this board asks the human to rule on are exactly the figures
+    the next batch would otherwise hard-stop on. A figure already carrying an all-pass,
+    digest-current record is silently absent: it is reusable, and re-ruling it is eye cost for
+    nothing."""
+    out = []
+    if not staging or not os.path.isdir(staging):
+        return out
+    for fn in sorted(os.listdir(staging)):
+        if not (fn.startswith(forge.FIGURE_PREFIX) and fn.endswith(".png")):
+            continue
+        path = os.path.join(staging, fn)
+        why = forge.figure_reuse_blocker(staging, fn[:-4], path)
+        if why:
+            out.append((fn[:-4], path, why))
+    return out
+
+
+def figure_character(fig_id):
+    """The named character a STEP-1 frame belongs to — `figure_frame_name`'s own composition
+    (`fig-<character>--<pose>--<expression>`), read back."""
+    return fig_id[len(forge.FIGURE_PREFIX):].split("--")[0]
+
+
+def figure_verdict_skeleton(figures, reviewer="fresh-eyes", date=None):
+    """`stamp_review.py --figures`' INPUT, pre-keyed so the human only fills verdicts.
+
+    Emits the C-6 pinned record shape per figure with every applicable invariant present and EMPTY
+    (`""`), and `canonical_sha256` computed from the bytes on disk right now — the same bytes the
+    board just rendered, which is what the store's staleness check compares against. This script
+    never writes `<staging>/review.json`: `stamp_review.py` remains its only writer."""
+    import time
+    stamp = date or time.strftime("%Y-%m-%d")
+    out = {}
+    for fig_id, path, _why in figures:
+        with open(path, "rb") as f:
+            digest = hashlib.sha256(f.read()).hexdigest()
+        out[fig_id] = {"canonical_sha256": digest, "expression_sha256": None,
+                       "verdicts": {slug: "" for slug in FIGURE_INVARIANTS},
+                       "reviewer": reviewer, "date": stamp}
+    return {"figures": out}
+
+
+def collect(video, only, staging=None):
+    """One card per generated FILE (a shot may have a plate + several cutouts), then one card per
+    STEP-1 figure still pending a C-6 ruling."""
     S, M, MAN = shot_index(video), motion_index(video), manifest_index(video)
     LIB = library_assets(video)
     named_by_shot = named_figures_by_shot(LIB)
-    seated = seated_shots(LIB)
+    seated = seated_shots(S, identity_names(LIB))
     canon_file = canonical_files(LIB)
     cards = []
     for sid, s in S.items():
@@ -229,11 +342,28 @@ def collect(video, only):
                 anim=describe_animation(m),
                 flagged=bool(man.get("flagged")),
                 reason=man.get("notes") or "",
-                verified=man.get("verified") or {},
+                # The honest three-state stamp (`stamp_review.py`), never the deleted
+                # `verified: {scene, rig}` boolean — nothing has written that shape since the
+                # three-state gate landed, so reading it reported EVERY card as unstamped,
+                # including a fully verified batch: a false honesty signal on the review surface.
+                review_status=man.get("review_status") or "unreviewed",
                 invariants=invariants,
                 canon=canon_refs,
             ))
-    cards.sort(key=lambda c: (list(S).index(c["sid"]), c["label"]))
+    order = list(S)
+    cards.sort(key=lambda c: (order.index(c["sid"]), c["label"]))
+    for fig_id, path, why in pending_figures(staging):
+        char = figure_character(fig_id)
+        canon = canon_file.get(char)
+        cards.append(dict(
+            sid=fig_id, label="step-1 figure", path=path,
+            cls="step-1 figure", vo="",
+            anim="reference frame — no animation",
+            flagged=True, reason=why,
+            review_status="unreviewed",
+            invariants=list(FIGURE_INVARIANTS.items()),
+            canon=[(char, canon)] if canon and os.path.exists(canon) else [],
+        ))
     return cards
 
 
@@ -402,9 +532,15 @@ def main():
     ap.add_argument("--shots", nargs="*", default=None)
     ap.add_argument("--max-width", type=int, default=1600)
     ap.add_argument("--quality", type=int, default=82)
+    ap.add_argument("--staging", help="the channel's <kit>/_staging: adds a card per STEP-1 figure "
+                                      "forge would refuse to reuse, and writes the C-6 "
+                                      "figure-verdicts skeleton the same pass fills in")
+    ap.add_argument("--figures-out", dest="figures_out",
+                    help="where to write that skeleton (default <video>/assets/_review/"
+                         "figure-verdicts.json); the input to `stamp_review.py --figures`")
     a = ap.parse_args()
 
-    cards = collect(a.video, set(a.shots) if a.shots else None)
+    cards = collect(a.video, set(a.shots) if a.shots else None, a.staging)
     if not cards:
         sys.exit("no generated files found for the requested shots")
     sub = a.subtitle or ("%d image(s) · %d shot(s)"
@@ -415,9 +551,25 @@ def main():
         f.write(page)
     print("%s  (%d images, %.1f MB inlined, %.1f MB page)"
           % (a.out, len(cards), nb / 1e6, os.path.getsize(a.out) / 1e6))
-    unstamped = [c["sid"] for c in cards if not c["verified"]]
+    unstamped = [c["sid"] for c in cards if c["review_status"] != "verified"]
     if unstamped:
-        print("note: %d image(s) have no manifest stamp yet" % len(unstamped))
+        print("note: %d image(s) are not `verified` in assets/scenes/manifest.json yet "
+              "(unreviewed or parked)" % len(unstamped))
+    if a.staging:
+        pending = pending_figures(a.staging)
+        out = a.figures_out or os.path.join(a.video, "assets", "_review",
+                                            "figure-verdicts.json")
+        if pending:
+            os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+            with io.open(out, "w", encoding="utf-8") as f:
+                json.dump(figure_verdict_skeleton(pending), f, ensure_ascii=False, indent=1)
+                f.write("\n")
+            print("%s  (%d STEP-1 figure(s) pending a C-6 ruling — fill each verdict, then: "
+                  "py -3 stamp_review.py --figures %s %s)"
+                  % (out, len(pending), out, a.staging))
+        else:
+            print("figures: none pending — every staged STEP-1 carries an all-pass, "
+                  "digest-current record")
 
 
 if __name__ == "__main__":

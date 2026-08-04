@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
-"""crop_battery.py — deterministic face/hand crop battery (round-2 verify law).
+"""crop_battery.py — deterministic face/hand crop battery. RETIRED (2026-08-03 ruling).
 
-A localizer agent supplies per-figure bounding boxes; this script executes the crops at high zoom
-and builds a labeled contact sheet. Crops are the EVIDENCE a judge agent must cite per ruling — a
-rig verdict without a crop path is inadmissible. --diff builds a paired before/after sheet so a fix
-pass is regression-checked on EVERY figure.
+**No review procedure calls this script and no verdict depends on it.** The review re-scope
+repealed the law this file used to assert (that "a rig verdict without a crop path is
+inadmissible"): the single fresh-eyes pass now rules at ORDINARY VIEWING SCALE, and
+`build_review_artifact.py` renders canonical-vs-candidate comparisons uncropped and unzoomed
+("I don't need a super crazy review process... it just burns time"). The same ruling is stated in
+`image-generation/SKILL.md`'s seed law and in `build_review_artifact.py`'s header. The file is kept
+on disk as a HISTORICAL tool only — do not wire it back into a gate without a new ruling.
+
+What it does, for the record: a localizer agent supplies per-figure bounding boxes; this script
+executes the crops at high zoom and builds a labeled contact sheet. `--diff` builds a paired
+before/after sheet.
 
 boxes JSON schema (normalized 0-1, top-left origin):
   {"figures": [{"name": "macgregor", "face": [x0,y0,x1,y1], "hands": [[x0,y0,x1,y1], ...]}]}

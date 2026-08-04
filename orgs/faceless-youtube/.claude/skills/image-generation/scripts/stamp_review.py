@@ -41,9 +41,13 @@ Usage:
     py -3 stamp_review.py --figures <input.json> <staging_dir>
 
 `<input.json>` is the FIGURE-VERDICTS INPUT — a fresh-eyes review pass's ruling on one or more
-staged figures, produced upstream (by whatever tool runs that review) and merged here, never
-written directly. Shape (a bare `{fig_id: record, ...}` mapping is also accepted, no `"figures"`
-wrapper required):
+staged figures, merged here, never written directly. It is produced by
+`build_review_artifact.py --staging <kit>/_staging`, which renders a card per staged figure forge
+would refuse and writes this file as a SKELETON: every pending `fig-*` id, its `canonical_sha256`
+already computed from the bytes on disk, and every verdict left EMPTY for the pass to fill. That
+board + this merge are the two halves of C-6's loop — without the merge, the next batch refuses
+every STEP-1 the last one minted. Shape (a bare `{fig_id: record, ...}` mapping is also accepted,
+no `"figures"` wrapper required):
 
     {"figures": {
       "fig-<char>--<pose>--<expr>": {

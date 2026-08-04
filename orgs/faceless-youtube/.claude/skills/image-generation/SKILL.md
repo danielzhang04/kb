@@ -27,8 +27,10 @@ expression/pose/prop/cast member, "iterate on this frame", library building) →
 **The Pass-1 / Pass-2 split — load-bearing.** Pass 1 locks the video's **recurring identifiable people and objects**
 (named CHARACTERS, GROUPS, PROPS): each is a portable identity, so an isolated clean canonical is the right anchor to
 seed from. **Environments, plates, one-off props and *anonymous* crowds are never pre-generated** — not portable,
-different faces each time, both fighting a pre-baked frame. They compose inside their own scene's gen in Pass 2, and
-a held set carries by seeding the prior frame, never a plate.
+different faces each time, both fighting a pre-baked frame. They compose inside their own scene's gen in Pass 2:
+**within a stage**, a held set carries by seeding its delta's in-chain parent frame; **across a place**,
+continuity carries by seeding the place's derived plate (§Seed law, below) — never a freshly re-authored
+plate.
 
 ## Pass 1 — resolve the asset list, gate it, build it, tag it
 
@@ -103,9 +105,9 @@ every seeded composite, including a direct spec, must carry ordered `{path, role
 | **Cap: ≤4 seeds per gen** | canonical + ONE pose primitive + ONE expression frame + one anchor/exemplar. Past four, dilution weakens every prior; a `base.png` added as an Nth "rig anchor" pins nothing. A figure that needs the base rig spends one of the four on it. |
 | **Attribute routing** | Base-derived seeds are bald, cream, neutral-faced and hoodied, so **any attribute not sourced from the CHARACTER seed bleeds a base trait**. CHARACTER seed → identity, head/skin tone, hair + facial hair, costume, face. POSE / interaction-template seed (geometry only) → body pose, hands, clasp geometry, placement, eye-line. EXPRESSION seed (shape only) → eye/brow/mouth shape, never tone, hairline or identity. Every skin patch, **including both hands**, renders in the CHARACTER's head tone. Expression is the SOFTEST seed and can land weak — the review checks register per beat. |
 | **Exposed hands are seeded, never free-drawn** | A salute, wave, open palm or point is the five-finger drift point: seed the matching pose frame AND state the digit fact in the delta. No library pose covers it → that was a Pass-1 gate item, not an ad-hoc scene invention. |
-| **Place/plate seed law; image seeds are continuity only** | Forge appends ONE hardened flat-cel/palette block to every scene request. Zero-seed is legal ONLY for a derived place plate (the first emitted shot of a qualifying place with no named cast) or a no-place root — symbolic/abstract/standalone-object-insert shot classes, a short's `first_frame`, and the thumbnail never declare `place`. Every OTHER in-place shot seeds its own place's first approved frame; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. **Cross-place image seeding is a hard refusal**, never an authoring option: a `place_anchor` (or derived place seed) whose source shot's `place` differs from the consuming shot's is the probe-refuted style-anchor failure under another name (2026-08-04, probes F/G). No OTHER image style anchor exists: hardened descriptor text was the probe winner over a rendered-scene anchor. |
+| **Place/plate seed law; image seeds are continuity only** | Forge appends ONE hardened flat-cel/palette block to every scene request. Zero-seed is legal ONLY for a derived place plate (the first emitted shot of a qualifying place with no named cast) or a no-place root — symbolic/abstract/standalone-object-insert shot classes, a short's `first_frame`, and the thumbnail never declare `place`. Every OTHER in-place shot seeds its own place's first approved frame; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. **Cross-place image seeding is a hard refusal**, never an authoring option: a `place_anchor` (or derived place seed) whose source shot's `place` differs from the consuming shot's is the probe-refuted style-anchor failure under another name (2026-08-04, probes F/G). No OTHER image style anchor exists: hardened descriptor text was the probe winner over a rendered-scene anchor. **"Plate" here is the PLACE plate — a whole shot, the place's first approved frame. The layered-shot plate (`plates/<id>.png`, §Layered shots) is a different object: a subtraction from one scene, not a place's establishing frame.** |
 | **Never seed off a downstream derivative** | Trace back to the exact frame the human approved; an "improved" copy can carry silent drift that then propagates as the lock. Exceptions: a delta-chain frame seeding its in-chain parent, and a re-base in the SAME location seeding the prior stage's base frame. |
-| **A rig FIX never seeds the defective frame** | Regen FRESH from canonicals off a re-authored prompt — the defect lives in the strongest seed and rides it back about half the time. The only defective-seed exceptions are an authored delta-chain parent and a human-ordered framing hold, and BOTH require a before/after crop diff on EVERY figure in the frame. |
+| **A rig FIX never seeds the defective frame** | Regen FRESH from canonicals off a re-authored prompt — the defect lives in the strongest seed and rides it back about half the time. The only defective-seed exceptions are an authored delta-chain parent and a human-ordered framing hold, and BOTH are re-ruled by the next fresh-eyes pass at ordinary viewing scale, like every other frame. **`crop_battery.py` is RETIRED** — no review procedure calls it and no verdict depends on it (2026-08-03 ruling: "I don't need a super crazy review process… it just burns time"). The file stays on disk as a historical tool only. |
 | **Match-prop** | A prop in more than one shot seeds its **first approved frame** as the prop canonical; later shots seed that exact frame and never re-describe the design in words. |
 | **Maps are cropped, not regenerated** | A new region of an established map is a deterministic PIL crop; a regen invents a new coastline, palette and lettering hand. Regen only if the map canonical genuinely lacks the region, and then seed the map canonical + the parchment-map anchor. Borders and routes drawn onto the crop are motion layers. |
 | **Crowd with one seeded lead** | The crowd starves the lead's costume: restate its pinned costume explicitly even though it is seeded, and give the crowd a contrasting uniform/palette. Every crowd-bearing gen also seeds the **crowd exemplar** (`refs/base/crowd-exemplar.png`), which is what pins crowd proportion and face. |
@@ -123,7 +125,7 @@ opposite**: wide squashes the object, so cutouts use `2:3` (or `4:3`/`3:2` for a
 cutout` HARD-ERRORS on width/height ≥ 1.5 unless `--allow-wide`. **Resolution is the other engine dial:** `forge.py`
 requests `imageSize: 2K` and takes `--image-size 1K|2K|4K` (or per-batch-item `image_size`). Leaving it unset — the
 state of every gen before 2026-07-29 — takes the engine default **1K**, which is *below* the 1920×1080 delivery frame,
-so full scenes were upscaled at render and the crop battery zoomed into interpolated pixels. **4K is the top tier at
+so full scenes were upscaled at render and the then-live crop battery zoomed into interpolated pixels (that battery is retired — §Seed law). **4K is the top tier at
 ~6× the 1K price**, so it is a per-run spend call raised at the Pass-1 gate, never a silent default.
 
 **Scope.** Generate stills only for `source: ai-gen` or the generated half of `hybrid`;
@@ -148,7 +150,8 @@ before paying for the batch.
 
 **Batch specs come from `forge.py batch --batch <shots.json> --out <spec.json>`; a hand-rolled per-run batch script
 is not a supported input.** It builds one deterministic slate per shot from the shot's own `assets` tags and
-`figures`, orchestrates the two steps below, reuses an existing step-1 figure frame before generating one, records
+`figures`, orchestrates the two steps below, **reuses an existing step-1 figure frame before generating one — but only
+one carrying an all-pass, digest-current review record** (the C-6 gate, §Reviewing the run), records
 every slate decision on the item (`why`) and on stdout, and **never truncates** — an over-cap or under-seeded shot is
 a hard error naming the shot and the seed that did not fit, and that list is the re-authoring input. The retry path
 reuses the same builder, so a retry cannot invent a seed the original never had. Behind it, **the SEEDING LAW is
@@ -222,9 +225,16 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
   of the one-retry rule. **Re-authoring an expression frame** invalidates only the scenes seeded from it — re-author,
   human-gate, regen those; never ship a video mixing old- and new-register faces.
 - Record `{shot_id, file, technique, seeds, flagged: false, review_status: "unreviewed", parked_reasons: [],
-  retry_cause: null, notes}` in `assets/scenes/manifest.json` (skipped shots get a `skipped` entry); `review_status` is set ONLY by
-  `stamp_review.py`. **Shorts** repeat the walk per short's `shots[]` + `first_frame`, aspect `9:16`, files
-  `scenes/<short-file-stem>-<shot-id>.png`.
+  retry_cause: null, parent_depth, lineage, notes}` in `assets/scenes/manifest.json` (skipped shots get a `skipped`
+  entry); `review_status` is set ONLY by `stamp_review.py`. **`parent_depth` / `lineage` are C-11's provenance
+  ledger and are COPIED from the `batch` spec item, never re-derived by eye** — `parent_depth` counts image-parent
+  hops back to the frame that started the chain, `lineage` counts hops back to the nearest APPROVED frame (it resets
+  to 1 under a `verified` parent and keeps climbing while a chain runs on pixels no human has ruled on, so a drifting
+  chain is visible in the manifest). Emit the manifest with `py -3 .../forge.py manifest --kind scenes --batch
+  <entries.json> --from-batch <the spec `batch` wrote> --to <video>/assets/scenes`: `--from-batch` copies both
+  counters onto each entry (spec `name` == entry `shot_id`); an entry stating its own counters keeps them, and a
+  present counter must be a non-negative hop count or forge refuses the manifest. **Shorts** repeat the walk per
+  short's `shots[]` + `first_frame`, aspect `9:16`, files `scenes/<short-file-stem>-<shot-id>.png`.
 - **Thumbnail:** `thumbnail.primary` AND each challenger at `16:9` into `assets/thumbs/`, seeding any locked CHARACTER
   featured; never bake `text_overlay` in (applied at publish). After the human picks a winner, `py -3
   .claude/skills/image-generation/scripts/finalize_thumbnail.py <picked.png> <video_dir>` center-crops to 16:9,
@@ -234,6 +244,10 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
 **Layered shots (from `shots.motion.json`).** Each shot `motion-planner` marks with a `cutout` `layers[]` is
 materialized into the layout the engine reads (render-builder `references/shots-motion-schema.md`). The **plate**
 `plates/<id>.png` is the scene MINUS the moved element, still reading as a **complete** object, never a blank slot.
+**Two different objects share the word "plate": this LAYERED-SHOT plate is a subtraction from ONE shot's scene, while
+a PLACE plate (§Seed law) is a whole shot — the place's first approved frame, the thing every later shot in that
+place seeds.** Materializing "the plate" for a layered shot in an established place means the subtraction, never a
+re-minted place frame.
 **Cutout layers** `cutouts/<id>-<layer>.png` are **always seeded** — use the layer's own **`seed`** when the plan
 names one (a reference path or a registry vocabulary name, resolved like any Pass-1 tag); otherwise fall back to the
 character/prop canonical, or the destination plate (the video's own plate carries scene continuity; never add an
@@ -274,9 +288,39 @@ that stops short reports exactly how short, never silently.
 **The verdict rows are machine-emitted, not human-invented.** `build_review_artifact.py` pre-renders one empty
 verdict row per (shot × applicable invariant), pre-filtered by what the shot actually declares — support/contact
 only where a seated primitive is authored, place-owner only on branded interiors, relative-scale only on 2-cast
-shots, crowd only where declared, flat-cel hazards on all — so cost moves from typing the row set to eyeing it, and
+shots, crowd only where declared, flat-cel hazards on every shot whose pixels this pipeline generates or composites
+(`source: ai-gen | hybrid`, and an absent `source` is `ai-gen` — only pure library reuse is exempt, since nothing
+generated those pixels) — so cost moves from typing the row set to eyeing it, and
 an aggregate "rig holds" sentence stays structurally impossible. **Canonical-vs-candidate comparison images render
-only on named-figure shots**, at **ordinary viewing scale** — no zoomed crop battery.
+only on named-figure shots**, at **ordinary viewing scale** — the zoomed crop battery is retired (§Seed law).
+
+**The same pass also rules the batch's STEP-1 figures — this is what closes the reuse loop, and a run that skips it
+hard-stops on the next batch.** `batch` refuses to seed any staged `fig-*` that lacks an **all-pass, digest-current
+review record** in the channel-wide store `<kit>/_staging/review.json`; a figure minted in slice N is reusable in
+slice N+1 **only** because that slice's review recorded a verdict for it. The loop, in order:
+
+1. **Build the board with the staging dir**: `py -3 .../build_review_artifact.py --video <video-dir> --out
+   <board.html> --staging <kit>/_staging`. Alongside the scene cards it renders one card per STEP-1 figure forge
+   would refuse (its refusal reason is the card's badge, and the pending list IS forge's own reuse gate, so the two
+   can never disagree), and writes a **figure-verdicts skeleton** to `<video>/assets/_review/figure-verdicts.json`
+   (override with `--figures-out`) — pre-keyed by `fig-*` id with `canonical_sha256` already computed from the bytes
+   on disk, and every verdict left EMPTY.
+2. **The fresh-eyes pass rules those cards too**, on the same three axes, at the same ordinary viewing scale. Its
+   scene rulings merge into `assets/_review/merged.json` as always; its FIGURE rulings fill in the skeleton's
+   verdicts (`"pass"` / `"fail"` per invariant — a figure needs every one to read `pass`).
+3. **The ORCHESTRATOR records them, before the next batch generates**: `py -3 .../stamp_review.py --figures
+   <figure-verdicts.json> <kit>/_staging`. Same single-writer law as the scene path — `stamp_review.py` is the ONLY
+   writer of a verdict anywhere in this pipeline; the board writes only the skeleton, and forge only ever reads.
+
+The record shape the store keeps, per `fig-<character>--<pose>--<expression>`:
+`{canonical_sha256, expression_sha256, verdicts: {"<invariant-slug>": "pass"|"fail", …}, reviewer, date}`. A
+re-review of the same id REPLACES the record wholesale; ids absent from an input are untouched (additive merge).
+**A staged figure with no record, with no per-invariant verdicts, with any `fail`, or whose `canonical_sha256` no
+longer matches the bytes on disk is refused as a seed** — the refusal names which of the four it is and prints the
+builder invocation that re-mints it (delete the frame, re-run this same `batch --shots <id>`, `gen --batch` the
+spec, review, stamp). **Never hand-mint a STEP-1 with `gen --seed a,b,c`:** the `gen` CLI can only build
+`reference` seed roles, so the figure would be generated with role prose that lies about what each seed is for —
+the exact root cause the truthful roles exist to remove. One minter, one truth.
 
 The pass rules three axes together, per shot, at **ordinary viewing scale**:
 
@@ -334,6 +378,9 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
   shippable — its defect strings become
   `parked_reasons`, which the gate prints, and the entry hard-errors the render), **`unreviewed`** (no ruling covered
   the shot — hard-errors like a missing scene). Uncovered entries are untouched; it never writes a `verified: true`.
+  **The same orchestrator step also records the batch's FIGURE verdicts** (`stamp_review.py --figures
+  <figure-verdicts.json> <kit>/_staging`, the loop above) — run it before the next batch generates, or every STEP-1
+  the next batch would reuse is refused.
 
 ## Prove it by measurement, never by eye
 
