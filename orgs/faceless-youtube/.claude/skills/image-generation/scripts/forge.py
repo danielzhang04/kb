@@ -12,7 +12,12 @@ Reads (per channel visual-kit):
   <kit>/refs/<character>/...     canonical reference frames to seed from
 
 Subcommands:
-  gen      generate one or a --batch of assets into <kit>/_staging/  (does NOT auto-register);
+  gen      generate one or a --batch of assets. Direct mode (no spend grant) stages into
+           <kit>/_staging/ (does NOT auto-register), unchanged. ROUTE mode (a `.kb/spend-grant.json`
+           grant is present) instead requires --to <videos/<slug>/assets/...> — the real video-asset
+           destination — and writes directly there, because the daemon's paid-artifact namespace
+           only accepts paths under a video's own `videos/<slug>/` tree, never the channel-level
+           `_staging/` dir (see `validate_route_artifact_path`).
            --dry-run assembles + prints every prompt and calls nothing (batch pre-flight)
   montage  build a QC contact sheet of a directory for Claude to open
   register move a VERIFIED staged frame into refs/ and add it to registry.json
@@ -107,6 +112,38 @@ def nano(url, parts, aspect, context, image_size=IMAGE_SIZE_DEFAULT):
 # path would have made HTTP attempts.
 ROUTE_MAX_CALLS = 5
 ROUTE_OPERATION = "fyt.gemini-3-pro-image-2k"
+
+# Mirrors `dashboard/server/control/paidActionService.ts` `PAID_ARTIFACT_NAMESPACE` (~line 15)
+# exactly: the daemon REJECTS ('invalid-input') any `expectedArtifactPath` that doesn't start with
+# this literal, repo-root-relative prefix. The channel-level `<kit>/_staging/` dir (used by direct
+# mode) is under `orgs/faceless-youtube/channels/<channel>/visual-kit/_staging/` — one directory
+# short of this namespace — so route mode can never target it; see `validate_route_artifact_path`.
+PAID_ARTIFACT_NAMESPACE = "orgs/faceless-youtube/channels/the-second-take/videos/"
+_SAFE_ARTIFACT_PATH_RE = re.compile(r"^[A-Za-z0-9._ -]+(?:/[A-Za-z0-9._ -]+)*$")
+
+
+def validate_route_artifact_path(rel_out, name):
+    """Hard-fail LOCALLY, before any paid call, when a route-mode `expectedArtifactPath` cannot
+    possibly pass the daemon's `paidActionService.ts` `SAFE_ARTIFACT_PATH` + `PAID_ARTIFACT_NAMESPACE`
+    gate (~lines 7, 15, 428-443). Mirrors that regex/namespace check exactly. Without this, a
+    misconfigured `--to` would burn the whole batch's retry budget against a guaranteed
+    `invalid-input` rejection — one wasted round trip per item — before failing anyway."""
+    ok = (
+        isinstance(rel_out, str)
+        and rel_out.startswith(PAID_ARTIFACT_NAMESPACE)
+        and rel_out.lower().endswith(".png")
+        and not rel_out.startswith("/")
+        and re.match(r"^[A-Za-z]:", rel_out) is None
+        and ".." not in rel_out.split("/")
+        and len(rel_out) <= 512
+        and _SAFE_ARTIFACT_PATH_RE.match(rel_out) is not None
+    )
+    if not ok:
+        raise SystemExit(
+            f"{name}: route-mode expectedArtifactPath {rel_out!r} would be REJECTED by the "
+            f"daemon's paid-artifact namespace check — it must start with "
+            f"{PAID_ARTIFACT_NAMESPACE!r}, end in '.png', use forward slashes, and carry no "
+            f"'..', drive letter, or leading slash. Check the --to destination.")
 
 def _route_urlopen(req, timeout):
     # routeUrl is the local daemon (typically http://); only build a TLS context when the URL
@@ -499,7 +536,7 @@ class Kit:
             figures_expansion(figures, self.desc_baserig, self.desc_crowdrig, stage_role),
             self.desc_righold if hold else "")
 
-def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
+def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False, to_dir=None):
     # Results are reported AS THEY LAND, not buffered to the end of the batch. A 20-scene batch
     # is otherwise ~15 minutes of total silence, which (a) trips agent stream watchdogs and
     # (b) hides a systematic per-gen failure until every call has already been paid for — a
@@ -518,6 +555,34 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
     if image_size not in IMAGE_SIZES:
         raise SystemExit(f"unknown --image-size ceiling {image_size!r} (allowed: {', '.join(IMAGE_SIZES)})")
     os.makedirs(k.staging, exist_ok=True)
+
+    # Path-namespace fix (Phase 3 Unit E follow-up): `<kit>/_staging/` is channel-scoped
+    # (`orgs/faceless-youtube/channels/<channel>/visual-kit/_staging/`) — one directory short of
+    # `PAID_ARTIFACT_NAMESPACE`, which requires a `videos/<slug>/` segment. Route mode therefore
+    # cannot stage there: every route-mode `expectedArtifactPath` built from it would be REJECTED
+    # ('invalid-input') by the daemon before any bytes moved. Route mode instead requires
+    # `--to <videos/<slug>/assets/...>` (the real intended video-asset destination) and writes
+    # directly there — there is no local stage-then-place step in route mode, because the daemon
+    # already commits the PNG server-side to the exact validated path on the FIRST successful call.
+    # Direct mode is completely untouched: `to_dir` is read only when `k.route` is set.
+    route = getattr(k, "route", None)
+    dest_root = k.staging
+    if route and not dry:
+        if not to_dir:
+            raise SystemExit(
+                "gen: route mode requires --to <videos/<slug>/assets/...> — the visual-kit's "
+                "_staging/ dir is channel-scoped and can never satisfy the daemon's paid-artifact "
+                f"namespace ({PAID_ARTIFACT_NAMESPACE!r}); pass the real destination video's asset dir.")
+        # Anchored against ROUTE_ROOT (the `.kb/spend-grant.json` dir found by `find_route`), never
+        # the `.env`-anchored `k.root` — an attempt worktree may carry no `.env` at all, in which
+        # case `k.root`'s upward walk in `Kit.__init__` would silently continue past the worktree
+        # to an arbitrary filesystem ancestor (see `find_route`'s docstring). `route_root` is
+        # already an absolute path (built from `os.path.abspath` + `os.path.dirname`), so `dest_root`
+        # and every `out` built from it below are absolute too — immune to whatever the process's
+        # CWD happens to be (the daemon runs codex with CWD `<worktree>/orgs/faceless-youtube`, not
+        # the worktree root; see rosterSessions.ts `resolveCodexAttemptWorkDir`).
+        dest_root = to_dir if os.path.isabs(to_dir) else os.path.join(k.route_root, to_dir)
+
     results = []
     total = len(reqs)
 
@@ -527,9 +592,9 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
 
     for r in reqs:
         name = r["name"]; mode = r.get("mode", "identity")
-        out = os.path.join(k.staging, name + ".png")
+        out = os.path.join(dest_root, name + ".png")
         if os.path.exists(out) and not force and not dry:
-            report(name, "skip (exists in staging)"); continue
+            report(name, "skip (exists)"); continue
         seeds = r.get("seed")
         if not seeds:
             # A5: identity / new-character gens auto-seed the character portrait. environment & style
@@ -572,17 +637,19 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
         # FIX 2 (audit follow-up): hard-error on an oversized request BEFORE it is ever assembled or
         # sent — never auto-downscale a seed to make it fit.
         check_payload_size(name, seeds, text)
-        route = getattr(k, "route", None)
         try:
             # S1-A: compute + validate the bytes BEFORE opening the file, so a failed/empty gen can
             # never truncate `out` to a 0-byte survivor that skip-if-exists + render then treat as done.
             if route:
                 # Route mode: the daemon commits the PNG straight into `out` server-side; read it
-                # back from disk rather than writing it ourselves.
+                # back from disk rather than writing it ourselves. `out` is absolute (built from
+                # `dest_root`, itself absolute — see above), so this relpath is CWD-independent and
+                # correctly worktree-root-relative regardless of where the process's CWD sits.
                 rel_out = os.path.relpath(out, k.route_root).replace(os.sep, "/")
+                validate_route_artifact_path(rel_out, name)
                 data = nano_via_route(route, text, seeds, rel_out, out)
                 validate_png(data)
-                report(name, f"OK size={size} -> _staging/" + name + ".png (routed)")
+                report(name, f"OK size={size} -> {rel_out} (routed)")
             else:
                 parts = [ip(s) for s in seeds] + [{"text": text}]
                 data = nano(k.url, parts, aspect, k.ctx, size)
@@ -785,8 +852,11 @@ def main():
     ap.add_argument("--hi", type=int, default=175, help="cutout: alpha-harden high threshold")
     ap.add_argument("--allow-wide", action="store_true",
                     help="cutout: allow a wide (w/h >= 1.5) input — a legitimately wide object (e.g. a star row)")
-    # Q7 place / manifest
-    ap.add_argument("--to", help="place/manifest: destination dir (e.g. videos/<slug>/assets/scenes)")
+    # Q7 place / manifest; also gen ROUTE MODE only (path-namespace fix)
+    ap.add_argument("--to", help="place/manifest: destination dir (e.g. videos/<slug>/assets/scenes). "
+                                 "gen: REQUIRED in route mode only — the real video-asset destination "
+                                 "the daemon's paid-artifact namespace requires (direct-mode gen "
+                                 "ignores this and always stages into <kit>/_staging/)")
     ap.add_argument("--kind", choices=["scenes", "library"], help="manifest: which manifest to emit")
     ap.add_argument("--slug", help="manifest: video_slug for the envelope")
     ap.add_argument("--notes", help="manifest: free-text notes for the envelope")
@@ -801,7 +871,7 @@ def main():
                      "aspect": a.aspect, "seed": a.seed.split(",") if a.seed else None,
                      "figures": json.loads(a.figures) if a.figures else None,
                      "stage_role": a.stage_role}]
-        cmd_gen(k, reqs, a.force, a.image_size, dry)
+        cmd_gen(k, reqs, a.force, a.image_size, dry, to_dir=a.to)
     elif a.cmd == "montage":
         cmd_montage(k, a.dir, a.out, a.cols)
     elif a.cmd == "register":
