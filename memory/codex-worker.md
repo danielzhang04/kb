@@ -317,3 +317,13 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   explicit authorization to publish the operational checkpoint to the Codex Git remote, and browser
   discovery still returned no backend. No push or run mutation occurred.
 
+## 2026-08-04 — Keep experiments outside production repos by service boundary
+
+- For the Second Take open-model bakeoff, the durable handoff belongs in KB, but the harness,
+  model cache, weights, and generated results belong in a standalone workspace outside both KB and
+  FYT. A later production transition should add only a thin provider adapter to FYT and keep the GPU
+  worker as an independently deployable service.
+- A 48 GB A40 with CPU offload is the clean first comparison for Qwen Image Edit and FLUX Klein.
+  Starting on 24 GB makes Qwen quantization/offload behavior part of the experiment; starting on an
+  80 GB A100 spends more to remove a variable the six-image smoke test does not need removed.
+
