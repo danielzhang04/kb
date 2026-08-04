@@ -296,6 +296,7 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
   composition strategy for it alone; a **rig defect** → the targeted identity / de-nose pass above. **Log the cause**
   on the manifest entry as `retry_cause` (the flag string that triggered it, plus which clause was rewritten), so a
   second failure reads as systematic rather than random.
+- **After the single sanctioned content retry fails, the chain STOPS and the failure routes to root-cause analysis of the full mechanism (VPW authoring → the `shots.json` entry → the exact forge request as logged) before any further generation of that shot; repeated re-rolls of an unchanged mechanism are forbidden. The genlog row must record which mechanism layer the failure is suspected in.**
 - **Re-author HOW an authored fact is depicted, never WHETHER it appears.** Deleting or softening a load-bearing fact
   to dodge a rendering defect is a fidelity VIOLATION dressed as a fix; a fact that still won't render clean after the
   one retry is flagged for the human, never silently removed.
