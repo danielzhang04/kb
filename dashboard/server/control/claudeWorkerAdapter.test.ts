@@ -451,6 +451,62 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(fake.proc.endStdin).toHaveBeenCalled();
   });
 
+  it('starts an assigned chain with binding as the first stdin message, then records the emitted session', async () => {
+    const fake = fakeProcess();
+    const recordSession = vi.fn().mockResolvedValue(undefined);
+    let captured: ClaudeSpawnRequest | null = null;
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      resolveSession: () => null,
+      recordSession,
+      spawn: (request) => { captured = request; return fake.proc; },
+    });
+    const assignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'a'.repeat(64),
+      profileId: WORKER_PROFILE.id, runtime: WORKER_PROFILE.runtime, model: WORKER_PROFILE.model,
+    };
+    const promise = adapter.execute(executeInput({ assignment, instructionMarkdown: '# Bound worker\nDo not publish.' }));
+    fake.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: 'claude-session-1' })}\n`);
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await expect(promise).resolves.toMatchObject({ state: 'succeeded' });
+
+    const messages = fake.stdin.join('').trim().split('\n').map((line) => JSON.parse(line).message.content[0].text as string);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toContain('SERVER-VERIFIED AGENT DECLARATION');
+    expect(messages[0]).toContain('# Bound worker');
+    expect(messages[1]).toContain('AUTHORITATIVE WORK ORDER');
+    expect(messages[1]).not.toContain('SERVER-VERIFIED AGENT DECLARATION');
+    expect(captured!.args).not.toContain('--resume');
+    expect(recordSession).toHaveBeenCalledWith('run-1', 'fyt-worker', 'claude-session-1');
+  });
+
+  it('resumes an assigned chain with work order only and surfaces async chain-record failure', async () => {
+    const fake = fakeProcess();
+    let captured: ClaudeSpawnRequest | null = null;
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      resolveSession: () => 'claude-session-prior',
+      recordSession: (() => Promise.reject(new Error('chain disk unavailable'))) as never,
+      spawn: (request) => { captured = request; return fake.proc; },
+    });
+    const assignment = {
+      agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'a'.repeat(64),
+      profileId: WORKER_PROFILE.id, runtime: WORKER_PROFILE.runtime, model: WORKER_PROFILE.model,
+    };
+    const promise = adapter.execute(executeInput({ assignment, instructionMarkdown: '# Bound worker' }));
+    fake.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: 'claude-session-next' })}\n`);
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await expect(promise).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('chain disk unavailable') });
+    expect(captured!.args.slice(captured!.args.indexOf('--resume'), captured!.args.indexOf('--resume') + 2))
+      .toEqual(['--resume', 'claude-session-prior']);
+    const messages = fake.stdin.join('').trim().split('\n').map((line) => JSON.parse(line).message.content[0].text as string);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('AUTHORITATIVE WORK ORDER');
+    expect(messages[0]).not.toContain('SERVER-VERIFIED AGENT DECLARATION');
+  });
+
   it('directly executes a checker only with readonly contract inputs and returns a structured review outcome', async () => {
     const fake = fakeProcess();
     const spawn = vi.fn(() => fake.proc);

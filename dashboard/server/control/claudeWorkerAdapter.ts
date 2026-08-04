@@ -202,6 +202,10 @@ export interface ClaudeWorkerAdapterOptions {
   maxOutputBytes?: number;
   stderrTailChars?: number;
   summaryMaxChars?: number;
+  /** Returns the prior runtime session for this run/agent pair, or null for a binding first turn. */
+  resolveSession?: (runRef: string, agentId: string) => string | null;
+  /** Persists the session id emitted by Claude's stream. Async implementations are awaited at settle. */
+  recordSession?: (runRef: string, agentId: string, sessionId: string) => void;
 }
 
 const ZERO_USAGE: ExecutionUsage = { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 };
@@ -382,7 +386,12 @@ export function buildReadScopeSettings(input: {
  * `settings` (optional, C3) is passed as inline `--settings` JSON BEFORE routing so `--allowedTools` and
  * the trailing `--permission-mode` positions are unchanged. Absent => byte-identical to the pre-C3 argv.
  */
-export function buildClaudeArgs(routing: { model: string; toolPolicy: ClaudeToolPolicy; settings?: string }): string[] {
+export function buildClaudeArgs(routing: {
+  model: string;
+  toolPolicy: ClaudeToolPolicy;
+  settings?: string;
+  resumeSessionId?: string;
+}): string[] {
   const model = routing.model.trim();
   if (!model) throw new Error('claude worker routing has no model');
   const allowedTools = routing.toolPolicy.allowedTools;
@@ -393,6 +402,9 @@ export function buildClaudeArgs(routing: { model: string; toolPolicy: ClaudeTool
   if (malformed !== undefined) {
     throw new ToolPolicyRefusal(`refusing to build claude args: malformed tool name '${String(malformed)}'`);
   }
+  if (routing.resumeSessionId !== undefined && (!routing.resumeSessionId.trim() || routing.resumeSessionId.includes('\0'))) {
+    throw new Error('claude worker resume session id is invalid');
+  }
   return [
     '-p',
     '--output-format', 'stream-json',
@@ -400,6 +412,7 @@ export function buildClaudeArgs(routing: { model: string; toolPolicy: ClaudeTool
     '--verbose',
     ...(routing.settings ? ['--settings', routing.settings] : []),
     '--model', model,
+    ...(routing.resumeSessionId ? ['--resume', routing.resumeSessionId] : []),
     '--allowedTools', allowedTools.join(','),
     '--permission-mode', routing.toolPolicy.permissionMode,
   ];
@@ -408,6 +421,34 @@ export function buildClaudeArgs(routing: { model: string; toolPolicy: ClaudeTool
 /** The stream-json stdin payload: one user message (prompt via stdin, never argv, never in a ps listing). */
 export function encodeStreamJsonUserMessage(prompt: string): string {
   return `${JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: prompt }] } })}\n`;
+}
+
+/** The immutable identity/declaration turn that starts a fresh assigned runtime session. */
+export function buildAgentBindingPrompt(declaration: string): string {
+  if (!declaration.trim() || declaration.length > MAX_AGENT_INSTRUCTION_CHARS || declaration.includes('\0')) {
+    throw new Error('server-verified agent declaration instructions are unsafe');
+  }
+  return [
+    'SERVER-VERIFIED AGENT DECLARATION (binding authority):',
+    'Declaration bounds and forbidden authority outrank conflicting work-order detail.',
+    declaration,
+    'END SERVER-VERIFIED AGENT DECLARATION',
+  ].join('\n');
+}
+
+/** Extract the first opaque Claude session id from a completed stream-json transcript. */
+function extractClaudeSessionId(stdout: string): string | null {
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const event = JSON.parse(trimmed) as Record<string, unknown>;
+      if (typeof event.session_id === 'string' && event.session_id.trim()) return event.session_id;
+    } catch {
+      // Malformed diagnostic lines are ignored; the terminal result parser remains authoritative.
+    }
+  }
+  return null;
 }
 
 /** The child env: the SAME allowlist+denylist the PTY host applies (ANTHROPIC_API_KEY etc. stripped). */
@@ -562,6 +603,8 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
   const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   const stderrTailChars = options.stderrTailChars ?? DEFAULT_STDERR_TAIL_CHARS;
   const summaryMaxChars = options.summaryMaxChars ?? DEFAULT_SUMMARY_MAX_CHARS;
+  const resolveSession = options.resolveSession ?? (() => null);
+  const recordSession = options.recordSession ?? (() => {});
 
   return {
     execute(input) {
@@ -598,15 +641,24 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         writeScope: input.writeScope,
         repoRoot: options.repoRoot,
       });
-      const args = buildClaudeArgs({ model: input.profile.model, toolPolicy, settings });
+      const agentId = input.assignment?.agentId ?? input.profile.id;
+      const resumeSessionId = resolveSession(input.runRef, agentId);
+      const args = buildClaudeArgs({
+        model: input.profile.model,
+        toolPolicy,
+        settings,
+        ...(resumeSessionId ? { resumeSessionId } : {}),
+      });
       const env = buildWorkerEnv(options.parentEnv, options.envAllowlist);
       const prompt = buildWorkerPrompt({
         workOrder: input.workOrder,
         readScope: input.readScope,
         writeScope: input.writeScope,
-        ...(input.instructionMarkdown !== undefined ? { agentDeclarationMarkdown: input.instructionMarkdown } : {}),
         ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
       });
+      const stdin = !resumeSessionId && input.instructionMarkdown !== undefined
+        ? encodeStreamJsonUserMessage(buildAgentBindingPrompt(input.instructionMarkdown)) + encodeStreamJsonUserMessage(prompt)
+        : encodeStreamJsonUserMessage(prompt);
 
       return new Promise<WorkerExecutionResult>((resolvePromise) => {
         const proc = spawner({ args, cwd: input.worktreePath, env });
@@ -631,16 +683,40 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           settled = true;
           clearTimeout(timer);
           options.deregisterCancellation?.(input.operationKey);
-          resolvePromise(parseWorkerStream(stdoutChunks.join(''), stderrTail, code, {
-            timedOut,
-            exceeded,
-            cancelled,
-            timeoutMs,
-            maxOutputBytes,
-            stderrTailChars,
-            summaryMaxChars,
-            ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
-          }));
+          const stdout = stdoutChunks.join('');
+          void (async () => {
+            const sessionId = extractClaudeSessionId(stdout);
+            if (sessionId) {
+              try {
+                // Activation supplies the store's Promise-returning record function. Promise.resolve
+                // also preserves the public void-compatible callback seam used by older callers.
+                await Promise.resolve(recordSession(input.runRef, agentId, sessionId));
+              } catch (error) {
+                resolvePromise(failedResult(
+                  `claude worker could not record its emitted session: ${error instanceof Error ? error.message : String(error)}`,
+                  ZERO_USAGE,
+                  summaryMaxChars,
+                ));
+                return;
+              }
+            }
+            resolvePromise(parseWorkerStream(stdout, stderrTail, code, {
+              timedOut,
+              exceeded,
+              cancelled,
+              timeoutMs,
+              maxOutputBytes,
+              stderrTailChars,
+              summaryMaxChars,
+              ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
+            }));
+          })().catch((error) => {
+            resolvePromise(failedResult(
+              `claude worker session finalization failed: ${error instanceof Error ? error.message : String(error)}`,
+              ZERO_USAGE,
+              summaryMaxChars,
+            ));
+          });
         };
 
         const timer = setTimeout(() => {
@@ -681,7 +757,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         proc.onExit((code) => finalize(code));
 
         try {
-          proc.writeStdin(encodeStreamJsonUserMessage(prompt));
+          proc.writeStdin(stdin);
           proc.endStdin();
         } catch {
           terminate();

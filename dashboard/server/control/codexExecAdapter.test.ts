@@ -150,6 +150,20 @@ describe('createCodexExecAdapter.execute', () => {
     expect(recordThread).toHaveBeenCalledWith('run-1', 'fyt-codex', '019fce84-thread');
   });
 
+  it('turns an async chain-record rejection into a failed worker result', async () => {
+    const fake = fakeProcess();
+    const adapter = createCodexExecAdapter({
+      recordThread: (() => Promise.reject(new Error('chain disk unavailable'))) as never,
+      spawner: () => fake.proc,
+    });
+    const promise = adapter.execute(executeInput());
+    fake.emitStdout(probeEvents());
+    fake.emitExit(0);
+    await expect(promise).resolves.toMatchObject({
+      state: 'failed', summary: expect.stringContaining('chain disk unavailable'),
+    });
+  });
+
   it('fails with the stderr tail on a nonzero exit', async () => {
     const fake = fakeProcess();
     const adapter = createCodexExecAdapter({ spawner: () => fake.proc });

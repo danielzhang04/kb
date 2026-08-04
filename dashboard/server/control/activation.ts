@@ -37,10 +37,13 @@ import { join } from 'node:path';
 import { ManagedSessionBroker } from './broker.ts';
 import type { BrokerPersistence, ManagedSessionAdapter, ManagedStartSpec } from './broker.ts';
 import { createClaudeSessionAdapter, type ClaudeSessionLaunch } from './claudeSessionAdapter.ts';
+import { createCodexSessionAdapter } from './codexSessionAdapter.ts';
 import { createSubjectBrokerPersistence } from './brokerStore.ts';
 import { createGitWorktreeAdapter, createCuratedSkillResolver, createFileAccountingAdapter } from './adapters.ts';
 import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.ts';
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
+import { createCodexExecAdapter } from './codexExecAdapter.ts';
+import { createAgentSessionChainStore } from './agentSessionChains.ts';
 import { createAssignedAgentResolver } from './agentAssignmentResolver.ts';
 import {
   AutomaticExecutionEngine,
@@ -51,10 +54,11 @@ import {
   type ExecuteRunInput,
   type ExecutionBudget,
   type ExecutionOutcome,
+  type WorkerAdapter,
   canonicalResultOperationKey,
 } from './execution.ts';
 import { loadPolicyEnvironment } from './environment.ts';
-import type { PolicyEnvironment } from './policy.ts';
+import type { ExecutionProfile, PolicyEnvironment } from './policy.ts';
 import type { ControlPlaneStore } from './store.ts';
 import {
   createBrokerCancellationController,
@@ -68,7 +72,6 @@ import { PAID_ACTION_ROUTE_PATH } from './paidActionRoute.ts';
 import type { SpendGrant } from './spendGrant.ts';
 import { createRosterSessionManager, createRosterWorkerAdapter, type RosterSessionManager } from './rosterSessions.ts';
 import { loadExecutionProfiles } from './environment.ts';
-import type { PlanProposal } from './proposal.ts';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { brandInternalServiceCaller } from '../auth/session.ts';
@@ -166,7 +169,7 @@ export interface ActivationEngine {
 
 export interface ActivatedExecution {
   controlBroker: ManagedSessionBroker;
-  /** Present when roster delivery is wired: the canvas/state endpoint and Lock reach the roster here. */
+  /** Legacy Task-6 seam. Headless-primary activation never populates it. */
   rosterSessions?: RosterSessionManager;
   runAutomatic: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   cancelAutomatic: (input: CancelRunInput) => Promise<CancellationOutcome>;
@@ -188,6 +191,7 @@ export interface ActivationDeps {
   loadPolicy(repoRoot: string, project: string, refs: string[]): PolicyEnvironment;
   resolveBaseCommit(repoRoot: string): string;
   createSessionAdapter: typeof createClaudeSessionAdapter;
+  createCodexSessionAdapter: typeof createCodexSessionAdapter;
   createBrokerPersistence: typeof createSubjectBrokerPersistence;
   createBroker(adapter: ManagedSessionAdapter, persistence: BrokerPersistence): ManagedSessionBroker;
   createWorktrees: typeof createGitWorktreeAdapter;
@@ -197,13 +201,15 @@ export interface ActivationDeps {
   createToolPolicyResolver: typeof createWorkflowToolPolicyResolver;
   createAssignedAgentResolver: typeof createAssignedAgentResolver;
   createWorkers: typeof createClaudeWorkerAdapter;
+  createCodexWorkers: typeof createCodexExecAdapter;
+  createSessionChains: typeof createAgentSessionChainStore;
   createRegistry: typeof createWorkerCancellationRegistry;
   createManagers: typeof createBrokerManagerAdapter;
   createCancellation: typeof createBrokerCancellationController;
   createEngine(options: AutomaticExecutionOptions): ActivationEngine;
-  /** The run-roster pty session manager. Constructed only behind the gate, like every other factory. */
+  /** Legacy Task-6 factory retained in the dependency shape but no longer constructed by activation. */
   createRoster: typeof createRosterSessionManager;
-  /** Wraps the headless worker adapter so roster runs deliver into pty sessions instead of spawning. */
+  /** Legacy Task-6 worker wrapper retained but detached from headless-primary construction. */
   createRosterWorkers: typeof createRosterWorkerAdapter;
   loadProfiles: typeof loadExecutionProfiles;
   /**
@@ -223,11 +229,7 @@ export interface BuildActivatedExecutionOptions {
    * fails closed on a forged value rather than opening on a truthy one.
    */
   unlockGrant?: unknown;
-  /**
-   * The shared pty substrate. When BOTH are supplied the engine's worker adapter delivers stage work
-   * orders into per-run roster sessions (the FYT gated-pipeline substrate); when either is absent the
-   * engine keeps the proven headless worker path with no roster constructed at all.
-   */
+  /** Legacy Task-6 inputs retained for surface compatibility; headless-primary activation ignores them. */
   ptyHost?: PtyHost;
   ptySessions?: PersistentSessionRegistry;
   /** The app-local durable control-plane store the surface already resolved. */
@@ -259,40 +261,10 @@ export interface BuildActivatedExecutionOptions {
   deps?: Partial<ActivationDeps>;
 }
 
-const dormantResolveLaunch = (_spec: ManagedStartSpec): ClaudeSessionLaunch => {
-  throw new ActivationError('no managed manager session is started under D3(b); resolveLaunch is dormant');
-};
-
-/** Every Codex route is roster-only in this wave; no Claude headless adapter may receive one. */
-function codexRosterRequirement(proposal: PlanProposal): string | null {
-  const manager = proposal.manager;
-  if (manager?.runtime === 'codex' && manager.assignment?.runtime !== 'codex') {
-    return 'manager routes to Codex without a resolved Codex roster assignment';
-  }
-  if (manager?.assignment?.runtime === 'codex' && manager.runtime !== 'codex') {
-    return 'manager has a Codex roster assignment but non-Codex manager routing';
-  }
-  for (const stage of proposal.stages ?? []) {
-    const workerRuntime = stage.worker?.runtime;
-    if (workerRuntime === 'codex' && stage.assignment?.runtime !== 'codex') {
-      return `stage '${stage.id}' routes to Codex without a resolved Codex roster assignment`;
-    }
-    if (stage.assignment?.runtime === 'codex' && workerRuntime !== 'codex') {
-      return `stage '${stage.id}' has a Codex roster assignment but non-Codex worker routing`;
-    }
-  }
-  return null;
-}
-
-/** The roster must exist for a resolved Codex runtime; its persistent session is the only supported transport. */
-function proposalUsesCodexRoster(proposal: PlanProposal): boolean {
-  return proposal.manager?.assignment?.runtime === 'codex'
-    || (proposal.stages ?? []).some((stage) => stage.assignment?.runtime === 'codex');
-}
-
-/** A manager assignment is itself a persistent roster participant, even when no worker assignment exists. */
-function proposalHasRosterAssignment(proposal: PlanProposal): boolean {
-  return Boolean(proposal.manager?.assignment) || (proposal.stages ?? []).some((stage) => Boolean(stage.assignment));
+function managedProfile(profiles: readonly ExecutionProfile[], spec: ManagedStartSpec): ExecutionProfile {
+  const profile = profiles.find((candidate) => candidate.id === spec.profileId && candidate.role === spec.role);
+  if (!profile) throw new ActivationError(`managed session profile '${spec.profileId}' is unavailable`);
+  return profile;
 }
 
 function defaultResolveBaseCommit(repoRoot: string): string {
@@ -306,6 +278,7 @@ function defaultDeps(): ActivationDeps {
     loadPolicy: loadPolicyEnvironment,
     resolveBaseCommit: defaultResolveBaseCommit,
     createSessionAdapter: createClaudeSessionAdapter,
+    createCodexSessionAdapter,
     createBrokerPersistence: createSubjectBrokerPersistence,
     createBroker: (adapter, persistence) => new ManagedSessionBroker(adapter, persistence),
     createWorktrees: createGitWorktreeAdapter,
@@ -315,6 +288,8 @@ function defaultDeps(): ActivationDeps {
     createToolPolicyResolver: createWorkflowToolPolicyResolver,
     createAssignedAgentResolver: createAssignedAgentResolver,
     createWorkers: createClaudeWorkerAdapter,
+    createCodexWorkers: createCodexExecAdapter,
+    createSessionChains: createAgentSessionChainStore,
     createRegistry: createWorkerCancellationRegistry,
     createManagers: createBrokerManagerAdapter,
     createCancellation: createBrokerCancellationController,
@@ -367,14 +342,57 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const budget = options.budget ?? DEFAULT_BUDGET;
   const maxConcurrency = options.maxConcurrency ?? 1;
   const baseCommit = options.baseCommit ?? deps.resolveBaseCommit(repoRoot);
-  const resolveLaunch = options.resolveLaunch ?? dormantResolveLaunch;
 
   const policy = deps.loadPolicy(repoRoot, project, [...refs]);
   const resolvePolicy = createProjectPolicyResolver(repoRoot, deps.loadPolicy, project, policy);
   const assignedAgents = deps.createAssignedAgentResolver(repoRoot);
+  const sessionChains = deps.createSessionChains(stateRoot);
+
+  const resolveManagedLaunch = (spec: ManagedStartSpec): ClaudeSessionLaunch => {
+    const profile = managedProfile(policy.profiles, spec);
+    const resolved = options.resolveLaunch?.(spec) ?? {
+      cwd: repoRoot,
+      model: profile.model,
+      allowedTools: ['Read'],
+      permissionMode: 'default',
+    };
+    return { ...resolved, model: profile.model };
+  };
+  const claudeSessions = deps.createSessionAdapter({
+    resolveLaunch: (spec) => {
+      const profile = managedProfile(policy.profiles, spec);
+      if (profile.runtime !== 'claude') throw new ActivationError('Codex managed session reached the Claude adapter');
+      return resolveManagedLaunch(spec);
+    },
+  });
+  const codexSessions = deps.createCodexSessionAdapter({
+    resolveLaunch: (spec) => {
+      const profile = managedProfile(policy.profiles, spec);
+      if (profile.runtime !== 'codex') throw new ActivationError('Claude managed session reached the Codex adapter');
+      const launch = resolveManagedLaunch(spec);
+      return { cwd: launch.cwd, model: profile.model };
+    },
+    resolveThread: (spec) => {
+      const entry = sessionChains.get(spec.runRef, spec.sessionRef);
+      if (!entry) return null;
+      if (entry.runtime !== 'codex') throw new ActivationError('managed session chain runtime differs from its profile');
+      return entry.sessionId;
+    },
+    recordThread: (spec, threadId) => sessionChains.record(
+      spec.runRef, spec.sessionRef, { runtime: 'codex', sessionId: threadId },
+    ),
+  });
+  const sessionAdapter: ManagedSessionAdapter = {
+    start(spec, observer) {
+      const profile = managedProfile(policy.profiles, spec);
+      return profile.runtime === 'codex'
+        ? codexSessions.start(spec, observer)
+        : claudeSessions.start(spec, observer);
+    },
+  };
 
   const broker = deps.createBroker(
-    deps.createSessionAdapter({ resolveLaunch }),
+    sessionAdapter,
     deps.createBrokerPersistence(options.controlStore, subject),
   );
 
@@ -417,7 +435,13 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   });
 
   const registry = deps.createRegistry();
-  const headlessWorkers = deps.createWorkers({
+  const resolveChain = (runtime: 'claude' | 'codex', runRef: string, agentId: string): string | null => {
+    const entry = sessionChains.get(runRef, agentId);
+    if (!entry) return null;
+    if (entry.runtime !== runtime) throw new ActivationError('worker session chain runtime differs from its profile');
+    return entry.sessionId;
+  };
+  const claudeWorkers = deps.createWorkers({
     resolveToolPolicy: deps.createToolPolicyResolver(),
     registerCancellation: registry.register,
     deregisterCancellation: registry.clear,
@@ -425,35 +449,24 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     // (Read denies are non-functional on CLI 2.1.217 in -p mode — see claudeWorkerAdapter.ts — so this is
     // dormant future-proofing; the seam is wired for a CLI that honors them.)
     repoRoot,
+    resolveSession: (runRef, agentId) => resolveChain('claude', runRef, agentId),
+    recordSession: (runRef, agentId, sessionId) => sessionChains.record(
+      runRef, agentId, { runtime: 'claude', sessionId },
+    ),
   });
-  // Run-roster substrate. Constructed ONLY behind the gate and ONLY when the daemon shared its pty stack:
-  // one interactive session per distinct agent id, work orders delivered into them, everything else (gate
-  // boundaries, spend gate, dependency release, policy, accounting) still decided upstream by the engine.
-  const rosterSessions = options.ptyHost && options.ptySessions
-    ? deps.createRoster({
-        store: options.controlStore,
-        repoRoot,
-        stateRoot,
-        host: options.ptyHost,
-        registry: options.ptySessions,
-        assignedAgents,
-        resolveProfiles: () => deps.loadProfiles(repoRoot),
-        // The SAME server-owned tool cap the headless workers run under, so a roster session's scoped
-        // per-run permission settings can never grant a tool the workflow profile tables withhold.
-        // A profile that does not resolve refuses here exactly as it does there; the roster turns that
-        // refusal into "no permission rules" rather than a wider grant.
-        resolveWorkflowTools: (workflowProfileId) => {
-          try {
-            return deps.createToolPolicyResolver()(workflowProfileId).allowedTools;
-          } catch {
-            return [];
-          }
-        },
-      })
-    : null;
-  const workers = rosterSessions
-    ? deps.createRosterWorkers({ sessions: rosterSessions, fallback: headlessWorkers })
-    : headlessWorkers;
+  const codexWorkers = deps.createCodexWorkers({
+    resolveThread: (runRef, agentId) => resolveChain('codex', runRef, agentId),
+    recordThread: (runRef, agentId, threadId) => sessionChains.record(
+      runRef, agentId, { runtime: 'codex', sessionId: threadId },
+    ),
+  });
+  const workers: WorkerAdapter = {
+    execute(input) {
+      return input.profile.runtime === 'codex'
+        ? codexWorkers.execute(input)
+        : claudeWorkers.execute(input);
+    },
+  };
 
   const managers = deps.createManagers({ broker });
   const cancellation = deps.createCancellation({ broker, registry });
@@ -499,17 +512,6 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const settleLedgerForRun = deps.settleLedgerForRun;
   const readUsageMicros = options.readUsageMicros;
   const runAutomatic = async (input: ExecuteRunInput): Promise<ExecutionOutcome> => {
-    // Codex has NO broad headless adapter in this wave. A concrete Codex route must have the approved,
-    // resolved assignment that creates its persistent interactive roster session; otherwise it is refused
-    // before the engine can reach the Claude headless worker. This also catches malformed snapshots where
-    // routing and immutable assignment provenance disagree.
-    const codexRequirement = codexRosterRequirement(input.proposal);
-    if (codexRequirement !== null) {
-      throw new ActivationError(`Codex execution refused: ${codexRequirement}`);
-    }
-    if (proposalUsesCodexRoster(input.proposal) && !rosterSessions) {
-      throw new ActivationError('Codex execution requires the managed roster PTY runtime; refusing Claude headless fallback');
-    }
     // C2: register this run's sparse materialization set (effectiveRead ∪ writeScope) BEFORE the engine
     // provisions any worktree, so `resolveSparsePaths` (above) can find it at `ensure` time. Read from the
     // approved, hash-covered proposal scope. Guarded: a proposal without a `scope` (e.g. a test double)
@@ -523,18 +525,8 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     if (scope && !runSparsePaths.has(input.runRef)) {
       runSparsePaths.set(input.runRef, { owner, paths: [...(scope.read ?? []), ...(scope.write ?? [])] });
     }
-    // Roster lifecycle rides the SAME entry point as execution, so launch and every resume (including the
-    // one after a daemon restart, which no pty child survives) converge on one idempotent spawn call, and
-    // a terminal run retires its terminals exactly once. A roster failure must not silently execute the
-    // run headlessly: an assignment that no longer verifies is a refusal, and it propagates.
-    if (rosterSessions && proposalHasRosterAssignment(input.proposal)) {
-      rosterSessions.ensureRoster({ subject: input.subject, runRef: input.runRef, proposal: input.proposal });
-    }
     try {
       const outcome = await engine.runToBoundary(input);
-      if (rosterSessions && ['succeeded', 'failed', 'stopped'].includes(outcome.state)) {
-        rosterSessions.retire(input.runRef, `run ${outcome.state}`);
-      }
       try {
         await settleLedgerForRun(
           { controlStore: options.controlStore, repoRoot },
@@ -554,17 +546,10 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
 
   return {
     controlBroker: broker,
-    ...(rosterSessions ? { rosterSessions } : {}),
     paidActionService: paid.paidActionService,
     spendGrantStore: paid.spendGrantStore,
     runAutomatic,
-    cancelAutomatic: async (input) => {
-      const outcome = await engine.cancelRun(input);
-      // An operator stop retires the run's terminals with it; leaving six live Claude REPLs behind a
-      // stopped run is exactly the orphan the lease law forbids.
-      if (rosterSessions) rosterSessions.retire(input.runRef, 'run cancelled');
-      return outcome;
-    },
+    cancelAutomatic: (input) => engine.cancelRun(input),
     verifyCanonicalResult: async (input) => (await results.lookup({
       operationKey: canonicalResultOperationKey(input.runRef, input.stageId),
       subject: input.subject,

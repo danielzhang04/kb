@@ -200,7 +200,7 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
         workOrder: input.workOrder,
         readScope: input.readScope,
         writeScope: input.writeScope,
-        ...(input.instructionMarkdown !== undefined ? { agentDeclarationMarkdown: input.instructionMarkdown } : {}),
+        ...(!threadId && input.instructionMarkdown !== undefined ? { agentDeclarationMarkdown: input.instructionMarkdown } : {}),
         ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
       });
 
@@ -224,42 +224,51 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
           settled = true;
           clearTimeout(timer);
           const parsed = parseCodexStream(stdoutChunks.join(''));
-          if (parsed.threadId) {
-            try {
-              recordThread(input.runRef, agentId, parsed.threadId);
-            } catch (error) {
-              resolvePromise(failedResult(
-                `codex worker could not record its emitted thread: ${error instanceof Error ? error.message : String(error)}`,
-                ZERO_USAGE,
-                DEFAULT_SUMMARY_MAX_CHARS,
-              ));
+          void (async () => {
+            if (parsed.threadId) {
+              try {
+                // The callback is void-compatible, while activation supplies the chain store's Promise.
+                await Promise.resolve(recordThread(input.runRef, agentId, parsed.threadId));
+              } catch (error) {
+                resolvePromise(failedResult(
+                  `codex worker could not record its emitted thread: ${error instanceof Error ? error.message : String(error)}`,
+                  ZERO_USAGE,
+                  DEFAULT_SUMMARY_MAX_CHARS,
+                ));
+                return;
+              }
+            }
+            const tail = stderrTail.trim();
+            if (timedOut) {
+              resolvePromise(failedResult(`codex worker timed out after ${timeoutMs}ms and was killed. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
               return;
             }
-          }
-          const tail = stderrTail.trim();
-          if (timedOut) {
-            resolvePromise(failedResult(`codex worker timed out after ${timeoutMs}ms and was killed. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
-            return;
-          }
-          if (exceeded) {
-            resolvePromise(failedResult(`codex worker output exceeded the ${maxOutputBytes}-byte cap and was killed. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
-            return;
-          }
-          const usage = parsed.terminalEvent ? extractUsage(parsed.terminalEvent) : ZERO_USAGE;
-          if (code !== 0) {
-            resolvePromise(failedResult(`codex worker exited with code ${code ?? 'null'}. ${tail}`, usage, DEFAULT_SUMMARY_MAX_CHARS));
-            return;
-          }
-          if (!parsed.terminalEvent) {
-            resolvePromise(failedResult(`codex worker produced no turn.completed terminal event. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
-            return;
-          }
-          resolvePromise({
-            state: 'succeeded',
-            summary: boundSummary(parsed.finalMessage || 'codex worker completed without a final agent message.', DEFAULT_SUMMARY_MAX_CHARS),
-            usage,
-            artifacts: [],
-            checkpoints: [],
+            if (exceeded) {
+              resolvePromise(failedResult(`codex worker output exceeded the ${maxOutputBytes}-byte cap and was killed. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
+              return;
+            }
+            const usage = parsed.terminalEvent ? extractUsage(parsed.terminalEvent) : ZERO_USAGE;
+            if (code !== 0) {
+              resolvePromise(failedResult(`codex worker exited with code ${code ?? 'null'}. ${tail}`, usage, DEFAULT_SUMMARY_MAX_CHARS));
+              return;
+            }
+            if (!parsed.terminalEvent) {
+              resolvePromise(failedResult(`codex worker produced no turn.completed terminal event. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
+              return;
+            }
+            resolvePromise({
+              state: 'succeeded',
+              summary: boundSummary(parsed.finalMessage || 'codex worker completed without a final agent message.', DEFAULT_SUMMARY_MAX_CHARS),
+              usage,
+              artifacts: [],
+              checkpoints: [],
+            });
+          })().catch((error) => {
+            resolvePromise(failedResult(
+              `codex worker thread finalization failed: ${error instanceof Error ? error.message : String(error)}`,
+              ZERO_USAGE,
+              DEFAULT_SUMMARY_MAX_CHARS,
+            ));
           });
         };
         const timer = setTimeout(() => {
