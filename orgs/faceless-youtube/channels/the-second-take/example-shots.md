@@ -9,7 +9,8 @@ template to reuse on a new script, and a character or object invented for one vi
 in another unless the new beat genuinely calls for it. Registry names are backticked where a real
 asset exists (`visual-kit/registry/registry.json`); the class label names the move, not a per-video
 checklist. The file grows: each entry Daniel approves stays as the bar, new approved pairs are added
-below it, never replacing what already passed.
+below it, never replaced for style — an entry that turns out to violate a landed law is corrected in
+place, since a law-violating exemplar teaches the violation.
 
 ## 1. Physicalized imbalance (mined, Poyais hook)
 
@@ -22,14 +23,14 @@ below it, never replacing what already passed.
 
 > Eight million acres of it, in exchange for some rum and some jewellery
 
-**Ideal shot:** `mosquito-king` (`action-offering`, `expr-deadpan`) holds out a deed lettered 8,000,000 ACRES; `macgregor` (`action-offering`, `expr-smug`) holds out a rum bottle and a fistful of jewellery; a full stride of open sand separates them, hands never meeting, goods never overlapping.
-**Why:** the gap between the goods argues the fraud better than contact would; closing it would blur the punchline into a handshake.
+**Ideal shot:** `mosquito-king` (`action-offering`, `expr-deadpan`) holds out a deed lettered 8,000,000 ACRES; `macgregor` (`action-offering`, `expr-smug`) holds out a rum bottle and a fistful of jewellery, facing him at a matching eye-line and head scale, both on one plane; a full stride of open sand separates them, hands never meeting, goods never overlapping.
+**Why:** the gap between the goods argues the fraud better than contact would; closing it would blur the punchline into a handshake. Eye-line, head scale, and plane are named because C-8 requires them on every 2+-cast shot — stating them argues the gap is staged, not an accident of an unstated camera.
 
 ## 3. Ironic counterpoint, the signature move (mined, Poyais rented office)
 
 > Government debt, for a government that was one guy in a rented office
 
-**Ideal shot:** a peeling POYAIS GOVERNMENT sign hangs over a cramped rented-office door; inside, `macgregor` (`sit`, `expr-deadpan`) sits alone at one small desk in the otherwise empty room.
+**Ideal shot:** a peeling POYAIS GOVERNMENT sign hangs over a cramped rented-office door; inside, `macgregor` (`sit`, `expr-deadpan`) sits alone on a chair at one small desk in the otherwise empty room.
 **Why:** the sign's grandeur staged against the tiny reality behind it is the unmasking; no caption does the work a held wide already does.
 
 ## 4. Idiom-pun (mined, Poyais dot-com bubble)
@@ -65,4 +66,24 @@ below it, never replacing what already passed.
 > with a capital city, a national bank, its own money
 
 **Ideal shot:** base, an empty golden paradise, lush hills under a radiant sky, nothing built yet; delta 1 adds a cream colonnaded capital skyline folding into the mid-right vista; delta 2 adds a columned national bank grounded foreground-left; delta 3 adds a fan of engraved banknotes laid into the lower-right. Each delta holds everything prior; one element changes per cut.
-**Why:** three claims building the same lie share one stage and cut on the noun each promises, never re-establishing the vista from scratch.
+**Why:** three claims building the same lie share one stage inside the video's own `place`, cutting on
+the noun each promises, never re-establishing the vista from scratch.
+
+## 9. Recurring place + plate (invented — mechanism exemplar, not a new shot_class)
+
+> Early: The brokerage that sold Poyais bonds opened its doors on Threadneedle Street
+
+**Ideal shot (the plate — place-first, no cast):** `place: poyais-brokerage`. A wide static
+establishing shot: the brokerage's front room, one counter and a row of chairs under tall windows,
+dust hanging in thin morning light.
+
+> Later: Every morning for a year, that room opened without a single visitor
+
+**Ideal shot (in-place follow-up):** `place: poyais-brokerage`. A lone clerk on the `crowd-exemplar`
+rig stands behind the counter, ledger open, the chairs behind him still empty; the room goes
+unrestated — the shot seeds off the plate and spends its prompt only on what changed: a counter now
+staffed.
+**Why:** the plate is the place's no-cast establishing frame; every later shot in that place seeds off
+it instead of re-describing the counter, chairs, and light from scratch — the mechanism C-4/C-5 pin (a
+recurring set holds its content across every visit to it), shown here as a pair instead of argued in
+prose.

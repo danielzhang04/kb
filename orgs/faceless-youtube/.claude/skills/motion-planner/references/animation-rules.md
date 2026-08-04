@@ -15,10 +15,12 @@ frame; it stays baked, costs fewer gens than a plate + N cutouts, and trades awa
 arrives on a hard cut). LAYER a DISCRETE change (the element sits on the scene without fusing: a character
 enters the foreground, a stamp slams onto a page) — keep the plate, composite an animated cutout. A cutout
 layer needs BOTH tests to pass: **DISCRETE** and **SEEDABLE** — seed every cutout from its character/prop
-canonical, or from the plate it lands on — the video's own plate carries the style anchor duty itself now
-that cross-video `refs/env/` plates are abolished (fix 2) — since an unseeded cutout invents
-its own register and lands off-style against a flat-cel plate (forge hard-errors an unseeded
-environment/style gen). Full law, incl. the ≤3-delta cap and the same-location re-base:
+canonical, or from the plate it lands on, for CONTINUITY: the plate carries place/set continuity only —
+it is not a style anchor, and no cross-video `refs/env/` style-anchor plate exists (fix 2). Style comes
+from the hardened bible descriptor (`style-bible.md` §2b), never from a seed, on every gen alike — since
+an unseeded cutout invents its own register and lands off-style against a flat-cel plate (forge
+hard-errors an unseeded environment/style gen). Full law, incl. the ≤3-delta cap and the same-location
+re-base:
 `knowledge/research/niche-playbooks/universal.md` §13a-ii.
 
 - **Character enters / is revealed** (a `personified-character` intro, "it started with…") → OPTIONAL

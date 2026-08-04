@@ -17,8 +17,9 @@ per layered shot:
    `engine`/`text`/device layer: `source:"engine"` is INVALID (the engine device family is gone; the
    engine draws only the route line via `draw_line`).
    (b) Seed check: flag any moved element (a cutout layer) whose cutout has **no seedable source** — no
-   character/prop canonical AND not seedable off the plate it lands on (the video's own plate carries the
-   style anchor now — no separate cross-video `refs/env/` anchor exists, fix 2). An unseeded cutout invents
+   character/prop canonical AND not seedable off the plate it lands on (the video's own plate carries
+   place/set continuity only — style is text-only via the bible descriptor; no cross-video `refs/env/`
+   anchor exists, fix 2). An unseeded cutout invents
    its own register (a discrete-but-unseedable element belongs in a delta-chain, or its plate must be named).
 5. **Re-base seed** — a re-base frame inside the SAME location that doesn't chain from the stage's BASE
    frame (it seeds a fresh canonical, or a different prior stage) → flag. A re-base must seed the prior

@@ -11,16 +11,16 @@ a hold.
 
 **`global_prompt_suffix`** — fixed channel data, copied verbatim into `shots.json`, appended to every prompt:
 
-> clean flat cel-shaded cartoon style, an even medium-thick dark warm brown-black #241a12 outline on
-> everything, flat colours with gentle soft cel shading, rounded friendly shapes, no realistic
-> detail, hand-lettered marker capitals for any in-world text
+> hand-lettered marker capitals for any in-world text
 
-The suffix carries texture, line weight, and art style — and it is the ONLY place they are stated. A
-`still_prompt` describes **CONTENT and nothing else**: layout, orientation, the action, the committed
-scene palette, light, era, and depth. Never write art-style, texture, or line-weight words into a
-prompt (no "flat cel", "clean vector", "even outline", "hand-lettered marker style") — this suffix and
-`style-bible.md`'s forge descriptors already inject every one of them, and repeating them spends the
-prompt's weight on the look instead of on the scene.
+The suffix carries ONLY the lettering register — a reminder that any in-world text renders hand-lettered,
+never a clean digital font (the full lettering law is `style-bible.md` §5). Texture, line weight, and art
+style are stated ONCE, in `style-bible.md` §2b (the single style source), and reach every request through
+`forge.py`'s descriptor, never through this suffix. A `still_prompt` describes **CONTENT and nothing else**:
+layout, orientation, the action, the committed scene palette, light, era, and depth. Never write art-style,
+texture, line-weight, or lettering words into a prompt (no "flat cel", "clean vector", "even outline",
+"hand-lettered marker style") — the suffix and the bible descriptor already inject them, and repeating them
+spends the prompt's weight on the look instead of on the scene.
 
 **Author absence as a positive STATE of the surface, never as a "no X" list.** "Every surface blank and
 unlettered", "an empty street", "a bare desk" — not "no signs, no words, no labels". Our generator reads a
