@@ -76,11 +76,6 @@ default; scoped-repair is opt-in.
    clause (`visual-grammar.md §2` ordering law; on a delta the final clause is its one change, §1 chain
    logic). Absence is authored as a positive state of the surface, never a "no X, no Y" list (same file,
    header block).
-   **Small-in-frame figures are a forced-perspective class, not an adjective.** Any composition that
-   requires figures to read small or secondary in frame — distant crowds, or people dwarfed by a room or
-   scale metaphor — MUST use the foreground-props scale recipe in `references/shots-schema.md §2`.
-   Author its empty place upstream; never retry the same composition with merely smaller wording or a
-   distant-pair intermediate.
 5. **Group into stages/chains per the grammar's chain logic** — consecutive shots on one set share a
    `stage`, one `base` first, each `delta` changing exactly ONE element in `changed_elements`, ≤3 deltas,
    then a re-base or a hard cut. Disclosure order holds throughout.
