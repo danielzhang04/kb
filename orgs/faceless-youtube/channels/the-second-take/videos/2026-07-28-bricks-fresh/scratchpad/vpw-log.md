@@ -52,3 +52,14 @@ All revised named-cast compositions stay at two or fewer named figures, and all 
 - **L89–L90.** Replaced unrigged kneeling/crouching prose with registry-valid `sit` while preserving the completed lockbox/sheet-swap payloads.
 
 All other shots in L53–L101 were audited and left byte-stable. L28's accepted first round-1 staging remains untouched.
+
+---
+
+# VPW scoped-repair declaration — 2026-08-03
+
+## Round 3 — Daniel achievability ruling, zero-spend
+
+- **L58–L59 and L196.** Replaced the ear-loop-failed `action-present`, `sit`, and `action-shrug` Wiles staging with the passing `action-armscrossed` plus `expr-smug` (LA office) or `expr-deadpan` (witness stand). The `surrender` plus `expr-pleading` ban remains in force.
+- **L64 and L78.** Made the target's ceiling contact a final, explicit overlap-with-no-gap payload; made the count insert's exactly-one tally the final exact-count payload with every remaining surface positively bare.
+- **L66–L68, L73, L81 and L100–L101.** Removed each failed distant-crowd demand. The firing and quota beats become chair/pad/box aftermaths, the audit becomes one normal-scale representative, and the planning beat becomes a figure-free cups-and-pens huddle before the brick delta.
+- **L65, L76–L77, L79, L87–L88, L93 and L99.** Audited without authoring change: their registry slates resolve and child frames still cohere. L79's existing `L79-round2-J.png.lock` is stale staging state; clear or replace that lock before its future generation, not by changing the shot authoring.

@@ -1043,12 +1043,12 @@
         "vo_text": "one from an office out in Los Angeles.",
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "A sunlit high-rise office stands with a palm-lined skyline filling its wide window, five small glowing portal-windows still hanging in the air near the glass, one of them showing the pale-green MiniScribe conveyor. `qt-wiles` (`expr-smug`, `action-present`), in his steel-grey suit, stands at the room's centre toward the portals. Warm California daylight, palette of glass blue, warm tan and clear sky. Wide framing at standing height with Wiles and the portals sharing the frame; depth reads office floor foreground, Wiles mid-ground, palm skyline background — the grounded real office the payload of this hard cut.",
-        "notes": "[F-03] Wiles ran MiniScribe largely remotely from LA. Re-authored as a hard-cut BASE, not a delta of multi-office-portals — a world/register change (dark conjuring stage to a real sunlit office) is a hard cut per the grammar, never a delta.",
+        "still_prompt": "A sunlit high-rise office stands with a palm-lined skyline filling its wide window, five small glowing portal-windows still hanging in the air near the glass, one of them showing the pale-green MiniScribe conveyor. `qt-wiles` (`expr-smug`, `action-armscrossed`), in his steel-grey suit, stands beside the glass-topped desk, appraising the portals. Warm California daylight, palette of glass blue, warm tan and clear sky. Wide framing at standing height with Wiles and the portals sharing the frame; depth reads office floor foreground, Wiles mid-ground, palm skyline background — the grounded real office the payload of this hard cut.",
+        "notes": "[F-03] Wiles ran MiniScribe largely remotely from LA. The failed `action-present` staging is replaced with the passing `action-armscrossed` plus `expr-smug` frame; this remains a hard-cut BASE, not a delta of multi-office-portals.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "action-present": "channels/the-second-take/visual-kit/refs/base/action-present.png"
+          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
         }
       },
       {
@@ -1059,12 +1059,12 @@
         "vo_text": "Full remote, forty years early.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles` (`expr-smug`, `sit`), in his steel-grey suit, sits behind a glass-topped desk in the same sunlit LA high-rise office, palm-lined skyline filling the window behind him, a single small period rotary phone at his elbow. Warm California daylight, palette of glass blue, warm tan and clear sky. Wide flat framing at desk height with Wiles low and relaxed across the lower half of frame and the skyline filling the upper half; depth reads desk foreground, Wiles mid-ground, skyline background — the isolated phone against the plant a thousand miles away the whole joke.",
-        "notes": "Closes the LA-remote beat before the hard cut to the boardroom's fear regime. Re-authored to inventory-valid `sit`, which preserves the relaxed remote-office irony without a bespoke reclining pose.",
+        "still_prompt": "`qt-wiles` (`expr-smug`, `action-armscrossed`), in his steel-grey suit, stands beside a glass-topped desk in the same sunlit LA high-rise office, palm-lined skyline filling the window behind him, a single small period rotary phone at his elbow. Warm California daylight, palette of glass blue, warm tan and clear sky. Wide flat framing at desk height with Wiles and the phone across the lower half of frame and the skyline filling the upper half; depth reads desk foreground, Wiles mid-ground, skyline background — the isolated phone against the plant a thousand miles away the whole joke.",
+        "notes": "Closes the LA-remote beat before the hard cut to the boardroom's fear regime. The failed `sit` staging is replaced with the passing `action-armscrossed` plus `expr-smug` frame; the phone and distant skyline retain the remote-office irony.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "sit": "channels/the-second-take/visual-kit/refs/base/sit.png"
+          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
         }
       },
       {
@@ -1160,7 +1160,7 @@
         "place_anchor": "assets/scenes/L60.png",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "The approved empty MiniScribe boardroom is held in the same extra-wide locked framing: enormous black filing cabinets crop both foreground edges, and the long bare conference table narrows through a deep unobstructed central aisle to one clear far floor line beneath a harsh lamp cone. A single plain concentric archery target is mounted high on the dark far wall, its rim pressing into the ceiling line. Every chair, wall, tabletop and cabinet face is bare and unlettered. Palette is near-black shadow and one harsh white cone.",
+        "still_prompt": "The approved empty MiniScribe boardroom is held in the same extra-wide locked framing: enormous black filing cabinets crop both foreground edges, and the long bare conference table narrows through a deep unobstructed central aisle to one clear far floor line beneath a harsh lamp cone. Every chair, wall, tabletop and cabinet face is bare and unlettered. Palette is near-black shadow and one harsh white cone. A single plain concentric archery target is mounted so high on the dark far wall that its upper rim physically overlaps the ceiling line, visibly pressed into it with no gap.",
         "notes": "Fresh prop-only escalation base over L60's approved empty plate. The raised target is self-contained, with no crowd or small-figure composite.",
         "assets": {}
       },
@@ -1191,16 +1191,12 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`point-at-thing`, `expr-smug`) occupies the head of a shadowed MiniScribe boardroom table under one harsh lamp cone. A varied-haired crowd of late-1980s office workers fills the table's far ranks; two small crowd-scale managers stand at the near side with their chairs pushed back. Palette is near-black shadow and hard white light. Wide framing at table height makes Wiles's accusation and the two managers read on one line; depth reads table foreground, crowd mid-ground, Wiles background.",
-      "figures": {
-        "crowd": true
-      },
-      "notes": "The two managers are deliberately crowd-scale, along with the seated onlookers; `anon_foreground` is not used. Wiles remains a businessman, never a medical figure.",
+        "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`point-at-thing`, `expr-smug`) occupies the head of a shadowed MiniScribe boardroom table under one harsh lamp cone, pointing directly at two empty chairs pushed back from the near side. Two blank order pads lie squarely on the bare tabletop before the chairs. Palette is near-black shadow and hard white light. Tight framing at table height makes Wiles, the two abandoned chairs and the pads read as one accusation; depth reads chairs and table foreground, Wiles mid-ground, blank wall background.",
+        "notes": "Figure-free aftermath replaces the failed distant crowd: the two abandoned chairs and two blank pads carry the public firing, while Wiles remains the sole normal-scale story-bearing figure.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
-          "point-at-thing": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
-          "expr-fear": "channels/the-second-take/visual-kit/refs/base/expr-fear.png"
+          "point-at-thing": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png"
         }
       },
       {
@@ -1214,14 +1210,12 @@
       "place_anchor": "assets/scenes/L66.png",
         "shot_class": "aftermath-palette-turn",
         "source": "ai-gen",
-        "still_prompt": "A shadowed MiniScribe boardroom opens onto its corridor door. Two small crowd-scale office workers in late-1980s shirtsleeves carry plain cardboard boxes through the doorway while a varied-haired seated crowd remains ranked at the conference table behind them. One harsh lamp cone cuts across the near table, with the corridor falling to shadow beyond the open door. Palette is near-black, hard white light, and cardboard tan. Wide framing at table height makes the open door and departing workers the payload; depth reads table foreground, crowd mid-ground, doorway background.",
-      "figures": {
-        "crowd": true
-      },
-      "notes": "The fired managers and onlookers are all crowd-tier figures; the box motif echoes Terry Johnson's documented exit without restaging his identity.",
+        "still_prompt": "The same shadowed boardroom opens onto its corridor door, with `qt-wiles` (`point-at-thing`, `expr-smug`) under the harsh lamp cone at the head of the bare table and the two empty chairs still pushed back at its near side. Only this changes: two plain cardboard boxes now rest just beyond the open doorway, one on each side of the threshold, as the corridor falls to shadow behind them; everything else exactly as established.",
+        "notes": "The exit becomes evidence rather than another distant composite: two boxes at the threshold carry the fired-managers beat while Wiles and the empty chairs hold from L66.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+          "point-at-thing": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png"
         }
       },
       {
@@ -1235,11 +1229,8 @@
       "place_anchor": "assets/scenes/L67.png",
         "shot_class": "personified-character",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`action-armscrossed`, `expr-smug`) commands the head of a shadowed MiniScribe boardroom table. The boardroom door is shut and a varied-haired seated crowd of late-1980s office workers ranks down the table beneath one harsh lamp cone. Palette is near-black shadow and hard white light. Wide framing at table height makes Wiles the dominant vertical at the head of the room; depth reads table foreground, crowd mid-ground, Wiles and closed door background.",
-        "figures": {
-          "crowd": true
-        },
-      "notes": "Fresh one-cast-plus-crowd command tableau replaces the five-seed delta. Wiles is staged only in his businessman identity.",
+        "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`action-armscrossed`, `expr-smug`) commands the head of a shadowed MiniScribe boardroom table. The boardroom door is shut, the two empty chairs remain pushed back at the near side, and the two cardboard boxes sit against the closed door. Palette is near-black shadow, hard white light and cardboard tan. Tight framing at table height makes Wiles the dominant vertical over the abandoned chairs; depth reads chairs foreground, Wiles mid-ground, closed door and boxes background.",
+        "notes": "The control beat is now a one-figure aftermath tableau: Wiles, the abandoned chairs and the boxed exit replace the failed crowd composite.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
@@ -1319,15 +1310,12 @@
         "stage": "quota-room",
         "stage_role": "delta",
         "changed_elements": [
-          "+ rows of anonymous seated managers now fill every desk, dwarfed beneath the ring"
+          "+ every desk now holds one blank order pad beside one pushed-back chair"
         ],
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
-        "still_prompt": "The same fluorescent office, same locked framing: the calendar with its four circled marks, the conveyor falling short of the ring's light, the colossal target-ring overhead. Only this changes: every desk is now filled by a varied-haired anonymous seated-manager crowd, rows stretching back into the room at small background scale beneath the ring's dominating light; everything else exactly as established.",
-        "figures": {
-          "crowd": true
-        },
-        "notes": "[F-04, F-23] the quota-driven middle managers. Crowd tier — a mass of interchangeable roles, not individuals; `brick-foreman` is introduced separately once the fraud itself begins.",
+        "still_prompt": "The same fluorescent office, same locked framing: the calendar with its four circled marks, the conveyor falling short of the ring's light, the colossal target-ring overhead. Only this changes: every desk now holds one blank order pad beside one pushed-back chair, rows of the abandoned workstations stretching back beneath the ring's dominating light; everything else exactly as established.",
+        "notes": "[F-04, F-23] The quota-driven manager room is now an evidence tableau: repeated empty chairs and blank pads carry the workforce pressure without an unachievable distant crowd. `brick-foreman` remains introduced separately once the fraud itself begins.",
         "assets": {}
       },
       {
@@ -1416,7 +1404,7 @@
         "stage_role": "base",
         "shot_class": "diegetic-device",
         "source": "ai-gen",
-        "still_prompt": "The MiniScribe warehouse aisle holds a waist-high inspection cart between cold-grey steel racks, their plain boxed inventory receding softly behind it under fluorescent light. One `prop-drive` unit lies alone on the left half of the cart beside an open blank audit ledger on the right and a plain pencil between them. Palette is charcoal grey, dull steel, pale paper and cold blue-white light. Tight three-quarter framing at cart height, with the single drive and ledger equally dominant; depth reads cart foreground, near racks mid-ground, receding aisle background. The open ledger has exactly one short vertical ink tally stroke directly opposite the single drive; every other part of both pages is empty.",
+        "still_prompt": "The MiniScribe warehouse aisle holds a waist-high inspection cart between cold-grey steel racks, their plain boxed inventory receding softly behind it under fluorescent light. One `prop-drive` unit lies alone on the left half of the cart beside an open blank audit ledger on the right and a plain pencil between them. Palette is charcoal grey, dull steel, pale paper and cold blue-white light. Tight three-quarter framing at cart height, with the single drive and ledger equally dominant; depth reads cart foreground, near racks mid-ground, receding aisle background. The open ledger has exactly one short vertical ink tally stroke directly opposite the single drive; every other part of both pages, the cart surface and every rack label is bare and unlettered.",
         "notes": "Boss-rejected the full-frame crude marker diagram as inconsistent with the channel. Re-authored as a cast-free diegetic warehouse insert: one physical drive beside one ledger tick makes the unit-to-book count concrete without generated words or character-rig risk.",
         "assets": {
           "prop-drive": "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
@@ -1464,11 +1452,8 @@
         "place_anchor": "assets/scenes/L80.png",
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
-        "still_prompt": "The approved empty count-floor place is held in the same wide one-point framing: one enormous wrapped pallet crops the near left, one enormous rack upright crops the near right, and the deep unobstructed aisle ends at one clear far floor line. `auditor-rep` (`expr-skeptical`) stands small at that far floor line with one blank ledger raised. Behind the folding count table, a small varied-haired crowd of anonymous auditors with clipboards works at background scale. Every pallet face, rack label and wall is bare and unlettered. One blank ledger and one folding count table are the only count-work objects.",
-        "figures": {
-          "crowd": true
-        },
-        "notes": "New audit composite over L80's unoccupied plate: STEP-1 auditor, approved empty place, then crowd exemplar. The named counter and anonymous auditors are deliberately small behind the foreground props rather than a distant-pair intermediate.",
+        "still_prompt": "The approved empty count-floor place is held at the aisle mouth in a tight warehouse framing: the folding count table fills the foreground, with one enormous wrapped pallet and one rack upright flanking it. `auditor-rep` (`expr-skeptical`) stands at normal body scale beside the table, one blank ledger raised toward the nearest shelf. Cold fluorescent light falls across concrete floor and corrugated wall; every pallet face, rack label and wall is bare and unlettered. One blank ledger and one folding count table are the only count-work objects.",
+        "notes": "Single-representative audit tableau over L80's plate. The normal-scale auditor and one ledger replace the failed distant audit crowd while retaining the count beat.",
         "assets": {
           "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
@@ -1788,15 +1773,9 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "A small varied-haired crowd of late-1980s MiniScribe managers gathers at a fluorescent office table around one bare sheet of paper, their heads close together at crowd scale. A cold coffee cup and a scatter of pens sit at the table's edge. Palette is fluorescent white and grey steel. Wide framing at table height keeps the paper central; depth reads paper foreground, manager crowd mid-ground, office background.",
-      "figures": {
-        "crowd": true
-      },
-      "notes": "The planning group is deliberately crowd tier; no foreground anonymous manager is authored.",
-        "assets": {
-          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
-          "expr-thinking": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png"
-        }
+        "still_prompt": "A fluorescent office table holds one bare sheet of paper at its centre, with two cold coffee cups set close together on opposite sides and two pens angled inward toward the paper. Palette is fluorescent white and grey steel. Tight framing at table height makes the converging cups, pens and paper a compact planning huddle without people; depth reads paper and pens foreground, cups mid-ground, bare office background.",
+        "notes": "Figure-free planning evidence replaces the failed manager crowd: two converging cups and pens around one bare paper carry the heads-together beat.",
+        "assets": {}
       },
       {
         "id": "L101",
@@ -1811,15 +1790,9 @@
         ],
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "The same fluorescent office table, same locked framing: the small varied-haired crowd of late-1980s managers, the cold coffee, and the bare paper. Only this changes: one solid red clay brick now rests at the paper's centre, with the crowd gathered around it; everything else exactly as established.",
-      "figures": {
-        "crowd": true
-      },
-      "notes": "The brick, not a stock lightbulb, enters the managers' sightline as the plan; all people remain crowd tier.",
-        "assets": {
-          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
-        }
+        "still_prompt": "The same fluorescent office table, same locked framing: the two cold coffee cups, the two inward-angled pens, and the bare paper. Only this changes: one solid red clay brick now rests at the paper's centre; everything else exactly as established.",
+        "notes": "The brick, not a stock lightbulb, completes the figure-free planning huddle as the plan.",
+        "assets": {}
       },
       {
         "id": "L102",
@@ -3418,12 +3391,12 @@
         "stage_role": "base",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, `expr-deadpan`, `action-shrug`, stands stage-left at a witness stand, facing the room in a blameless defense. A tall blank wall fills the frame behind him, otherwise bare. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at stand height with Wiles occupying the near half of the frame, the bare wall filling the far half.",
-        "notes": "Daniel's 2026-08-03 ban removes the `surrender` plus `expr-pleading` defense combination. Inventory-valid `action-shrug` plus `expr-deadpan` reads as Wiles's dismissive 'I had no idea' claim without a pleading posture. The bare far half of the wall is left deliberately empty, awaiting the delta's testimony crowd.",
+        "still_prompt": "`qt-wiles`, `expr-deadpan`, `action-armscrossed`, stands stage-left at a witness stand, facing the room in a defiant blameless defense. A tall blank wall fills the frame behind him, otherwise bare. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at stand height with Wiles occupying the near half of the frame, the bare wall filling the far half.",
+        "notes": "Daniel's 2026-08-03 ban keeps `surrender` plus `expr-pleading` unavailable. The failed `action-shrug` staging is replaced with passing `action-armscrossed` plus `expr-deadpan`, which reads as Wiles's defiant 'I had no idea' claim. The bare far half of the wall remains deliberately empty, awaiting the delta's testimony crowd.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
-          "action-shrug": "channels/the-second-take/visual-kit/refs/base/action-shrug.png"
+          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
         }
       },
       {
