@@ -71,3 +71,20 @@
 - LEARNED: artifact-level grading (lint/leash) does NOT prove process execution — the first script worker skipped the humanizer + critic passes invisibly. Briefs must FORCE process artifacts (per-critic findings file); grade the process record, not just the output.
 - LEARNED: workers pad word-count floors by repeating facts; boss dedup grep is mandatory every pass (memory rule confirmed 3rd time).
 - HANDOFF: handoffs/2026-08-04-fyt-pearlman-rerun.md (ops). Rewrite worker (codex-deep) was LIVE at pause — harvest per handoff even if its card lands FAILED: orphaned.
+
+## 2026-08-04 — bricks middle-path wave (boss session)
+- WORKED: root-cause-over-re-roll law (Daniel-ordered, codified in image-gen SKILL retry
+  section) — L28/L60/L66 passed first attempt after 3 eras of blind re-rolls once the actual
+  mechanisms (co-planar authoring, false seed-role labels, tier contradictions) were removed.
+  Differential analysis of WORKED-vs-FAILED logged requests beats theorizing.
+- WORKED: probe-before-doctrine — 7-way style-anchor probe ($0.94) killed the swatch-card design
+  Daniel doubted and proved hardened descriptor text; his skepticism was evidence-confirmed.
+- FAILED: my round-3 "author simpler" directive caused the empty-scene regression Daniel hated;
+  simplifying AWAY story content to dodge gen failures is never the fix — the occupancy law now
+  forbids it. Also: gen-lane briefs said "§3 rig verdict" only — the skill's three-axis review
+  (incl. style) existed and my briefs skipped it, so style drift shipped as PASS for two rounds.
+- LESSON: boss diff-verifies every VPW leg vs HEAD; workers miscounted twice (L79 orphan-seed
+  edit, stale-base recount). Codex sandbox cannot write .git anywhere — boss does git plumbing,
+  workers do file content.
+- RESUME: handoffs/2026-08-04-fyt-bricks-middle-path.md (board verdict gate on 14 flags is the
+  next Daniel touchpoint).
