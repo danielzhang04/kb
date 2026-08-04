@@ -80,3 +80,21 @@ No generations or commits were made.
 ## Addendum — L79 audit-check repair (2026-08-04)
 
 - **L79.** The audit-check beat stages only `auditor-rep` (`expr-skeptical`), so the accidental orphan `brick-foreman` and `expr-worried` asset seeds were removed. Its warehouse is now positively dressed with timber pallets, ochre safety rails, cartons, ladder, and warm lamp amber; the palette is charcoal, worn terracotta, ochre, and amber rather than neutral grey only. The supplied `'1987'` calendar remains unchanged. No generation or commit was made.
+
+---
+
+# VPW scoped-repair declaration â€” 2026-08-04
+
+## B5 â€” feasibility-gate re-author, zero-spend
+
+- **L19.** Converted the individually staged anonymous worker into uncounted loading-yard mass action and removed its orphan pose/expression seeds.
+- **L28.** Rebased the founder reveal as a fresh, natural-scale two-cast assembly-bench tableau; the occupied L26 plate and exact-small-occupancy demand are removed.
+- **L60â€“L65.** Put Wiles and the foreman on the primary table plane, protected the foreman's clear three-quarter face, and placed executive crowd in the positive rear zone behind glazed partition; all dependent boardroom bases/deltas carry the topology.
+- **L66â€“L68.** Replaced the anonymous individually staged managers with a rear-zone management mass action; the boxes remain the sole L67 firing payload and L68 preserves the layout.
+- **L70â€“L71.** Added a reserved side corridor to the parent and put the conveyor in that corridor, ending at its painted mark before the lighted area rather than requesting an unreserved gap.
+- **L75.** Replaced the unstable mid-stroke wording with the registry `sign-with-pen` held tableau, explicit grip/nib/page contact, and its matching slate entry.
+- **L85.** Dropped the ungrounded same-bay claim, specified a complete human-silhouette chalk outline, and retained only the correct `expr-caught` expression route for a STEP-1 remint.
+- **L87â€“L88.** Rebasing avoids sticky-parent duplication: exactly one seated foreman is present, the doorway threshold is vacant, and the wax-seal delta carries that unique state.
+- **L96.** Rebased from the pre-tower L94 plate and quantified completion: the floor is entirely clear and nothing of the tower remains standing.
+
+No generations or commits were made. L169 and L201 remain explicitly deferred tier findings outside this B5 scope.
