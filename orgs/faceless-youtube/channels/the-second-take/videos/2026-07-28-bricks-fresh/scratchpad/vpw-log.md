@@ -36,3 +36,19 @@ All revised named-cast compositions stay at two or fewer named figures, and all 
 ## Addendum — L196 defense posture (2026-08-03)
 
 - **L196–L198.** Daniel's ban on `surrender` plus `expr-pleading` replaces L196's defense tableau with inventory-valid `action-shrug` plus `expr-deadpan`. L197 and L198 inherit that body posture from their parent frames rather than re-seeding it; L198 retains its existing `expr-crestfallen` turn. This removes the deleted-frame remint path and brings the crowd delta under the four-seed cap.
+
+---
+
+# VPW scoped-repair declaration — 2026-08-03
+
+## Round 2 — Daniel board verdicts, zero-spend
+
+- **L17–L18.** Re-authored the failed brawl as a figure-free storefront aftermath: the contested beige computer and then the smartphone are the only payloads, with the cable tension and displaced stools carrying the rivalry.
+- **L29 audit.** Retained as authored: `action-armscrossed` and `expr-smug` are both live registry primitives, so no rendered-expression inference justified a re-author.
+- **L40.** Replaced the scene-level-failed `3q-turn-right` composition with registry-valid `action-recoil` plus `expr-fear`.
+- **L56–L59.** Corrected live inventory and composition details: `action-present` for Wiles, five rather than three portal continuity, and `sit` for the relaxed LA desk beat.
+- **L60–L65.** Rebuilt the fear-boardroom around a new unoccupied video-local L60 place-first plate. L61 and L63 use the foreground-cabinet/deep-aisle/far-floor-line recipe for the two named figures; L62 is the one-envelope delta. L64–L65 are a separate empty prop-only escalation chain.
+- **L66–L68, L73, L80–L82, L93, L100–L101.** Declared varied hair wherever crowd tier remains, rebuilt L80 as the unoccupied counting-floor plate, then branched the L81 audit composite and L82 foreman-only foreground-props composite from it; replaced L93's abolished anonymous-foreground lineup with a background crowd behind glass.
+- **L89–L90.** Replaced unrigged kneeling/crouching prose with registry-valid `sit` while preserving the completed lockbox/sheet-swap payloads.
+
+All other shots in L53–L101 were audited and left byte-stable. L28's accepted first round-1 staging remains untouched.
