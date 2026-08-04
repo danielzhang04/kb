@@ -3743,3 +3743,9 @@ super crazy review process for images, it just burns time and it doesn't catch s
 to change the actual writing and generation logic." Alternative rejected: restoring the
 crop-battery zoomed-crop standard. Surfaced by Opus adversarial review of the
 second-take-learnings merge (finding 2).
+
+## 2026-08-03 — Foreground-props scale recipe REMOVED from doctrine
+Daniel ordered the probe-derived recipe rolled back same day it was codified: doctrine should not
+carry a per-engine composition workaround. Reverts: aae75eb (work branch) + PR for main.
+Passing images generated under it are kept. Forward path for small-figure shots: author the shot
+simpler (tighter framing, fewer figures) — the approach that fixed L17/L18.
