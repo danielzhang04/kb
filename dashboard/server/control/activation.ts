@@ -116,7 +116,7 @@ const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
  * dollar ceiling is a fail-closed guard, never a spend authorization.
  */
 const DEFAULT_BUDGET: ExecutionBudget = {
-  maxAttempts: 3,
+  maxAttempts: 30,
   maxInputTokens: 2_000_000,
   maxOutputTokens: 400_000,
   maxCostUsdMicros: 5_000_000,
