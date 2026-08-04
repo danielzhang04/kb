@@ -166,11 +166,11 @@
         ],
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-      "still_prompt": "The same shop interior, same locked framing: the beige computer half-buried in its prised-open crate on the felt plinth, the street crowd pressed three deep against the front window, pine shelving, terrazzo floor, '1983' lettered on the card propped square to camera on the counter. Only this changes: a small, varied-haired crowd of late-1980s shoppers now clusters at the counter at crowd scale; one counter-side shopper holds a fat handbag tipped over the counter top, with one solid banded slab of banknotes already landed squarely below it; everything else exactly as established.",
+      "still_prompt": "The same shop interior, same locked framing: the beige computer half-buried in its prised-open crate on the felt plinth, the street crowd pressed three deep against the front window, pine shelving, terrazzo floor, '1983' lettered on the card propped square to camera on the counter. Only this changes: a varied-haired crowd of late-1980s shoppers now clusters naturally at the counter; one counter-side shopper holds a fat handbag tipped over the counter top, with one solid banded slab of banknotes already landed squarely below it; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-      "notes": "'1983' re-quoted per L-1. [F-28] The counter-side shopper is part of the crowd-scale, varied-haired purchase rush; this analogy beat has no story-bearing individual to mint as cast.",
+      "notes": "'1983' re-quoted per L-1. [F-28] The counter-side shopper is part of the varied-haired purchase rush; this analogy beat has no story-bearing individual to mint as cast.",
       "assets": {
         "crowd-exemplar": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
         "lettering-marker-italic": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
@@ -316,9 +316,12 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "An empty little computer shop is seen straight through its pine-framed front window, its waist-high display counter running across the frame and two plain display stools pushed askew on opposite sides. `prop-beige-pc` sits alone at the counter's centre, its keyboard cable pulled taut in two opposite directions across the bare counter surface. Mid-morning daylight falls through the open door, with kerb and gutter in the immediate foreground outside the glass. Palette is charcoal, oatmeal and warm pine. Tight straight-on framing at counter height makes the unattended beige computer the whole argument; depth reads kerb foreground, storefront glass and counter mid-ground, bare shop interior background. Every shop and window sign is blank and unlettered.",
-        "notes": "The rivalry is now a simple aftermath rather than an unachievable mid-brawl composite: the two opposed cable pulls and displaced stools carry the tug-of-war with no figures at all.",
-      "assets": {
+        "still_prompt": "A busy little computer shop is seen through its pine-framed front window, with a customer crowd pressing around a waist-high display counter while `prop-beige-pc` sits between two competing shoppers pulling its keyboard cable in opposite directions. Shelves of boxed peripherals, a service bell, desk lamps and a corkboard fill the warm pine interior. Mid-morning daylight falls across oatmeal walls, charcoal carpet and brass window hardware. Eye-level medium framing keeps the tug-of-war, computer and watching shoppers together; depth reads kerb foreground, counter and crowd mid-ground, stocked shop background. Window-sign glyph fields are blank.",
+        "notes": "The rivalry is restored as a full representative shop scene: a crowd-level tug tableau around the beige computer, with no anonymous foreground tier.",
+        "figures": {
+          "crowd": true
+        },
+        "assets": {
         "prop-beige-pc": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png"
       }
       },
@@ -335,8 +338,11 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same empty shop viewed through the pine-framed window, same locked framing: the waist-high display counter, two display stools pushed askew on opposite sides, opposing cables pulled taut across the bare counter surface, kerb in the foreground outside the glass, mid-morning daylight, charcoal and oatmeal against warm pine, every shop and window sign blank and unlettered. Only this changes: a single oversized glossy black modern smartphone now sits alone at the counter's centre, its cold-white screen turned to the viewer and completely blank, in place of the beige computer; everything else exactly as established.",
-        "notes": "The anachronistic object IS the simile — no brand marks or lettering. Apple and Samsung are analogy-only names, never diegetic brands; the empty-counter aftermath carries forward and the smartphone screen is deliberately blank."
+        "still_prompt": "The same busy computer shop, same locked framing: the competing shopper crowd at the display counter, boxed peripherals, service bell, desk lamps and warm pine interior. Only this changes: a single oversized glossy black modern smartphone sits between the two opposing shoppers in place of the beige computer, its cold-white screen blank; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The anachronistic object remains the simile; the populated shop interaction carries forward without branded lettering."
       },
       {
         "id": "L19",
@@ -346,11 +352,9 @@
         "vo_text": "the hard drive manufacturers were quietly raking it in.",
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "The drive maker at the loading bay, a single large foreground figure in a slate-blue boiler suit, `expr-delighted`, stands in the yard behind the shop `hold-both-hands` on the handle of an ordinary long-handled garden rake whose head is buried in a knee-deep drift of loose banknotes, a neat gathered heap already pulled together at his feet. Behind him a shrink-wrapped pallet of plain sealed cartons waits under a corrugated awning, with a dented service door and stacked wooden skids further back. Late-afternoon side light, palette of tan, banknote-green and warm concrete grey. Low three-quarter medium from the drift's height so the rake head and the money heap dominate the lower half and the figure stands above them; depth reads money drift foreground, figure and rake mid-ground, pallet and awning background. Every carton face is blank and unlettered.",
+        "still_prompt": "A blue-boilersuit loading-yard crew gathers around a long-handled garden rake planted in a deep drift of loose banknotes, with one worker steadying the handle while others shovel the loose notes into a neat heap. A shrink-wrapped pallet of sealed cartons waits under a corrugated awning beside a dented service door, stacked wooden skids and a wheeled hand truck. Late-afternoon side light warms banknote green, rust-red corrugation and concrete tan. Medium three-quarter framing keeps the rake, cash drift and working crew together; depth reads money foreground, crew and pallet mid-ground, awning and shop wall background. Carton label panels are left blank.",
         "figures": {
-          "anon_foreground": [
-            "The drive maker at the loading bay"
-          ]
+          "crowd": true
         },
         "notes": "The rake is the pun and it is held, not swung. Deliberately off tan and off the smug/powerstance pair so this anonymous figure cannot be mistaken for `miniscribe-rep`, whose canonical is minted seven shots later at L26, and so the two bodies cannot bleed. Sealed cartons here are plain and unlettered so they do not pre-echo the labelled brick boxes at L23 (disclosure order).",
         "assets": {
@@ -366,11 +370,8 @@
         "vo_text": "They were the people selling picks and shovels in the gold rush.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The stall keeper, one large foreground figure in a clean canvas apron, `expr-deadpan`, sits `sit` behind a plain plank trestle stall in the immediate foreground stage-right, one hand resting on a heavy open cash box brimming with coin, a rack of a dozen fresh picks and long-handled shovels standing upright in a row behind him. Beyond the stall a churned muddy creek bend runs across the mid-ground where a long line of prospectors stand waist deep in the brown water, backs bent over their pans, their tents and mud heaps climbing the dry hillside behind. Hard high sunlight, palette of dust ochre, muddy brown and pale sky. Wide high three-quarter view that puts the tidy stall large in the foreground and the whole bent line of diggers small across the mid-ground so the size difference between the two reads first; filled edge to edge. Every stall board and tent panel is blank and unlettered.",
+        "still_prompt": "A busy prospecting supply stall fills one side of a muddy creek bend: an apron-wearing merchant crowd serves picks and long-handled shovels from a plank trestle, while a heavy open cash box brims with coin beside sacks of flour and tin lanterns. Across the creek, prospectors work their pans among canvas tents, wheelbarrows and muddy spoil heaps. Hard high sunlight catches dust ochre, muddy brown, canvas cream and worn bottle green. Wide three-quarter framing holds the stall and creek activity as one full scene; depth reads tool rack foreground, merchants and cash box mid-ground, prospectors and hillside background. Stall price slates and tent labels are blank.",
         "figures": {
-          "anon_foreground": [
-            "The stall keeper"
-          ],
           "crowd": true
         },
         "notes": "Scale is the argument (example-shots 1): the clean profitable foreground against the small labouring line. The prospectors are a mass on the background tier, the stall keeper the one foreground identity.",
@@ -390,11 +391,9 @@
         "stage_role": "base",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "The clerk at the aisle mouth, one large foreground figure in a plain grey warehouse coat, `expr-skeptical`, stands `hold-paper-by-sides` with a clipboard at the near end of a rented warehouse aisle. The aisle is a canyon: shrink-wrapped pallets of plain sealed cartons stacked six high on both sides, running dead straight away from the camera to a vanishing point lost in the gloom, the wrap catching a long line of caged ceiling lamps. Bare concrete floor with forklift scuff marks, corrugated walls, cold grey-green industrial light warming only near the clerk. Palette is concrete grey, milky pallet-wrap white and cold green. Low wide one-point perspective down the aisle from floor height so the stacks tower over the clerk standing at the frame's lower centre; depth reads scuffed floor foreground, clerk mid-ground, the receding canyon into the background. Every carton face and pallet label is blank and unlettered.",
+        "still_prompt": "A rented warehouse aisle is busy with a grey-coat inventory crew checking shrink-wrapped sealed cartons on both sides, clipboards and a rolling ladder gathered near the aisle mouth. Pallets stack six high beneath caged ceiling lamps, while a forklift, spare pallet jack and corrugated loading doors fill the surrounding warehouse. Cold green-grey industrial light mixes with warmer amber at the loading bay; palette is concrete grey, pallet-wrap white, oxidized green and amber. Eye-level medium-wide framing holds the checkers and stacked cartons in one working space; depth reads forklift foreground, crew and pallets mid-ground, loading doors background. Carton label fields are blank.",
         "figures": {
-          "anon_foreground": [
-            "The clerk at the aisle mouth"
-          ]
+          "crowd": true
         },
         "notes": "[F-05] roughly 26,000 boxes; [F-06] a rented off-site warehouse near the Longmont plant. The count is staged as a countable mass and a scale argument, NOT as the number glued to an object as a label — example-shots 5 explicitly rejects that as the too-literal version, so no figure is lettered here at all. Cartons stay sealed and unlettered: the VO has said 26,000 but not yet 'bricks', so nothing brick-coloured or brick-shaped is in frame (disclosure order).",
         "assets": {
@@ -411,15 +410,13 @@
         "stage": "brick-warehouse",
         "stage_role": "delta",
         "changed_elements": [
-          "the clerk turns his head out to the viewer"
+          "the nearest inventory worker pauses at the clipboard cart and looks out to the viewer"
         ],
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "The same warehouse aisle, same locked framing: the canyon of shrink-wrapped pallets of plain sealed cartons stacked six high on both sides running to a vanishing point, caged ceiling lamps, scuffed concrete, corrugated walls, cold grey-green light, every carton face and pallet label blank and unlettered. Only this changes: the clerk at the aisle mouth has turned his head straight out to the viewer, `expr-deadpan`, clipboard still held at his side; everything else exactly as established.",
+        "still_prompt": "The same working warehouse aisle, same locked framing: the grey-coat inventory crew, shrink-wrapped sealed cartons, rolling ladder, forklift, pallet jack and caged ceiling lamps. Only this changes: the nearest inventory worker pauses beside the clipboard cart and looks directly toward the viewer while the rest of the crew holds their checking tableaux; everything else exactly as established.",
         "figures": {
-          "anon_foreground": [
-            "the clerk at the aisle mouth"
-          ]
+          "crowd": true
         },
         "notes": "A held look-to-camera on the aside — a reaction shot, not an on-screen narrator (style-bible 1). Expression swap is a legitimate delta (grammar 2).",
         "assets": {
@@ -537,7 +534,7 @@
         "figures": {
           "crowd": true
         },
-        "notes": "[F-29] IBM's PC/XT supply contract. New cast slug `ibm-suit` — the customer institution personified with ONE identity tag; it recurs at L39, so the anon-vs-cast test routes it to CAST with a slug rather than a per-shot declaration. 'Picked' is staged as a literal pick with the size relation as the argument, so the shared-eye-line default is deliberately broken. Two figures in physical interaction, under the >3 high-risk threshold. The waiting rivals go to the crowd tier as a mass, not as individual anon_foreground entries — they are explicitly not identities. Supplied literal 'IBM' (1 word), the script's own word.",
+        "notes": "[F-29] IBM's PC/XT supply contract. `ibm-suit` personifies the customer institution with one identity tag and recurs at L39. 'Picked' is staged as a literal pick with the size relation as the argument. The waiting rivals are a crowd, not separate identities. Supplied literal 'IBM' (1 word), the script's own word.",
         "assets": {
           "ibm-suit": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
           "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
@@ -793,7 +790,7 @@
         "shot_class": "personified-character",
         "source": "ai-gen",
         "still_prompt": "`hq-banker` — a silver-haired figure in a rich chocolate-brown pinstripe suit with a gold pocket-watch chain looped at the waistcoat, the bank's own institutional actor — stands `expr-deadpan`, `action-armscrossed`, behind a polished wood desk in a plush high-rise office, floor-to-ceiling windows behind him showing a hazy city skyline. Deep-red leather chair, brass desk lamp, a stack of folders squared on the blotter. Palette is chocolate brown, brass and hazy city grey. Wide three-quarter medium at desk height so the figure and the skyline share the frame; depth reads desk foreground, figure mid-ground, window and skyline background. Every folder spine and window pane is blank and unlettered.",
-        "notes": "New cast slug `hq-banker` — Hambrecht & Quist [F-27] personified, one identity tag (the pocket-watch chain), recurring at the verdict beat later in the video. REPAIR-WAVE PREP (dogfood slice, r3 law): no still_prompt edit needed -- already single named cast, no anon_foreground, primitives backticked. The L45-47 'off rig + inconsistent character' condemn is diagnosed as purely a fix-1 STRUCTURAL defect (identity+scene combined in one gen); the two-step split (forge batch) is the whole fix here. hq-office is this video's first frame in that place, so its stage head mints this video's own PLACE-FIRST plate as one candidate; L46/L47 remain deltas of that in-video plate and no cross-video environment seed is used.",
+        "notes": "`hq-banker` personifies Hambrecht & Quist [F-27] with the recurring pocket-watch identity tag. hq-office is this video's first frame in that place, so its stage head mints this video's own PLACE-FIRST plate as one candidate; L46/L47 remain deltas of that in-video plate and no cross-video environment seed is used.",
         "assets": {
           "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
@@ -870,11 +867,11 @@
         "stage_role": "base",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-      "still_prompt": "A cramped failing restaurant dining room holds peeling maroon wallpaper, a stack of unpaid bills fanned on the till, three chairs upturned on tables, and one flickering ceiling bulb. A small crowd of restaurant staff in late-1980s chef whites clusters at the pass around one covered dish, with a boom microphone dipping into frame above them. Palette is faded maroon, stainless steel, and harsh studio-white light. Wide framing at counter height keeps the dish central while the staff remain crowd scale; depth reads pass foreground, staff mid-ground, upturned tables background. Every wall and menu board is blank and unlettered.",
+        "still_prompt": "A cramped failing restaurant dining room holds peeling maroon wallpaper, a stack of unpaid bills fanned on the till, three chairs upturned on tables, and one flickering ceiling bulb. A crowd of late-1980s restaurant staff in chef whites gathers naturally at the pass around one covered dish, with a boom microphone dipping into frame above them. Stainless shelves, chipped crockery, a tarnished service bell and folded tea towels give the pass working texture. Palette is faded maroon, stainless steel, cream and harsh studio-white light. Eye-level medium-wide framing keeps the dish and the working staff together amid the troubled dining room. Menu and chalkboard glyph fields are blank.",
       "figures": {
         "crowd": true
       },
-      "notes": "Generic makeover-show counterpoint, with restaurant workers staged only as late-1980s crowd figures: no likeness or foreground anonymous host.",
+        "notes": "Generic makeover-show counterpoint, with restaurant workers naturally staged as a crowd and no likeness or foreground anonymous host.",
         "assets": {
           "expr-annoyed": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
           "action-accuse": "channels/the-second-take/visual-kit/refs/base/action-accuse.png"
@@ -893,8 +890,8 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-      "still_prompt": "The same cramped dining room, same locked framing: the small crowd of late-1980s restaurant staff at the pass, the covered dish, and the boom microphone. Only this changes: the room is split down the middle, with the near half still peeling maroon and chairs upturned while the far half is bright with fresh paint and set tables, one hard seam joining old wall to new; everything else exactly as established.",
-      "notes": "The generic makeover-show beat is a crowd-scale split-room reveal rather than a caption.",
+        "still_prompt": "The same cramped dining room, same locked framing: the late-1980s restaurant staff at the pass, the covered dish, the boom microphone, stainless shelves, chipped crockery and service bell. Only this changes: the room is split down the middle, with the near half still peeling maroon and chairs upturned while the far half is bright with fresh paint and set tables, one hard seam joining old wall to new; everything else exactly as established.",
+        "notes": "The generic makeover-show beat is a populated split-room reveal rather than a caption.",
         "assets": {
           "expr-annoyed": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
           "action-accuse": "channels/the-second-take/visual-kit/refs/base/action-accuse.png"
@@ -1077,9 +1074,19 @@
         "stage_role": "base",
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "An unoccupied MiniScribe boardroom lies under one harsh interrogation-style lamp cone at its far end. Two enormous black filing cabinets crop the left and right foreground, while a long bare conference table narrows between them into a deep unobstructed central aisle ending at one clear far floor line beneath the lamp. Every chair is pushed in; every tabletop, wall and cabinet face is bare and unlettered. Palette is near-black shadow and one harsh white cone. Extra-wide flat framing at table height makes the empty aisle and distant lamp the whole argument.",
-        "notes": "New unoccupied, positively described video-local place-first head for the fear regime. The foreground filing cabinets, deep aisle and explicit far floor line are the proven scale scaffold for the following two-figure boardroom composites.",
-        "assets": {}
+        "still_prompt": "`qt-wiles` (`expr-deadpan`, `action-powerstance`) addresses `brick-foreman` (`expr-worried`, `sit`) across a long walnut conference table in a MiniScribe boardroom. Framed audit charts, a credenza of binders, amber-shaded wall lamps, a coffee tray and a row of occupied executive chairs make the room feel active under the tense meeting. Palette is tobacco brown, oxblood leather, brass gold and hard lamp amber. Eye-level medium-wide framing holds Wiles, the foreman and the boardroom table in one intimidating working scene.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Fear is restored as a full representative boardroom scene: Wiles, foreman and executive crowd in a rich working room rather than an empty scale scaffold.",
+        "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+          "sit": "channels/the-second-take/visual-kit/refs/base/sit.png"
+        }
       },
       {
         "id": "L61",
@@ -1092,8 +1099,11 @@
         "place_anchor": "assets/scenes/L60.png",
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "The approved empty fear-boardroom place is held in the same extra-wide locked framing: enormous black filing cabinets crop both foreground edges, a long bare table narrows into one deep unobstructed aisle, and the far floor line lies beneath the single harsh lamp cone. `qt-wiles` (`expr-deadpan`, `action-powerstance`) and `brick-foreman` (`expr-worried`, `sit`) stand small together at that far floor line, facing the table. Every chair, wall, tabletop and cabinet face is bare and unlettered. Exactly one plain concentric archery target is mounted on the dark wall behind them.",
-        "notes": "Rebased as a two-figure composite over the new L60 empty plate: STEP-1 Wiles, STEP-1 foreman, then the approved in-video place. The target is an object rather than a number, and the foreground-props scale recipe keeps both named figures achievable without a crowd.",
+        "still_prompt": "The same MiniScribe boardroom holds Wiles at the head of the walnut table and the worried foreman seated opposite, with executive crowd members around the leather chairs, binders on the credenza and amber wall lamps. A plain concentric archery target is mounted behind Wiles above the framed audit charts. Tobacco brown, oxblood leather, brass gold and lamp amber keep the tense meeting warm but oppressive. Eye-level medium-wide framing keeps both men, the target and the occupied table legible.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The target beat is a full populated boardroom tableau, not a distant two-figure composite.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
@@ -1116,8 +1126,11 @@
       ],
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-      "still_prompt": "The same locked fear-boardroom target composition: enormous black filing cabinets crop both foreground edges, the long bare table runs through the deep unobstructed aisle to the single harsh lamp cone, and `qt-wiles` and `brick-foreman` remain small at the far floor line beneath the one plain archery target. Every chair, wall, tabletop and cabinet face remains bare and unlettered. Only this changes: exactly one fat envelope of banknotes now lies on the far end of the conference table; everything else exactly as established.",
-      "notes": "One-envelope delta of L61. It inherits the two approved figure frames and place from the parent; no crowd or extra primitive is re-seeded.",
+        "still_prompt": "The same populated target boardroom, same locked framing: Wiles at the head of the walnut table, the foreman opposite, executive crowd around the leather chairs, binders, lamps and target held exactly as established. Only this changes: exactly one fat envelope of banknotes now lies on the table between Wiles and the foreman; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "One-envelope delta of the populated L61 boardroom.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
@@ -1138,8 +1151,11 @@
         "place_anchor": "assets/scenes/L60.png",
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "The approved empty fear-boardroom place is held in the same extra-wide locked framing: enormous black filing cabinets crop both foreground edges, a long bare table narrows into one deep unobstructed aisle, and the far floor line lies beneath the single harsh lamp cone. `qt-wiles` (`expr-deadpan`, `action-powerstance`) and `brick-foreman` (`expr-worried`, `sit`) stand small together at that far floor line, facing the table. Every chair, wall, tabletop and cabinet face is bare and unlettered. Exactly one ordinary wooden chopping block at the table's far end holds one plain cleaver laid flat across it, and its facing chair is pushed back and empty.",
-        "notes": "New contiguous base over L60's approved empty plate. The foreground-props recipe keeps the two named figures small and achievable; the chopping-block idiom remains bloodless through the empty chair and still cleaver.",
+        "still_prompt": "`qt-wiles` (`expr-deadpan`, `action-powerstance`) stands at the walnut table's head while `brick-foreman` (`expr-worried`, `sit`) faces him amid a tense boardroom crowd. Oxblood leather chairs, binders, amber lamps, a coffee tray and framed audit charts fill the room. At the far end of the table, one ordinary wooden chopping block holds one plain cleaver laid flat across it, and its facing chair is pushed back. Palette is tobacco brown, oxblood leather, brass gold and lamp amber. Eye-level medium-wide framing holds the two men, boardroom crowd and bloodless idiom together.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The chopping-block idiom returns to a full representative, bloodless boardroom scene.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
@@ -1160,9 +1176,16 @@
         "place_anchor": "assets/scenes/L60.png",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "The approved empty MiniScribe boardroom is held in the same extra-wide locked framing: enormous black filing cabinets crop both foreground edges, and the long bare conference table narrows through a deep unobstructed central aisle to one clear far floor line beneath a harsh lamp cone. Every chair, wall, tabletop and cabinet face is bare and unlettered. Palette is near-black shadow and one harsh white cone. A single plain concentric archery target is mounted so high on the dark far wall that its upper rim physically overlaps the ceiling line, visibly pressed into it with no gap.",
-        "notes": "Fresh prop-only escalation base over L60's approved empty plate. The raised target is self-contained, with no crowd or small-figure composite.",
-        "assets": {}
+        "still_prompt": "`qt-wiles` (`expr-smug`, `point-at-thing`) stands at the head of the MiniScribe boardroom table while `brick-foreman` (`expr-worried`, `sit`) watches from the opposite side. Oxblood leather chairs, bound reports, a coffee service, brass wall lamps and framed audit charts fill the walnut-panelled room. A single plain concentric archery target is mounted so high on the far wall that its upper rim physically overlaps the ceiling line, visibly pressed into it with no gap. Palette is tobacco brown, oxblood leather, brass gold and lamp amber. Eye-level medium-wide framing makes the raised target and Wiles's pressure readable across the occupied table.",
+        "notes": "The escalating target returns to a two-person boardroom confrontation with rich set dressing, not a prop-only scale scaffold.",
+        "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+          "point-at-thing": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+          "sit": "channels/the-second-take/visual-kit/refs/base/sit.png"
+        }
       },
       {
         "id": "L65",
@@ -1177,9 +1200,12 @@
         ],
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "The same empty fear-boardroom escalation composition, same locked framing: enormous black filing cabinets crop both foreground edges, the bare conference table narrows through the deep unobstructed aisle to the harsh far lamp cone, and every chair, wall, tabletop and cabinet face remains bare and unlettered. Only this changes: the one plain concentric archery target is raised again, now pressing into the ceiling line; everything else exactly as established.",
-        "notes": "Single prop movement delta; the absence of a strained crowd preserves the achievable empty-place composition.",
-        "assets": {}
+        "still_prompt": "The same occupied boardroom escalation, same locked framing: Wiles pointing from the table head, the worried foreman opposite, oxblood chairs, reports, coffee service, brass lamps and framed charts. Only this changes: the one plain concentric archery target is raised again, now pressing into the ceiling line; everything else exactly as established.",
+        "notes": "Single prop movement delta of the restored two-person boardroom confrontation.",
+        "assets": {
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+        }
       },
       {
         "id": "L66",
@@ -1191,8 +1217,11 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`point-at-thing`, `expr-smug`) occupies the head of a shadowed MiniScribe boardroom table under one harsh lamp cone, pointing directly at two empty chairs pushed back from the near side. Two blank order pads lie squarely on the bare tabletop before the chairs. Palette is near-black shadow and hard white light. Tight framing at table height makes Wiles, the two abandoned chairs and the pads read as one accusation; depth reads chairs and table foreground, Wiles mid-ground, blank wall background.",
-        "notes": "Figure-free aftermath replaces the failed distant crowd: the two abandoned chairs and two blank pads carry the public firing, while Wiles remains the sole normal-scale story-bearing figure.",
+        "still_prompt": "`qt-wiles` (`point-at-thing`, `expr-smug`) addresses `brick-foreman` (`expr-worried`) at a long MiniScribe meeting table while a late-1980s office-worker crowd watches from occupied leather chairs. Two managers stand by their chairs with order pads on the table before them. A coffee urn, binders, brass lamp and framed sales chart complete the tense boardroom. Palette is walnut brown, oxblood, brass gold and hard lamp amber. Eye-level medium-wide framing keeps Wiles's accusation, the standing managers and the watching room together.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The public firing returns as a populated representative boardroom scene: Wiles points, managers stand, the foreman and office crowd witness it.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
@@ -1210,8 +1239,11 @@
       "place_anchor": "assets/scenes/L66.png",
         "shot_class": "aftermath-palette-turn",
         "source": "ai-gen",
-        "still_prompt": "The same shadowed boardroom opens onto its corridor door, with `qt-wiles` (`point-at-thing`, `expr-smug`) under the harsh lamp cone at the head of the bare table and the two empty chairs still pushed back at its near side. Only this changes: two plain cardboard boxes now rest just beyond the open doorway, one on each side of the threshold, as the corridor falls to shadow behind them; everything else exactly as established.",
-        "notes": "The exit becomes evidence rather than another distant composite: two boxes at the threshold carry the fired-managers beat while Wiles and the empty chairs hold from L66.",
+        "still_prompt": "The same populated boardroom, same locked framing: `qt-wiles` (`point-at-thing`, `expr-smug`) at the table head, `brick-foreman` (`expr-worried`) opposite, the standing managers, office-worker crowd, binders, coffee urn and brass lamp. Only this changes: two plain cardboard boxes now rest beside the open corridor doorway as the two managers leave through it; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The firing exit remains an occupied scene: the two boxes and departing-manager crowd action change while Wiles, foreman and meeting hold.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
@@ -1229,8 +1261,11 @@
       "place_anchor": "assets/scenes/L67.png",
         "shot_class": "personified-character",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, in his steel-grey three-piece suit with gold tie clip, (`action-armscrossed`, `expr-smug`) commands the head of a shadowed MiniScribe boardroom table. The boardroom door is shut, the two empty chairs remain pushed back at the near side, and the two cardboard boxes sit against the closed door. Palette is near-black shadow, hard white light and cardboard tan. Tight framing at table height makes Wiles the dominant vertical over the abandoned chairs; depth reads chairs foreground, Wiles mid-ground, closed door and boxes background.",
-        "notes": "The control beat is now a one-figure aftermath tableau: Wiles, the abandoned chairs and the boxed exit replace the failed crowd composite.",
+        "still_prompt": "`qt-wiles` (`action-armscrossed`, `expr-smug`) commands the head of the shadowed MiniScribe boardroom table while `brick-foreman` (`expr-worried`, `sit`) sits opposite and the office-worker crowd fills the leather chairs down both sides. The boardroom door is shut, the two cardboard boxes rest beside it, and binders, coffee urn, brass lamps and framed sales charts maintain the room's pressure. Palette is walnut brown, oxblood, brass gold and hard lamp amber. Eye-level medium-wide framing makes Wiles the dominant vertical over the full meeting.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The control beat is restored as a full meeting tableau rather than a one-figure aftermath.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
@@ -1310,12 +1345,15 @@
         "stage": "quota-room",
         "stage_role": "delta",
         "changed_elements": [
-          "+ every desk now holds one blank order pad beside one pushed-back chair"
+          "+ a crowd of middle managers fills the desks, each desk holding one blank order pad"
         ],
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
-        "still_prompt": "The same fluorescent office, same locked framing: the calendar with its four circled marks, the conveyor falling short of the ring's light, the colossal target-ring overhead. Only this changes: every desk now holds one blank order pad beside one pushed-back chair, rows of the abandoned workstations stretching back beneath the ring's dominating light; everything else exactly as established.",
-        "notes": "[F-04, F-23] The quota-driven manager room is now an evidence tableau: repeated empty chairs and blank pads carry the workforce pressure without an unachievable distant crowd. `brick-foreman` remains introduced separately once the fraud itself begins.",
+        "still_prompt": "The same fluorescent MiniScribe sales office, same locked framing: the calendar with its four circled marks, the conveyor falling short of the ring's light, the target-ring overhead. Only this changes: a crowd of late-1980s middle managers now fills the desks, each desk holding one blank order pad beside its chair; a few managers turn from the ringing phones toward the target while others write. Green metal desks, amber task lamps, filing trays and a corkboard complete the pressured office; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "[F-04, F-23] The quota-driven manager room is restored as a full representative office scene: the middle-manager crowd, phones and order pads make the workforce pressure visible. `brick-foreman` remains introduced separately once the fraud itself begins.",
         "assets": {}
       },
       {
@@ -1420,8 +1458,8 @@
         "stage_role": "base",
         "shot_class": "diegetic-device",
         "source": "ai-gen",
-        "still_prompt": "The same MiniScribe warehouse interior, the racked shelving stretching away, cold overhead light, concrete floor. `auditor-rep` (`expr-skeptical`), his ledger case open in one hand, stands squarely facing the shelving, his open ledger held up beside it at shelf height, comparing page to shelf directly. A small desk calendar propped on a nearby crate is lettered '1987'. Palette holds charcoal, concrete grey and cold overhead light. Wide flat framing at shelf height with the ledger and the shelving sharing the frame; depth reads calendar foreground, auditor-rep and ledger mid-ground, racked shelving background.",
-        "notes": "Re-based as a new stage after L78's tight diegetic counting insert; this restarts the wide warehouse comparison rather than claiming a locked-frame delta. '1987' re-quoted per L-1 [F-12].",
+        "still_prompt": "The same MiniScribe warehouse interior holds racked shelving, painted ochre safety rails, stacked cartons, a rolling ladder, timber pallets and an amber-shaded work lamp under the overhead fixtures. `auditor-rep` (`expr-skeptical`), his ledger case open in one hand, stands squarely facing the shelving, his open ledger held up beside it at shelf height, comparing page to shelf directly. A small desk calendar propped on a nearby crate is lettered '1987'. Palette is charcoal, worn terracotta, ochre safety paint and warm lamp amber. Eye-level medium-wide framing keeps the ledger, auditor and shelving together; depth reads calendar and timber pallet foreground, auditor-rep and ledger mid-ground, active racking background. Carton-label glyph fields are blank.",
+        "notes": "Re-based as a new stage after L78's tight diegetic counting insert; this restarts the warehouse comparison rather than claiming a locked-frame delta. The beat stages only auditor-rep, so the orphan foreman assets are removed. '1987' re-quoted per L-1 [F-12].",
         "assets": {
           "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
@@ -1437,9 +1475,17 @@
         "stage_role": "base",
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
-        "still_prompt": "An unoccupied warehouse count floor stands filled with racked pallets running back in even rows. One enormous wrapped pallet crops the near left foreground and one enormous rack upright crops the near right, leaving a deep unobstructed central aisle to one clear far floor line. A single bare folding count table and one blank clipboard wait at the aisle mouth. Cold fluorescent light overhead, concrete floor and corrugated walls. Palette is concrete grey, milky pallet-wrap white and cold fluorescent blue-white. Every pallet face, rack label and wall is bare and unlettered.",
-        "notes": "New unoccupied video-local counting-floor plate. The foreground pallet, rack upright, deep aisle and explicit far floor line are the proven scale scaffold for the audit and foreman composites that branch from it.",
-        "assets": {}
+        "still_prompt": "A busy MiniScribe warehouse count floor holds racked pallets, a folding count table covered with blank clipboards, open cartons, a rolling ladder and a pallet jack. `auditor-rep` (`expr-skeptical`) checks a blank ledger beside `brick-foreman` (`expr-worried`), while a crowd of accountants and warehouse workers counts at nearby shelves. Corrugated walls, painted safety rails, stacked cartons and warm industrial lamps make the floor feel actively worked. Palette is rust red, worn tan, charcoal, brass-yellow safety paint and warm fluorescent amber. Eye-level medium-wide framing keeps the two representatives and the counting crew in one coherent warehouse scene. Clipboard and pallet-label glyph fields are blank.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The count-floor head is restored as a full representative audit: auditor, foreman and counting crew occupy a rich working warehouse rather than an empty scale plate.",
+        "assets": {
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png"
+        }
       },
       {
         "id": "L81",
@@ -1452,8 +1498,11 @@
         "place_anchor": "assets/scenes/L80.png",
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
-        "still_prompt": "The approved empty count-floor place is held at the aisle mouth in a tight warehouse framing: the folding count table fills the foreground, with one enormous wrapped pallet and one rack upright flanking it. `auditor-rep` (`expr-skeptical`) stands at normal body scale beside the table, one blank ledger raised toward the nearest shelf. Cold fluorescent light falls across concrete floor and corrugated wall; every pallet face, rack label and wall is bare and unlettered. One blank ledger and one folding count table are the only count-work objects.",
-        "notes": "Single-representative audit tableau over L80's plate. The normal-scale auditor and one ledger replace the failed distant audit crowd while retaining the count beat.",
+        "still_prompt": "The same busy MiniScribe warehouse count floor, same locked framing: `auditor-rep` (`expr-skeptical`) checks the blank ledger beside `brick-foreman` (`expr-worried`), with accountants and warehouse workers counting at the racked shelves, folding table, open cartons, rolling ladder and pallet jack. Only this changes: the auditor raises the one blank ledger toward the nearest shelf as the counting crew compares stock; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The audit beat stays a populated warehouse scene: the auditor raises one blank ledger while the foreman and count crew work around him.",
         "assets": {
           "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
           "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
@@ -1470,11 +1519,16 @@
         "place_anchor": "assets/scenes/L80.png",
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "The approved count-floor place holds its racked pallets in the same wide one-point view. One enormous wrapped pallet crops the near left foreground and one enormous rack upright crops the near right, leaving a deep unobstructed central aisle to a clear far floor line. `brick-foreman` (`expr-worried`) stands full-body at that far floor line with one blank order pad loosely at his side. Every pallet face, rack label and wall is bare and unlettered. Palette is concrete grey, milky pallet-wrap white and cold fluorescent blue-white.",
-        "notes": "New foreman-only base over L80's approved count-floor place. The foreground pallet-and-rack scale scaffold replaces the failed distant composite; no crowd or auditor is carried into this beat.",
+        "still_prompt": "The same busy MiniScribe warehouse count floor, same locked framing: `brick-foreman` (`expr-worried`) stands at the folding count table with one blank order pad, while `auditor-rep` (`expr-skeptical`) and the accountant-and-worker crowd continue counting at the racked shelves. Open cartons, clipboards, rolling ladder, pallet jack, painted safety rails and warm industrial lamps hold the established warehouse texture. The foreman studies the order pad as the nearby counting activity continues; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The foreman's reaction remains a full working count-floor tableau, with the auditor and crew carrying the surrounding audit activity.",
         "assets": {
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
-          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png"
+          "auditor-rep": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+          "expr-skeptical": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
         }
       },
       {
@@ -1649,11 +1703,11 @@
         "vo_text": "Not exactly Ocean's Eleven level, but pretty close.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "`brick-foreman` (`expr-deadpan`) stands full-body in the foreground beside one enormous open black equipment case cropping the lower frame edge. Behind a glass corridor wall, a small varied-haired crowd of anonymous tuxedoed figures in dark sunglasses waits in a simple line at background scale. Palette is moody near-black with one cool spotlight on the foreman and the distant line. Tight flat framing at body scale makes the plain foreman and oversized case the joke; depth reads case foreground, foreman mid-ground, glass corridor and crowd background. Every wall is blank and unlettered.",
+        "still_prompt": "`brick-foreman` (`expr-deadpan`) stands with an open black equipment case on a polished casino-service corridor table, while a crowd of tuxedoed accomplices in dark sunglasses gathers around him as if preparing a very ordinary job. Brass wall sconces, burgundy carpet, a potted palm, brass luggage trolley and frosted glass doors give the corridor an elaborate late-night sheen. Palette is burgundy, black, cream and brass gold under warm pool lights. Eye-level medium framing makes the plainly equipped foreman and the over-serious crowd the joke. Door and case-panel glyph fields are blank.",
         "figures": {
           "crowd": true
         },
-        "notes": "Re-authored after the abolished foreground-anonymous tier: the story-bearing foreman is the foreground subject, while the intentionally generic tuxedo line is a small varied-haired crowd behind glass.",
+        "notes": "The heist comparison is a rich, populated casino-corridor tableau: the named foreman carries the joke while the tuxedoed crowd gathers naturally around the case.",
         "assets": {
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
@@ -1773,9 +1827,18 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "A fluorescent office table holds one bare sheet of paper at its centre, with two cold coffee cups set close together on opposite sides and two pens angled inward toward the paper. Palette is fluorescent white and grey steel. Tight framing at table height makes the converging cups, pens and paper a compact planning huddle without people; depth reads paper and pens foreground, cups mid-ground, bare office background.",
-        "notes": "Figure-free planning evidence replaces the failed manager crowd: two converging cups and pens around one bare paper carry the heads-together beat.",
-        "assets": {}
+        "still_prompt": "`brick-foreman` (`expr-worried`) and `qt-wiles` (`expr-smug`, `action-armscrossed`) lean across a walnut office table with their heads close over one blank sheet of paper, two cold coffee cups and two inward-angled pens. A crowd of late-1980s managers waits at the edge of the meeting, with filing cabinets, green banker lamps, open binders, a rolling chart stand and venetian-blind light filling the office. Palette is walnut brown, bottle green, cream and amber. Eye-level medium framing makes the two conspirators and their waiting management room legible. Paper and binder-label glyph fields are blank.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The managers' planning beat is restored as a full representative office scene: foreman and Wiles confer over the paper while their management crowd waits around the table.",
+        "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "expr-worried": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+          "action-armscrossed": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+        }
       },
       {
         "id": "L101",
@@ -1786,13 +1849,19 @@
         "stage": "scheme-table",
         "stage_role": "delta",
       "changed_elements": [
-        "one solid red clay brick appears at the centre of the bare paper"
+        "one solid red clay brick appears at the centre of the paper between the two managers"
         ],
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "The same fluorescent office table, same locked framing: the two cold coffee cups, the two inward-angled pens, and the bare paper. Only this changes: one solid red clay brick now rests at the paper's centre; everything else exactly as established.",
-        "notes": "The brick, not a stock lightbulb, completes the figure-free planning huddle as the plan.",
-        "assets": {}
+        "still_prompt": "The same populated walnut office, same locked framing: `brick-foreman` and `qt-wiles` lean over the paper, the management crowd waits around the table, and the coffee cups, pens, banker lamps, binders, chart stand and blinds hold exactly as established. Only this changes: one solid red clay brick now rests at the paper's centre between the two men; everything else exactly as established.",
+        "notes": "The brick, not a stock lightbulb, completes the managers' populated planning huddle as the plan.",
+        "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
+        },
+        "figures": {
+          "crowd": true
+        }
       },
       {
         "id": "L102",
@@ -1884,13 +1953,15 @@
         "stage_role": "base",
         "shot_class": "literal",
         "source": "ai-gen",
-      "still_prompt": "A small crowd of late-1980s warehouse workers in shirtsleeves gathers at a long packing bench in a rented warehouse, all kept at crowd scale. Three open cartons run along the bench, each with one red clay brick already seated in a drive-shaped foam recess. Bare bulbs hang above corrugated walls. Palette is terracotta red, corrugated tan, and cold bulb light. Wide side-on framing at bench height fills the frame with the carton row; depth reads bench foreground, worker crowd mid-ground, corrugated wall background.",
+      "still_prompt": "`brick-foreman` (`expr-deadpan`, `hold-one-hand`) directs a busy late-1980s warehouse crew along a long packing bench in a rented warehouse. Three open cartons run along the bench, each with one red clay brick already seated in a drive-shaped foam recess, while workers fit foam and fold flaps nearby. Corrugated walls, stacked packing paper, a hand trolley, clipboards and amber work lamps give the line practical texture. Palette is terracotta red, corrugated tan, bottle green and warm bulb amber. Eye-level medium-wide side view keeps the foreman, carton row and active crew in one working scene. Carton-label and clipboard glyph fields are blank.",
       "figures": {
         "crowd": true
       },
-      "notes": "The mid-video re-arm opens on a crowd-tier packing line, held across the long chain. A concrete physical action, the honest literal choice.",
+      "notes": "The mid-video re-arm opens on a full working packing line, held across the long chain. A concrete physical action, the honest literal choice.",
         "assets": {
-          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+          "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
         }
       },
       {
@@ -1906,11 +1977,11 @@
         ],
         "shot_class": "number-glued-to-object",
         "source": "ai-gen",
-        "still_prompt": "The same packing bench, same locked framing: the row of three open brick cartons and bare bulbs, with the small varied-haired crowd of late-1980s warehouse workers held behind the long bench at background scale. Only this changes: a small handheld stamp now rests on the nearest carton's closed flap, leaving one plain dark serial-style mark; everything else exactly as established.",
+        "still_prompt": "The same busy packing bench, same locked framing: `brick-foreman` directs the warehouse crew, the row of three open brick cartons, packing paper, hand trolley, clipboards and amber work lamps hold exactly as established. Only this changes: a small handheld stamp now rests on the nearest carton's closed flap, leaving one plain dark serial-style mark; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-        "notes": "[F-05] Fake serial numbers on the boxes. The stamp is a generic dark mark rather than an invented digit sequence; the varied-haired workers stay small behind the bench at crowd tier.",
+      "notes": "[F-05] Fake serial numbers on the boxes. The stamp is a generic dark mark rather than an invented digit sequence; the active packing crew holds the full representative scene.",
         "assets": {
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
@@ -1929,11 +2000,11 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same packing bench, same locked framing: the row of open brick cartons, the stamp on the nearest flap, and the small varied-haired crowd of late-1980s warehouse workers held behind the long bench at background scale. Only this changes: one genuine boxed hard drive now sits at the end of the row, its flap carrying the identical plain dark mark and matching the brick cartons beside it; everything else exactly as established.",
+        "still_prompt": "The same busy packing bench, same locked framing: `brick-foreman` and the warehouse crew continue the work around the row of brick cartons, the stamp on the nearest flap, packing paper, trolley, clipboards and amber work lamps. Only this changes: one genuine boxed hard drive now sits at the end of the row, its flap carrying the identical plain dark mark and matching the brick cartons beside it; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-        "notes": "The real drive box beside the fakes makes the indistinguishability visible; varied-haired workers remain small behind the bench at crowd tier.",
+        "notes": "The real drive box beside the fakes makes the indistinguishability visible while the warehouse crew maintains the working line.",
         "assets": {
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
         }
@@ -1951,9 +2022,14 @@
         ],
         "shot_class": "literal",
         "source": "ai-gen",
-        "still_prompt": "The same warehouse bench area, same locked framing: bare bulbs, corrugated walls. Only this changes: the four cartons — three brick, one real drive, all stamped alike — now sit sealed together under one taut sheet of shrink-wrap on a single pallet, the bench behind them empty; everything else exactly as established.",
+        "still_prompt": "The same busy warehouse bench area, same locked framing: `brick-foreman`, the packing crew, corrugated walls, packing paper, hand trolley, clipboards and amber work lamps hold exactly as established. Only this changes: the four cartons — three brick, one real drive, all stamped alike — now sit sealed together under one taut sheet of shrink-wrap on a single pallet; everything else exactly as established.",
         "notes": "Delta cap reached for this chain (3 deltas); the sequence continues on a re-based stage next.",
-        "assets": {}
+        "assets": {
+          "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+        },
+        "figures": {
+          "crowd": true
+        }
       },
       {
         "id": "L111",
@@ -2013,13 +2089,11 @@
         "vo_text": "This was Ocean's Eleven level stuff.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same heist-crew lineup stands in the moody spotlit corridor once more, `action-powerstance`, planted in perfect unison this time. `brick-foreman`, now dressed in an identical tuxedo of his own, stands seamlessly inside the row, indistinguishable from the rest of the lineup. Palette holds moody near-black with the shared spotlight. Wide flat framing at chest height matching the earlier composition, the lineup now unbroken; depth reads shared floor foreground, the unified lineup mid-ground, dark corridor background.",
+        "still_prompt": "`brick-foreman` (`action-powerstance`, `expr-deadpan`), now dressed in an identical tuxedo, stands inside a crowded moody corridor lineup of tuxedoed accomplices under a shared spotlight. Velvet ropes, a brass wall sconce, framed mirror panels and a luggage trolley make the corridor feel like a real back-of-house casino passage. Palette is wine red, brass gold, charcoal and cool spotlight white. Eye-level medium-wide framing keeps the foreman and the united crew on one line; depth reads rope foreground, lineup mid-ground, mirror panels background.",
         "figures": {
-          "anon_foreground": [
-            "The same heist-crew lineup"
-          ]
+          "crowd": true
         },
-        "notes": "Callback and payoff to L93 — brick-foreman now genuinely fits the lineup. Routed to anon_foreground, matching L93's tier.",
+        "notes": "Callback and payoff to L93 — brick-foreman now genuinely fits the lineup, with the rest of the casino crew carried as crowd tier.",
         "assets": {
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
@@ -2153,12 +2227,7 @@
         "vo_text": "or there was money changing hands under the table.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "A plain meeting table sits between two anonymous seated figures, both visible from the chest up smiling politely across the tabletop, `expr-smug` on both. Beneath the table, out of their own sightlines but plain to the viewer, one folded envelope of banknotes passes between two hands at knee height. Palette is warm office tan and cool shadow beneath the table. Wide flat framing at table height with the polite handshake above and the hidden envelope below sharing the frame; depth reads table foreground, seated figures mid-ground, plain wall background.",
-        "figures": {
-          "anon_foreground": [
-            "two anonymous seated figures"
-          ]
-        },
+        "still_prompt": "`qt-wiles` (`expr-smug`, `hold-one-hand`) and `brick-foreman` (`expr-deadpan`, `hold-one-hand`) sit across a walnut meeting table, smiling politely over coffee cups, a desk calendar and an open folio. Beneath the table, one folded envelope of banknotes passes between their two hands at knee height. Warm office tan, burgundy upholstery and cool window shadow create a lived-in executive room. Eye-level medium framing holds the false politeness above and the envelope below as one scene.",
         "notes": "The two possibilities from the VO staged as one composition split above and below the table line.",
         "assets": {
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
@@ -2326,11 +2395,9 @@
         "vo_text": "It's the TSA.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "A generic modern airport security checkpoint stands empty of travellers: a plain grey scanning tunnel, a single tray on its belt holding one ordinary shoe, a uniformed checkpoint officer, `expr-deadpan`, standing beside the tunnel's monitor. Cool fluorescent airport light, palette of steel grey and pale institutional blue. Wide flat framing at belt height with the tray and officer sharing the frame; depth reads tray foreground, officer mid-ground, tunnel background. Every monitor and sign is blank and unlettered.",
+        "still_prompt": "A generic modern airport security checkpoint bustles with a uniformed officer crowd guiding travellers through a grey scanning tunnel. One tray on the belt holds one ordinary shoe, while carry-on bags, stanchions, plastic tubs and an overhead departure-board housing fill the terminal. Cool fluorescent light plays against airport blue, brushed steel and warm luggage colours. Eye-level medium-wide framing holds the shoe tray and checkpoint activity together; depth reads trays foreground, officer crowd mid-ground, tunnel and terminal background. Monitor glyph fields are blank.",
         "figures": {
-          "anon_foreground": [
-            "a uniformed checkpoint officer"
-          ]
+          "crowd": true
         },
         "notes": "A generic modern security checkpoint, no branding — the anachronism analogy carries the joke without a logo.",
         "assets": {
@@ -2492,7 +2559,7 @@
         "figures": {
           "crowd": true
         },
-        "notes": "[F-10] an executive brought family in to help pack. Staged as soft silhouettes at a warm, quiet table rather than detailed faces — restrained treatment of a real documented but unnamed family beat. REPAIR-WAVE PREP (dogfood slice, r3 law): re-routed anon_foreground -> crowd:true per Daniel's explicit board-verdict ruling ('L143-144 should be CROWD rig, not full rig') and fix 3's abolished tier (an anon_foreground human does not exist anymore). still_prompt unchanged -- it already stages the figures' position/action/wardrobe in prose, which crowd staging keeps; only the RIG tier moves. family-packing-night is a fresh place (night-lit warehouse corner, visually distinct from the daytime warehouse used elsewhere) -> forge batch marks it plate:true. SCOPE NOTE: L144 (the delta on this same stage) still carries the old anon_foreground key -- out of this slice's scope by instruction, but it is now an inconsistent stage (base=crowd, delta=anon) and needs the identical edit before this stage ships; flagging rather than silently leaving it.",
+        "notes": "[F-10] An executive brought family in to help pack. The documented but unnamed family remains a restrained crowd scene at a warm, quiet table, with no detailed faces. family-packing-night is a fresh night-lit warehouse corner, visually distinct from the daytime warehouse.",
         "assets": {}
       },
       {
@@ -2508,11 +2575,9 @@
         ],
         "shot_class": "aftermath-palette-turn",
         "source": "ai-gen",
-        "still_prompt": "The same night-lit warehouse corner, same locked framing: the three silhouetted family figures at the table, the warm lamp pool against the dark. Only this changes: one more finished carton now sits added to a small stack of three beside the table; everything else exactly as established.",
+        "still_prompt": "The same night-lit warehouse corner, same locked framing: the family crowd works around the table in the warm lamp pool, with tape rolls, folded cartons, a thermos and stacked packing paper around them. Only this changes: one more finished carton now sits added to a small stack of three beside the table; everything else exactly as established.",
         "figures": {
-          "anon_foreground": [
-            "the three silhouetted family figures"
-          ]
+          "crowd": true
         },
         "notes": "",
         "assets": {}
@@ -2783,11 +2848,11 @@
         "stage_role": "base",
         "shot_class": "personified-character",
         "source": "ai-gen",
-      "still_prompt": "A small new-management team in late-1980s business suits stands at the open door of a dim MiniScribe records office, all kept at crowd scale, with one lit lantern casting light into rows of filing cabinets. A small desk calendar on the near cabinet is lettered '1989'. Palette is lantern amber against deep office shadow. Wide framing at doorway height centres the lantern glow; depth reads doorway foreground, management crowd mid-ground, dark filing cabinets background.",
+      "still_prompt": "A new-management team in late-1980s business suits enters a dim MiniScribe records office through its open door, carrying one lit lantern that casts light across rows of filing cabinets. A desk holds a green banker lamp, stacked file boxes, an in-tray and a small calendar lettered '1989'; a pushed-in chair and rain-streaked window complete the room. Palette is lantern amber, tobacco brown, bottle green and deep office shadow. Eye-level medium-wide doorway framing keeps the team and the room's records work together. Calendar lettering is the supplied '1989'; file-tab glyph fields are blank.",
       "figures": {
         "crowd": true
       },
-      "notes": "[F-15] Richard Rifenburgh's new management team, February 1989, staged only as a crowd-tier team. Supplied literal '1989' (1 word) [F-15].",
+      "notes": "[F-15] Richard Rifenburgh's new management team, February 1989, enters a rich records office as a crowd scene. Supplied literal '1989' (1 word) [F-15].",
         "assets": {
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
@@ -2806,11 +2871,11 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same dim records office, same locked framing: the small varied-haired new-management crowd in late-1980s business suits stays at background scale in the open doorway, behind the near line of filing cabinets; the lantern, the '1989' calendar, and the filing cabinets hold exactly as established. Only this changes: the lantern's light reaches an empty desk chair pushed back at the room's centre, plainly vacant; everything else exactly as established.",
+        "still_prompt": "The same dim records office, same locked framing: the new-management team, lantern, filing cabinets, green banker lamp, file boxes, in-tray, rain-streaked window and '1989' calendar hold exactly as established. Only this changes: the lantern's light reaches an empty desk chair pushed back at the room's centre, plainly vacant; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-        "notes": "'1989' is re-quoted per L-1. Wiles's absence is staged as the empty chair; the varied-haired management team remains explicitly small at crowd tier in the background doorway, inherited from verified L160.",
+        "notes": "'1989' is re-quoted per L-1. Wiles's absence is staged as the empty chair while the new-management team occupies the active records office inherited from L160.",
         "assets": {}
       },
       {
@@ -2826,11 +2891,11 @@
         ],
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "The same dim records office, same locked framing: the small varied-haired new-management crowd in late-1980s business suits stays at background scale in the open doorway behind the near line of filing cabinets, with the empty desk chair and the '1989' calendar held exactly as established. Only this changes: the lantern is raised toward the rows of filing cabinets ahead of the crowd; everything else exactly as established.",
+        "still_prompt": "The same dim records office, same locked framing: the new-management team, empty desk chair, filing cabinets, banker lamp, file boxes, in-tray, rain-streaked window and '1989' calendar hold exactly as established. Only this changes: the lantern is raised toward the rows of filing cabinets as the team searches; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-        "notes": "'1989' is re-quoted per L-1. The varied-haired management team remains explicitly small at crowd tier in the background doorway; delta cap reached for this chain.",
+        "notes": "'1989' is re-quoted per L-1. The management team searches the inherited records office; delta cap reached for this chain.",
         "assets": {}
       },
       {
@@ -2843,12 +2908,7 @@
         "stage_role": "base",
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "The same fresh-faced anonymous figure in his plain grey suit now stands stopped among the filing cabinets, `expr-shock`, one cabinet drawer pulled fully open before him, his lantern held low and forgotten at his side. Deep office shadow around the small pool of lantern light. Palette holds lantern amber against near-black. Tight three-quarter medium at cabinet height with the open drawer and his shocked face sharing the frame.",
-        "figures": {
-          "anon_foreground": [
-            "The same fresh-faced anonymous figure in his plain grey suit"
-          ]
-        },
+        "still_prompt": "`auditor-rep` (`expr-shock`, `hold-one-hand`) stands stopped among the filing cabinets, one drawer pulled fully open before him and a brass lantern held low at his side. Ledger boxes, a coat stand, a desk fan and framed filing maps fill the records office around the cabinet run. Lantern amber plays against walnut brown, bottle green and deep blue-black shadow. Tight three-quarter medium at cabinet height holds the open drawer and the auditor's reaction together.",
         "notes": "Re-based; his reaction carries the beat rather than an on-screen quote.",
         "assets": {
           "expr-shock": "channels/the-second-take/visual-kit/refs/base/expr-shock.png"
@@ -2934,11 +2994,9 @@
         "vo_text": "Hell of a typo.",
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "The anonymous new-management figure in his plain grey suit sits back from the same corrected ledger page, `expr-deadpan`, a hand rubbing his own forehead, looking away from it entirely. Desk-lamp light against near shadow. Palette holds ledger cream and lamp amber. Tight three-quarter medium close at desk height, the figure filling the frame's centre.",
+        "still_prompt": "A new-management crowd clusters around the corrected ledger page at a walnut desk, with one manager seated back in a grey suit while colleagues lean over filing trays, a brass desk lamp and a coffee service. Desk-lamp amber warms ledger cream, tobacco brown and bottle green. Tight three-quarter medium at desk height keeps the corrected page and exhausted management reaction together.",
         "figures": {
-          "anon_foreground": [
-            "The anonymous new-management figure"
-          ]
+          "crowd": true
         },
         "notes": "",
         "assets": {
@@ -2953,11 +3011,9 @@
         "vo_text": "By the time the accountants finished redoing the books,",
         "shot_class": "reaction-shot",
         "source": "ai-gen",
-        "still_prompt": "A different, wearier anonymous accountant figure, `expr-crestfallen`, `action-slump`, sits slumped at the same ledger table, now piled high with closed, finished books stacked in an uneven column beside him, his pen finally set down. Desk-lamp light against near shadow. Palette holds ledger cream and lamp amber. Wide medium at desk height with the finished stack and the slumped figure sharing the frame.",
+        "still_prompt": "An accountant crowd occupies the same ledger table, one weary member slumped over a closed volume while colleagues sort finished books into uneven stacks and set pens into an inkwell. A brass lamp, paper trays, coffee cups and filing cabinets make the late-night office feel worked-in. Desk-lamp amber warms ledger cream, tobacco brown and deep green. Wide medium at desk height holds the finished stack and the exhausted accounting team together.",
         "figures": {
-          "anon_foreground": [
-            "A different, wearier anonymous accountant figure"
-          ]
+          "crowd": true
         },
         "notes": "",
         "assets": {
@@ -3015,11 +3071,11 @@
         "stage": "lawyers-arrive",
         "stage_role": "delta",
         "changed_elements": [
-          "+ a small cluster of anonymous bondholder figures now stands apart from the suits, clutching plain certificate pages"
+          "+ a bondholder crowd in plain ordinary clothes now stands apart from the suits, clutching plain certificate pages"
         ],
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
-        "still_prompt": "The same corridor, same locked framing: the filing crowd of dark-suited lawyers. Only this changes: a smaller cluster of anonymous figures in plain ordinary clothes now stands apart near the corridor's near end, each clutching a plain certificate page to their chest; everything else exactly as established.",
+        "still_prompt": "The same corridor, same locked framing: the filing crowd of dark-suited lawyers. Only this changes: a bondholder crowd in plain ordinary clothes now stands apart near the corridor's near end, each clutching a plain certificate page to their chest; everything else exactly as established.",
         "figures": {
           "crowd": true
         },
@@ -3097,11 +3153,9 @@
         "vo_text": "Not even Jordan Belfort had to fork up that much cash.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "A slick trader in a loud pinstripe suit, `expr-greedy`, `action-shrug`, mid-shrug beside a modest single stack of banknotes at his feet — stands on a trading-floor balcony, looking mildly impressed up at a small, distant glimpse of the courtroom's own colossal glowing figure, visible small through a gap in the wall behind him. Palette is trading-floor red-green ticker light and dark suit charcoal. Wide medium at balcony height with the figure and his modest stack filling the frame's centre; depth reads stack foreground, figure mid-ground, the distant glowing courtroom figure small in the background.",
+        "still_prompt": "A crowded trading-floor balcony holds pinstripe-suited traders around a modest stack of banknotes, their attention drawn through an open glass partition toward the courtroom glow beyond. Brass railings, ticker housings, green banker lamps, coffee cups and paper slips fill the exchange. Palette is oxblood, banker green, brass gold and charcoal. Eye-level medium-wide framing keeps the modest cash stack, trader crowd and distant courtroom glow in one connected interior.",
         "figures": {
-          "anon_foreground": [
-            "A slick trader in a loud pinstripe suit"
-          ]
+          "crowd": true
         },
         "notes": "A generic archetype rather than the real named person's likeness — originality moat, no defamatory depiction of a real named person. His own stack reads modest beside the courtroom's glowing figure, the comparison the whole joke.",
         "assets": {
@@ -3300,7 +3354,7 @@
       "place_anchor": "assets/scenes/L190.png",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-      "still_prompt": "`hq-banker` (`action-offering`, `expr-deadpan`) occupies the second position behind a conference table's three separate stacks of banknotes. `auditor-rep` (`hold-paper-by-sides`, `expr-skeptical`) occupies the third position beside a plain settlement page. A small crowd of suited late-1980s executives gathers behind the first stack. A card propped before the row is lettered '128 MILLION'. Cool office light and a palette of banknote green and pale table wood. Wide framing at table height keeps all three stacks legible; depth reads table foreground, named payers and executive crowd mid-ground, plain wall background.",
+      "still_prompt": "`hq-banker` (`action-offering`, `expr-deadpan`) stands behind the second of three separate stacks of banknotes on a walnut conference table. `auditor-rep` (`hold-paper-by-sides`, `expr-skeptical`) stands beside the third stack with a plain settlement page, while a crowd of suited late-1980s executives gathers behind the first. Green leather chairs, brass lamps, a sideboard of files, an in-tray and tall window blinds give the office a formal settlement-room texture. A card propped before the row is lettered '128 MILLION'. Palette is banknote green, walnut, brass gold and cream under warm office light. Eye-level medium-wide framing keeps the three payers and three stacks legible. The supplied card reads '128 MILLION'; file-label glyph fields are blank.",
       "notes": "[F-19] Supplied literal '128 MILLION' (2 words), re-authored in a fresh two-named-cast-plus-crowd tableau: banker and auditor each carry inventory pose and expression frames, while executives remain crowd tier.",
         "assets": {
           "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
@@ -3356,7 +3410,7 @@
         "vo_text": "and he went to prison.",
         "shot_class": "aftermath-palette-turn",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, `expr-crestfallen`, `action-walk`, stands turned three-quarters toward a single plain barred door standing ajar in an otherwise bare grey corridor, stepping toward it. Cold institutional light, palette of pale grey and shadow. Wide flat framing at corridor height with Wiles and the open barred door sharing the frame.",
+        "still_prompt": "`qt-wiles`, `expr-crestfallen`, `action-walk`, stands turned three-quarters toward a single plain barred door standing ajar in a prison corridor, stepping toward it. Worn terracotta floor tiles, a steel bench, wall-mounted lamp, painted pipework and a distant guard desk give the corridor institutional texture without spectacle. Palette is warm grey, muted terracotta, aged steel and hard amber light. Eye-level medium framing keeps Wiles and the open barred door together. Door-panel glyph fields are blank.",
         "notes": "A held threshold tableau, restrained, no invented cruelty.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
@@ -3391,8 +3445,8 @@
         "stage_role": "base",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, `expr-deadpan`, `action-armscrossed`, stands stage-left at a witness stand, facing the room in a defiant blameless defense. A tall blank wall fills the frame behind him, otherwise bare. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at stand height with Wiles occupying the near half of the frame, the bare wall filling the far half.",
-        "notes": "Daniel's 2026-08-03 ban keeps `surrender` plus `expr-pleading` unavailable. The failed `action-shrug` staging is replaced with passing `action-armscrossed` plus `expr-deadpan`, which reads as Wiles's defiant 'I had no idea' claim. The bare far half of the wall remains deliberately empty, awaiting the delta's testimony crowd.",
+        "still_prompt": "`qt-wiles`, `expr-deadpan`, `action-armscrossed`, stands at a witness stand, facing the courtroom in a defiant blameless defense. Polished wood railings, empty jury benches, a judge's dais, brass desk lamps, a court clerk's desk and tall frosted windows make the courtroom fully built and ready for testimony. Palette is warm walnut, cream stone, brass gold and muted blue-grey daylight. Eye-level medium-wide framing holds Wiles at the stand with open room beyond him. Docket and desk-panel glyph fields are blank.",
+        "notes": "Daniel's 2026-08-03 ban keeps `surrender` plus `expr-pleading` unavailable. The failed `action-shrug` staging is replaced with passing `action-armscrossed` plus `expr-deadpan`, which reads as Wiles's defiant 'I had no idea' claim. The fully dressed courtroom leaves space for the L197 testimony delta without relying on a bare wall.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
@@ -3408,15 +3462,15 @@
         "stage": "defense-vs-testimony",
         "stage_role": "delta",
         "changed_elements": [
-          "+ a small cluster of anonymous figures now stands apart on the wall's far side, backs turned to Wiles"
+          "+ a witness crowd now stands by the jury benches, backs turned to Wiles"
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same witness stand, same locked framing: `qt-wiles` holds the established defense tableau. Only this changes: a small cluster of anonymous figures now stands together on the frame's far side, their backs turned toward him; everything else exactly as established.",
+        "still_prompt": "The same fully dressed courtroom, same locked framing: `qt-wiles` holds the established defense tableau at the witness stand, with railings, jury benches, dais, brass lamps, clerk's desk and frosted windows held exactly as established. Only this changes: a witness crowd now stands together by the jury benches, their backs turned toward him; everything else exactly as established.",
         "figures": {
           "crowd": true
         },
-        "notes": "The L196 ban-compliant `action-shrug` and `expr-deadpan` defense posture is inherited from the parent frame rather than redundantly reseeded on this crowd delta.",
+        "notes": "The L196 ban-compliant `action-armscrossed` and `expr-deadpan` defense posture is inherited from the parent frame rather than redundantly reseeded on this crowd delta.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
         }
@@ -3430,15 +3484,15 @@
         "stage": "defense-vs-testimony",
         "stage_role": "delta",
         "changed_elements": [
-          "the cluster now turns to face Wiles directly, one figure stepping forward, hand raised"
+          "the witness crowd now turns to face Wiles directly, one figure stepping forward with hand raised"
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same witness stand, same locked framing: `qt-wiles` (`expr-crestfallen` now) holds the established defense tableau. Only this changes: the anonymous cluster has turned to face him directly, one figure stepped forward with a hand raised as if mid-oath; everything else exactly as established.",
+        "still_prompt": "The same fully dressed courtroom, same locked framing: `qt-wiles` (`expr-crestfallen` now) holds the established defense tableau, with the railings, jury benches, dais, brass lamps, clerk's desk and frosted windows held exactly as established. Only this changes: the witness crowd has turned to face him directly, one figure stepped forward with a hand raised as if mid-oath; everything else exactly as established.",
         "figures": {
           "crowd": true
         },
-        "notes": "Wiles's body posture remains the ban-compliant L196 `action-shrug` through the L197 parent while his expression turns `expr-crestfallen`. Delta cap reached for this chain.",
+        "notes": "Wiles's body posture remains the ban-compliant L196 `action-armscrossed` through the L197 parent while his expression turns `expr-crestfallen`. Delta cap reached for this chain.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png"
@@ -3454,11 +3508,9 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "`qt-wiles`, `expr-deadpan`, `hold-one-hand`, stands at a plain brokerage counter, quietly handing a thick banded block of stock certificates across to an anonymous teller figure on the counter's far side, both mid-exchange. Cool office light, palette of paper cream and steel grey. Wide flat framing at counter height with the exchanged block filling the frame's centre.",
+        "still_prompt": "`qt-wiles` (`expr-deadpan`, `hold-one-hand`) stands at a brokerage counter, quietly handing a thick banded block of stock certificates toward a brokerage-clerk crowd behind the brass grille. Marble counter ledges, green banker lamps, ticker housings, receipt trays and a potted palm make the office feel established. Cool window light mixes with cream paper, walnut wood and bottle green. Eye-level medium framing keeps Wiles, the certificate block and waiting clerks together.",
         "figures": {
-          "anon_foreground": [
-            "an anonymous teller figure"
-          ]
+          "crowd": true
         },
         "notes": "[F-21] Wiles sold a block of shares. A quiet, unremarkable transaction — its wrongness is only visible in hindsight, staged plainly rather than furtively.",
         "assets": {
@@ -3480,11 +3532,9 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same brokerage counter, same locked framing: `qt-wiles` handing over the stock block, the anonymous teller. Only this changes: a small desk calendar on the counter is now lettered '1988', and one hairline crack has appeared running up the counter's front panel below the exchange; everything else exactly as established.",
+        "still_prompt": "The same brokerage counter, same locked framing: `qt-wiles` handing over the stock block to the brokerage-clerk crowd, the brass grille, banker lamps, ticker housings and receipt trays. Only this changes: a small desk calendar on the counter is now lettered '1988', and one hairline crack has appeared running up the counter's front panel below the exchange; everything else exactly as established.",
         "figures": {
-          "anon_foreground": [
-            "the anonymous teller figure"
-          ]
+          "crowd": true
         },
         "notes": "Supplied literal '1988' (1 word) [F-21]. The crack foreshadows the collapse to come, staged as a property of the counter itself.",
         "assets": {
@@ -3499,13 +3549,11 @@
         "vo_text": "Several of the men who actually ran the scheme testified in exchange for immunity.",
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
-        "still_prompt": "A short row of anonymous witness figures stands facing the viewer in a plain witness corridor, each one raising a single hand as if mid-oath, all facing the same direction. `brick-foreman` stands among them, indistinguishable in stance from the rest of the row. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at chest height with the row filling the frame evenly; depth reads corridor foreground, the row mid-ground, plain wall background.",
+        "still_prompt": "`brick-foreman` stands among a witness crowd in a courthouse corridor, all facing the oath desk in held testimony tableaux. Oak benches, brass wall lamps, a clerk's trolley and tall frosted windows make the corridor feel like a working courthouse. Cool daylight mixes with walnut brown, brass gold and slate blue. Eye-level medium-wide framing keeps the foreman and witness crowd together at the oath desk.",
         "figures": {
-          "anon_foreground": [
-            "A short row of anonymous witness figures"
-          ]
+          "crowd": true
         },
-        "notes": "brick-foreman folded into the row rather than singled out. Routed to anon_foreground (LARGE/foreground tier).",
+        "notes": "brick-foreman is folded into the witness row rather than singled out; the rest of the testimony figures remain crowd tier.",
         "assets": {
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
         }
@@ -3702,7 +3750,7 @@
         "vo_text": "they would've gone on selling those bricks.",
         "shot_class": "literal",
         "source": "ai-gen",
-        "still_prompt": "A single drive carton stands open on a plain packing bench, its lid flap folded back exactly as at its first reveal, one solid clay brick in dense red #d7402b nested in its drive-shaped moulded foam recess, the coarse pressed clay face catching the light. The bench and room around it stand otherwise bare and deserted. Cold grey-green industrial light on the bench, the brick the only warm mass in the frame. Tight straight-on medium close at bench height with the open carton filling the middle third — the brick itself, alone, the whole picture and the video's closing image.",
+        "still_prompt": "A single drive carton stands open on a worn packing bench, its lid flap folded back exactly as at its first reveal, one solid clay brick in dense red #d7402b nested in its drive-shaped moulded foam recess, the coarse pressed clay face catching the light. A roll of packing tape, folded kraft paper, a hand trolley, corrugated wall and amber work lamp quietly establish the warehouse around the carton without competing with it. Cold grey-green industrial light meets warm lamp amber on the bench, the brick the strongest warm mass in frame. Tight straight-on medium close at bench height keeps the open carton central as the video's closing image. Carton-label glyph fields are blank.",
         "notes": "The video's final shot deliberately echoes L23's reveal composition — the same object, the same framing, closing the story on its own irony rather than a stated moral.",
         "assets": {}
       }

@@ -63,3 +63,20 @@ All other shots in L53–L101 were audited and left byte-stable. L28's accepted 
 - **L64 and L78.** Made the target's ceiling contact a final, explicit overlap-with-no-gap payload; made the count insert's exactly-one tally the final exact-count payload with every remaining surface positively bare.
 - **L66–L68, L73, L81 and L100–L101.** Removed each failed distant-crowd demand. The firing and quota beats become chair/pad/box aftermaths, the audit becomes one normal-scale representative, and the planning beat becomes a figure-free cups-and-pens huddle before the brick delta.
 - **L65, L76–L77, L79, L87–L88, L93 and L99.** Audited without authoring change: their registry slates resolve and child frames still cohere. L79's existing `L79-round2-J.png.lock` is stale staging state; clear or replace that lock before its future generation, not by changing the shot authoring.
+
+---
+
+# VPW scoped-repair declaration — 2026-08-04
+
+## Phase B3 — restored middle-path doctrine, zero-spend
+
+- **Legacy foreground tier.** Replaced every remaining `anon_foreground` declaration with named cast where the figure carries the beat, or the single supported `crowd` rig where it does not: L19–L22, L115, L123, L133, L144, L163, L169–L170, L179, and L199–L201. Associated legacy notes were brought into the same vocabulary.
+- **Occupancy and richness.** Restored full representative scenes to the de-populated shop, fear-boardroom, quota, count-floor, planning, packing-line, records-office, settlement, and testimony chains. Their prompts now commit a warm scene palette, working furniture and set dressing; blankness is limited to unsupported glyph fields.
+- **Scale-scaffold removal.** Removed the prior deep-aisle/far-floor-line, cropped-foreground, background-smallness, and empty-plate wording. L49–L50, L73, L80–L82, L93, L107–L110, L160–L162, and L191 are natural eye-level populated scenes; L194 and L215 regain built surroundings without diluting their narrative payloads.
+- **Structure preserved.** All anchors, delta parentage, VO fields, and stage order remain intact. The L196 defense stays on the passing, ban-compliant `action-armscrossed` plus `expr-deadpan`; L197–L198 carry that posture through their testimony deltas.
+
+No generations or commits were made.
+
+## Addendum — L79 audit-check repair (2026-08-04)
+
+- **L79.** The audit-check beat stages only `auditor-rep` (`expr-skeptical`), so the accidental orphan `brick-foreman` and `expr-worried` asset seeds were removed. Its warehouse is now positively dressed with timber pallets, ochre safety rails, cartons, ladder, and warm lamp amber; the palette is charcoal, worn terracotta, ochre, and amber rather than neutral grey only. The supplied `'1987'` calendar remains unchanged. No generation or commit was made.
