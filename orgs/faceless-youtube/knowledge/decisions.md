@@ -3721,3 +3721,25 @@ review fixes → a full deep review (5 root causes, 24 r2 directives, 11 pipelin
   scratchpad/tranche-a-genlog.md`.
 - **Daniel set a $25 cap for the wave remainder** and chose **board-first review before the 4/5
   release** — the Gate-2 board gets a human pass before any further wave shots ship.
+
+## 2026-08-03 — Bricks tranche-B scope: preserve verified chain parents; one plate per place
+
+- **R1 — keep manifest-verified mechanically pulled-in chain parents.** Forge fix `c78b19b`
+  enables a verified same-video `assets/scenes/` frame to be a legal, digest-pinnable seed, so a
+  defective child may continue from that accepted canonical look without re-minting its parent.
+  **Rejected alternative:** regenerate an otherwise liked chain from its head; that overwrote
+  human-accepted looks merely because the parent had been pulled into the target set mechanically.
+- **R2 — one candidate per place going forward.** Each remaining place gets one plate, not a
+  two-candidate taste batch. **Rejected alternative:** two-candidate taste batches; Daniel's
+  instruction was, "I just need one that's right."
+- **Chain-audit derivation gap.** `final_target.json` omitted verified tail L110 from the
+  L107→L108→L109→L110 chain. A repaired cascade must extend to its chain end, so a repaired L109
+  requires L110 to regenerate as its delta; retaining the old verified tail would mix looks.
+
+## 2026-08-03 — Rig-review evidence standard: loosening RATIFIED
+Daniel ratified the VPW/image-review rework's loosened standard (ordinary-viewing-scale judging,
+single review pass, DSG-lite on lettering shots only; crop_battery.py orphaned): "I don't need a
+super crazy review process for images, it just burns time and it doesn't catch shit. The goal was
+to change the actual writing and generation logic." Alternative rejected: restoring the
+crop-battery zoomed-crop standard. Surfaced by Opus adversarial review of the
+second-take-learnings merge (finding 2).
