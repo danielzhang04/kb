@@ -1,0 +1,10 @@
+# Round-1 generation log — lane F — 2026-08-03
+
+Authorized board-selection regeneration lane. Hard cap: $1.40. Native forge staging only; no scene-manifest or review-stamp writes.
+
+| request | id | tier | cost (USD) | seeds | §3 rig verdict | flag |
+|---|---|---:|---:|---|---|---|
+| L108 | L108 | 2K | 0.134 | assets/scenes/L107.png (SHA-256 `d403aa285ca3a570c56e52df10c668dde5b79b548f358acca61f1f1cb5287db4`); crowd-exemplar | FAIL — the warehouse workers occupy the foreground at large scale but use the crowd rig (dot eyes/simple mouths), violating §3 tiering. | Content defect; stop L107 → L108 → L109 → L110 cascade. The nearest carton also carries unrequested literal text, `REF: 897-A`, rather than a plain dark mark. |
+| L161 | L161 | 2K | 0.134 | assets/scenes/L160.png (SHA-256 `4367ef72fd5422047787fa2519570c3e140a5f2d65c7915b7ef5d6bbd8621b83`); crowd-exemplar | FAIL — the management team is foreground/large by scale while rendered on the crowd rig, violating §3 tiering; several figures also show ear forms. | Content defect; stop L160 → L161 → L162 cascade. The `1989` calendar, lantern, vacant chair, and filing cabinets landed, but do not override the rig failure. |
+| fig-qt-wiles--action-shrug--expr-deadpan | L196 / qt-wiles | 1K | 0.039 | qt-wiles; expr-deadpan; action-shrug | FAIL — Wiles has clearly drawn ears and a small nose/face bridge, violating §3; the blue-grey three-piece suit, gold tie clip, deadpan shrug, squat proportion, and apparent four-digit hands otherwise hold. | Content defect; do not generate dependent L196. The banned surrender/pleading figure was not used. |
+| fig-qt-wiles--action-shrug--expr-deadpan (boss-sanctioned retry) | L196 / qt-wiles | 1K | 0.039 | qt-wiles; expr-deadpan; action-shrug | FAIL — the nose/face bridge is gone, but a distinct ear-shaped loop remains at the viewer-right hairline, an actual ear rather than a tolerated hair notch; §3 therefore fails. | Sanctioned one retry exhausted; L196 scene not generated. Banned surrender/pleading figure was not used. |

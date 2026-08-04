@@ -1,0 +1,12 @@
+# Round-1 generation log — Lane B — 2026-08-03
+
+Authorized board-selection regeneration lane. Cap: $0.80. Native forge staging only; no scene-manifest or review-stamp writes.
+
+| request | id | tier | cost (USD) | seeds | §3 rig verdict | flag |
+|---|---|---:|---:|---|---|---|
+| L17-crowd-plate-probe | L17 | 2K | 0.134 | prop-beige-pc only; no crowd-rig seed and no `figures.crowd` declaration | FAIL — no named cast appears, but multiple shoppers and both computer holders are foreground/large, detailed-face figures; several faces visibly include noses. | Probe verdict: FAIL. Hair silhouettes vary and the built-place style lands, but the required small, behind-counter population/no-giant-faces condition does not. L18 not submitted. |
+| L28-round1-retry | L28 | 2K | 0.134 | fig-terry-johnson STEP-1; fig-miniscribe-rep STEP-1; assets/scenes/L26.png (SHA-256 bd358173a06461183d96f7f1631873c42c5641762bc887705032fccb833a7211); prop-drive | PASS — both named cast retain full rounded, earless/noseless rigs, pinned identities, and apparent four-digit hands. | Fidelity flag: both figures remain foreground-large; Terry also holds the drive with both hands. Sanctioned one retry spent. |
+| L17 (issue 1) | L17 | 2K | 0.000 | crowd-exemplar; prop-beige-pc | N/A — local preflight never reached the provider. | Mechanical: temporary batch JSON carried a UTF-8 BOM; immediate re-issue follows. |
+| L17 (issue 2) | L17 | 2K | 0.000 | crowd-exemplar; prop-beige-pc | N/A — local preflight never reached the provider. | Mechanical: temporary single-item JSON serialized as an object rather than a list; immediate re-issue follows. |
+| L17 | L17 | 2K | 0.134 | crowd-exemplar; prop-beige-pc | FAIL — all displayed crowd figures, including the two computer holders, occupy foreground/large scale while rendered on the §2d dot-eye/simple-mouth crowd rig; §3 requires background crowd scale or full rig for large figures. | Content defect; no retry. L18 is stopped because it requires this parent. |
+| L28 | L28 | 2K | 0.134 | fig-terry-johnson--hold-one-hand--expr-delighted; fig-miniscribe-rep--action-powerstance--expr-smug; assets/scenes/L26.png (SHA-256 `bd358173a06461183d96f7f1631873c42c5641762bc887705032fccb833a7211); prop-drive | PASS — both named cast retain rounded, earless/noseless full rigs, pinned hair/head tone/costume, and apparent four-digit hands. | Fidelity flag: Terry is left as authored, but both figures are foreground-large; the required extra-wide small-figure composition against the plant did not land. Content defect; no retry. |

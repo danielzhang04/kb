@@ -1,0 +1,22 @@
+[
+  {
+    "name": "L28-composite-probe-foreground-props",
+    "mode": "environment",
+    "aspect": "16:9",
+    "image_size": "2K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--hold-one-hand--expr-delighted.png",
+      "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-smug.png",
+      "channels/the-second-take/visual-kit/_staging/L28-plate-probe-empty.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_sha256": {
+      "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--hold-one-hand--expr-delighted.png": "740d537799714fc54f121bb629e5e33715bbd51ca0ab1fce6a8c920686eaf463",
+      "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-smug.png": "99fbcce3a67faeb7a61bef8cdb1c69d5b5780c4ecbc7a1119aeac35c42f3ee5f",
+      "channels/the-second-take/visual-kit/_staging/L28-plate-probe-empty.png": "8ab6cc4d6712bf6a9b033acfdd5a01f862fc7a7152a63055ac0b845a54b71e3b",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png": "66084194d12ca18a20005a50c7ae27b9ff903e07c7e00f1e06d4dabaa8e243d6"
+    },
+    "delta": "The plant machinery is the hero in an extra-wide forced-perspective view. Preserve the THIRD image's MiniScribe plant palette, mountain windows, architecture, blank surfaces and soft daylight, but stage its depth as a long open central aisle: two enormous pale-green machine housings crop in from the left and right foreground edges, and the near end of the pale-green conveyor forms a broad diagonal band across the lower foreground before narrowing toward the far room. Four steel-grey drives based only on the FOURTH image read large along that foreground belt. The FIRST image supplies `terry-johnson` exactly, including identity, delighted expression, one-hand hold pose and empty other hand; the SECOND image supplies `miniscribe-rep` exactly, including identity, smug power stance and visible drive-shaped lapel badge. At the far end of the unobstructed central aisle, beyond all the large foreground machinery, Terry stands left holding one drive with exactly one hand and MiniScribe stands right at the conveyor head. Both complete figures are visible shoes to crown on the same distant floor line, equal in scale, each only 18–24 percent of frame height. The huge foreground belt, drives and machine housings dominate the image; the two distant figures are secondary evidence of the room's scale."
+  }
+]
