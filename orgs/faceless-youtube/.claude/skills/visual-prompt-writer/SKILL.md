@@ -55,8 +55,11 @@ default; scoped-repair is opt-in.
    body pose, finger mechanics, or facial expression in words — naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
    human's pre-gen approval, and a veto comes back to you as a restage.
-   **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** A story-bearing foreground
-   individual belongs in the planned cast; people without a story-bearing identity are staged at crowd scale.
+   **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** A crowd needs a positive rear
+   zone in the PRIMARY scene clause — the far side of a table/shelving, behind glass or a divider, through a
+   doorway — never a co-planar gathering later called "background-scale". An anonymous person with an individual
+   count, action, or face requirement is CAST, or the beat restages as mass action; people without a
+   story-bearing identity are staged at crowd scale.
    The style-bible §2d rig-clause TEXT never appears in a prompt — you declare, and `forge.py` expands it at
    gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
    high-risk case in `notes`. Field spec: `shots-schema.md §2`.
@@ -67,7 +70,8 @@ default; scoped-repair is opt-in.
    categories; a thin, palette-less prompt renders thin. **Never art style, texture, or line weight** —
    the `global_prompt_suffix` and the style bible's forge descriptors inject those on every gen, and
    restating them spends the prompt on the look instead of the scene.
-   **Stage poses that hold** — a tableau, never a freeze of mid-motion.
+   **Stage poses that hold** — a tableau, never a freeze of mid-motion. A load-bearing named face states its
+   orientation and what keeps it unobscured; do not let a crowd or foreground object own that face's sightline.
    **Supplied-text law (HARD):** never name a text element without supplying its value verbatim, inline,
    beside its own element — quote the literal from the fact ledger and cite `[F-NN]` in `notes`, or omit
    the element, or author it deliberately blank. Rule + lettering laws L-1…L-4: `shots-schema.md §4`.
@@ -76,9 +80,15 @@ default; scoped-repair is opt-in.
    logic). Absence is authored as a positive state of the surface, never a "no X, no Y" list (same file,
    header block).
 5. **Group into stages/chains per the grammar's chain logic** — consecutive shots on one set share a
-   `stage`, one `base` first, each `delta` changing exactly ONE element in `changed_elements`, ≤3 deltas,
-   then a re-base or a hard cut. Disclosure order holds throughout.
-6. **Tag a `source`** per the schema's taxonomy (`stock`/`hybrid`/`archival` get a `stock_query`), and
+   `stage`, one `base` first, each `delta` changing exactly ONE physically feasible semantic transformation in
+   `changed_elements`, ≤3 deltas, then a re-base or a hard cut. A place anchor is figure-free or already compatible
+   with the later count/scale demand. Completion states quantify the end state (`all`, `entirely`, or what
+   `nothing remains`); a parent that has no room for the change is not repaired with a re-roll.
+6. **Route the technique before writing precision prose:** an exact percentage scale, pixel-clear gap,
+   replace-one-person, or majority-removal beat is not a whole-frame prose delta. Simplify the composition, rebase
+   from the pre-transient ancestor, or mark the beat for the layered path; never ask the sticky parent to perform
+   measured placement/deletion by wording alone.
+7. **Tag a `source`** per the schema's taxonomy (`stock`/`hybrid`/`archival` get a `stock_query`), and
    set `synthetic: true` on any photoreal AI shot.
 
 ## Step 3 (staged) — plan the video, then author act by act

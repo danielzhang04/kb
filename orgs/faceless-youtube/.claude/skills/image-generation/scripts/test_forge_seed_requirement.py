@@ -40,7 +40,13 @@ FRESH = ("`hq-banker`, `expr-deadpan`, `action-armscrossed`, behind a polished d
 
 def _req(**kw):
     r = {"name": "L11", "mode": "environment", "delta": FRESH}
-    r.update(kw); return r
+    r.update(kw)
+    if r.get("seed") and "seed_roles" not in r:
+        r["payload"] = r["delta"]
+        r["seed_roles"] = [
+            {"path": path, "role": "reference", "character": None} for path in r["seed"]]
+        r["delta"] = forge_module.placement_delta(r["payload"], r["seed_roles"])
+    return r
 
 
 def _stub_kit():
@@ -86,19 +92,25 @@ def test_cmd_gen_classifies_root_chain_and_anchored_requests_as_scenes_but_not_s
         return delta
     k = SimpleNamespace(staging=staging, root=root, reg=REG, resolve_seed=lambda value: value,
                         prompt_for=prompt_for)
+    def composite(name, mode, payload, **extra):
+        roles = [{"path": seed, "role": "reference", "character": None}]
+        return {"name": name, "mode": mode, "payload": payload,
+                "delta": forge_module.placement_delta(payload, roles), "seed": [seed],
+                "seed_roles": roles, **extra}
     reqs = [
         {"name": "root", "mode": "environment", "delta": "root authored", "seed": [],
          "root_scene": True},
-        {"name": "chain", "mode": "environment", "delta": "chain authored", "seed": [seed],
-         "root_scene": False},
-        {"name": "anchored", "mode": "style", "delta": "anchor authored", "seed": [seed],
-         "root_scene": False, "place_anchor": "assets/scenes/L00.png"},
-        {"name": "fig-reference", "mode": "environment", "delta": "STEP-1 authored", "seed": [seed]},
+        composite("chain", "environment", "chain authored", root_scene=False),
+        composite("anchored", "style", "anchor authored", root_scene=False,
+                  place_anchor="assets/scenes/L00.png"),
+        composite("fig-reference", "environment", "STEP-1 authored"),
     ]
     with contextlib.redirect_stdout(io.StringIO()):
         cmd_gen(k, reqs, True, dry=True)
-    assert seen == [("root authored", True), ("chain authored", True),
-                    ("anchor authored", True), ("STEP-1 authored", False)], seen
+    assert [scene for _, scene in seen] == [True, True, True, False], seen
+    assert seen[0][0] == "root authored"
+    assert [delta.rsplit("\n\n", 1)[-1] for delta, _ in seen[1:]] == [
+        "chain authored", "anchor authored", "STEP-1 authored"], seen
 
 
 def test_shot_cast_binds_each_primitive_to_the_figure_that_precedes_it():
@@ -371,9 +383,12 @@ def test_character_free_root_scene_emits_with_no_image_seed():
     spec, err = _batch(shots, out, ["T00"])
     assert err is None, err
     assert spec == [{"name": "T00", "mode": "environment", "aspect": "16:9",
-                     "delta": "A warm records room with a bare central table.", "seed": [],
+                     "delta": "A warm records room with a bare central table.",
+                     "payload": "A warm records room with a bare central table.",
+                     "seed": [], "seed_roles": [],
                      "figures": None, "stage_role": None, "assets_omitted": None,
-                     "root_scene": True, "why": "ROOT-SCENE — hardened descriptor, no image anchor"}], spec
+                     "root_scene": True, "delta_primitives": None,
+                     "why": "ROOT-SCENE — hardened descriptor, no image anchor"}], spec
 
 
 def _stem_ok(seed, char):
@@ -493,7 +508,10 @@ def _retry_fixture():
         open(os.path.join(v, "assets", name), "wb").write(b"\x89PNG\r\n\x1a\n")
     doc = {"schema": "shots/1", "video_slug": "retry-t", "long_form": {"aspect_ratio": "16:9", "shots": [
         {"id": "T01", "source": "ai-gen", "stage_role": "base", "figures": {"crowd": True},
-         "still_prompt": "A small crowd waits at a factory gate under clear morning light."},
+         "assets": {"prop-drive":
+                    "channels/the-second-take/visual-kit/refs/env/prop-drive.png"},
+         "still_prompt": ("A small crowd waits at a factory gate beside `prop-drive` under "
+                          "clear morning light.")},
         {"id": "T02", "source": "ai-gen", "stage_role": "base",
          "still_prompt": "`miniscribe-rep`, `expr-smug`, `action-powerstance`, at a brickyard gate."}
     ]}}
@@ -505,19 +523,21 @@ def _retry_fixture():
 def test_retry_overlay_derives_duplicate_scenes_and_one_step1_only_request():
     v, shots, out = _retry_fixture()
     overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
-        {"kind": "scene", "shot": "T01", "name": "T01-retry-a", "instruction": "Keep workers small.",
-         "prepend_seeds": ["assets/prep.png"], "extra_seeds": ["assets/extra.png"]},
-        {"kind": "scene", "shot": "T01", "name": "T01-retry-b", "instruction": "Keep the gate clear."},
+        {"kind": "scene", "shot": "T01", "name": "T01-retry-a",
+         "defect": "mechanism", "prepend_seeds": ["refs/env/prop-drive.png"]},
+        {"kind": "scene", "shot": "T01", "name": "T01-retry-b",
+         "defect": "content",
+         "replace": {"from": "small crowd", "to": "small background crowd"}},
         {"kind": "step1", "shot": "T02", "character": "miniscribe-rep",
-         "name": "fig-miniscribe-rep-retry", "instruction": "Both visible hands are open and empty."}
+         "name": "fig-miniscribe-rep-retry", "defect": "rig",
+         "instruction": "Both visible hands are open and empty."}
     ]}
     spec, err = _retry(shots, out, overlay)
     assert err is None, err
     assert [r["name"] for r in spec] == ["T01-retry-a", "T01-retry-b", "fig-miniscribe-rep-retry"], spec
     first = spec[0]
-    assert first.get("plate") is None and "RETRY OVERLAY. Keep workers small." in first["delta"], first
-    assert first["seed"][0].replace("\\", "/").endswith("assets/prep.png"), first["seed"]
-    assert Path(first["seed"][-1]).name == "extra.png", first["seed"]
+    assert first.get("plate") is None and first["payload"].startswith("A small crowd"), first
+    assert first["seed"][0].replace("\\", "/").endswith("refs/env/prop-drive.png"), first["seed"]
     step = spec[-1]
     assert step["name"].startswith("fig-") and "T02" not in [r["name"] for r in spec], spec
     assert "Both visible hands are open and empty." in step["delta"], step["delta"]
@@ -535,7 +555,8 @@ def test_retry_overlay_accepts_its_verified_video_local_place_anchor():
     json.dump(doc, open(shots, "w", encoding="utf-8"))
     overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
         {"kind": "scene", "shot": "T01", "name": "T01-anchor-retry",
-         "instruction": "Keep workers small while preserving the approved place."}
+         "defect": "content",
+         "replace": {"from": "small crowd", "to": "small background crowd"}}
     ]}
     spec, err = _retry(shots, out, overlay)
     assert err is None, err
@@ -546,13 +567,21 @@ def test_retry_overlay_accepts_its_verified_video_local_place_anchor():
 def test_retry_overlay_still_rejects_a_nonverified_video_scene_frame():
     v, shots, out = _retry_fixture()
     scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
-    open(os.path.join(scenes, "T00.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
+    open(os.path.join(scenes, "T01.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
     json.dump({"video_slug": "retry-t", "shots": [{
-        "shot_id": "T00", "file": "assets/scenes/T00.png", "review_status": "parked"
+        "shot_id": "T01", "file": "assets/scenes/T01.png", "review_status": "parked"
     }]}, open(os.path.join(scenes, "manifest.json"), "w", encoding="utf-8"))
+    doc = json.load(open(shots, encoding="utf-8"))
+    doc["long_form"]["shots"][0].update({"stage": "factory", "stage_role": "base"})
+    doc["long_form"]["shots"][1].update({
+        "stage": "factory", "stage_role": "delta",
+        "still_prompt": "The same factory and locked frame; only the gate is now open.",
+    })
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
     overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
-        {"kind": "scene", "shot": "T01", "name": "T01-stale-retry",
-         "instruction": "Keep workers small.", "prepend_seeds": ["assets/scenes/T00.png"]}
+        {"kind": "scene", "shot": "T02", "name": "T02-stale-retry",
+         "defect": "mechanism",
+         "prepend_seeds": ["assets/scenes/T01.png"]}
     ]}
     spec, err = _retry(shots, out, overlay)
     assert spec is None and "old video scene output" in err and "verified" in err, err
@@ -582,7 +611,7 @@ def test_retry_overlay_accepts_a_digest_pinned_repaired_predecessor_and_drops_th
         digest = hashlib.sha256(repaired_bytes).hexdigest()
         overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
             {"kind": "scene", "shot": "T02", "name": "T02-retry",
-             "instruction": "Continue from the repaired predecessor.",
+             "defect": "mechanism",
              "prepend_seeds": [{"path": repaired, "sha256": digest}]}
         ]}
         spec, err = _retry(shots, out, overlay, staged)
@@ -598,7 +627,9 @@ def test_retry_overlay_accepts_a_digest_pinned_repaired_predecessor_and_drops_th
 def test_retry_overlay_rejects_unknown_keys_output_collisions_and_old_scene_seeds():
     v, shots, out = _retry_fixture()
     base = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
-        {"kind": "scene", "shot": "T01", "name": "T01-retry", "instruction": "Keep workers small."}
+        {"kind": "scene", "shot": "T01", "name": "T01-retry",
+         "defect": "content",
+         "replace": {"from": "small crowd", "to": "small background crowd"}}
     ]}
     bad = json.loads(json.dumps(base)); bad["entries"][0]["unexpected"] = True
     spec, err = _retry(shots, out, bad)
@@ -608,9 +639,11 @@ def test_retry_overlay_rejects_unknown_keys_output_collisions_and_old_scene_seed
     assert spec is None and "cannot equal canonical" in err, err
     scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
     open(os.path.join(scenes, "T01.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
-    bad = json.loads(json.dumps(base)); bad["entries"][0]["prepend_seeds"] = ["assets/scenes/T01.png"]
+    bad = json.loads(json.dumps(base)); bad["entries"][0].pop("replace")
+    bad["entries"][0]["defect"] = "mechanism"
+    bad["entries"][0]["prepend_seeds"] = ["assets/scenes/T01.png"]
     spec, err = _retry(shots, out, bad)
-    assert spec is None and "old video scene output" in err, err
+    assert spec is None and "old video scene output" in err and "verified" in err, err
     open(os.path.join(scenes, "T01-retry.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
     spec, err = _retry(shots, out, base)
     assert spec is None and "collides with existing" in err, err
@@ -623,7 +656,8 @@ def test_retry_overlay_replaces_one_exact_canonical_clause_only_once():
     doc["long_form"]["shots"][0]["still_prompt"] = original
     json.dump(doc, open(shots, "w", encoding="utf-8"))
     overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
-        {"kind": "scene", "shot": "T01", "name": "T01-card-retry", "instruction": "Keep the card central.",
+        {"kind": "scene", "shot": "T01", "name": "T01-card-retry",
+         "defect": "content",
          "replace": {"from": original, "to": "A single card reads 'NEW'."}}
     ]}
     spec, err = _retry(shots, out, overlay)
@@ -639,24 +673,28 @@ def test_retry_overlay_replaces_one_exact_canonical_clause_only_once():
 
 def test_retry_overlay_digest_is_emitted_and_mismatch_is_a_zero_cost_error():
     v, shots, out = _retry_fixture()
-    prep = os.path.join(v, "assets", "prep.png")
+    prep = os.path.join(KIT_DIR, "refs", "env", "prop-drive.png")
     digest = hashlib.sha256(open(prep, "rb").read()).hexdigest()
     overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
-        {"kind": "scene", "shot": "T01", "name": "T01-digest-retry", "instruction": "Keep workers small.",
-         "prepend_seeds": [{"path": "assets/prep.png", "sha256": digest}]}
+        {"kind": "scene", "shot": "T01", "name": "T01-digest-retry",
+         "defect": "mechanism",
+         "prepend_seeds": [{"path": "refs/env/prop-drive.png", "sha256": digest}]}
     ]}
     spec, err = _retry(shots, out, overlay)
     assert err is None, err
     assert spec[0]["seed_sha256"][spec[0]["seed"][0]] == digest, spec[0]
-    open(prep, "wb").write(b"changed")
-    spec, err = _retry(shots, out, overlay)
+    bad = json.loads(json.dumps(overlay))
+    bad["entries"][0]["prepend_seeds"][0]["sha256"] = "0" * 64
+    spec, err = _retry(shots, out, bad)
     assert spec is None and "SHA-256 mismatch" in err, err
 
 
 def test_retry_overlay_malformed_identity_fields_fail_as_controlled_errors():
     v, shots, out = _retry_fixture()
     base = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
-        {"kind": "scene", "shot": "T01", "name": "T01-retry", "instruction": "Keep workers small."}
+        {"kind": "scene", "shot": "T01", "name": "T01-retry",
+         "defect": "content",
+         "replace": {"from": "small crowd", "to": "small background crowd"}}
     ]}
     bad = json.loads(json.dumps(base)); bad["entries"][0]["shot"] = []
     spec, err = _retry(shots, out, bad)
@@ -665,7 +703,8 @@ def test_retry_overlay_malformed_identity_fields_fail_as_controlled_errors():
     spec, err = _retry(shots, out, bad)
     assert spec is None and "`name` must be a non-empty string" in err, err
     bad = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
-        {"kind": "step1", "shot": "T02", "name": "fig-retry", "character": []}
+        {"kind": "step1", "shot": "T02", "name": "fig-retry", "defect": "rig",
+         "character": []}
     ]}
     spec, err = _retry(shots, out, bad)
     assert spec is None and "`character` must be a non-empty string" in err, err

@@ -320,13 +320,13 @@ def figures_expansion(figures, base_rig, crowd_rig, stage_role=None):
     return "\n\n".join(blocks)
 
 
-def assemble_prompt(descriptor, delta, figures_text="", righold=""):
-    """Prompt assembly, ONE place, in order: [bible descriptor] + [still_prompt/delta] + [figures
-    expansion] + [§2c RIG-HOLD]. The figures clauses precede §2c so that its crowd exemption
-    ("crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it") reads a
-    clause the prompt has already stated. The shot's `global_prompt_suffix` rides inside the
-    still_prompt (VPW bakes it in), so it is not a separate slot here."""
-    return "\n\n".join(p for p in (descriptor, delta, figures_text, righold) if p)
+def assemble_prompt(descriptor, payload, figures_text="", righold=""):
+    """Provider zones, ONE place: descriptor -> generated figure/rig policy -> authored payload.
+
+    The payload (or its exact surgical replacement) is literal final provider text. Crowd policy
+    still precedes RIG-HOLD so the hold's crowd exemption refers to a clause already stated.
+    """
+    return "\n\n".join(p for p in (descriptor, figures_text, righold, payload) if p)
 
 
 HARDENED_SCENE_STYLE = (
@@ -533,6 +533,63 @@ def _is_canonical(reg, path, character):
     return bool(base) and _stem(rp) == _stem(base)
 
 
+_SEED_ROLES = {"place", "figure", "canonical", "parent", "pose", "expression", "crowd",
+               "prop", "environment", "reference"}
+
+
+def seed_role_violations(k, r):
+    """Validate role metadata against both final paths and emitted ordinal prose."""
+    roles = r.get("seed_roles")
+    if roles is None:
+        if (r.get("mode", "identity") in ("environment", "style")
+                and (r.get("seed") or [])):
+            return [f"{r.get('name', '<unnamed>')}: seeded composite requests require ordered "
+                    "`seed_roles`; hand-written specs may not bypass provider-part role truth."]
+        # Identity/new-character requests derive their own canonical seed. A true zero-seed root
+        # scene has no image part to label.
+        return []
+    name, seeds = r.get("name", "<unnamed>"), list(r.get("seed") or [])
+    if not isinstance(roles, list):
+        return [f"{name}: `seed_roles` must be an ordered list matching `seed`."]
+    bad = []
+    for index, entry in enumerate(roles):
+        required = {"path", "role", "character"}
+        if (not isinstance(entry, dict) or set(entry) != required
+                or not isinstance(entry.get("path"), str) or not entry.get("path")
+                or entry.get("role") not in _SEED_ROLES
+                or (entry["character"] is not None and not isinstance(entry["character"], str))):
+            bad.append(f"{name}: seed role {index + 1} must contain valid path/role/character fields.")
+    if bad:
+        return bad
+    if [entry["path"] for entry in roles] != seeds:
+        bad.append(f"{name}: seed role order does not match the final provider seed order.")
+    asset_kinds = {a.get("name"): a.get("kind") for a in k.reg.get("assets", [])}
+    for index, entry in enumerate(roles):
+        path, role, character = entry["path"], entry["role"], entry["character"]
+        truthful = True
+        if role == "figure":
+            truthful = bool(character) and _is_figure_frame(path, character)
+        elif role == "canonical":
+            truthful = bool(character) and _is_canonical(k.reg, path, character)
+        elif role in ("place", "parent"):
+            truthful = _is_chain_frame(path)
+        elif role in ("pose", "expression"):
+            expected = ("pose", "action", "interaction") if role == "pose" else ("expression",)
+            truthful = bool(character) and asset_kinds.get(_stem(path)) in expected
+        elif role == "crowd":
+            truthful = _stem(path).startswith("crowd-exemplar")
+        elif role in ("prop", "environment"):
+            truthful = asset_kinds.get(_stem(path)) == role
+        if not truthful:
+            bad.append(f"{name}: seed role {index + 1} `{role}` is not truthful for `{path}`.")
+    payload = r.get("payload")
+    if not isinstance(payload, str):
+        bad.append(f"{name}: a role-bearing request must keep its canonical authored `payload`.")
+    elif r.get("delta") != placement_delta(payload, roles):
+        bad.append(f"{name}: seed role prose does not match the final ordered role metadata.")
+    return bad
+
+
 def seeding_law_violations(k, r, seeds):
     """Every way this ONE request fails the seeding law, named with its shot and its missing asset.
     Returns a list so the caller reports the whole batch at once — a truncated failure list is the
@@ -540,7 +597,7 @@ def seeding_law_violations(k, r, seeds):
     mode = r.get("mode", "identity")
     if mode not in ("environment", "style"):
         return []              # identity/new_character gens BUILD the seeds; they cannot seed off themselves
-    name, delta = r["name"], r.get("delta") or ""
+    name, delta = r["name"], r.get("payload", r.get("delta") or "")
     bad = []
     anon, crowd = _fig_declared(r.get("figures"))
     if anon:
@@ -570,6 +627,42 @@ def seeding_law_violations(k, r, seeds):
                                f"pose re-synthesized from words reverts to the five-finger prior.")
         return bad
     delta_beat = str(r.get("stage_role", "")).lower() == "delta"
+    if delta_beat:
+        declared = r.get("delta_primitives") or {}
+        if not isinstance(declared, dict):
+            bad.append(f"{name}: `delta_primitives` must be a per-character object.")
+            declared = {}
+        asset_kinds = {a.get("name"): a.get("kind") for a in k.reg.get("assets", [])}
+        cast_by_character = dict(cast)
+        allowed_primitives = set()
+        for character, values in declared.items():
+            if character not in cast_by_character:
+                bad.append(f"{name}: `delta_primitives` names `{character}`, which is not in the "
+                           "authored shot cast.")
+                continue
+            if (not isinstance(values, list) or not values
+                    or not all(isinstance(p, str) and p for p in values)
+                    or len(values) != len(set(values)) or len(values) > 1):
+                bad.append(f"{name}: `delta_primitives.{character}` must declare exactly one "
+                           "proved, unique primitive.")
+                continue
+            for primitive in values:
+                if (primitive not in cast_by_character[character]
+                        or asset_kinds.get(primitive) not in _PRIMITIVE_KINDS):
+                    bad.append(f"{name}: `delta_primitives.{character}` binds `{primitive}` outside "
+                               "that character's authored pose/expression recipe.")
+                    continue
+                allowed_primitives.add(primitive)
+                if not any(_stem(seed) == primitive for seed in seeds):
+                    bad.append(f"{name}: declared delta primitive `{primitive}` is absent from the "
+                               "actual provider seed parts.")
+        undeclared = [_stem(seed) for seed in seeds
+                      if asset_kinds.get(_stem(seed)) in _PRIMITIVE_KINDS
+                      and _stem(seed) not in allowed_primitives]
+        if undeclared:
+            bad.append(f"{name}: delta carries undeclared full-frame primitive(s): "
+                       f"{', '.join(undeclared)}. Use parent + canonical by default; declare only "
+                       "a proved necessary primitive.")
     for c, prims in cast:
         if chars.get(c, {}).get("no_hands"):     # personified object: canonical IS the whole rig
             if not any(_is_canonical(k.reg, s, c) for s in seeds):
@@ -813,6 +906,7 @@ def preflight_batch(k, reqs, force, dry):
             plan.append((r, None)); pending.add(name); continue
         seeds = resolve_request_seeds(k, r, pending)
         verify_request_seed_digests(k, r, seeds)
+        bad.extend(seed_role_violations(k, r))
         bad.extend(seeding_law_violations(k, r, seeds))
         plan.append((r, seeds)); pending.add(name)
     if bad:
@@ -857,6 +951,9 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
         if dry:
             report(name, f"DRY (no API call) mode={mode} aspect={aspect} size={size}")
             print(f"      seeds: {[os.path.relpath(s, k.root).replace(chr(92), '/') for s in seeds]}")
+            authority = r.get("retry_authority")
+            if authority:
+                print(f"      retry authority: {json.dumps(authority, sort_keys=True)}")
             print("      ----- assembled prompt -----")
             for ln in text.splitlines():
                 print("      " + ln)
@@ -901,47 +998,70 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
 # validates it — the builder and the seeding law are one file, and the retry path reuses it.
 
 
-def figure_card_delta(character, pose, expression):
-    """STEP 1's delta — the seeding RECIPE, unchanged, with the attribution language that stops two
-    base-derived primitives out-voting the one specific canonical (the documented Attempt-B
-    majority-vote failure). Role order matches the seed order the caller builds."""
-    ordinals, out = ["SECOND", "THIRD"], [
-        f"The FIRST image is `{character}`'s character canonical — identity, head tone, hair and "
-        f"the pinned costume come from THIS image ONLY."]
-    if expression:
-        out.append(f"The {ordinals.pop(0)} image is the `{expression}` expression reference — copy "
-                   f"ONLY its eye/brow/mouth shape onto `{character}`'s face; ignore its head tone, "
-                   f"hairline and identity.")
-    if pose:
-        out.append(f"The {ordinals.pop(0)} image is the `{pose}` pose reference — copy ONLY its body "
-                   f"pose, hands and limb placement onto `{character}`; ignore its head tone, face "
-                   f"and costume.")
-    out.append("The whole figure is in frame head to feet, standing or seated exactly as the pose "
-               "reference shows, on a thin visible ground line with one soft contact shadow directly "
-               "beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no "
-               "furniture. This is a reference sheet: the character alone, fully resolved, ready to "
-               "be placed into a separate scene.")
-    return " ".join(out)
+_ORDINALS = ("FIRST", "SECOND", "THIRD", "FOURTH")
 
 
-def placement_delta(prompt, cast, has_plate):
-    """STEP 2's delta: the shot's own prose VERBATIM (so every scene noun it authored is restated,
-    not paraphrased) plus the placement block. The block also carries the guaranteed rig-hold
-    signal — a STEP-1 frame lives outside `/refs/`, so `_is_char_seed` never fires on it and §2c
-    would otherwise reach the prompt only if the author's prose happened to contain a figure word."""
-    one = len(cast) == 1
-    it, them = ("it", "that figure") if one else ("them", "those figures")
-    head = "The FIRST image is" if one else f"The FIRST {len(cast)} images are"
-    out = [prompt,
-           f"PLACEMENT. {head} {', '.join('`%s`' % c for c in cast)}, already posed, lit and fully "
-           f"resolved as a complete figure — carry identity, costume, hair, head tone, body pose, "
-           f"hands and facial expression from {'it' if one else 'them'} EXACTLY. Every description "
-           f"of {them} above is ALREADY satisfied by {'that image' if one else 'those images'}: do "
-           f"not re-draw, re-pose or re-dress {it}."]
-    if has_plate:
-        out.append("The LAST image is the destination place — match its palette, outline weight and "
-                   "lighting exactly.")
-    return "\n\n".join(out)
+def _seed_role(path, role, character=None):
+    return {"path": path, "role": role, "character": character}
+
+
+def _dedupe_seed_roles(entries):
+    """Stable first-wins dedup for the path and its semantic role as one indivisible unit."""
+    out, seen = [], set()
+    for entry in entries:
+        if not entry or not entry.get("path") or entry["path"] in seen:
+            continue
+        out.append(entry); seen.add(entry["path"])
+    return out
+
+
+def seed_roles_text(seed_roles):
+    """Provider-visible ordinal prose derived only from final ordered image parts."""
+    lines = []
+    for index, entry in enumerate(seed_roles or []):
+        ordinal = _ORDINALS[index] if index < len(_ORDINALS) else f"IMAGE {index + 1}"
+        role = entry["role"]
+        path = entry["path"]
+        character = entry.get("character") or _stem(path)
+        if role == "place":
+            detail = "the destination place â€” preserve its set, palette, outline weight and lighting"
+        elif role == "figure":
+            detail = (f"`{character}`'s complete STEP-1 figure â€” carry that figure's identity, "
+                      "costume, pose, hands and expression exactly")
+        elif role == "canonical":
+            detail = (f"`{character}`'s character canonical â€” identity, head tone, hair and the "
+                      "pinned costume come from this image only")
+        elif role == "parent":
+            detail = "the in-chain parent scene â€” preserve its held set and existing composition"
+        elif role == "pose":
+            detail = (f"the `{_stem(path)}` pose reference for `{character}` â€” copy only body pose, "
+                      "hands and limb placement; ignore identity and costume")
+        elif role == "expression":
+            detail = (f"the `{_stem(path)}` expression reference for `{character}` â€” copy only "
+                      "eye/brow/mouth shape; ignore identity, head tone and hairline")
+        elif role == "crowd":
+            detail = "the crowd exemplar â€” use only its anonymous crowd proportion and face tier"
+        elif role == "prop":
+            detail = f"the `{character}` prop canonical â€” preserve that object's design"
+        elif role == "environment":
+            detail = f"the `{character}` environment reference â€” preserve its authored place facts"
+        else:
+            detail = f"the `{character}` supporting reference"
+        lines.append(f"The {ordinal} image is {detail}.")
+    return "SEED ROLES. " + " ".join(lines) if lines else ""
+
+
+def placement_delta(prompt, seed_roles):
+    """Put generated image-role policy before authored text so the payload remains final."""
+    return "\n\n".join(p for p in (seed_roles_text(seed_roles), prompt) if p)
+
+
+def figure_card_payload():
+    return ("The whole figure is in frame head to feet, standing or seated exactly as the pose "
+            "reference shows, on a thin visible ground line with one soft contact shadow directly "
+            "beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. "
+            "This is a reference sheet: the character alone, fully resolved, ready to be placed "
+            "into a separate scene.")
 
 
 def _shot_iter(doc):
@@ -1036,9 +1156,9 @@ def place_anchor_for(video, anchor, root, name):
 def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candidates=None):
     """Build one deterministic slate per shot from the shot's own `assets` tags and `figures`.
 
-    STEP 2's priority, stated ONCE:  [STEP-1 figure(s)]  >  [the video's plate: the in-chain parent
-    or the place's own first frame].  A delta beat keeps today's single-step order unchanged:
-    [canonical(s)] > [the video's plate] > [pose/interaction primitive] > [expression frame].
+    STEP 2's priority, stated ONCE: [STEP-1 figure(s)] > [the video's place]. A delta beat uses
+    [in-chain parent] > [canonical identity]; raw pose/expression primitives enter only through
+    the shot's explicit proved-necessary `delta_primitives` declaration.
     Nothing is ever truncated: an over-budget or under-seeded shot is a hard error naming the shot
     and the seed that did not fit, and that list is the re-authoring input."""
     if plate_candidates is not None and plate_candidates not in (2, 3):
@@ -1085,8 +1205,14 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
         place_anchor = (place_anchor_for(video, shot.get("place_anchor"), k.root, name)
                         if in_scope else None)
         delta_beat = str(shot.get("stage_role", "")).lower() == "delta" and place in place_last
+        declared_delta_primitives = shot.get("delta_primitives") or {}
+        if declared_delta_primitives and (not delta_beat or not isinstance(declared_delta_primitives, dict)):
+            raise SystemExit(f"{name}: `delta_primitives` is a per-character object allowed only "
+                             "on an in-chain delta.")
         figs, canons, prims_seeds, staged, why = [], [], [], [], []
-        for c, prims in shot_cast(k.reg, prompt):
+        fig_roles, canon_roles, prim_roles = [], [], []
+        cast_recipe = shot_cast(k.reg, prompt)
+        for c, prims in cast_recipe:
             pose, expr = _split_primitives(k.reg, prims, omitted)
             surplus = [p for p in prims if p not in (pose, expr) and p not in omitted]
             if surplus:
@@ -1097,33 +1223,60 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
             if chars.get(c, {}).get("no_hands"):
                 # personified object: no pose primitive exists for its rig (seeding a human torso
                 # bleeds a human body), so its canonical IS the inheritable base — single step.
-                canons.append(vfile(c)); prims_seeds.append(vfile(expr) if expr else None)
+                canons.append(vfile(c)); canon_roles.append(_seed_role(vfile(c), "canonical", c))
+                if not delta_beat and expr:
+                    prims_seeds.append(vfile(expr))
+                    prim_roles.append(_seed_role(vfile(expr), "expression", c))
                 why.append(f"`{c}` no_hands -> canonical"); continue
             if delta_beat:
-                canons.append(vfile(c))
-                prims_seeds += [vfile(pose) if pose else None, vfile(expr) if expr else None]
-                why.append(f"`{c}` delta -> canonical + parent"); continue
+                canons.append(vfile(c)); canon_roles.append(_seed_role(vfile(c), "canonical", c))
+                declared = declared_delta_primitives.get(c, [])
+                if not isinstance(declared, list) or any(not isinstance(p, str) for p in declared):
+                    raise SystemExit(f"{name}: `delta_primitives.{c}` must be a list of authored "
+                                     "pose/expression vocabulary names.")
+                available = {p for p in (pose, expr) if p}
+                unknown = [p for p in declared if p not in available]
+                if unknown:
+                    raise SystemExit(f"{name}: `delta_primitives.{c}` names unbound primitive(s): "
+                                     f"{', '.join(unknown)}.")
+                for primitive in _dedupe(declared):
+                    role = "expression" if primitive == expr else "pose"
+                    prims_seeds.append(vfile(primitive))
+                    prim_roles.append(_seed_role(vfile(primitive), role, c))
+                why.append(f"`{c}` delta -> parent + canonical"
+                           + (f" + proved {', '.join(declared)}" if declared else "")); continue
             fn = figure_frame_name(c, pose, expr)
             if not in_scope:
                 # Out of scope: resolve what its slate WOULD carry so the law can judge it, but mint
                 # nothing — an out-of-scope shot must not consume the reuse key an in-scope shot owns.
-                figs.append(made.get(fn) or "_staging/" + fn + ".png"); staged.append(c); continue
+                figure_path = made.get(fn) or "_staging/" + fn + ".png"
+                figs.append(figure_path); fig_roles.append(_seed_role(figure_path, "figure", c))
+                staged.append(c); continue
             if fn not in made:
                 reused = on_disk(os.path.join(lib, fn + ".png"), os.path.join(k.staging, fn + ".png"))
                 if reused:
                     made[fn] = reused; why.append(f"`{c}` STEP-1 {fn} REUSED")
                 else:
+                    step1_roles = _dedupe_seed_roles(
+                        [_seed_role(vfile(c), "canonical", c)]
+                        + ([_seed_role(vfile(expr), "expression", c)] if expr else [])
+                        + ([_seed_role(vfile(pose), "pose", c)] if pose else []))
+                    step1_payload = figure_card_payload()
                     spec.append({"name": fn, "mode": "environment", "aspect": "2:3",
                                  "image_size": "1K", "stage_role": "base",
-                                 "seed": _dedupe([vfile(c)] + ([vfile(expr)] if expr else [])
-                                                 + ([vfile(pose)] if pose else [])),
-                                 "delta": figure_card_delta(c, pose, expr),
+                                 "seed": [role["path"] for role in step1_roles],
+                                 "seed_roles": step1_roles, "payload": step1_payload,
+                                 "delta": placement_delta(step1_payload, step1_roles),
                                  "why": f"STEP 1 for `{c}` ({pose or 'no pose'} / {expr or 'no expr'})"})
                     made[fn] = "_staging/" + fn + ".png"
                     why.append(f"`{c}` STEP-1 {fn} GENERATE")
             else:
                 why.append(f"`{c}` STEP-1 {fn} shared")
-            figs.append(made[fn]); staged.append(c)
+            figs.append(made[fn]); fig_roles.append(_seed_role(made[fn], "figure", c)); staged.append(c)
+        unknown_declared_cast = sorted(set(declared_delta_primitives) - {c for c, _ in cast_recipe})
+        if unknown_declared_cast:
+            raise SystemExit(f"{name}: `delta_primitives` names absent cast: "
+                             f"{', '.join(unknown_declared_cast)}.")
         parent = place_last.get(place) if delta_beat else place_first.get(place)
         plate = place_anchor or ((emitted.get(parent) or
                                   on_disk(os.path.join(scenes, (parent or "") + ".png")))
@@ -1131,22 +1284,31 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
         crowd = _fig_declared(shot.get("figures"))[1]
         # Pass 1's explicit tags are the contract: route only non-figure assets here. Cast,
         # primitives and the crowd exemplar already have higher-priority structural routes above.
-        tagged = [vfile(n) for n in (shot.get("assets") or {})
-                  if (reg_assets.get(n) or {}).get("kind") in ("prop", "environment")]
+        tagged_names = [n for n in (shot.get("assets") or {})
+                        if (reg_assets.get(n) or {}).get("kind") in ("prop", "environment")]
+        tagged_roles = [_seed_role(vfile(n), (reg_assets.get(n) or {}).get("kind"), n)
+                        for n in tagged_names]
         root_scene = not parent and not place_anchor
-        seeds = _dedupe(figs + canons + [plate] + prims_seeds
-                        + ([crowd_ex] if crowd else []) + tagged)
-        text = prompt
-        if staged:
-            text = placement_delta(prompt, staged, bool(plate))
+        plate_role = _seed_role(plate, "parent" if delta_beat else "place") if plate else None
+        crowd_role = _seed_role(crowd_ex, "crowd") if crowd else None
+        if delta_beat:
+            seed_roles = _dedupe_seed_roles([plate_role] + canon_roles + prim_roles
+                                            + [crowd_role] + tagged_roles)
+        else:
+            seed_roles = _dedupe_seed_roles(fig_roles + canon_roles + [plate_role] + prim_roles
+                                            + [crowd_role] + tagged_roles)
+        seeds = [role["path"] for role in seed_roles]
+        text = placement_delta(prompt, seed_roles)
         if place_anchor:
             why.append(f"PLACE-ANCHOR = {shot['place_anchor']}")
         elif root_scene:
             why.append("ROOT-SCENE — hardened descriptor, no image anchor")
         why_text = "; ".join(why) or "no cast — the scene composes from the place"
-        item = {"name": name, "mode": "environment", "aspect": aspect, "delta": text, "seed": seeds,
+        item = {"name": name, "mode": "environment", "aspect": aspect, "delta": text,
+                "payload": prompt, "seed": seeds, "seed_roles": seed_roles,
                 "figures": shot.get("figures"), "stage_role": shot.get("stage_role"),
                 "assets_omitted": sorted(omitted) or None, "root_scene": root_scene,
+                "delta_primitives": declared_delta_primitives or None,
                 "why": why_text}
         if in_scope:
             if staged and not (shot.get("figures") or depicts_figures(text)):
@@ -1201,8 +1363,12 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
 
 
 # --- `batch --retry`: builder-owned surgical retry overlays --------------------------------
-RETRY_OVERLAY_SCHEMA = "faceless-youtube/forge-retry-overlay@1"
+RETRY_OVERLAY_SCHEMA = "faceless-youtube/forge-retry-overlay@2"
 _RETRY_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+_EXPRESSION_RETRY = re.compile(
+    r"\b(expr(?:ession)?(?:-[a-z0-9-]+)?|facial|smile|grin|teeth|worried|smug|deadpan|"
+    r"caught|pleased|angry|sad|fear)\b",
+    re.IGNORECASE)
 
 
 def retry_seed_for(k, video, raw, label):
@@ -1291,25 +1457,56 @@ def _repaired_parent_matches(k, video, seed, parent_seeds):
 
 
 def _retry_scene(item, source, entry, k, video, label):
-    allowed = {"kind", "shot", "name", "instruction", "prepend_seeds", "extra_seeds", "replace"}
+    allowed = {"kind", "shot", "name", "defect", "instruction", "prepend_seeds",
+               "extra_seeds", "replace"}
     unknown = set(entry) - allowed
     if unknown:
         raise SystemExit(f"{label}: scene retry has unknown key(s) {sorted(unknown)!r}.")
+    defect = entry.get("defect")
+    if defect == "expression":
+        raise SystemExit(f"{label}: expression defects route to a `step1` (STEP-1) re-mint; a scene "
+                         "retry may not contradict an expression seed with prose.")
+    if defect not in ("content", "seed", "mechanism"):
+        raise SystemExit(f"{label}: scene retry `defect` must be `content`, `seed`, or `mechanism`; "
+                         "expression defects route to a `step1` (STEP-1) re-mint.")
     instruction = entry.get("instruction")
-    if not isinstance(instruction, str) or not instruction.strip():
-        raise SystemExit(f"{label}: scene retry needs a non-empty additive `instruction`.")
-    text = item["delta"]
+    if instruction is not None:
+        if isinstance(instruction, str) and _EXPRESSION_RETRY.search(instruction):
+            raise SystemExit(f"{label}: expression defects route to a `step1` (STEP-1) re-mint; a scene "
+                             "retry may not contradict an expression seed with prose.")
+        raise SystemExit(f"{label}: scene retry forbids additive `instruction`; use one exact "
+                         "`replace` or a seed/mechanism replacement with no content append.")
+    payload = item.get("payload", item["delta"])
+    text = payload
     replacement = entry.get("replace")
     if replacement is not None:
+        if defect != "content":
+            raise SystemExit(f"{label}: exact `replace` authority requires `defect: content`.")
         if not isinstance(replacement, dict) or set(replacement) != {"from", "to"}:
             raise SystemExit(f"{label}: `replace` must contain only non-empty `from` and `to` strings.")
         old, new = replacement.get("from"), replacement.get("to")
-        if not isinstance(old, str) or not old or not isinstance(new, str) or not new or text.count(old) != 1:
+        if (isinstance(old, str) and isinstance(new, str)
+                and _EXPRESSION_RETRY.search(old + " " + new)):
+            raise SystemExit(f"{label}: expression defects route to a `step1` (STEP-1) re-mint; "
+                             "scene content replacement may not change an expression register.")
+        if (not isinstance(old, str) or not old or not isinstance(new, str) or not new
+                or old == new or text.count(old) != 1):
             raise SystemExit(f"{label}: replacement source must occur exactly once in the canonical scene delta.")
-        text = text.replace(old, new)
+        start = text.index(old)
+        replaced_text = text[:start] + new + text[start + len(old):]
+        if (replaced_text[:start] != text[:start]
+                or replaced_text[start + len(new):] != text[start + len(old):]):
+            raise SystemExit(f"{label}: replacement changed bytes outside its one causal span.")
+        text = replaced_text
     prepend, extra = entry.get("prepend_seeds", []), entry.get("extra_seeds", [])
     if not isinstance(prepend, list) or not isinstance(extra, list):
         raise SystemExit(f"{label}: `prepend_seeds` and `extra_seeds` must be lists when present.")
+    has_seed_change = bool(prepend or extra)
+    if bool(replacement) == has_seed_change:
+        raise SystemExit(f"{label}: scene retry needs exactly one surgical authority: one exact "
+                         "`replace`, or a seed/mechanism replacement with no content change.")
+    if has_seed_change and defect not in ("seed", "mechanism"):
+        raise SystemExit(f"{label}: seed/mechanism authority requires `defect: seed` or `mechanism`.")
     added_first = [retry_seed_for(k, video, s, label) for s in prepend]
     added_last = [retry_seed_for(k, video, s, label) for s in extra]
     native = list(item.get("seed") or [])
@@ -1322,8 +1519,26 @@ def _retry_scene(item, source, entry, k, video, label):
         if matches:
             repaired[path] = matches
     replaced = {parent for matches in repaired.values() for parent in matches}
-    seeds = _dedupe([p for p, _ in added_first] + [s for s in native if s not in replaced] +
-                    [p for p, _ in added_last])
+    reordered = {path for path, _ in added_first + added_last if path in native}
+    native_roles = item.get("seed_roles") or [
+        _seed_role(path, "parent" if _is_scene_seed(path) else "reference") for path in native]
+    native_role_by_path = {role["path"]: role for role in native_roles}
+
+    def added_role(path):
+        if path in native_role_by_path:
+            return dict(native_role_by_path[path])
+        matches = repaired.get(path) or []
+        if matches:
+            inherited = native_role_by_path.get(matches[0], _seed_role(matches[0], "parent"))
+            return dict(inherited, path=path)
+        return _seed_role(path, "reference")
+
+    seed_roles = _dedupe_seed_roles(
+        [added_role(path) for path, _ in added_first]
+        + [role for role in native_roles if role["path"] not in replaced]
+        + [added_role(path) for path, _ in added_last])
+    seeds = [role["path"] for role in seed_roles]
+    actual_reorder = reordered if seeds != native else set()
     for seed in (s for s in seeds if _is_scene_seed(s)):
         checked = _video_scene_frame(video, os.path.join(k.root, seed), k.root, label,
                                      "retry scene seed")
@@ -1333,14 +1548,23 @@ def _retry_scene(item, source, entry, k, video, label):
         if status != "verified":
             raise SystemExit(f"{label}: fresh retry may not seed an old video scene output unless "
                              "its manifest `review_status` is `verified`.")
+    if has_seed_change and not (replaced or actual_reorder):
+        raise SystemExit(f"{label}: seed/mechanism retry must replace a named in-chain parent or "
+                         "change the order of existing provider seeds; additions and no-ops are additive.")
     digest_by_path = {}
     for path, digest in added_first + added_last:
         if digest and path in digest_by_path and digest_by_path[path] != digest:
             raise SystemExit(f"{label}: the same retry seed carries conflicting SHA-256 digests.")
         if digest:
             digest_by_path[path] = digest
-    out = dict(item, name=entry["name"], seed=seeds,
-               delta=text + "\n\nRETRY OVERLAY. " + instruction.strip(),
+    authority = ({"kind": "replace", "changed_spans": 1,
+                  "from": replacement["from"], "to": replacement["to"]}
+                 if replacement else
+                 {"kind": "seed/mechanism", "changed_spans": 1,
+                  "replaced": sorted(replaced), "reordered": sorted(actual_reorder)})
+    out = dict(item, name=entry["name"], seed=seeds, seed_roles=seed_roles,
+               payload=text, delta=placement_delta(text, seed_roles),
+               retry_authority=authority,
                why=item.get("why", "") + f"; RETRY overlay from `{entry['shot']}`")
     if digest_by_path:
         out["seed_sha256"] = digest_by_path
@@ -1350,10 +1574,12 @@ def _retry_scene(item, source, entry, k, video, label):
 
 
 def _retry_step1(entry, source, k, label):
-    allowed = {"kind", "shot", "character", "name", "instruction"}
+    allowed = {"kind", "shot", "character", "name", "defect", "instruction"}
     unknown = set(entry) - allowed
     if unknown:
         raise SystemExit(f"{label}: STEP-1 retry has unknown key(s) {sorted(unknown)!r}.")
+    if entry.get("defect") not in ("expression", "rig"):
+        raise SystemExit(f"{label}: STEP-1 retry `defect` must be `expression` or `rig`.")
     character = entry.get("character")
     if not isinstance(character, str) or not character.strip():
         raise SystemExit(f"{label}: STEP-1 `character` must be a non-empty string.")
@@ -1365,15 +1591,23 @@ def _retry_step1(entry, source, k, label):
     def vfile(n):
         return ((source.get("assets") or {}).get(n) or (assets.get(n) or {}).get("file")
                 or (k.reg.get("characters", {}).get(n) or {}).get("base"))
-    seeds = _dedupe([vfile(character), vfile(expr) if expr else None, vfile(pose) if pose else None])
+    seed_roles = _dedupe_seed_roles(
+        [_seed_role(vfile(character), "canonical", character)]
+        + ([_seed_role(vfile(expr), "expression", character)] if expr else [])
+        + ([_seed_role(vfile(pose), "pose", character)] if pose else []))
+    seeds = [role["path"] for role in seed_roles]
     instruction = entry.get("instruction")
     if instruction is not None and (not isinstance(instruction, str) or not instruction.strip()):
         raise SystemExit(f"{label}: STEP-1 `instruction` must be a non-empty string when present.")
-    delta = figure_card_delta(character, pose, expr)
+    payload = figure_card_payload()
     if instruction:
-        delta += "\n\nRETRY OVERLAY. " + instruction.strip()
+        payload += "\n\n" + instruction.strip()
+    delta = placement_delta(payload, seed_roles)
     return {"name": entry["name"], "mode": "environment", "aspect": "2:3", "image_size": "1K",
-            "stage_role": "base", "seed": seeds, "delta": delta,
+            "stage_role": "base", "seed": seeds, "seed_roles": seed_roles,
+            "payload": payload, "delta": delta,
+            "retry_authority": {"kind": "step1-remint", "changed_spans": 1,
+                                "defect": entry["defect"], "character": character},
             "why": f"STEP-1-only retry for `{character}` from `{entry['shot']}`"}
 
 
@@ -1588,7 +1822,7 @@ def main():
     ap.add_argument("--kit", required=True, help="path to the channel's visual-kit dir")
     ap.add_argument("--batch", help="gen/register/place/manifest: JSON file with a list of "
                                     "requests/entries/names; batch: the video's shots.json")
-    ap.add_argument("--retry", help="batch: a versioned forge-retry-overlay@1 manifest; derives only "
+    ap.add_argument("--retry", help="batch: a versioned forge-retry-overlay@2 manifest; derives only "
                                     "the named retry requests from the canonical shots.json")
     ap.add_argument("--name"); ap.add_argument("--character", default="base")
     ap.add_argument("--mode", default="identity"); ap.add_argument("--delta")
@@ -1638,8 +1872,14 @@ def main():
         if a.batch:
             reqs = json.load(open(a.batch, encoding="utf-8"))
         else:
-            reqs = [{"name": a.name, "character": a.character, "mode": a.mode, "delta": a.delta,
-                     "aspect": a.aspect, "seed": a.seed.split(",") if a.seed else None,
+            seed_paths = a.seed.split(",") if a.seed else None
+            seed_roles = ([_seed_role(path, "reference") for path in seed_paths]
+                          if seed_paths and a.mode in ("environment", "style") else None)
+            payload = a.delta or ""
+            reqs = [{"name": a.name, "character": a.character, "mode": a.mode,
+                     "payload": payload if seed_roles is not None else None,
+                     "delta": placement_delta(payload, seed_roles) if seed_roles is not None else a.delta,
+                     "aspect": a.aspect, "seed": seed_paths, "seed_roles": seed_roles,
                      "figures": json.loads(a.figures) if a.figures else None,
                      "stage_role": a.stage_role}]
         vid = a.video or video_dir_of(reqs, k.root)

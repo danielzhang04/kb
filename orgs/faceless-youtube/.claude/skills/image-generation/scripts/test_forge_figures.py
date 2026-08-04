@@ -71,11 +71,11 @@ def test_delta_shot_keeps_the_crowd_clause():
 
 
 # --- (c) legacy shot: byte-identical to pre-`figures` assembly ----------------------------------
-def test_shot_without_figures_assembles_byte_identically():
+def test_shot_without_figures_keeps_payload_final_under_the_new_zone_order():
     """REGRESSION GUARD. The pre-`figures` assembly was `descriptor + "\\n\\n" + delta` plus
     `"\\n\\n" + righold` when held. A shot with no `figures` key must produce those exact bytes —
     the field is additive or it silently re-prompts every legacy shot in the library."""
-    legacy_before = DESC_STYLE + "\n\n" + SHOT_LEGACY["still_prompt"] + "\n\n" + DESC_RIGHOLD
+    legacy_before = DESC_STYLE + "\n\n" + DESC_RIGHOLD + "\n\n" + SHOT_LEGACY["still_prompt"]
     assert _assemble(SHOT_LEGACY, hold=True) == legacy_before
     no_hold_before = DESC_STYLE + "\n\n" + SHOT_LEGACY["still_prompt"]
     assert _assemble(SHOT_LEGACY, hold=False) == no_hold_before
@@ -85,13 +85,13 @@ def test_shot_without_figures_assembles_byte_identically():
 
 
 # --- assembly order + the rig-hold signal ------------------------------------------------------
-def test_assembly_order_is_descriptor_delta_figures_righold():
+def test_assembly_order_is_descriptor_figures_righold_payload():
     text = _assemble(SHOT_BASE)
     i_desc = text.index(DESC_STYLE)
     i_delta = text.index("Wide shot of a brick dock")
     i_fig = text.index(CROWD_RIG)
     i_hold = text.index(DESC_RIGHOLD)
-    assert i_desc < i_delta < i_fig < i_hold, (i_desc, i_delta, i_fig, i_hold)
+    assert i_desc < i_fig < i_hold < i_delta, (i_desc, i_fig, i_hold, i_delta)
 
 
 def test_declared_figures_force_the_rig_hold():
@@ -104,10 +104,14 @@ def test_declared_figures_force_the_rig_hold():
 
 def test_step2_preserves_authored_prompt_and_identity_carry_without_scale_scaffold():
     authored = "`hq-banker` stands behind the polished desk in a high-rise office."
-    text = placement_delta(authored, ["hq-banker"], True)
-    assert text.startswith(authored + "\n\nPLACEMENT."), text
-    assert "carry identity, costume, hair, head tone, body pose, hands and facial expression" in text
-    assert "destination place" in text and "match its palette, outline weight and lighting" in text
+    roles = [
+        {"path": "fig-hq-banker.png", "role": "figure", "character": "hq-banker"},
+        {"path": "assets/scenes/office.png", "role": "place"},
+    ]
+    text = placement_delta(authored, roles)
+    assert text.endswith("\n\n" + authored), text
+    assert "`hq-banker`'s complete STEP-1 figure" in text
+    assert "destination place" in text and "preserve its set, palette, outline weight and lighting" in text
     for removed in ("true human scale", "ground plane", "occluded", "re-lit"):
         assert removed not in text, (removed, text)
 

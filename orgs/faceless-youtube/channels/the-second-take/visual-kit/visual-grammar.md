@@ -64,7 +64,7 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
   Neither is globally preferred; never add or remove people to satisfy a population target.
 
 **Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
-it, each `delta` changes exactly ONE element, **≤3 deltas**, then a re-base or a hard cut. A world,
+it, each `delta` changes exactly ONE physically feasible semantic transformation, **≤3 deltas**, then a re-base or a hard cut. A world,
 setting, subject, or register change is a **hard cut**, never a delta. **A delta PROMPT is a compact
 restatement of the held scene, then the change as its FINAL clause** — the base's identity and
 load-bearing facts carried over tightened, never re-invented or paraphrased into different nouns, closing
@@ -72,6 +72,11 @@ on the one change plus "only this changes; everything else exactly as establishe
 the whole image, so whatever goes unstated gets re-invented, and the change stated last is read as the
 edit rather than as one more scene fact (§2 ordering law). **Disclosure order:** an image never shows
 what the VO has not yet said — a withheld entity is absent entirely from every earlier shot.
+
+**Feasibility gate:** the parent must actually reserve the space and state needed by its one delta; a place
+anchor is figure-free or already occupancy-compatible with later count/scale demands. Completion states say
+`all`, `entirely`, or what `nothing remains`; exact percentage scale, pixel-clear gaps, replacing one person,
+or removing/rearranging most of a seeded object rebase from the pre-transient ancestor or use the layered path.
 
 ## 2. Staging conventions (our cast on screen)
 
@@ -105,7 +110,8 @@ what the VO has not yet said — a withheld entity is absent entirely from every
   dial (`../storytelling-grammar.md §1.4`): `expr-smug` on con/boast beats · hopeful-warm on the sell
   · `expr-deadpan` on ironic counterpoint · `expr-worried`/`expr-shock` on the turn · grim-flat on
   human-cost beats. Reserve strong faces for beats that warrant them; a swap is a legitimate delta.
-- **Co-stars share eye-line and height** unless the size gap or the disconnection IS the argument.
+- **Co-stars share eye-line and height** unless the size gap or the disconnection IS the argument. A named face
+  that carries the beat states its orientation and the foreground/occlusion protection that keeps it visible.
 - **Roles read at a glance.** Named cast wear pinned canonical outfits (`registry.json`) unless the
   shot authors a change; an unnamed role carries 1–2 unmistakable signifiers — a role the viewer must
   deduce is a staging failure.
@@ -118,7 +124,10 @@ what the VO has not yet said — a withheld entity is absent entirely from every
   has a backticked slug and a canonical, and it is seeded; CROWD is declared `"crowd": true`
   (`shots-schema.md §2`) and seeded from the crowd exemplar. **A story-bearing foreground individual
   belongs in the planned cast and must not be replaced with an empty object merely to avoid a figure.**
-  An anonymous foreground human does not exist; people without a story-bearing identity are staged at
+  An anonymous foreground human does not exist; an anonymous person with an individual count, action, or
+  face requirement is CAST or the beat becomes mass action. Crowd belongs in a positive rear zone in the
+  PRIMARY scene clause — far side of the real table/shelving, behind a divider, through a doorway — never a
+  co-planar gathering renamed "background-scale" later. People without a story-bearing identity are staged at
   crowd scale. The prose still stages crowd figures — where they stand, what they do, what they wear,
   dressed for the scene's own era and setting, never the exemplar's period dress — but the RIG wording
   is `forge.py`'s: it expands the `crowd` declaration into the

@@ -326,6 +326,94 @@ def test_g8_anchor_is_base_only():
 
 
 # =========================================================================
+# GUARD 9 — spatial tier + delta-feasibility subset (HARD)
+# =========================================================================
+def _spatial(figures, prompt, **extra):
+    sh = {"id": "L01", "figures": figures, "still_prompt": prompt}
+    sh.update(extra)
+    hard = []
+    L.spatial_tier_check("lf", [("L01", sh)], hard)
+    return hard
+
+
+def test_g9_crowd_requires_a_positive_rear_zone_not_background_prose():
+    hard = _spatial({"crowd": True},
+                    "A crowd gathers around the long meeting table in the background-scale tier.")
+    assert len(hard) == 1 and "positive rear zone" in hard[0], hard
+
+
+def test_g9_crowd_in_a_real_rear_zone_is_silent():
+    hard = _spatial({"crowd": True},
+                    "A small crowd waits on the far side of the glass partition, clearly behind the leads.")
+    assert hard == [], hard
+
+
+def test_g9_individually_counted_anonymous_people_cannot_hide_in_crowd():
+    hard = _spatial({"crowd": True},
+                    "Two managers stand on the far side of the table while the crowd waits behind glass.")
+    assert len(hard) == 1 and "individually staged anonymous" in hard[0], hard
+
+
+def test_g9_named_leads_with_mass_crowd_are_silent():
+    hard = _spatial({"crowd": True},
+                    "`brick-foreman` faces `qt-wiles`; the crowd waits behind the glass partition.")
+    assert hard == [], hard
+
+
+def _delta(prompt, changed="the tower topples"):
+    hard = []
+    L.delta_feasibility_check("lf", [("L01", {
+        "id": "L01", "stage_role": "delta", "still_prompt": prompt,
+        "changed_elements": [changed],
+    })], hard)
+    return hard
+
+
+def test_g9_completion_delta_requires_a_completion_quantifier():
+    hard = _delta("Only this changes: the leaning tower has toppled; everything else exactly as established.")
+    assert len(hard) == 1 and "completion quantifier" in hard[0], hard
+
+
+def test_g9_quantified_completion_delta_is_silent():
+    hard = _delta("Only this changes: the entire tower has toppled and nothing remains standing; "
+                  "everything else exactly as established.")
+    assert hard == [], hard
+
+
+def test_g9_exact_gap_delta_routes_out_of_whole_frame_prose():
+    hard = _delta("Only this changes: a belt stops with a visible gap of bare floor before the light pool; "
+                  "everything else exactly as established.")
+    assert len(hard) == 1 and "layered/rebase" in hard[0], hard
+
+
+def test_g9_replace_one_person_delta_routes_out_of_whole_frame_prose():
+    hard = _delta("Only this changes: replace exactly one person at the desk; everything else exactly as established.")
+    assert len(hard) == 1 and "layered/rebase" in hard[0], hard
+
+
+def test_g9_ordinary_delta_is_silent():
+    hard = _delta("Only this changes: the marker card turns red; everything else exactly as established.",
+                  "the marker card turns red")
+    assert hard == [], hard
+
+
+def test_g9_multiple_declared_delta_changes_are_not_one_transformation():
+    hard = []
+    L.delta_feasibility_check("lf", [("L01", {
+        "id": "L01", "stage_role": "delta", "still_prompt": "Only this changes: the card turns red.",
+        "changed_elements": ["the card turns red", "a hand enters frame"],
+    })], hard)
+    assert len(hard) == 1 and "exactly one declared changed element" in hard[0], hard
+
+
+def test_g9_inherited_completion_word_is_not_the_delta_completion_state():
+    hard = _delta("The same wrecked room, the toppled cash bales and overturned desk. Only this changes: "
+                  "a torn page hangs on the wall; everything else exactly as established.",
+                  "a torn page hangs on the wall")
+    assert hard == [], hard
+
+
+# =========================================================================
 # END-TO-END — exit codes and --write must be untouched
 # =========================================================================
 SCRIPT_MD = (

@@ -1189,7 +1189,91 @@ def figures_check(label, objs, hard, soft):
                             f"or false (it gates the section 2d CROWD-RIG clause).")
             elif fig["crowd"] is False:
                 soft.append(f"[{label}] {pid}: `figures.crowd` is false - omit the key instead; "
-                        f"the spec says present-and-true or absent.")
+                            f"the spec says present-and-true or absent.")
+
+
+# ---------------------------------------------------------------------------
+# SPATIAL TIER + DELTA FEASIBILITY — the small mechanically-provable subset.
+#
+# These checks deliberately do NOT try to judge a whole composition, cast identity,
+# parent pixels, or semantic equivalence. Those stay with VPW's critic. They catch
+# only prose shapes that are already a contradiction at authoring time.
+# ---------------------------------------------------------------------------
+_REAR_ZONE = re.compile(
+    r"\bfar\s+side\s+of\b|\bfarther\s+back\b|\bat\s+the\s+rear\s+of\b|"
+    r"\b(?:behind|beyond|through|across)\s+(?:the\s+)?"
+    r"(?:glass|divider|partition|doorway|shelving|shelves|table|counter|barrier|"
+    r"window|corridor|rack|racks)\b",
+    re.IGNORECASE)
+_BACKGROUND_CROWD = re.compile(
+    r"\bbackground-scale\b|\bbackground\s+crowd\b|\bcrowd\b[^.;:]{0,80}\b"
+    r"(?:farther\s+back|clearly\s+(?:smaller|distant)|small\s+and\s+distant)\b",
+    re.IGNORECASE)
+_ANON_INDIVIDUAL = re.compile(
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+|a|an)\s+"
+    r"(?:anonymous\s+)?(?:managers?|workers?|person|people|(?:\w+-)?shoppers?|"
+    r"customers?|executives?|officers?|foremen|clerks?|staff(?:ers)?)(?!\s+crowd\b)\b",
+    re.IGNORECASE)
+_COMPLETION_STATE = re.compile(
+    r"\b(?:toppled|collapsed|cleared|removed|erased|destroyed|dismantled)\b",
+    re.IGNORECASE)
+_COMPLETION_QUANTIFIER = re.compile(
+    r"\b(?:all|entire|entirely|completely|nothing\s+remains|no\s+\w+\s+remains)\b",
+    re.IGNORECASE)
+_PRECISION_DELTA = re.compile(
+    r"\b(?:\d+(?:\.\d+)?\s*%|\d+\s+percent|pixel(?:-clear)?|"
+    r"(?:visible|clear)\s+gap|gap\s+of\s+bare\s+(?:floor|ground)|"
+    r"(?:replace|replacing|remove|removing|swap|swapping)\b[^.;:]{0,80}\b"
+    r"(?:person|people|figure|figures|manager|worker|shopper|customer|executive|officer)\b|"
+    r"\b(?:majority|most|all\s+but)\b[^.;:]{0,80}\b(?:remove|rearrange|clear|erase))",
+    re.IGNORECASE)
+
+
+def spatial_tier_check(label, objs, hard):
+    """HARD only on a declared *background* crowd without rear geometry, or with
+    individually countable anonymous actors. Face/orientation and anchor compatibility need a
+    visual/registry-aware critic, so this function intentionally does not guess."""
+    for pid, sh in objs:
+        if not isinstance(sh.get("figures"), dict) or sh["figures"].get("crowd") is not True:
+            continue
+        prompt = sh.get("still_prompt") or ""
+        if _BACKGROUND_CROWD.search(prompt) and not _REAR_ZONE.search(prompt):
+            hard.append(
+                f"[{label}] {pid}: background crowd has no positive rear zone in the primary scene clause. "
+                "Put the mass on the far side of real geometry (behind glass, shelving, a divider, doorway, "
+                "or table); 'background-scale' after a co-planar gathering is not a mechanism.")
+        match = _ANON_INDIVIDUAL.search(prompt)
+        if match:
+            hard.append(
+                f"[{label}] {pid}: individually staged anonymous {match.group()!r} sits inside "
+                "`figures.crowd: true`. Give that person cast identity or restage the beat as mass action; "
+                "crowd is not a third actor tier.")
+
+
+def delta_feasibility_check(label, objs, hard):
+    """HARD on declared multi-change deltas and known whole-frame precision/removal
+    requests. Physical feasibility against a particular parent remains a critic
+    judgment unless the prompt itself states one of these unrouteable shapes."""
+    for pid, sh in objs:
+        if sh.get("stage_role") != "delta":
+            continue
+        changes = sh.get("changed_elements")
+        if isinstance(changes, list) and len(changes) != 1:
+            hard.append(
+                f"[{label}] {pid}: delta has {len(changes)} declared changed elements; it must express "
+                "exactly one declared changed element (one semantic transformation).")
+        prompt = sh.get("still_prompt") or ""
+        change = re.split(r"\bonly\s+this\s+changes\s*:\s*", prompt, maxsplit=1,
+                          flags=re.IGNORECASE)[-1]
+        if _COMPLETION_STATE.search(change) and not _COMPLETION_QUANTIFIER.search(change):
+            hard.append(
+                f"[{label}] {pid}: completion-state delta lacks a completion quantifier. State all/entirely "
+                "or what nothing remains, rather than leaving a partial result valid.")
+        if _PRECISION_DELTA.search(change):
+            hard.append(
+                f"[{label}] {pid}: exact gap/percentage, replace-one-person, or majority-removal request is "
+                "not a reliable whole-frame prose delta; route it to simplification, a pre-transient rebase, "
+                "or the layered/rebase path.")
 
 
 def _shot_prompts(shots):
@@ -1263,6 +1347,8 @@ def main(argv):
     rig_clause_check("long-form", lf_prompts, suffix, hard)
     shot_class_check("long-form", lf_shots, hard, soft, strict_schema)
     figures_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard, soft)
+    spatial_tier_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard)
+    delta_feasibility_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard)
     place_anchor_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard)
     numeral_form_check("long-form", lf_prompts, suffix, soft)
     long_literal_word_check("long-form", lf_prompts, suffix, soft, lf_vocab)
@@ -1318,6 +1404,8 @@ def main(argv):
         shot_class_check(slabel, sshots, hard, soft, strict_schema)
         figures_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
                       + ([("first_frame", ff_obj)] if ff_obj else []), hard, soft)
+        spatial_tier_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots], hard)
+        delta_feasibility_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots], hard)
         place_anchor_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
                            + ([("first_frame", ff_obj)] if ff_obj else []), hard)
         numeral_form_check(slabel, sprompts, suffix, soft)

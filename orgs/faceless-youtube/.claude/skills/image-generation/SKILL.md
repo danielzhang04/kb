@@ -91,10 +91,12 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
 Walk `long_form.shots` in order, then shorts, then the thumbnail. Each scene is a **complete image generated in ONE
 run**, multi-seeding all its inputs at once → `assets/scenes/<shot-id>.png` + `manifest.json`.
 
-**Seed order (identity is seeded, never worded):** each cast figure's **canonical + its expression frame + its pose
-frame** (from the shot's `assets` tags), + the **interaction template** when two figures make contact, then the
-**continuity / place anchor when present**, prompt last. Pose and expression come from library FRAMES: a pose re-synthesized from words
-reverts to the engine's five-finger prior, while the frame carries the four-digit hand.
+**Seed roles are structural and describe the final deduplicated provider parts in actual order.** For a fresh base,
+STEP-1 owns each figure and the place owns continuity. For a delta, seed the in-chain parent then each held figure's
+canonical; add a raw pose/expression primitive only through the image-generation-owned batch declaration
+`delta_primitives: {"<character>": ["<primitive>"]}` after that exact route proved necessary. It must bind one
+primitive already authored for that cast member. Forge rebuilds and preflights ordinal role prose after every merge;
+every seeded composite, including a direct spec, must carry ordered `{path, role, character}` truth.
 
 | Seed law | The rule, and why it is not negotiable |
 | --- | --- |
@@ -128,18 +130,17 @@ stage fields and any unknown key. **ALL in-video text is diegetic**, quoted verb
 words; **every text-bearing gen seeds the lettering exemplar** (`refs/env/lettering-marker-italic.png`), and every
 stamp/seal/mark gen seeds the stamp exemplar **plus its destination plate** for scale and palette (§5).
 
-**Prompt assembly + precedence.** `forge.py` assembles every gen in ONE order — **[bible descriptor, §2/§2b by mode]
-+ [the shot's `still_prompt`] + [the `figures` expansion] + [§2c RIG-HOLD]** — and your delta is the `still_prompt`
-itself (already carrying `global_prompt_suffix` and the authored framing) plus the seeds: do NOT re-compose the shot,
-add only minimal technical placement. **Anonymous-figure rig clauses are never written into a prompt.** The shot
+**Provider-text order is policy first, authored text last:** **[bible descriptor + generated seed-role/crowd/rig
+policy] + [the shot's authored identity → scene → payload]**. The payload or exact replacement is literal final
+provider text; no Forge clause follows it. This is an **amplifier fix pending controlled validation**, not an
+established Class-A cure. **Anonymous-figure rig clauses are never written into a prompt.** The shot
 DECLARES them in `figures` — `{"anon_foreground": ["the worker at the dock edge"], "crowd": true}`, one entry per
 §2e-tier foreground figure, each phrased exactly as the prompt stages it — and forge expands the bible's §2d/§2e
 blockquotes at gen time: §2e named over the entries and bound so it cannot leak onto named cast, `crowd: true` → the
 §2d clause, and on a `stage_role: "delta"` shot the **held-figure** wording instead (§2e's "give them a distinct
 outfit" is a FIRST-ESTABLISHMENT instruction and would redesign the very figure the chain is holding). A declared
-`figures` field also forces the §2c append by itself; a shot with **no** `figures` key assembles exactly as it did
-before the field existed. The **delta overrides the descriptor on exactly the variables it names**; everything else the
-descriptor holds, and where the suffix and the bible disagree **the bible wins**. **Pre-flight a batch with `forge.py
+`figures` field also forces the §2c append; without it Forge adds no anonymous-figure clause. The authored delta
+changes only the variables it names while the style policy remains binding. **Pre-flight a batch with `forge.py
 gen --dry-run`**: it prints every assembled prompt and resolves every seed with zero API calls — read the prompts
 before paying for the batch.
 
@@ -154,26 +155,31 @@ when fresh, the canonical plus an in-chain parent when a delta — hard-errors b
 
 ### Builder-owned retry overlays
 
-An approved surgical retry is authored as a versioned `forge-retry-overlay@1` JSON manifest and passed to
+An approved surgical retry is authored as a versioned `forge-retry-overlay@2` JSON manifest and passed to
 `forge.py batch --retry <manifest>` with the canonical `shots.json`. It never edits `shots.json` or a generated
 batch: each entry names its canonical `shot`, a distinct safe output `name`, and is rebuilt by forge before its
 overlay applies. The envelope is `{schema, video_slug, entries}`; unknown keys are hard errors.
 
-- A `scene` entry has `{kind: "scene", shot, name, instruction, prepend_seeds?, extra_seeds?, replace?}`.
-  `instruction` is appended verbatim as the one surgical change. `replace` is `{from, to}` and is allowed only when
-  `from` occurs exactly once in that canonical scene delta. Each seed is either a relative string or the narrow
+- A `scene` entry has `{kind: "scene", shot, name, defect, replace?, prepend_seeds?, extra_seeds?}` and exactly ONE authority:
+  an exact `{from, to}` replacement occurring once in the canonical authored payload, or a seed/mechanism swap with
+  no content append. `defect` is `content`, `seed`, or `mechanism`; `expression` is rejected here and routes to
+  STEP-1. A seed/mechanism swap must reorder an existing provider part or name-replace its in-chain parent; an
+  unrelated addition is not a swap. `instruction` is forbidden for scene retries; Forge preserves every byte outside
+  the replaced span, then rebuilds and preflights roles from the final merge/dedup. Each seed is a relative string or the narrow
   `{path, sha256?}` object; a supplied `sha256` is a lowercase SHA-256 digest required at preflight and again on the
   exact bytes read into a live provider request. A live exact-read mismatch aborts the remaining batch at non-zero
   status after releasing its reservation; it is an integrity failure, unlike an ordinary per-item provider error.
   Seeds are resolved existing files contained in this video or its kit,
   prepended/appended in that order, then re-run through the normal cap and seeding law. A retry is fresh: its name
   cannot equal its shot or collide with staging/library/scenes, and it cannot seed an old scene output.
-- A `step1` entry has `{kind: "step1", shot, character, name, instruction?}`. Forge derives that named cast
+- A `step1` entry has `{kind: "step1", shot, character, name, defect, instruction?}`, where `defect` is `expression`
+  or `rig`. Forge derives that named cast
   member's canonical + pose + expression recipe from the specified canonical shot and emits only that distinct STEP-1
   request; it never emits the source scene or another cast member. The optional instruction is appended to the
   reference-sheet delta.
 
-Use `batch` only to build the final retry slate, then `gen --dry-run` to inspect it. Both stay $0; a live `gen`
+Use `batch` only to build the final retry slate, then `gen --dry-run` to inspect it; the dry run prints the retry
+authority and `changed_spans: 1`. Both stay $0; a live `gen`
 without `--force` cannot overwrite a staged survivor, and retry-overlay collision checks reject such a request before
 the generator sees it. Live forge reserves each target with an exclusive PID-owned sidecar before calling the provider,
 then atomically publishes a complete PNG without replacing a concurrent survivor; failed calls clean their lock and
@@ -205,8 +211,9 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
   per-video figure frame (`fig-<character>--<pose>--<expression>`, the video's own asset, never channel `refs/`);
   **STEP 2**, the scene gen, seeds `[step-1 figure(s)] > [the video's plate]` and never the raw triple again.
   Splitting the recipe out of the scene gen is the fix: scene complexity competing with rig-hold inside one call is
-  what throws a figure off rig. A **delta beat is unchanged and single-step** — the in-chain parent plus that
-  figure's canonical, in ONE gen. Crowd, environment and prop shots stay single-step too.
+  what throws a figure off rig. A **delta beat is single-step:** in-chain parent first, then each held figure's
+  canonical. Omit raw primitives unless `delta_primitives` names the proved mechanism for that same figure's one
+  change; an expression defect re-mints STEP-1 instead of opposing its seed with scene prose.
 - **De-nose / de-ear fix — a targeted identity pass budgeted for TWO gens.** Seed `[current frame + base-rig
   exemplar]`, change ONLY the faces; the engine re-draws a sticky ear or residual nose about half the time, so the
   reliable shape is a **SECOND targeted pass seeded off the already-fixed frame**. A fix TECHNIQUE, not a loosening
@@ -292,11 +299,11 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
   passing half. **Rewrite only the clause(s) the flags name** — a failed `dsg` item points at the exact atomic fact —
   hold every other clause byte-identical, and generate clean off the canonical, not the failed frame. Tactics by
   defect: a **garbled literal** → spell it out inside that clause (*the word BRICKS — B, R, I, C, K, S*), still ≤4
-  words; a **fact the composition buried** → move that clause to the prompt's END (the payload zone) or change the
-  composition strategy for it alone; a **rig defect** → the targeted identity / de-nose pass above. **Log the cause**
+  words; a **fact the composition buried** → exact-replace that one span with a changed composition strategy; a
+  **rig defect** → the targeted identity / de-nose pass above. **Log the cause**
   on the manifest entry as `retry_cause` (the flag string that triggered it, plus which clause was rewritten), so a
   second failure reads as systematic rather than random.
-- **After the single sanctioned content retry fails, the chain STOPS and the failure routes to root-cause analysis of the full mechanism (VPW authoring → the `shots.json` entry → the exact forge request as logged) before any further generation of that shot; repeated re-rolls of an unchanged mechanism are forbidden. The genlog row must record which mechanism layer the failure is suspected in.**
+- **After the single sanctioned content retry fails, STOP and root-cause VPW authoring → `shots.json` → exact Forge request before any new generation. The exhausted genlog row records `suspected_mechanism_layer` as `vpw_authoring`, `shots_json`, `seed_recipe`, `forge_assembly`, or `provider_limitation`, plus the failed invariant and exact retry authority. Re-rolling an unchanged mechanism is forbidden.**
 - **Re-author HOW an authored fact is depicted, never WHETHER it appears.** Deleting or softening a load-bearing fact
   to dodge a rendering defect is a fidelity VIOLATION dressed as a fix; a fact that still won't render clean after the
   one retry is flagged for the human, never silently removed.
