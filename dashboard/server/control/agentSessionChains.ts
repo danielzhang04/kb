@@ -3,6 +3,7 @@ import { createAtomicJsonDocument, type AtomicJsonDocument } from './atomicJsonD
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_DOCUMENT_BYTES = 1 * 1024 * 1024;
+export const MAX_OPERATOR_MESSAGE_CHARS = 64 * 1024;
 const RESERVED_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export type AgentSessionRuntime = 'claude' | 'codex';
@@ -17,6 +18,8 @@ export interface ChainEntry {
 interface AgentSessionChainDocument {
   schema: 'kb.agent-session-chains/v1';
   chains: Record<string, ChainEntry>;
+  /** Operator text is durable but inert: adapters wrap it before the runtime sees it. */
+  messages: Record<string, string[]>;
 }
 
 export type AgentSessionChainStoreErrorCode = 'invalid-input' | 'document-unavailable';
@@ -54,11 +57,19 @@ function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
+function isSafeMessage(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.trim().length > 0
+    && value.length <= MAX_OPERATOR_MESSAGE_CHARS
+    && !value.includes('\0');
+}
+
 function assertDocument(value: unknown): asserts value is AgentSessionChainDocument {
   const document = value as AgentSessionChainDocument;
   if (!document || typeof document !== 'object' || Array.isArray(document)
     || document.schema !== 'kb.agent-session-chains/v1'
-    || !document.chains || typeof document.chains !== 'object' || Array.isArray(document.chains)) {
+    || !document.chains || typeof document.chains !== 'object' || Array.isArray(document.chains)
+    || !document.messages || typeof document.messages !== 'object' || Array.isArray(document.messages)) {
     fail('document-unavailable', 'agent session chain document is invalid');
   }
 
@@ -74,6 +85,16 @@ function assertDocument(value: unknown): asserts value is AgentSessionChainDocum
       fail('document-unavailable', 'agent session chain document is invalid');
     }
   }
+  for (const [agentId, messages] of Object.entries(document.messages)) {
+    try {
+      requireAgentId(agentId);
+    } catch {
+      fail('document-unavailable', 'agent session chain document is invalid');
+    }
+    if (!Array.isArray(messages) || messages.some((message) => !isSafeMessage(message))) {
+      fail('document-unavailable', 'agent session chain document is invalid');
+    }
+  }
 }
 
 function documentError(error: unknown): AgentSessionChainStoreError {
@@ -84,6 +105,8 @@ function documentError(error: unknown): AgentSessionChainStoreError {
 export interface AgentSessionChainStore {
   get(runRef: string, agentId: string): ChainEntry | null;
   record(runRef: string, agentId: string, entry: Pick<ChainEntry, 'runtime' | 'sessionId'>): Promise<void>;
+  queueMessage(runRef: string, agentId: string, text: string): Promise<void>;
+  drainMessages(runRef: string, agentId: string): Promise<string[]>;
 }
 
 /**
@@ -101,7 +124,7 @@ export function createAgentSessionChainStore(stateRoot: string): AgentSessionCha
     if (existing) return existing;
     const document = createAtomicJsonDocument<AgentSessionChainDocument>({
       path: join(root, 'control', 'agent-session-chains', `${runRef}.json`),
-      empty: () => ({ schema: 'kb.agent-session-chains/v1', chains: {} }),
+      empty: () => ({ schema: 'kb.agent-session-chains/v1', chains: {}, messages: {} }),
       validate: assertDocument,
       error: (message) => new AgentSessionChainStoreError('document-unavailable', message),
       maxBytes: MAX_DOCUMENT_BYTES,
@@ -141,6 +164,37 @@ export function createAgentSessionChainStore(stateRoot: string): AgentSessionCha
             writable: true,
           });
         });
+      } catch (error) {
+        throw documentError(error);
+      }
+    },
+
+    async queueMessage(runRef, agentId, text) {
+      requireAgentId(agentId);
+      if (!isSafeMessage(text)) fail('invalid-input', 'operator message is invalid');
+      try {
+        await documentFor(runRef).mutate((document) => {
+          Object.defineProperty(document.messages, agentId, {
+            value: [...(document.messages[agentId] ?? []), text.trim()],
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+        });
+      } catch (error) {
+        throw documentError(error);
+      }
+    },
+
+    async drainMessages(runRef, agentId) {
+      requireAgentId(agentId);
+      try {
+        let drained: string[] = [];
+        await documentFor(runRef).mutate((document) => {
+          drained = [...(document.messages[agentId] ?? [])];
+          delete document.messages[agentId];
+        });
+        return drained;
       } catch (error) {
         throw documentError(error);
       }

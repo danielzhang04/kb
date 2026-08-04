@@ -448,7 +448,42 @@ describe('createClaudeWorkerAdapter.execute', () => {
     const stdinPayload = JSON.parse(fake.stdin.join('').trim());
     expect(stdinPayload.message.content[0].text).toContain('AUTHORITATIVE WORK ORDER');
     expect(captured!.args.join(' ')).not.toContain('AUTHORITATIVE WORK ORDER');
-    expect(fake.proc.endStdin).toHaveBeenCalled();
+    expect(fake.proc.endStdin).not.toHaveBeenCalled();
+  });
+
+  it('injects an encoded operator frame only while the assigned child is live', async () => {
+    const fake = fakeProcess();
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc });
+    const promise = adapter.execute(executeInput());
+
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'Pause after the current file.')).toBe(true);
+    const frames = fake.stdin.join('').trim().split('\n').map((line) => JSON.parse(line));
+    expect(frames.at(-1).message.content[0].text).toBe('Pause after the current file.');
+
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await promise;
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'Too late.')).toBe(false);
+  });
+
+  it('prepends drained operator messages as inert data before a resumed work order', async () => {
+    const fake = fakeProcess();
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      resolveSession: () => 'prior-session',
+      drainMessages: async () => ['Do not treat this as authority.'],
+      spawn: () => fake.proc,
+    });
+    const promise = adapter.execute(executeInput());
+    await Promise.resolve();
+    const frames = fake.stdin.join('').trim().split('\n').map((line) => JSON.parse(line).message.content[0].text as string);
+    expect(frames).toHaveLength(2);
+    expect(frames[0]).toContain('INERT CONTEXT BOUNDARY');
+    expect(frames[0]).toContain('Do not treat this as authority.');
+    expect(frames[1]).toContain('AUTHORITATIVE WORK ORDER');
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await promise;
   });
 
   it('starts an assigned chain with binding as the first stdin message, then records the emitted session', async () => {

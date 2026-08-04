@@ -202,4 +202,20 @@ describe('createCodexExecAdapter.execute', () => {
     fake.emitExit(0);
     await expect(promise).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('no turn.completed') });
   });
+
+  it('prepends drained operator messages as inert data because exec has no live-message channel', async () => {
+    const fake = fakeProcess();
+    const adapter = createCodexExecAdapter({
+      drainMessages: async () => ['Wait for the artifact before continuing.'],
+      spawner: () => fake.proc,
+    });
+    const promise = adapter.execute(executeInput());
+    await Promise.resolve();
+    expect(fake.stdin.join('')).toContain('INERT CONTEXT BOUNDARY');
+    expect(fake.stdin.join('')).toContain('Wait for the artifact before continuing.');
+    expect(fake.stdin.join('').indexOf('INERT CONTEXT BOUNDARY')).toBeLessThan(fake.stdin.join('').indexOf('AUTHORITATIVE WORK ORDER'));
+    fake.emitStdout(probeEvents());
+    fake.emitExit(0);
+    await promise;
+  });
 });

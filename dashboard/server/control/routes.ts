@@ -38,6 +38,7 @@ import {
   reconcileAuthorized20260801FailedRun,
 } from './authorizedFailedRunReconciliation.ts';
 import type { ActivatedExecution } from './activation.ts';
+import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
@@ -927,6 +928,30 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'manager-message-reconciliation-required', value: committed.value.event });
     }
     return reply.send({ ok: true, value: committed.value.event, replayed: committed.replayed ?? false });
+  });
+
+  /** Deliver to a live Claude worker when possible; otherwise persist inert text for its next turn. */
+  scope.post('/api/control/runs/:runRef/agents/:agentId/messages', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const { runRef, agentId } = req.params as { runRef: string; agentId: string };
+    const detail = ctx.controlStore.getRun(sub, runRef);
+    if (!detail.ok) return sendResult(reply, detail);
+    const assignment = detail.value.stages.find((stage) => stage.assignment?.agentId === agentId)?.assignment;
+    if (!assignment) return reply.code(404).send({ error: 'agent-not-found' });
+    const message = string(record(req.body).message).trim();
+    if (!message || message.length > MAX_OPERATOR_MESSAGE_CHARS || message.includes('\0')) {
+      return reply.code(400).send({ error: 'invalid-agent-message' });
+    }
+    const delivery = ctx.executionLatch?.current()?.agentMessages;
+    if (!delivery) return reply.code(409).send({ error: 'agent-message-delivery-unavailable' });
+    try {
+      return reply.code(202).send({ delivery: await delivery.deliver({
+        runRef, agentId, runtime: assignment.runtime, message,
+      }) });
+    } catch {
+      return reply.code(409).send({ error: 'agent-message-delivery-unavailable' });
+    }
   });
 
   scope.post('/api/control/runs/:runRef/manager/steer', { preHandler }, async (req, reply) => {

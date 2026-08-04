@@ -7,6 +7,7 @@
 import { spawn as spawnChildProcess } from 'node:child_process';
 import {
   boundSummary,
+  buildQueuedOperatorMessagePrompt,
   buildWorkerEnv,
   buildWorkerPrompt,
   defaultKillTree,
@@ -53,6 +54,8 @@ export interface CodexExecAdapterOptions {
   resolveThread?: (runRef: string, agentId: string) => string | null;
   /** Persists a thread emitted by `thread.started`; defaults to a no-op until Task 2 wires storage. */
   recordThread?: (runRef: string, agentId: string, threadId: string) => void;
+  /** Atomically consumes operator messages queued for this non-interruptible runtime. */
+  drainMessages?: (runRef: string, agentId: string) => Promise<string[]>;
 }
 
 /** Clamp an untrusted usage value to the `ExecutionUsage` integer envelope. */
@@ -204,7 +207,9 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
         ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
       });
 
-      return new Promise<WorkerExecutionResult>((resolvePromise) => {
+      const start = (queuedMessages: string[]): Promise<WorkerExecutionResult> => {
+        const stdin = (queuedMessages.length > 0 ? `${buildQueuedOperatorMessagePrompt(queuedMessages)}\n\n` : '') + prompt;
+        return new Promise<WorkerExecutionResult>((resolvePromise) => {
         const proc = spawner({ args, cwd: input.worktreePath, env: buildWorkerEnv() });
         const stdoutChunks: string[] = [];
         let stdoutBytes = 0;
@@ -297,13 +302,17 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
         proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-DEFAULT_STDERR_TAIL_CHARS); });
         proc.onExit((code) => finalize(code));
         try {
-          proc.writeStdin(prompt);
+          proc.writeStdin(stdin);
           proc.endStdin();
         } catch {
           terminate();
           finalize(null);
         }
-      });
+        });
+      };
+      return options.drainMessages
+        ? options.drainMessages(input.runRef, agentId).then(start)
+        : start([]);
     },
   };
 }

@@ -169,6 +169,10 @@ export interface ActivationEngine {
 
 export interface ActivatedExecution {
   controlBroker: ManagedSessionBroker;
+  /** Headless worker operator-message delivery; Claude may accept a live frame, Codex always queues. */
+  agentMessages: {
+    deliver(input: { runRef: string; agentId: string; runtime: 'claude' | 'codex'; message: string }): Promise<'live' | 'queued'>;
+  };
   /** Legacy Task-6 seam. Headless-primary activation never populates it. */
   rosterSessions?: RosterSessionManager;
   runAutomatic: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
@@ -453,13 +457,24 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     recordSession: (runRef, agentId, sessionId) => sessionChains.record(
       runRef, agentId, { runtime: 'claude', sessionId },
     ),
+    drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
   });
   const codexWorkers = deps.createCodexWorkers({
     resolveThread: (runRef, agentId) => resolveChain('codex', runRef, agentId),
     recordThread: (runRef, agentId, threadId) => sessionChains.record(
       runRef, agentId, { runtime: 'codex', sessionId: threadId },
     ),
+    drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
   });
+  const agentMessages: ActivatedExecution['agentMessages'] = {
+    async deliver(input) {
+      if (input.runtime === 'claude' && claudeWorkers.postMessage(input.runRef, input.agentId, input.message)) {
+        return 'live';
+      }
+      await sessionChains.queueMessage(input.runRef, input.agentId, input.message);
+      return 'queued';
+    },
+  };
   const workers: WorkerAdapter = {
     execute(input) {
       return input.profile.runtime === 'codex'
@@ -546,6 +561,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
 
   return {
     controlBroker: broker,
+    agentMessages,
     paidActionService: paid.paidActionService,
     spendGrantStore: paid.spendGrantStore,
     runAutomatic,

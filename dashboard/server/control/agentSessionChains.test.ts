@@ -92,4 +92,23 @@ describe('AgentSessionChainStore', () => {
     expect(reopened.get('run-1', 'agent-1')).toMatchObject({ runtime: 'claude', sessionId: 'claude-session' });
     expect(reopened.get('run-1', 'agent-2')).toMatchObject({ runtime: 'codex', sessionId: 'codex-thread' });
   });
+
+  it('durably queues and atomically drains operator messages per agent', async () => {
+    const root = temporaryRoot();
+    const first = createAgentSessionChainStore(root);
+    const second = createAgentSessionChainStore(root);
+
+    await Promise.all([
+      first.queueMessage('run-1', 'agent-1', 'Inspect the generated artifact.'),
+      second.queueMessage('run-1', 'agent-1', 'Then report only the blocker.'),
+      second.queueMessage('run-1', 'agent-2', 'Independent agent message.'),
+    ]);
+
+    expect(await first.drainMessages('run-1', 'agent-1')).toEqual([
+      'Inspect the generated artifact.',
+      'Then report only the blocker.',
+    ]);
+    expect(await second.drainMessages('run-1', 'agent-1')).toEqual([]);
+    expect(await second.drainMessages('run-1', 'agent-2')).toEqual(['Independent agent message.']);
+  });
 });

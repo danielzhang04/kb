@@ -1959,6 +1959,59 @@ describe('control execution latch routes', () => {
     return run.value.run.runRef;
   }
 
+  it('requires a session, rejects unknown agents, and returns the activated worker delivery result', async () => {
+    const delivery = vi.fn(async () => 'queued' as const);
+    const latch = {
+      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      current: () => ({ agentMessages: { deliver: delivery } }),
+      unlock: vi.fn(), lock: vi.fn(),
+    };
+    const { app, token, store } = buildApp({ executionLatch: latch });
+    const assignment = {
+      agentId: 'fyt-codex', declarationPath: 'agents/fyt-codex.md', declarationHash: 'a'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex' as const, model: 'gpt-5.6-sol',
+    };
+    const assignedProposal = { ...proposal, stages: proposal.stages.map((stage) => ({ ...stage, assignment })) };
+    const created = store.createProposalRevision('operator', {
+      sourceComposerRef: 'composer-agent-message', sourceTurnId: 'turn-agent-message', title: assignedProposal.title,
+      snapshot: assignedProposal as unknown as JsonObject,
+    });
+    if (!created.ok) throw new Error(created.detail);
+    if (!store.decideProposal('operator', created.value.proposalRef, 1, {
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-agent-message',
+    }).ok) throw new Error('approval failed');
+    const run = store.createRun('operator', {
+      title: assignedProposal.title, proposalRef: created.value.proposalRef, proposalRevision: 1,
+      expectedProposalHash: created.value.hash, managerRuntime: assignedProposal.manager.runtime, managerModel: assignedProposal.manager.model,
+      idempotencyKey: 'launch-agent-message',
+      stages: assignedProposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn, assignment })),
+    });
+    if (!run.ok) throw new Error(run.detail);
+    try {
+      const anonymous = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/fyt-codex/messages`,
+        headers: { origin: ORIGIN, host: 'localhost:5317' }, payload: { message: 'Queue this.' },
+      });
+      expect(anonymous.statusCode).toBe(401);
+      const unknown = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/unknown/messages`, headers: headers(token), payload: { message: 'Nope.' },
+      });
+      expect(unknown.statusCode).toBe(404);
+      const accepted = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/fyt-codex/messages`, headers: headers(token), payload: { message: ' Queue this. ' },
+      });
+      expect(accepted.statusCode, accepted.body).toBe(202);
+      expect(accepted.json()).toEqual({ delivery: 'queued' });
+      expect(delivery).toHaveBeenCalledWith({
+        runRef: run.value.run.runRef, agentId: 'fyt-codex', runtime: 'codex', message: 'Queue this.',
+      });
+      const oversized = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/fyt-codex/messages`, headers: headers(token), payload: { message: 'x'.repeat(64 * 1024 + 1) },
+      });
+      expect(oversized.statusCode).toBe(400);
+    } finally { await app.close(); }
+  });
+
   it('boots LOCKED and reports the posture with the unlock route to call', async () => {
     const { app, token } = buildApp();
     try {
