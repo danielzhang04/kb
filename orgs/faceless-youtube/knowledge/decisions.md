@@ -3766,3 +3766,49 @@ delivered flat-cel + committed warm palette + full fidelity. Ruling: NO image st
 (rendered scenes carry content inseparably); forge injects a hardened anti-gloss/anti-DOF
 flat-cel block on every scene request; root scenes may run seedless again. Spec item 5 amended.
 Alternatives rejected: swatch card (probe-refuted), value-register cards, rendered-scene anchors.
+
+## 2026-08-04 — Seedless-root ruling narrowed to place-scoped seeding (not voided)
+**Decision.** The 2026-08-04 "root scenes may run seedless again" ruling (entry above) is narrowed,
+not reversed: cross-place image seeding — anchoring a shot to a verified frame from a DIFFERENT
+place — bleeds content and is refuted by the same probe evidence; within-place plate seeding bleeds
+the set on purpose, which is the point of holding a place. Seedless generation stays legal for: a
+place's derived plate (the first emitted shot of a qualifying place carrying no named cast), a
+single-use unbranded place (its own place-first frame — a dedicated plate for it would be pure
+waste), and no-place shot classes (symbolic, abstract, standalone object-insert, a short's
+`first_frame`, the thumbnail). Every other in-place shot seeds its own place's first approved frame;
+forge and lint both refuse a `place_anchor` (or derived place seed) whose source shot's `place`
+differs from the consuming shot's.
+**Evidence.** Adversarial review findings B5 and C1
+(`videos/2026-07-28-bricks-fresh/scratchpad/adversarial-review-2026-08-04.md`): the probe ruling
+above was decided by exactly a cross-place bleed (L160's people/furniture/calendar replacing L100's
+scene); the doctrine-reset design's blanket seedless-root reversal had no same-place enforcement,
+leaving that refuted failure mode authorable again under the new "place" vocabulary.
+**Alternatives rejected.** (1) Leaving the 2026-08-04 ruling unqualified ("root scenes may run
+seedless again," full stop) — reproduces the probe-refuted cross-place bleed under the place model.
+(2) Requiring a plate for every place regardless of use count — wasteful and unpriced for a
+single-use, unbranded place that is itself the seedless place-first frame the probe proved safe.
+
+## 2026-08-04 — Review procedure re-scoped: machine-emitted rows, named-figure-only comparisons (re-authorization pending)
+**Decision.** `build_review_artifact.py` now pre-renders one empty verdict row per (shot ×
+applicable invariant), pre-filtered by what the shot actually declares — support/contact only where
+a seated primitive is authored, place-owner only on branded interiors, relative-scale only on
+2-cast shots, crowd only where declared, flat-cel hazards on all — so the reviewer fills rows
+instead of inventing the row set. Canonical-vs-candidate comparison images render only on
+named-figure shots, at the ordinary-viewing-scale standard, never a zoomed crop battery. This
+RE-SCOPES, not reverses, the 2026-08-03 ratified loosening (above: "Rig-review evidence standard:
+loosening RATIFIED") — ordinary-viewing-scale judging and no crop battery both stay; what changes is
+that the forced-per-invariant rows become machine-emitted, closing the gap between what was ratified
+in principle and what was executed in practice (the audit's own root cause: a review pass that "did
+not execute its own forced-per-invariant procedure"). **Daniel's explicit re-authorization at the
+doctrine gate is still required before this lands as binding** — logged here per adversarial-review
+findings B4/C4 so the re-scoping cannot later be re-argued as a silent reversal.
+**Evidence.** Adversarial review finding B4
+(`videos/2026-07-28-bricks-fresh/scratchpad/adversarial-review-2026-08-04.md`): the doctrine-reset
+design's review-operationalization section added six forced axes plus a canonical-vs-candidate crop
+battery per named figure without naming that it was reversing the 2026-08-03 ruling; the amendment
+moves cost from typing to eye instead of re-inflating reviewer load.
+**Alternatives rejected.** (1) Human-typed forced verdicts on all six new axes plus a crop battery
+per named figure (the design as first written) — reproduces the exact review-collapse-under-load
+mechanism the 2026-08-03 ruling exists to stop. (2) Reverting fully to the 2026-08-03 loosening with
+no machine-emitted rows — leaves the forced-per-invariant procedure unexecuted again, the audit's
+own documented failure mode.

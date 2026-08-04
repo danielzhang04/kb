@@ -40,9 +40,10 @@ tone follows the character's registry `head_tone`). The delta overrides it on ex
 
 ## 2b. STYLE-ONLY descriptor (verbatim — for new characters & environments/props)
 
-> Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even
-> MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle
-> soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.
+> MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colour fills — one flat
+> base colour per surface plus at most ONE hard-edged single-step shadow shape, no feathered or
+> blended transitions, uniform highlight-free surfaces — rounded friendly shapes, no realistic
+> detail. No text, no words, no labels.
 
 For a **new character** the delta supplies only identity-VARYING traits (hair / facial hair, a flat head tone
 (§4), build + outfit) and §2c holds the rig. For an **environment/prop**: describe the scene, palette free.

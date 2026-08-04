@@ -1,3 +1,7 @@
+> **SUPERSEDED 2026-08-04** by `docs/superpowers/specs/2026-08-04-bricks-doctrine-reset-design.md` —
+> that spec carries the current style/place/process doctrine; this page is kept for its walk-back/add
+> history only.
+
 # VPW middle-path doctrine — design (2026-08-04)
 
 Daniel-approved design closing the rounds-2/3 visual regression (empty shots, grayscale drift,

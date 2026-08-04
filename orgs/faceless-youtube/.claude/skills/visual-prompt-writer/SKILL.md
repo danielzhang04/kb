@@ -35,6 +35,12 @@ write back in place. The target list arrives from the caller (board verdict, for
 VPW never picks its own targets. **Absent named targets, author the full list as below** — the
 default; scoped-repair is opt-in.
 
+**Process law — re-author, never substitute.** A repair round re-authors each touched shot fresh from its
+own `vo_ref`'d VO line. **Bulk vocabulary substitution is banned** — a mass find/replace across many
+shots' prose (a generic→named swap, a wholesale term change) is not authoring; it is the mechanism that
+produced a wrong-cast wave last time. One shot's fix touches that shot's prose, derived from that shot's
+own VO span, never copied across siblings.
+
 ## Step 1 — Read (always)
 - **`script.md`** — the source of truth; every VO line, in order, is the shot list's spine.
 - **`visual-kit/visual-grammar.md`** — the channel depiction law: the narration→shot-class table, the
@@ -45,6 +51,10 @@ default; scoped-repair is opt-in.
 - **`references/shots-schema.md`** — the v2 contract; follow it exactly.
 - **`research.md`** (when present) — the fact ledger every on-screen literal must be quoted from.
 - **`shorts/short-NN.md`** — each short's archetype, caption text, and `publish`|`bench` status.
+
+**Fresh authoring never reads an archived/quarantined prior `shots.json`.** `script.md` alone is the
+source of the shot list; only SCOPED-REPAIR reads a file, and only the CURRENT one. Reading a discarded
+file re-admits its drift by copy — the same mechanism that produced the bulk-substitution regression.
 
 ## Step 2 — Decide what each line depicts (run per VO line)
 1. **Classify → pick a class** from the grammar's narration→shot-class table; record it as `shot_class`.
@@ -63,6 +73,13 @@ default; scoped-repair is opt-in.
    The style-bible §2d rig-clause TEXT never appears in a prompt — you declare, and `forge.py` expands it at
    gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
    high-risk case in `notes`. Field spec: `shots-schema.md §2`.
+
+   **Seed-cap displacement (plan at authoring time, not at forge's dry-run):** a place plate outranks a
+   background-tier crowd exemplar seed — the plate already carries the rear-zone mass, so forge drops the
+   crowd exemplar and records the displacement rather than erroring. Worked example: 2 named cast + crowd +
+   one tagged prop + the place plate = 5 seeds, over `SEED_CAP` (4) — the plate displaces the crowd
+   exemplar → 4, legal. A shot still over cap after displacement is restaged with fewer named cast, never
+   truncated.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
    of South America", not "the continent"), framing + scale, the committed scene palette,
@@ -104,8 +121,20 @@ at the first act's level.
 - **The video's named cast** — complete, planned before authoring, and derived from the script: include every recurring or
   story-bearing person or institution whose identity matters. Do not add or remove cast to chase population;
   if a later identity is genuinely needed, revise the plan before continuing, never invent a slug mid-pass.
-- **Stages + environments:** decide now which sets recur and carry held `stage` chains and which are
-  one-frame standalones. A set invented twice mid-pass gets described twice differently and renders twice.
+- **Places, stages + environments:** decide now which sets recur and carry held `stage` chains and which
+  are one-frame standalones. A **`place`** is a recurring diegetic set identity (kebab-case, e.g.
+  `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +
+  ≤3 deltas). Declare `place` on every shot in a recurring set; symbolic/abstract/standalone
+  object-insert `shot_class`es, a short's `first_frame`, and the thumbnail block declare no `place` and
+  run as seedless roots. A place that hosts ≥2 shots, or that carries owner branding under L-1, requires a
+  plate — forge derives it from the first emitted shot of that place carrying no named cast; a single-use,
+  unbranded place is its own place-first frame and stays seedless (a dedicated plate for it is pure
+  waste). Every declared `place` must map to a span in `script.md` (`script_vocab`) — an invented place
+  fails lint like invented lettering. An institution-owned interior authors ONE visible owner cue on the
+  plate, or records `owner_ambiguity: true`; the cue's literal is per-video data sourced from the shot's
+  own `place` declaration plus `script_vocab` — **never a skill constant** — registered with the existing
+  `carried_literal_check` L-1 carry mechanism. A set invented twice mid-pass gets described twice
+  differently and renders twice.
 - **The three peaks:** reserve the most striking staging for the opening, the mid-video re-arm (55–65%),
   and the withheld peak in the final 20%. A character enters on the line that NAMES them.
 - **Density budget, written down per act:** read the runtime AND the rate off the script header ("N words

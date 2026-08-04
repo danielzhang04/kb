@@ -103,16 +103,18 @@ every seeded composite, including a direct spec, must carry ordered `{path, role
 | **Cap: ≤4 seeds per gen** | canonical + ONE pose primitive + ONE expression frame + one anchor/exemplar. Past four, dilution weakens every prior; a `base.png` added as an Nth "rig anchor" pins nothing. A figure that needs the base rig spends one of the four on it. |
 | **Attribute routing** | Base-derived seeds are bald, cream, neutral-faced and hoodied, so **any attribute not sourced from the CHARACTER seed bleeds a base trait**. CHARACTER seed → identity, head/skin tone, hair + facial hair, costume, face. POSE / interaction-template seed (geometry only) → body pose, hands, clasp geometry, placement, eye-line. EXPRESSION seed (shape only) → eye/brow/mouth shape, never tone, hairline or identity. Every skin patch, **including both hands**, renders in the CHARACTER's head tone. Expression is the SOFTEST seed and can land weak — the review checks register per beat. |
 | **Exposed hands are seeded, never free-drawn** | A salute, wave, open palm or point is the five-finger drift point: seed the matching pose frame AND state the digit fact in the delta. No library pose covers it → that was a Pass-1 gate item, not an ad-hoc scene invention. |
-| **Hardened scene descriptor; image seeds are continuity only** | Forge appends ONE hardened flat-cel/palette block to every scene request. A root with no chain parent and no `place_anchor` may run with zero image seeds; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. No image style anchor: hardened text was the probe winner, while a rendered-scene anchor catastrophically bled content (2026-08-04, probes F/G). |
+| **Place/plate seed law; image seeds are continuity only** | Forge appends ONE hardened flat-cel/palette block to every scene request. Zero-seed is legal ONLY for a derived place plate (the first emitted shot of a qualifying place with no named cast) or a no-place root — symbolic/abstract/standalone-object-insert shot classes, a short's `first_frame`, and the thumbnail never declare `place`. Every OTHER in-place shot seeds its own place's first approved frame; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. **Cross-place image seeding is a hard refusal**, never an authoring option: a `place_anchor` (or derived place seed) whose source shot's `place` differs from the consuming shot's is the probe-refuted style-anchor failure under another name (2026-08-04, probes F/G). No OTHER image style anchor exists: hardened descriptor text was the probe winner over a rendered-scene anchor. |
 | **Never seed off a downstream derivative** | Trace back to the exact frame the human approved; an "improved" copy can carry silent drift that then propagates as the lock. Exceptions: a delta-chain frame seeding its in-chain parent, and a re-base in the SAME location seeding the prior stage's base frame. |
 | **A rig FIX never seeds the defective frame** | Regen FRESH from canonicals off a re-authored prompt — the defect lives in the strongest seed and rides it back about half the time. The only defective-seed exceptions are an authored delta-chain parent and a human-ordered framing hold, and BOTH require a before/after crop diff on EVERY figure in the frame. |
 | **Match-prop** | A prop in more than one shot seeds its **first approved frame** as the prop canonical; later shots seed that exact frame and never re-describe the design in words. |
 | **Maps are cropped, not regenerated** | A new region of an established map is a deterministic PIL crop; a regen invents a new coastline, palette and lettering hand. Regen only if the map canonical genuinely lacks the region, and then seed the map canonical + the parchment-map anchor. Borders and routes drawn onto the crop are motion layers. |
 | **Crowd with one seeded lead** | The crowd starves the lead's costume: restate its pinned costume explicitly even though it is seeded, and give the crowd a contrasting uniform/palette. Every crowd-bearing gen also seeds the **crowd exemplar** (`refs/base/crowd-exemplar.png`), which is what pins crowd proportion and face. |
 
-For a human-approved place that must survive a regenerated base composite, author its video-local
-`assets/scenes/<frame>.png` as `place_anchor`. Forge resolves links/junctions before verifying the frame
-is under that video's scenes, then seeds it instead of minting a new `plate`; it never accepts a cross-video environment frame.
+`place_anchor` is legal on any non-delta shot whose `place` is already established — not restricted to a
+regenerated `base`. Author the human-approved video-local `assets/scenes/<frame>.png` frame; Forge resolves
+links/junctions, verifies the frame is under that video's scenes AND carries the SAME `place` as the
+anchoring shot, then seeds it instead of minting a new plate. A source frame from a different place is
+refused (same-place law, above); a cross-video environment frame is never accepted.
 
 **Aspect — pass it explicitly, every scene; NEVER 16:9 on a cutout.** Long-form scenes inherit
 `long_form.aspect_ratio`, a short's `9:16`. `forge.py`'s default is portrait `2:3`, so 16:9 work MUST pass `--aspect
@@ -246,8 +248,10 @@ via this pass's manifest); a missing scene for an ai-gen/hybrid shot is a render
 
 ## Reviewing the run (per ACT batch — generate, review, fix, then the next act)
 
-Pass 2 runs in **2–4 contiguous act batches snapped to stage boundaries** (a held stage never splits — batch on the
-script's act turns like the writer and VPW do). **Within a batch, generate everything first — do not gate mid-batch —
+Pass 2 runs in **contiguous batches whose COUNT is set by the run's gate cadence** (2–4 act batches on an ordinary
+run, or a different count set by the run's own gate plan — e.g. five gated fifths) — the boundary rule is fixed
+regardless of count: **a slice boundary always falls on a stage boundary, and a held stage never splits.** **Within
+a batch, generate everything first — do not gate mid-batch —
 then run the review round below on that batch and fix its flags before the next batch generates.** One whole-video
 round finds a systemic defect (a bible value off, a bad seed route, palette drift) only after the entire budget is
 spent, and a reviewer's eye decays across a 90-frame round; the act boundary is where systemics get caught cheap.
@@ -266,6 +270,13 @@ per shot its `still_prompt`, `vo_text` (the full narrated span — facts often l
 bible **§3**, the **§5 recipe** and the channel's `visual-grammar.md` (`vo_ref` is only the render timing anchor,
 never a fidelity source). **End the pass with an `N/N covered` line** (shots ruled / shots in the batch) — a pass
 that stops short reports exactly how short, never silently.
+
+**The verdict rows are machine-emitted, not human-invented.** `build_review_artifact.py` pre-renders one empty
+verdict row per (shot × applicable invariant), pre-filtered by what the shot actually declares — support/contact
+only where a seated primitive is authored, place-owner only on branded interiors, relative-scale only on 2-cast
+shots, crowd only where declared, flat-cel hazards on all — so cost moves from typing the row set to eyeing it, and
+an aggregate "rig holds" sentence stays structurally impossible. **Canonical-vs-candidate comparison images render
+only on named-figure shots**, at **ordinary viewing scale** — no zoomed crop battery.
 
 The pass rules three axes together, per shot, at **ordinary viewing scale**:
 
