@@ -866,7 +866,7 @@ def long_literal_word_check(label, prompts, suffix, soft, vocab=(), floor=LONG_L
 #  * RIG ANATOMY. shots-schema L-2 explicitly blesses "round heads, dot eyes, NO
 #    noses, NO ears" as the LEGAL form — it states properties of a depicted body,
 #    which is the positive-state rule already satisfied, just spelled with `no`.
-#    The style-bible §2c/§2d/§2e clauses are built out of it, so flagging it would
+#    The style-bible §2c/§2d clauses are built out of it, so flagging it would
 #    fire on every character-bearing prompt in the project. Anatomy-only sentences
 #    are exempt; a sentence mixing anatomy with surface nouns still reports.
 _NEG_NOUN = re.compile(r"\b(?:no|without)\s+((?:[a-z]+-)?[a-z]+)\b", re.IGNORECASE)
@@ -1021,8 +1021,8 @@ def carried_literal_check(label, shots, suffix, hard):
 #
 # WHAT CHANGED, AND WHY LINT IS THE ENFORCER
 # ------------------------------------------
-# Until 2026-07-29, VPW pasted the style-bible §2d (CROWD-RIG) and §2e (BASE-RIG)
-# clauses verbatim into `still_prompt`. The bricks-segment critic found 5 of its 15
+# Until 2026-07-29, VPW pasted the style-bible crowd-rig clause verbatim into
+# `still_prompt`. The bricks-segment critic found 5 of its 15
 # findings were defects of that arrangement: ~350 characters of rig boilerplate,
 # identical on 20 of 44 shots, sitting between the scene and its payload — burying
 # the ordering law, pushing the real content past the point where long-prompt
@@ -1089,8 +1089,8 @@ def shot_class_check(label, shots, hard, soft, strict=True):
                 f"routes nowhere.{tail}")
 
 
-# The fingerprints of the two clauses VPW must no longer paste. Anchored on the
-# distinctive spans of the style-bible §2d/§2e blockquotes and on the lead-in
+# The fingerprints of rig clauses VPW must no longer paste. Anchored on their
+# distinctive spans and on the lead-in
 # sentence VPW wrote to introduce them ("The stall keeper is drawn as follows.") —
 # which is itself a reliable tell, because the lead-in exists ONLY to hand off to a
 # pasted clause and reads as an unfinished sentence without one.
@@ -1117,13 +1117,13 @@ _RIG_CLAUSE = re.compile(
 
 
 def rig_clause_check(label, prompts, suffix, hard):
-    """HARD. The §2d/§2e clause text (or its lead-in) still sitting in a prompt —
+    """HARD. A rig-clause text (or its lead-in) still sitting in a prompt —
     the regression guard for the figures migration.
 
     ONE report per prompt, listing every fingerprint it found. The alternative —
     one per distinct fingerprint, the way control_leak_check reports — turned the
-    bricks segment into 78 messages for 20 shots, because a single pasted §2e
-    clause matches four of them at once. They are not four defects; they are one
+    bricks segment into 78 messages for 20 shots, because a single pasted clause
+    matches four of them at once. They are not four defects; they are one
     un-migrated shot."""
     for pid, field, prompt in prompts:
         body = strip_suffix(prompt or "", suffix)
@@ -1135,14 +1135,12 @@ def rig_clause_check(label, prompts, suffix, hard):
             continue
         hard.append(
             f"[{label}] {pid}.{field}: carries rig-clause text {', '.join(repr(f) for f in found)}. "
-            f"The style-bible section 2d/2e clauses are no longer authored into prompts - declare the "
-            f"figures in the shot's `figures` field ({{\"anon_foreground\": [\"<the exact phrase "
-            f"this prompt uses>\"], \"crowd\": true}}) and forge.py expands the template at "
-            f"generation time, with held-figure wording on a delta. Left in, the prompt gets the "
-            f"clause TWICE and the delta gets told to re-invent a figure it should be holding.")
+            f"The style-bible crowd-rig clause is no longer authored into prompts - declare "
+            f"`figures`: {{\"crowd\": true}} and forge.py expands the template at generation time. "
+            f"Left in, the prompt gets the clause twice.")
 
 
-FIGURES_KEYS = ("anon_foreground", "crowd")
+FIGURES_KEYS = ("crowd",)
 _PLACE_ANCHOR = re.compile(r"assets/scenes/[A-Za-z0-9][A-Za-z0-9._-]*\.png\Z")
 
 
@@ -1166,39 +1164,19 @@ def place_anchor_check(label, objs, hard):
 
 
 def figures_check(label, objs, hard, soft):
-    """`figures` shape + declaration/prompt agreement. `objs` is [(id, shot-dict)].
+    """`figures` shape. `objs` is [(id, shot-dict)].
 
     HARD on shape, because forge READS this field: an unknown key or a wrong type
     means a rig clause is silently dropped from a generation and the defect only
     shows up as an off-rig figure in a finished image, which is the most expensive
-    place to find it. SOFT on a declared figure the prompt never stages, because
-    the phrase match is a heuristic and the cost of being wrong is a wasted read.
-
-    THE SUBSTRING RULE, AND WHY IT SKIPS DELTAS
-    -------------------------------------------
-    Plan §1 makes each entry "the exact phrase the prompt uses for that figure",
-    and forge's base template opens by naming the entries VERBATIM ("The following
-    figures — X; Y — are anonymous ..."). So an entry the prompt never contains
-    produces a clause binding to a phrase the model cannot find, and the clause
-    lands on whatever figure it likes. That is the defect.
-    On a DELTA it is not a defect. A delta prompt is a compact restatement of the
-    held scene plus the one change, and forge emits held-figure wording for it
-    ("the anonymous figure(s) [list] are unchanged, exactly as established"), so
-    the phrase is carried from the base and the delta is not required to re-stage
-    it. Checking deltas would fire on almost every one of them: 10 of the bricks
-    segment's 17 anon-figure shots are deltas whose prose never says "anonymous"
-    at all ("The same den, same locked camera. ...").
-    Match is case-INSENSITIVE: an entry that opens its sentence is capitalized
-    ("Two anonymous business figures ..."). Deliberately unlike
-    carried_literal_check, where case IS the discriminator — there the case is part
-    of the glyph run being redrawn; here it is grammar."""
+    place to find it."""
     for pid, sh in objs:
         if "figures" not in sh:
             continue
         fig = sh.get("figures")
         if not isinstance(fig, dict):
             hard.append(f"[{label}] {pid}: `figures` is {type(fig).__name__}, expected an object "
-                        f"like {{\"anon_foreground\": [\"...\"], \"crowd\": true}}.")
+                        f"like {{\"crowd\": true}}.")
             continue
         unknown = [k for k in fig if k not in FIGURES_KEYS]
         if unknown:
@@ -1211,34 +1189,7 @@ def figures_check(label, objs, hard, soft):
                             f"or false (it gates the section 2d CROWD-RIG clause).")
             elif fig["crowd"] is False:
                 soft.append(f"[{label}] {pid}: `figures.crowd` is false - omit the key instead; "
-                            f"the spec says present-and-true or absent.")
-        if "anon_foreground" not in fig:
-            continue
-        entries = fig["anon_foreground"]
-        if not isinstance(entries, list):
-            hard.append(f"[{label}] {pid}: `figures.anon_foreground` is "
-                        f"{type(entries).__name__}, expected a list of phrase strings (one per "
-                        f"anonymous foreground figure).")
-            continue
-        if not entries:
-            soft.append(f"[{label}] {pid}: `figures.anon_foreground` is empty - omit the key "
-                        f"instead, or forge emits a section 2e clause naming no figure.")
-        bad = [e for e in entries if not isinstance(e, str) or not e.strip()]
-        if bad:
-            hard.append(f"[{label}] {pid}: `figures.anon_foreground` has non-string/empty "
-                        f"entr{'y' if len(bad) == 1 else 'ies'} {bad!r}; each entry is the exact "
-                        f"phrase the prompt uses for that figure.")
-        if sh.get("stage_role") == "delta":
-            continue
-        body = (sh.get("still_prompt") or "").lower()
-        for e in entries:
-            if isinstance(e, str) and e.strip() and e.strip().lower() not in body:
-                soft.append(
-                    f"[{label}] {pid}: `figures.anon_foreground` declares {e!r} but the "
-                    f"still_prompt never contains that phrase. forge names the entries VERBATIM "
-                    f"when it opens the section 2e clause, so a phrase the prompt doesn't use gives the "
-                    f"clause nothing to bind to and it lands on whichever figure it likes. Copy "
-                    f"the phrase the prompt actually uses, or stage the figure you declared.")
+                        f"the spec says present-and-true or absent.")
 
 
 def _shot_prompts(shots):

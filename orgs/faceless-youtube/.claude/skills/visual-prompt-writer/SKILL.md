@@ -30,7 +30,7 @@ named, the most recently scripted, or ask. **No `script.md` → stop** and say t
 **SCOPED-REPAIR mode:** request names specific shot ids AND `shots.json` already exists → read the
 file and re-author ONLY those shots, everything else staying byte-identical. Every step below
 (1–8, including the per-act self-audit) scopes to the touched shots — apply the full current law,
-reusing the cast list and colour style already declared in `vpw-log.md` (never re-declare), then
+reusing the cast list already declared in `vpw-log.md` (never re-declare), then
 write back in place. The target list arrives from the caller (board verdict, forge violation list);
 VPW never picks its own targets. **Absent named targets, author the full list as below** — the
 default; scoped-repair is opt-in.
@@ -55,12 +55,11 @@ default; scoped-repair is opt-in.
    body pose, finger mechanics, or facial expression in words — naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
    human's pre-gen approval, and a veto comes back to you as a restage.
-   **Then DECLARE every anonymous figure in the shot's `figures` field** — route by size per the grammar
-   §2: background/crowd tier → `"crowd": true`; each LARGE/foreground anonymous figure → one
-   `anon_foreground` entry holding the exact phrase your prompt uses for that figure. Stage them in prose
-   as normal, but the style-bible §2d/§2e rig-clause TEXT never appears in a prompt — you declare, and
-   `forge.py` expands it at gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's
-   figure cap and flag its high-risk case in `notes`. Field spec: `shots-schema.md §2`.
+   **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** A story-bearing foreground
+   individual belongs in the planned cast; people without a story-bearing identity are staged at crowd scale.
+   The style-bible §2d rig-clause TEXT never appears in a prompt — you declare, and `forge.py` expands it at
+   gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
+   high-risk case in `notes`. Field spec: `shots-schema.md §2`.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
    of South America", not "the continent"), framing + scale, the committed scene palette,
@@ -95,8 +94,6 @@ at the first act's level.
 - **The video's named cast** — complete, planned before authoring, and derived from the script: include every recurring or
   story-bearing person or institution whose identity matters. Do not add or remove cast to chase population;
   if a later identity is genuinely needed, revise the plan before continuing, never invent a slug mid-pass.
-- **The video's colour style, declared once** — a named palette register the whole video holds (a
-  muted video stays muted; no shot departs into an unrelated register). Recorded in `vpw-log.md`.
 - **Stages + environments:** decide now which sets recur and carry held `stage` chains and which are
   one-frame standalones. A set invented twice mid-pass gets described twice differently and renders twice.
 - **The three peaks:** reserve the most striking staging for the opening, the mid-video re-arm (55–65%),
@@ -129,8 +126,8 @@ Then write yourself ONE paragraph on the act just closed: **non-literal share** 
 its line's words?), **class variety** (which `shot_class` values repeated, and has one become a reflex?),
 **red-ink count** (red is the one semantic accent — alarm / prohibition / ownership / the punch element —
 so a rising count means it is turning into decoration), **human use** (flag story-bearing people, decisions, or relationships hidden behind objects, or
-habitual people staged where object, place, document, or mechanism is the subject; no target share), **colour-style departures** (any shot
-straying from the video's declared colour style, 3a), and **cadence vs the 3a budget** (shot count and Σ
+habitual people staged where object, place, document, or mechanism is the subject; no target share), and
+**cadence vs the 3a budget** (shot count and Σ
 `duration_s` against this act's target). A drifting act is re-authored here, not left for the critic:
 Step 8 is whole-file and one cycle only.
 

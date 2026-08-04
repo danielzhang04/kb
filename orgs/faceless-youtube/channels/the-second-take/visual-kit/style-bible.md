@@ -21,12 +21,11 @@ every reference frame was generated against it, so `image-generation` proposes c
 - **VARIES per character:** hair and hairstyle, facial hair, head tone, outfit, body build (proportions stay,
   mass changes), age/reaction linework — never enough to break the layout; costume always comes from the
   generation delta.
-- **Three tiers of figure — by SIZE + RECURRENCE, per figure per shot:** named/recurring foreground → seeded
-  from its canonical, §2c auto-appends the form · anonymous LARGE/foreground → the **§2e** clause
-  (full rig, generic outfit + hair, no seed) · anonymous small/many/background → the **§2d CROWD RIG**
-  (simplified features — dot eyes + one mouth — because fine features drift into noses on tiny faces). Both
-  anonymous tiers are DECLARED per shot, never described in rig prose (`visual-grammar.md §2`). A crowd
-  is never a locked identity; a recurring identifiable GROUP is cast.
+- **Two tiers of figure — by IDENTITY, per figure per shot:** named/recurring cast → seeded from its
+  canonical, §2c auto-appends the form · crowd → the **§2d CROWD RIG** (simplified features — dot eyes +
+  one mouth — because fine features drift into noses on tiny faces). Crowd is DECLARED per shot, never
+  described in rig prose (`visual-grammar.md §2`); it is never a locked identity, while a recurring
+  identifiable GROUP is cast.
 
 ## 2. LOCKED STYLE descriptor (verbatim — prepend to every generation)
 
@@ -51,11 +50,11 @@ For a **new character** the delta supplies only identity-VARYING traits (hair / 
 ## 2c. RIG-HOLD descriptor (verbatim — auto-appended to every character-bearing generation)
 
 > Every FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as
-> the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval) and
-> the SAME squat head-to-body proportion, SAME eye style/size/position, NO nose; on a haired character
-> the hair reads as one continuous unbroken mass from temple to jaw. SAME classic cartoon hands —
-> exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers,
-> NEVER five digits). Anonymous background / crowd figures instead follow the §2d CROWD-RIG clause when
+> the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME
+> eye style/size/position, NO nose, NO ears, SAME classic cartoon hands — exactly THREE fingers plus ONE
+> thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even
+> medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background /
+> crowd figures instead follow the §2d CROWD-RIG clause when
 > the prompt states it (simplified: dot eyes, one simple mouth) — do NOT force this full rig onto them.
 > Hold ONLY this form — costume, pose, expression, head tone, build, and framing are set by the
 > generation delta, not here.
@@ -80,29 +79,6 @@ clause at gen time. `refs/base/crowd-exemplar.png` seeds every crowd-bearing gen
 carries the look, so re-describing it in the prompt buys nothing and bleeds crowd wording onto the
 foreground figures.
 
-## 2e. BASE-RIG clause (verbatim template — `forge.py` expands it at gen time)
-
-> This prominent foreground figure is an anonymous, non-recurring person drawn on the FULL base family
-> rig — SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye
-> style/size/position, NO nose; on a haired character the hair reads as one continuous unbroken mass
-> from temple to jaw. SAME classic cartoon hands (exactly THREE fingers plus ONE thumb, four digits
-> total, never five), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT
-> cel render — the identical rig the named cast holds, just NOT a specific identity. Give each figure
-> its own distinct, era-appropriate outfit and hair so it reads as an individual; hold ONLY this form.
-
-A large / foreground anonymous figure needs the FULL rig but has no canonical to seed, so §2c's
-auto-append never fires and §2d is too simplified. Like §2d, **no prompt carries this text** — the shot
-lists each such figure in `figures.anon_foreground` (`visual-grammar.md §2`) and `forge.py` expands it:
-
-- **Everything from `FULL base family rig` onward is the LAW and is kept verbatim.** That phrase is the
-  split anchor (and lint's rig-clause fingerprint); forge writes the opening itself, naming the shot's
-  declared figures, and appends its own binding sentence confining the clause to them — so keep the tail
-  number-NEUTRAL ("each figure … it reads"), because one clause serves one figure or four.
-- **Delta mode (`stage_role: "delta"`) gets HELD wording instead, never this establishment wording** — "the
-  anonymous figure(s) … are unchanged, exactly as established", and none of the tail. Re-issuing
-  give-each-a-distinct-outfit on a delta tells the engine to redesign the very figure the chain exists to
-  hold; it is a first-establishment instruction only.
-
 ## 3. The rig checklist — channel invariants (values only)
 
 The **WHAT** every generation is built to and every post-gen judge rules against — ONE rule set, both ends.
@@ -121,11 +97,9 @@ Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never 
 - **Identity match vs canonical** — a seeded character's head tone AND hair must MATCH its canonical; a
   base-cream bald head on a haired/toned character is an **identity FAIL even when every form invariant
   passes**. **Costume** — the pinned canonical costume is identity; a wrong outfit fails unless authored.
-- **Proportion — judged EXPLICITLY, every figure, every tier:** the **squat base proportion** (large round head,
-  short compact body); too tall / lanky / long-bodied FAILS, seeded or anonymous. **Rig by tier** — named/seeded
-  foreground and anonymous LARGE/foreground (§2e) figures judge against the **FULL** rig, crowd/background
-  figures against the **CROWD** rig (§2d); detailed faces or noses on a crowd figure FAIL, as does a foreground
-  figure on the crowd rig.
+- **Proportion — judged EXPLICITLY, every figure:** the **squat base proportion** (large round head, short
+  compact body); too tall / lanky / long-bodied FAILS. **Rig by tier** — named/seeded cast judge against the
+  **FULL** rig; crowd figures against the **CROWD** rig (§2d); detailed faces or noses on a crowd figure FAIL.
 - **Expression register-fit** — judged against the BEAT: a calm/ordinary/sincere/grim beat wants a restrained
   face, an **over-the-top expression for its beat is a defect**; big faces need a comedic peak.
 - **In-image text is diegetic, baked, and verbatim** — only the text the shot authored, in the §5 marker hand,
@@ -138,8 +112,8 @@ Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never 
 
 ## 4. Palette
 
-**Locked to the character; NOT globally** — scene/background/prop palettes move freely per video; each recurring
-character gets one flat head tone, pinned in the registry (§6).
+Character colors, outline, and semantic red stay locked; scene/background/prop palettes are free per scene within
+the channel color family. Neutral-grey-only is not a palette.
 
 | Role | Hex | Notes |
 | --- | --- | --- |
@@ -158,8 +132,7 @@ character gets one flat head tone, pinned in the registry (§6).
   middle. Emotion reads in a legible mouth + brow, restrained by default; **posture is the acting**.
   **Personified institutions** carry ONE identity tag (a flag necktie, a hat, a uniform).
 - **Environments:** *built* but flat — a real setting per scene, composed **edge-to-edge with a fore/mid/
-  background depth read**, a **committed scene palette consistent with the video's declared colour
-  style** (`visual-prompt-writer/SKILL.md` Step 3a), and **light/atmosphere**. **Rich, not sparse:**
+  background depth read**, a **committed warm scene palette**, and **light/atmosphere**. **Rich, not sparse:**
   name the real furniture of the place; no dead air, no parallaxed realism. **Diegetic art / artifacts** (a
   painting, poster, brochure vista, map) render in OUR flat-cel look with the `#241a12` outline.
 - **Charts / diegetic lettering:** a hand-drawn **marker / sketch family**, deliberately crude, never corporate
@@ -172,7 +145,6 @@ character gets one flat head tone, pinned in the registry (§6).
   / SOLD and kin) render in **heavy block CAPITALS, dense saturated red `#d7402b` ink** (thick solid strokes,
   edge-only distress), a **thin `#241a12` letter contour** hugging each glyph (not a drop shadow), **flat
   matte**; `refs/env/stamp-block-outlined.png` seeds every such gen — no exemplar seed is a register FAIL.
-- **Colour:** the locked 2–3 colour palette **+ one red accent** (character colours fixed in §4).
 
 ## 6. Registry — the live index of recurring cast & world
 

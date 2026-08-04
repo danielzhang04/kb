@@ -418,6 +418,7 @@ class Kit:
 # seed is the crowd exemplar.
 SEED_CAP = 4                    # the Pass-2 seed law: past four, dilution weakens every prior
 FIGURE_PREFIX = "fig-"          # STEP 1's output: one portable frame per (char, pose, expression)
+CHANNEL_STYLE_CARD_TAG = "channel-style-card"
 _PRIMITIVE_KINDS = ("pose", "action", "interaction", "expression")
 _BACKTICK_RE = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._-]*)`")
 
@@ -599,16 +600,13 @@ def resolve_request_seeds(k, r, pending=()):
         # A5: identity / new-character gens auto-seed the character portrait. environment & style
         # gens MUST carry an explicit style-anchor seed — an unseeded environment/style gen falls
         # back to a stock-clipart prior (off the locked style, per the image-generation SKILL seed laws), so it is a
-        # HARD ERROR now rather than a silent off-recipe frame. The ONE exception is a `plate: true`
-        # item: the video's FIRST frame for a place has no earlier frame of its own to seed.
+        # HARD ERROR now rather than a silent off-recipe frame.
         if mode in ("identity", "new_character"):
             return [k.base_frame(r.get("character", "base"))]
-        if r.get("plate"):
-            return []
         raise SystemExit(
             f"{name}: environment/style gens must carry a style-anchor seed (the video's own plate, "
             "an in-chain parent frame, or a STEP-1 figure frame) — unseeded gens fall back to a "
-            "stock-clipart prior. The video's first frame for a place is marked `plate: true`.")
+            "stock-clipart prior. Zero-seed requests do not run.")
     out = []
     for s in seeds:
         if "_staging/" in str(s).replace("\\", "/"):
@@ -886,19 +884,6 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
 # seed the original never had (the swamp plate into L99), 7 shots losing their mandatory style
 # anchor. forge itself never dropped a seed. So the slate is built HERE, by the same code that
 # validates it — the builder and the seeding law are one file, and the retry path reuses it.
-_SCALE_ANCHORS = ("doorway", "door", "desk", "table", "counter", "chair", "bench", "window",
-                  "cabinet", "shelf", "crate", "pallet", "stack", "machine", "monitor", "screen",
-                  "gate", "fence", "car", "truck", "van", "podium", "railing", "staircase",
-                  "column", "archway", "tunnel", "conveyor", "wall")
-
-
-def scale_anchor(prompt):
-    """A NAMED scene element for the figure to be sized against. An anchor SEED carries palette,
-    not scale and not genre (probe L133: the officer rendered as a warehouse until the prompt named
-    the airport), so the placement TEXT has to name the thing the figure is measured by."""
-    p = (prompt or "").lower()
-    hits = [(p.find(w), w) for w in _SCALE_ANCHORS if re.search(r"\b%ss?\b" % w, p)]
-    return "the " + min(hits)[1] if hits else "the other elements named in the scene above"
 
 
 def figure_card_delta(character, pose, expression):
@@ -924,7 +909,7 @@ def figure_card_delta(character, pose, expression):
     return " ".join(out)
 
 
-def placement_delta(prompt, cast, anchor, has_plate):
+def placement_delta(prompt, cast, has_plate):
     """STEP 2's delta: the shot's own prose VERBATIM (so every scene noun it authored is restated,
     not paraphrased) plus the placement block. The block also carries the guaranteed rig-hold
     signal — a STEP-1 frame lives outside `/refs/`, so `_is_char_seed` never fires on it and §2c
@@ -941,11 +926,6 @@ def placement_delta(prompt, cast, anchor, has_plate):
     if has_plate:
         out.append("The LAST image is the destination place — match its palette, outline weight and "
                    "lighting exactly.")
-    out.append(f"Stage {'the figure' if one else 'the figures'} into the scene exactly as written "
-               f"above, every named element of it present, at true human scale measured against "
-               f"{anchor}; feet in firm contact with the ground plane with a contact shadow beneath "
-               f"matching the scene's own light direction; correctly occluded by whatever stands in "
-               f"front of {it}; re-lit to the scene's own light and palette.")
     return "\n\n".join(out)
 
 
@@ -1036,6 +1016,22 @@ def place_anchor_for(video, anchor, root, name):
         raise SystemExit(f"{name}: `place_anchor` must be a non-empty video-relative "
                          "`assets/scenes/<approved-frame>.png` path.")
     return _video_scene_frame(video, os.path.join(video, anchor), root, name, "`place_anchor`")
+
+
+def channel_style_card_for(reg, name):
+    """Return the one channel STYLE asset registered under the stable style-card tag."""
+    matches = [a for a in reg.get("assets", [])
+               if a.get("kind") == "style" and a.get("tag") == CHANNEL_STYLE_CARD_TAG]
+    if not matches:
+        raise SystemExit(f"{name}: channel style card not registered — add one registry asset with "
+                         f"kind `style` and tag `{CHANNEL_STYLE_CARD_TAG}`. No request was sent ($0).")
+    if len(matches) != 1:
+        raise SystemExit(f"{name}: multiple channel style cards are registered with tag "
+                         f"`{CHANNEL_STYLE_CARD_TAG}` — exactly one is allowed. No request was sent ($0).")
+    if not matches[0].get("file"):
+        raise SystemExit(f"{name}: channel style card not registered with a seed file — the registry "
+                         "entry must carry `file`. No request was sent ($0).")
+    return matches[0]["file"]
 
 
 def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candidates=None):
@@ -1138,25 +1134,20 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
         # primitives and the crowd exemplar already have higher-priority structural routes above.
         tagged = [vfile(n) for n in (shot.get("assets") or {})
                   if (reg_assets.get(n) or {}).get("kind") in ("prop", "environment")]
+        style_card = channel_style_card_for(k.reg, name) if not parent and not place_anchor else None
         seeds = _dedupe(figs + canons + [plate] + prims_seeds
-                        + ([crowd_ex] if crowd else []) + tagged)
+                        + ([crowd_ex] if crowd else []) + tagged + [style_card])
         text = prompt
         if staged:
-            anchor = scale_anchor(prompt)
-            text = placement_delta(prompt, staged, anchor, bool(plate))
-            why.append(f"scale anchor = {anchor}")
+            text = placement_delta(prompt, staged, bool(plate))
         if place_anchor:
             why.append(f"PLACE-ANCHOR = {shot['place_anchor']}")
-        elif not parent:
-            # fix 2: the video's FIRST frame for this place. It mints the place's look (there is no
-            # cross-video plate to import) and every later shot in the place seeds it.
-            why.append("PLACE-FIRST (mints this place's plate)")
+        elif style_card:
+            why.append(f"STYLE-CARD = {CHANNEL_STYLE_CARD_TAG}")
         why_text = "; ".join(why) or "no cast — the scene composes from the place"
         item = {"name": name, "mode": "environment", "aspect": aspect, "delta": text, "seed": seeds,
                 "figures": shot.get("figures"), "stage_role": shot.get("stage_role"),
                 "assets_omitted": sorted(omitted) or None, "why": why_text}
-        if not parent and not place_anchor:
-            item["plate"] = True
         if in_scope:
             if staged and not (shot.get("figures") or depicts_figures(text)):
                 raise SystemExit(f"{name}: a STEP-1-seeded scene gen with no rig-hold signal — a "

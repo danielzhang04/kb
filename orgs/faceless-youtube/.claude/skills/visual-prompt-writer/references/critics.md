@@ -51,9 +51,7 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    not — not automatically an error (image-gen's Pass-1 gate can approve a new asset), but an unflagged
 >    typo or a silently invented slug is. Then: is body pose, finger mechanics, or facial expression
 >    written as PROSE where a registry name is the authoring act? Do the three zones hold — identity, then
->    scene, then the payload (the quoted lettering, or a delta's one change) as the FINAL clause? Is any
->    absence written as a "no X, no Y" list instead of a positive state of the surface? Is any style-bible
->    §2d/§2e rig-clause text sitting in the prompt where the shot should just declare `figures`?
+>    scene then payload final? Is absence positive? Is crowd-rig text left in the prompt?
 > 4. **Renderability and generator risk.** Does the shot's *meaning* depend on animation the pipeline
 >    cannot render (element motion inside a frame — walking, peeling, pouring)? The renderable set is the
 >    still + word-anchored cutout layers + changes arriving AT cuts + baked diegetic text; a beat that

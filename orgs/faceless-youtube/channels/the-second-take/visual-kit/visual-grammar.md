@@ -56,6 +56,7 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
 - **Non-literal is the DEFAULT** — draw what the beat MEANS, never the words of the sentence.
 - **Literal is reserved for a concrete physical action or object** the line actually describes.
 - **When a line could go either way, go non-literal** — skew harder than the shipped reference set.
+- Non-literal changes the depiction, not the scene's occupancy: symbolic, physicalized-imbalance and ironic-counterpoint shots remain full representative scenes, never the same scene with its people removed.
 - The calibration is `../example-shots.md`: match its depiction THINKING, never clone its content.
 - A shot that merely draws its line's words is a failure → reclassify it.
 - **Choose the beat's subject, not a population:** use people for person, decision, relationship,
@@ -118,10 +119,9 @@ what the VO has not yet said — a withheld entity is absent entirely from every
   (`shots-schema.md §2`) and seeded from the crowd exemplar. **A story-bearing foreground individual
   belongs in the planned cast and must not be replaced with an empty object merely to avoid a figure.**
   An anonymous foreground human does not exist; people without a story-bearing identity are staged at
-  crowd scale. The §2e clause text stays in `style-bible.md` for the legacy frames that used it, but
-  nothing authors it anymore. The prose still stages crowd figures — where they stand, what they do,
-  what they wear, dressed for the scene's own era and setting, never the exemplar's period dress —
-  but the RIG wording is `forge.py`'s: it expands the `crowd` declaration into the
+  crowd scale. The prose still stages crowd figures — where they stand, what they do, what they wear,
+  dressed for the scene's own era and setting, never the exemplar's period dress — but the RIG wording
+  is `forge.py`'s: it expands the `crowd` declaration into the
   style-bible §2d clause at gen time. **Never write that clause text into a `still_prompt`** (lint
   HARD-fails its fingerprint): the reference frames already carry the rig, ~600–1,100 chars of
   boilerplate per shot pushes the prompt into measured adherence decay, and generic figure wording
@@ -157,11 +157,6 @@ what the VO has not yet said — a withheld entity is absent entirely from every
 
 Framing, scale, and angle are a choice driven by the one thing the viewer must see (the payload) and
 the shot's class. Unchosen, it defaults to a centered eye-level medium — fine once, deadly on repeat:
-
-- **Scale / character-sizing** — reach for size relationships, not a lineup of equals: a tiny figure
-  under a dominant labelled mass, a face filling the frame, one figure dwarfing another.
-- **Angle / distance** — reach past the eye-level medium: top-down for a map/plan, low for dominance,
-  an extreme close-up on a face or detail, a wide with air for a single graphic idea.
 - **No hand/extremity close-ups — framing stays at body scale.** The rig's schematic 4-digit hands do
   not survive macro framing; show a document/signature/object detail at desk scale, the hand incidental.
 

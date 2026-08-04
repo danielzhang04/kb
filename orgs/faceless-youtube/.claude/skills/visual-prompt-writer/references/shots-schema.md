@@ -23,7 +23,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
         "shot_class": "the canonical closed list (picked from visual-grammar.md's narration→shot-class table): personified-character, staged-interaction, symbolic-stand-in-object, number-glued-to-object, diegetic-device, map-plan-view, physicalized-imbalance, register-shift-infographic, ironic-counterpoint, reaction-shot, idiom-pun, aftermath-palette-turn, crowd-multiplication, literal",
         "source": "ai-gen | stock | hybrid | chart | screencap | archival (§3)",
         "still_prompt": "the image-gen prompt: subject, composition/framing + scale, lighting, palette, and the shot's load-bearing scene FACTS. Cast, poses, and expressions are named INLINE by their registry vocabulary name, backticked. In-video text is DIEGETIC + baked here, quoted VERBATIM and kept SHORT (1–4 words)",
-        "figures": { "anon_foreground": ["the worker at the dock edge"], "crowd": true },
+        "figures": { "crowd": true },
         "stock_query": "search terms — only when source is stock|hybrid|archival, else omit",
         "notes": "policy/accuracy flags (analysis-not-gore, YMYL, borderline) + the [F-NN] ledger ids behind any supplied literal"
       }
@@ -66,16 +66,11 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   as a new `plate`; it can never import a
   cross-video environment. Omit it for ordinary first-place bases and every existing shot — their current
   place-first behavior is unchanged.
-- **`figures` — anonymous figures are DECLARED here, never described in rig prose.** Optional; omit the
-  whole key when a shot has none. **`anon_foreground`**: one entry per anonymous LARGE/foreground figure
-  (style-bible §2e tier), each entry **the exact phrase the `still_prompt` uses for that figure** ("the
-  worker at the dock edge") — omit the key if there are none. **`crowd`**: `true` when the shot stages
-  background/crowd figures (§2d tier); omit when false. `forge.py` expands each declaration into the
-  style-bible §2d/§2e clause at gen time — establishment wording on a `base`, held wording on a `delta` —
-  so **no prompt ever contains that clause text**: `lint_shots.py` HARD-fails its fingerprint, HARD-fails a
-  wrong shape or unknown key, and SOFT-flags an `anon_foreground` entry that appears nowhere in its shot's
-  prompt. Named/recurring cast are never declared here (they are inline registry names, next bullet).
-  Routing by figure size + the ≤5-must-stay-distinct cap: `visual-grammar.md §2`.
+- **`figures` — crowd is DECLARED here, never described in rig prose.** Optional; omit the whole key when
+  a shot has none. **`crowd`**: `true` when the shot stages crowd figures (§2d tier); omit when false.
+  `forge.py` expands the declaration into the style-bible §2d clause at gen time, so **no prompt ever
+  contains that clause text**: `lint_shots.py` HARD-fails its fingerprint, wrong shape, or unknown key.
+  Named/recurring cast are never declared here (they are inline registry names, next bullet).
 - **Casting is PROSE, by vocabulary name.** Every recurring figure, pose, expression, and already-built
   prop is named inline in the `still_prompt` by its exact `registry.json` name, backticked — there are no
   structured cast/pose/expression arrays. A prop making its FIRST appearance has no entry to name and is
@@ -112,8 +107,7 @@ documentary about a real person is a fabricated fact. Three resolutions, in orde
    `notes`. Each value sits next to its own element; a literal supplied for the header does not license
    an unsupplied number elsewhere in the sentence.
 2. **Omit the element** — no ledger fact, cut it. The beat survives; the fabrication doesn't.
-3. **Author it as deliberately blank** — "a single BLANK name line", "the metric field left COMPLETELY
-   EMPTY". An empty surface is a legitimate composition and reads as intentional.
+3. **Blank or omit only the unsupported glyph field; retain the diegetic object and the surrounding full set.**
 
 Never resolve it by inventing a plausible-looking value: that is the same fabrication with an extra step.
 `scripts/lint_shots.py` HARD-fails this across every `still_prompt`, `first_frame`, and thumbnail

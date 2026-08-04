@@ -274,43 +274,14 @@ def test_g7_plant_crowd_wrong_type():
     assert len(hard) == 1 and "expected true" in hard[0]
 
 
-def test_g7_plant_anon_foreground_not_a_list():
-    hard, soft = _fig({"anon_foreground": "one anonymous person"})
-    assert len(hard) == 1 and "expected a list" in hard[0]
+def test_g7_anon_foreground_is_an_unknown_key():
+    hard, soft = _fig({"anon_foreground": ["one anonymous person"]})
+    assert len(hard) == 1 and "unknown key" in hard[0], hard
 
 
-def test_g7_plant_non_string_entry():
-    hard, soft = _fig({"anon_foreground": ["one anonymous person", 7, "  "]})
-    assert len(hard) == 1 and "non-string/empty" in hard[0], hard
-
-
-def test_g7_plant_declared_phrase_absent_from_the_prompt():
-    hard, soft = _fig({"anon_foreground": ["the stall keeper"]},
-                      prompt="its keeper stands behind the counter in a waistcoat")
-    assert hard == [] and len(soft) == 1 and "never contains that phrase" in soft[0], (hard, soft)
-
-
-def test_g7_a_valid_declaration_is_silent():
-    hard, soft = _fig({"anon_foreground": ["one anonymous person"], "crowd": True})
-    assert (hard, soft) == ([], [])
-
-
-def test_g7_case_insensitive_match():
-    hard, soft = _fig({"anon_foreground": ["two anonymous business figures"]},
-                      prompt="Two anonymous business figures face each other centre stage")
-    assert (hard, soft) == ([], [])
-
-
-def test_g7_a_delta_is_not_required_to_restage_the_phrase():
-    hard, soft = _fig({"anon_foreground": ["One anonymous worker in a short-sleeved shirt"]},
-                      prompt="The same den, same locked camera. A box now sits in the foreground.",
-                      stage_role="delta")
-    assert (hard, soft) == ([], [])
-
-
-def test_g7_crowd_false_and_empty_list_are_soft_not_hard():
-    hard, soft = _fig({"crowd": False, "anon_foreground": []})
-    assert hard == [] and len(soft) == 2, (hard, soft)
+def test_g7_crowd_false_is_soft_not_hard():
+    hard, soft = _fig({"crowd": False})
+    assert hard == [] and len(soft) == 1, (hard, soft)
 
 
 def test_g7_no_figures_key_is_silent():
@@ -407,9 +378,9 @@ def test_e2e_a_new_hard_guard_fails_and_skips_write():
     assert "vo_text" not in json.loads(p.read_text(encoding="utf-8"))["long_form"]["shots"][0]
 
 
-def test_e2e_a_new_soft_guard_does_not_change_the_exit_code():
+def test_e2e_anon_foreground_is_a_hard_unknown_key():
     rc, _ = _main(_file(figures={"anon_foreground": ["a figure never staged"]}))
-    assert rc == 0
+    assert rc == 1
 
 
 def test_e2e_a_bad_place_anchor_is_hard_and_skips_write():
@@ -419,8 +390,7 @@ def test_e2e_a_bad_place_anchor_is_hard_and_skips_write():
 
 
 def test_e2e_report_encodes_on_a_cp1252_console(capsys):
-    _main(_file(shot_class="vibes-montage",
-                figures={"anon_foreground": ["a figure never staged"], "crowd": False},
+    _main(_file(shot_class="vibes-montage", figures={"crowd": False},
                 still_prompt="a keeper. The stall keeper is drawn as follows. The glass carries "
                              "no signs and no words. A sign 'TRANS CONTINENTAL AIRLINES' and "
                              "cards 'A LOT', 'B LOT', 'C LOT', 'D LOT' with 'TERMINATED'"))

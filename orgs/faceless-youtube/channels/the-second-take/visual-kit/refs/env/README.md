@@ -1,12 +1,6 @@
 # Register exemplars + recurring props (`refs/env/`)
 
-**Cross-video environment plates are abolished (fix 2, 2026-07-30) — no place lives here anymore.**
-A video mints its own place: the first shot in a place generates as a `plate: true` candidate batch
-(2–3 options), the human picks once, and every later shot in that place seeds the picked frame —
-`_staging/`/`assets/scenes/` inside the video, never `refs/env/`. `forge.py` still hard-errors on an
-unseeded `environment`/`style` gen (the video's own plate, an in-chain parent frame, or a STEP-1
-figure frame satisfies it); the ONE exception is the `plate: true` item itself. What remains under
-`refs/env/` are two kinds of asset that never depicted a place to begin with:
+**Cross-video places forbidden; the channel style card is mandatory and carries rendering only.**
 
 ## Register exemplars — the lettering and stamp HANDS
 

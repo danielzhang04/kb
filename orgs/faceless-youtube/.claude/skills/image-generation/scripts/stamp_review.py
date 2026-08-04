@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """stamp_review.py — the honest three-state stamp writer.
 
-The batched image review (three concurrent mandate agents) produces a MERGED ruling list at
+The single fresh-eyes review pass for an act batch produces a MERGED ruling list at
 `<video_dir>/assets/_review/merged.json`. This script is the ONLY writer of the render gate's
 verdict: it converts those merged rulings into per-shot `review_status` on
 `<video_dir>/assets/scenes/manifest.json`.
