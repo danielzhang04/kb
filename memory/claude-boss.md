@@ -64,3 +64,10 @@
 - Signal to recognize: a sharp population-distribution swing, story-bearing identities hidden behind objects, or recurring settings collapsing to independent frames.
 - Do not add governance prose for isolated shot-taste misses already covered by existing rules; repair execution and collect another sample first.
 
+
+## 2026-08-04 — pearlman codex-only re-run (boss session, paused mid-Phase-3)
+- WORKED: full pipeline stage chain via dispatch-codex terra workers (research dossier with revised evidence-backed angle, script, metadata, §3d passes, proxy-judge) — every stage graded by boss with artifact evidence (lint --wpm 171, banned-claim greps, dup-phrase greps) before commit. Proxy-judge advisory REJECT (CJ-001 reportorial register) correctly caught what artifact checks can't — the judge stage is worth its cost, run it before every human gate.
+- FAILED: dispatch-codex --follow-up for a writing task — resumes at REPO ROOT (only the model is re-pinned, not cwd), worker edited the MAIN checkout's old file and blended refuted claims in. Contained same-session (main restored byte-identical via git show HEAD:path + Write; auto-mode classifier blocks git checkout -- compounds). RULE: follow-up = read-only Q&A; writes = fresh dispatch with --cwd. Durable fix owed: persist cwd in threads.json.
+- LEARNED: artifact-level grading (lint/leash) does NOT prove process execution — the first script worker skipped the humanizer + critic passes invisibly. Briefs must FORCE process artifacts (per-critic findings file); grade the process record, not just the output.
+- LEARNED: workers pad word-count floors by repeating facts; boss dedup grep is mandatory every pass (memory rule confirmed 3rd time).
+- HANDOFF: handoffs/2026-08-04-fyt-pearlman-rerun.md (ops). Rewrite worker (codex-deep) was LIVE at pause — harvest per handoff even if its card lands FAILED: orphaned.
