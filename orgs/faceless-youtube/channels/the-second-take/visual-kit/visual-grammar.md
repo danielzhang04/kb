@@ -58,6 +58,9 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
 - **When a line could go either way, go non-literal** — skew harder than the shipped reference set.
 - The calibration is `../example-shots.md`: match its depiction THINKING, never clone its content.
 - A shot that merely draws its line's words is a failure → reclassify it.
+- **Choose the beat's subject, not a population:** use people for person, decision, relationship,
+  action, or reaction beats; use an object, place, document, or mechanism when that is the subject.
+  Neither is globally preferred; never add or remove people to satisfy a population target.
 
 **Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
 it, each `delta` changes exactly ONE element, **≤3 deltas**, then a re-base or a hard cut. A world,
@@ -72,8 +75,8 @@ what the VO has not yet said — a withheld entity is absent entirely from every
 ## 2. Staging conventions (our cast on screen)
 
 - **No on-screen narrator; the screen is a cast** (`style-bible.md §1`) that comes and goes.
-  **Institutions are personified cast**, one identity tag each (a flag necktie, a hat, an iconic
-  building — `style-bible.md §5`), reused consistently.
+  **Institutions may be personified cast** with one identity tag, or represented by their iconic
+  landmark, building, letterhead, or product as the beat requires; reused consistently.
 - **Stage poses that HOLD** — every still is a tableau readable for its full duration, never a freeze
   of mid-motion. Pose menu: a salute · a planted wide stance (triumph/arrival) · presenting an object
   · a held point at a target · arms-crossed appraisal · a slump (defeat) · leaning in (conspiracy) ·
@@ -81,9 +84,15 @@ what the VO has not yet said — a withheld entity is absent entirely from every
   tableau, or lets the change arrive at a cut.
 - **Reference cast, poses, and expressions by their registry vocabulary NAME, backticked, inline in
   the prompt prose** — "MacGregor, `expr-smug`, `action-salute`, stage-left, facing right".
-  `image-generation` resolves each name to its file; a backticked name absent from `registry.json` is
-  an authoring gap it surfaces at its pre-gen gate. Never author body pose, finger mechanics, or
-  facial expression as prose — naming the asset IS the authoring act.
+  `image-generation` resolves each name to its file. **A cast name may be authored and minted at the
+  Pass-1 gate** — a backticked cast name absent from `registry.json` is an authoring gap
+  `image-generation` surfaces there for approval. **A pose, interaction, or expression name must
+  ALREADY exist in `registry.json`:** unlike a cast name, a new pose or interaction template is a rare,
+  separately gated build — it changes how every figure that uses it is drawn, and a fresh one breaks
+  more than it buys. Author from the inventory; if no pose fits, restage the beat.
+  A named asset is the authoring act, and the prompt may not narrate what the seed already carries — no
+  eyelid, brow, nose, ear, finger, palm, or proportion prose next to a named pose or expression. Prose
+  competing with a seed is how one figure's attributes bleed onto another.
 - **Props follow the same rule ONLY once they exist.** A prop that recurs across the video and already
   has a library entry is named by that entry (`registry.json` `assets[]` takes a `kind: "prop"` row like
   any other vocabulary). A prop making its FIRST appearance has no name to use: describe it in prose,
@@ -104,25 +113,39 @@ what the VO has not yet said — a withheld entity is absent entirely from every
   introduction), in its canonical expression unless the beat authors otherwise.
 - **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance. A group
   member acting alone is staged as an individual.
-- **Anonymous figures are DECLARED, never described in rig prose.** Route each by SIZE
-  (`style-bible.md §1`'s three-tier model) and record it in the shot's **`figures`** field
-  (`shots-schema.md §2`): small/many/background → `"crowd": true`; LARGE/foreground → one
-  `anon_foreground` entry per figure, each entry the **exact phrase the prompt uses for that figure**
-  ("the worker at the dock edge"), so the declaration and the prose point at the same body.
-  **The anon-vs-cast test is the backticked slug, not recurrence:** a foreground figure with no slug is
-  declared here on EVERY shot it appears in; a role that recurs and must hold one identity gets a new
-  backticked slug instead (Pass 1 mints it) — never a prose costume re-described shot to shot. The prose
-  still stages them — where they stand, what they do, what they wear — but the RIG wording is
-  `forge.py`'s: it expands each declaration into the style-bible §2d/§2e clause at gen time, in
-  establishment or held wording per `stage_role`. **Never write that clause text into a `still_prompt`**
-  (lint HARD-fails its fingerprint): the reference frames already carry the rig, ~600–1,100 chars of
+- **Every human in frame is either NAMED CAST or CROWD — no third tier, no promotion path.** NAMED CAST
+  has a backticked slug and a canonical, and it is seeded; CROWD is declared `"crowd": true`
+  (`shots-schema.md §2`) and seeded from the crowd exemplar. **A story-bearing foreground individual
+  belongs in the planned cast and must not be replaced with an empty object merely to avoid a figure.**
+  An anonymous foreground human does not exist; people without a story-bearing identity are staged at
+  crowd scale. The §2e clause text stays in `style-bible.md` for the legacy frames that used it, but
+  nothing authors it anymore. The prose still stages crowd figures — where they stand, what they do,
+  what they wear, dressed for the scene's own era and setting, never the exemplar's period dress —
+  but the RIG wording is `forge.py`'s: it expands the `crowd` declaration into the
+  style-bible §2d clause at gen time. **Never write that clause text into a `still_prompt`** (lint
+  HARD-fails its fingerprint): the reference frames already carry the rig, ~600–1,100 chars of
   boilerplate per shot pushes the prompt into measured adherence decay, and generic figure wording
   sitting ahead of a named character is what bleeds one figure's attributes onto another.
-- **Figure cap — plan ≤5 must-stay-distinct figures per shot.** Five is the generator's
-  character-reference budget; past it, figures that must read as different people collapse into each
-  other. Interaction is harder than mere co-presence, so **>3 figures in physical interaction** (touching,
-  handing over, grappling) is flagged high-risk in `notes` and restaged as co-presence where the beat
-  allows. Crowd-rig figures are a mass, not identities, and don't count against the cap.
+
+  **Scope law: two-step seeding applies to named-cast FRESH stage-base gens only.** Crowd has no
+  canonical, so isolating a step-1 gen buys it nothing — crowd, environment, and prop shots stay
+  single-step (crowd exemplar + plate + prose), and delta beats stay single-step too, unchanged.
+  Combined with this tier law and the ≤2-cast cap below, no other shot shape exists that a step-1
+  figure applies to.
+- **The cast cap — at most 2 named cast per shot**, with the slate stated so the cost is visible
+  rather than argued:
+
+  | Shot shape | STEP 2's slots (step 1 already ran per figure) | What it gives up |
+  | --- | --- | --- |
+  | 1 cast, fresh | step-1 figure · **plate** | nothing — 2 slots free |
+  | 1 cast + crowd, fresh | step-1 figure · plate · crowd exemplar | nothing |
+  | **2 cast, fresh** | step-1 figure A · step-1 figure B · **plate** | nothing — 1 slot still free |
+  | 2 cast + crowd, fresh | step-1 figure A · step-1 figure B · plate · crowd exemplar | nothing |
+  | 2 cast, delta beat | parent frame · canonical A · canonical B · one changed pose *or* expression | nothing — unchanged, single-step, exactly as today |
+
+  Stated positively: **a fresh two-cast shot is the BASE of a stage; every later two-cast beat in that
+  place is a delta on it.** Crowd-rig figures are a mass, not identities, and don't count against the
+  cap.
 - **Prompt ordering — three zones, in this order.** (1) **Identity first:** the named cast, their
   backticked registry names, and any pinned trait the shot depends on. (2) **Scene second:** setting,
   staging, framing, palette, light, depth. (3) **Payload LAST, as the final clause:** the quoted lettering,

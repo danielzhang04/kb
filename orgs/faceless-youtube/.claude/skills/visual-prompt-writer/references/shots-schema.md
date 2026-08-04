@@ -19,6 +19,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
         "vo_text": "DERIVED by lint_shots.py --write; never hand-authored",
         "stage": "OPTIONAL id shared by consecutive shots on ONE persistent set (e.g. \"guidebook-desk\"); omit or unique = a standalone one-frame stage",
         "stage_role": "base | delta — base establishes the set + subject; delta = ONE element added or moved on the SAME set", "changed_elements": ["+ golden city rises"],
+        "place_anchor": "OPTIONAL on a regenerated base: video-relative assets/scenes/<human-approved-frame>.png to preserve this video's approved place; never a cross-video env reference",
         "shot_class": "the canonical closed list (picked from visual-grammar.md's narration→shot-class table): personified-character, staged-interaction, symbolic-stand-in-object, number-glued-to-object, diegetic-device, map-plan-view, physicalized-imbalance, register-shift-infographic, ironic-counterpoint, reaction-shot, idiom-pun, aftermath-palette-turn, crowd-multiplication, literal",
         "source": "ai-gen | stock | hybrid | chart | screencap | archival (§3)",
         "still_prompt": "the image-gen prompt: subject, composition/framing + scale, lighting, palette, and the shot's load-bearing scene FACTS. Cast, poses, and expressions are named INLINE by their registry vocabulary name, backticked. In-video text is DIEGETIC + baked here, quoted VERBATIM and kept SHORT (1–4 words)",
@@ -56,6 +57,28 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   the scene's architecture) stays a delta frame; a DISCRETE one (a character enters, a stamp slams onto a
   page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint enforces exactly one
   `base`, first, per stage · **≤3 deltas** per chain · contiguity.
+- **`place_anchor` — an approved in-video place, only when regenerating a base composite.** Optional;
+  write the human-picked frame as a non-empty normalized direct `assets/scenes/<id>.png` path, only on a
+  `base` (no absolute, traversal, backslash, nested, or cross-video path). `lint_shots.py` checks that
+  structural contract only; `forge.py batch` requires
+  that exact existing file under this video's own `assets/scenes/` after resolving links/junctions,
+  seeds it after any STEP-1 figure frames and before the crowd exemplar, and does not mark the base
+  as a new `plate`; it can never import a
+  cross-video environment. Omit it for ordinary first-place bases and every existing shot — their current
+  place-first behavior is unchanged.
+- **Foreground-props scale recipe — mandatory for small-in-frame figures.** When people must be visibly
+  secondary to a room, machinery, or scale metaphor, do not ask the model to make them small. First mint
+  and approve an **unoccupied, positively described, video-local place plate** as an ordinary place-first
+  `base` head; the later figure-bearing `base` anchors that plate with `place_anchor`. Compose the later
+  frame around large foreground machinery or props that crop the frame, a deep unobstructed aisle, and one
+  explicit far floor line. Keep other surfaces positively bare and unlettered; put figure placement in the
+  last prompt clause and state exact object counts in the final payload clause. The Forge slate is
+  `[STEP-1 figure(s), empty place plate, recurring prop]` (within the four-seed cap). Never create a
+  distant-pair intermediate: it was probe-refuted. So were prompt-level smallness adjectives,
+  crowd-exemplar removal, and retry overlays that name the defect. Evidence: the
+  `videos/2026-07-28-bricks-fresh/scratchpad/round1-genlog-PROBE.md` scale probe, then live L60 →
+  L61/L62/L63 validation. This is authoring doctrine; `lint_shots.py` validates the structural anchor and
+  `figures` contracts but cannot infer visual scale.
 - **`figures` — anonymous figures are DECLARED here, never described in rig prose.** Optional; omit the
   whole key when a shot has none. **`anon_foreground`**: one entry per anonymous LARGE/foreground figure
   (style-bible §2e tier), each entry **the exact phrase the `still_prompt` uses for that figure** ("the

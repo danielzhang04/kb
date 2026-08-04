@@ -498,6 +498,41 @@ def test_g7_no_figures_key_is_silent():
 
 
 # =========================================================================
+# GUARD 8 — `place_anchor` structural contract; forge owns filesystem checks
+# =========================================================================
+def _place(anchor=None, **extra):
+    sh = {"id": "L01", "stage_role": "base"}
+    if anchor is not None or "place_anchor" in extra:
+        sh["place_anchor"] = anchor
+    sh.update(extra)
+    hard = []
+    L.place_anchor_check("lf", [("L01", sh)], hard)
+    return hard
+
+
+def test_g8_valid_video_local_anchor_is_silent_without_a_filesystem_probe():
+    assert _place("assets/scenes/missing-but-well-formed.png") == []
+
+
+def test_g8_absent_anchor_is_silent():
+    assert _place() == []
+
+
+def test_g8_rejects_non_string_empty_and_non_normalized_paths():
+    for anchor in (None, "", "assets\\scenes\\L60.png", "./assets/scenes/L60.png",
+                   "assets/scenes/../L60.png", "C:/assets/scenes/L60.png",
+                   "/assets/scenes/L60.png", "channels/other/videos/v/assets/scenes/L60.png",
+                   "assets/scenes/sub/L60.png"):
+        hard = _place(anchor, place_anchor=anchor)
+        assert len(hard) == 1 and "normalized video-relative" in hard[0], (anchor, hard)
+
+
+def test_g8_anchor_is_base_only():
+    hard = _place("assets/scenes/L60.png", stage_role="delta")
+    assert len(hard) == 1 and "only valid on a stage `base`" in hard[0], hard
+
+
+# =========================================================================
 # END-TO-END — exit codes and --write must be untouched
 # =========================================================================
 SCRIPT_MD = (
@@ -561,6 +596,12 @@ def test_e2e_a_new_hard_guard_fails_and_skips_write():
 def test_e2e_a_new_soft_guard_does_not_change_the_exit_code():
     rc, _ = _main(_file(figures={"anon_foreground": ["a figure never staged"]}))
     assert rc == 0
+
+
+def test_e2e_a_bad_place_anchor_is_hard_and_skips_write():
+    rc, p = _main(_file(place_anchor="../other-video/assets/scenes/L60.png"), "--write")
+    assert rc == 1
+    assert "vo_text" not in json.loads(p.read_text(encoding="utf-8"))["long_form"]["shots"][0]
 
 
 def test_e2e_report_encodes_on_a_cp1252_console(capsys):

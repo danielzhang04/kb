@@ -295,18 +295,25 @@ def _dur(sh):
         return None
 
 
-def stage_check(label, shots, hard, soft):
+def stage_check(label, shots, hard, soft, require_stage=False):
     """Held-stage field checks. Q4: the structural caps of the delta-chain contract — exactly
     one base FIRST and at most 3 deltas — are HARD (they bound drift; lint owns the mechanical
     caps). Timing/changed_elements/contiguity remain SOFT heads-ups. Never touches the vo_ref
-    matcher — stage fields are optional metadata layered on top of the anchor contract."""
+    matcher — stage fields are optional metadata layered on top of the anchor contract. Strict v2
+    long-form plans at the configured size get only a zero-stage guard, never a stage quota."""
     runs = []  # contiguous runs of (stage_id, [shots])
+    has_stage_bearing_shot = False
     for sh in shots:
         sid = sh.get("stage")
+        has_stage_bearing_shot |= bool(sid) or sh.get("stage_role") == "base"
         if runs and sid and runs[-1][0] == sid:
             runs[-1][1].append(sh)
         else:
             runs.append((sid, [sh]))
+    if require_stage and not has_stage_bearing_shot:
+        hard.append(f"[{label}] strict v2 long-form plan has {len(shots)} shots but zero "
+                    "stage-bearing shots/base roles — add a planned stage chain where a setting "
+                    "revisits; this is a zero guard, not a stage quota.")
     seen = {}
     for sid, grp in runs:
         if not sid:
@@ -1253,6 +1260,26 @@ def rig_clause_check(label, prompts, suffix, hard, soft=None, strict=True):
 
 
 FIGURES_KEYS = ("anon_foreground", "crowd")
+_PLACE_ANCHOR = re.compile(r"assets/scenes/[A-Za-z0-9][A-Za-z0-9._-]*\.png\Z")
+
+
+def place_anchor_check(label, objs, hard):
+    """Structural contract for forge's optional, video-local approved-place seed.
+
+    This owns only authoring shape and base-only placement. File existence and resolved-path
+    containment belong to forge, which is the runtime that opens the seed.
+    """
+    for pid, sh in objs:
+        if "place_anchor" not in sh:
+            continue
+        anchor = sh.get("place_anchor")
+        if not isinstance(anchor, str) or not _PLACE_ANCHOR.fullmatch(anchor):
+            hard.append(
+                f"[{label}] {pid}: `place_anchor` must be a non-empty normalized video-relative "
+                "`assets/scenes/<file>.png` path (no absolute, traversal, or cross-video path).")
+            continue
+        if sh.get("stage_role") != "base":
+            hard.append(f"[{label}] {pid}: `place_anchor` is only valid on a stage `base`.")
 
 
 def figures_check(label, objs, hard, soft):
@@ -1433,7 +1460,8 @@ def main(argv):
 
     lf_text = lint_piece("long-form", lf_shots, script_md, hard, soft,
                          word_timings=word_timings_for(vo_manifest, "long-form"))
-    stage_check("long-form", lf_shots, hard, soft)
+    stage_check("long-form", lf_shots, hard, soft,
+                require_stage=strict_schema and len(lf_shots) >= 40)
     suffix = data.get("global_prompt_suffix") or ""
     lf_prompts = _shot_prompts(lf_shots)
     lf_vocab = script_vocab(script_md)
@@ -1444,6 +1472,7 @@ def main(argv):
     rig_clause_check("long-form", lf_prompts, suffix, hard, soft, strict_schema)
     shot_class_check("long-form", lf_shots, hard, soft, strict_schema)
     figures_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard, soft)
+    place_anchor_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard)
     numeral_form_check("long-form", lf_prompts, suffix, soft)
     long_literal_word_check("long-form", lf_prompts, suffix, soft, lf_vocab)
     negation_list_check("long-form", lf_prompts, suffix, soft)
@@ -1498,6 +1527,8 @@ def main(argv):
         shot_class_check(slabel, sshots, hard, soft, strict_schema)
         figures_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
                       + ([("first_frame", ff_obj)] if ff_obj else []), hard, soft)
+        place_anchor_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
+                           + ([("first_frame", ff_obj)] if ff_obj else []), hard)
         numeral_form_check(slabel, sprompts, suffix, soft)
         long_literal_word_check(slabel, sprompts, suffix, soft, svocab)
         negation_list_check(slabel, sprompts, suffix, soft)
