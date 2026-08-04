@@ -5,8 +5,7 @@
  * CORE INERT INVARIANT (design "Authorization boundary", plan D3), unchanged in shape: unless the daemon
  * is explicitly authorized, `buildActivatedExecution` returns `null` BEFORE touching any construction
  * factory. Nothing is imported eagerly that spawns; nothing is `new`-ed at module load. Locked, the
- * daemon behaves byte-for-byte as an unactivated one: no broker, no engine, no roster, no `claude`
- * subprocess reachable.
+ * daemon behaves byte-for-byte as an unactivated one: no broker, no engine, no worker subprocess reachable.
  *
  * WHAT CHANGED (FYT gated-pipeline Task 4): there are now TWO authorizations, and the daemon boots with
  * neither unless the environment says otherwise.
@@ -18,7 +17,7 @@
  *      construction (a module-private brand): a shape-matching object from anywhere else fails
  *      `isExecutionUnlockGrant`, so no route, store value, or JSON body can conjure one.
  * State stays unlocked until the daemon restarts (natural re-lock: the grant and the wiring live only in
- * memory) or an operator calls Lock, which drops the wiring and retires every roster session.
+ * memory) or an operator calls Lock, which drains the broker and drops the wiring.
  *
  * When the gate is on this wires, behind the gate, the already-built, already-reviewed control-plane
  * pieces into one `AutomaticExecutionEngine`:
@@ -70,10 +69,6 @@ import { buildPaidActionExecution, type PaidActionExecutor } from './paidActionW
 import { createSpendGrantProvisioner } from './spendGrantProvision.ts';
 import { PAID_ACTION_ROUTE_PATH } from './paidActionRoute.ts';
 import type { SpendGrant } from './spendGrant.ts';
-import { createRosterSessionManager, createRosterWorkerAdapter, type RosterSessionManager } from './rosterSessions.ts';
-import { loadExecutionProfiles } from './environment.ts';
-import type { PtyHost } from '../pty/host.ts';
-import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
 import { brandInternalServiceCaller } from '../auth/session.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 
@@ -173,8 +168,6 @@ export interface ActivatedExecution {
   agentMessages: {
     deliver(input: { runRef: string; agentId: string; runtime: 'claude' | 'codex'; message: string }): Promise<'live' | 'queued'>;
   };
-  /** Legacy Task-6 seam. Headless-primary activation never populates it. */
-  rosterSessions?: RosterSessionManager;
   runAutomatic: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   cancelAutomatic: (input: CancelRunInput) => Promise<CancellationOutcome>;
   containManagerStart?: (input: ContainManagerStartInput) => Promise<void>;
@@ -211,11 +204,6 @@ export interface ActivationDeps {
   createManagers: typeof createBrokerManagerAdapter;
   createCancellation: typeof createBrokerCancellationController;
   createEngine(options: AutomaticExecutionOptions): ActivationEngine;
-  /** Legacy Task-6 factory retained in the dependency shape but no longer constructed by activation. */
-  createRoster: typeof createRosterSessionManager;
-  /** Legacy Task-6 worker wrapper retained but detached from headless-primary construction. */
-  createRosterWorkers: typeof createRosterWorkerAdapter;
-  loadProfiles: typeof loadExecutionProfiles;
   /**
    * The terminal-run observation seam (T6 wire-up): settle the fleet cost ledger for a run once it is
    * terminal. Default is the real `settleFleetLedgerForRun`. Wrapped around `runAutomatic` below so it
@@ -233,9 +221,6 @@ export interface BuildActivatedExecutionOptions {
    * fails closed on a forged value rather than opening on a truthy one.
    */
   unlockGrant?: unknown;
-  /** Legacy Task-6 inputs retained for surface compatibility; headless-primary activation ignores them. */
-  ptyHost?: PtyHost;
-  ptySessions?: PersistentSessionRegistry;
   /** The app-local durable control-plane store the surface already resolved. */
   controlStore: ControlPlaneStore;
   /** Canonical ops worktree — used for policy load, worktree provisioning, and canonical integration. */
@@ -298,9 +283,6 @@ function defaultDeps(): ActivationDeps {
     createManagers: createBrokerManagerAdapter,
     createCancellation: createBrokerCancellationController,
     createEngine: (options) => new AutomaticExecutionEngine(options),
-    createRoster: createRosterSessionManager,
-    createRosterWorkers: createRosterWorkerAdapter,
-    loadProfiles: loadExecutionProfiles,
     settleLedgerForRun: settleFleetLedgerForRun,
   };
 }
@@ -596,7 +578,7 @@ export interface ExecutionLatch {
    * unlock while already unlocked returns the same wiring and does not rebuild it.
    */
   unlock(input: { subject: string }): { ok: true; state: ExecutionLatchState } | { ok: false; reason: string };
-  /** Drop the wiring, retire every roster session, and return to the boot posture. Idempotent. */
+  /** Drain managed sessions, drop the wiring, and return to the boot posture. Idempotent. */
   lock(input: { subject: string }): ExecutionLatchState;
 }
 
@@ -620,7 +602,7 @@ const LOCKED_STATE: ExecutionLatchState = { state: 'locked', source: null, unloc
  * unlocked with `source: 'env-override'` and the daemon behaves exactly as it did before this existed.
  * From locked, the ONLY way to construct execution wiring is `unlock`, which the passkey-gated route
  * calls after `verifyAssertion` returns `verified: true`; the grant it mints cannot be produced anywhere
- * else. `lock` drops the wiring and retires every roster terminal; a daemon restart does the same for
+ * else. `lock` drains managed sessions and drops the wiring; a daemon restart does the same for
  * free, which is why nothing about the unlocked state is persisted.
  */
 export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionLatch {
@@ -669,11 +651,6 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
     },
     lock() {
       if (!execution) return state;
-      try {
-        execution.rosterSessions?.retireAll('execution locked');
-      } catch {
-        /* a roster that cannot be reaped must not block the lock; the pty host drain still owns the children */
-      }
       try {
         execution.controlBroker.drain();
       } catch {

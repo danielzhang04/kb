@@ -75,12 +75,12 @@ export type CloseAndWaitResult =
   | { ok: false; reason: 'not-found' | 'not-owner' | 'timeout' | 'unconfirmed' };
 
 /**
- * A server-side, NON-EXCLUSIVE output tap on one session (added for run-roster work-order delivery).
+ * A server-side, NON-EXCLUSIVE output tap on one manual Terminal session.
  *
  * Why this is not `attach`: a sink is single and evictable by design — the browser terminal owns it, and
- * a second attach displaces the first. A server component that must READ a session's output for the whole
- * run (the roster's completion-marker watcher) can therefore never use a sink without fighting the UI for
- * it. An observer is additive: it receives every chunk the ring receives, it is never evicted by an
+ * a second attach displaces the first. A diagnostic that must READ a session's output can therefore never
+ * use a sink without fighting the UI for it. An observer is additive: it receives every chunk the ring
+ * receives, it is never evicted by an
  * attach, and it can never send input (that stays `write`, which is owner-checked).
  */
 export type SessionObserver = (chunk: string) => void;
@@ -88,7 +88,7 @@ export type SessionObserver = (chunk: string) => void;
 /**
  * Paired "this session is gone" notification for an observer — fired when the shell exits OR the session
  * is explicitly closed, exactly once, before the observer set is dropped. Without it a server component
- * awaiting output (the roster waiting for a completion marker) would wait forever on a dead shell.
+ * awaiting output would wait forever on a dead shell.
  */
 export type SessionObserverGone = () => void;
 
@@ -109,9 +109,8 @@ export interface PersistentSessionRegistry {
   /**
    * Install a non-evicting, owner-checked output tap; returns its unsubscribe. Unknown/foreign/dead
    * sessions yield a no-op unsubscribe rather than a throw, so a caller racing a shell exit is safe.
-   * Observers never receive replay of the existing ring — a watcher installed at create time (the
-   * roster's use) has seen every byte anyway, and replaying scrollback into a marker scanner would
-   * re-fire completions.
+   * Observers never receive replay of the existing ring: a watcher installed at create time has seen
+   * every byte already, and replaying scrollback would duplicate observations.
    */
   observe(owner: string, sessionId: string, observer: SessionObserver, onGone?: SessionObserverGone): () => void;
   /** Kill the shell (host.stop) and forget it. */

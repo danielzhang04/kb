@@ -64,12 +64,12 @@ export interface SurfaceActivationSeam {
   env?: Record<string, string | undefined>;
 }
 
-/** Stable, detail-free refusal shared by browser and roster PTY opens at the host boundary. */
+/** Stable, detail-free refusal for manual Terminal PTY opens at the host boundary. */
 export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
 
 /**
  * Put the fleet preamble on the shared host itself, not only on one HTTP route. The browser route may
- * deliberately check twice; the second check closes the gap for roster/session-registry callers that
+ * deliberately check twice; the second check closes the gap for session-registry callers that
  * reach `PtyHost.open` without traversing that route. Construction stays inert: no preamble runs and no
  * shell opens until `open` is actually invoked.
  */
@@ -80,7 +80,7 @@ function fleetGatedPtyHost(host: PtyHost, repoRoot: string, runPreamble: Preambl
         if (!assertFleetRunnable(repoRoot, runPreamble).ok) throw new Error(PTY_OPEN_FLEET_FROZEN);
       } catch {
         // Preamble stdout/stderr can name environment or credential problems. Never surface those details
-        // through a PTY spawn error, audit row, WebSocket close reason, or roster activity message.
+        // through a PTY spawn error, audit row, or WebSocket close reason.
         throw new Error(PTY_OPEN_FLEET_FROZEN);
       }
       return host.open(request);
@@ -118,8 +118,8 @@ export function makeSurfaceContext(
     || overrides.containManagerStart !== undefined
     || overrides.verifyCanonicalResult !== undefined;
   const build = activation.build ?? buildActivatedExecution;
-  // The daemon's single pty stack, shared by `/api/pty` (browser terminals) and the run roster, so a
-  // roster session IS an attachable terminal. Constructing a host spawns nothing; only `open` does.
+  // The daemon's PTY stack belongs exclusively to `/api/pty` browser terminals. Constructing a host
+  // spawns nothing; only `open` does.
   const underlyingPtyHost = overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' });
   const ptyHost = fleetGatedPtyHost(
     underlyingPtyHost,
@@ -183,25 +183,23 @@ export function makeSurfaceContext(
     livenessCache: overrides.livenessCache ?? new Map(),
   };
 
-  // The latch owns construction from here on. An explicitly injected latch or roster (tests, or a future
-  // direct wiring) stands as given; when executor fields are injected directly no latch is created at all;
+  // The latch owns construction from here on. An explicitly injected latch stands as given; when
+  // executor fields are injected directly no latch is created at all;
   // otherwise the daemon boots locked — or, with the headless override set, unlocks itself immediately
   // inside `createExecutionLatch`, which is the pre-latch behaviour.
-  if (overrides.rosterSessions !== undefined) ctx.rosterSessions = overrides.rosterSessions;
   if (overrides.executionLatch !== undefined) {
     ctx.executionLatch = overrides.executionLatch;
   } else if (!activationOverridden) {
     ctx.executionLatch = createExecutionLatch({
       build,
       env: activation.env,
-      buildOptions: { controlStore, repoRoot, stateRoot, ptyHost, ptySessions },
+      buildOptions: { controlStore, repoRoot, stateRoot },
       onChange: (execution) => {
         ctx.controlBroker = execution?.controlBroker;
         ctx.runAutomatic = execution?.runAutomatic;
         ctx.cancelAutomatic = execution?.cancelAutomatic;
         ctx.containManagerStart = execution?.containManagerStart;
         ctx.verifyCanonicalResult = execution?.verifyCanonicalResult;
-        ctx.rosterSessions = execution?.rosterSessions;
         ctx.paidActionService = execution?.paidActionService;
         ctx.spendGrantStore = execution?.spendGrantStore;
       },
@@ -215,9 +213,6 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
   // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
   app.addHook('preClose', async () => {
-    // A shutdown re-locks by construction; retire the roster terminals with it so no agent REPL is
-    // orphaned by a daemon restart.
-    ctx.rosterSessions?.retireAll('daemon shutdown');
     ctx.controlBroker?.drain();
     drainVibeProcesses();
     // Kill any in-flight (possibly network-stalled) coordination git/gh child so shutdown never blocks

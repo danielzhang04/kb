@@ -15,8 +15,7 @@ import {
   listRuns,
   type FetchLike,
   type OperationalEventDto,
-  type RosterAgentStateDto,
-  type RunDetailWithRosterDto,
+  type RunDetailDto,
   type RunMetadataDto,
 } from '../control/controlClient';
 import { loadRunEventWindow } from '../control/runEventWindow';
@@ -101,20 +100,22 @@ export function deriveAgentLanes(agentIds: readonly string[], edges: readonly Ag
 export type CanvasBadgeKind = 'active' | 'waiting' | 'blocked' | 'idle';
 export interface CanvasBadge { kind: CanvasBadgeKind; text: string; }
 
-export function runCanvasBadge(agent: Pick<RosterAgentStateDto, 'status' | 'activity' | 'waitingOn'>): CanvasBadge {
-  switch (agent.status) {
-    case 'active': return { kind: 'active', text: `active: ${agent.activity || 'working'}` };
-    case 'waiting': return { kind: 'waiting', text: `waiting on ${agent.waitingOn[0] ?? 'upstream'}` };
-    case 'blocked': return { kind: 'blocked', text: `blocked: ${agent.waitingOn[0] ?? 'gate'} — in your Inbox` };
-    default: return { kind: 'idle', text: 'idle' };
+export function runCanvasBadge(events: readonly OperationalEventDto[]): CanvasBadge {
+  const latest = events.at(-1);
+  switch (latest?.status) {
+    case 'running': return { kind: 'active', text: `active: ${latest.summary || 'working'}` };
+    case 'waiting': return { kind: 'waiting', text: latest.summary || 'waiting on upstream work' };
+    case 'failure': return { kind: 'blocked', text: `blocked: ${latest.summary || 'worker failed'}` };
+    case 'stopped': return { kind: 'blocked', text: `blocked: ${latest.summary || 'worker stopped'}` };
+    case 'interrupted': return { kind: 'blocked', text: `blocked: ${latest.summary || 'worker interrupted'}` };
+    default: return { kind: 'idle', text: latest?.summary || 'idle' };
   }
 }
 
 const BADGE_DOT: Record<CanvasBadgeKind, string> = { active: 'running', waiting: 'idle', blocked: 'blocked', idle: 'idle' };
-const EMPTY_ROSTER_STATE: Pick<RosterAgentStateDto, 'status' | 'activity' | 'waitingOn'> = { status: 'idle', activity: '', waitingOn: [] };
 
 /** Resolve an event to a logical agent from immutable stage/manager assignment, never event prose. */
-export function eventBelongsToAgent(event: OperationalEventDto, detail: RunDetailWithRosterDto, agentId: string): boolean {
+export function eventBelongsToAgent(event: OperationalEventDto, detail: RunDetailDto, agentId: string): boolean {
   const stage = event.stageRef ? detail.stages.find((candidate) => candidate.stageRef === event.stageRef) : undefined;
   if (stage?.assignment?.agentId === agentId) return true;
   return event.source === 'manager'
@@ -143,7 +144,6 @@ async function postAgentMessage(
 
 export interface AgentTileProps {
   agentId: string;
-  roster: RosterAgentStateDto | undefined;
   runRef: string;
   sessionToken: string;
   events: OperationalEventDto[];
@@ -151,8 +151,8 @@ export interface AgentTileProps {
   onNavigate?: (target: NavTarget) => void;
 }
 
-export function AgentTile({ agentId, roster, runRef, sessionToken, events, fetchImpl, onNavigate }: AgentTileProps): React.JSX.Element {
-  const badge = runCanvasBadge(roster ?? EMPTY_ROSTER_STATE);
+export function AgentTile({ agentId, runRef, sessionToken, events, fetchImpl, onNavigate }: AgentTileProps): React.JSX.Element {
+  const badge = runCanvasBadge(events);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [deliveryNotice, setDeliveryNotice] = useState<string | null>(null);
@@ -185,10 +185,8 @@ export function AgentTile({ agentId, roster, runRef, sessionToken, events, fetch
         <span className={`mc-status-dot mc-status-dot--${BADGE_DOT[badge.kind]}`} aria-hidden="true" data-testid={`run-canvas-tile-${agentId}-dot`} />
       </header>
       <p className="run-canvas-tile__status" data-testid={`run-canvas-tile-${agentId}-badge`}>
-        {badge.kind === 'blocked' && onNavigate ? <>
-          {badge.text.replace(' — in your Inbox', '')} — <button type="button" className="run-canvas-tile__inbox-link"
-            data-testid={`run-canvas-tile-${agentId}-inbox-link`} onClick={() => onNavigate({ view: 'approvals' })}>in your Inbox</button>
-        </> : badge.text}
+        {badge.kind === 'blocked' && onNavigate ? <>{badge.text} — <button type="button" className="run-canvas-tile__inbox-link"
+          data-testid={`run-canvas-tile-${agentId}-inbox-link`} onClick={() => onNavigate({ view: 'approvals' })}>open Inbox</button></> : badge.text}
       </p>
       <ol className="run-canvas-tile__transcript" data-testid={`run-canvas-tile-${agentId}-transcript`} aria-label={`${agentId} public event stream`}>
         {events.length ? events.map((item) => (
@@ -210,7 +208,7 @@ export function AgentTile({ agentId, roster, runRef, sessionToken, events, fetch
 }
 
 export interface RunCanvasBoardProps {
-  detail: RunDetailWithRosterDto;
+  detail: RunDetailDto;
   sessionToken: string;
   events: OperationalEventDto[];
   fetchImpl?: FetchLike;
@@ -220,12 +218,11 @@ export interface RunCanvasBoardProps {
 export function RunCanvasBoard({ detail, sessionToken, events, fetchImpl, onNavigate }: RunCanvasBoardProps): React.JSX.Element {
   const { agentIds, edges } = useMemo(() => deriveAgentGraph(detail), [detail]);
   const lanes = useMemo(() => deriveAgentLanes(agentIds, edges), [agentIds, edges]);
-  const rosterByAgent = useMemo(() => new Map(detail.roster.map((entry) => [entry.agentId, entry])), [detail.roster]);
   return (
     <div className="run-canvas-board" data-testid="run-canvas-board">
       <div className="run-canvas-board__lanes">
         {lanes.map((lane, laneIndex) => <div key={laneIndex} className="run-canvas-board__lane" data-testid={`run-canvas-lane-${laneIndex}`}>
-          {lane.map((agentId) => <AgentTile key={agentId} agentId={agentId} roster={rosterByAgent.get(agentId)} runRef={detail.run.runRef}
+          {lane.map((agentId) => <AgentTile key={agentId} agentId={agentId} runRef={detail.run.runRef}
             sessionToken={sessionToken} events={events.filter((event) => eventBelongsToAgent(event, detail, agentId))}
             fetchImpl={fetchImpl} onNavigate={onNavigate} />)}
         </div>)}
@@ -247,7 +244,7 @@ export function RunCanvas({ sessionToken, onRequestSession, onNavigate, fetchImp
   const [localToken, setLocalToken] = useState(sessionToken);
   const [runs, setRuns] = useState<RunMetadataDto[]>([]);
   const [selectedRunRef, setSelectedRunRef] = useState<string | null>(focusRunRef ?? null);
-  const [detail, setDetail] = useState<RunDetailWithRosterDto | null>(null);
+  const [detail, setDetail] = useState<RunDetailDto | null>(null);
   const [events, setEvents] = useState<OperationalEventDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);

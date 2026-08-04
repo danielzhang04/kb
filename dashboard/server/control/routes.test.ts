@@ -22,20 +22,19 @@ const ORIGIN = 'http://localhost:5317';
 describe('authorized failed-run route grant', () => {
   function exactContext(liveSession = false): SurfaceContext {
     const controlBroker = { isRunning: () => liveSession };
-    const rosterSessions = { hasRoster: () => false };
     const runAutomatic = vi.fn();
     const cancelAutomatic = vi.fn();
     const containManagerStart = vi.fn();
     const verifyCanonicalResult = vi.fn();
     const wiring = {
-      controlBroker, rosterSessions, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
+      controlBroker, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
     };
     const executionLatch = {
       snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z' }),
       current: () => wiring,
     };
     return {
-      executionLatch, controlBroker, rosterSessions, runAutomatic, cancelAutomatic,
+      executionLatch, controlBroker, runAutomatic, cancelAutomatic,
       containManagerStart, verifyCanonicalResult,
     } as unknown as SurfaceContext;
   }
@@ -2139,13 +2138,9 @@ describe('control execution latch routes', () => {
     }
   });
 
-  it('serves roster state and the execution posture on the run detail the canvas reads', async () => {
-    const roster = [{ agentId: 'fyt-visuals', sessionId: 'pty-roster-2', status: 'blocked', activity: 'blocked: g2 awaiting approval', waitingOn: ['g2-visual-plan'] }];
+  it('serves durable run detail and the execution posture the canvas reads', async () => {
     const { latch } = fakeLatch('unlocked');
-    const { app, token, store } = buildApp({
-      executionLatch: latch,
-      rosterSessions: { state: () => roster, hasRoster: () => true, ensureRoster: () => ({ runRef: 'r', spawned: [], existing: [] }), deliver: async () => ({}), retire: () => [], retireAll: () => [] },
-    });
+    const { app, token, store } = buildApp({ executionLatch: latch });
     try {
       const runRef = seedRun(store, 'roster');
 
@@ -2155,27 +2150,14 @@ describe('control execution latch routes', () => {
       expect(detail.statusCode).toBe(200);
       expect(detail.json()).toMatchObject({
         ok: true,
-        roster,
         execution: { state: 'unlocked' },
         value: { run: { runRef } },
       });
+      expect(detail.json()).not.toHaveProperty('roster');
 
-      // A missing run still 404s (the roster projection never invents a run).
+      // A missing run still 404s.
       const missing = await app.inject({ method: 'GET', url: '/api/control/runs/run-absent', headers: headers(token) });
       expect(missing.statusCode).toBe(404);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('reports an empty roster while execution is locked', async () => {
-    const { app, token, store } = buildApp();
-    try {
-      const runRef = seedRun(store, 'locked-roster');
-      const detail = await app.inject({
-        method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token),
-      });
-      expect(detail.json()).toMatchObject({ roster: [], execution: { state: 'locked' } });
     } finally {
       await app.close();
     }
@@ -2188,10 +2170,8 @@ describe('control execution latch routes', () => {
     const containManagerStart = vi.fn();
     const verifyCanonicalResult = vi.fn();
     const broker = { drain: vi.fn() };
-    const roster = { retireAll: vi.fn() };
     const execution = {
       controlBroker: broker,
-      rosterSessions: roster,
       runAutomatic,
       cancelAutomatic,
       containManagerStart,
@@ -2204,7 +2184,7 @@ describe('control execution latch routes', () => {
     };
     const activateManagedRoots = vi.fn();
     const { app, token, store, audit } = buildApp({
-      executionLatch: latch, controlBroker: broker, rosterSessions: roster,
+      executionLatch: latch, controlBroker: broker,
       runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult, activateManagedRoots,
       appendAudit: (_root: string, event: Record<string, unknown>) => {
         order.push('audit');
@@ -2289,10 +2269,9 @@ describe('control execution latch routes', () => {
     } finally { await locked.app.close(); }
 
     const broker = { drain: vi.fn() };
-    const roster = { retireAll: vi.fn() };
     const exactRun = vi.fn();
     const execution = {
-      controlBroker: broker, rosterSessions: roster, runAutomatic: exactRun,
+      controlBroker: broker, runAutomatic: exactRun,
       cancelAutomatic: vi.fn(), verifyCanonicalResult: vi.fn(),
     };
     const latch = {
@@ -2300,7 +2279,7 @@ describe('control execution latch routes', () => {
       current: () => execution, unlock: vi.fn(), lock: vi.fn(),
     };
     const mismatched = buildApp({
-      executionLatch: latch, controlBroker: broker, rosterSessions: roster, runAutomatic: vi.fn(),
+      executionLatch: latch, controlBroker: broker, runAutomatic: vi.fn(),
       cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
     });
     vi.spyOn(mismatched.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
@@ -2316,31 +2295,8 @@ describe('control execution latch routes', () => {
       expect(mismatched.audit).toHaveLength(0);
     } finally { await mismatched.app.close(); }
 
-    const noRosterExecution = {
-      controlBroker: broker, runAutomatic: exactRun,
-      cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
-    };
-    const noRosterLatch = { ...latch, current: () => noRosterExecution };
-    const absentRoster = buildApp({
-      executionLatch: noRosterLatch, controlBroker: broker, runAutomatic: exactRun,
-      cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
-    });
-    vi.spyOn(absentRoster.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
-      ok: true, value: { disposition: 'eligible', result: null },
-    } as never);
-    const absentRosterRecover = vi.spyOn(absentRoster.store, 'recoverAuthorized20260731ExecutionLock');
-    try {
-      const response = await absentRoster.app.inject({
-        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(absentRoster.token), payload: body,
-      });
-      expect(response.statusCode).toBe(409);
-      expect(response.json()).toMatchObject({ error: 'legacy-recovery-execution-not-passkey-bound' });
-      expect(absentRosterRecover).not.toHaveBeenCalled();
-      expect(absentRoster.audit).toHaveLength(0);
-    } finally { await absentRoster.app.close(); }
-
     const auditFailure = buildApp({
-      executionLatch: latch, controlBroker: broker, rosterSessions: roster, runAutomatic: exactRun,
+      executionLatch: latch, controlBroker: broker, runAutomatic: exactRun,
       cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
       appendAudit: () => { throw new Error('audit unavailable'); },
     });

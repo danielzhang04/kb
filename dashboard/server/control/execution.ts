@@ -150,7 +150,7 @@ export interface WorkerAdapter {
     instructionMarkdown?: string;
     /**
      * The immutable compiled stage and its project, for adapters that must re-derive a stage's own halt
-     * structure (declared human gates, dependencies, declared artifacts) at delivery time — the run-roster
+     * structure (declared human gates, dependencies, declared artifacts) at delivery time — the worker
      * pty adapter does. The loose `action`/`target`/`workOrder`/scope fields above stay the interface for
      * every adapter that does not; an adapter that needs this must REFUSE when it is absent rather than
      * reconstruct it. Never browser input: it comes from the approved proposal the run is bound to.

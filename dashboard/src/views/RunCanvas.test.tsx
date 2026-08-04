@@ -18,7 +18,7 @@ import {
   runCanvasBadge,
   type AgentGraphEdge,
 } from './RunCanvas';
-import type { OperationalEventDto, RosterAgentStateDto, RunDetailWithRosterDto, RunMetadataDto } from '../control/controlClient';
+import type { OperationalEventDto, RunDetailDto, RunMetadataDto } from '../control/controlClient';
 
 beforeAll(() => {
   if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
@@ -69,17 +69,13 @@ describe('agent graph', () => {
 });
 
 describe('runCanvasBadge', () => {
-  it('maps roster state to the compact shared status vocabulary', () => {
-    expect(runCanvasBadge({ status: 'active', activity: 'writing', waitingOn: [] })).toEqual({ kind: 'active', text: 'active: writing' });
-    expect(runCanvasBadge({ status: 'waiting', activity: '', waitingOn: ['fyt-story'] })).toEqual({ kind: 'waiting', text: 'waiting on fyt-story' });
-    expect(runCanvasBadge({ status: 'blocked', activity: '', waitingOn: ['G1'] })).toEqual({ kind: 'blocked', text: 'blocked: G1 — in your Inbox' });
-    expect(runCanvasBadge({ status: 'idle', activity: '', waitingOn: [] })).toEqual({ kind: 'idle', text: 'idle' });
+  it('maps the latest public event to the compact status vocabulary', () => {
+    expect(runCanvasBadge([event({ status: 'running', summary: 'writing' })])).toEqual({ kind: 'active', text: 'active: writing' });
+    expect(runCanvasBadge([event({ status: 'waiting', summary: 'waiting on fyt-story' })])).toEqual({ kind: 'waiting', text: 'waiting on fyt-story' });
+    expect(runCanvasBadge([event({ status: 'failure', summary: 'G1 refused' })])).toEqual({ kind: 'blocked', text: 'blocked: G1 refused' });
+    expect(runCanvasBadge([])).toEqual({ kind: 'idle', text: 'idle' });
   });
 });
-
-function rosterEntry(overrides: Partial<RosterAgentStateDto> = {}): RosterAgentStateDto {
-  return { agentId: 'fyt-story', sessionId: null, status: 'idle', activity: '', waitingOn: [], ...overrides };
-}
 
 function makeStage(stageId: string, agentId: string, dependsOn: string[] = []) {
   return {
@@ -90,7 +86,7 @@ function makeStage(stageId: string, agentId: string, dependsOn: string[] = []) {
   };
 }
 
-function makeDetail(roster: RosterAgentStateDto[] = [rosterEntry()]): RunDetailWithRosterDto {
+function makeDetail(): RunDetailDto {
   return {
     run: {
       runRef: 'run-1', predecessorRunRef: null, title: 'headless run', proposalRef: 'p-1', proposalRevision: 1,
@@ -100,7 +96,7 @@ function makeDetail(roster: RosterAgentStateDto[] = [rosterEntry()]): RunDetailW
       createdAt: '2026-08-04T00:00:00.000Z', updatedAt: '2026-08-04T00:00:00.000Z',
     },
     stages: [makeStage('idea', 'fyt-story'), makeStage('visual-plan', 'fyt-visuals', ['idea'])],
-    attempts: [], sessions: [], humanRequests: [], reviewLoops: [], reviewReceipts: [], roster,
+    attempts: [], sessions: [], humanRequests: [], reviewLoops: [], reviewReceipts: [],
   };
 }
 
@@ -124,7 +120,7 @@ describe('event ownership', () => {
 describe('AgentTile', () => {
   it('renders only the redacted events supplied for its agent', () => {
     render(
-      <AgentTile agentId="fyt-story" roster={rosterEntry()} runRef="run-1" sessionToken="tok"
+      <AgentTile agentId="fyt-story" runRef="run-1" sessionToken="tok"
         events={[event({ summary: 'Story-only public event' })]} />,
     );
     expect(screen.getByTestId('run-canvas-tile-fyt-story-transcript').textContent).toContain('Story-only public event');
@@ -134,8 +130,8 @@ describe('AgentTile', () => {
   it('links a blocked tile to the Inbox', () => {
     const onNavigate = vi.fn();
     render(
-      <AgentTile agentId="fyt-story" roster={rosterEntry({ status: 'blocked', waitingOn: ['G1'] })}
-        runRef="run-1" sessionToken="tok" events={[]} onNavigate={onNavigate} />,
+      <AgentTile agentId="fyt-story" runRef="run-1" sessionToken="tok"
+        events={[event({ status: 'failure', summary: 'G1 refused' })]} onNavigate={onNavigate} />,
     );
     fireEvent.click(screen.getByTestId('run-canvas-tile-fyt-story-inbox-link'));
     expect(onNavigate).toHaveBeenCalledWith({ view: 'approvals' });
@@ -143,7 +139,7 @@ describe('AgentTile', () => {
 
   it('posts an operator message and states that a codex delivery is queued', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ delivery: 'queued' }), { status: 202 }));
-    render(<AgentTile agentId="fyt-story" roster={rosterEntry()} runRef="run-1" sessionToken="tok" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
+    render(<AgentTile agentId="fyt-story" runRef="run-1" sessionToken="tok" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
     fireEvent.change(screen.getByLabelText('Message fyt-story'), { target: { value: 'Please verify the draft.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(screen.getByTestId('run-canvas-tile-fyt-story-delivery').textContent).toMatch(/queued for next turn/i));
@@ -154,7 +150,7 @@ describe('AgentTile', () => {
 
   it('renders the delivery-offline refusal instead of silently dropping a message', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: 'agent-message-delivery-unavailable' }), { status: 409 }));
-    render(<AgentTile agentId="fyt-story" roster={rosterEntry()} runRef="run-1" sessionToken="tok" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
+    render(<AgentTile agentId="fyt-story" runRef="run-1" sessionToken="tok" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
     fireEvent.change(screen.getByLabelText('Message fyt-story'), { target: { value: 'Please verify the draft.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(screen.getByTestId('run-canvas-tile-fyt-story-delivery').textContent).toMatch(/worker delivery offline/i));
@@ -163,7 +159,7 @@ describe('AgentTile', () => {
 
 describe('RunCanvasBoard', () => {
   it('projects each public event into only its owning agent transcript', () => {
-    const detail = makeDetail([rosterEntry(), rosterEntry({ agentId: 'fyt-visuals' }), rosterEntry({ agentId: 'fyt-runner' })]);
+    const detail = makeDetail();
     render(<RunCanvasBoard detail={detail} sessionToken="tok" events={[
       event({ summary: 'Story-only public event' }), event({ cursor: 2, stageRef: 'ref-visual-plan', summary: 'Visual-only public event' }),
     ]} />);
@@ -193,7 +189,7 @@ describe('RunCanvas', () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (url === '/api/control/runs') return new Response(JSON.stringify({ runs }), { status: 200 });
       if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [event({ summary: 'Fetched public event' })] }), { status: 200 });
-      return new Response(JSON.stringify({ ok: true, value: detail, roster: detail.roster }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
     });
     render(<RunCanvas sessionToken="tok" fetchImpl={fetchImpl as typeof fetch} />);
     await waitFor(() => expect(screen.getByTestId('run-card-run-1')).toBeTruthy());

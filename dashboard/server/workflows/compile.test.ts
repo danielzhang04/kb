@@ -280,7 +280,7 @@ describe('compileWorkflowDef', () => {
 
     it('threads the DECLARED artifacts onto the compiled stages instead of a hardcoded empty list', () => {
       // The `artifacts: []` hardcode made the server-side declared-artifact check in
-      // rosterSessions.ts#deliver iterate nothing, so a bare completion marker with no files on disk was
+      // execution.ts artifact verification iterate nothing, so a successful result with no files on disk was
       // accepted as `succeeded`.
       const compiled = compileWorkflowDef(WITH_ARTIFACTS, { registry: REGISTRY });
       expect(compiled.ok).toBe(true);

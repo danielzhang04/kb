@@ -89,7 +89,7 @@ function deriveProposalId(def: WorkflowDef, effectiveRead: readonly string[]): s
       // without gates keep their existing proposalId exactly.
       ...(stage.humanGates?.length ? { humanGates: stage.humanGates } : {}),
       // Declared artifacts are part of the approved identity for the same reason: they are the
-      // server-verified condition on a stage's success (`rosterSessions.ts#deliver`), so deleting or
+      // server-verified condition on a stage's success (`execution.ts#validateWorkerResultEnvelope`), so deleting or
       // weakening one must force re-approval rather than silently lowering the bar on a live run.
       // Emitted only when present, so definitions without artifacts keep their existing proposalId.
       ...(stage.artifacts?.length ? { artifacts: stage.artifacts } : {}),
@@ -278,8 +278,8 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
       // Minimal-valid stage envelope: the stage reads its org and writes only its own declared target.
       scope: { read: readScope, write: stage.review ? [] : [stage.target] },
       // The declared artifacts ARE the compiled artifacts. This was hardcoded `[]` for its whole life,
-      // which made the server-side declared-artifact verification in `rosterSessions.ts#deliver` iterate
-      // an empty list: a bare completion marker with nothing on disk was accepted as `succeeded`, and the
+      // which made the server-side declared-artifact verification in `execution.ts` iterate an empty
+      // list: a successful result with nothing on disk was accepted, and the
       // run advanced to the next human gate asking for approval of a file that was never written.
       artifacts: (stage.artifacts ?? []).map((artifact) => ({ ...artifact, path: compiledArtifactPath(artifact.path) })),
       checkpoints: [],

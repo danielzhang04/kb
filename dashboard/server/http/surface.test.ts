@@ -805,8 +805,9 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(build).toHaveBeenCalledWith(expect.objectContaining({
       env: { DASHBOARD_EXECUTION_ACTIVATED: '1' },
       repoRoot: REPO_A,
-      ptyHost: ctx.ptyHost,
     }));
+    expect(build.mock.calls[0][0]).not.toHaveProperty('ptyHost');
+    expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessions');
     expect(ctx.ptyHost).not.toBe(underlying.host);
     expect(ctx.controlBroker).toBe(triple.controlBroker);
     expect(ctx.runAutomatic).toBe(triple.runAutomatic);

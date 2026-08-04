@@ -252,7 +252,7 @@ describe('video-run workflow definition (compile-proof)', () => {
     // NOTHING server-side verified the merged root `shots.json` / `shots.motion.json` /
     // `audio-plan.json` — which is what `images`, `image-review` and `render` actually read, and what a
     // human is told to read at g2. As their own nodes, the merges declare the ROOT paths, so
-    // `rosterSessions.ts#deliver` verifies them against the working tree before the run advances.
+    // `execution.ts` verifies them against the working tree before the run advances.
     const parsed = parseWorkflowDef(VIDEO_RUN_DEF, { knownProfiles: KNOWN_PROFILES });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -477,7 +477,7 @@ describe('video-run workflow definition (compile-proof)', () => {
 
     // ---------------------------------------------------------------------
     // Declared artifacts. `compile.ts` hardcoded `artifacts: []` and `WorkflowStageDef` had no
-    // `artifacts` key, so the server-side declared-artifact verification in rosterSessions.ts#deliver
+    // `artifacts` key, so the server-side declared-artifact verification in execution.ts
     // iterated an empty list on all eleven stages: a bare `FYT-STAGE-DONE story <token>` with nothing on
     // disk was accepted as `succeeded`, and the run advanced to G1 asking a human to approve a script
     // that did not exist. The filenames below are the ones the SKILLS actually write, checked against

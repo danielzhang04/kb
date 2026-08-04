@@ -112,9 +112,7 @@ function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): Ac
     || snapshot.unlockedBy !== sub || ctx.controlBroker !== current.controlBroker
     || ctx.runAutomatic !== current.runAutomatic || ctx.cancelAutomatic !== current.cancelAutomatic
     || ctx.containManagerStart !== current.containManagerStart
-    || ctx.verifyCanonicalResult !== current.verifyCanonicalResult
-    || !ctx.rosterSessions || !current.rosterSessions
-    || ctx.rosterSessions !== current.rosterSessions) return null;
+    || ctx.verifyCanonicalResult !== current.verifyCanonicalResult) return null;
   return current;
 }
 
@@ -134,15 +132,14 @@ export function authorizedFailedRunReconciliationGrant(
   if (!latch || (expected && latch !== expected.latch)) return null;
   const snapshot = latch.snapshot();
   const wiring = latch.current();
-  if (!wiring || ctx.controlBroker !== wiring.controlBroker || ctx.rosterSessions !== wiring.rosterSessions
+  if (!wiring || ctx.controlBroker !== wiring.controlBroker
     || ctx.runAutomatic !== wiring.runAutomatic || ctx.cancelAutomatic !== wiring.cancelAutomatic
     || ctx.containManagerStart !== wiring.containManagerStart
     || ctx.verifyCanonicalResult !== wiring.verifyCanonicalResult) return null;
-  const hasLiveRun = !!wiring?.rosterSessions?.hasRoster(AUTHORIZED_20260801_FAILED_RUN_REF)
-    || !!wiring && [
-      AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
-      ...AUTHORIZED_20260801_FAILED_RUN_STAGES.map((stage) => stage.sessionRef),
-    ].some((sessionRef) => wiring.controlBroker.isRunning(sessionRef));
+  const hasLiveRun = [
+    AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
+    ...AUTHORIZED_20260801_FAILED_RUN_STAGES.map((stage) => stage.sessionRef),
+  ].some((sessionRef) => wiring.controlBroker.isRunning(sessionRef));
   if (snapshot.state !== 'unlocked' || snapshot.source !== 'passkey'
     || snapshot.unlockedBy !== sub || !snapshot.unlockedAt || hasLiveRun
     || (expected && (snapshot.unlockedAt !== expected.unlockedAt || wiring !== expected.wiring))) return null;
@@ -337,7 +334,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   });
 
   // ── EXECUTION UNLOCK LATCH ─────────────────────────────────────────────────────────────────────────
-  // The daemon boots LOCKED: no broker, no engine, no roster terminals. Construction is authorized by a
+  // The daemon boots LOCKED: no broker, no engine, no worker processes. Construction is authorized by a
   // fresh WebAuthn passkey assertion over a purpose-bound challenge — a login token alone is not enough,
   // so a stolen/replayed bearer cannot turn execution on. Lock is the fail-safe direction and needs only
   // the session. Both transitions are audited like every other consequential control action.
@@ -571,13 +568,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const runRef = (req.params as { runRef: string }).runRef;
     const detail = ctx.controlStore.getRun(sub, runRef);
     if (!detail.ok) return sendResult(reply, detail);
-    // Roster state for the canvas: derived per request from durable run state plus the live session map —
-    // no polling loop, and an empty array while execution is locked or the run has no roster.
     return reply.send({
       ok: true,
       value: detail.value,
       replayed: detail.replayed ?? false,
-      roster: ctx.rosterSessions?.state(sub, runRef) ?? [],
       execution: executionPosture(ctx),
     });
   });

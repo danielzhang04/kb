@@ -285,7 +285,7 @@ describe('createPersistentSessionRegistry — lifecycle', () => {
 });
 
 /**
- * `observe` — the non-exclusive server-side output tap the run roster's completion-marker watcher uses.
+ * `observe` — the non-exclusive server-side output tap for diagnostics on a live Terminal session.
  * It must coexist with the browser's single sink, survive an attach/evict, and never be able to write.
  */
 describe('server-side output observers', () => {

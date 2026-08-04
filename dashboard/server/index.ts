@@ -116,9 +116,8 @@ export function buildApp(): FastifyInstance {
   // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
   // cross-user host/Factor-C path is a future hardening milestone, not an active control.
   {
-    // ONE pty host + session registry for the whole daemon, resolved on the surface context: browser
-    // terminals and run-roster agent terminals live in the same registry, so the canvas can attach to a
-    // roster session by id and the concurrency cap counts both.
+    // ONE pty host + session registry for the whole daemon, resolved on the surface context. Manual
+    // Terminal sessions persist across browser reconnects without coupling them to worker execution.
     // N4 (fail-closed host, 2026-08-03): the host is passed UNCONDITIONALLY. `makeSurfaceContext` always
     // builds the fleet-gated host, so `surfaceCtx.ptyHost` is present in production; if it were ever absent,
     // `makePtyRouteContext` THROWS (no ungated fallback) and the daemon refuses to start — the old
