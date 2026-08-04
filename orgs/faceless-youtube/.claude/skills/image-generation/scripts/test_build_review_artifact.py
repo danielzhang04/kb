@@ -6,10 +6,10 @@ Plain-assert style (this scripts dir has no pytest harness); run with
 
 Covers: `named_figures_by_shot` / `seated_shots` / `canonical_files` (the generic readers of
 `assets/library/manifest.json`, this video's own Pass-1 ledger — never `registry.json`),
-`owner_branding_declared`, `applicable_invariants` (the C-12 pre-filter), and an end-to-end
-`collect()` pass over a fabricated tmp video dir proving the filter is driven entirely by
-declared data — arbitrary, never-seen-before cast/pose names still classify correctly, which is
-the "no hardcoded cast/places" requirement made concrete.
+`owner_literal_by_place` / `_quotes_literal`, `applicable_invariants` (the C-12 pre-filter), and
+an end-to-end `collect()` pass over a fabricated tmp video dir proving the filter is driven
+entirely by declared data — arbitrary, never-seen-before cast/pose names still classify
+correctly, which is the "no hardcoded cast/places" requirement made concrete.
 """
 import hashlib
 import io
@@ -82,11 +82,12 @@ LINT_SRC = (Path(__file__).resolve().parents[2] / "visual-prompt-writer" / "scri
 BRA_SRC = Path(bra.__file__)
 
 # The module-level definitions both files must carry, byte for byte. `lint_shots.py` lives in a
-# sibling SKILL with no import path to this one, so C-7's seated signal and C-12's owner-cue signal
-# are COPIED — and a copy that drifts is exactly how the two halves of one law start disagreeing
-# per shot (M2/M11: the dropped possessive lookbehind, the two seated sources).
-_MIRRORED_DEFINITIONS = ("_BACKTICK = ", "SEATED_PRIMITIVE = ", "_QUOTED = ",
-                         "_TRACKABLE_LITERAL = ")
+# sibling SKILL with no import path to this one, so C-7's seated signal is COPIED — and a copy
+# that drifts is exactly how the two halves of one law start disagreeing per shot (M11: the two
+# seated sources). The place-owner signal is NOT in this list any more: F2 landed `place_owner`
+# as a real, lint-enforced field, so this file now reads that field directly instead of copying
+# lint's quoted-literal scan (the deleted `_QUOTED`/`_TRACKABLE_LITERAL` heuristic).
+_MIRRORED_DEFINITIONS = ("_BACKTICK = ", "SEATED_PRIMITIVE = ")
 
 
 def _definition_block(source, start):
@@ -115,24 +116,6 @@ def test_every_signal_copied_from_lint_is_byte_identical_in_both_files():
             start, theirs, ours)
 
 
-def test_the_possessive_guard_and_length_bound_are_actually_load_bearing():
-    """The dropped `(?<![A-Za-z])` lookbehind is what stops a POSSESSIVE apostrophe opening a
-    phantom literal — the exact frame whose invented name rendered as the garbled "YOU NAME"."""
-    possessive = ("a customer's name marker-written across the top and a small "
-                  "'NEW ACCOUNT' tab")
-    # WITHOUT the lookbehind this parses "'s name ... and a small '" as one quoted value; with it,
-    # the only literal here is the real one.
-    assert [m.group()[1:-1] for m in bra._QUOTED.finditer(possessive)] == ["NEW ACCOUNT"]
-    # and a prompt whose only apostrophe IS possessive records no owner decision at all
-    assert bra.owner_branding_declared(
-        {"still_prompt": "a customer's name marker-written across the top"}) is False
-    # ... while a real quoted, proper-noun-shaped cue still reads as a recorded decision
-    assert bra.owner_branding_declared(
-        {"still_prompt": "a brass plaque reading 'Widget Hall'"}) is True
-    # a bare numeral or a too-short scrap is not a trackable owner literal
-    assert bra.owner_branding_declared({"still_prompt": "the door numbered '204'"}) is False
-
-
 def test_canonical_files_maps_identity_name_to_its_file():
     lib = [{"name": "zeta-clerk", "kind": "identity", "file": "refs/zeta-clerk/zeta-clerk.png",
             "shots": ["Q01"]},
@@ -143,25 +126,42 @@ def test_canonical_files_maps_identity_name_to_its_file():
 
 
 # --------------------------------------------------------------------------- #
-# owner_branding_declared
+# owner_literal_by_place / _quotes_literal — the field-based place-owner signal
+# (F2 landed `place_owner` as a real, lint-enforced field; this file reads it
+# directly instead of re-inferring a decision from a generic quoted-literal scan)
 # --------------------------------------------------------------------------- #
-def test_owner_branding_declared_quoted_trackable_literal_in_still_prompt():
-    # an owner cue is authored as an ordinary quoted literal, lint's own signal — not a field
-    assert bra.owner_branding_declared(
-        {"still_prompt": "a plaque reads 'Miniscribe Corp' by the door"}) is True
+def test_owner_literal_by_place_reads_the_declared_field():
+    shots = [{"id": "Q01", "place": "widget-hall", "place_owner": "Widget Hall"},
+             {"id": "Q02", "place": "widget-hall"}]
+    assert bra.owner_literal_by_place(shots) == {"widget-hall": "Widget Hall"}
 
 
-def test_owner_branding_declared_ambiguity_call_counts_even_if_false():
-    # an EXPLICIT ambiguity call (either boolean value) is still a recorded decision
-    assert bra.owner_branding_declared({"owner_ambiguity": False}) is True
-    assert bra.owner_branding_declared({"owner_ambiguity": True}) is True
+def test_owner_literal_by_place_empty_string_or_missing_contributes_nothing():
+    shots = [{"id": "Q01", "place": "hq-lobby", "place_owner": ""},
+             {"id": "Q02", "place": "back-room"}]
+    assert bra.owner_literal_by_place(shots) == {}
 
 
-def test_owner_branding_declared_false_when_nothing_recorded():
-    assert bra.owner_branding_declared({}) is False
-    assert bra.owner_branding_declared({"place": "some-place", "figures": {"crowd": True}}) is False
-    # a bare backtick cast/pose reference is not a quoted literal — no false positive
-    assert bra.owner_branding_declared({"still_prompt": "`zeta-clerk` (`sit`) sits at a desk"}) is False
+def test_owner_literal_by_place_owner_ambiguity_contributes_no_entry():
+    # an ambiguity call is a real decision, but it declares no LITERAL to verify legibility of
+    shots = [{"id": "Q01", "place": "hq-lobby", "owner_ambiguity": True}]
+    assert bra.owner_literal_by_place(shots) == {}
+
+
+def test_quotes_literal_matches_any_of_the_project_quote_styles():
+    assert bra._quotes_literal("a plaque reads 'Widget Hall' by the door", "Widget Hall")
+    assert bra._quotes_literal('a plaque reads "Widget Hall" by the door', "Widget Hall")
+    assert bra._quotes_literal("a plaque reads ‘Widget Hall’ by the door", "Widget Hall")
+    assert bra._quotes_literal("a plaque reads “Widget Hall” by the door", "Widget Hall")
+
+
+def test_quotes_literal_false_when_unquoted_or_a_different_literal():
+    # a possessive apostrophe or an unquoted mention is not a redraw — no heuristic to fool here,
+    # the string being searched for is already fixed, not inferred from the prompt
+    assert not bra._quotes_literal("a customer's Widget Hall badge on the desk", "Widget Hall")
+    assert not bra._quotes_literal("a plaque reads 'Acme Corp' by the door", "Widget Hall")
+    assert not bra._quotes_literal("", "Widget Hall")
+    assert not bra._quotes_literal("a plaque reads 'Widget Hall'", "")
 
 
 # --------------------------------------------------------------------------- #
@@ -185,16 +185,54 @@ def test_relative_scale_needs_two_named_figures():
     assert any(s == "relative-scale" for s, _ in rows), rows
 
 
-def test_place_owner_needs_place_and_a_recorded_decision():
-    # place with no decision -> no row
-    rows = bra.applicable_invariants({"place": "hq-lobby"}, "Q01", [], set())
+def test_place_owner_fires_on_the_plate_that_declared_the_literal():
+    # (a): a shot that IS the plate -- it carries `place_owner` itself
+    owner_of = {"hq-lobby": "Widget Hall"}
+    shot = {"place": "hq-lobby", "place_owner": "Widget Hall"}
+    rows = bra.applicable_invariants(shot, "Q01", [], set(), owner_of)
+    assert ("place-owner", "owner cue 'Widget Hall' legible in frame per L-1?") in rows, rows
+
+
+def test_place_owner_fires_on_a_later_shot_that_redraws_the_literal():
+    # (b): a delta/chain shot that never declares `place_owner` itself (lint forbids that), but
+    # its own still_prompt re-quotes the place's established literal
+    owner_of = {"hq-lobby": "Widget Hall"}
+    shot = {"place": "hq-lobby", "still_prompt": "the desk sits under the 'Widget Hall' sign"}
+    rows = bra.applicable_invariants(shot, "Q02", [], set(), owner_of)
+    assert ("place-owner", "owner cue 'Widget Hall' legible in frame per L-1?") in rows, rows
+
+
+def test_place_owner_silent_on_an_owner_ambiguity_place():
+    # the place declared `owner_ambiguity`, not a literal -- `owner_of` carries no entry for it,
+    # so no row fires anywhere in the place, plate or otherwise
+    owner_of = {}
+    plate = {"place": "back-room", "owner_ambiguity": True}
+    other = {"place": "back-room", "still_prompt": "the same back room, emptier now"}
+    assert not any(s == "place-owner" for s, _ in
+                   bra.applicable_invariants(plate, "Q01", [], set(), owner_of))
+    assert not any(s == "place-owner" for s, _ in
+                   bra.applicable_invariants(other, "Q02", [], set(), owner_of))
+
+
+def test_place_owner_silent_on_a_shot_that_does_not_carry_the_literal():
+    # same place, literal declared elsewhere, but THIS shot neither declares it nor quotes it
+    owner_of = {"hq-lobby": "Widget Hall"}
+    shot = {"place": "hq-lobby", "still_prompt": "a wide shot of the lobby, sign out of frame"}
+    rows = bra.applicable_invariants(shot, "Q03", [], set(), owner_of)
     assert not any(s == "place-owner" for s, _ in rows), rows
-    # decision with no place -> no row
-    rows2 = bra.applicable_invariants({"owner_ambiguity": True}, "Q01", [], set())
-    assert not any(s == "place-owner" for s, _ in rows2), rows2
-    # both -> row fires
-    rows3 = bra.applicable_invariants({"place": "hq-lobby", "owner_ambiguity": True}, "Q01", [], set())
-    assert any(s == "place-owner" for s, _ in rows3), rows3
+
+
+def test_place_owner_silent_with_no_place_declared():
+    rows = bra.applicable_invariants({"place_owner": "Widget Hall"}, "Q01", [], set(),
+                                     {"hq-lobby": "Widget Hall"})
+    assert not any(s == "place-owner" for s, _ in rows), rows
+
+
+def test_place_owner_defaults_owner_of_to_empty_when_omitted():
+    # backward-compatible call shape: no `owner_of` arg -> never fires, never crashes
+    rows = bra.applicable_invariants({"place": "hq-lobby", "place_owner": "Widget Hall"},
+                                     "Q01", [], set())
+    assert not any(s == "place-owner" for s, _ in rows), rows
 
 
 def test_crowd_row_only_when_figures_crowd_declared():
@@ -234,6 +272,7 @@ def test_collect_wires_invariants_and_canon_into_cards_generically():
         shots = {
             "schema": "faceless-youtube/shots@2", "long_form": {"shots": [
                 {"id": "Q01", "source": "ai-gen", "place": "widget-hall",
+                 "place_owner": "Widget Hall",
                  "still_prompt": "`zeta-clerk` (`sit`) sits at a desk beneath a "
                                   "'Widget Hall' plaque", "vo_text": "he sits"},
                 {"id": "Q02", "source": "stock", "figures": {"crowd": True},
@@ -258,11 +297,46 @@ def test_collect_wires_invariants_and_canon_into_cards_generically():
 
         q01_slugs = {s for s, _ in by_sid["Q01"]["invariants"]}
         assert q01_slugs == {"support-contact", "place-owner", "flat-cel-hazard"}, q01_slugs
+        assert ("place-owner", "owner cue 'Widget Hall' legible in frame per L-1?") in \
+            by_sid["Q01"]["invariants"], by_sid["Q01"]["invariants"]
         assert by_sid["Q01"]["canon"] == [("zeta-clerk", str(canon_path))], by_sid["Q01"]["canon"]
 
         q02_slugs = {s for s, _ in by_sid["Q02"]["invariants"]}
         assert q02_slugs == {"crowd"}, q02_slugs
         assert by_sid["Q02"]["canon"] == [], by_sid["Q02"]["canon"]  # no named figure -> no comparison
+
+
+def test_collect_wires_the_place_owner_row_across_a_place_end_to_end():
+    """The full (a)/(b)/no-row set, driven through `collect()` rather than
+    `applicable_invariants` directly, over one place with a plate and two later shots."""
+    with tempfile.TemporaryDirectory() as td:
+        video = Path(td) / "video"
+        shots = {"long_form": {"shots": [
+            # plate: declares the literal itself -> (a)
+            {"id": "P01", "source": "ai-gen", "place": "widget-hall",
+             "place_owner": "Widget Hall",
+             "still_prompt": "an establishing shot beneath a 'Widget Hall' plaque"},
+            # later shot, same place, redraws the plate's literal -> (b)
+            {"id": "P02", "source": "ai-gen", "place": "widget-hall",
+             "still_prompt": "the desk sits under the 'Widget Hall' sign"},
+            # later shot, same place, carries no cue at all -> no row
+            {"id": "P03", "source": "ai-gen", "place": "widget-hall",
+             "still_prompt": "a tight shot of the desk drawer, sign out of frame"},
+            # a different place entirely, owner_ambiguity -> no row anywhere in it
+            {"id": "P04", "source": "ai-gen", "place": "back-room",
+             "owner_ambiguity": True, "still_prompt": "a dim, unmarked back room"},
+        ]}}
+        video.mkdir(parents=True)
+        (video / "shots.json").write_text(json.dumps(shots), encoding="utf-8")
+        for sid in ("P01", "P02", "P03", "P04"):
+            _png(str(video / "assets" / "scenes" / (sid + ".png")))
+
+        cards = {c["sid"]: c for c in bra.collect(str(video), None)}
+        q = "owner cue 'Widget Hall' legible in frame per L-1?"
+        assert ("place-owner", q) in cards["P01"]["invariants"], cards["P01"]["invariants"]
+        assert ("place-owner", q) in cards["P02"]["invariants"], cards["P02"]["invariants"]
+        assert not any(s == "place-owner" for s, _ in cards["P03"]["invariants"])
+        assert not any(s == "place-owner" for s, _ in cards["P04"]["invariants"])
 
 
 def test_collect_drops_comparison_when_canonical_file_missing_on_disk():

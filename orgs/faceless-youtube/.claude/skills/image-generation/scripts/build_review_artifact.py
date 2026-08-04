@@ -94,9 +94,8 @@ def library_assets(video):
 # library manifest instead meant a shot lint HARD-failed for a floating sit could reach the board
 # with no support row, and a row could appear on a shot lint never checked — two halves of one law
 # (C-7) disagreeing per shot. The two skills are separate packages with no import path between
-# them, so these lines are COPIED, not imported (the same cross-skill precedent as `_QUOTED`
-# below); `test_build_review_artifact.py`'s drift canaries read `lint_shots.py` as text and assert
-# every copied source line is byte-identical.
+# them, so these lines are COPIED, not imported; `test_build_review_artifact.py`'s drift canaries
+# read `lint_shots.py` as text and assert every copied source line is byte-identical.
 _BACKTICK = re.compile(r"`([^`]+)`")
 SEATED_PRIMITIVE = "sit"
 
@@ -147,33 +146,50 @@ def canonical_files(lib_assets):
             and a.get("name") and a.get("file")}
 
 
-# The place-owner check's REAL detection signal, landed by C-3/B4 as `lint_shots.py`'s
-# `place_owner_check` (copied here, not imported — same cross-skill precedent as
-# SEATED_PRIMITIVE above): the schema has exactly ONE real place-owner field,
-# `owner_ambiguity` (shots-schema.md) — `owner_branding`/`place_owner` were never
-# landed. An owner cue itself is not a separate field at all; it is authored as an
-# ordinary quoted, alphabetic, proper-noun-shaped literal in `still_prompt` (a
-# plaque/nameplate/lettering) — lint's own `_QUOTED` + `_TRACKABLE_LITERAL` signal,
-# copied VERBATIM below including the `(?<![A-Za-z])` lookbehind and the {1,60} bound.
-# Both are load-bearing: without the lookbehind, a POSSESSIVE apostrophe opens a
-# phantom literal ("a customer's name marker-written across the top and a small 'NEW
-# ACCOUNT' tab" parses "'s name ... and a small '" as one quoted value) — the exact
-# frame whose invented name rendered as the garbled "YOU NAME". Dropping either made
-# this row fire on shots lint's own check stayed silent about.
-_QUOTED = re.compile("(?<![A-Za-z])['\"‘“][^'\"‘’“”]{1,60}"
-                     "['\"’”]")
-_TRACKABLE_LITERAL = re.compile(r"^[A-Za-z][A-Za-z '&/-]{3,}$")
+# The place-owner row's detection signal (closes R1-M3/R2-M2/R2-M3's inverted row).
+# `place_owner_check` in `lint_shots.py` (F2) now enforces a FORCED CHOICE on every
+# place's plate: it declares exactly one of `place_owner: "<LITERAL>"` or
+# `owner_ambiguity: true`, HARD-fails either omission, HARD-fails declaring both, and
+# HARD-fails any OTHER shot of the place that declares either field. With the
+# declaration itself lint-mandatory, this file's job narrows to one question: is the
+# declared cue actually LEGIBLE in the rendered frame? So the row reads the
+# `place_owner` FIELD directly — never re-infers a decision from a generic
+# quoted-proper-noun scan. The old scan (`owner_branding_declared`, `_QUOTED` +
+# `_TRACKABLE_LITERAL`) was the inverted trigger: it fired on ANY shot that happened to
+# quote a proper-noun-shaped literal — including branded shots that were never the
+# plate — while staying silent on the plate that simply forgot the cue, because a
+# forgotten cue quotes nothing to scan. That heuristic is dead now that `place_owner`
+# is a real, lint-enforced field; it is deleted rather than kept as a fallback.
+def owner_literal_by_place(shots):
+    """place -> its declared `place_owner` literal, read straight from whichever shot
+    of that place carries the field. `place_owner_check` HARD-fails any shot but the
+    plate for declaring it, so this is a direct field read across the video's shots,
+    never a plate re-derivation. A place that instead declares `owner_ambiguity` (or
+    neither, pre-lint) contributes no entry: there is no literal to verify visibility
+    of, so no row can fire anywhere in that place."""
+    out = {}
+    for sh in shots:
+        place = sh.get("place")
+        owner = sh.get("place_owner")
+        if (isinstance(place, str) and place.strip()
+                and isinstance(owner, str) and owner.strip()):
+            out[place] = owner.strip()
+    return out
 
 
-def owner_branding_declared(shot):
-    """True once THIS shot's own entry records a place-owner decision, either way — an
-    authored owner cue (a quoted trackable literal in `still_prompt`, lint's own signal) or
-    the deliberate `owner_ambiguity` escape (the schema's one real field). A place with no
-    decision recorded yet emits no row: there is nothing to check against."""
-    if "owner_ambiguity" in shot:
-        return True
-    return any(_TRACKABLE_LITERAL.match(m.group()[1:-1])
-               for m in _QUOTED.finditer(shot.get("still_prompt") or ""))
+_QUOTE_PAIRS = (("'", "'"), ('"', '"'), ("‘", "’"), ("“", "”"))
+
+
+def _quotes_literal(prompt, literal):
+    """True if `literal` — an ALREADY-KNOWN string (this place's declared
+    `place_owner`) — appears quoted verbatim in `prompt`. This is a direct match
+    against one known value, never a generic quoted-value scan, so none of the
+    possessive-apostrophe ambiguity the deleted heuristic existed to guard against
+    applies here: there is nothing to mis-parse when the value being searched for is
+    already fixed."""
+    if not prompt or not literal:
+        return False
+    return any((o + literal + c) in prompt for o, c in _QUOTE_PAIRS)
 
 
 # ---------- C-12: pre-filtered, machine-emitted verdict rows ----------
@@ -183,10 +199,13 @@ def owner_branding_declared(shot):
 INVARIANTS = {
     "support-contact": "Seated named figure names a support + contact phrase (C-7)",
     "relative-scale": "Two named cast: plane / eye line / relative head scale stated (C-8)",
-    "place-owner": "Owner cue visible on the plate, or the ambiguity is the intended read",
     "crowd": "Crowd reads as background rig, not named cast",
     "flat-cel-hazard": "One-voice flat-cel style holds (no gradient/gloss/bloom/etc., C-2)",
 }
+# `place-owner` is not in this static table: its question embeds the place's own
+# declared literal (`owner cue '<LITERAL>' legible in frame per L-1?`), built per shot
+# in `applicable_invariants` from `owner_literal_by_place` — a static description here
+# would just be a second, drift-prone copy of the same fact.
 
 
 # A shot whose pixels this pipeline GENERATES or COMPOSITES carries the flat-cel style risk, and
@@ -198,28 +217,41 @@ INVARIANTS = {
 GENERATED_SOURCES = ("ai-gen", "hybrid")
 
 
-def applicable_invariants(shot, sid, named, seated):
+def applicable_invariants(shot, sid, named, seated, owner_of=None):
     """The subset of `INVARIANTS` this shot needs, per C-12's pre-filter:
       * support-contact -> >=1 named figure present AND this shot uses a seated pose primitive
       * relative-scale  -> >=2 named figures present (measured, never authored)
-      * place-owner     -> shot declares `place` AND its entry records an owner decision
+      * place-owner     -> EITHER (a) this shot IS the plate that declared `place_owner`
+                           itself, OR (b) this shot is a later delta/chain shot of the same
+                           place whose own `still_prompt` redraws (quotes) that literal
+                           (the L-1 carry). `owner_of` (from `owner_literal_by_place`) is the
+                           place -> literal map; a place with no entry (declared
+                           `owner_ambiguity`, or — pre-lint — neither) fires no row anywhere
+                           in it: lint owns catching the missing declaration now, this row
+                           only checks legibility of a declaration that exists.
       * crowd           -> `figures.crowd` is true
       * flat-cel-hazard -> the shot's pixels are generated or composited (forge's own predicate)
     Returns an ordered list of `(slug, question)` pairs, `INVARIANTS`-order, empty when none apply.
     """
+    owner_of = owner_of or {}
     rows = []
     if named and sid in seated:
-        rows.append("support-contact")
+        rows.append(("support-contact", INVARIANTS["support-contact"]))
     if len(named) >= 2:
-        rows.append("relative-scale")
-    if shot.get("place") and owner_branding_declared(shot):
-        rows.append("place-owner")
+        rows.append(("relative-scale", INVARIANTS["relative-scale"]))
+    place = shot.get("place")
+    if isinstance(place, str) and place.strip():
+        literal = owner_of.get(place)
+        if literal and (shot.get("place_owner") == literal
+                         or _quotes_literal(shot.get("still_prompt") or "", literal)):
+            rows.append(("place-owner",
+                         "owner cue '%s' legible in frame per L-1?" % literal))
     fig = shot.get("figures") if isinstance(shot.get("figures"), dict) else {}
     if fig.get("crowd"):
-        rows.append("crowd")
+        rows.append(("crowd", INVARIANTS["crowd"]))
     if shot.get("source", "ai-gen") in GENERATED_SOURCES:
-        rows.append("flat-cel-hazard")
-    return [(slug, INVARIANTS[slug]) for slug in rows]
+        rows.append(("flat-cel-hazard", INVARIANTS["flat-cel-hazard"]))
+    return rows
 
 
 def describe_animation(m):
@@ -312,6 +344,7 @@ def collect(video, only, staging=None):
     named_by_shot = named_figures_by_shot(LIB)
     seated = seated_shots(S, identity_names(LIB))
     canon_file = canonical_files(LIB)
+    owner_of = owner_literal_by_place(S.values())
     cards = []
     for sid, s in S.items():
         if only and sid not in only:
@@ -333,7 +366,7 @@ def collect(video, only, staging=None):
         # file actually exists on disk — never invent a comparison for an unminted figure.
         canon_refs = [(n, canon_file[n]) for n in named
                       if n in canon_file and os.path.exists(canon_file[n])]
-        invariants = applicable_invariants(s, sid, named, seated)
+        invariants = applicable_invariants(s, sid, named, seated, owner_of)
         for path, label in files:
             cards.append(dict(
                 sid=sid, label=label, path=path,
