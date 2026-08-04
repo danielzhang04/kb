@@ -84,12 +84,12 @@
         "stage": "eighties-den",
         "stage_role": "delta",
         "changed_elements": [
-          "+ a sealed brown-paper parcel in the foreground"
+          "+ a thick manila contract folder with an absurdly long accordion-folded document spilling off the desk"
         ],
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "The same den, same locked framing: `pc-boxy` in its oversized black permed wig on the laminate desk, the wood-cabinet arcade machine on the rug stage-left with its blue dot-maze screen, walnut panelling, burnt-orange shag rug, wood-veneer television, net-curtained window, amber light, every surface blank and unlettered. Only this changes: a fat brown-paper parcel now sits unopened in the immediate foreground on the shag rug, tied with coarse string and closed with one thick disc of dense red #d7402b wax; everything else exactly as established.",
-        "notes": "Red accent 1 of 6 — ownership/withheld-payload seal. The parcel stays SHUT: the bricks are the slice's payload and are not disclosed until L23, so nothing brick-coloured or brick-shaped appears before it (disclosure order).",
+        "still_prompt": "The same den, same locked framing: `pc-boxy` in its oversized black permed wig on the laminate desk, the wood-cabinet arcade machine on the rug stage-left with its blue dot-maze screen, walnut panelling, burnt-orange shag rug, wood-veneer television, net-curtained window, amber light, every surface blank and unlettered. Only this changes: a thick manila contract folder now sprawls open across the laminate desk, its absurdly long accordion-folded document unspooling over the front edge and trailing onto the shag rug, every page packed edge to edge with dense hairline rows that dissolve into illegible marks; everything else exactly as established.",
+        "notes": "The folder and absurdly long fine-print spill make the corporate-scam reading immediate without authoring an invented literal. The bricks remain undisclosed until L23 (disclosure order).",
         "assets": {
           "pc-boxy": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png"
         }
@@ -263,12 +263,12 @@
         "stage": "drive-strongroom",
         "stage_role": "delta",
         "changed_elements": [
-          "+ a row of four document crates on the mid-height shelving"
+          "+ two curved shelving bays packed in three tiers with document crates and archive boxes"
         ],
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "The same circular strongroom, its steel door still wide open onto the now-dark corridor, same locked framing: polished platter floor, steel gantry overhead, curved walls of ruled pigeonhole shelving, the brass desk lamp burning on the centre table, open steel door stage-left onto the dark corridor, steel grey and brass against amber lamplight. Only this changes: a row of four squat document crates now sits shoulder to shoulder along the shelving at mid height stage-right, lids on, their front panels ruled but blank and unlettered; everything else exactly as established.",
-        "notes": "The two enumerated nouns share one arrangement so the delta still changes exactly one element. Crate faces authored blank rather than labelled — fewer authored strings (schema 4).",
+        "still_prompt": "The same circular strongroom, its steel door still wide open onto the now-dark corridor, same locked framing: polished platter floor, steel gantry overhead, curved walls of ruled pigeonhole shelving, the brass desk lamp burning on the centre table, open steel door stage-left onto the dark corridor, steel grey and brass against amber lamplight. Only this changes: two curved shelving bays stage-right are now packed in three dense tiers with twelve squat document crates and archive boxes, lids on and front panels ruled but blank and unlettered; everything else exactly as established.",
+        "notes": "The first storage delta adds a visibly substantial, countable mass while remaining one integrated shelving load. Crate faces stay blank rather than labelled — fewer authored strings (schema 4).",
         "assets": {}
       },
       {
@@ -280,12 +280,12 @@
         "stage": "drive-strongroom",
         "stage_role": "delta",
         "changed_elements": [
-          "+ a wax-sealed lockbox on the topmost shelf"
+          "+ every remaining shelving bay fills with private-collection cases, albums, binders, and a wax-sealed lockbox"
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same circular strongroom, its steel door still wide open onto the now-dark corridor, same locked framing: polished platter floor, steel gantry overhead, the row of four squat document crates along the mid-height shelving stage-right with front panels ruled but blank and unlettered, the brass desk lamp on the centre table, open steel door stage-left onto the dark corridor, steel grey and brass against amber lamplight. Only this changes: one small squat lockbox now sits alone on the topmost shelf directly above the lamp, banded in iron and closed with a single thick disc of dense red #d7402b wax; everything else exactly as established.",
-        "notes": "Red accent 2 of 6 — ownership. The euphemism is unmasked by the staging (one box locked harder than the rest of the room), which is the signature counterpoint move; nothing is lettered.",
+        "still_prompt": "The same circular strongroom, its steel door still wide open onto the now-dark corridor, same locked framing: polished platter floor, steel gantry overhead, the two curved shelving bays stage-right already packed in three dense tiers with twelve squat document crates and archive boxes, the brass desk lamp on the centre table, open steel door stage-left onto the dark corridor, steel grey and brass against amber lamplight. Only this changes: every remaining upper and lower shelving bay now fills with an even denser mass of closed private-collection cases, stacked photo albums, fat binders, rolled archive tubes, and one iron-banded lockbox closed with a single thick disc of dense red #d7402b wax; everything else exactly as established.",
+        "notes": "Red accent 2 of 6 — ownership. This second shelving load visibly exceeds L14, escalating the irony from saved files to a strongroom crowded by private collections; nothing is lettered.",
         "assets": {}
       },
       {
@@ -316,11 +316,11 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-      "still_prompt": "A small, varied-haired crowd of late-1980s shoppers forms a crowd-scale tug tableau on the pavement directly in front of the little computer shop: two crowd participants hold opposite ends of one oversized beige home computer taut at chest height, with a full stride of pavement separating them. The shop's pine-framed window and open door sit behind them, mid-morning daylight, kerb and gutter in the immediate foreground. Palette is charcoal, oatmeal and warm pine. Wide flat side-on medium at chest height makes the stretched machine the horizontal centre; depth reads kerb foreground, crowd and machine mid-ground, shopfront background. Every shop and window sign is blank and unlettered.",
+        "still_prompt": "Wide view through the pine-framed front window of a little computer shop: a waist-high display counter runs the width of the storefront, and a small, varied-haired crowd of late-1980s shoppers stays behind that counter at background scale. Two crowd participants hold opposite ends of one oversized beige home computer taut just above the counter, with a full stride of counter space separating them. Mid-morning daylight falls through the open door, with kerb and gutter in the immediate foreground outside the glass. Palette is charcoal, oatmeal and warm pine. Wide flat side-on framing makes the stretched machine the horizontal centre; depth reads kerb foreground, storefront glass and counter mid-ground, small crowd and shop interior background. Every shop and window sign is blank and unlettered.",
       "figures": {
         "crowd": true
       },
-      "notes": "The computer-company rivalry is an analogy, not a story-bearing identity beat: the participants stay crowd-scale, with varied hair and late-1980s dress; no anonymous foreground body is authored.",
+        "notes": "The computer-company rivalry is an analogy, not a story-bearing identity beat: the participants stay small at crowd tier behind the storefront counter, with varied hair and late-1980s dress; no anonymous foreground body is authored.",
       "assets": {
         "prop-beige-pc": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png"
       }
@@ -338,11 +338,11 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-      "still_prompt": "The same pavement crowd-scale tug tableau outside the little computer shop, same locked framing: a small, varied-haired crowd of late-1980s shoppers, two crowd participants holding opposite ends of the contested object at chest height with a full stride of pavement between them, pine-framed shopfront behind, kerb in the foreground, mid-morning daylight, charcoal and oatmeal against warm pine, every shop and window sign blank and unlettered. Only this changes: the object held taut between the two participants is now a single oversized glossy black modern smartphone, its cold-white screen turned to the viewer and completely blank, in place of the beige computer; everything else exactly as established.",
+        "still_prompt": "The same view through the pine-framed shop window, same locked framing: the waist-high display counter, the small varied-haired crowd of late-1980s shoppers held behind it at background scale, two crowd participants holding opposite ends of the contested object just above the counter with a full stride of counter space between them, kerb in the foreground outside the glass, mid-morning daylight, charcoal and oatmeal against warm pine, every shop and window sign blank and unlettered. Only this changes: the object held taut between the two participants is now a single oversized glossy black modern smartphone, its cold-white screen turned to the viewer and completely blank, in place of the beige computer; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-      "notes": "The anachronistic object IS the simile — no brand marks or lettering. Apple and Samsung are analogy-only names, never diegetic brands; the smartphone screen is deliberately blank. The crowd tableau carries forward with varied hair and no anonymous foreground body."
+        "notes": "The anachronistic object IS the simile — no brand marks or lettering. Apple and Samsung are analogy-only names, never diegetic brands; the smartphone screen is deliberately blank. The crowd tableau carries forward, small behind the storefront counter, with varied hair and no anonymous foreground body."
       },
       {
         "id": "L19",
@@ -492,40 +492,18 @@
         "assets_note": "`prop-drive` deliberately NOT seeded here: the drive reads small/mid-ground in this shot, so it is composed from prose. The prop canonical is seeded only where the object reads large (L11, L12, L28, L40), keeping this gen inside the 4-seed cap."
       },
       {
-        "id": "L27",
-        "duration_s": 2.1,
+        "id": "L28",
+        "duration_s": 4.2,
         "synthetic": false,
         "vo_ref": "out of Colorado, founded in",
-        "vo_text": "out of Colorado, founded in 1980",
-        "stage": "miniscribe-plant",
-        "stage_role": "delta",
-        "changed_elements": [
-          "+ a snow-capped mountain range fills the far windows"
-        ],
-        "shot_class": "symbolic-stand-in-object",
-        "source": "ai-gen",
-        "still_prompt": "The same plant floor, same locked framing: `miniscribe-rep` (`action-powerstance`, `expr-smug`) at the head of the pale-green conveyor with its row of four steel-grey drives, machine housings and empty parts trays behind, factory windows along the far wall, pale plant green and steel grey against warm tan, every machine housing and parts tray blank and unlettered. Only this changes: the flat pale sky in the far windows is now filled by a saw-toothed snow-capped mountain range standing close behind the glass, its cold blue-white peaks running the whole width of the wall; everything else exactly as established.",
-        "notes": "[F-01, F-25] Longmont, Colorado. The place is carried by one landmark element rather than a lettered sign — fewer authored strings — and it arrives on the word that names the state.",
-        "assets": {
-          "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
-          "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
-          "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
-        },
-        "assets_note": "`prop-drive` deliberately NOT seeded here: the drive reads small/mid-ground in this shot, so it is composed from prose. The prop canonical is seeded only where the object reads large (L11, L12, L28, L40), keeping this gen inside the 4-seed cap."
-      },
-      {
-        "id": "L28",
-        "duration_s": 2.1,
-        "synthetic": false,
-        "vo_ref": "by a guy named Terry",
-        "vo_text": "by a guy named Terry Johnson.",
-      "stage": "miniscribe-plant-founder",
-      "stage_role": "base",
-      "place_anchor": "assets/scenes/L27.png",
+        "vo_text": "out of Colorado, founded in 1980 by a guy named Terry Johnson.",
+        "stage": "miniscribe-plant-founder",
+        "stage_role": "base",
+        "place_anchor": "assets/scenes/L26.png",
         "shot_class": "personified-character",
         "source": "ai-gen",
-      "still_prompt": "`miniscribe-rep` (`action-powerstance`, `expr-smug`) and `terry-johnson` (`hold-one-hand`, `expr-delighted`) share the head of a pale-green conveyor on a bright MiniScribe plant floor. MiniScribe-rep's drive-shaped lapel badge is clearly visible on his jacket. Terry holds one finished steel-grey drive at chest height with exactly one hand; his other hand is visible, open, empty, and not touching the drive. Four more steel-grey drives sit in a row on the conveyor. Pale-green machine housings, empty parts trays, and far windows filled by a saw-toothed snow-capped range complete the room. Palette is pale plant green, steel grey, and warm tan. Wide view at chest height square to the belt; depth reads plant apron foreground, the two figures and belt mid-ground, housings and windows background. Every machine housing and parts tray is blank and unlettered.",
-      "notes": "[F-25] Terry Johnson's founder reveal lands on his naming line. Re-based as a fresh two-cast plant tableau anchored to approved L27: both named figures have inventory pose and expression frames, share eye-line and height, and remain within the fresh two-cast seed slate. The identity badge and one-hand hold are explicit after the first unanchored composite omitted them.",
+        "still_prompt": "`terry-johnson` (`hold-one-hand`, `expr-delighted`) stands small on the left third of the bright MiniScribe plant, holding one finished steel-grey drive at chest height with exactly one hand; his other hand is visible, open, empty, and not touching the drive. `miniscribe-rep` (`action-powerstance`, `expr-smug`) stands equally small at the head of the pale-green conveyor on the right third, his drive-shaped lapel badge clearly visible. Four more steel-grey drives sit in a row on the conveyor. Pale-green machine housings, empty parts trays, and far windows filled by a saw-toothed snow-capped range complete the room. Palette is pale plant green, steel grey, and warm tan. Extra-wide view at chest height square to the belt keeps both full-body figures small against the plant; depth reads plant apron foreground, the two figures and belt mid-ground, housings and mountain windows background. Every machine housing and parts tray is blank and unlettered.",
+        "notes": "[F-01, F-25] L27's Colorado-and-founder span is folded into L28 exactly as the L197-to-L198 merge carries the removed predecessor's span: L28 starts on the removed shot's vo_ref and holds the combined duration. Terry Johnson's founder reveal remains on his naming words; he is named cast, staged on the left and small in the approved L26 plant. The base seeds verified L26 as its in-video place anchor; both named figures retain inventory pose and expression frames, and miniscribe-rep retains the visible drive badge.",
         "assets": {
           "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
           "action-powerstance": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
@@ -642,14 +620,12 @@
         "vo_text": "they were selling to giants like Compaq",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "`miniscribe-rep` (`expr-smug`, `action-offering`) stands small in the immediate foreground of a loading bay holding a crate of drives out towards the figure above him. Above and behind him a colossal seated buyer fills the upper two-thirds of the frame, so large that only the knees, the lower edge of a grey suit jacket and the deep shadow they throw are in shot, the head and hands far outside the frame entirely. A concrete loading dock, a raised roller door and a flat cold sky beyond. Palette is concrete grey, suit grey and warm tan. Wide low framing from the apron looking up so the small offering figure sits at bottom centre against the seated mass; depth reads apron and crate foreground, the small figure mid-ground, the colossal knees and dock background. The loading bay's signboard above the roller door is lettered 'COMPAQ'.",
-        "figures": {
-          "anon_foreground": [
-            "a colossal seated buyer"
-          ]
-        },
-        "notes": "[F-29] Compaq confirmed as the major customer by 1988. Scale IS the argument, so the shared-eye-line default is deliberately broken (grammar 2). Supplied literal 'COMPAQ' (1 word), the script's own word. The buyer has no slug and does not recur, so it is declared per shot; keeping its head out of frame also keeps it off the must-stay-distinct face budget.",
+        "still_prompt": "`ibm-suit`, the customer institution personified (`sit`, `expr-deadpan`), sits colossal above the loading apron, filling the upper two-thirds so only his suited knees, the lower edge of his navy jacket, and the deep shadow they throw are in view; his head and hands remain far outside the frame. `miniscribe-rep` (`expr-smug`, `action-offering`) stays small in the immediate foreground, offering a crate of drives toward the seated mass. A concrete loading dock, raised roller door, and flat cold sky sit behind them. Palette is concrete grey, navy, and warm tan. Wide low framing from the apron looking up makes the small offering figure sit at bottom centre against the colossal institution; depth reads apron and crate foreground, miniscribe-rep mid-ground, ibm-suit's knees and dock background. The loading bay's signboard above the roller door is lettered 'COMPAQ'.",
+        "notes": "[F-29] Compaq confirmed as the major customer by 1988. `ibm-suit` is the customer institution personified, so the story-bearing colossal buyer is named cast rather than an anonymous foreground figure. Scale IS the argument, so the shared-eye-line default is deliberately broken. Supplied literal 'COMPAQ' (1 word), the script's own word.",
         "assets": {
+          "ibm-suit": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+          "sit": "channels/the-second-take/visual-kit/refs/base/sit.png",
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
           "miniscribe-rep": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
           "expr-smug": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
           "action-offering": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
@@ -823,7 +799,7 @@
         "shot_class": "personified-character",
         "source": "ai-gen",
         "still_prompt": "`hq-banker` — a silver-haired figure in a rich chocolate-brown pinstripe suit with a gold pocket-watch chain looped at the waistcoat, the bank's own institutional actor — stands `expr-deadpan`, `action-armscrossed`, behind a polished wood desk in a plush high-rise office, floor-to-ceiling windows behind him showing a hazy city skyline. Deep-red leather chair, brass desk lamp, a stack of folders squared on the blotter. Palette is chocolate brown, brass and hazy city grey. Wide three-quarter medium at desk height so the figure and the skyline share the frame; depth reads desk foreground, figure mid-ground, window and skyline background. Every folder spine and window pane is blank and unlettered.",
-        "notes": "New cast slug `hq-banker` — Hambrecht & Quist [F-27] personified, one identity tag (the pocket-watch chain), recurring at the verdict beat later in the video. REPAIR-WAVE PREP (dogfood slice, r3 law): no still_prompt edit needed -- already single named cast, no anon_foreground, primitives backticked. The L45-47 'off rig + inconsistent character' condemn is diagnosed as purely a fix-1 STRUCTURAL defect (identity+scene combined in one gen); the two-step split (forge batch) is the whole fix here. hq-office is this video's first frame in that place -> forge batch marks it plate:true (fix 2): a 2-3 candidate mint, human-picked, becomes the office's held plate for L46/L47.",
+        "notes": "New cast slug `hq-banker` — Hambrecht & Quist [F-27] personified, one identity tag (the pocket-watch chain), recurring at the verdict beat later in the video. REPAIR-WAVE PREP (dogfood slice, r3 law): no still_prompt edit needed -- already single named cast, no anon_foreground, primitives backticked. The L45-47 'off rig + inconsistent character' condemn is diagnosed as purely a fix-1 STRUCTURAL defect (identity+scene combined in one gen); the two-step split (forge batch) is the whole fix here. hq-office is this video's first frame in that place, so its stage head mints this video's own PLACE-FIRST plate as one candidate; L46/L47 remain deltas of that in-video plate and no cross-video environment seed is used.",
         "assets": {
           "hq-banker": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
           "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
@@ -1989,11 +1965,11 @@
         ],
         "shot_class": "number-glued-to-object",
         "source": "ai-gen",
-      "still_prompt": "The same packing bench, same locked framing: the row of three open brick cartons, the small crowd of late-1980s warehouse workers, and the bare bulbs. Only this changes: a small handheld stamp now rests on the nearest carton's closed flap, leaving one plain dark serial-style mark; everything else exactly as established.",
+        "still_prompt": "The same packing bench, same locked framing: the row of three open brick cartons and bare bulbs, with the small varied-haired crowd of late-1980s warehouse workers held behind the long bench at background scale. Only this changes: a small handheld stamp now rests on the nearest carton's closed flap, leaving one plain dark serial-style mark; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-      "notes": "[F-05] Fake serial numbers on the boxes. The stamp is a generic dark mark rather than an invented digit sequence; all workers remain crowd tier.",
+        "notes": "[F-05] Fake serial numbers on the boxes. The stamp is a generic dark mark rather than an invented digit sequence; the varied-haired workers stay small behind the bench at crowd tier.",
         "assets": {
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
           "hold-one-hand": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
@@ -2012,11 +1988,11 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-      "still_prompt": "The same packing bench, same locked framing: the row of open brick cartons, the small crowd of late-1980s warehouse workers, and the stamp on the nearest flap. Only this changes: one genuine boxed hard drive now sits at the end of the row, its flap carrying the identical plain dark mark and matching the brick cartons beside it; everything else exactly as established.",
+        "still_prompt": "The same packing bench, same locked framing: the row of open brick cartons, the stamp on the nearest flap, and the small varied-haired crowd of late-1980s warehouse workers held behind the long bench at background scale. Only this changes: one genuine boxed hard drive now sits at the end of the row, its flap carrying the identical plain dark mark and matching the brick cartons beside it; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-      "notes": "The real drive box beside the fakes makes the indistinguishability visible; all workers remain crowd tier.",
+        "notes": "The real drive box beside the fakes makes the indistinguishability visible; varied-haired workers remain small behind the bench at crowd tier.",
         "assets": {
           "brick-foreman": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
         }
@@ -2889,11 +2865,11 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-      "still_prompt": "The same dim records office, same locked framing: the small new-management crowd in late-1980s business suits, the lantern, the '1989' calendar, and the filing cabinets. Only this changes: the lantern's light reaches an empty desk chair pushed back at the room's centre, plainly vacant; everything else exactly as established.",
+        "still_prompt": "The same dim records office, same locked framing: the small varied-haired new-management crowd in late-1980s business suits stays at background scale in the open doorway, behind the near line of filing cabinets; the lantern, the '1989' calendar, and the filing cabinets hold exactly as established. Only this changes: the lantern's light reaches an empty desk chair pushed back at the room's centre, plainly vacant; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-      "notes": "'1989' is re-quoted per L-1. Wiles's absence is staged as the empty chair; the management team remains crowd tier.",
+        "notes": "'1989' is re-quoted per L-1. Wiles's absence is staged as the empty chair; the varied-haired management team remains explicitly small at crowd tier in the background doorway, inherited from verified L160.",
         "assets": {}
       },
       {
@@ -2909,11 +2885,11 @@
         ],
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-      "still_prompt": "The same dim records office, same locked framing: the small new-management crowd in late-1980s business suits, the empty desk chair, and the '1989' calendar. Only this changes: the lantern is raised toward the rows of filing cabinets ahead of the crowd; everything else exactly as established.",
+        "still_prompt": "The same dim records office, same locked framing: the small varied-haired new-management crowd in late-1980s business suits stays at background scale in the open doorway behind the near line of filing cabinets, with the empty desk chair and the '1989' calendar held exactly as established. Only this changes: the lantern is raised toward the rows of filing cabinets ahead of the crowd; everything else exactly as established.",
       "figures": {
         "crowd": true
       },
-      "notes": "'1989' is re-quoted per L-1. The management team remains crowd tier; delta cap reached for this chain.",
+        "notes": "'1989' is re-quoted per L-1. The varied-haired management team remains explicitly small at crowd tier in the background doorway; delta cap reached for this chain.",
         "assets": {}
       },
       {
@@ -3474,12 +3450,12 @@
         "stage_role": "base",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-      "still_prompt": "`qt-wiles`, `expr-pleading`, `surrender`, stands stage-left at a witness stand, facing the room in a blameless defense. A tall blank wall fills the frame behind him, otherwise bare. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at stand height with Wiles occupying the near half of the frame, the bare wall filling the far half.",
-      "notes": "The `surrender` pose is the sole authoring of Wiles's defense posture. The bare far half of the wall is left deliberately empty, awaiting the delta's testimony crowd.",
+        "still_prompt": "`qt-wiles`, `expr-deadpan`, `action-shrug`, stands stage-left at a witness stand, facing the room in a blameless defense. A tall blank wall fills the frame behind him, otherwise bare. Cool courtroom light, palette of pale grey and shadow. Wide flat framing at stand height with Wiles occupying the near half of the frame, the bare wall filling the far half.",
+        "notes": "Daniel's 2026-08-03 ban removes the `surrender` plus `expr-pleading` defense combination. Inventory-valid `action-shrug` plus `expr-deadpan` reads as Wiles's dismissive 'I had no idea' claim without a pleading posture. The bare far half of the wall is left deliberately empty, awaiting the delta's testimony crowd.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
-          "expr-pleading": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
-          "surrender": "channels/the-second-take/visual-kit/refs/base/surrender.png"
+          "expr-deadpan": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+          "action-shrug": "channels/the-second-take/visual-kit/refs/base/action-shrug.png"
         }
       },
       {
@@ -3495,15 +3471,13 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same witness stand, same locked framing: `qt-wiles` (`expr-pleading`, `surrender`) with his open palms. Only this changes: a small cluster of anonymous figures now stands together on the frame's far side, their backs turned toward him; everything else exactly as established.",
+        "still_prompt": "The same witness stand, same locked framing: `qt-wiles` holds the established defense tableau. Only this changes: a small cluster of anonymous figures now stands together on the frame's far side, their backs turned toward him; everything else exactly as established.",
         "figures": {
           "crowd": true
         },
-        "notes": "",
+        "notes": "The L196 ban-compliant `action-shrug` and `expr-deadpan` defense posture is inherited from the parent frame rather than redundantly reseeded on this crowd delta.",
         "assets": {
-          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
-          "expr-pleading": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
-          "surrender": "channels/the-second-take/visual-kit/refs/base/surrender.png"
+          "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
         }
       },
       {
@@ -3519,11 +3493,11 @@
         ],
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "The same witness stand, same locked framing: `qt-wiles` (`expr-crestfallen` now) with his open palms. Only this changes: the anonymous cluster has turned to face him directly, one figure stepped forward with a hand raised as if mid-oath; everything else exactly as established.",
+        "still_prompt": "The same witness stand, same locked framing: `qt-wiles` (`expr-crestfallen` now) holds the established defense tableau. Only this changes: the anonymous cluster has turned to face him directly, one figure stepped forward with a hand raised as if mid-oath; everything else exactly as established.",
         "figures": {
           "crowd": true
         },
-        "notes": "Delta cap reached for this chain.",
+        "notes": "Wiles's body posture remains the ban-compliant L196 `action-shrug` through the L197 parent while his expression turns `expr-crestfallen`. Delta cap reached for this chain.",
         "assets": {
           "qt-wiles": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
           "expr-crestfallen": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png"

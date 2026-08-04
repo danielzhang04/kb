@@ -15,3 +15,24 @@
 - **L63 — named-cast tier.** Rebased the chopping-block idiom as its own contiguous stage over verified `assets/scenes/L61.png`, retaining the established boardroom and target while keeping Wiles, the foreman, and the varied-haired crowd within the four-seed composite cap. This prevents the L63 delta from resuming `fear-boardroom` after L62's intervening base.
 
 Crowd figures in all three crowd-tier repairs explicitly carry varied hair; none is authored as uniformly bald.
+
+---
+
+# VPW scoped-repair declaration — 2026-08-03
+
+## Round 1 — Daniel board selections, zero-spend
+
+- **L04 — symbolic-object delta.** Replaced the sealed parcel with a thick contract folder whose absurdly long, dense fine-print document spills off the desk; it remains the locked L03 delta and does not author invented lettering.
+- **L14–L15 — strongroom escalation.** Amplified the two deltas so L14 packs two shelving bays with a twelve-crate/archive-box mass and L15 fills every remaining bay with a still larger private-collection mass plus the wax-sealed lockbox. Both retain locked framing and one integrated change per delta.
+- **L17–L18 — crowd-tier brawl.** Re-staged the tug tableau through a storefront window, with the varied-haired crowd small behind a display-counter line; L18 retains the smartphone-only delta.
+- **L27 removed; L28 — merged founder/place beat.** Folded L27's Colorado span and duration into L28 using the L197→L198 merge mechanic, without renumbering. L28 now begins on L27's `vo_ref`, anchors to verified `assets/scenes/L26.png`, holds Terry Johnson small on the left, and retains miniscribe-rep's drive badge and current registry pose/expression names.
+- **L34 — named institution subject.** Replaced the anonymous colossal buyer declaration with `ibm-suit` using inventory `sit` and `expr-deadpan`; miniscribe-rep stays small in the foreground offering the crate, preserving the scale argument.
+- **L45 — own-place base.** Verified that `hq-office` is this video's first-place base with no cross-video environment seed; its note now pins a one-candidate in-video PLACE-FIRST mint, with L46/L47 unchanged deltas.
+- **L108–L109 and L161–L162 — crowd-scale composites.** Kept the required serial-mark, genuine-drive, calendar, vacant-chair, and raised-lantern payloads while making the varied-haired crowd explicitly small behind the packing bench or in the background doorway. L110's delta structure is unchanged.
+- **L30, L40, L48, L51 — slate verification only.** Their registry names and canonical seed paths resolve to the current inventory; no prompt authoring change was needed. L51 remains `action-armscrossed`/`expr-smug`, outside the surrender-plus-pleading concern.
+
+All revised named-cast compositions stay at two or fewer named figures, and all revised generation chains remain within the four-seed cap.
+
+## Addendum — L196 defense posture (2026-08-03)
+
+- **L196–L198.** Daniel's ban on `surrender` plus `expr-pleading` replaces L196's defense tableau with inventory-valid `action-shrug` plus `expr-deadpan`. L197 and L198 inherit that body posture from their parent frames rather than re-seeding it; L198 retains its existing `expr-crestfallen` turn. This removes the deleted-frame remint path and brings the crowd delta under the four-seed cap.
