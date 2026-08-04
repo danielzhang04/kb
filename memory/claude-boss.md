@@ -88,3 +88,10 @@
   workers do file content.
 - RESUME: handoffs/2026-08-04-fyt-bricks-middle-path.md (board verdict gate on 14 flags is the
   next Daniel touchpoint).
+
+## 2026-08-04 (late) — drift audit + handoff refresh
+- Daniel rejected the B4/B5 "57 clean" framing wholesale; codex-deep audit (VIDEO/scratchpad/audit-drift-2026-08-04.md) root-caused: contradictory style doctrine (soft-cel text vs hardened no-gradient block), smooth STEP-1 seeds, review false-passes, authoring omissions (no seat support, no place ownership, named cast in generic beats). Chain depth only PROPAGATES, roots drift too.
+- WORKED: giving the auditor Daniel's verbatim defect list as ground truth + demanding per-defect mechanism AND fix; one deep worker beat parallel shallow ones for synthesis.
+- LESSON: review gates that emit aggregate "rig holds" sentences pass the same eye-geometry defect repeatedly; force per-invariant verdicts with canonical side-by-side crops.
+- LESSON: a genlog "style concern" note that never maps to a FAIL axis is a ratchet for drift — every review axis needs a fail condition or it is decoration.
+- REMAINS: Daniel gate on ~$4.12 fix list; handoffs/2026-08-04-fyt-bricks-middle-path.md rewritten as the drift-audit pickup.
