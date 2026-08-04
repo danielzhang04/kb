@@ -518,6 +518,41 @@ def tts_request(text, cfg, api_key, prev_text, next_text, timeout=180):
 
 ROUTE_OPERATION = "fyt.elevenlabs.locked-tts"
 
+# Mirrors `dashboard/server/control/paidActionService.ts` `PAID_ARTIFACT_NAMESPACE` (~line 15) and
+# `orgs/faceless-youtube/.claude/skills/image-generation/scripts/forge.py`'s
+# `validate_route_artifact_path` exactly, adapted for this route's `.mp3` extension: the daemon
+# REJECTS ('invalid-input') any `expectedArtifactPath` that doesn't start with this literal,
+# repo-root-relative prefix. Route-mode voiceover output already lands under the video's own
+# `assets/` dir (`video_dir/assets/vo.mp3` or `assets/shorts/short-NN.mp3`), which satisfies the
+# namespace by construction — this check exists so a misconfigured `video_dir` (wrong channel, a
+# path outside `videos/<slug>/`) fails LOCALLY before any paid call, not with a remote 400.
+PAID_ARTIFACT_NAMESPACE = "orgs/faceless-youtube/channels/the-second-take/videos/"
+_SAFE_ARTIFACT_PATH_RE = re.compile(r"^[A-Za-z0-9._ -]+(?:/[A-Za-z0-9._ -]+)*$")
+
+
+def validate_route_artifact_path(rel_out, name):
+    """Hard-fail LOCALLY, before any paid call, when a route-mode `expectedArtifactPath` cannot
+    possibly pass the daemon's `paidActionService.ts` `SAFE_ARTIFACT_PATH` + `PAID_ARTIFACT_NAMESPACE`
+    gate (~lines 7, 15, 428-443). Mirrors forge.py's validator of the same name, adapted for `.mp3`.
+    Without this, a misconfigured `video_dir` would burn the piece's one route call against a
+    guaranteed `invalid-input` rejection instead of failing before any spend."""
+    ok = (
+        isinstance(rel_out, str)
+        and rel_out.startswith(PAID_ARTIFACT_NAMESPACE)
+        and rel_out.lower().endswith(".mp3")
+        and not rel_out.startswith("/")
+        and re.match(r"^[A-Za-z]:", rel_out) is None
+        and ".." not in rel_out.split("/")
+        and len(rel_out) <= 512
+        and _SAFE_ARTIFACT_PATH_RE.match(rel_out) is not None
+    )
+    if not ok:
+        raise SystemExit(
+            f"{name}: route-mode expectedArtifactPath {rel_out!r} would be REJECTED by the "
+            f"daemon's paid-artifact namespace check — it must start with "
+            f"{PAID_ARTIFACT_NAMESPACE!r}, end in '.mp3', use forward slashes, and carry no "
+            f"'..', drive letter, or leading slash. Check video_dir / the route root.")
+
 
 def _route_urlopen(req, timeout):
     # routeUrl is the local daemon (typically http://); only pay for a TLS context when the URL
@@ -542,6 +577,7 @@ def tts_request_via_route(route, route_root, text, out_path, timeout=180):
     to sync to. This is a real gap, not a bug in this script — flagged for Unit D/the thin-slice
     scope, not silently patched over here."""
     rel_out = os.path.relpath(out_path, route_root).replace(os.sep, "/")
+    validate_route_artifact_path(rel_out, out_path.stem)
     body = {"operation": ROUTE_OPERATION, "text": text, "expectedArtifactPath": rel_out}
     req = urllib.request.Request(
         route["routeUrl"],
