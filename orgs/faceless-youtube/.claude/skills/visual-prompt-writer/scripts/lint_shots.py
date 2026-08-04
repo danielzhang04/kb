@@ -295,7 +295,7 @@ def _dur(sh):
         return None
 
 
-def stage_check(label, shots, hard, soft, require_stage=False):
+def stage_check(label, shots, hard, soft, require_stage=False, require_stage_subject="strict long-form plan"):
     """Held-stage field checks. Q4: the structural caps of the delta-chain contract — exactly
     one base FIRST and at most 3 deltas — are HARD (they bound drift; lint owns the mechanical
     caps). Timing/changed_elements/contiguity remain SOFT heads-ups. Never touches the vo_ref
@@ -311,7 +311,7 @@ def stage_check(label, shots, hard, soft, require_stage=False):
         else:
             runs.append((sid, [sh]))
     if require_stage and not has_stage_bearing_shot:
-        hard.append(f"[{label}] strict v2 long-form plan has {len(shots)} shots but zero "
+        hard.append(f"[{label}] {require_stage_subject} has {len(shots)} shots but zero "
                     "stage-bearing shots/base roles — add a planned stage chain where a setting "
                     "revisits; this is a zero guard, not a stage quota.")
     seen = {}
@@ -1460,8 +1460,11 @@ def main(argv):
 
     lf_text = lint_piece("long-form", lf_shots, script_md, hard, soft,
                          word_timings=word_timings_for(vo_manifest, "long-form"))
-    stage_check("long-form", lf_shots, hard, soft,
-                require_stage=strict_schema and len(lf_shots) >= 40)
+    require_stage = strict_schema and len(lf_shots) >= 40
+    stage_subject = ("undeclared-schema long-form plan treated strictly"
+                     if "schema" not in data else "non-v1-schema long-form plan treated strictly")
+    stage_check("long-form", lf_shots, hard, soft, require_stage=require_stage,
+                require_stage_subject=stage_subject)
     suffix = data.get("global_prompt_suffix") or ""
     lf_prompts = _shot_prompts(lf_shots)
     lf_vocab = script_vocab(script_md)

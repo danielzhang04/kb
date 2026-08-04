@@ -201,6 +201,9 @@ def test_cmd_gen_dry_run_writes_zero_files_into_staging():
     BEFORE calling cmd_gen, raising FileNotFoundError before the assertion ever ran, on any clean
     checkout, not just this one. Create it (matching what cmd_gen does) before the `before` snapshot."""
     k = Kit(str(KIT_ROOT), dry=True)
+    # A dry run now preflights the assembled payload, so its real identity seed must resolve under
+    # the project root even when this checkout intentionally has no local .env for Kit to discover.
+    k.root = str(KIT_ROOT.parents[2])
     os.makedirs(k.staging, exist_ok=True)
     name = "zzz-audit-fix10-dry-run-guard"
     out_path = os.path.join(k.staging, name + ".png")

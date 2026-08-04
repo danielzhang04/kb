@@ -886,6 +886,10 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
                 f"{name}: item image_size '{size}' exceeds the --image-size ceiling '{image_size}' "
                 f"(order: {' < '.join(IMAGE_SIZES)}) — raise the batch ceiling (--image-size) or "
                 f"lower this item's image_size")
+        # Hard-error before either a live provider request OR a dry-run report.  Dry-run is the
+        # no-spend preflight surface, so it must expose the same oversized payload that live mode
+        # would refuse; it still never reserves staging or calls the provider.
+        check_payload_size(name, seeds, text)
         if dry:
             report(name, f"DRY (no API call) mode={mode} aspect={aspect} size={size}")
             print(f"      seeds: {[os.path.relpath(s, k.root).replace(chr(92), '/') for s in seeds]}")
@@ -894,9 +898,6 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
                 print("      " + ln)
             print("      ----- end -----", flush=True)
             continue
-        # FIX 2 (audit follow-up): hard-error on an oversized request BEFORE it is ever assembled or
-        # sent — never auto-downscale a seed to make it fit.
-        check_payload_size(name, seeds, text)
         out = lock = token = None
         try:
             out, lock, token, skip = _reserve_staging_output(k, name, force)
@@ -1384,9 +1385,17 @@ def _retry_scene(item, source, entry, k, video, label):
     for seed in (s for s in seeds if _is_scene_seed(s)):
         checked = _video_scene_frame(video, os.path.join(k.root, seed), k.root, label,
                                      "retry scene seed")
-        if checked == place_anchor or seed in repaired:
-            continue
         status = _scene_review_status(video, checked, k.root)
+        # A shot's `place_anchor` is human-authored in shots.json, so its trust derives from that
+        # authorship rather than the scene manifest's review status.  A repaired predecessor is
+        # likewise an explicit, name-bound replacement for the canonical parent it identifies.
+        if checked == place_anchor:
+            if status is not None and status != "verified":
+                print(f"WARNING: {label}: accepting human-authored place_anchor `{source.get('place_anchor')}` "
+                      f"despite manifest review_status `{status}`.", flush=True)
+            continue
+        if seed in repaired:
+            continue
         if status != "verified":
             raise SystemExit(f"{label}: fresh retry may not seed an old video scene output unless "
                              "its manifest `review_status` is `verified`.")

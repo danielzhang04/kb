@@ -573,9 +573,9 @@ def _file(schema=L.SCHEMA_V2, **shot_extra):
     return data
 
 
-def _main(data, *args):
+def _main(data, *args, script_md=SCRIPT_MD):
     td = tempfile.mkdtemp()
-    (Path(td) / "script.md").write_text(SCRIPT_MD, encoding="utf-8")
+    (Path(td) / "script.md").write_text(script_md, encoding="utf-8")
     p = Path(td) / "shots.json"
     p.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return L.main([str(p), *args]), p
@@ -623,6 +623,22 @@ def test_e2e_missing_schema_key_lints_strict():
     downgraded to a heads-up and the run exited 0. It must now exit 1."""
     rc, _ = _main(_file(schema=None, shot_class="vibes-montage"))
     assert rc == 1
+
+
+def test_e2e_undeclared_schema_long_form_requires_a_stage_chain(capsys):
+    """The missing-schema strict path also reaches require_stage through main(), not just its unit."""
+    data = _file(schema=None)
+    template = data["long_form"]["shots"][0]
+    anchors = [f"anchor{i}" for i in range(1, 41)]
+    data["long_form"]["shots"] = [dict(template, id=f"L{i:02d}", vo_ref=anchor,
+                                        duration_s=1)
+                                for i, anchor in enumerate(anchors, 1)]
+    script = "1,000 words / 175 wpm\n---\n" + " ".join(anchors)
+    rc, _ = _main(data, script_md=script)
+    out = capsys.readouterr().out
+    assert rc == 1, out
+    assert "undeclared-schema long-form plan treated strictly" in out, out
+    assert "zero stage-bearing shots/base roles" in out, out
 
 
 def test_e2e_typo_schema_version_lints_strict():

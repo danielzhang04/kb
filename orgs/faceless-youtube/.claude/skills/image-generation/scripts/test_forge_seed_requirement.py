@@ -104,11 +104,25 @@ def test_small_seed_payload_is_not_flagged_by_the_size_guard():
     small = _seed_file(tmp, "small.png", 2048)
     k = _stub_kit(staging=tmp)
     req = {"name": "light", "mode": "environment", "delta": "a courtyard", "seed": [small]}
-    # dry-run: reaches past the payload guard (small seed) and prints instead of erroring
+    # Dry-run is a real payload preflight: a small request passes without touching staging.
     out = io.StringIO()
     with redirect_stdout(out):
         cmd_gen(k, [req], True, dry=True)
     assert "DRY" in out.getvalue()
+
+    # The same no-spend path must reject a request that would exceed the live provider cap.
+    # Seek makes this cheap to construct while preserving the logical byte size the guard measures.
+    big = os.path.join(tmp, "big.png")
+    with open(big, "wb") as f:
+        f.seek(15 * 1024 * 1024)
+        f.write(b"\0")
+    oversized = {"name": "heavy", "mode": "environment", "delta": "a vast hall", "seed": [big]}
+    try:
+        cmd_gen(k, [oversized], True, dry=True)
+    except SystemExit as e:
+        assert "heavy" in str(e) and "bytes" in str(e), str(e)
+    else:
+        assert False, "oversized dry-run payload should have hard-errored"
 
 
 # --------------------------------------------------------------------------- #
@@ -576,7 +590,7 @@ def test_a_place_anchor_cannot_escape_through_a_windows_junction_or_posix_symlin
                 os.rmdir(linked) if os.name == "nt" else os.unlink(linked)
 
 
-def _retry(shots_path, out, overlay, staged=None):
+def _retry(shots_path, out, overlay, staged=None, stdout=None):
     k = Kit(str(KIT_DIR), dry=True)
     k.root = str(KIT_DIR.parents[2])
     k.staging = os.path.join(tempfile.mkdtemp(), "_staging"); os.makedirs(k.staging)
@@ -585,7 +599,7 @@ def _retry(shots_path, out, overlay, staged=None):
     overlay_path = os.path.join(os.path.dirname(shots_path), "retry-overlay.json")
     json.dump(overlay, open(overlay_path, "w", encoding="utf-8"))
     try:
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stdout(stdout or io.StringIO()):
             cmd_retry_batch(k, shots_path, out, overlay_path)
     except SystemExit as e:
         return None, str(e)
@@ -629,24 +643,28 @@ def test_retry_overlay_derives_duplicate_scenes_and_one_step1_only_request():
     assert "Both visible hands are open and empty." in step["delta"], step["delta"]
 
 
-def test_retry_overlay_accepts_its_verified_video_local_place_anchor():
-    v, shots, out = _retry_fixture()
-    scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
-    open(os.path.join(scenes, "T00.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
-    json.dump({"video_slug": "retry-t", "shots": [{
-        "shot_id": "T00", "file": "assets/scenes/T00.png", "review_status": "verified"
-    }]}, open(os.path.join(scenes, "manifest.json"), "w", encoding="utf-8"))
-    doc = json.load(open(shots, encoding="utf-8"))
-    doc["long_form"]["shots"][0]["place_anchor"] = "assets/scenes/T00.png"
-    json.dump(doc, open(shots, "w", encoding="utf-8"))
-    overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
-        {"kind": "scene", "shot": "T01", "name": "T01-anchor-retry",
-         "instruction": "Keep workers small while preserving the approved place."}
-    ]}
-    spec, err = _retry(shots, out, overlay)
-    assert err is None, err
-    assert any(str(s).replace("\\", "/").endswith("assets/scenes/T00.png")
-               for s in spec[0]["seed"]), spec[0]["seed"]
+def test_retry_overlay_accepts_its_video_local_place_anchor_regardless_of_review_status():
+    for status in ("parked", "verified"):
+        v, shots, out = _retry_fixture()
+        scenes = os.path.join(v, "assets", "scenes"); os.makedirs(scenes)
+        open(os.path.join(scenes, "T00.png"), "wb").write(b"\x89PNG\r\n\x1a\n")
+        json.dump({"video_slug": "retry-t", "shots": [{
+            "shot_id": "T00", "file": "assets/scenes/T00.png", "review_status": status
+        }]}, open(os.path.join(scenes, "manifest.json"), "w", encoding="utf-8"))
+        doc = json.load(open(shots, encoding="utf-8"))
+        doc["long_form"]["shots"][0]["place_anchor"] = "assets/scenes/T00.png"
+        json.dump(doc, open(shots, "w", encoding="utf-8"))
+        overlay = {"schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-t", "entries": [
+            {"kind": "scene", "shot": "T01", "name": "T01-anchor-retry",
+             "instruction": "Keep workers small while preserving the approved place."}
+        ]}
+        log = io.StringIO()
+        spec, err = _retry(shots, out, overlay, stdout=log)
+        assert err is None, (status, err)
+        assert any(str(s).replace("\\", "/").endswith("assets/scenes/T00.png")
+                   for s in spec[0]["seed"]), spec[0]["seed"]
+        if status == "parked":
+            assert "WARNING" in log.getvalue() and "parked" in log.getvalue(), log.getvalue()
 
 
 def test_retry_overlay_still_rejects_a_nonverified_video_scene_frame():
