@@ -46,7 +46,7 @@ interface PaidActionDefinition {
 }
 
 /** The server, not a worker request, owns every spend-bearing provider/model/voice dial. */
-const FYT_PAID_ACTION_DEFINITIONS: Readonly<Record<PaidActionOperation, PaidActionDefinition>> = Object.freeze({
+export const FYT_PAID_ACTION_DEFINITIONS: Readonly<Record<PaidActionOperation, PaidActionDefinition>> = Object.freeze({
   'fyt.gemini-3-pro-image-2k': {
     provider: 'gemini',
     stageId: 'images',

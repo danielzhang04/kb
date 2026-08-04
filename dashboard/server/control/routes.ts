@@ -1376,6 +1376,18 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         summary: `Human Request ${responded.value.response?.decision ?? 'resolved'} at revision ${responded.value.revision}`,
       });
     }
+    // UNIT-D-WIRE-POINT: this is where a spendAuthorization gate approval becomes durable. When
+    // `responded` is a freshly-resolved (`!responded.replayed`) `approval` with
+    // `response.decision === 'approved'` AND the resolved request corresponds to a compiled gate
+    // carrying `spendAuthorization === true` (match via `stableHumanTitle('gate', stage.stageId, gate.id)`
+    // against the run's proposal stage — see execution.ts `stageSpendAuthorization`/`declaredGateAuthorization`),
+    // Unit D must call `spendGrantStore.mint({ runRef: responded.value.runRef, stageRef: responded.value.stageRef,
+    // operation: <derived from the stage: 'images' -> 'fyt.gemini-3-pro-image-2k', 'audio' -> 'fyt.elevenlabs.locked-tts'>,
+    // subject: sub, gateRequestRef: requestRef, ttlMs: <stage TTL, e.g. 2h> })`, then write the returned
+    // token into the attempt worktree's `.kb/spend-grant.json` in the SAME step (mint is idempotent per
+    // tuple and throws `grant-already-live` on a second live mint — treat that as "already provisioned").
+    // NOT wired here: the store must first be threaded into the route context (activation.ts / RouteContext),
+    // and the gate-identity -> operation derivation added — both exceed Unit B's file scope.
     return sendResult(reply, responded);
   });
 
