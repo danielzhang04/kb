@@ -12,6 +12,7 @@
 .v-run-canvas__lede { max-width: 64rem; margin: 0; color: var(--fg-dim); font-size: var(--text-sm); line-height: 1.5; }
 .v-run-canvas__session-warning { margin: 0; color: var(--warning); font-size: var(--text-sm); }
 .v-run-canvas__error { margin: 0; color: var(--error); font-size: var(--text-sm); }
+.v-run-canvas__rate-limit { margin: 0; color: var(--warning); font-size: var(--text-sm); }
 
 .run-canvas-board { display: flex; flex-direction: column; gap: var(--space-4); min-height: 0; overflow: auto; }
 .run-canvas-board__lanes { display: flex; flex-direction: column; gap: var(--space-6); }

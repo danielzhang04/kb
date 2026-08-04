@@ -13,6 +13,7 @@ import {
   getRun,
   listRunEvents,
   listRuns,
+  ControlApiError,
   type FetchLike,
   type OperationalEventDto,
   type RunDetailDto,
@@ -22,8 +23,9 @@ import { loadRunEventWindow } from '../control/runEventWindow';
 import { RunGrid } from '../control/RunGrid';
 import type { NavTarget } from '../nav/stack';
 
-/** The canvas watches the same public state cadence as the rest of the run detail. */
-export const RUN_CANVAS_POLL_MS = 4000;
+/** One canvas-owned event poller serves every open tile for the selected run. */
+export const RUN_CANVAS_POLL_MS = 5_000;
+export const RUN_CANVAS_MAX_POLL_MS = 60_000;
 
 export interface AgentGraphEdge {
   from: string;
@@ -247,6 +249,8 @@ export function RunCanvas({ sessionToken, onRequestSession, onNavigate, fetchImp
   const [detail, setDetail] = useState<RunDetailDto | null>(null);
   const [events, setEvents] = useState<OperationalEventDto[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [rateLimitBackoffMs, setRateLimitBackoffMs] = useState<number | null>(null);
   const [signingIn, setSigningIn] = useState(false);
   const token = sessionToken ?? localToken;
 
@@ -267,12 +271,8 @@ export function RunCanvas({ sessionToken, onRequestSession, onNavigate, fetchImp
 
   const refreshDetail = useCallback(async (activeToken: string, runRef: string): Promise<void> => {
     try {
-      const [nextDetail, eventWindow] = await Promise.all([
-        getRun(runRef, activeToken, fetchImpl),
-        loadRunEventWindow(runRef, activeToken, (ref, after, limit, eventToken) => listRunEvents(ref, after, limit, eventToken, fetchImpl)),
-      ]);
+      const nextDetail = await getRun(runRef, activeToken, fetchImpl);
       setDetail(nextDetail);
-      setEvents(eventWindow.events);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load the run canvas.');
@@ -286,10 +286,54 @@ export function RunCanvas({ sessionToken, onRequestSession, onNavigate, fetchImp
       return;
     }
     let alive = true;
+    setDetail(null);
+    setEvents([]);
     void refreshDetail(token, selectedRunRef);
-    const interval = setInterval(() => { if (alive) void refreshDetail(token, selectedRunRef); }, RUN_CANVAS_POLL_MS);
-    return () => { alive = false; clearInterval(interval); };
+    return () => { alive = false; };
   }, [refreshDetail, token, selectedRunRef]);
+
+  useEffect(() => {
+    if (!token || !selectedRunRef) {
+      setPollError(null);
+      setRateLimitBackoffMs(null);
+      return;
+    }
+    let alive = true;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let nextPollMs = RUN_CANVAS_POLL_MS;
+    setPollError(null);
+    setRateLimitBackoffMs(null);
+
+    const pollEvents = async (): Promise<void> => {
+      try {
+        const eventWindow = await loadRunEventWindow(
+          selectedRunRef,
+          token,
+          (ref, after, limit, eventToken) => listRunEvents(ref, after, limit, eventToken, fetchImpl),
+        );
+        if (!alive) return;
+        setEvents(eventWindow.events);
+        setPollError(null);
+        nextPollMs = RUN_CANVAS_POLL_MS;
+        setRateLimitBackoffMs(null);
+      } catch (cause) {
+        if (!alive) return;
+        if (cause instanceof ControlApiError && cause.status === 429) {
+          nextPollMs = Math.min(nextPollMs * 2, RUN_CANVAS_MAX_POLL_MS);
+          setRateLimitBackoffMs(nextPollMs);
+        } else {
+          setPollError(cause instanceof Error ? cause.message : 'Could not refresh run events.');
+        }
+      }
+      if (alive) timeout = setTimeout(() => { void pollEvents(); }, nextPollMs);
+    };
+
+    void pollEvents();
+    return () => {
+      alive = false;
+      if (timeout !== undefined) clearTimeout(timeout);
+    };
+  }, [fetchImpl, selectedRunRef, token]);
 
   const unlock = (): void => {
     if (!onRequestSession || signingIn) return;
@@ -302,6 +346,8 @@ export function RunCanvas({ sessionToken, onRequestSession, onNavigate, fetchImp
     {!token ? (onRequestSession ? <button type="button" className="mc-btn mc-btn--primary" onClick={unlock} disabled={signingIn} data-testid="run-canvas-signin">{signingIn ? 'Signing in…' : 'Sign in with your passkey to open the run canvas'}</button>
       : <p className="v-run-canvas__session-warning">Sign in with your passkey to open the run canvas.</p>) : <>
       {error ? <p role="alert" className="v-run-canvas__error">{error}</p> : null}
+      {pollError ? <p role="alert" className="v-run-canvas__error">{pollError}</p> : null}
+      {rateLimitBackoffMs ? <p role="status" className="v-run-canvas__rate-limit" data-testid="run-canvas-rate-limit">Rate-limited, backing off. Retrying in {rateLimitBackoffMs / 1_000}s.</p> : null}
       <RunGrid runs={runs} selectedRunRef={selectedRunRef} onSelect={setSelectedRunRef} />
       {selectedRunRef && detail ? <RunCanvasBoard detail={detail} sessionToken={token} events={events} fetchImpl={fetchImpl} onNavigate={onNavigate} />
         : selectedRunRef ? <p className="control-help">Loading the run canvas…</p> : <p className="control-help">Select a run above to open its canvas.</p>}

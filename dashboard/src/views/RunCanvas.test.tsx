@@ -6,12 +6,13 @@
  * attachment: the nearby Terminal view remains the only owner of the manual PTY surface.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import {
   AgentTile,
   RunCanvas,
   RunCanvasBoard,
+  RUN_CANVAS_POLL_MS,
   deriveAgentGraph,
   deriveAgentLanes,
   eventBelongsToAgent,
@@ -32,6 +33,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 function fixtureStages() {
@@ -195,6 +197,70 @@ describe('RunCanvas', () => {
     await waitFor(() => expect(screen.getByTestId('run-card-run-1')).toBeTruthy());
     fireEvent.click(screen.getByTestId('run-card-run-1'));
     await waitFor(() => expect(screen.getByTestId('run-canvas-tile-fyt-story-transcript').textContent).toContain('Fetched public event'));
+  });
+
+  it('uses one shared event poller for five tiles while preserving per-agent event filtering', async () => {
+    vi.useFakeTimers();
+    const detail = makeDetail();
+    detail.run.managerAssignment = null;
+    detail.stages = ['agent-a', 'agent-b', 'agent-c', 'agent-d', 'agent-e'].map((agentId, index) =>
+      makeStage(`stage-${index}`, agentId),
+    );
+    const events = detail.stages.map((stage, index) => event({
+      cursor: index + 1,
+      stageRef: stage.stageRef,
+      summary: `${stage.assignment?.agentId} public event`,
+    }));
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === '/api/control/runs') return new Response(JSON.stringify({ runs: [] }), { status: 200 });
+      if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: events }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
+    });
+    const eventRequestCount = (): number => fetchImpl.mock.calls.filter(([url]) =>
+      typeof url === 'string' && url.includes('/events?'),
+    ).length;
+
+    render(<RunCanvas sessionToken="tok" focusRunRef="run-1" fetchImpl={fetchImpl as typeof fetch} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(eventRequestCount()).toBe(1);
+    for (const agentId of ['agent-a', 'agent-b', 'agent-c', 'agent-d', 'agent-e']) {
+      expect(screen.getByTestId(`run-canvas-tile-${agentId}-transcript`).textContent).toContain(`${agentId} public event`);
+    }
+    expect(screen.getByTestId('run-canvas-tile-agent-a-transcript').textContent).not.toContain('agent-b public event');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(RUN_CANVAS_POLL_MS); });
+    expect(eventRequestCount()).toBe(2);
+  });
+
+  it('backs off event polling after a 429 and restores the five-second cadence on recovery', async () => {
+    vi.useFakeTimers();
+    const detail = makeDetail();
+    let eventRequests = 0;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === '/api/control/runs') return new Response(JSON.stringify({ runs: [] }), { status: 200 });
+      if (url.includes('/events?')) {
+        eventRequests += 1;
+        if (eventRequests === 1) return new Response(JSON.stringify({ error: 'locked-out' }), { status: 429 });
+        return new Response(JSON.stringify({ ok: true, value: [event({ summary: 'Recovered event poll' })] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
+    });
+
+    render(<RunCanvas sessionToken="tok" focusRunRef="run-1" fetchImpl={fetchImpl as typeof fetch} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(eventRequests).toBe(1);
+    expect(screen.getByTestId('run-canvas-rate-limit').textContent).toMatch(/rate-limited, backing off.*10s/i);
+    await act(async () => { await vi.advanceTimersByTimeAsync(RUN_CANVAS_POLL_MS); });
+    expect(eventRequests).toBe(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(RUN_CANVAS_POLL_MS); });
+    expect(eventRequests).toBe(2);
+    expect(screen.queryByTestId('run-canvas-rate-limit')).toBeNull();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(RUN_CANVAS_POLL_MS); });
+    expect(eventRequests).toBe(3);
   });
 });
 
