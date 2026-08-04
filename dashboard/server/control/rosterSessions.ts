@@ -1221,7 +1221,14 @@ export function buildRosterPermissionSettings(input: RosterPermissionInput): Ros
   }
   if (input.readyPath) {
     const normalized = absoluteDir(input.readyPath);
-    if (normalized === `${absoluteDir(input.agentDir)}/ready.json`) addAllow(`Edit(${absoluteRulePath(normalized)})`);
+    // The boot sentinel does not exist yet — the worker must CREATE it as its final boot action. Claude's
+    // Edit tool cannot create a new file (only Write can), so grant Write for this exact path as well, or a
+    // Claude roster terminal can never write its ready.json and boot always parks. Edit is kept for the
+    // re-write case. Neither escapes this one server-owned path, and no RESTRICTION_FLOOR rule matches it.
+    if (normalized === `${absoluteDir(input.agentDir)}/ready.json`) {
+      addAllow(`Write(${absoluteRulePath(normalized)})`);
+      addAllow(`Edit(${absoluteRulePath(normalized)})`);
+    }
   }
 
   const granted = new Set(input.tools);

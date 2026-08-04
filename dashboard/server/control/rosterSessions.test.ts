@@ -1998,6 +1998,26 @@ describe('roster scoped per-run permissions', () => {
     });
   });
 
+  it('grants BOTH Write and Edit for the boot-sentinel ready.json (Write is what CREATES it)', () => {
+    const settings = buildRosterPermissionSettings({
+      repoRoot: 'C:\\Users\\danie\\kb',
+      agentDir: 'C:\\state\\control\\roster\\run-7\\fyt-visuals',
+      readyPath: 'C:\\state\\control\\roster\\run-7\\fyt-visuals\\ready.json',
+      read: [],
+      write: [],
+      tools: ['Read', 'Write', 'Edit'],
+    });
+    // Write creates the sentinel (Claude's Edit cannot create a new file); Edit is kept for the re-write case.
+    expect(settings.allow).toContain('Write(C:/state/control/roster/run-7/fyt-visuals/ready.json)');
+    expect(settings.allow).toContain('Edit(C:/state/control/roster/run-7/fyt-visuals/ready.json)');
+    // The Write grant is exactly this one server-owned path — never a directory wildcard.
+    expect(settings.allow.filter((rule) => rule.startsWith('Write('))).toEqual([
+      'Write(C:/state/control/roster/run-7/fyt-visuals/ready.json)',
+    ]);
+    // And no deny-floor rule shadows it: a deny always wins, so a floor match would make the grant inert.
+    expect(settings.deny.some((rule) => rule.includes('ready.json'))).toBe(false);
+  });
+
   /**
    * The RESTRICTION FLOOR — the only half of this file that still enforces under the auto `defaultMode`,
    * because `deny`/`ask`/`allow` evaluate in that fixed order whatever the mode is: auto skips the ASK
@@ -2121,6 +2141,11 @@ describe('roster scoped per-run permissions', () => {
     expect(parsed.permissions.allow).toContain(`Read(/state/control/roster/${runRef}/fyt-story/**)`);
     expect(parsed.permissions.allow).toContain(`Edit(/state/control/roster/${runRef}/fyt-story/status/idea.json)`);
     expect(parsed.permissions.allow).toContain(`Edit(/state/control/roster/${runRef}/fyt-story/status/story.json)`);
+    // BUG 1: the worker must CREATE ready.json (it does not exist yet), and Claude's Edit tool cannot
+    // create a new file — only Write can. So the boot-sentinel grant MUST include Write for this exact
+    // path, or a Claude roster terminal can never write its ready.json and boot always parks. Edit is kept
+    // for the re-write case.
+    expect(parsed.permissions.allow).toContain(`Write(/state/control/roster/${runRef}/fyt-story/ready.json)`);
     expect(parsed.permissions.allow).toContain(`Edit(/state/control/roster/${runRef}/fyt-story/ready.json)`);
     expect(parsed.permissions.allow).toContain('Read(/repo/orgs/faceless-youtube/**)');
     expect(parsed.permissions.allow).toContain('Edit(/repo/orgs/faceless-youtube/channels/**)');
