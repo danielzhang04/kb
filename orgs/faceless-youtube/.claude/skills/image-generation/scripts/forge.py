@@ -329,6 +329,14 @@ def assemble_prompt(descriptor, delta, figures_text="", righold=""):
     return "\n\n".join(p for p in (descriptor, delta, figures_text, righold) if p)
 
 
+HARDENED_SCENE_STYLE = (
+    "HARDENED SCENE STYLE. Enforce the STYLE-ONLY descriptor as clean flat cel shading with "
+    "single-step shadows only and even medium-thick dark-brown outlines. NO gloss; NO specular "
+    "highlights; NO gradients; NO bloom; NO depth-of-field blur; NO photorealistic texture. "
+    "Commit the authored scene palette; it is never neutral grey alone."
+)
+
+
 class Kit:
     def __init__(self, kit, dry=False):
         self.kit = os.path.abspath(kit)
@@ -346,6 +354,7 @@ class Kit:
         md = open(self.bible, encoding="utf-8").read()
         self.desc_identity = blockquote_after(md, "LOCKED STYLE descriptor")
         self.desc_style = blockquote_after(md, "STYLE-ONLY descriptor")
+        self.desc_scene = assemble_prompt(self.desc_style, HARDENED_SCENE_STYLE)
         self.desc_righold = blockquote_after(md, "RIG-HOLD descriptor")
         self.desc_crowdrig = blockquote_after(md, "CROWD-RIG clause")   # §2d, expanded from `figures`
         self.desc_baserig = blockquote_after(md, "BASE-RIG clause")     # §2e, expanded from `figures`
@@ -387,11 +396,13 @@ class Kit:
             if os.path.exists(cand): return cand
         raise SystemExit(f"seed frame not found: {s}")
 
-    def prompt_for(self, mode, delta, hold=False, figures=None, stage_role=None):
+    def prompt_for(self, mode, delta, hold=False, figures=None, stage_role=None, scene=None):
         if mode == "identity":
             descriptor = self.desc_identity
-        elif mode in ("new_character", "environment", "style"):
+        elif mode == "new_character":
             descriptor = self.desc_style
+        elif mode in ("environment", "style"):
+            descriptor = self.desc_style if scene is False else self.desc_scene
         else:
             raise SystemExit(f"unknown mode '{mode}'")
         return assemble_prompt(
@@ -418,7 +429,6 @@ class Kit:
 # seed is the crowd exemplar.
 SEED_CAP = 4                    # the Pass-2 seed law: past four, dilution weakens every prior
 FIGURE_PREFIX = "fig-"          # STEP 1's output: one portable frame per (char, pose, expression)
-CHANNEL_STYLE_CARD_TAG = "channel-style-card"
 _PRIMITIVE_KINDS = ("pose", "action", "interaction", "expression")
 _BACKTICK_RE = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._-]*)`")
 
@@ -597,16 +607,19 @@ def resolve_request_seeds(k, r, pending=()):
     name, mode = r["name"], r.get("mode", "identity")
     seeds = r.get("seed")
     if not seeds:
-        # A5: identity / new-character gens auto-seed the character portrait. environment & style
-        # gens MUST carry an explicit style-anchor seed — an unseeded environment/style gen falls
-        # back to a stock-clipart prior (off the locked style, per the image-generation SKILL seed laws), so it is a
-        # HARD ERROR now rather than a silent off-recipe frame.
+        # Identity/new-character gens build from the character portrait. A builder-proven root scene
+        # may start from the hardened descriptor alone; continuity requests may not opt into that
+        # exception, because their image seed is the chain/place/identity lock.
         if mode in ("identity", "new_character"):
             return [k.base_frame(r.get("character", "base"))]
+        if (mode in ("environment", "style") and r.get("root_scene") is True
+                and str(r.get("stage_role", "")).lower() != "delta"
+                and not r.get("place_anchor")):
+            return []
         raise SystemExit(
-            f"{name}: environment/style gens must carry a style-anchor seed (the video's own plate, "
-            "an in-chain parent frame, or a STEP-1 figure frame) — unseeded gens fall back to a "
-            "stock-clipart prior. Zero-seed requests do not run.")
+            f"{name}: only a root scene with no chain parent and no `place_anchor` may carry zero "
+            "image seeds. Delta, chained, anchored, and identity-bearing requests must keep their "
+            "continuity/identity seeds.")
     out = []
     for s in seeds:
         if "_staging/" in str(s).replace("\\", "/"):
@@ -834,7 +847,9 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
         figures = r.get("figures")
         hold = should_hold(mode, seeds, r["delta"], figures)
         text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
-                            stage_role=r.get("stage_role"))
+                            stage_role=r.get("stage_role"),
+                            scene=(mode in ("environment", "style")
+                                   and not name.startswith(FIGURE_PREFIX)))
         aspect = r.get("aspect", "2:3")
         size = r.get("image_size") or image_size
         if size not in IMAGE_SIZES:
@@ -1018,22 +1033,6 @@ def place_anchor_for(video, anchor, root, name):
     return _video_scene_frame(video, os.path.join(video, anchor), root, name, "`place_anchor`")
 
 
-def channel_style_card_for(reg, name):
-    """Return the one channel STYLE asset registered under the stable style-card tag."""
-    matches = [a for a in reg.get("assets", [])
-               if a.get("kind") == "style" and a.get("tag") == CHANNEL_STYLE_CARD_TAG]
-    if not matches:
-        raise SystemExit(f"{name}: channel style card not registered — add one registry asset with "
-                         f"kind `style` and tag `{CHANNEL_STYLE_CARD_TAG}`. No request was sent ($0).")
-    if len(matches) != 1:
-        raise SystemExit(f"{name}: multiple channel style cards are registered with tag "
-                         f"`{CHANNEL_STYLE_CARD_TAG}` — exactly one is allowed. No request was sent ($0).")
-    if not matches[0].get("file"):
-        raise SystemExit(f"{name}: channel style card not registered with a seed file — the registry "
-                         "entry must carry `file`. No request was sent ($0).")
-    return matches[0]["file"]
-
-
 def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candidates=None):
     """Build one deterministic slate per shot from the shot's own `assets` tags and `figures`.
 
@@ -1134,27 +1133,28 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
         # primitives and the crowd exemplar already have higher-priority structural routes above.
         tagged = [vfile(n) for n in (shot.get("assets") or {})
                   if (reg_assets.get(n) or {}).get("kind") in ("prop", "environment")]
-        style_card = channel_style_card_for(k.reg, name) if not parent and not place_anchor else None
+        root_scene = not parent and not place_anchor
         seeds = _dedupe(figs + canons + [plate] + prims_seeds
-                        + ([crowd_ex] if crowd else []) + tagged + [style_card])
+                        + ([crowd_ex] if crowd else []) + tagged)
         text = prompt
         if staged:
             text = placement_delta(prompt, staged, bool(plate))
         if place_anchor:
             why.append(f"PLACE-ANCHOR = {shot['place_anchor']}")
-        elif style_card:
-            why.append(f"STYLE-CARD = {CHANNEL_STYLE_CARD_TAG}")
+        elif root_scene:
+            why.append("ROOT-SCENE — hardened descriptor, no image anchor")
         why_text = "; ".join(why) or "no cast — the scene composes from the place"
         item = {"name": name, "mode": "environment", "aspect": aspect, "delta": text, "seed": seeds,
                 "figures": shot.get("figures"), "stage_role": shot.get("stage_role"),
-                "assets_omitted": sorted(omitted) or None, "why": why_text}
+                "assets_omitted": sorted(omitted) or None, "root_scene": root_scene,
+                "why": why_text}
         if in_scope:
             if staged and not (shot.get("figures") or depicts_figures(text)):
                 raise SystemExit(f"{name}: a STEP-1-seeded scene gen with no rig-hold signal — a "
                                  f"figure frame outside /refs/ does not trip the path check.")
             spec.append(item)
             emitted[name] = "_staging/" + name + ".png"
-            print(f"  {name}: [{', '.join(_stem(s) for s in seeds) or 'PLATE'}] ({why_text})",
+            print(f"  {name}: [{', '.join(_stem(s) for s in seeds) or 'ROOT-TEXT'}] ({why_text})",
                   flush=True)
         else:
             # Judged, never resolved: an out-of-scope shot's own missing asset must not block a

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Plain-assert tests for what a gen must CARRY before it is allowed to run (repo has no pytest):
-the zero-seed environment/style guard, and THE SEEDING LAW — a gen that cannot inherit a figure's
-rig from an existing frame hard-errors at $0, before the API call.
+the root-only zero-seed exception, and THE SEEDING LAW — a gen that cannot inherit a figure's rig
+from an existing frame hard-errors at $0, before the API call.
 Run: py -3 .claude/skills/image-generation/scripts/test_forge_seed_requirement.py"""
 import contextlib, hashlib, io, json, os, subprocess, sys, tempfile, time
 from pathlib import Path
@@ -49,25 +49,56 @@ def _stub_kit():
     return SimpleNamespace(staging=tempfile.mkdtemp())
 
 
-def test_environment_or_style_without_seed_hard_errors():
+def test_nonroot_environment_or_style_without_seed_hard_errors():
     for mode in ("environment", "style"):
         try:
             cmd_gen(_stub_kit(), [{"name": "plate", "mode": mode, "delta": "a swamp"}], True)
         except SystemExit as e:
-            assert "style-anchor seed" in str(e), str(e)
+            assert "only a root scene" in str(e), str(e)
         else:
-            assert False, f"{mode} gen with no seed should have hard-errored"
+            assert False, f"nonroot {mode} gen with no seed should have hard-errored"
 
 
-def test_a_place_first_plate_cannot_generate_unseeded():
-    """`plate:true` is not a zero-seed escape hatch: every environment/style request is seeded."""
-    try:
-        resolve_request_seeds(_stub_kit(), {"name": "L01", "mode": "environment",
-                                            "delta": "an empty yard", "plate": True})
-    except SystemExit as e:
-        assert "style-anchor seed" in str(e), str(e)
-    else:
-        assert False, "a seedless first-place request must hard-error at $0"
+def test_builder_marked_root_scene_may_run_unseeded_but_delta_and_anchor_may_not():
+    for mode in ("environment", "style"):
+        assert resolve_request_seeds(_stub_kit(), {
+            "name": "L01", "mode": mode, "delta": "an empty yard", "root_scene": True}) == []
+    for request in (
+        {"name": "L02", "mode": "environment", "delta": "same yard", "stage_role": "delta",
+         "root_scene": True},
+        {"name": "L03", "mode": "environment", "delta": "same yard", "root_scene": True,
+         "place_anchor": "assets/scenes/L00.png"},
+    ):
+        try:
+            resolve_request_seeds(_stub_kit(), request)
+        except SystemExit as e:
+            assert "only a root scene" in str(e), str(e)
+        else:
+            assert False, f"continuity request accepted with no seed: {request}"
+
+
+def test_cmd_gen_classifies_root_chain_and_anchored_requests_as_scenes_but_not_step1():
+    root = tempfile.mkdtemp(); staging = os.path.join(root, "staging"); os.makedirs(staging)
+    seed = os.path.join(root, "seed.png"); open(seed, "wb").write(b"seed")
+    seen = []
+    def prompt_for(mode, delta, **kwargs):
+        seen.append((delta, kwargs.get("scene")))
+        return delta
+    k = SimpleNamespace(staging=staging, root=root, reg=REG, resolve_seed=lambda value: value,
+                        prompt_for=prompt_for)
+    reqs = [
+        {"name": "root", "mode": "environment", "delta": "root authored", "seed": [],
+         "root_scene": True},
+        {"name": "chain", "mode": "environment", "delta": "chain authored", "seed": [seed],
+         "root_scene": False},
+        {"name": "anchored", "mode": "style", "delta": "anchor authored", "seed": [seed],
+         "root_scene": False, "place_anchor": "assets/scenes/L00.png"},
+        {"name": "fig-reference", "mode": "environment", "delta": "STEP-1 authored", "seed": [seed]},
+    ]
+    with contextlib.redirect_stdout(io.StringIO()):
+        cmd_gen(k, reqs, True, dry=True)
+    assert seen == [("root authored", True), ("chain authored", True),
+                    ("anchor authored", True), ("STEP-1 authored", False)], seen
 
 
 def test_shot_cast_binds_each_primitive_to_the_figure_that_precedes_it():
@@ -250,22 +281,11 @@ def _scope_fixture():
     return v, os.path.join(v, "shots.json"), os.path.join(v, "spec.json")
 
 
-def _register_style_card(k):
-    card = os.path.join(os.path.dirname(k.staging), "approved-channel-look.png")
-    open(card, "wb").write(b"\x89PNG\r\n\x1a\n")
-    k.reg["assets"].append({"name": "wrong-class-look", "kind": "environment",
-                            "tag": "channel-style-card", "file": "missing.png"})
-    k.reg["assets"].append({"name": "approved-channel-look", "kind": "style",
-                            "tag": "channel-style-card", "file": card})
-
-
-def _batch(shots_path, out, scope, plate_candidates=None, style_card=True):
+def _batch(shots_path, out, scope, plate_candidates=None):
     """Run cmd_batch quietly; return (spec or None, SystemExit text or None)."""
     k = Kit(str(KIT_DIR), dry=True)
     k.staging = os.path.join(tempfile.mkdtemp(), "_staging")
     os.makedirs(k.staging)  # never let a live run's staged frames alter this slate fixture
-    if style_card:
-        _register_style_card(k)
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             cmd_batch(k, shots_path, out, None, scope, plate_candidates)
@@ -288,13 +308,14 @@ def test_a_scoped_run_emits_only_its_shots_and_is_not_blocked_from_outside():
     assert err is None, err
     names = [i["name"] for i in spec]
     assert "T03" not in names and "T01" in names and "T02" in names, names
-    # the slate quality is unchanged by scoping: step-1 figure, root style card, delta off parent
+    # the slate quality is unchanged by scoping: step-1 figure, root scene, delta off parent
     fig = figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug")
     assert names[0] == fig, names
     t01 = [i for i in spec if i["name"] == "T01"][0]
     assert t01.get("plate") is None, t01
-    assert [Path(s).stem for s in t01["seed"]] == [fig, "approved-channel-look"], t01["seed"]
+    assert t01["root_scene"] is True and [Path(s).stem for s in t01["seed"]] == [fig], t01
     t02 = [i for i in spec if i["name"] == "T02"][0]
+    assert t02["root_scene"] is False, t02
     assert any("_staging/T01.png" in str(s) for s in t02["seed"]), t02["seed"]
     assert any(_stem_ok(s, "miniscribe-rep") for s in t02["seed"]), t02["seed"]
 
@@ -323,9 +344,9 @@ def test_explicit_nonfigure_tags_route_without_duplicating_figure_or_crowd_seeds
     scene = next(i for i in spec if i["name"] == "T01")
     assert [Path(s).stem for s in scene["seed"]] == [
         figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug"),
-        "crowd-exemplar", "prop-beige-pc", "approved-channel-look"], scene["seed"]
+        "crowd-exemplar", "prop-beige-pc"], scene["seed"]
     assert [Path(s).stem for s in next(i for i in spec if i["name"] == "T04")["seed"]] == \
-        ["stamp-block-outlined", "approved-channel-look"]
+        ["stamp-block-outlined"]
 
 
 def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
@@ -334,18 +355,25 @@ def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
     shot = doc["long_form"]["shots"][0]
     shot["figures"] = {"crowd": True}
     shot["assets"] = {n: f"channels/the-second-take/visual-kit/refs/env/{n}.png" for n in (
-        "prop-beige-pc", "lettering-marker-italic")}
+        "prop-beige-pc", "lettering-marker-italic", "stamp-block-outlined")}
     json.dump(doc, open(shots, "w", encoding="utf-8"))
     spec, err = _batch(shots, out, ["T01"])
     assert spec is None and "5 seeds over the cap" in err, err
-    assert "approved-channel-look did not fit" in err and not os.path.exists(out), err
+    assert "stamp-block-outlined did not fit" in err and not os.path.exists(out), err
 
 
-def test_root_scene_hard_fails_when_channel_style_card_is_not_registered():
+def test_character_free_root_scene_emits_with_no_image_seed():
     _, shots, out = _scope_fixture()
-    spec, err = _batch(shots, out, ["T01"], style_card=False)
-    assert spec is None and "T01: channel style card not registered" in err, err
-    assert not os.path.exists(out), "a missing style card must fail before spec emission/provider use"
+    doc = json.load(open(shots, encoding="utf-8"))
+    doc["long_form"]["shots"] = [{"id": "T00", "source": "ai-gen", "stage": "new-place",
+                                    "still_prompt": "A warm records room with a bare central table."}]
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["T00"])
+    assert err is None, err
+    assert spec == [{"name": "T00", "mode": "environment", "aspect": "16:9",
+                     "delta": "A warm records room with a bare central table.", "seed": [],
+                     "figures": None, "stage_role": None, "assets_omitted": None,
+                     "root_scene": True, "why": "ROOT-SCENE — hardened descriptor, no image anchor"}], spec
 
 
 def _stem_ok(seed, char):
@@ -391,6 +419,7 @@ def test_a_base_can_seed_its_videos_approved_place_after_two_step1_figures():
     assert err is None, err
     scene = [i for i in spec if i["name"] == "L60"][0]
     assert scene.get("plate") is None, scene
+    assert scene["root_scene"] is False, scene
     assert len(scene["seed"]) == 4, scene["seed"]
     assert [Path(s).stem for s in scene["seed"][:2]] == ["fig-miniscribe-rep", "fig-ibm-suit"], scene["seed"]
     assert scene["seed"][2].replace("\\", "/").endswith("assets/scenes/L60.png"), scene["seed"]
@@ -445,7 +474,6 @@ def test_a_place_anchor_cannot_escape_through_a_windows_junction_or_posix_symlin
 def _retry(shots_path, out, overlay, staged=None):
     k = Kit(str(KIT_DIR), dry=True)
     k.staging = os.path.join(tempfile.mkdtemp(), "_staging"); os.makedirs(k.staging)
-    _register_style_card(k)
     for name, data in (staged or {}).items():
         open(os.path.join(k.staging, name), "wb").write(data)
     overlay_path = os.path.join(os.path.dirname(shots_path), "retry-overlay.json")

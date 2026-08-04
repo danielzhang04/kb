@@ -1,6 +1,6 @@
 # Register exemplars + recurring props (`refs/env/`)
 
-**Cross-video places forbidden; the channel style card is mandatory and carries rendering only.**
+**Cross-video places and image style anchors are forbidden; forge's hardened scene descriptor carries rendering style without content bleed.**
 
 ## Register exemplars — the lettering and stamp HANDS
 

@@ -3757,3 +3757,12 @@ pressure; add one content-free channel style card (topology: ONE card, Daniel's 
 two-tier migration, occupancy + palette-family single-sentence laws, narrowed lettering escape.
 Alternatives rejected: structured composition schema block (files stay slim), 2-3 value-register
 cards (de facto palette system risk). Wave cap raised $25 → $30 for the rebuild.
+
+## 2026-08-04 — Style anchor mechanism: hardened descriptor text (probe-decided)
+Seven-way probe on L100 (round-B2-genlog.md, $0.94): swatch style-cards changed nothing
+(candidate 3 bled its swatches); a same-video verified scene as style seed bled catastrophically
+(G: L160's people/furniture/calendar replaced the scene). Hardened descriptor text (F) alone
+delivered flat-cel + committed warm palette + full fidelity. Ruling: NO image style anchors ever
+(rendered scenes carry content inseparably); forge injects a hardened anti-gloss/anti-DOF
+flat-cel block on every scene request; root scenes may run seedless again. Spec item 5 amended.
+Alternatives rejected: swatch card (probe-refuted), value-register cards, rendered-scene anchors.

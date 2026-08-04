@@ -65,7 +65,8 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
      interactions only.
    - **Expression frames** are authored **moderate**: the scene gen copies their eye/brow/mouth shape directly, so a
      frame flat on its own lands flat in the scene; the big end is for a real comedic peak.
-   - **Prop / group / plate:** `--mode environment`/`style` with a style-anchor seed (Pass 2's seed law). Kebab-case
+   - **Prop / group / plate:** `--mode environment`/`style`; a new root uses forge's hardened scene descriptor,
+     while any established identity/continuity input stays seeded (Pass 2's seed law). Kebab-case
      names; batch what you can (`--batch <file.json>`, items `{name, character, mode, delta, aspect, seed?, figures?,
      stage_role?, image_size?}`);
      `forge.py gen` stages into `<kit>/_staging/`. Standing-library build order (most-reused first): expressions →
@@ -92,7 +93,7 @@ run**, multi-seeding all its inputs at once → `assets/scenes/<shot-id>.png` + 
 
 **Seed order (identity is seeded, never worded):** each cast figure's **canonical + its expression frame + its pose
 frame** (from the shot's `assets` tags), + the **interaction template** when two figures make contact, then the
-**style anchor / plate**, prompt last. Pose and expression come from library FRAMES: a pose re-synthesized from words
+**continuity / place anchor when present**, prompt last. Pose and expression come from library FRAMES: a pose re-synthesized from words
 reverts to the engine's five-finger prior, while the frame carries the four-digit hand.
 
 | Seed law | The rule, and why it is not negotiable |
@@ -100,7 +101,7 @@ reverts to the engine's five-finger prior, while the frame carries the four-digi
 | **Cap: ≤4 seeds per gen** | canonical + ONE pose primitive + ONE expression frame + one anchor/exemplar. Past four, dilution weakens every prior; a `base.png` added as an Nth "rig anchor" pins nothing. A figure that needs the base rig spends one of the four on it. |
 | **Attribute routing** | Base-derived seeds are bald, cream, neutral-faced and hoodied, so **any attribute not sourced from the CHARACTER seed bleeds a base trait**. CHARACTER seed → identity, head/skin tone, hair + facial hair, costume, face. POSE / interaction-template seed (geometry only) → body pose, hands, clasp geometry, placement, eye-line. EXPRESSION seed (shape only) → eye/brow/mouth shape, never tone, hairline or identity. Every skin patch, **including both hands**, renders in the CHARACTER's head tone. Expression is the SOFTEST seed and can land weak — the review checks register per beat. |
 | **Exposed hands are seeded, never free-drawn** | A salute, wave, open palm or point is the five-finger drift point: seed the matching pose frame AND state the digit fact in the delta. No library pose covers it → that was a Pass-1 gate item, not an ad-hoc scene invention. |
-| **Style anchor MANDATORY** on every environment, plate and composed-scene gen | Character seeds pin identity, not art style; zero-seed environment/style requests hard-fail at $0. A scene with no chain parent and no `place_anchor` automatically appends the registry's `kind: style`, `tag: channel-style-card` asset; an absent card or a fifth seed hard-fails without displacing identity seeds. Otherwise prefer the target `place_anchor` or in-chain parent; environments and props stay composed from the shot's authored facts, never a cross-video room reference. |
+| **Hardened scene descriptor; image seeds are continuity only** | Forge appends ONE hardened flat-cel/palette block to every scene request. A root with no chain parent and no `place_anchor` may run with zero image seeds; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. No image style anchor: hardened text was the probe winner, while a rendered-scene anchor catastrophically bled content (2026-08-04, probes F/G). |
 | **Never seed off a downstream derivative** | Trace back to the exact frame the human approved; an "improved" copy can carry silent drift that then propagates as the lock. Exceptions: a delta-chain frame seeding its in-chain parent, and a re-base in the SAME location seeding the prior stage's base frame. |
 | **A rig FIX never seeds the defective frame** | Regen FRESH from canonicals off a re-authored prompt — the defect lives in the strongest seed and rides it back about half the time. The only defective-seed exceptions are an authored delta-chain parent and a human-ordered framing hold, and BOTH require a before/after crop diff on EVERY figure in the frame. |
 | **Match-prop** | A prop in more than one shot seeds its **first approved frame** as the prop canonical; later shots seed that exact frame and never re-describe the design in words. |
@@ -185,8 +186,8 @@ Per shot, pick the **cheapest technique that holds the locked elements**:
 | Technique | When | How |
 | --- | --- | --- |
 | **(a) Reuse / reframe** | an on-disk frame already IS this shot | copy it to `scenes/<shot-id>.png`; manifest notes source + intended framing. No gen. |
-| **(b) Seeded composition** (default with characters) | locked character(s) in a composed environment | ONE gen, `--mode environment`, multi-seeding the shot's tagged figure frames + a style anchor. Delta = the `still_prompt`'s scene/placement facts only; pose, expression, hands and tone route by seed |
-| **(c) Character-free scene** | a map, an empty plate, an object | ONE style-only gen (`--mode environment`/`style`) **carrying a style-anchor seed** |
+| **(b) Seeded composition** (default with characters) | locked character(s) in a composed environment | ONE gen, `--mode environment`, multi-seeding the shot's tagged figure frames plus any true continuity/place input. Delta = the `still_prompt`'s scene/placement facts only; pose, expression, hands and tone route by seed |
+| **(c) Character-free scene** | a map, an empty plate, an object | ONE `--mode environment`/`style` gen; a root may be zero-seed under the hardened descriptor, while a chain/anchored request keeps its continuity seed |
 | **(d) One-shot single-character** | a simple shot, one prominent character | single gen `--mode identity` seeding that character's canonical (+ its expression/pose frames); full rig check still applies |
 | **(e) Seeded delta-chain** (a held STAGE) | consecutive shots sharing a `stage` id where the change is INTEGRATIVE | the `base` uses (b)/(c)/(d); each `delta` seeds the PREVIOUS in-stage frame and changes ONLY that shot's `changed_elements`; **≤3 deltas**, then re-base or hard-cut |
 
@@ -226,8 +227,8 @@ materialized into the layout the engine reads (render-builder `references/shots-
 `plates/<id>.png` is the scene MINUS the moved element, still reading as a **complete** object, never a blank slot.
 **Cutout layers** `cutouts/<id>-<layer>.png` are **always seeded** — use the layer's own **`seed`** when the plan
 names one (a reference path or a registry vocabulary name, resolved like any Pass-1 tag); otherwise fall back to the
-character/prop canonical, or the destination plate (the video's own plate now carries the style anchor itself — no
-separate cross-video `refs/env/` anchor exists). **The engine emits no alpha, so transparency
+character/prop canonical, or the destination plate (the video's own plate carries scene continuity; never add an
+image only for style, and no separate cross-video `refs/env/` anchor exists). **The engine emits no alpha, so transparency
 is always post-hoc keying** — the `cutout_prompt` describes the OBJECT ALONE, and YOU add the field here: gen it on a
 **solid MAGENTA chroma field** (*"one solid uniform FLAT magenta background, NO glow, NO
 gradient, NO vignette"*, since fringe and halo failures are generation-side glows), then `forge.py cutout` (rembg →
@@ -335,7 +336,8 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
 1. `lookup` the registry — a hit means hand back the file, done.
 2. Pick the seed: existing character → its canonical; **"iterate on THIS"** → that exact approved frame, changing ONLY
    the one requested variable; new character → the template base + a new head tone (§4); environment/prop → style-only
-   mode **with a style-anchor seed**; a pose/expression primitive → the base, neutral face, `2:3`.
+   mode with the hardened scene descriptor, seeding only a real canonical/continuity input; a pose/expression primitive
+   → the base, neutral face, `2:3`.
 3. `gen` into staging → **check bible §3** by looking at it → **ONE re-authored retry**, then flag + surface. Record
    the round (seed, mode, delta, settings, verdict) in a notes file beside the frames, then `register` what passed
    (`--batch` for many; environments add `"environment": true`) — staging → `refs/`, indexed in the registry.

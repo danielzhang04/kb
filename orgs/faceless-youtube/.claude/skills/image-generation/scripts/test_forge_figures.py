@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from forge import (IMAGE_SIZES, IMAGE_SIZE_DEFAULT, assemble_prompt, blockquote_after,
-                   figures_expansion, placement_delta, should_hold)
+                   figures_expansion, placement_delta, should_hold, Kit)
 
 BIBLE = (Path(__file__).resolve().parents[4]
          / "channels" / "the-second-take" / "visual-kit" / "style-bible.md")
@@ -110,6 +110,26 @@ def test_step2_preserves_authored_prompt_and_identity_carry_without_scale_scaffo
     assert "destination place" in text and "match its palette, outline weight and lighting" in text
     for removed in ("true human scale", "ground plane", "occluded", "re-lit"):
         assert removed not in text, (removed, text)
+
+
+def test_every_scene_prompt_gets_one_hardened_style_block_without_rewriting_authored_text():
+    k = Kit(str(BIBLE.parent), dry=True)
+    authored = "A warm records room with two pens on a bare central paper."
+    required = (
+        "HARDENED SCENE STYLE", "clean flat cel shading", "single-step shadows only",
+        "even medium-thick dark-brown outlines", "NO gloss", "NO specular highlights",
+        "NO gradients", "NO bloom", "NO depth-of-field blur", "NO photorealistic texture",
+        "authored scene palette", "never neutral grey alone",
+    )
+    for stage_role in (None, "base", "delta"):
+        text = k.prompt_for("environment", authored, stage_role=stage_role, scene=True)
+        assert text.count("HARDENED SCENE STYLE") == 1, text
+        assert text.count(authored) == 1, text
+        assert text.index(k.desc_style) < text.index("HARDENED SCENE STYLE") < text.index(authored)
+        for phrase in required:
+            assert phrase in text, (stage_role, phrase, text)
+    step1 = k.prompt_for("environment", "A neutral reference figure.", scene=False)
+    assert "HARDENED SCENE STYLE" not in step1, step1
 
 
 # --- malformed declarations hard-error rather than dropping the clause ---------------------------
