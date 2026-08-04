@@ -9,13 +9,24 @@ Per image: the still, its shot id + class, the VO line it sits under, its intend
 Images are downscaled and inlined as data: URIs — the Artifact CSP blocks every external host,
 so nothing may be referenced by URL.
 
+C-12 (2026-08-04 doctrine reset): every card also gets a pre-filtered, EMPTY verdict checklist —
+one row per invariant the shot's own entry actually declares — plus, for named-figure shots, a
+canonical-vs-candidate comparison strip at ordinary viewing scale. This is the machine-emitted half
+of "machine-emitted, human-eyed" review (adversarial-review-2026-08-04.md finding B4): the human
+still writes every verdict, but never has to recall or type which invariants apply to which shot.
+Filtering reads only `shots.json` + `assets/library/manifest.json` (this video's own Pass-1 identity
+ledger — never `registry.json`, per the registry-promotion rule) — no cast or place name is
+hardcoded anywhere below. Comparisons are never cropped/zoomed — `crop_battery.py` stays orphaned
+(2026-08-03 ratified: "I don't need a super crazy review process... it just burns time").
+
 Usage:
   py -3 build_review_artifact.py --video <video-dir> --out <out.html> [--title T]
                                  [--shots L01 L02 ...] [--max-width 1600] [--quality 82]
 
-Requires Pillow. Reads shots.json + shots.motion.json + assets/scenes/manifest.json.
+Requires Pillow. Reads shots.json + shots.motion.json + assets/scenes/manifest.json +
+assets/library/manifest.json (optional — absence only narrows which rows fire, never crashes).
 """
-import argparse, base64, io, json, os, sys, html
+import argparse, base64, io, json, os, re, sys, html
 
 try:
     from PIL import Image
@@ -51,6 +62,110 @@ def manifest_index(video):
     return {e.get("shot_id") or e.get("id"): e for e in entries if isinstance(e, dict)}
 
 
+def library_assets(video):
+    """This video's Pass-1 identity/pose/prop ledger (`assets/library/manifest.json`) — the real
+    per-video cast + vocabulary store (a video's own cast never reaches `registry.json`; see
+    registry-promotion rule). Each entry is `{name, kind, file, shots: [shot ids ...]}`. Absent ->
+    `[]`, which only narrows row/comparison filtering below, never crashes it (this file is written
+    by image-generation's Pass 1, which always runs before a shot can be reviewed)."""
+    d = load_json(os.path.join(video, "assets", "library", "manifest.json"), {}) or {}
+    assets = d.get("assets")
+    return assets if isinstance(assets, list) else []
+
+
+_SEATED_RE = re.compile(r"\bsit\b|\bseat", re.I)
+
+
+def named_figures_by_shot(lib_assets):
+    """shot id -> sorted names of the NAMED CAST (`kind == "identity"`) present in it, read
+    straight from each asset's own `shots` list — generic by construction, since no character name
+    is ever written in this file."""
+    out = {}
+    for a in lib_assets:
+        if not isinstance(a, dict) or a.get("kind") != "identity":
+            continue
+        for sid in a.get("shots") or []:
+            out.setdefault(sid, set()).add(a.get("name"))
+    return {sid: sorted(n for n in names if n) for sid, names in out.items()}
+
+
+def seated_shots(lib_assets):
+    """shot ids where a SEATED pose primitive is in play, detected from the pose/action
+    vocabulary's own `name`/`tag` (matches "sit"/"seat...") — the vocabulary itself is the
+    channel's, never a per-video literal, so this stays generic across any cast."""
+    out = set()
+    for a in lib_assets:
+        if not isinstance(a, dict) or a.get("kind") not in ("pose", "action"):
+            continue
+        label = "%s %s" % (a.get("name") or "", a.get("tag") or "")
+        if _SEATED_RE.search(label):
+            out.update(a.get("shots") or [])
+    return out
+
+
+def canonical_files(lib_assets):
+    """named-figure name -> its canonical reference image path, as Pass 1 recorded it."""
+    return {a["name"]: a["file"] for a in lib_assets
+            if isinstance(a, dict) and a.get("kind") == "identity"
+            and a.get("name") and a.get("file")}
+
+
+# Where a place-owner decision may be recorded (schema still landing under C-3/B4 as of this
+# write — kept as a short, easily-extended tuple rather than baked into the predicate below).
+_OWNER_DECLARED_KEYS = ("owner_branding", "place_owner")   # an owner cue was authored
+_OWNER_AMBIGUITY_KEYS = ("owner_ambiguity",)                # ambiguity was the deliberate call
+
+
+def owner_branding_declared(shot):
+    """True once THIS shot's own entry records a place-owner decision, either way — an authored
+    cue or a deliberate ambiguity call (spec §Place-owner rule: "record intentional ambiguity").
+    Checked at shot level and inside `figures`, whichever the landing schema uses. A place with no
+    decision recorded yet emits no row: there is nothing to check against."""
+    fig = shot.get("figures") if isinstance(shot.get("figures"), dict) else {}
+    if any(shot.get(k) or fig.get(k) for k in _OWNER_DECLARED_KEYS):
+        return True
+    if any(k in shot or k in fig for k in _OWNER_AMBIGUITY_KEYS):
+        return True
+    return False
+
+
+# ---------- C-12: pre-filtered, machine-emitted verdict rows ----------
+# One EMPTY row per (shot x applicable invariant) a human ticks by eye — never typed, never
+# recalled from memory. `applicable_invariants` is the sole filter; every predicate reads only
+# what the shot's own entry (or this video's own Pass-1 ledger) actually declares.
+INVARIANTS = {
+    "support-contact": "Seated named figure names a support + contact phrase (C-7)",
+    "relative-scale": "Two named cast: plane / eye line / relative head scale stated (C-8)",
+    "place-owner": "Owner cue visible on the plate, or the ambiguity is the intended read",
+    "crowd": "Crowd reads as background rig, not named cast",
+    "flat-cel-hazard": "One-voice flat-cel style holds (no gradient/gloss/bloom/etc., C-2)",
+}
+
+
+def applicable_invariants(shot, sid, named, seated):
+    """The subset of `INVARIANTS` this shot needs, per C-12's pre-filter:
+      * support-contact -> >=1 named figure present AND this shot uses a seated pose primitive
+      * relative-scale  -> >=2 named figures present (measured, never authored)
+      * place-owner     -> shot declares `place` AND its entry records an owner decision
+      * crowd           -> `figures.crowd` is true
+      * flat-cel-hazard -> `source == "ai-gen"` (every ai-gen shot carries the style risk)
+    Returns an ordered list of `(slug, question)` pairs, `INVARIANTS`-order, empty when none apply.
+    """
+    rows = []
+    if named and sid in seated:
+        rows.append("support-contact")
+    if len(named) >= 2:
+        rows.append("relative-scale")
+    if shot.get("place") and owner_branding_declared(shot):
+        rows.append("place-owner")
+    fig = shot.get("figures") if isinstance(shot.get("figures"), dict) else {}
+    if fig.get("crowd"):
+        rows.append("crowd")
+    if shot.get("source") == "ai-gen":
+        rows.append("flat-cel-hazard")
+    return [(slug, INVARIANTS[slug]) for slug in rows]
+
+
 def describe_animation(m):
     """Human-readable intent: camera + each layer + device cards."""
     if not m:
@@ -78,11 +193,16 @@ def describe_animation(m):
 def collect(video, only):
     """One card per generated FILE (a shot may have a plate + several cutouts)."""
     S, M, MAN = shot_index(video), motion_index(video), manifest_index(video)
+    LIB = library_assets(video)
+    named_by_shot = named_figures_by_shot(LIB)
+    seated = seated_shots(LIB)
+    canon_file = canonical_files(LIB)
     cards = []
     for sid, s in S.items():
         if only and sid not in only:
             continue
         m, man = M.get(sid), MAN.get(sid, {})
+        named = named_by_shot.get(sid, [])
         files = []
         for sub, label in (("scenes", "scene"), ("plates", "plate")):
             p = os.path.join(video, "assets", sub, sid + ".png")
@@ -94,6 +214,11 @@ def collect(video, only):
                 if fn.startswith(sid + "-") and fn.endswith(".png"):
                     files.append((os.path.join(cdir, fn),
                                   "cutout: " + fn[len(sid) + 1:-4]))
+        # comparisons only on named-figure shots (>=1 named cast), and only when the canonical
+        # file actually exists on disk — never invent a comparison for an unminted figure.
+        canon_refs = [(n, canon_file[n]) for n in named
+                      if n in canon_file and os.path.exists(canon_file[n])]
+        invariants = applicable_invariants(s, sid, named, seated)
         for path, label in files:
             cards.append(dict(
                 sid=sid, label=label, path=path,
@@ -103,6 +228,8 @@ def collect(video, only):
                 flagged=bool(man.get("flagged")),
                 reason=man.get("notes") or "",
                 verified=man.get("verified") or {},
+                invariants=invariants,
+                canon=canon_refs,
             ))
     cards.sort(key=lambda c: (list(S).index(c["sid"]), c["label"]))
     return cards
@@ -165,6 +292,16 @@ button[aria-pressed=true]{background:var(--fg);color:var(--bg);border-color:var(
 .anim{margin:0;color:var(--mut);font-size:13px}
 .badge{background:var(--flag);color:#fff;font-size:11px;border-radius:20px;padding:2px 9px}
 .rsn{margin:8px 0 0;color:var(--flag);font-size:13px}
+.checks{list-style:none;margin:10px 0 0;padding:9px 0 0;border-top:1px dashed var(--line);
+ display:flex;flex-direction:column;gap:5px}
+.checks li{font-size:12.5px;color:var(--fg)}
+.checks .slug{display:inline-block;min-width:112px;font-weight:650;color:var(--mut)}
+.canon{margin:10px 0 0;padding:9px 0 0;border-top:1px dashed var(--line)}
+.cmp{margin:0 0 6px;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.canon .strip{display:flex;gap:8px;flex-wrap:wrap}
+.canon figure{margin:0;width:96px}
+.canon img{width:100%;border-radius:6px;border:1px solid var(--line);display:block}
+.canon figcaption{font-size:11px;color:var(--mut);text-align:center;margin-top:3px}
 #lb{position:fixed;inset:0;background:rgba(0,0,0,.94);display:none;z-index:99;
  flex-direction:column;align-items:center;justify-content:center}
 #lb.on{display:flex}
@@ -212,14 +349,31 @@ def build(cards, title, subtitle, max_w, quality):
         flag = " flag" if c["flagged"] else ""
         badge = '<span class="badge">FLAGGED</span>' if c["flagged"] else ""
         rsn = ('<p class="rsn">%s</p>' % html.escape(c["reason"])) if (c["flagged"] and c["reason"]) else ""
+        checks = ""
+        if c.get("invariants"):
+            rows = "".join(
+                '<li><span class="slug">%s</span>%s</li>' % (html.escape(slug), html.escape(q))
+                for slug, q in c["invariants"])
+            checks = '<ul class="checks">%s</ul>' % rows
+        canon = ""
+        if c.get("canon"):
+            thumbs = []
+            for name, cpath in c["canon"]:
+                curi, cnb = inline(cpath, max(max_w // 4, 200), quality)
+                total += cnb
+                thumbs.append(
+                    '<figure><img src="%s" alt="%s canonical"><figcaption>%s</figcaption></figure>'
+                    % (curi, html.escape(name), html.escape(name)))
+            canon = ('<div class="canon"><p class="cmp">canonical vs. candidate</p>'
+                      '<div class="strip">%s</div></div>' % "".join(thumbs))
         out.append(
             '<figure class="card%s"><img loading="lazy" src="%s" alt="%s">'
             '<div class="meta"><div class="hd"><span class="id">%s</span>'
             '<span class="tag">%s</span><span class="tag">%s</span>%s</div>'
-            '<p class="vo">%s</p><p class="anim">%s</p>%s</div></figure>'
+            '<p class="vo">%s</p><p class="anim">%s</p>%s%s%s</div></figure>'
             % (flag, uri, html.escape(c["sid"]), html.escape(c["sid"]),
                html.escape(c["label"]), html.escape(c["cls"] or "—"), badge,
-               html.escape(c["vo"] or "—"), html.escape(c["anim"]), rsn))
+               html.escape(c["vo"] or "—"), html.escape(c["anim"]), rsn, checks, canon))
     nflag = sum(1 for c in cards if c["flagged"])
     page = (
         "<title>%s</title><style>%s</style><div class=wrap><h1>%s</h1>"

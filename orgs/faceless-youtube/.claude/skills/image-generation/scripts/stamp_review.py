@@ -26,6 +26,47 @@ Usage (run with native `py -3`):
     py -3 stamp_review.py <video_dir>
 
 Emits one summary line: `stamped: N verified, M parked`.
+
+---
+
+C-6 (2026-08-04 doctrine reset) extends this same single-writer script with a SECOND, independent
+path: the verified-asset-reuse record store for staged STEP-1 figures
+(`visual-kit/_staging/review.json`, one channel-wide file, distinct from any video's
+`assets/scenes/manifest.json`). Forge's `cmd_batch` reuse gate reads it before seeding a staged
+`fig-*` into a scene slate; a missing/failed/stale record refuses with a one-line remint command
+rather than grandfathering an unreviewed figure. This script remains the ONLY writer of that file
+too — a generating agent never touches it.
+
+Usage:
+    py -3 stamp_review.py --figures <input.json> <staging_dir>
+
+`<input.json>` is the FIGURE-VERDICTS INPUT — a fresh-eyes review pass's ruling on one or more
+staged figures, produced upstream (by whatever tool runs that review) and merged here, never
+written directly. Shape (a bare `{fig_id: record, ...}` mapping is also accepted, no `"figures"`
+wrapper required):
+
+    {"figures": {
+      "fig-<char>--<pose>--<expr>": {
+        "canonical_sha256": "<sha256 of the reviewed canonical PNG>",
+        "expression_sha256": "<sha256 of the expression seed, or null>",
+        "verdicts": {"<invariant-slug>": "pass|fail", ...},
+        "reviewer": "fresh-eyes",
+        "date": "YYYY-MM-DD"
+      }
+    }}
+
+Each record REPLACES any prior entry for the same `fig_id` wholesale (a re-review always
+supersedes the one on file — same id, new sha/verdicts). A record missing a required field
+(`canonical_sha256`, `verdicts`, `reviewer`, `date`) is skipped with a stderr warning; the rest of
+the batch still merges. Output is normalized to exactly the shape above regardless of what extra
+keys the input carries. `<staging_dir>/review.json` is created on first use; existing entries for
+figures NOT present in this input are left untouched (additive merge, not a full-file replace).
+
+Emits one summary line: `figure-review: N merged into <path>`.
+
+This path is fully independent of the scene-stamping path above: different CLI form (`--figures`
+first), different input, different output file, different store shape. The scene-stamping
+behaviour above is byte-for-byte unchanged by this extension.
 """
 import json
 import os
@@ -152,6 +193,44 @@ def stamp(manifest, rulings):
     return n_verified, m_parked
 
 
+_FIGURE_REQUIRED = ("canonical_sha256", "verdicts", "reviewer", "date")
+
+
+def _figure_input_records(data):
+    """The figure-verdicts input's `fig_id -> record` mapping. Accepts `{"figures": {...}}` (the
+    same shape as the store) or a bare `{fig_id: record, ...}` mapping with no wrapper key."""
+    if not isinstance(data, dict):
+        return {}
+    figs = data.get("figures", data)
+    return figs if isinstance(figs, dict) else {}
+
+
+def merge_figure_records(store: dict, input_data) -> int:
+    """Merge each `fig_id -> record` in the figure-verdicts input into `store["figures"]`, IN
+    PLACE, normalizing every merged record to exactly the C-6 pinned shape (`canonical_sha256`,
+    `expression_sha256`, `verdicts`, `reviewer`, `date`) regardless of extra input keys.
+
+    A record for a fig id already on file is REPLACED wholesale — a re-review always supersedes
+    the prior one for that id. Entries for fig ids NOT present in this input are left untouched
+    (additive merge, never a full-file replace). A record missing a required field is skipped with
+    a stderr warning; the rest of the batch still merges. Returns the count of records merged."""
+    figures = store.setdefault("figures", {})
+    n = 0
+    for fig_id, rec in _figure_input_records(input_data).items():
+        if not isinstance(rec, dict) or any(k not in rec for k in _FIGURE_REQUIRED):
+            print(f"skip {fig_id}: record must carry {_FIGURE_REQUIRED}", file=sys.stderr)
+            continue
+        figures[fig_id] = {
+            "canonical_sha256": rec["canonical_sha256"],
+            "expression_sha256": rec.get("expression_sha256"),
+            "verdicts": dict(rec.get("verdicts") or {}),
+            "reviewer": rec["reviewer"],
+            "date": rec["date"],
+        }
+        n += 1
+    return n
+
+
 def _atomic_write_json(path: Path, data) -> None:
     """Write `data` as JSON to `path` atomically (temp file in the same dir, then os.replace)."""
     tmp = path.with_name(path.name + ".tmp")
@@ -168,10 +247,33 @@ def _atomic_write_json(path: Path, data) -> None:
                 pass
 
 
+def _main_figures(argv) -> int:
+    """The C-6 figure-verdicts merge path: `--figures <input.json> <staging_dir>`."""
+    if len(argv) != 2:
+        print("usage: py -3 stamp_review.py --figures <input.json> <staging_dir>", file=sys.stderr)
+        return 2
+    input_path, staging_dir = Path(argv[0]), Path(argv[1])
+    if not input_path.exists():
+        print(f"no figure-verdicts input at {input_path}", file=sys.stderr)
+        return 1
+    input_data = json.loads(input_path.read_text(encoding="utf-8"))
+    review_path = staging_dir / "review.json"
+    store = json.loads(review_path.read_text(encoding="utf-8")) if review_path.exists() else {}
+    if not isinstance(store, dict):
+        store = {}
+    n = merge_figure_records(store, input_data)
+    _atomic_write_json(review_path, store)
+    print(f"figure-review: {n} merged into {review_path}")
+    return 0
+
+
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "--figures":
+        return _main_figures(argv[1:])
     if len(argv) != 1:
-        print("usage: py -3 stamp_review.py <video_dir>", file=sys.stderr)
+        print("usage: py -3 stamp_review.py <video_dir>\n"
+              "       py -3 stamp_review.py --figures <input.json> <staging_dir>", file=sys.stderr)
         return 2
     video_dir = Path(argv[0])
     merged_path = video_dir / "assets" / "_review" / "merged.json"

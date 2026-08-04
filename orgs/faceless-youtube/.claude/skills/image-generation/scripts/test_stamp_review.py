@@ -246,6 +246,150 @@ def test_write_is_atomic_no_tmp_left_behind():
 
 
 # --------------------------------------------------------------------------- #
+# C-6 figure-verdicts merge path — merge_figure_records() + `--figures` CLI form
+# --------------------------------------------------------------------------- #
+def _figrec(canonical="c-sha", verdicts=None, reviewer="fresh-eyes", date="2026-08-04", **extra):
+    r = {"canonical_sha256": canonical, "verdicts": verdicts or {"support-contact": "pass"},
+         "reviewer": reviewer, "date": date}
+    r.update(extra)
+    return r
+
+
+def test_merge_figure_records_into_empty_store_normalizes_shape():
+    store = {}
+    n = stamp_review.merge_figure_records(
+        store, {"figures": {"fig-a--sit--deadpan": _figrec()}})
+    assert n == 1, n
+    rec = store["figures"]["fig-a--sit--deadpan"]
+    # normalized to exactly the C-6 pinned shape, expression_sha256 defaults to null
+    assert set(rec) == {"canonical_sha256", "expression_sha256", "verdicts", "reviewer", "date"}, rec
+    assert rec["expression_sha256"] is None, rec
+    assert rec["canonical_sha256"] == "c-sha", rec
+
+
+def test_merge_figure_records_accepts_bare_mapping_without_wrapper():
+    store = {}
+    n = stamp_review.merge_figure_records(store, {"fig-a--sit--deadpan": _figrec()})
+    assert n == 1, n
+    assert "fig-a--sit--deadpan" in store["figures"], store
+
+
+def test_merge_figure_records_drops_extra_input_keys():
+    store = {}
+    stamp_review.merge_figure_records(
+        store, {"figures": {"fig-a--sit--deadpan": _figrec(extra_field="junk")}})
+    assert "extra_field" not in store["figures"]["fig-a--sit--deadpan"]
+
+
+def test_merge_figure_records_replaces_existing_entry_wholesale():
+    store = {"figures": {"fig-a--sit--deadpan": {
+        "canonical_sha256": "old-sha", "expression_sha256": "old-expr-sha",
+        "verdicts": {"support-contact": "fail"}, "reviewer": "fresh-eyes", "date": "2026-08-01"}}}
+    n = stamp_review.merge_figure_records(
+        store, {"figures": {"fig-a--sit--deadpan": _figrec(
+            canonical="new-sha", verdicts={"support-contact": "pass"}, date="2026-08-04")}})
+    assert n == 1, n
+    rec = store["figures"]["fig-a--sit--deadpan"]
+    assert rec["canonical_sha256"] == "new-sha", rec
+    assert rec["expression_sha256"] is None, rec  # old field NOT carried over — wholesale replace
+    assert rec["verdicts"] == {"support-contact": "pass"}, rec
+
+
+def test_merge_figure_records_is_additive_across_other_fig_ids():
+    store = {"figures": {"fig-b--stand--smug": _figrec(canonical="b-sha")}}
+    n = stamp_review.merge_figure_records(
+        store, {"figures": {"fig-a--sit--deadpan": _figrec(canonical="a-sha")}})
+    assert n == 1, n
+    assert set(store["figures"]) == {"fig-a--sit--deadpan", "fig-b--stand--smug"}, store["figures"]
+    assert store["figures"]["fig-b--stand--smug"]["canonical_sha256"] == "b-sha"  # untouched
+
+
+def test_merge_figure_records_skips_malformed_record_but_keeps_the_rest():
+    store = {}
+    bad = {"canonical_sha256": "x-sha"}  # missing verdicts/reviewer/date
+    n = stamp_review.merge_figure_records(
+        store, {"figures": {"fig-bad": bad, "fig-good": _figrec()}})
+    assert n == 1, n
+    assert "fig-bad" not in store["figures"], store["figures"]
+    assert "fig-good" in store["figures"], store["figures"]
+
+
+def test_figures_cli_creates_review_json_and_prints_summary():
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        staging = base / "_staging"
+        staging.mkdir()
+        input_path = base / "figure-verdicts.json"
+        input_path.write_text(
+            json.dumps({"figures": {"fig-a--sit--deadpan": _figrec()}}), encoding="utf-8")
+        rc = stamp_review.main(["--figures", str(input_path), str(staging)])
+        assert rc == 0, rc
+        review_path = staging / "review.json"
+        assert review_path.exists()
+        out = _read(review_path)
+        assert "fig-a--sit--deadpan" in out["figures"], out
+        leftovers = [p.name for p in staging.iterdir() if p.suffix == ".tmp"]
+        assert leftovers == [], leftovers
+
+
+def test_figures_cli_merges_additively_into_existing_review_json():
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        staging = base / "_staging"
+        staging.mkdir()
+        (staging / "review.json").write_text(
+            json.dumps({"figures": {"fig-old--stand--smug": _figrec(canonical="old-sha")}}),
+            encoding="utf-8")
+        input_path = base / "figure-verdicts.json"
+        input_path.write_text(
+            json.dumps({"figures": {"fig-new--sit--deadpan": _figrec(canonical="new-sha")}}),
+            encoding="utf-8")
+        stamp_review.main(["--figures", str(input_path), str(staging)])
+        out = _read(staging / "review.json")
+        assert set(out["figures"]) == {"fig-old--stand--smug", "fig-new--sit--deadpan"}, out
+
+
+def test_figures_cli_missing_input_file_errors_without_writing():
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        staging = base / "_staging"
+        staging.mkdir()
+        rc = stamp_review.main(["--figures", str(base / "nope.json"), str(staging)])
+        assert rc == 1, rc
+        assert not (staging / "review.json").exists()
+
+
+def test_figures_cli_summary_line_via_real_subprocess():
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        staging = base / "_staging"
+        staging.mkdir()
+        input_path = base / "figure-verdicts.json"
+        input_path.write_text(
+            json.dumps({"figures": {"fig-a--sit--deadpan": _figrec(),
+                                     "fig-b--stand--smug": _figrec(canonical="b-sha")}}),
+            encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(Path(__file__).parent / "stamp_review.py"),
+             "--figures", str(input_path), str(staging)],
+            capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+        assert "figure-review: 2 merged into" in proc.stdout, proc.stdout
+
+
+def test_scene_stamping_cli_unaffected_by_the_figures_dispatch():
+    # a plain `<video_dir>` positional call still routes to the ORIGINAL scene-stamping path
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        mpath = _write_video_dir(
+            base, [_ruling("L01", "clean")],
+            {"video_slug": "t", "generated": "2026", "notes": "", "shots": [_entry("L01")]})
+        rc = stamp_review.main([str(base)])
+        assert rc == 0, rc
+        assert _read(mpath)["shots"][0]["review_status"] == "verified"
+
+
+# --------------------------------------------------------------------------- #
 def _run_all():
     fns = [v for k, v in sorted(globals().items())
            if k.startswith("test_") and callable(v)]
