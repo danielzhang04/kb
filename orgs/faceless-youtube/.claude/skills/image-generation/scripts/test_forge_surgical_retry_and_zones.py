@@ -139,7 +139,7 @@ def test_gen_dry_run_prints_the_one_span_retry_authority():
         k = SimpleNamespace(root=root, staging=staging, reg={},
                             prompt_for=lambda mode, delta, **kwargs: delta)
         request = {
-            "name": "T01-content-retry", "mode": "environment", "root_scene": True,
+            "name": "T01-content-retry", "mode": "environment", "plate": True,
             "seed": [], "seed_roles": [], "payload": CANONICAL, "delta": CANONICAL,
             "retry_authority": {"kind": "replace", "changed_spans": 1,
                                 "from": "old", "to": "new"},

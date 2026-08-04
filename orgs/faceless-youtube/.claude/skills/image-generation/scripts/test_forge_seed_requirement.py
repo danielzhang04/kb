@@ -16,6 +16,18 @@ from forge import (Kit, cmd_batch, cmd_gen, figure_frame_name, merge_vocabulary,
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
+ROOT = KIT_DIR.parents[2]
+
+
+def _real_kit():
+    """The real Kit over the real bible/registry, with the repo root PINNED. `Kit` finds the root
+    by walking up to the env marker, which exists only in the primary checkout — in a worktree the
+    walk reaches the filesystem root and every registry-relative seed path stops resolving."""
+    k = Kit(str(KIT_DIR), dry=True)
+    k.root = str(ROOT)
+    k.staging = os.path.join(tempfile.mkdtemp(), "_staging")
+    os.makedirs(k.staging)   # never let a live run's staged frames alter a slate fixture
+    return k
 
 REFS = "channels/c/visual-kit/refs/"
 REG = {
@@ -55,30 +67,30 @@ def _stub_kit():
     return SimpleNamespace(staging=tempfile.mkdtemp())
 
 
-def test_nonroot_environment_or_style_without_seed_hard_errors():
+def test_a_non_plate_environment_or_style_without_seed_hard_errors():
     for mode in ("environment", "style"):
         try:
-            cmd_gen(_stub_kit(), [{"name": "plate", "mode": mode, "delta": "a swamp"}], True)
+            cmd_gen(_stub_kit(), [{"name": "swamp", "mode": mode, "delta": "a swamp"}], True)
         except SystemExit as e:
-            assert "only a root scene" in str(e), str(e)
+            assert "only a derived place plate" in str(e), str(e)
         else:
-            assert False, f"nonroot {mode} gen with no seed should have hard-errored"
+            assert False, f"non-plate {mode} gen with no seed should have hard-errored"
 
 
-def test_builder_marked_root_scene_may_run_unseeded_but_delta_and_anchor_may_not():
+def test_a_derived_place_plate_may_run_unseeded_but_delta_and_anchor_may_not():
     for mode in ("environment", "style"):
         assert resolve_request_seeds(_stub_kit(), {
-            "name": "L01", "mode": mode, "delta": "an empty yard", "root_scene": True}) == []
+            "name": "L01", "mode": mode, "delta": "an empty yard", "plate": True}) == []
     for request in (
         {"name": "L02", "mode": "environment", "delta": "same yard", "stage_role": "delta",
-         "root_scene": True},
-        {"name": "L03", "mode": "environment", "delta": "same yard", "root_scene": True,
+         "plate": True},
+        {"name": "L03", "mode": "environment", "delta": "same yard", "plate": True,
          "place_anchor": "assets/scenes/L00.png"},
     ):
         try:
             resolve_request_seeds(_stub_kit(), request)
         except SystemExit as e:
-            assert "only a root scene" in str(e), str(e)
+            assert "only a derived place plate" in str(e), str(e)
         else:
             assert False, f"continuity request accepted with no seed: {request}"
 
@@ -99,9 +111,9 @@ def test_cmd_gen_classifies_root_chain_and_anchored_requests_as_scenes_but_not_s
                 "seed_roles": roles, **extra}
     reqs = [
         {"name": "root", "mode": "environment", "delta": "root authored", "seed": [],
-         "root_scene": True},
-        composite("chain", "environment", "chain authored", root_scene=False),
-        composite("anchored", "style", "anchor authored", root_scene=False,
+         "plate": True},
+        composite("chain", "environment", "chain authored", plate=False),
+        composite("anchored", "style", "anchor authored", plate=False,
                   place_anchor="assets/scenes/L00.png"),
         composite("fig-reference", "environment", "STEP-1 authored"),
     ]
@@ -277,7 +289,10 @@ _SCOPE_SHOTS = {
         {"id": "T01", "source": "ai-gen", "stage": "yard", "stage_role": "base",
          "still_prompt": "`miniscribe-rep`, `expr-smug`, `action-powerstance`, at a brickyard gate "
                          "beside a stack of pallets under open sky."},
+        # An expression CHANGE on a delta declares its primitive: the parent frame holds the old
+        # face, so the new one needs pixels of its own (C-10).
         {"id": "T02", "source": "ai-gen", "stage": "yard", "stage_role": "delta",
+         "delta_primitives": {"miniscribe-rep": ["expr-worried"]},
          "still_prompt": "The same brickyard, unchanged, except `miniscribe-rep` is now "
                          "`expr-worried` — only this changes."},
         {"id": "T03", "source": "ai-gen", "stage": "dock",
@@ -293,14 +308,12 @@ def _scope_fixture():
     return v, os.path.join(v, "shots.json"), os.path.join(v, "spec.json")
 
 
-def _batch(shots_path, out, scope, plate_candidates=None):
+def _batch(shots_path, out, scope):
     """Run cmd_batch quietly; return (spec or None, SystemExit text or None)."""
-    k = Kit(str(KIT_DIR), dry=True)
-    k.staging = os.path.join(tempfile.mkdtemp(), "_staging")
-    os.makedirs(k.staging)  # never let a live run's staged frames alter this slate fixture
+    k = _real_kit()
     try:
         with contextlib.redirect_stdout(io.StringIO()):
-            cmd_batch(k, shots_path, out, None, scope, plate_candidates)
+            cmd_batch(k, shots_path, out, None, scope)
     except SystemExit as e:
         return None, str(e)
     return json.load(open(out, encoding="utf-8")), None
@@ -324,10 +337,9 @@ def test_a_scoped_run_emits_only_its_shots_and_is_not_blocked_from_outside():
     fig = figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug")
     assert names[0] == fig, names
     t01 = [i for i in spec if i["name"] == "T01"][0]
-    assert t01.get("plate") is None, t01
-    assert t01["root_scene"] is True and [Path(s).stem for s in t01["seed"]] == [fig], t01
+    assert t01["plate"] is False and [Path(s).stem for s in t01["seed"]] == [fig], t01
     t02 = [i for i in spec if i["name"] == "T02"][0]
-    assert t02["root_scene"] is False, t02
+    assert t02["plate"] is False, t02
     assert any("_staging/T01.png" in str(s) for s in t02["seed"]), t02["seed"]
     assert any(_stem_ok(s, "miniscribe-rep") for s in t02["seed"]), t02["seed"]
 
@@ -374,7 +386,7 @@ def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
     assert "stamp-block-outlined did not fit" in err and not os.path.exists(out), err
 
 
-def test_character_free_root_scene_emits_with_no_image_seed():
+def test_character_free_place_plate_emits_with_no_image_seed():
     _, shots, out = _scope_fixture()
     doc = json.load(open(shots, encoding="utf-8"))
     doc["long_form"]["shots"] = [{"id": "T00", "source": "ai-gen", "stage": "new-place",
@@ -387,8 +399,9 @@ def test_character_free_root_scene_emits_with_no_image_seed():
                      "payload": "A warm records room with a bare central table.",
                      "seed": [], "seed_roles": [],
                      "figures": None, "stage_role": None, "assets_omitted": None,
-                     "root_scene": True, "delta_primitives": None,
-                     "why": "ROOT-SCENE — hardened descriptor, no image anchor"}], spec
+                     "plate": True, "delta_primitives": None, "expression_change": None,
+                     "parent_depth": 0, "lineage": 0,
+                     "why": "PLATE — place-first frame, hardened descriptor, no image anchor"}], spec
 
 
 def _stem_ok(seed, char):
@@ -433,8 +446,7 @@ def test_a_base_can_seed_its_videos_approved_place_after_two_step1_figures():
     spec, err = _batch(shots, out, ["L60"])
     assert err is None, err
     scene = [i for i in spec if i["name"] == "L60"][0]
-    assert scene.get("plate") is None, scene
-    assert scene["root_scene"] is False, scene
+    assert scene["plate"] is False, scene
     assert len(scene["seed"]) == 4, scene["seed"]
     assert [Path(s).stem for s in scene["seed"][:2]] == ["fig-miniscribe-rep", "fig-ibm-suit"], scene["seed"]
     assert scene["seed"][2].replace("\\", "/").endswith("assets/scenes/L60.png"), scene["seed"]
@@ -487,8 +499,7 @@ def test_a_place_anchor_cannot_escape_through_a_windows_junction_or_posix_symlin
 
 
 def _retry(shots_path, out, overlay, staged=None):
-    k = Kit(str(KIT_DIR), dry=True)
-    k.staging = os.path.join(tempfile.mkdtemp(), "_staging"); os.makedirs(k.staging)
+    k = _real_kit()
     for name, data in (staged or {}).items():
         open(os.path.join(k.staging, name), "wb").write(data)
     overlay_path = os.path.join(os.path.dirname(shots_path), "retry-overlay.json")
@@ -536,7 +547,7 @@ def test_retry_overlay_derives_duplicate_scenes_and_one_step1_only_request():
     assert err is None, err
     assert [r["name"] for r in spec] == ["T01-retry-a", "T01-retry-b", "fig-miniscribe-rep-retry"], spec
     first = spec[0]
-    assert first.get("plate") is None and first["payload"].startswith("A small crowd"), first
+    assert first["plate"] is False and first["payload"].startswith("A small crowd"), first
     assert first["seed"][0].replace("\\", "/").endswith("refs/env/prop-drive.png"), first["seed"]
     step = spec[-1]
     assert step["name"].startswith("fig-") and "T02" not in [r["name"] for r in spec], spec

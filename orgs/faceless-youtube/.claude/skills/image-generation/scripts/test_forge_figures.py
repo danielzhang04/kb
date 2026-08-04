@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from forge import (IMAGE_SIZES, IMAGE_SIZE_DEFAULT, assemble_prompt, blockquote_after,
-                   figures_expansion, placement_delta, should_hold, Kit)
+from forge import (HARDENED_SCENE_STYLE, IMAGE_SIZES, IMAGE_SIZE_DEFAULT, assemble_prompt,
+                   blockquote_after, figures_expansion, placement_delta, should_hold, Kit)
 
 BIBLE = (Path(__file__).resolve().parents[4]
          / "channels" / "the-second-take" / "visual-kit" / "style-bible.md")
@@ -48,7 +48,7 @@ SHOT_LEGACY = {
 def _assemble(shot, hold=True):
     return assemble_prompt(
         DESC_STYLE, shot["still_prompt"],
-        figures_expansion(shot.get("figures"), "", CROWD_RIG, shot.get("stage_role")),
+        figures_expansion(shot.get("figures"), CROWD_RIG),
         DESC_RIGHOLD if hold else "")
 
 
@@ -60,13 +60,13 @@ def test_bible_blockquotes_are_readable():
 
 # --- (a) base shot ------------------------------------------------------------------------------
 def test_crowd_only_shot_gets_only_the_crowd_clause():
-    fig = figures_expansion({"crowd": True}, "", CROWD_RIG, "base")
+    fig = figures_expansion({"crowd": True}, CROWD_RIG)
     assert fig == CROWD_RIG, fig[:160]
 
 
 # --- (b) delta shot ----------------------------------------------------------------------------
 def test_delta_shot_keeps_the_crowd_clause():
-    fig = figures_expansion(SHOT_DELTA["figures"], "", CROWD_RIG, "delta")
+    fig = figures_expansion(SHOT_DELTA["figures"], CROWD_RIG)
     assert fig == CROWD_RIG, fig[:160]
 
 
@@ -81,7 +81,7 @@ def test_shot_without_figures_keeps_payload_final_under_the_new_zone_order():
     assert _assemble(SHOT_LEGACY, hold=False) == no_hold_before
     # an empty/false declaration is the same as no declaration
     for empty in (None, {}, {"crowd": False}):
-        assert figures_expansion(empty, "", CROWD_RIG) == "", repr(empty)
+        assert figures_expansion(empty, CROWD_RIG) == "", repr(empty)
 
 
 # --- assembly order + the rig-hold signal ------------------------------------------------------
@@ -119,19 +119,24 @@ def test_step2_preserves_authored_prompt_and_identity_carry_without_scale_scaffo
 def test_every_scene_prompt_gets_one_hardened_style_block_without_rewriting_authored_text():
     k = Kit(str(BIBLE.parent), dry=True)
     authored = "A warm records room with two pens on a bare central paper."
+    # ONE VOICE: the block restates the bible's recipe in the bible's own terms and never offers a
+    # second, softer description of the same style (the 2026-08-04 audit's mechanism 1).
     required = (
-        "HARDENED SCENE STYLE", "clean flat cel shading", "single-step shadows only",
-        "even medium-thick dark-brown outlines", "NO gloss", "NO specular highlights",
-        "NO gradients", "NO bloom", "NO depth-of-field blur", "NO photorealistic texture",
-        "authored scene palette", "never neutral grey alone",
+        "HARDENED SCENE STYLE", "flat colour fills", "one flat base colour per surface",
+        "ONE hard-edged single-step shadow shape", "no feathered or blended transitions",
+        "uniform highlight-free surfaces", "even medium-thick dark warm brown-black outlines",
+        "NO gradient", "NO gloss or specular highlight", "NO bloom",
+        "NO depth-of-field blur or soft focus", "NO subsurface or rim light",
+        "NO photorealistic texture", "authored scene palette", "never neutral grey alone",
     )
-    for stage_role in (None, "base", "delta"):
-        text = k.prompt_for("environment", authored, stage_role=stage_role, scene=True)
-        assert text.count("HARDENED SCENE STYLE") == 1, text
-        assert text.count(authored) == 1, text
-        assert text.index(k.desc_style) < text.index("HARDENED SCENE STYLE") < text.index(authored)
-        for phrase in required:
-            assert phrase in text, (stage_role, phrase, text)
+    text = k.prompt_for("environment", authored, scene=True)
+    assert text.count("HARDENED SCENE STYLE") == 1, text
+    assert text.count(authored) == 1, text
+    assert text.index(k.desc_style) < text.index("HARDENED SCENE STYLE") < text.index(authored)
+    for phrase in required:
+        assert phrase in text, (phrase, text)
+    for softener in ("soft cel", "gentle", "smooth shading", "subtle gradient"):
+        assert softener not in HARDENED_SCENE_STYLE.lower(), softener
     step1 = k.prompt_for("environment", "A neutral reference figure.", scene=False)
     assert "HARDENED SCENE STYLE" not in step1, step1
 
@@ -141,7 +146,7 @@ def test_malformed_figures_hard_error():
     for bad in (["the clerk"], {"anon_fg": ["x"]}, {"anon_foreground": "the clerk"},
                 {"crowd": "yes"}):
         try:
-            figures_expansion(bad, "", CROWD_RIG)
+            figures_expansion(bad, CROWD_RIG)
         except SystemExit:
             pass
         else:

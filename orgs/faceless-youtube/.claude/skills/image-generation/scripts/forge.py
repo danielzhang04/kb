@@ -6,9 +6,10 @@ checklist, the retry/escalate loop). This script owns the mechanics: read the bi
 seed off the right reference frame, call the image engine, stage the output, and index verified assets.
 
 Reads (per channel visual-kit):
-  <kit>/style-bible.md          §2 identity + §2b style-only descriptors, §2c rig-hold, §2d crowd-rig
-                                and §2e base-rig clauses (all read as blockquotes, never retyped)
+  <kit>/style-bible.md          §2 identity + §2b style-only descriptors, §2c rig-hold and §2d
+                                crowd-rig clauses (all read as blockquotes, never retyped)
   <kit>/registry/registry.json  characters + assets (seed frames, reuse index)
+  <kit>/_staging/review.json    the per-figure review record a staged STEP-1 must carry to be reused
   <kit>/refs/<character>/...     canonical reference frames to seed from
 
 Subcommands:
@@ -217,38 +218,18 @@ def should_hold(mode, resolved_seeds, delta="", figures=None):
     return any(_is_char_seed(s) for s in resolved_seeds)
 
 
-# --- `figures` expansion: a shot's DECLARATION -> the bible's §2d/§2e clause text ----------------
-# VPW declares anonymous-figure TIERS in the shot's `figures` field
-# (`{"anon_foreground": ["the worker at the dock edge"], "crowd": true}`) and forge expands them at
-# gen time from the bible's §2d/§2e blockquotes — the same source-of-truth move as the §2c
+# --- `figures` expansion: a shot's DECLARATION -> the bible's §2d clause text --------------------
+# VPW declares the anonymous-figure tier in the shot's `figures` field (`{"crowd": true}`) and forge
+# expands it at gen time from the bible's §2d blockquote — the same source-of-truth move as the §2c
 # auto-append above. Before this, VPW pasted the clause text into `still_prompt` by hand and 5 of
 # the 15 defects the bricks-segment critic found were rig-clause defects of exactly the kinds
-# hand-pasting produces: the clause dropped from a shot that needed it, the simplified §2d crowd
-# clause worn by a foreground figure, and §2e's invent-a-distinct-outfit sentence repeated onto a
-# DELTA shot whose whole job was holding that figure unchanged. Expanding from one place, with the
-# stage_role deciding base-vs-held wording, removes the class rather than the instances.
+# hand-pasting produces: the clause dropped from a shot that needed it, and the simplified §2d crowd
+# clause worn by a foreground figure. Expanding from one place removes the class, not the instances.
+#
+# `anon_foreground` remains a KNOWN key with no expansion: the tier is abolished (the pipeline
+# cannot seed it), and the seeding law refuses it BY NAME with the restaging instruction. Reading it
+# here is what makes that refusal reachable instead of a bare "unknown key".
 _FIG_KEYS = ("anon_foreground", "crowd")
-
-# §2e is written for ONE figure ("This prominent foreground figure is an anonymous, non-recurring
-# person drawn on the FULL base family rig — ..."). The expansion keeps its rig TAIL verbatim (that
-# tail IS the law) and replaces only the leading clause with the named list, so the bible stays the
-# single source of the invariants. The anchor is also `lint_shots.py`'s rig-clause fingerprint, so
-# a bible rewording that moved it would be caught at lint, not silently here.
-_BASE_RIG_ANCHOR = "FULL base family rig"
-
-# The clause must not leak onto the rest of the cast: an unbounded "anonymous, non-recurring person"
-# paragraph invites the engine to re-draw a NAMED figure as a generic one. The bible's §2e template
-# may already END in that binding, so the append is IDEMPOTENT (`_has_binding`) — stating it twice in
-# one prompt is the redundancy the measured long-prompt degradation punishes.
-_FIG_BINDING = ("This clause binds ONLY the figure(s) named above — no other figure in this image "
-                "takes it, and every named cast member keeps its canonical description.")
-
-
-def _has_binding(text):
-    """True when a clause already carries the named-cast protection binding (both halves of it:
-    the no-other-figure scope AND the canonical-description carve-out for named cast)."""
-    t = (text or "").lower()
-    return "other figure in" in t and "canonical descri" in t
 
 
 def _fig_declared(figures):
@@ -275,49 +256,14 @@ def _fig_declared(figures):
     return anon, crowd
 
 
-def _rig_tail(base_rig):
-    """§2e from the base-rig anchor onward — the rig invariants, verbatim. A bible reworded past the
-    anchor falls back to the WHOLE clause: a clumsy sentence beats a frame with no rig law."""
-    i = base_rig.find(_BASE_RIG_ANCHOR)
-    if i < 0:
-        return base_rig
-    return base_rig[i + len(_BASE_RIG_ANCHOR):].lstrip()
+def figures_expansion(figures, crowd_rig):
+    """The §2d CROWD-RIG clause text for one shot's `figures` declaration.
 
-
-def figures_expansion(figures, base_rig, crowd_rig, stage_role=None):
-    """The §2d/§2e clause text for one shot's `figures` declaration.
-
-    BASE / standalone shot: §2e pluralized over `anon_foreground`, opening by naming the entries
-    VERBATIM — they are the phrases the prompt itself stages, so the engine can bind clause to
-    figure — and closing with the named-cast protection binding.
-    DELTA shot (`stage_role == "delta"`): held-figure wording instead. §2e's tail ends in "Give them
-    a distinct, era-appropriate outfit and hair", which is a FIRST-ESTABLISHMENT instruction; on a
-    delta it asks the engine to redesign the exact figure the chain exists to hold.
-    `crowd: true` appends the §2d CROWD-RIG clause unchanged — it states a simplified rig rather
-    than inventing anything, so it is correct on a base and a delta alike.
-    Returns "" when nothing is declared, so a shot with no `figures` field assembles byte-identically
-    to before this field existed."""
-    anon, crowd = _fig_declared(figures)
-    blocks = []
-    if anon:
-        named = "; ".join(anon)
-        one = len(anon) == 1
-        if str(stage_role).lower() == "delta":
-            head = (f"The anonymous figure — {named} — is unchanged, exactly as established" if one
-                    else f"The anonymous figures — {named} — are unchanged, exactly as established")
-            blocks.append(f"{head}: hold the established outfit, hair, face and rig exactly as the "
-                          f"previous frame in this stage, and do not redesign. {_FIG_BINDING}")
-        elif base_rig:
-            head = (f"The following figure — {named} — is an anonymous, non-recurring person drawn "
-                    f"on the {_BASE_RIG_ANCHOR}" if one else
-                    f"The following figures — {named} — are anonymous, non-recurring people drawn "
-                    f"on the {_BASE_RIG_ANCHOR}")
-            tail = _rig_tail(base_rig)
-            blocks.append(f"{head} {tail}" if _has_binding(tail) else
-                          f"{head} {tail} {_FIG_BINDING}")
-    if crowd and crowd_rig:
-        blocks.append(crowd_rig)
-    return "\n\n".join(blocks)
+    `crowd: true` appends the clause unchanged — it states a simplified rig rather than inventing
+    anything, so it is correct on a base and a delta alike, which is why this expansion does not
+    read `stage_role`. Returns "" when nothing is declared, so a shot with no `figures` field
+    assembles byte-identically to before this field existed."""
+    return crowd_rig if _fig_declared(figures)[1] and crowd_rig else ""
 
 
 def assemble_prompt(descriptor, payload, figures_text="", righold=""):
@@ -329,10 +275,17 @@ def assemble_prompt(descriptor, payload, figures_text="", righold=""):
     return "\n\n".join(p for p in (descriptor, figures_text, righold, payload) if p)
 
 
+# ONE VOICE. This block REINFORCES the bible's STYLE-ONLY recipe in the bible's own terms and may
+# never state a second one: two descriptions of the same style, differing by a word, is the drift
+# mechanism the 2026-08-04 audit named first ("gentle soft cel shading" in one place, "NO gradients"
+# in another — the engine obliged the softer one). Positive terms here are the recipe's; the NO list
+# is the render-technique ban lint enforces on prompts.
 HARDENED_SCENE_STYLE = (
-    "HARDENED SCENE STYLE. Enforce the STYLE-ONLY descriptor as clean flat cel shading with "
-    "single-step shadows only and even medium-thick dark-brown outlines. NO gloss; NO specular "
-    "highlights; NO gradients; NO bloom; NO depth-of-field blur; NO photorealistic texture. "
+    "HARDENED SCENE STYLE. Enforce the STYLE-ONLY descriptor exactly: flat colour fills — one flat "
+    "base colour per surface plus at most ONE hard-edged single-step shadow shape — no feathered or "
+    "blended transitions, uniform highlight-free surfaces, and even medium-thick dark warm "
+    "brown-black outlines on everything. NO gradient; NO gloss or specular highlight; NO bloom; "
+    "NO depth-of-field blur or soft focus; NO subsurface or rim light; NO photorealistic texture. "
     "Commit the authored scene palette; it is never neutral grey alone."
 )
 
@@ -357,7 +310,6 @@ class Kit:
         self.desc_scene = assemble_prompt(self.desc_style, HARDENED_SCENE_STYLE)
         self.desc_righold = blockquote_after(md, "RIG-HOLD descriptor")
         self.desc_crowdrig = blockquote_after(md, "CROWD-RIG clause")   # §2d, expanded from `figures`
-        self.desc_baserig = blockquote_after(md, "BASE-RIG clause")     # §2e, expanded from `figures`
         self.reg = json.load(open(self.reg_path, encoding="utf-8"))
         self.model = self.reg.get("engine", "gemini-3-pro-image")
         self.dry = dry
@@ -396,7 +348,7 @@ class Kit:
             if os.path.exists(cand): return cand
         raise SystemExit(f"seed frame not found: {s}")
 
-    def prompt_for(self, mode, delta, hold=False, figures=None, stage_role=None, scene=None):
+    def prompt_for(self, mode, delta, hold=False, figures=None, scene=None):
         if mode == "identity":
             descriptor = self.desc_identity
         elif mode == "new_character":
@@ -407,7 +359,7 @@ class Kit:
             raise SystemExit(f"unknown mode '{mode}'")
         return assemble_prompt(
             descriptor, delta,
-            figures_expansion(figures, self.desc_baserig, self.desc_crowdrig, stage_role),
+            figures_expansion(figures, self.desc_crowdrig),
             self.desc_righold if hold else "")
 
 # --- THE SEEDING LAW -----------------------------------------------------------------------
@@ -599,12 +551,14 @@ def seeding_law_violations(k, r, seeds):
         return []              # identity/new_character gens BUILD the seeds; they cannot seed off themselves
     name, delta = r["name"], r.get("payload", r.get("delta") or "")
     bad = []
+    omitted = r.get("assets_omitted") or ()      # the slate's DELIBERATE exclusions, carried through
     anon, crowd = _fig_declared(r.get("figures"))
     if anon:
         bad.append(f"{name}: `figures.anon_foreground` — the one tier the pipeline cannot seed "
                    f"({'; '.join(anon)}). It is abolished: name the figure in the video's cast "
                    f"(seeded) or stage the people at crowd scale (crowd exemplar).")
-    if crowd and not any(_stem(s).startswith("crowd-exemplar") for s in seeds):
+    if (crowd and not any(_stem(s).startswith("crowd-exemplar") for s in seeds)
+            and not any(str(o).startswith("crowd-exemplar") for o in omitted)):
         bad.append(f"{name}: `figures.crowd` is declared but the slate carries no crowd exemplar "
                    f"(refs/base/crowd-exemplar.png) — the crowd's only seed.")
     if len(seeds) > SEED_CAP:
@@ -612,7 +566,6 @@ def seeding_law_violations(k, r, seeds):
                    f"{', '.join(_stem(s) for s in seeds[SEED_CAP:])} did not fit. Nothing is "
                    f"truncated: restage the shot (fewer cast) rather than drop a seed.")
     chars = k.reg.get("characters", {})
-    omitted = r.get("assets_omitted") or ()      # the shot's DELIBERATE exclusions, carried through
     cast = [(c, [p for p in prims if p not in omitted])
             for c, prims in shot_cast(k.reg, delta)]
     if name.startswith(FIGURE_PREFIX):
@@ -627,6 +580,10 @@ def seeding_law_violations(k, r, seeds):
                                f"pose re-synthesized from words reverts to the five-finger prior.")
         return bad
     delta_beat = str(r.get("stage_role", "")).lower() == "delta"
+    # A `defect: seed`/`mechanism` retry overlay re-orders or replaces seeds with NO content change
+    # and no primitive of its own; holding it to the authoring-side expression gate would refuse the
+    # one surgical authority that exists to repair a bad seed.
+    surgical_reseed = (r.get("retry_authority") or {}).get("kind") == "seed/mechanism"
     if delta_beat:
         declared = r.get("delta_primitives") or {}
         if not isinstance(declared, dict):
@@ -674,6 +631,19 @@ def seeding_law_violations(k, r, seeds):
             if not any(_is_chain_frame(s) for s in seeds):
                 bad.append(f"{name}: delta beat staging `{c}` with no in-chain parent frame or "
                            f"video plate in the slate — nothing for it to inherit from.")
+            # An expression the chain already holds rides in on the parent frame's pixels; an
+            # expression this delta CHANGES (the builder derives which, from the chain) needs its
+            # own: the primitive, or a reviewed STEP-1 frame that already carries it. Changed by
+            # prose alone, the face is re-synthesized and reverts to the engine's prior — this
+            # run's L75 full eye circles.
+            changed = (r.get("expression_change") or {}).get(c)
+            if (changed and not surgical_reseed
+                    and not any(_stem(s) == changed for s in seeds)
+                    and not any(_is_figure_frame(s, c) and changed in _stem(s) for s in seeds)):
+                bad.append(f"{name}: delta changes `{c}` to `{changed}` but the slate carries "
+                           f"neither that expression primitive nor a STEP-1 frame holding it — an "
+                           f"expression changed by prose alone reverts to the engine's prior. "
+                           f'Declare `delta_primitives`: {{"{c}": ["{changed}"]}}.')
             continue
         held = [s for s in seeds if _is_figure_frame(s, c)]
         if not held:
@@ -700,19 +670,20 @@ def resolve_request_seeds(k, r, pending=()):
     name, mode = r["name"], r.get("mode", "identity")
     seeds = r.get("seed")
     if not seeds:
-        # Identity/new-character gens build from the character portrait. A builder-proven root scene
-        # may start from the hardened descriptor alone; continuity requests may not opt into that
-        # exception, because their image seed is the chain/place/identity lock.
+        # Identity/new-character gens build from the character portrait. The ONE scene exception is
+        # the builder-DERIVED place plate (`plate: true`, see `cmd_batch`) — the frame that
+        # establishes its own place from the hardened descriptor. Every other scene's image seed is
+        # its chain/place/identity lock, so a shot inside an established place can never opt out.
         if mode in ("identity", "new_character"):
             return [k.base_frame(r.get("character", "base"))]
-        if (mode in ("environment", "style") and r.get("root_scene") is True
+        if (mode in ("environment", "style") and r.get("plate") is True
                 and str(r.get("stage_role", "")).lower() != "delta"
                 and not r.get("place_anchor")):
             return []
         raise SystemExit(
-            f"{name}: only a root scene with no chain parent and no `place_anchor` may carry zero "
-            "image seeds. Delta, chained, anchored, and identity-bearing requests must keep their "
-            "continuity/identity seeds.")
+            f"{name}: only a derived place plate — a place-first frame with no chain parent and no "
+            "`place_anchor` — may carry zero image seeds. Delta, chained, anchored, and "
+            "identity-bearing requests must keep their continuity/identity seeds.")
     out = []
     for s in seeds:
         if "_staging/" in str(s).replace("\\", "/"):
@@ -941,7 +912,6 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
         figures = r.get("figures")
         hold = should_hold(mode, seeds, r["delta"], figures)
         text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
-                            stage_role=r.get("stage_role"),
                             scene=(mode in ("environment", "style")
                                    and not name.startswith(FIGURE_PREFIX)))
         aspect = r.get("aspect", "2:3")
@@ -1153,18 +1123,91 @@ def place_anchor_for(video, anchor, root, name):
     return _video_scene_frame(video, os.path.join(video, anchor), root, name, "`place_anchor`")
 
 
-def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candidates=None):
+FIGURE_REVIEW = "review.json"      # C-6: the per-figure review store, one file inside <kit>/_staging
+
+
+def figure_review_record(k, fn):
+    """One staged figure's review record, or None when the store holds no entry for it.
+
+    The single-writer law is untouched: `stamp_review.py` is the only writer of a verdict anywhere
+    in this pipeline; forge only ever reads."""
+    try:
+        doc = json.load(open(os.path.join(k.staging, FIGURE_REVIEW), encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    entry = (doc.get("figures") or {}).get(fn) if isinstance(doc, dict) else None
+    return entry if isinstance(entry, dict) else None
+
+
+def figure_remint_command(k, fn, seed_roles):
+    """The one line that re-mints one STEP-1 frame on the builder's own recipe."""
+    def rel(path):
+        return os.path.relpath(path, k.root).replace("\\", "/")
+    return (f"py -3 {rel(os.path.abspath(__file__))} gen --kit {rel(k.kit)} --name {fn} "
+            f"--mode environment --aspect 2:3 --image-size 1K --force "
+            f"--seed {','.join(role['path'] for role in seed_roles)} "
+            f'--delta "{figure_card_payload()}"')
+
+
+def figure_reuse_refusal(k, fn, frame, seed_roles):
+    """The ONE reason a staged STEP-1 may not seed a scene slate, or None when it is clear.
+
+    `cmd_batch` reuses a staged frame BY NAME before it regenerates anything, so the name alone
+    decided whether a pre-reset, drifted figure rode into a fresh run — the 2026-08-04 audit's
+    mechanism 2, which supplied 8 of the 10 defect scenes. Reuse now requires an all-pass review
+    record whose `canonical_sha256` still matches the bytes on disk. A frame nobody ruled on, a
+    frame that failed an invariant, and a frame re-minted since it was ruled on all get the same
+    answer — re-mint it and review it. Nothing is grandfathered."""
+    store = os.path.relpath(os.path.join(k.staging, FIGURE_REVIEW), k.root).replace("\\", "/")
+    record = figure_review_record(k, fn)
+    verdicts = (record or {}).get("verdicts")
+    scored = isinstance(verdicts, dict) and bool(verdicts)
+    failed = sorted(s for s, v in verdicts.items() if v != "pass") if scored else []
+    if record is None:
+        reason = f"it has no review record in {store}"
+    elif not scored:
+        reason = f"its {store} record carries no per-invariant verdicts"
+    elif failed:
+        reason = f"its {store} record FAILS {', '.join(failed)}"
+    elif record.get("canonical_sha256") != hashlib.sha256(open(frame, "rb").read()).hexdigest():
+        reason = (f"its {store} record is stale — `canonical_sha256` no longer matches the frame on "
+                  "disk, so the pixels that were reviewed are not the pixels this slate would seed")
+    else:
+        return None
+    return (f"{fn}: staged STEP-1 refused as a seed — {reason}. Re-mint it, then review it:\n"
+            f"    {figure_remint_command(k, fn, seed_roles)}")
+
+
+def _anchor_place(place_of_shot, anchor):
+    """The declared `place` of the shot that minted an anchored frame, or None when no shot owns it.
+
+    An approved frame is named for the shot that produced it (`assets/scenes/<id>.png`) or for a
+    repair of that shot (`<id>-fix.png`), which is the same binding `_repaired_parent_matches` uses
+    on the retry path. A frame no shot in this file owns is not provably same-place, so it resolves
+    to None and only a place-less shot may anchor to it."""
+    stem = _stem(anchor)
+    if stem in place_of_shot:
+        return place_of_shot[stem]
+    for shot_name in sorted(place_of_shot, key=len, reverse=True):
+        if re.fullmatch(re.escape(shot_name) + r"[-.].+", stem):
+            return place_of_shot[shot_name]
+    return None
+
+
+def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild=False):
     """Build one deterministic slate per shot from the shot's own `assets` tags and `figures`.
 
     STEP 2's priority, stated ONCE: [STEP-1 figure(s)] > [the video's place]. A delta beat uses
     [in-chain parent] > [canonical identity]; raw pose/expression primitives enter only through
     the shot's explicit proved-necessary `delta_primitives` declaration.
     Nothing is ever truncated: an over-budget or under-seeded shot is a hard error naming the shot
-    and the seed that did not fit, and that list is the re-authoring input."""
-    if plate_candidates is not None and plate_candidates not in (2, 3):
-        raise SystemExit("batch --plate-candidates must be 2 or 3.")
-    if plate_candidates is not None and not shots:
-        raise SystemExit("batch --plate-candidates requires an explicit plate-only --shots scope.")
+    and the seed that did not fit, and that list is the re-authoring input.
+
+    The seeding identity is the shot's `place` — the recurring diegetic SET — and only then its
+    `stage` (a continuity chain WITHIN a place, capped at 1 base + 3 deltas) and finally its own id.
+    Keying on `stage` alone is what let 74 of the audited 214 shots run as independent seedless
+    roots inside sets the video had already established (L89-L91): the same room, re-invented per
+    chain. One map, one key, so a place's first frame is the plate every later shot inherits."""
     doc = json.load(open(shots_path, encoding="utf-8"))
     video = os.path.abspath(video_dir) if video_dir else video_root_for(shots_path, k.root)
     k.use_video(video)          # this video's own cast resolves alongside the channel's
@@ -1173,10 +1216,16 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
     chars = k.reg.get("characters", {})
     crowd_ex = (reg_assets.get("crowd-exemplar") or {}).get("file")
     spec, made, emitted, place_first, place_last, notes = [], {}, {}, {}, {}, []
+    provenance = {}             # emitted name -> its `parent_depth`/`lineage` record (C-11)
     # `--shots` is a FILTER on this one walk, never a second path. The walk still visits every shot,
     # because stage chains and place-first plates are only correct when the whole file is read; scope
     # decides what gets EMITTED and what BLOCKS. Full runs stay the default the engine is built for.
     scope, seen, outside = (set(shots) if shots else None), set(), []
+    walk = list(_shot_iter(doc))
+    # Every shot's declared place, read BEFORE the walk: a `place_anchor` names a frame minted by
+    # another shot, and the same-place law can only be checked against that shot's own declaration.
+    place_of_shot = {shot_name: shot.get("place") or None for shot_name, shot, _ in walk}
+    held_expression = {}        # (place, character) -> the expression the chain currently holds
 
     def vfile(n):
         return ((shot.get("assets") or {}).get(n) or (reg_assets.get(n) or {}).get("file")
@@ -1188,7 +1237,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
                 return os.path.relpath(c, k.root).replace("\\", "/")
         return None
 
-    for name, shot, aspect in _shot_iter(doc):
+    for name, shot, aspect in walk:
         seen.add(name)
         in_scope = scope is None or name in scope
         src = shot.get("source", "ai-gen")
@@ -1198,12 +1247,20 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
             continue
         prompt = shot.get("still_prompt") or ""
         omitted = shot.get("assets_omitted") or {}
-        place = shot.get("stage") or name
-        if (in_scope and shot.get("place_anchor") is not None
-                and str(shot.get("stage_role", "")).lower() != "base"):
-            raise SystemExit(f"{name}: `place_anchor` is only valid on a regenerated stage `base`.")
-        place_anchor = (place_anchor_for(video, shot.get("place_anchor"), k.root, name)
-                        if in_scope else None)
+        declared_place = shot.get("place") or None
+        place = declared_place or shot.get("stage") or name     # the ONE seeding key
+        anchor = shot.get("place_anchor")
+        if in_scope and anchor is not None:
+            if str(shot.get("stage_role", "")).lower() == "delta":
+                raise SystemExit(f"{name}: `place_anchor` is not valid on a delta beat — a delta "
+                                 "inherits the in-chain parent frame it is a delta OF.")
+            if _anchor_place(place_of_shot, anchor) != declared_place:
+                raise SystemExit(
+                    f"{name}: `place_anchor` {anchor} is not a frame of this shot's place "
+                    f"`{declared_place or 'none'}` — a plate may only seed shots in its own place; "
+                    "cross-place image seeding is the probe-refuted style-anchor failure under "
+                    "another name.")
+        place_anchor = place_anchor_for(video, anchor, k.root, name) if in_scope else None
         delta_beat = str(shot.get("stage_role", "")).lower() == "delta" and place in place_last
         declared_delta_primitives = shot.get("delta_primitives") or {}
         if declared_delta_primitives and (not delta_beat or not isinstance(declared_delta_primitives, dict)):
@@ -1211,9 +1268,18 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
                              "on an in-chain delta.")
         figs, canons, prims_seeds, staged, why = [], [], [], [], []
         fig_roles, canon_roles, prim_roles = [], [], []
+        expression_change = {}
         cast_recipe = shot_cast(k.reg, prompt)
         for c, prims in cast_recipe:
             pose, expr = _split_primitives(k.reg, prims, omitted)
+            # A delta re-stating the expression its chain already holds is the DEFAULT authoring
+            # (parent + canonical carry it in pixels). A delta naming a DIFFERENT expression is
+            # authoring a change, and the law below demands pixels for it — the walk is the only
+            # place that knows which of the two this is.
+            if delta_beat and expr and expr != held_expression.get((place, c)):
+                expression_change[c] = expr
+            if expr:
+                held_expression[(place, c)] = expr
             surplus = [p for p in prims if p not in (pose, expr) and p not in omitted]
             if surplus:
                 # Either a second pose/expression authored for this figure (only ONE can be seeded
@@ -1253,14 +1319,17 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
                 figs.append(figure_path); fig_roles.append(_seed_role(figure_path, "figure", c))
                 staged.append(c); continue
             if fn not in made:
+                step1_roles = _dedupe_seed_roles(
+                    [_seed_role(vfile(c), "canonical", c)]
+                    + ([_seed_role(vfile(expr), "expression", c)] if expr else [])
+                    + ([_seed_role(vfile(pose), "pose", c)] if pose else []))
                 reused = on_disk(os.path.join(lib, fn + ".png"), os.path.join(k.staging, fn + ".png"))
                 if reused:
+                    refusal = figure_reuse_refusal(k, fn, os.path.join(k.root, reused), step1_roles)
+                    if refusal:
+                        raise SystemExit(refusal)
                     made[fn] = reused; why.append(f"`{c}` STEP-1 {fn} REUSED")
                 else:
-                    step1_roles = _dedupe_seed_roles(
-                        [_seed_role(vfile(c), "canonical", c)]
-                        + ([_seed_role(vfile(expr), "expression", c)] if expr else [])
-                        + ([_seed_role(vfile(pose), "pose", c)] if pose else []))
                     step1_payload = figure_card_payload()
                     spec.append({"name": fn, "mode": "environment", "aspect": "2:3",
                                  "image_size": "1K", "stage_role": "base",
@@ -1278,9 +1347,9 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
             raise SystemExit(f"{name}: `delta_primitives` names absent cast: "
                              f"{', '.join(unknown_declared_cast)}.")
         parent = place_last.get(place) if delta_beat else place_first.get(place)
-        plate = place_anchor or ((emitted.get(parent) or
-                                  on_disk(os.path.join(scenes, (parent or "") + ".png")))
-                                 if parent else None)
+        place_frame = place_anchor or ((emitted.get(parent) or
+                                        on_disk(os.path.join(scenes, (parent or "") + ".png")))
+                                       if parent else None)
         crowd = _fig_declared(shot.get("figures"))[1]
         # Pass 1's explicit tags are the contract: route only non-figure assets here. Cast,
         # primitives and the crowd exemplar already have higher-priority structural routes above.
@@ -1288,27 +1357,47 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
                         if (reg_assets.get(n) or {}).get("kind") in ("prop", "environment")]
         tagged_roles = [_seed_role(vfile(n), (reg_assets.get(n) or {}).get("kind"), n)
                         for n in tagged_names]
-        root_scene = not parent and not place_anchor
-        plate_role = _seed_role(plate, "parent" if delta_beat else "place") if plate else None
+        place_role = _seed_role(place_frame, "parent" if delta_beat else "place") if place_frame else None
         crowd_role = _seed_role(crowd_ex, "crowd") if crowd else None
         if delta_beat:
-            seed_roles = _dedupe_seed_roles([plate_role] + canon_roles + prim_roles
+            seed_roles = _dedupe_seed_roles([place_role] + canon_roles + prim_roles
                                             + [crowd_role] + tagged_roles)
         else:
-            seed_roles = _dedupe_seed_roles(fig_roles + canon_roles + [plate_role] + prim_roles
+            seed_roles = _dedupe_seed_roles(fig_roles + canon_roles + [place_role] + prim_roles
                                             + [crowd_role] + tagged_roles)
+        displaced = []
+        if len(seed_roles) > SEED_CAP and place_role and crowd_role in seed_roles:
+            # The crowd is the pipeline's only anonymous tier and is staged as rear-zone mass, which
+            # the place frame already holds in pixels; the exemplar is what pins its proportion when
+            # nothing else does. Over the cap, the place outranks it — recorded here and honoured by
+            # the law through `assets_omitted`, never a silent truncation.
+            seed_roles = [role for role in seed_roles if role is not crowd_role]
+            displaced.append(_stem(crowd_ex))
+            why.append("CAP DISPLACEMENT — crowd exemplar dropped; the place frame carries the "
+                       "rear crowd mass")
         seeds = [role["path"] for role in seed_roles]
+        # C-4: the PLATE marker is DERIVED, never authored. A scene carrying no image seed at all is
+        # the frame that establishes its own place — a place-first shot with no cast, a single-use
+        # place, or a shot class the schema exempts from `place`. It is the one zero-seed exception
+        # `resolve_request_seeds` honours — derived from the walk, never a flag a request can set.
+        plate = not seeds
         text = placement_delta(prompt, seed_roles)
         if place_anchor:
             why.append(f"PLACE-ANCHOR = {shot['place_anchor']}")
-        elif root_scene:
-            why.append("ROOT-SCENE — hardened descriptor, no image anchor")
+        elif plate:
+            why.append("PLATE — place-first frame, hardened descriptor, no image anchor")
         why_text = "; ".join(why) or "no cast — the scene composes from the place"
+        in_batch_parent = (provenance.get(parent)
+                           if place_frame and place_frame == emitted.get(parent) else None)
+        depth, lineage = _scene_provenance(video, k.root, name, place_frame, in_batch_parent,
+                                           refuse_parked=not retry_rebuild)
         item = {"name": name, "mode": "environment", "aspect": aspect, "delta": text,
                 "payload": prompt, "seed": seeds, "seed_roles": seed_roles,
                 "figures": shot.get("figures"), "stage_role": shot.get("stage_role"),
-                "assets_omitted": sorted(omitted) or None, "root_scene": root_scene,
+                "assets_omitted": sorted(set(omitted) | set(displaced)) or None, "plate": plate,
                 "delta_primitives": declared_delta_primitives or None,
+                "expression_change": expression_change or None,
+                "parent_depth": depth, "lineage": lineage,
                 "why": why_text}
         if in_scope:
             if staged and not (shot.get("figures") or depicts_figures(text)):
@@ -1316,6 +1405,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
                                  f"figure frame outside /refs/ does not trip the path check.")
             spec.append(item)
             emitted[name] = "_staging/" + name + ".png"
+            provenance[name] = {"parent_depth": depth, "lineage": lineage}
             print(f"  {name}: [{', '.join(_stem(s) for s in seeds) or 'ROOT-TEXT'}] ({why_text})",
                   flush=True)
         else:
@@ -1328,23 +1418,6 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, plate_candida
                          f"{os.path.basename(shots_path)}: {', '.join(sorted(scope - seen))}")
     if doc.get("thumbnail", {}).get("primary") and scope is None:
         notes.append("thumbnail: out of scope — it carries its own authored seeds + gen_prompt")
-    if plate_candidates is not None:
-        plate_names = {i["name"] for i in spec if i.get("plate")}
-        mixed = sorted(scope - plate_names)
-        if mixed:
-            raise SystemExit("batch --plate-candidates scope must contain only emitted `plate:true` "
-                             f"scene items; dependent/non-plate shot(s): {', '.join(mixed)}")
-        expanded = []
-        for item in spec:
-            if not item.get("plate"):
-                expanded.append(item)           # shared STEP 1, emitted exactly once
-                continue
-            for n in range(1, plate_candidates + 1):
-                candidate = dict(item)
-                candidate["name"] = f"{item['name']}-candidate-{n}"
-                candidate["why"] = f"{item['why']}; PLATE CANDIDATE {n}/{plate_candidates}"
-                expanded.append(candidate)
-        spec = expanded
     for n in notes:
         print("  " + n, flush=True)
     preflight_batch(k, spec, True, True)          # the SAME law the generator runs, over our output
@@ -1428,8 +1501,8 @@ def _is_scene_seed(seed):
     return "/assets/scenes/" in ("/" + str(seed).replace("\\", "/").lstrip("/"))
 
 
-def _scene_review_status(video, seed, root):
-    """Return the manifest review status for this exact video-local scene frame."""
+def _scene_manifest_entry(video, seed, root):
+    """The scenes-manifest record for this exact video-local frame — the ONE manifest reader."""
     path = os.path.realpath(os.path.join(root, seed))
     rel = os.path.relpath(path, video).replace("\\", "/")
     manifest_path = os.path.join(video, "assets", "scenes", "manifest.json")
@@ -1439,8 +1512,44 @@ def _scene_review_status(video, seed, root):
         return None
     for scene in manifest.get("shots", []) if isinstance(manifest, dict) else []:
         if (isinstance(scene, dict) and str(scene.get("file", "")).replace("\\", "/") == rel):
-            return scene.get("review_status")
+            return scene
     return None
+
+
+def _scene_review_status(video, seed, root):
+    """Return the manifest review status for this exact video-local scene frame."""
+    return (_scene_manifest_entry(video, seed, root) or {}).get("review_status")
+
+
+def _hops(value):
+    """A provenance counter read back from a manifest: a non-negative int, or 0 when unrecorded."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _scene_provenance(video, root, name, place_frame, in_batch_parent, refuse_parked=True):
+    """`(parent_depth, lineage)` for one emitted scene — C-11's provenance ledger.
+
+    `parent_depth` counts image-parent hops back to the frame that started the chain. `lineage`
+    counts hops back to the nearest APPROVED frame: it resets to 1 under a `verified` parent and
+    keeps climbing while a chain runs on pixels no human has ruled on, so a drifting chain is
+    visible in the manifest instead of being re-derived by eye.
+    A parent carrying a PARKED defect is refused here — parked is non-shippable, and a child
+    inherits the defect in its strongest seed. `refuse_parked=False` is the ONE exemption: a retry
+    overlay's whole purpose can be to swap a defective parent out, and the retry path runs its own
+    verified-parent check over the FINAL seeds, so refusing during its canonical rebuild would fire
+    two laws for one condition and hide the one that actually applies."""
+    if not place_frame:
+        return 0, 0
+    if in_batch_parent is not None:      # the parent is generated EARLIER in this same batch
+        return in_batch_parent["parent_depth"] + 1, in_batch_parent["lineage"] + 1
+    entry = _scene_manifest_entry(video, place_frame, root) or {}
+    if refuse_parked and entry.get("review_status") == "parked":
+        raise SystemExit(f"{name}: its place frame {place_frame} is PARKED — a parked defect is "
+                         "non-shippable and may not be inherited. Re-base this shot on an approved "
+                         "frame, or repair and re-review the parent first.")
+    if entry.get("review_status") == "verified":
+        return _hops(entry.get("parent_depth")) + 1, 1
+    return _hops(entry.get("parent_depth")) + 1, _hops(entry.get("lineage")) + 1
 
 
 def _repaired_parent_matches(k, video, seed, parent_seeds):
@@ -1564,12 +1673,10 @@ def _retry_scene(item, source, entry, k, video, label):
                   "replaced": sorted(replaced), "reordered": sorted(actual_reorder)})
     out = dict(item, name=entry["name"], seed=seeds, seed_roles=seed_roles,
                payload=text, delta=placement_delta(text, seed_roles),
-               retry_authority=authority,
+               retry_authority=authority, plate=not seeds,   # a re-seeded retry is not a place mint
                why=item.get("why", "") + f"; RETRY overlay from `{entry['shot']}`")
     if digest_by_path:
         out["seed_sha256"] = digest_by_path
-    if added_first:
-        out.pop("plate", None)       # an explicit prepended anchor is not a place mint
     return out
 
 
@@ -1640,7 +1747,8 @@ def cmd_retry_batch(k, shots_path, out_path, retry_path, video_dir=None):
     native = []
     if scene_ids:
         with tempfile.TemporaryDirectory() as td:
-            native = cmd_batch(k, shots_path, os.path.join(td, "native.json"), video, scene_ids)
+            native = cmd_batch(k, shots_path, os.path.join(td, "native.json"), video, scene_ids,
+                               retry_rebuild=True)
     by_name = {r["name"]: r for r in native}
     spec = []
     for i, entry in enumerate(entries):
@@ -1737,7 +1845,12 @@ def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes):
     """Q7: emit the manifest render-builder depends on from a small spec, instead of free-typing it
     (a drifted/forgotten manifest key silently degrades render). --kind scenes -> shots[]; library ->
     assets[]. Spec is a JSON list of entries OR an object already carrying that array; this wraps it
-    in the {video_slug, generated, notes, <shots|assets>} envelope and validates the required keys."""
+    in the {video_slug, generated, notes, <shots|assets>} envelope and validates the required keys.
+
+    A scenes entry additionally carries C-11's provenance the batch derived — `parent_depth` (image
+    -parent hops) and `lineage` (hops since the last APPROVED frame). They are optional so a manifest
+    written before this wave still emits, but a present counter must be a real one: a mistyped
+    provenance field would make a drifting chain read as a grounded one."""
     if kind not in ("scenes", "library"):
         raise SystemExit("manifest needs --kind scenes|library")
     key = "shots" if kind == "scenes" else "assets"
@@ -1754,6 +1867,10 @@ def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes):
         miss = [f for f in req if not e.get(f)]
         if miss:
             raise SystemExit(f"{kind} entry #{i} missing required key(s): {', '.join(miss)}")
+        for counter in ("parent_depth", "lineage") if kind == "scenes" else ():
+            if counter in e and e[counter] != _hops(e[counter]):
+                raise SystemExit(f"scenes entry #{i} `{counter}` must be a non-negative integer "
+                                 "count of hops, as `batch` derived it.")
     manifest = {
         "video_slug": slug or env.get("video_slug") or "",
         "generated": env.get("generated") or time.strftime("%Y-%m-%d"),
@@ -1836,14 +1953,12 @@ def main():
     ap.add_argument("--figures", help="gen: one shot's `figures` field as JSON, e.g. "
                                      "'{\"anon_foreground\": [\"the clerk\"], \"crowd\": true}'")
     ap.add_argument("--stage-role", choices=["base", "delta"],
-                    help="gen: the shot's stage_role (delta -> held-figure `figures` wording)")
+                    help="gen: the shot's stage_role — `delta` makes the seeding law judge the "
+                         "request as an in-chain beat (canonical + parent, expression changes seeded)")
     ap.add_argument("--shots", action="append",
                     help="batch: OPT-IN repair scope — comma-separated shot ids (repeatable). Emits "
                          "and blocks on ONLY these shots; violations elsewhere are reported as a "
                          "count. Omit for a FULL run, which stays the default.")
-    ap.add_argument("--plate-candidates", type=int, choices=(2, 3),
-                    help="batch: emit 2-3 variants for each plate in an explicit plate-only "
-                         "--shots scope; pick/place one under the canonical id before building deltas")
     ap.add_argument("--video", help="gen/batch: the video dir, so its OWN cast (assets/library/"
                                     "manifest.json) resolves alongside the channel registry. "
                                     "Derived when omitted — from the shots.json's nearest library "
@@ -1893,12 +2008,10 @@ def main():
         if a.retry:
             if a.shots:
                 raise SystemExit("batch --retry derives its scope from the overlay; do not also pass --shots.")
-            if a.plate_candidates is not None:
-                raise SystemExit("batch --retry cannot be combined with --plate-candidates.")
             cmd_retry_batch(k, a.batch, out, a.retry, a.video)
         else:
             ids = [i.strip() for chunk in (a.shots or []) for i in chunk.split(",") if i.strip()]
-            cmd_batch(k, a.batch, out, a.video, ids or None, a.plate_candidates)
+            cmd_batch(k, a.batch, out, a.video, ids or None)
     elif a.cmd == "montage":
         cmd_montage(k, a.dir, a.out, a.cols)
     elif a.cmd == "register":

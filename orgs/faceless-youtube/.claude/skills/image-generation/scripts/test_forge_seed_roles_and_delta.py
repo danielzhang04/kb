@@ -9,6 +9,7 @@ from that final list after retry prepending/deduplication, then preflight the ag
 """
 import contextlib
 import copy
+import hashlib
 import io
 import json
 import os
@@ -29,6 +30,10 @@ PNG = b"\x89PNG\r\n\x1a\n"
 
 def _kit():
     kit = Kit(str(KIT_DIR), dry=True)
+    # `Kit` finds the repo root by walking up to the env marker, which exists only in the primary
+    # checkout; a worktree has none, so pin the root the fixture's relative seed paths are written
+    # against instead of resolving them off the filesystem root.
+    kit.root = str(ROOT)
     kit.staging = os.path.join(tempfile.mkdtemp(), "_staging")
     os.makedirs(kit.staging)
     return kit
@@ -86,9 +91,16 @@ def _l28_retry_fixture():
 def _l28_retry_spec():
     video, shots, overlay, out = _l28_retry_fixture()
     kit = _kit()
+    # A staged STEP-1 is reusable only with an all-pass review record pinned to its bytes (C-6),
+    # so the fixture stages the frames the way an approved run leaves them: reviewed.
+    reviewed = {}
     for name in ("fig-terry-johnson.png", "fig-miniscribe-rep.png"):
         with open(os.path.join(kit.staging, name), "wb") as f:
             f.write(PNG)
+        reviewed[os.path.splitext(name)[0]] = {
+            "canonical_sha256": hashlib.sha256(PNG).hexdigest(), "expression_sha256": None,
+            "verdicts": {"rig": "pass"}, "reviewer": "fresh-eyes", "date": "2026-08-04"}
+    _write_json(os.path.join(kit.staging, "review.json"), {"figures": reviewed})
     with contextlib.redirect_stdout(io.StringIO()):
         cmd_retry_batch(kit, shots, out, overlay)
     with open(out, encoding="utf-8") as f:
