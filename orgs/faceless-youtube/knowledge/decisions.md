@@ -3749,3 +3749,11 @@ Daniel ordered the probe-derived recipe rolled back same day it was codified: do
 carry a per-engine composition workaround. Reverts: aae75eb (work branch) + PR for main.
 Passing images generated under it are kept. Forward path for small-figure shots: author the shot
 simpler (tighter framing, fewer figures) — the approach that fixed L17/L18.
+
+## 2026-08-04 — VPW middle-path doctrine + wave cap $30
+Daniel approved the middle-path design (spec: docs/superpowers/specs/2026-08-04-vpw-middle-path-design.md):
+walk back unseeded-first-plate exception, video-wide palette lock, scale/forced-perspective
+pressure; add one content-free channel style card (topology: ONE card, Daniel's pick), finish
+two-tier migration, occupancy + palette-family single-sentence laws, narrowed lettering escape.
+Alternatives rejected: structured composition schema block (files stay slim), 2-3 value-register
+cards (de facto palette system risk). Wave cap raised $25 → $30 for the rebuild.
