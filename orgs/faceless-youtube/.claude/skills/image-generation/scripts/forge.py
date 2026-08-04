@@ -1254,12 +1254,13 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
             if str(shot.get("stage_role", "")).lower() == "delta":
                 raise SystemExit(f"{name}: `place_anchor` is not valid on a delta beat — a delta "
                                  "inherits the in-chain parent frame it is a delta OF.")
-            if _anchor_place(place_of_shot, anchor) != declared_place:
+            src_place = _anchor_place(place_of_shot, anchor)
+            if src_place != declared_place:
                 raise SystemExit(
-                    f"{name}: `place_anchor` {anchor} is not a frame of this shot's place "
-                    f"`{declared_place or 'none'}` — a plate may only seed shots in its own place; "
-                    "cross-place image seeding is the probe-refuted style-anchor failure under "
-                    "another name.")
+                    f"{name}: `place_anchor` {anchor} is a frame of place `{src_place or 'none'}`, "
+                    f"not this shot's own place `{declared_place or 'none'}` — cross-place image "
+                    "seeding is the probe-refuted style-anchor failure (decisions.md 2026-08-04); "
+                    "a plate may only seed shots in its own place.")
         place_anchor = place_anchor_for(video, anchor, k.root, name) if in_scope else None
         delta_beat = str(shot.get("stage_role", "")).lower() == "delta" and place in place_last
         declared_delta_primitives = shot.get("delta_primitives") or {}

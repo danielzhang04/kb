@@ -110,23 +110,25 @@ def canonical_files(lib_assets):
             and a.get("name") and a.get("file")}
 
 
-# Where a place-owner decision may be recorded (schema still landing under C-3/B4 as of this
-# write — kept as a short, easily-extended tuple rather than baked into the predicate below).
-_OWNER_DECLARED_KEYS = ("owner_branding", "place_owner")   # an owner cue was authored
-_OWNER_AMBIGUITY_KEYS = ("owner_ambiguity",)                # ambiguity was the deliberate call
+# The place-owner check's REAL detection signal, landed by C-3/B4 as
+# `lint_shots.py`'s `place_owner_check` (copied here, not imported — same
+# cross-skill precedent as SEATED_PRIMITIVE below): the schema has exactly ONE
+# real place-owner field, `owner_ambiguity` (shots-schema.md) — `owner_branding`/
+# `place_owner` were never landed. An owner cue itself is not a separate field at
+# all; it is authored as an ordinary quoted, alphabetic, proper-noun-shaped
+# literal in `still_prompt` (a plaque/nameplate/lettering) — lint's own
+# `_TRACKABLE_LITERAL` signal.
+_OWNER_CUE_QUOTED = re.compile(r"['\"‘“]([A-Za-z][A-Za-z '&/-]{3,})['\"’”]")
 
 
 def owner_branding_declared(shot):
-    """True once THIS shot's own entry records a place-owner decision, either way — an authored
-    cue or a deliberate ambiguity call (spec §Place-owner rule: "record intentional ambiguity").
-    Checked at shot level and inside `figures`, whichever the landing schema uses. A place with no
+    """True once THIS shot's own entry records a place-owner decision, either way — an
+    authored owner cue (a quoted trackable literal in `still_prompt`, lint's own signal) or
+    the deliberate `owner_ambiguity` escape (the schema's one real field). A place with no
     decision recorded yet emits no row: there is nothing to check against."""
-    fig = shot.get("figures") if isinstance(shot.get("figures"), dict) else {}
-    if any(shot.get(k) or fig.get(k) for k in _OWNER_DECLARED_KEYS):
+    if "owner_ambiguity" in shot:
         return True
-    if any(k in shot or k in fig for k in _OWNER_AMBIGUITY_KEYS):
-        return True
-    return False
+    return bool(_OWNER_CUE_QUOTED.search(shot.get("still_prompt") or ""))
 
 
 # ---------- C-12: pre-filtered, machine-emitted verdict rows ----------

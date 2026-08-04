@@ -71,24 +71,23 @@ def test_canonical_files_maps_identity_name_to_its_file():
 # --------------------------------------------------------------------------- #
 # owner_branding_declared
 # --------------------------------------------------------------------------- #
-def test_owner_branding_declared_shot_level_flag():
-    assert bra.owner_branding_declared({"owner_branding": True}) is True
-    assert bra.owner_branding_declared({"place_owner": True}) is True
-
-
-def test_owner_branding_declared_figures_level_flag():
-    assert bra.owner_branding_declared({"figures": {"owner_branding": True}}) is True
+def test_owner_branding_declared_quoted_trackable_literal_in_still_prompt():
+    # an owner cue is authored as an ordinary quoted literal, lint's own signal — not a field
+    assert bra.owner_branding_declared(
+        {"still_prompt": "a plaque reads 'Miniscribe Corp' by the door"}) is True
 
 
 def test_owner_branding_declared_ambiguity_call_counts_even_if_false():
     # an EXPLICIT ambiguity call (either boolean value) is still a recorded decision
     assert bra.owner_branding_declared({"owner_ambiguity": False}) is True
-    assert bra.owner_branding_declared({"figures": {"owner_ambiguity": True}}) is True
+    assert bra.owner_branding_declared({"owner_ambiguity": True}) is True
 
 
 def test_owner_branding_declared_false_when_nothing_recorded():
     assert bra.owner_branding_declared({}) is False
     assert bra.owner_branding_declared({"place": "some-place", "figures": {"crowd": True}}) is False
+    # a bare backtick cast/pose reference is not a quoted literal — no false positive
+    assert bra.owner_branding_declared({"still_prompt": "`zeta-clerk` (`sit`) sits at a desk"}) is False
 
 
 # --------------------------------------------------------------------------- #
@@ -117,10 +116,10 @@ def test_place_owner_needs_place_and_a_recorded_decision():
     rows = bra.applicable_invariants({"place": "hq-lobby"}, "Q01", [], set())
     assert not any(s == "place-owner" for s, _ in rows), rows
     # decision with no place -> no row
-    rows2 = bra.applicable_invariants({"owner_branding": True}, "Q01", [], set())
+    rows2 = bra.applicable_invariants({"owner_ambiguity": True}, "Q01", [], set())
     assert not any(s == "place-owner" for s, _ in rows2), rows2
     # both -> row fires
-    rows3 = bra.applicable_invariants({"place": "hq-lobby", "owner_branding": True}, "Q01", [], set())
+    rows3 = bra.applicable_invariants({"place": "hq-lobby", "owner_ambiguity": True}, "Q01", [], set())
     assert any(s == "place-owner" for s, _ in rows3), rows3
 
 
@@ -155,8 +154,8 @@ def test_collect_wires_invariants_and_canon_into_cards_generically():
         shots = {
             "schema": "faceless-youtube/shots@2", "long_form": {"shots": [
                 {"id": "Q01", "source": "ai-gen", "place": "widget-hall",
-                 "owner_branding": True,
-                 "still_prompt": "`zeta-clerk` (`sit`) sits at a desk", "vo_text": "he sits"},
+                 "still_prompt": "`zeta-clerk` (`sit`) sits at a desk beneath a "
+                                  "'Widget Hall' plaque", "vo_text": "he sits"},
                 {"id": "Q02", "source": "stock", "figures": {"crowd": True},
                  "still_prompt": "a crowd of onlookers", "vo_text": "onlookers gather"},
             ]}}

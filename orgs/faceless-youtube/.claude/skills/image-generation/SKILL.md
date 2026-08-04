@@ -12,7 +12,7 @@ batched review**, not one clever prompt; the single engine (`gemini-3-pro-image`
 review is the guarantee.
 
 **The channel's `style-bible.md` is the LOOK law; this skill is the procedure.** Read it every session: §1 identity +
-cast/crowd tiers, §2–§2e descriptors, **§3 rig checklist**, §4 colour, §5 recipe + lettering/stamp registers, §6
+cast/crowd tiers, §2–§2d descriptors, **§3 rig checklist**, §4 colour, §5 recipe + lettering/stamp registers, §6
 registry. Its values are human-editable law — **never silently change one mid-run**; surface a proposed edit and keep
 forging non-dependent assets. **Log as you generate — files are the memory:** every round records, while it runs,
 what the file is, its seed(s) + mode + delta, why, the verdict (shipped / flagged / rejected), and any ID needed to
@@ -136,12 +136,12 @@ stamp/seal/mark gen seeds the stamp exemplar **plus its destination plate** for 
 policy] + [the shot's authored identity → scene → payload]**. The payload or exact replacement is literal final
 provider text; no Forge clause follows it. This is an **amplifier fix pending controlled validation**, not an
 established Class-A cure. **Anonymous-figure rig clauses are never written into a prompt.** The shot
-DECLARES them in `figures` — `{"anon_foreground": ["the worker at the dock edge"], "crowd": true}`, one entry per
-§2e-tier foreground figure, each phrased exactly as the prompt stages it — and forge expands the bible's §2d/§2e
-blockquotes at gen time: §2e named over the entries and bound so it cannot leak onto named cast, `crowd: true` → the
-§2d clause, and on a `stage_role: "delta"` shot the **held-figure** wording instead (§2e's "give them a distinct
-outfit" is a FIRST-ESTABLISHMENT instruction and would redesign the very figure the chain is holding). A declared
-`figures` field also forces the §2c append; without it Forge adds no anonymous-figure clause. The authored delta
+DECLARES crowd presence in `figures` — `{"crowd": true}` — and forge expands the bible's §2d blockquote at gen
+time when it is set. **Two tiers only: named cast (seeded from Pass-1 canonicals) and crowd (the §2d clause);
+there is no third, unseedable foreground tier.** `figures.anon_foreground` is a known-but-abolished key: the
+seeding law refuses it by name — name the figure in the video's cast (seeded) or stage the people at crowd
+scale (crowd exemplar). A declared `figures` field also forces the §2c append; without it Forge adds no
+anonymous-figure clause. The authored delta
 changes only the variables it names while the style policy remains binding. **Pre-flight a batch with `forge.py
 gen --dry-run`**: it prints every assembled prompt and resolves every seed with zero API calls — read the prompts
 before paying for the batch.
@@ -281,9 +281,9 @@ only on named-figure shots**, at **ordinary viewing scale** — no zoomed crop b
 The pass rules three axes together, per shot, at **ordinary viewing scale**:
 
 1. **Identity/rig** — a **FORCED PASS/FAIL verdict on each §3 invariant**, never a silent pass, for **every seeded
-   figure AND every anonymous LARGE/foreground (§2e) figure**, each judged against the tier §3 assigns it (seeded and
-   §2e → FULL rig, against that character's approved canonical, not an idealized rig; anonymous small/background →
-   CROWD rig). A chain-delta frame adds a **held-set** line (set + identities consistent with this stage's `base`?).
+   figure**, judged against the tier §3 assigns it (named cast → FULL rig, against that character's approved
+   canonical, not an idealized rig; crowd → CROWD rig). A chain-delta frame adds a **held-set** line (set + identities
+   consistent with this stage's `base`?).
    On any FAIL name the shot id and quote the offending pixel; a hand PASS is never worded as certified, because the
    human board is the final finger authority. **This FRESH-EYES review is the rig authority — a GENERATING agent's
    self-verification does NOT substitute for it** (a generator under-reports its own defects, anchored on the prompt
