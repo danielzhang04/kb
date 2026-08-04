@@ -54,6 +54,7 @@ import { openNoReparseFileTree, type NoReparseFileInfo, type NoReparseHashMode }
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
 import type { ExecutionProfile } from './policy.ts';
 import { createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
+import { ensureCodexDirectoryTrusted } from './codexDirectoryTrust.ts';
 import { isSafeRepoRelativePath, type PlanProposal, type ProposalScope, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { ControlPlaneStore } from './store.ts';
 import type { RunDetail } from './types.ts';
@@ -2291,6 +2292,18 @@ export function createRosterSessionManager(options: RosterSessionsOptions): Rost
           throw new RosterSessionError(`Codex stage '${input.stageId}' attempt workspace is not clean before delivery`);
         }
         deliveryWorkDir = resolveCodexAttemptWorkDir(input.worktreePath, input.project);
+        // Codex halts at an interactive trust wall on a never-before-trusted `--cd` directory, and the
+        // negative CLI flags either fail to suppress it or disable the sandbox. Persist a trusted-project
+        // entry in codex's own config for THIS exact `--cd` path before the launch line is typed, keeping
+        // the workspace-write sandbox (network-off isolation) fully enforced. Codex-only, on the activated
+        // attempt path — never an inert one — and idempotent/concurrency-safe against a shared config.toml.
+        try {
+          await ensureCodexDirectoryTrusted(deliveryWorkDir);
+        } catch (error) {
+          throw new RosterSessionError(
+            `could not pre-trust Codex workspace: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
         entry = spawnSession(
           run,
           input.runRef,
