@@ -76,7 +76,8 @@ def test_base_shot_names_figures_verbatim_and_binds_the_clause():
                           "the foreman with the clipboard — are anonymous, non-recurring people "
                           "drawn on the FULL base family rig"), fig[:200]
     # keeps §2e's rig tail verbatim (the invariants are the bible's, not retyped here)
-    assert "NO nose, NO ears" in fig and "THREE fingers plus ONE thumb" in fig
+    assert ("NO nose; on a haired character the hair reads as one continuous unbroken mass from "
+            "temple to jaw" in fig and "THREE fingers plus ONE thumb" in fig)
     # closes with the named-cast protection binding — present, and stated exactly ONCE whether it
     # comes from the bible's own §2e tail or from forge's append (a doubled binding is prompt bloat)
     low = fig.lower()
@@ -200,6 +201,9 @@ def test_cmd_gen_dry_run_writes_zero_files_into_staging():
     BEFORE calling cmd_gen, raising FileNotFoundError before the assertion ever ran, on any clean
     checkout, not just this one. Create it (matching what cmd_gen does) before the `before` snapshot."""
     k = Kit(str(KIT_ROOT), dry=True)
+    # A dry run now preflights the assembled payload, so its real identity seed must resolve under
+    # the project root even when this checkout intentionally has no local .env for Kit to discover.
+    k.root = str(KIT_ROOT.parents[2])
     os.makedirs(k.staging, exist_ok=True)
     name = "zzz-audit-fix10-dry-run-guard"
     out_path = os.path.join(k.staging, name + ".png")

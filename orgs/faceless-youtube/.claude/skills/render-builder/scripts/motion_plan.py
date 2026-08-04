@@ -164,9 +164,9 @@ def validate_plan(plan, menu):
                 errors.append(f"{sid}/{lid}: source must be cutout")
                 continue
             # Optional per-layer `seed`: the reference this cutout is generated FROM — a path
-            # (refs/env/…, a canonical PNG) or a registry vocabulary name. image-gen resolves it;
-            # the plan only guarantees it is a real string, since an unseeded cutout invents its
-            # own register and lands off-style against a flat-cel plate.
+            # (the video's own plate, a canonical PNG) or a registry vocabulary name. image-gen
+            # resolves it; the plan only guarantees it is a real string, since an unseeded cutout
+            # invents its own register and lands off-style against a flat-cel plate.
             if "seed" in layer and not (isinstance(layer["seed"], str) and layer["seed"].strip()):
                 errors.append(f"{sid}/{lid}: seed must be a non-empty string — a reference path "
                               f"or a registry vocabulary name")
