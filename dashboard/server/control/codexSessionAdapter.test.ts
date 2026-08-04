@@ -84,8 +84,8 @@ describe('createCodexSessionAdapter.start', () => {
     adapter.start(SPEC, harness.observer);
 
     expect(captured!.args).toEqual([
-      'exec', '-', '--json', '--model', 'gpt-5.6-sol', '--sandbox', 'workspace-write',
-      '--ask-for-approval', 'never', '-c', 'forced_login_method="chatgpt"', '-c', 'mcp_servers={}',
+      'exec', '-', '--json', '--model', 'gpt-5.6-sol', '-s', 'workspace-write',
+      '-c', 'approval_policy=never', '-c', 'forced_login_method="chatgpt"', '-c', 'mcp_servers={}',
       '-c', 'sandbox_workspace_write.network_access=false', '-c', 'web_search="disabled"',
       '--cd', '/srv/worktrees/run-1',
     ]);

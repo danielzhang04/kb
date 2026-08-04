@@ -175,7 +175,10 @@ function failedResult(summary: string, usage: ExecutionUsage, maxChars: number):
 export function buildCodexExecArgs(input: { model: string; worktreePath: string; threadId: string | null }): string[] {
   const model = input.model.trim();
   if (!model) throw new Error('codex worker routing has no model');
+  // `exec` has no `--ask-for-approval` (TUI-only flag; live-proven exit 2). Approvals are pinned
+  // off via config, exactly as codex_dispatch.py does — the sandbox stays the enforcement boundary.
   const pinnedConfig = [
+    '-c', 'approval_policy=never',
     '-c', 'forced_login_method="chatgpt"',
     '-c', 'mcp_servers={}',
     '-c', 'sandbox_workspace_write.network_access=false',
@@ -185,13 +188,11 @@ export function buildCodexExecArgs(input: { model: string; worktreePath: string;
     return [
       'exec', 'resume', input.threadId, '-', '--json',
       '-c', `model=${model}`,
-      '--ask-for-approval', 'never',
       ...pinnedConfig,
     ];
   }
   return [
-    'exec', '-', '--json', '--model', model, '--sandbox', 'workspace-write',
-    '--ask-for-approval', 'never',
+    'exec', '-', '--json', '--model', model, '-s', 'workspace-write',
     ...pinnedConfig,
     '--cd', input.worktreePath,
   ];

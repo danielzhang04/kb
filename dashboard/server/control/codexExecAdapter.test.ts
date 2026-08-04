@@ -132,8 +132,8 @@ describe('createCodexExecAdapter.execute', () => {
     });
     expect(captured!.cwd).toBe('/srv/worktrees/run-1/attempt-1');
     expect(captured!.args).toEqual([
-      'exec', '-', '--json', '--model', 'gpt-5.3-codex', '--sandbox', 'workspace-write',
-      '--ask-for-approval', 'never',
+      'exec', '-', '--json', '--model', 'gpt-5.3-codex', '-s', 'workspace-write',
+      '-c', 'approval_policy=never',
       '-c', 'forced_login_method="chatgpt"',
       '-c', 'mcp_servers={}',
       '-c', 'sandbox_workspace_write.network_access=false',
@@ -163,7 +163,7 @@ describe('createCodexExecAdapter.execute', () => {
     expect(captured!.args).toEqual([
       'exec', 'resume', '019fce84-prior-thread', '-', '--json',
       '-c', 'model=gpt-5.3-codex',
-      '--ask-for-approval', 'never',
+      '-c', 'approval_policy=never',
       '-c', 'forced_login_method="chatgpt"',
       '-c', 'mcp_servers={}',
       '-c', 'sandbox_workspace_write.network_access=false',
