@@ -318,3 +318,20 @@
   desktop scheduler dark since 07-22. Surfaced both in Action-required, not just the latest.
 - Halted card 6a6bc3dd still parked in working/ (>48h); archival is outside the nightly
   carve-out, left for a desk sweep.
+
+## 2026-08-04 nightly run
+- Clean run: preamble PASS, pyyaml importable, sync_skills --check clean (exit 0), dashboards
+  regenerated, $0 cost (17 codex cost rows today, all subscription $0.00, all codex_exit 0).
+- Budget: governance/budget.yaml now reads daily_usd_limit: 30.00 (was 5.00 in the 08-03
+  dashboard). Read the file each run — don't carry the old $5 figure forward.
+- step 2b drift GREW: sync_daemon_dirs --check (via origin/main copy, refs-fallback) now 10 files
+  (was 9). NEW main-only: orgs/faceless-youtube/workflows/thin-slice-run.md. Because the drift SET
+  changed, filed a fresh wake-me card 6a718533 (did NOT dedupe — 6a6c3d8e/6a605ebb stay). Rule of
+  thumb: dedupe only when the drift report is byte-identical to what's already tracked; file when
+  it changes.
+- dispatch.py emitted the nightly-review card (6a718488); self-executed it (owner dispatcher-cloud):
+  transition->working, ran the work order, wrote Result, transition->done via cards.py.
+- Halted card 6a6bc3dd (state:halted) STILL in working/ since ~07-30; its Result shows it was
+  resolved by the boss (PR #103 codex resume defect) — record-only, wants a desk sweep to done.
+  Left it (archival outside the nightly carve-out).
+- Push path: recorded in the run summary.
