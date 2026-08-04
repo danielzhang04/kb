@@ -1,2 +1,2 @@
-# USD ceiling for API-billed steps per day (subscription steps log 0.0).
-daily_usd_limit: 5.00
+﻿# USD ceiling for API-billed steps per day (subscription steps log 0.0).
+daily_usd_limit: 30.00
