@@ -22,7 +22,7 @@ Subcommands:
 
 Run with native `py -3` (msys python lacks a CA bundle). No pip deps except optional certifi/Pillow.
 """
-import json, os, re, ssl, sys, base64, urllib.request, urllib.error, time, argparse, shutil
+import json, os, re, ssl, sys, base64, hashlib, urllib.request, urllib.error, time, argparse, shutil
 
 def load_env(root):
     env = {}
@@ -32,6 +32,24 @@ def load_env(root):
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1); env[k] = v
     return env
+
+def find_route(start):
+    """Walk up from `start` looking for `.kb/spend-grant.json` (mirrors the `.env` walk this
+    script already does). Its presence gates worker-mediated ROUTE MODE: spend goes through the
+    daemon's paid-action route instead of a direct provider call, and no provider key is ever
+    read. Its directory is the ROUTE ROOT that `expectedArtifactPath` is expressed relative to
+    (independent of the `.env`-anchored `root`, which an attempt worktree may not have). Absent
+    the grant file, returns (None, None) and the direct-provider path is unchanged."""
+    d = os.path.abspath(start)
+    while d:
+        p = os.path.join(d, ".kb", "spend-grant.json")
+        if os.path.exists(p):
+            return json.load(open(p, encoding="utf-8")), d
+        nd = os.path.dirname(d)
+        if nd == d:
+            break
+        d = nd
+    return None, None
 
 def ctx():
     try:
@@ -81,6 +99,69 @@ def nano(url, parts, aspect, context, image_size=IMAGE_SIZE_DEFAULT):
             if a < 4:
                 time.sleep(8); continue
             raise
+
+# Route mode (Phase 3 Unit E): the daemon makes exactly ONE provider attempt per POST to
+# `/api/control/paid-action`, so `unknown`/`failed`/a retryable transport error re-issues as a
+# FRESH capped call (the daemon's next journal ordinal), not an in-transport retry. This budget
+# mirrors nano()'s direct-path attempt count so route mode spends no more calls than the direct
+# path would have made HTTP attempts.
+ROUTE_MAX_CALLS = 5
+ROUTE_OPERATION = "fyt.gemini-3-pro-image-2k"
+
+def _route_urlopen(req, timeout):
+    # routeUrl is the local daemon (typically http://); only build a TLS context when the URL
+    # actually needs one, so a plain-http daemon URL never pays for cert lookup.
+    if req.full_url.lower().startswith("https"):
+        return urllib.request.urlopen(req, context=ctx(), timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+def nano_via_route(route, text, seeds, rel_out, abs_out):
+    """Route-mode equivalent of `nano()`: POST the image request through the daemon's paid-action
+    route (Unit D) instead of calling Gemini directly, so the worker never sees GEMINI_API_KEY.
+    On `succeeded` (incl. a replayed success), the daemon has already committed the PNG to
+    `abs_out` server-side — read it back rather than expecting bytes over HTTP. A `cap-exhausted`
+    409 is terminal (stop, no further spend); other retryable errors (503, retryable 409) re-issue
+    as a fresh capped call up to ROUTE_MAX_CALLS."""
+    body_seeds = []
+    for s in seeds:
+        raw = open(s, "rb").read()
+        body_seeds.append({"pngBase64": base64.b64encode(raw).decode(),
+                           "sha256": hashlib.sha256(raw).hexdigest()})
+    payload = json.dumps({"operation": ROUTE_OPERATION, "prompt": text, "seeds": body_seeds,
+                          "expectedArtifactPath": rel_out}).encode("utf-8")
+    last = "no attempt made"
+    for attempt in range(ROUTE_MAX_CALLS):
+        req = urllib.request.Request(
+            route["routeUrl"], data=payload, method="POST",
+            headers={"Authorization": f"Bearer {route['token']}", "Content-Type": "application/json"})
+        try:
+            with _route_urlopen(req, 300) as r:
+                resp = json.load(r)
+        except urllib.error.HTTPError as e:
+            try:
+                err = json.loads(e.read().decode("utf-8", "replace"))
+            except Exception:
+                err = {}
+            code = err.get("error", f"http-{e.code}")
+            if code == "cap-exhausted":
+                raise RuntimeError(f"route cap-exhausted — stopping, no further calls")
+            if e.code == 401:
+                raise RuntimeError("route 401 — spend grant missing/expired/invalid")
+            if err.get("retryable") and attempt < ROUTE_MAX_CALLS - 1:
+                last = code; time.sleep(8); continue
+            raise RuntimeError(f"route HTTP {e.code}: {code}")
+        except (urllib.error.URLError, TimeoutError):
+            if attempt < ROUTE_MAX_CALLS - 1:
+                last = "network error"; time.sleep(8); continue
+            raise RuntimeError("route: network error, exhausted retry budget")
+        status = resp.get("status")
+        if status == "succeeded":
+            if not os.path.exists(abs_out):
+                raise RuntimeError(f"route reported succeeded but {abs_out} was not committed")
+            return open(abs_out, "rb").read()
+        last = resp.get("reason", status or "unknown")
+        # unknown/failed: issue the NEXT capped call rather than an in-transport retry
+    raise RuntimeError(f"route: exhausted {ROUTE_MAX_CALLS} capped calls without success ({last})")
 
 def b64(p): return base64.b64encode(open(p, "rb").read()).decode()
 def ip(p): return {"inlineData": {"mimeType": "image/png", "data": b64(p)}}
@@ -370,9 +451,17 @@ class Kit:
         self.reg = json.load(open(self.reg_path, encoding="utf-8"))
         self.model = self.reg.get("engine", "gemini-3-pro-image")
         self.dry = dry
+        # Worker-mediated spend routing (Phase 3 Unit E): a `.kb/spend-grant.json` anywhere from
+        # the kit dir upward means this is a daemon-managed attempt worktree — route ALL spend
+        # through the daemon's paid-action route instead of a direct provider call. Absent the
+        # grant file, behavior is exactly the pre-existing direct-provider path.
+        self.route, self.route_root = find_route(self.kit)
         if dry:
             # A dry assembly reads the bible + registry and nothing else: no key is loaded and no
             # request URL exists, so a pre-flight check cannot reach the engine even by mistake.
+            self.key, self.url, self.ctx = "", None, None
+        elif self.route:
+            # Route mode: no provider key is ever read here (the daemon resolves it server-side).
             self.key, self.url, self.ctx = "", None, None
         else:
             self.key = load_env(self.root)["GEMINI_API_KEY"]
@@ -483,16 +572,25 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
         # FIX 2 (audit follow-up): hard-error on an oversized request BEFORE it is ever assembled or
         # sent — never auto-downscale a seed to make it fit.
         check_payload_size(name, seeds, text)
-        parts = [ip(s) for s in seeds] + [{"text": text}]
+        route = getattr(k, "route", None)
         try:
             # S1-A: compute + validate the bytes BEFORE opening the file, so a failed/empty gen can
             # never truncate `out` to a 0-byte survivor that skip-if-exists + render then treat as done.
-            data = nano(k.url, parts, aspect, k.ctx, size)
-            data = to_png_bytes(data)  # engine returns JPEG; normalize to the pipeline's PNG contract
-            validate_png(data)
-            with open(out, "wb") as f:
-                f.write(data)
-            report(name, f"OK size={size} -> _staging/" + name + ".png")
+            if route:
+                # Route mode: the daemon commits the PNG straight into `out` server-side; read it
+                # back from disk rather than writing it ourselves.
+                rel_out = os.path.relpath(out, k.route_root).replace(os.sep, "/")
+                data = nano_via_route(route, text, seeds, rel_out, out)
+                validate_png(data)
+                report(name, f"OK size={size} -> _staging/" + name + ".png (routed)")
+            else:
+                parts = [ip(s) for s in seeds] + [{"text": text}]
+                data = nano(k.url, parts, aspect, k.ctx, size)
+                data = to_png_bytes(data)  # engine returns JPEG; normalize to the pipeline's PNG contract
+                validate_png(data)
+                with open(out, "wb") as f:
+                    f.write(data)
+                report(name, f"OK size={size} -> _staging/" + name + ".png")
         except Exception as e:
             report(name, "ERR " + str(e)[:160])
     if dry:
