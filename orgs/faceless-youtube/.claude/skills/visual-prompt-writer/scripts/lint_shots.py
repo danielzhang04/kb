@@ -964,7 +964,16 @@ def carried_literal_check(label, shots, suffix, hard):
     A mention is excused when it carries its OWN quoted value nearby (reusing the
     Class-A supply test, so 'a marker card labelled "ONLINE"' does not flag the
     established literal 'CARD'). Scoped to contiguous stage runs — a fresh scene
-    redraws nothing and inherits nothing."""
+    redraws nothing and inherits nothing.
+
+    ONE exception to the stage scoping: a place's `place_owner` literal (the plate's
+    declared owner cue) is established for every shot of that PLACE, across stage runs.
+    A place is one set with one sign on the wall, so a later in-place shot that redraws
+    the sign is redrawing an established literal by definition, whatever chain it sits
+    in — that carry is the place-owner law's own promise (shots-schema `place_owner`),
+    enforced here rather than in a second, parallel carry mechanism."""
+    owner_of = {place: plate.get("place_owner") for place, plate, _g, _q in place_groups(shots)
+                if isinstance(plate.get("place_owner"), str) and plate.get("place_owner").strip()}
     runs = []
     for sh in shots:
         sid = sh.get("stage")
@@ -980,6 +989,9 @@ def carried_literal_check(label, shots, suffix, hard):
         # per run, which is the whole mechanism; the guard only looked like it was.
         established = []                      # literals quoted on EARLIER frames of this stage
         for sh in grp:
+            owner = owner_of.get(sh.get("place"))
+            if owner and owner.strip() not in established:
+                established.append(owner.strip())   # the place's own sign, established by its plate
             body = strip_suffix(sh.get("still_prompt") or "", suffix)
             spans = _value_spans(body)
             own = quoted_literals(sh.get("still_prompt") or "", suffix)
@@ -1153,7 +1165,16 @@ def place_anchor_check(label, objs, hard):
     C-5 widened this from base-only to any NON-DELTA shot: a delta continues its own base's held
     scene (a different seed, already covered by the chain parent), but a standalone place-first
     shot with no `stage` at all is exactly the single-use-place case C-4's conditional plate law
-    legalizes, and it needs to be able to carry a human-picked place_anchor too."""
+    legalizes, and it needs to be able to carry a human-picked place_anchor too.
+
+    SANCTIONED MIRROR of forge's `cmd_batch` delta refusal. The canonical law sentence is the
+    parenthetical below - "a delta continues its own base's held scene via the chain parent;
+    `place_anchor` is a different seed, for a base or standalone shot" - byte-identical at both
+    sites, the same precedent seam 3 set for the cross-place law (lint's message shape is the
+    canonical one; each side keeps only its own context prefix). `stage_role` is compared
+    case-normalized the way forge normalizes it
+    (`str(shot.get("stage_role","")).lower()`), so a `"Delta"` cannot pass here at $0 and then be
+    hard-refused by forge at batch time - which is the entire purpose of a mirror."""
     for pid, sh in objs:
         if "place_anchor" not in sh:
             continue
@@ -1163,7 +1184,7 @@ def place_anchor_check(label, objs, hard):
                 f"[{label}] {pid}: `place_anchor` must be a non-empty normalized video-relative "
                 "`assets/scenes/<file>.png` path (no absolute, traversal, or cross-video path).")
             continue
-        if sh.get("stage_role") == "delta":
+        if str(sh.get("stage_role") or "").lower() == "delta":
             hard.append(f"[{label}] {pid}: `place_anchor` is not valid on a stage `delta` (a "
                         "delta continues its own base's held scene via the chain parent; "
                         "`place_anchor` is a different seed, for a base or standalone shot).")
@@ -1325,6 +1346,26 @@ _SUFFIX_SOFT = re.compile(
     r"\bgentle\b|\bblend(?:ed|ing)?\b|\bfeather(?:ed|ing)?\b|\bsoft\b(?!\s+focus)",
     re.IGNORECASE)
 
+# The style RECIPE's own vocabulary — positive half included. The one-voice
+# architecture is: the recipe lives in `style-bible.md` §2b (ONE voice, assembled by
+# forge onto every gen), and `global_prompt_suffix` carries LETTERING ONLY ("hand-
+# lettered marker capitals for any in-world text"). A suffix that re-states any part
+# of the recipe — even the CORRECT C-1 wording — is a second voice by construction:
+# it is a copy that drifts the moment the bible is edited, which is audit mechanism 1
+# (the suffix and the bible descriptor disagreeing) reintroduced with better prose.
+# So this list bans the recipe's terms in the suffix, not just the deleted ones; the
+# spans _SUFFIX_SOFT already owns (gentle/soft/blend/feather) are deliberately absent
+# here so one word can never report twice.
+_SUFFIX_STYLE_VOCAB = re.compile(
+    r"\bcel[- ]?shad(?:ed|ing|e)?\b"
+    r"|\bflat\s+colou?rs?\b|\bcolou?r\s+fills?\b|\bflat\s+fills?\b"
+    r"|\bhard[- ]edged\b|\bsingle[- ]step\b|\bshadow\s+shapes?\b"
+    r"|\bhighlight[- ]free\b|\boutlines?\b|\bline\s+weight\b"
+    r"|\bshading\b|\bpainterly\b|\bmatte\b|\btexture[sd]?\b|\bpalettes?\b"
+    r"|\bart\s+style\b|\bcartoon\s+style\b|\brounded\s+friendly\s+shapes?\b"
+    r"|\bno\s+realistic\s+detail\b|#[0-9A-Fa-f]{6}\b",
+    re.IGNORECASE)
+
 
 def render_technique_check(label, prompts, hard):
     """C-2 HARD. `prompts` is [(id, field, text)] — the same shape text_supply_check
@@ -1345,12 +1386,18 @@ def render_technique_check(label, prompts, hard):
 
 
 def suffix_one_voice_check(suffix, hard):
-    """C-2(a) HARD, one-voice. `global_prompt_suffix` carries no banned render-technique
-    term (shares render_technique_check's own list, so the two checks cannot disagree)
-    and no OTHER soft/gradient-permissive wording. A second voice in the one string
-    appended to every prompt is audit mechanism 1 — the global smooth/glossy drift
-    traced to the suffix and the style-bible descriptor disagreeing with the hardened
-    scene style."""
+    """C-2(a) HARD, one-voice. `global_prompt_suffix` carries NO style vocabulary at all
+    — it is the lettering clause and nothing else ("hand-lettered marker capitals for any
+    in-world text"). Three ways to break that, one refusal each: a banned render-technique
+    term (shares render_technique_check's own list, so the two checks cannot disagree),
+    soft/gradient-permissive wording, or the style RECIPE's own terms restated here.
+
+    The last one is the architecture, not a taste call: the recipe has exactly one home
+    (`style-bible.md` §2b, assembled onto every gen by forge). A suffix that also carries
+    it — even verbatim-correct C-1 text — is a SECOND COPY of a living document, and a
+    second copy is a second voice the moment either side is edited. That divergence is
+    audit mechanism 1 (the global smooth/glossy drift traced to the suffix and the bible
+    descriptor disagreeing with the hardened scene style)."""
     render_technique_check("suffix", [("global_prompt_suffix", "global_prompt_suffix", suffix or "")], hard)
     seen = set()
     for m in _SUFFIX_SOFT.finditer(suffix or ""):
@@ -1363,6 +1410,18 @@ def suffix_one_voice_check(suffix, hard):
             f"contradicts the C-1 one-voice recipe (flat fills, one hard-edged shadow, no "
             f"feathered or blended transitions) — style-bible.md's own text deleted this wording; "
             f"the suffix must not reintroduce it.")
+    seen = set()
+    for m in _SUFFIX_STYLE_VOCAB.finditer(suffix or ""):
+        t = m.group().lower()
+        if t in seen:
+            continue
+        seen.add(t)
+        hard.append(
+            f"[suffix] global_prompt_suffix: style-recipe wording {m.group()!r} - the suffix "
+            f"states LETTERING ONLY ('hand-lettered marker capitals for any in-world text'). "
+            f"The flat-cel recipe has one home, style-bible.md section 2b, which forge assembles "
+            f"onto every generation; restating any of it here - even the correct C-1 wording - "
+            f"is a second copy that drifts the moment the bible is edited. Delete the clause.")
 
 
 # --- C-3/C-5: place --------------------------------------------------------
@@ -1446,40 +1505,136 @@ def place_inventory_check(label, objs, vocab, hard):
                 f"or fold the shot into an existing declared place.")
 
 
-def place_owner_check(label, shots, suffix, hard):
-    """HARD. A branded interior - a `place` group where ANY shot authors an alphabetic
-    trackable literal (L-1's own vocabulary; a proper-noun-shaped quoted string, never
-    a bare numeral, is presumptively the owner's signage/letterhead/plaque) - must
-    carry that SAME literal on its place-first shot (file order within the group
-    mirrors C-4's derived plate: the first emitted no-cast shot of the place), or the
-    group must declare `owner_ambiguity: true` somewhere. Ownership invisible on the
-    establishing frame while a LATER shot quotes the company name is Daniel's failure
-    #6 (office ownership invisible) under another name. The literal is per-video DATA,
-    never a skill constant - this reads only what the author already quoted."""
+def place_groups(shots):
+    """THE definition of a place's plate - one definition, used by every place law here.
+
+    **The plate of a place is the FIRST-IN-FILE shot declaring that place.** Not "the
+    first no-cast shot", not "the first shot forge happens to emit": one rule, decidable
+    from the authored file alone, so lint and the author always agree about which shot
+    the plate laws are talking about.
+
+    A place QUALIFIES for the plate law when >=2 shots declare it, or when its plate
+    declares `place_owner` (C-4's conditional plate law: a single-use, unbranded place is
+    its own place-first frame, runs seedless, and needs no plate demanded of it).
+
+    Forge's plate is the MECHANICAL mirror of this one: `forge.py cmd_batch` marks the
+    slate that ended up with zero seeds (`plate = not seeds`). The two coincide only when
+    the AUTHORING is right - the place's first shot has to be the one with no cast to
+    seed - and asserting that coincidence on the authoring side, at $0, is exactly
+    `place_plate_check`'s job. Lint never re-derives forge's marker and forge never
+    re-checks the authoring.
+
+    Returns [(place, plate, group, qualifying)] in first-declaration order."""
     groups = {}
     for sh in shots:
         place = sh.get("place")
         if isinstance(place, str) and place.strip():
             groups.setdefault(place, []).append(sh)
+    out = []
     for place, grp in groups.items():
-        if any(sh.get("owner_ambiguity") is True for sh in grp):
+        plate = grp[0]
+        qualifying = len(grp) >= 2 or "place_owner" in plate
+        out.append((place, plate, grp, qualifying))
+    return out
+
+
+def place_plate_check(label, shots, chars, hard):
+    """C-4 HARD. A QUALIFYING place's plate (see `place_groups`) declares zero named cast
+    and is not a stage `delta`.
+
+    Why those two: the plate is the frame every other shot in the place seeds from, so
+    whatever it contains bleeds into all of them. Named cast on the plate means every
+    later in-place shot seeds a cast-BEARING rendered scene as its place frame - the
+    content-bleed path the doctrine limits to plates by design - and a delta plate would
+    make the place's root frame a shot that itself inherits a chain parent.
+
+    A non-qualifying place (exactly one shot, no `place_owner`) is exempt: that shot is
+    its own place-first frame and runs seedless, same as before the reset.
+
+    With no cast vocabulary resolvable (`chars` empty - no registry, no Pass-1 manifest)
+    the cast half degrades silently, the same way seat_support_check and
+    two_cast_presence_check do; the delta half still applies."""
+    for place, plate, grp, qualifying in place_groups(shots):
+        if not qualifying:
             continue
-        literals = {}
-        for sh in grp:
-            for lit, _s, _e in quoted_literals(sh.get("still_prompt") or "", suffix):
-                if _TRACKABLE_LITERAL.match(lit):
-                    literals.setdefault(lit, []).append(sh.get("id", "?"))
-        if not literals:
-            continue           # nothing branded declared anywhere in this place - not this check's job
-        plate = grp[0]         # C-4: the place-first shot in file order mirrors the derived plate
-        plate_lits = {lit for lit, _s, _e in quoted_literals(plate.get("still_prompt") or "", suffix)}
-        missing = {lit: ids for lit, ids in literals.items() if lit not in plate_lits}
-        if missing:
+        named = _named_chars(plate.get("still_prompt") or "", chars) if chars else []
+        if named:
             hard.append(
-                f"[{label}] place {place!r}: owner cue(s) {missing!r} quoted elsewhere in the "
-                f"place but absent from its place-first shot {plate.get('id', '?')!r} - author "
-                f"the cue on the plate, or declare `owner_ambiguity: true` if the ambiguity is "
-                f"intentional.")
+                f"[{label}] place {place!r}: its plate {plate.get('id', '?')!r} (the first shot "
+                f"declaring this place, and this place qualifies for the plate law - "
+                f"{len(grp)} shot(s), place_owner {'declared' if 'place_owner' in plate else 'absent'}) "
+                f"names cast {', '.join('`' + c + '`' for c in named)}. A plate declares ZERO named "
+                f"cast (C-4): every other shot in the place seeds it, so cast on the plate bleeds "
+                f"into all of them. Author a cast-free establishing frame first, or move this shot "
+                f"after one.")
+        if str(plate.get("stage_role") or "").lower() == "delta":
+            hard.append(
+                f"[{label}] place {place!r}: its plate {plate.get('id', '?')!r} is a stage "
+                f"`delta`. A plate is the place's root frame - it cannot itself inherit a chain "
+                f"parent (C-4). Make the place's first shot a base/standalone shot.")
+
+
+def place_owner_check(label, shots, suffix, hard):
+    """HARD, forced choice. Every place's plate (see `place_groups`) declares EXACTLY ONE
+    of `place_owner: '<LITERAL>'` or `owner_ambiguity: true`. Neither is a hard failure;
+    both is a hard failure.
+
+    This replaces the old "if someone quoted a name somewhere, require it on the plate"
+    inference, which suppressed exactly the case it existed to catch: a place whose author
+    simply forgot the owner cue quoted nothing anywhere, so the check stayed silent - which
+    IS Daniel's failure #6 (office ownership invisible on the establishing frame). A forced
+    choice cannot be satisfied by silence.
+
+    `place_owner` is per-video DATA, never a skill constant, and it is not a second
+    lettering mechanism: the declared literal must be QUOTED in the plate's own
+    `still_prompt`, so it is an ordinary authored literal and every existing lettering law
+    already applies to it unchanged - word_cap_check / literal_count_check caps,
+    long_literal_word_check's script-vocab sourcing, and L-1 carry (carried_literal_check
+    registers it as established for the whole place, so any later in-place shot that
+    redraws it must re-quote it verbatim)."""
+    for place, plate, grp, _qualifying in place_groups(shots):
+        pid = plate.get("id", "?")
+        owner = plate.get("place_owner")
+        has_owner = "place_owner" in plate
+        ambiguous = plate.get("owner_ambiguity") is True
+        if has_owner and ambiguous:
+            hard.append(
+                f"[{label}] place {place!r}: plate {pid!r} declares BOTH `place_owner` {owner!r} "
+                f"and `owner_ambiguity: true`. Exactly one: either the owner is legible on the "
+                f"establishing frame, or its absence is the intended read. Drop whichever is not "
+                f"the shot you authored.")
+        elif not has_owner and not ambiguous:
+            hard.append(
+                f"[{label}] place {place!r}: plate {pid!r} declares neither `place_owner` nor "
+                f"`owner_ambiguity: true`. Every place records an ownership decision on its plate "
+                f"- author a visible owner cue (a plaque/nameplate/door-glass literal, quoted in "
+                f"this shot's still_prompt, and name it here as `place_owner`), or declare "
+                f"`owner_ambiguity: true` if unmarked ownership is the intended read. Ownership "
+                f"invisible on the establishing frame with no decision recorded is audit failure "
+                f"#6.")
+        elif has_owner:
+            if not isinstance(owner, str) or not owner.strip():
+                hard.append(f"[{label}] place {place!r}: plate {pid!r} `place_owner` is {owner!r}, "
+                            f"expected the owner literal as a non-empty string (e.g. \"MINISCRIBE\").")
+            else:
+                lits = {lit for lit, _s, _e in quoted_literals(plate.get("still_prompt") or "", suffix)}
+                if owner.strip() not in lits:
+                    hard.append(
+                        f"[{label}] place {place!r}: plate {pid!r} declares `place_owner` "
+                        f"{owner!r} but its still_prompt never quotes that literal "
+                        f"({sorted(lits)!r} quoted instead). The owner cue is a DRAWN cue: quote "
+                        f"it verbatim on the plate the way any other in-image literal is authored, "
+                        f"or declare `owner_ambiguity: true` instead.")
+        for sh in grp:
+            if sh is plate:
+                continue
+            for field in ("place_owner", "owner_ambiguity"):
+                if field in sh:
+                    hard.append(
+                        f"[{label}] {sh.get('id', '?')}: declares `{field}` but is not the plate of "
+                        f"place {place!r} ({pid!r} is). The ownership decision is recorded once, on "
+                        f"the place's first shot; a later shot re-quoting the cue is ordinary L-1 "
+                        f"carry, not a second declaration.")
 
 
 def place_anchor_same_place_check(label, shots, hard):
@@ -1556,12 +1711,80 @@ _GENERIC_PLURAL_ROLE = re.compile(
     r"|auditors|reps|representatives|foremen|colleagues|investors|shareholders"
     r"|directors|officials|accountants)\b", re.IGNORECASE)
 
-# This project's own continuity idiom, used correctly on delta frames that DO carry
-# a `stage` ("The same shop interior, same locked framing", "The same populated
-# boardroom, same locked framing"). A shot that uses it WITHOUT a `stage`/`hard_cut`
-# is the L89-L91 drift: a backward reference to a held scene with nothing declaring
-# the shots linked.
-_SAME_CALLBACK = re.compile(r"\bthe\s+same\s+[a-z]", re.IGNORECASE)
+# The irregular plurals `_GENERIC_PLURAL_ROLE` itself can produce - `_singular`'s
+# trailing-s rule cannot fold these, and this closed list is the only door they enter
+# semantic_cast_check's window through. One entry today; extend it only alongside the
+# role list above.
+_IRREGULAR_ROLE = {"foremen": "foreman"}
+
+# --- C-8 action chain: the shared-prop test ----------------------------------
+# The action chain is decided from `vo_text` ONLY - the NARRATION is what continues an
+# action across shots. It is deliberately NOT decided from `still_prompt` idioms: the
+# measured cost of the idiom heuristic ("the same X") was 28 HARD fires on the archived
+# 214-shot file, at least 5 of them ordinary intra-frame English ("at the same eye-line"
+# - which is the clause C-8's own two-cast law demands - "at the same height, side by
+# side", "the same pallet three times" inside one plan view). A lint that cries wolf
+# gets routed around, so prompt idioms carry no weight here at all.
+#
+# Lint has no part-of-speech tagger, so "concrete prop noun" is approximated by
+# subtraction, and the approximation is calibrated against the archived file (see
+# test_action_chain_calibration_over_the_archived_file):
+#   * tokens carrying an apostrophe are dropped (contractions: "wasn't", "accountants'")
+#   * `-ed`/`-ing`/`-ly` forms are dropped as verb/adverb morphology ("counted", "holding")
+#   * the closed exclusion set below is dropped: function words, pronouns, quantifiers,
+#     bare time/measure words, and GENERIC nouns that name a category rather than a prop
+#     ("people", "money", "level", "thing", "way") - a category noun recurring in two
+#     lines is the script's subject, not a prop the second frame redraws
+#   * what survives must be >=3 characters after singularization
+# The known limitation is under-firing, which is the safe direction: a noun that ends in
+# `-ing` ("briefing") or an irregular plural ("men") will not match itself. Widen only
+# with a real counter-example in hand, and re-run the archived-file calibration.
+_PROP_EXCLUDE = frozenset("""
+a an the this that these those there here it its it's they them their theirs he him his
+she her hers we us our you your i me my mine who whom whose what which when where why how
+and or but so nor yet if then than as at by for from in into of off on onto out over to
+up down with within without about after before again against between during through under
+until upon while not no nor never all any both each every few many more most much no none
+one two three four five six seven eight nine ten some such only other another same own
+very just even still also too now next last first second next
+is are was were be been being am do does did done doing have has had having can could
+will would shall should may might must get got go went come came make made take took
+put said say says
+year years month months day days week weeks time times quarter quarters night morning
+thing things stuff way ways part parts kind sort lot lots level levels bit piece pieces
+people person man men woman women guy guys folks everyone someone anyone nobody staff
+company companies business money cash dollar dollars percent number numbers count counts
+side sides end ends top bottom front back place places point points case cases fact facts
+name names word words line lines story stories reason reasons idea ideas problem problems
+""".split())
+
+
+def _singular(word):
+    """Naive singular form: `boxes`->`box`, `bankers`->`banker`, `bricks`->`brick`.
+
+    Trailing-s/es stripping only - no irregulars (`men`, `foremen`), no lemmatizer. Used
+    on BOTH sides of every word-identity test in this file (the action chain's shared-prop
+    test and semantic_cast_check's slug-vs-role justification), so a plural role and a
+    singular slug compare equal, which is the whole point. `ss` endings are left alone
+    (`glass`, `press`)."""
+    w = (word or "").lower()
+    if len(w) > 3 and w.endswith(("ses", "xes", "zes", "ches", "shes")):
+        return w[:-2]
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
+
+
+def prop_nouns(vo_text):
+    """The concrete prop nouns a VO line mentions, singularized - see `_PROP_EXCLUDE`."""
+    out = set()
+    for w in re.findall(r"[a-z']+", (vo_text or "").lower()):
+        if "'" in w or w.endswith(("ed", "ing", "ly")) or w in _PROP_EXCLUDE:
+            continue
+        s = _singular(w)
+        if len(s) >= 3 and s not in _PROP_EXCLUDE:
+            out.add(s)
+    return out
 
 
 def _named_chars(prompt, chars):
@@ -1682,27 +1905,51 @@ def two_cast_presence_check(label, objs, chars, hard):
                 f"clauses cohere into the right topology is the critic's call.")
 
 
-def action_chain_check(label, shots, hard):
-    """C-8 HARD = presence only. A shot's prose that calls back to a held scene/prop
-    ("the same wax-sealed box" - this project's own idiom, used correctly on delta
-    frames that DO declare a `stage`) but carries no `stage`/`stage_role` of its own
-    and no `hard_cut: true` is exactly the L89-L91 drift: three shots visibly
-    continuing one action (pry the box, swap the sheet, get caught) that ran as three
-    independent seedless roots because nothing declared them linked. Cause->effect
-    READABILITY stays the critic's judgment (critics.md question 7); this only checks
-    the omission."""
+def action_chain_check(label, shots, id2text, hard):
+    """C-8 HARD = presence only. Fires on exactly one shape, all four conditions at once:
+
+      1. two shots ADJACENT IN FILE declare the SAME `place`, and
+      2. both shots' `vo_text` name a shared concrete prop noun (`prop_nouns`), and
+      3. the later shot declares no chain of its own - no `stage`, no `stage_role`, and
+      4. the later shot does not declare `hard_cut: true`.
+
+    That is the L88->L89 drift measured in the archive: the narration keeps working the
+    same boxes across the cut, the earlier shot held a stage, and the later one declared
+    nothing at all - so a continuing action ran as an independent seedless root. Condition
+    3 is 'no chain declared', not 'a different chain': a shot that declares ANY stage or
+    stage_role has made a positive continuity statement, and whether that chain READS as
+    one causal action is critics.md question 7, never lint's. That also means the author is
+    never pushed into declaring `hard_cut: true` (schema: "this shot's action deliberately
+    does NOT continue the previous shot's") to silence a shot whose action really does
+    continue - the honest fix is the chain.
+
+    `place` is load-bearing, not incidental: two shots in different places cannot be
+    continuing one staged action, and the place-exempt `shot_class` values (C-3) never
+    declare `place` at all, so a symbolic insert or a map plan-view can never fire here.
+
+    `vo_text` comes from `id2text` (the tiling lint derives this run) and falls back to
+    the shot's own stored `vo_text` for an already-written file; a shot with neither is
+    silently skipped, the same degradation semantic_cast_check uses."""
+    prev = None
     for sh in shots:
-        if sh.get("stage") or sh.get("hard_cut") is True:
-            continue
-        prompt = sh.get("still_prompt") or ""
-        m = _SAME_CALLBACK.search(prompt)
-        if m:
-            hard.append(
-                f"[{label}] {sh.get('id', '?')}: still_prompt calls back to a held scene/prop "
-                f"({prompt[m.start():m.start() + 40].strip()!r}...) but declares no `stage`/"
-                f"`stage_role` chain and no `hard_cut: true` - an action continuing across shots "
-                f"needs one or the other (the L89-L91 drift: a box-tampering sequence that ran as "
-                f"three independent seedless roots).")
+        cur_place = sh.get("place")
+        if prev is not None and isinstance(cur_place, str) and cur_place.strip() \
+                and prev.get("place") == cur_place \
+                and not sh.get("stage") and not sh.get("stage_role") \
+                and sh.get("hard_cut") is not True:
+            a = (id2text or {}).get(prev.get("id")) or prev.get("vo_text") or ""
+            b = (id2text or {}).get(sh.get("id")) or sh.get("vo_text") or ""
+            shared = sorted(prop_nouns(a) & prop_nouns(b))
+            if shared:
+                hard.append(
+                    f"[{label}] {sh.get('id', '?')}: its VO continues the previous shot "
+                    f"{prev.get('id', '?')!r} on the same prop(s) {shared!r} in the same place "
+                    f"{cur_place!r}, but it declares no `stage`/`stage_role` chain and no "
+                    f"`hard_cut: true` - an action continuing across shots needs one or the "
+                    f"other (the L88-L91 drift: a box-tampering sequence that ran as independent "
+                    f"seedless roots). Chain it to the shot it continues, or declare "
+                    f"`hard_cut: true` if the action genuinely does not continue.")
+        prev = sh
 
 
 def semantic_cast_check(label, shots, id2text, chars, hard):
@@ -1717,7 +1964,16 @@ def semantic_cast_check(label, shots, id2text, chars, hard):
     crew') is a legitimately justified lead and stays silent. Everything else - is the
     cast choice dramatically RIGHT - is the critic's call (critics.md question 8), not
     lint's. Needs `id2text` (vo_text tiling); silently skipped wherever anchors did
-    not tile clean."""
+    not tile clean.
+
+    The justification test compares SINGULARIZED forms on both sides (`_singular`), because
+    the commonest justified shape is a plural role against a singular slug: a VO saying
+    'the bankers' justifies `hq-banker`, and 'the auditors' justifies `auditor-rep`. Measured
+    on the archived file, exact-token matching fired on 6 such shots the docstring above
+    promises to leave alone. Limitation, inherited from `_singular`: irregular plurals do
+    not fold (a VO saying 'foremen' does not justify `brick-foreman`), so `_IRREGULAR_ROLE`
+    below folds the irregulars this check's OWN closed role list can produce - the only
+    place they can enter the comparison."""
     if not id2text or not chars:
         return
     ordered = [sh.get("id") for sh in shots]
@@ -1733,10 +1989,10 @@ def semantic_cast_check(label, shots, id2text, chars, hard):
             continue
         window_ids = [ordered[k] for k in (i - 1, i, i + 1) if 0 <= k < len(ordered)]
         window = " ".join(id2text.get(w, "") for w in window_ids).lower()
+        window_toks = {_IRREGULAR_ROLE.get(w, _singular(w)) for w in re.findall(r"[a-z']+", window)}
         unjustified = [
             c for c in named
-            if not any(len(tok) >= 3 and re.search(r"\b" + re.escape(tok) + r"\b", window)
-                       for tok in c.split("-"))
+            if not any(len(tok) >= 3 and _singular(tok) in window_toks for tok in c.split("-"))
         ]
         if unjustified:
             hard.append(
@@ -1829,11 +2085,12 @@ def main(argv):
     place_key_check("long-form", lf_objs, hard)
     place_shot_class_exempt_check("long-form", lf_shots, hard)
     place_inventory_check("long-form", lf_objs, lf_vocab, hard)
+    place_plate_check("long-form", lf_shots, chars, hard)
     place_owner_check("long-form", lf_shots, suffix, hard)
     place_anchor_same_place_check("long-form", lf_shots, hard)
     bool_field_check("long-form", lf_objs, "hard_cut", hard)
     bool_field_check("long-form", lf_objs, "owner_ambiguity", hard)
-    action_chain_check("long-form", lf_shots, hard)
+    action_chain_check("long-form", lf_shots, lf_text, hard)
     seat_support_check("long-form", lf_objs, chars, soft, hard)
     two_cast_presence_check("long-form", lf_objs, chars, hard)
     numeral_form_check("long-form", lf_prompts, suffix, soft)
@@ -1902,12 +2159,13 @@ def main(argv):
         place_key_check(slabel, sshot_objs, hard)
         place_shot_class_exempt_check(slabel, sshots, hard)
         place_inventory_check(slabel, sshot_objs, svocab, hard)
+        place_plate_check(slabel, sshots, chars, hard)
         place_owner_check(slabel, sshots, suffix, hard)
         place_anchor_same_place_check(slabel, sshots, hard)
         place_context_exempt_check(slabel, [("first_frame", ff_obj)] if ff_obj else [], hard)
         bool_field_check(slabel, sshot_objs, "hard_cut", hard)
         bool_field_check(slabel, sshot_objs, "owner_ambiguity", hard)
-        action_chain_check(slabel, sshots, hard)
+        action_chain_check(slabel, sshots, st, hard)
         seat_support_check(slabel, sshot_objs, chars, soft, hard)
         two_cast_presence_check(slabel, sshot_objs, chars, hard)
         semantic_cast_check(slabel, sshots, st, chars, hard)

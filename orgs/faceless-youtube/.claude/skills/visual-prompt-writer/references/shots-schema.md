@@ -11,7 +11,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 {
   "schema": "faceless-youtube/shots@2", "channel": "<channels/ folder slug, e.g. the-second-take — NOT the display name>", "video_slug": "YYYY-MM-DD-slug",
   "source_idea_id": "<id from idea-backlog.md>", "generated": "YYYY-MM-DD", "status": "shots-drafted",
-  "global_prompt_suffix": "copied VERBATIM from visual-grammar.md's header — texture / line weight / art style only",
+  "global_prompt_suffix": "copied VERBATIM from visual-grammar.md's header — the LETTERING clause only; the style recipe lives in style-bible.md §2b and is never restated here",
   "long_form": { "aspect_ratio": "16:9", "shots": [
       {
         "id": "L01", "duration_s": 4, "synthetic": false,
@@ -22,7 +22,8 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
         "stage_role": "base | delta — base establishes the set + subject; delta = ONE element added or moved on the SAME set", "changed_elements": ["+ golden city rises"],
         "place_anchor": "OPTIONAL on a non-delta shot: video-relative assets/scenes/<human-approved-frame>.png to preserve this video's approved place; never a cross-video env reference, never a shot outside its own `place`",
         "hard_cut": "OPTIONAL true — this shot's action deliberately does NOT continue the previous shot's, even though it reads like it might (see `place` §2's action-chain law)",
-        "owner_ambiguity": "OPTIONAL true — this place's ownership is intentionally left unmarked (see `place` §2's place-owner law); mutually exclusive with authoring an owner cue",
+        "place_owner": "ON A PLACE'S PLATE ONLY: the owner literal drawn on this frame (e.g. \"MINISCRIBE\"), quoted verbatim in this shot's still_prompt too — see the place-owner law; mutually exclusive with `owner_ambiguity`",
+        "owner_ambiguity": "ON A PLACE'S PLATE ONLY: true — this place's ownership is intentionally left unmarked (see the place-owner law); mutually exclusive with `place_owner`",
         "shot_class": "the canonical closed list (picked from visual-grammar.md's narration→shot-class table): personified-character, staged-interaction, symbolic-stand-in-object, number-glued-to-object, diegetic-device, map-plan-view, physicalized-imbalance, register-shift-infographic, ironic-counterpoint, reaction-shot, idiom-pun, aftermath-palette-turn, crowd-multiplication, literal",
         "source": "ai-gen | stock | hybrid | chart | screencap | archival (§3)",
         "still_prompt": "the image-gen prompt: subject, composition/framing + scale, lighting, palette, and the shot's load-bearing scene FACTS. Cast, poses, and expressions are named INLINE by their registry vocabulary name, backticked. In-video text is DIEGETIC + baked here, quoted VERBATIM and kept SHORT (1–4 words)",
@@ -56,11 +57,16 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 - **`place` — a recurring diegetic SET identity, distinct from `stage`.** `place` names the SET
   (`miniscribe-boardroom`, `brick-co-yard`); `stage` is a continuity CHAIN *within* one place (still capped
   1 base + ≤3 deltas). A place can host many stage chains — the boardroom's fear beat, firing beat, and
-  planning beat are three `stage`s inside one `place`. **Conditional plate law:** a place hosting ≥2 shots,
-  or one place shot carrying owner branding (see place-owner below), needs a plate — the first emitted shot
-  of that place declaring zero named cast (`forge.py cmd_batch` derives and marks it; VPW never authors
-  `plate` itself). A place used by exactly ONE shot, with no owner branding, needs no plate — that single
-  shot is its own place-first frame and runs seedless, same as today. **Place-inventory law (lint-enforced,
+  planning beat are three `stage`s inside one `place`. **The plate of a place is the FIRST-IN-FILE shot
+  declaring that place** — one definition, decidable from the authored file alone (`lint_shots.py`'s
+  `place_groups`). **Conditional plate law (lint-enforced, HARD):** a place QUALIFIES when ≥2 shots declare
+  it, or its plate declares `place_owner`; a qualifying place's plate must declare **zero named cast and no
+  `stage_role: delta`**, because every other shot in the place seeds it and whatever it contains bleeds into
+  all of them. A place used by exactly ONE shot, with no `place_owner`, needs no plate — that single shot is
+  its own place-first frame and runs seedless, same as today. `forge.py cmd_batch` derives the same frame
+  MECHANICALLY (the slate that ended up with zero seeds is the one it marks `plate`; VPW never authors
+  `plate` itself), so lint asserts on the authoring side, at $0, the coincidence forge assumes at gen time.
+  **Place-inventory law (lint-enforced,
   HARD):** every declared `place` must anchor to a word `script.md` itself uses (`script_vocab`) — an
   invented place is the same class of error as an invented lettering literal. **Exempt (never declare
   `place`):** the symbolic/abstract/object-insert `shot_class` values — `symbolic-stand-in-object`,
@@ -68,19 +74,29 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   (`visual-grammar.md §1`'s table: each depicts a floating object or abstraction, never a set) — plus a
   short's `first_frame` and the thumbnail block; these run as seedless roots under the hardened descriptor
   regardless of place.
-- **Place-owner law (lint-enforced, HARD).** An institution-owned interior must carry ONE visible owner cue
-  (a quoted literal — a plaque, nameplate, door-glass lettering) on its place's plate/place-first shot, or
-  the place declares `owner_ambiguity: true`. The literal is per-video DATA sourced from the shot's `place`
-  + `script_vocab` — never a skill constant — and once authored it is a normal L-1 carried literal (re-quote
-  it verbatim on every later shot in the place that redraws it). **This narrows the supplied-text law's
-  "omit" escape (§4 resolution 3):** blanking an owner-branded surface with no cue is legal ONLY paired with
-  `owner_ambiguity: true` on that place — a silent blank no longer satisfies the place-owner law the way it
-  satisfies an ordinary unsupported-glyph field.
-- **Action-chain law (lint-enforced, HARD = presence).** A shot whose prose calls back to a held prop/scene
-  ("the same wax-sealed box") but declares no `stage`/`stage_role` chain of its own and no `hard_cut: true`
-  is an unlinked continuation — three shots visibly continuing one action (pry the box, swap the sheet, get
-  caught) must not run as three independent seedless roots. Whether the chain reads as coherent CAUSE→EFFECT
-  is the shot critic's judgment (`critics.md`), never lint's.
+- **Place-owner law (lint-enforced, HARD = a FORCED CHOICE).** Every place's plate declares **exactly one**
+  of `place_owner: "<LITERAL>"` or `owner_ambiguity: true` — neither is a hard failure, both is a hard
+  failure, and neither field may be declared on any other shot of the place. Silence is not an option
+  precisely because a forgotten owner cue leaves no trace to detect: ownership invisible on the establishing
+  frame is audit failure #6. A declared `place_owner` must also be **quoted verbatim in the plate's own
+  `still_prompt`** — it is a DRAWN cue, so it is an ordinary authored literal and every lettering law
+  already applies to it unchanged (the 1–4-word/25-glyph caps, the 3-literals-per-prompt cap, script-vocab
+  sourcing, and L-1 carry — `carried_literal_check` treats it as established for the whole PLACE, across
+  stage runs, so any later in-place shot that redraws the sign must re-quote it verbatim). The literal is
+  per-video DATA sourced from the shot's `place` + `script_vocab`, never a skill constant. **This narrows
+  the supplied-text law's "omit" escape (§4 resolution 3):** blanking an owner-branded surface with no cue
+  is legal ONLY paired with `owner_ambiguity: true` — a silent blank no longer satisfies the place-owner law
+  the way it satisfies an ordinary unsupported-glyph field.
+- **Action-chain law (lint-enforced, HARD = presence).** Fires on exactly one shape, all four conditions at
+  once: two shots ADJACENT IN FILE declare the same `place`, both shots' `vo_text` name a shared concrete
+  prop noun, the later shot declares no `stage`/`stage_role` chain **at all**, and it does not declare
+  `hard_cut: true`. That is an unlinked continuation — three shots visibly continuing one action (pry the
+  box, swap the sheet, get caught) must not run as three independent seedless roots. The test reads the
+  NARRATION, never `still_prompt` idioms: "the same X" is routinely intra-frame English ("at the same
+  eye-line" is the clause the two-cast law itself demands), and a lint that cries wolf gets routed around.
+  A shot that declares any chain of its own has made a positive continuity statement and stays silent —
+  whether that chain reads as coherent CAUSE→EFFECT is the shot critic's judgment (`critics.md`), never
+  lint's, and no author is ever pushed into declaring `hard_cut: true` about an action that does continue.
 - **`stage` / `stage_role` / `changed_elements` — held evolving stages, INTENT ONLY.** Consecutive shots
   sharing a `stage` id sit on ONE persistent set: the `base` establishes it, each `delta` adds or moves
   exactly ONE element named in `changed_elements` (`"+ cathedral rises"`, `"- ship"`), each its own shot
@@ -124,7 +140,8 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 - **Semantic-cast law (lint-enforced, HARD, narrow).** Fails ONLY the decidable case: a shot's VO span
   names a generic PLURAL role ("managers", "executives") while the shot casts a named character whose slug
   fragment appears nowhere in that VO span or its immediate neighbours. A shot where the VO itself names the
-  role ("the foreman told his crew") is a legitimately justified lead and stays silent. Whether a *cast*
+  role ("the foreman told his crew") is a legitimately justified lead and stays silent — the comparison is
+  singularized on both sides, so a plural role justifies a singular slug ("the bankers" ⇒ `hq-banker`). Whether a *cast*
   choice is dramatically right beyond that narrow test is the critic's call.
 - **`assets` (image-gen-owned, added in Pass 1).** `image-generation` writes a per-shot `assets` map
   (`{"<vocab name>": "<library path>"}`) back into this file after its gate passes and Pass 2 reads only
@@ -132,9 +149,14 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 - **Transitions are HARD CUTS only** — no transition field exists; continuity comes from held stages.
 - **`global_prompt_suffix` is copied verbatim** from `visual-grammar.md`'s header — never re-derived per
   video — and appended to every `still_prompt`, `first_frame`, and thumbnail `gen_prompt`. **One-voice law
-  (lint-enforced, HARD):** the suffix carries no banned render-technique term (below) and no other
-  soft/gradient-permissive wording ("gentle", "blended"/"feathered" transitions) — a second voice
-  contradicting `style-bible.md`'s flat-fill recipe is how the global smooth/glossy drift happened. **Banned
+  (lint-enforced, HARD):** the suffix carries **no style vocabulary at all** — it is the lettering clause
+  and nothing else. Three refusals, one per way of breaking it: a banned render-technique term (below),
+  soft/gradient-permissive wording ("gentle", "soft", "blended"/"feathered"), or the style RECIPE's own
+  terms restated here (cel shading, flat colour fills, hard-edged single-step shadow, outline, line weight,
+  palette, a hex colour…). The last one is architecture, not taste: the recipe has exactly one home —
+  `style-bible.md` §2b, which `forge.py` assembles onto every generation — and a suffix that also carries it
+  is a second COPY of a living document, which becomes a second VOICE the moment either side is edited.
+  That divergence is how the global smooth/glossy drift happened. **Banned
   render-technique terms (lint-enforced, HARD, prompts AND suffix, case-insensitive, exact list):**
   `gradient`, `gloss`/`glossy`, `specular`, `bloom`, `depth-of-field`/`depth of field`, `blurred
   background`/`blurred behind`, `soft focus`, `photoreal*`, `subsurface`, `rim light`. Scene-light NOUNS —

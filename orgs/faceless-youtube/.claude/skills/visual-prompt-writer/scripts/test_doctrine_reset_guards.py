@@ -18,7 +18,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lint_shots as L  # noqa: E402
 
-SUFFIX = "clean flat cel cartoon, hand-lettered marker capitals for any in-world text"
+# The post-reset legal suffix: LETTERING ONLY. The flat-cel recipe lives in
+# style-bible.md §2b and nowhere else, so the suffix states no style at all.
+SUFFIX = "hand-lettered marker capitals for any in-world text"
+# The suffix this wave replaces (visual-grammar.md's pre-reset header blockquote) — kept
+# verbatim as the regression fixture the one-voice guard must never let back in.
+OLD_SUFFIX = (
+    "clean flat cel-shaded cartoon style, an even medium-thick dark warm brown-black "
+    "#241a12 outline on everything, flat colours with gentle soft cel shading, rounded "
+    "friendly shapes, no realistic detail, hand-lettered marker capitals for any in-world text")
 
 
 def _p(prompt, pid="L01", field="still_prompt"):
@@ -99,9 +107,30 @@ def test_c2a_blended_and_feathered_fire():
     assert "blended" in msgs and "feathered" in msgs, hard
 
 
-def test_c2a_the_c1_recipe_itself_is_silent():
-    """The unified recipe's OWN wording (C-1, pinned contract) must lint clean —
-    a suffix authored correctly must never trip its own one-voice guard."""
+def test_c2a_the_new_lettering_only_suffix_is_silent():
+    """The post-reset suffix — LETTERING ONLY — is the one legal shape, and it must lint
+    clean. This is the acceptance check for the visual-grammar.md rewrite."""
+    hard = []
+    L.suffix_one_voice_check(SUFFIX, hard)
+    assert hard == [], hard
+
+
+def test_c2a_the_old_style_bearing_suffix_hard_fails():
+    """visual-grammar.md's pre-reset blockquote, verbatim: it carries the deleted
+    'gentle soft cel shading' AND the recipe's own vocabulary. Both classes must report."""
+    hard = []
+    L.suffix_one_voice_check(OLD_SUFFIX, hard)
+    msgs = " ".join(hard)
+    assert "gentle" in msgs and "soft" in msgs, hard
+    assert "style-recipe wording" in msgs, hard
+
+
+def test_c2a_even_the_correct_c1_recipe_is_not_a_legal_suffix():
+    """The architecture, not a taste call: the C-1 recipe is CORRECT text living in the
+    WRONG file. style-bible.md §2b owns the recipe and forge assembles it onto every gen;
+    a suffix that restates it is a second copy of a living document — the drift mechanism
+    the one-voice law exists to remove. So the recipe's own wording hard-fails HERE while
+    being the required wording THERE."""
     hard = []
     L.suffix_one_voice_check(
         "medium-thick dark warm brown-black #241a12 outline on everything, flat colour "
@@ -109,9 +138,9 @@ def test_c2a_the_c1_recipe_itself_is_silent():
         "shadow shape, no feathered or blended transitions, uniform highlight-free "
         "surfaces, rounded friendly shapes, no realistic detail. No text, no words, no "
         "labels.", hard)
-    # "no feathered or blended transitions" as a NEGATION is the correct C-1 text and
-    # must still not multiply into false alarms beyond the two words it names.
-    assert len(hard) == 2 and all("feather" in h or "blend" in h for h in hard), hard
+    assert any("style-recipe wording" in h for h in hard), hard
+    # every reported span is a distinct term — one defect never reports twice
+    assert len(hard) == len({h.split(": ", 1)[1] for h in hard}), hard
 
 
 def test_c2a_soft_focus_is_not_double_reported():
@@ -220,25 +249,116 @@ def test_c3_empty_vocab_means_no_check_at_all():
     assert hard == []
 
 
-# --- place-owner ---------------------------------------------------------
-def test_c3_plant_owner_cue_quoted_elsewhere_but_absent_from_plate():
+# --- C-4 plate law: ONE definition (place_groups) -----------------------------
+def test_c4_the_plate_is_the_first_in_file_shot_of_the_place():
+    """One definition, decidable from the authored file alone — file order, cast or no
+    cast. forge's `plate = not seeds` is the mechanical mirror; place_plate_check is what
+    makes the two coincide."""
+    shots = [
+        {"id": "L60", "place": "miniscribe-boardroom", "still_prompt": "`qt-wiles` at the table."},
+        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The empty boardroom."},
+        {"id": "L62", "place": "brick-co-yard", "still_prompt": "The yard at dusk."},
+    ]
+    groups = {p: (plate["id"], [s["id"] for s in grp], q) for p, plate, grp, q in L.place_groups(shots)}
+    assert groups["miniscribe-boardroom"] == ("L60", ["L60", "L61"], True)
+    assert groups["brick-co-yard"] == ("L62", ["L62"], False)   # single-use, unbranded
+
+
+def test_c4_plant_a_qualifying_plate_carrying_named_cast():
+    """The R2-M1 gap: a recurring place entered on a cast-bearing frame. Every later
+    in-place shot would seed a cast-bearing rendered scene as its place frame."""
+    shots = [
+        {"id": "L60", "place": "miniscribe-boardroom",
+         "still_prompt": "`qt-wiles` (`expr-smug`) sits at the head of the long table."},
+        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The same table, now empty."},
+    ]
+    hard = []
+    L.place_plate_check("lf", shots, CHARS, hard)
+    assert len(hard) == 1 and "qt-wiles" in hard[0] and "L60" in hard[0], hard
+
+
+def test_c4_a_single_use_unbranded_place_is_exempt():
+    """C-4's conditional plate law: one shot, no `place_owner` — that shot IS its own
+    place-first frame and runs seedless. No plate is demanded of it."""
+    shots = [{"id": "L62", "place": "brick-co-yard",
+              "still_prompt": "`brick-foreman` (`expr-deadpan`) stands alone in the yard."}]
+    hard = []
+    L.place_plate_check("lf", shots, CHARS, hard)
+    assert hard == []
+
+
+def test_c4_place_owner_makes_a_single_shot_place_qualify():
+    shots = [{"id": "L62", "place": "miniscribe-boardroom", "place_owner": "MINISCRIBE",
+              "still_prompt": "`qt-wiles` under a plaque reading 'MINISCRIBE'."}]
+    hard = []
+    L.place_plate_check("lf", shots, CHARS, hard)
+    assert len(hard) == 1 and "qt-wiles" in hard[0], hard
+
+
+def test_c4_a_plate_may_not_be_a_stage_delta():
+    shots = [
+        {"id": "L60", "place": "miniscribe-boardroom", "stage": "fear-beat", "stage_role": "Delta",
+         "still_prompt": "The empty boardroom, one chair moved."},
+        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The boardroom again."},
+    ]
+    hard = []
+    L.place_plate_check("lf", shots, CHARS, hard)
+    assert len(hard) == 1 and "delta" in hard[0], hard      # case-normalized like forge
+
+
+def test_c4_no_cast_vocabulary_degrades_the_cast_half_silently():
+    shots = [
+        {"id": "L60", "place": "miniscribe-boardroom", "still_prompt": "`qt-wiles` at the table."},
+        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The table, empty."},
+    ]
+    hard = []
+    L.place_plate_check("lf", shots, set(), hard)
+    assert hard == []
+
+
+# --- place-owner: the forced choice (Daniel's failure #6) ---------------------
+def test_c3_plant_a_place_recording_no_ownership_decision_at_all():
+    """The case the OLD inferential check suppressed: nobody quoted anything, so nothing
+    fired — which IS failure #6 (ownership invisible on the establishing frame). A forced
+    choice cannot be satisfied by silence."""
     shots = [
         {"id": "L60", "place": "miniscribe-boardroom", "still_prompt": "The boardroom sits empty, blank walls."},
-        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "A wall plaque reads 'MINISCRIBE' by the door."},
+        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The same table from the door."},
     ]
     hard = []
     L.place_owner_check("lf", shots, SUFFIX, hard)
-    assert len(hard) == 1 and "MINISCRIBE" in hard[0] and "L60" in hard[0], hard
+    assert len(hard) == 1 and "neither" in hard[0] and "L60" in hard[0], hard
 
 
-def test_c3_owner_cue_on_the_plate_is_silent():
+def test_c3_plant_both_owner_declarations_at_once():
+    shots = [{"id": "L60", "place": "miniscribe-boardroom", "place_owner": "MINISCRIBE",
+              "owner_ambiguity": True,
+              "still_prompt": "A wall plaque reads 'MINISCRIBE' by the door."}]
+    hard = []
+    L.place_owner_check("lf", shots, SUFFIX, hard)
+    assert len(hard) == 1 and "BOTH" in hard[0], hard
+
+
+def test_c3_place_owner_quoted_on_the_plate_is_silent():
     shots = [
-        {"id": "L60", "place": "miniscribe-boardroom", "still_prompt": "A wall plaque reads 'MINISCRIBE' by the door."},
-        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The plaque reading 'MINISCRIBE' is visible again."},
+        {"id": "L60", "place": "miniscribe-boardroom", "place_owner": "MINISCRIBE",
+         "still_prompt": "A wall plaque reads 'MINISCRIBE' by the door."},
+        {"id": "L61", "place": "miniscribe-boardroom",
+         "still_prompt": "The plaque reading 'MINISCRIBE' is visible again."},
     ]
     hard = []
     L.place_owner_check("lf", shots, SUFFIX, hard)
     assert hard == []
+
+
+def test_c3_plant_place_owner_never_quoted_in_the_plate_prompt():
+    """The cue is a DRAWN cue: declaring it without authoring the lettering renders an
+    unbranded frame while the file claims ownership is legible."""
+    shots = [{"id": "L60", "place": "miniscribe-boardroom", "place_owner": "MINISCRIBE",
+              "still_prompt": "The boardroom sits empty, blank walls."}]
+    hard = []
+    L.place_owner_check("lf", shots, SUFFIX, hard)
+    assert len(hard) == 1 and "never quotes" in hard[0], hard
 
 
 def test_c3_owner_ambiguity_declared_is_silent():
@@ -252,24 +372,70 @@ def test_c3_owner_ambiguity_declared_is_silent():
     assert hard == []
 
 
-def test_c3_no_branding_anywhere_in_the_place_is_silent():
-    """An unbranded place (a generic warehouse, no institution) never triggers the
-    owner-cue requirement — nothing was ever quoted."""
+def test_c3_place_owner_must_be_a_string():
+    shots = [{"id": "L60", "place": "plant-office", "place_owner": True,
+              "still_prompt": "A door reading 'ACME' stands shut."}]
+    hard = []
+    L.place_owner_check("lf", shots, SUFFIX, hard)
+    assert len(hard) == 1 and "non-empty string" in hard[0], hard
+
+
+def test_c3_an_ownership_declaration_off_the_plate_is_a_hard_failure():
+    """One decision, one place to record it. A later shot re-quoting the cue is ordinary
+    L-1 carry, never a second declaration."""
     shots = [
-        {"id": "L25", "place": "brick-co-yard", "still_prompt": "A rented warehouse stands shut and deserted."},
+        {"id": "L60", "place": "plant-office", "owner_ambiguity": True,
+         "still_prompt": "The office, unmarked."},
+        {"id": "L61", "place": "plant-office", "place_owner": "ACME",
+         "still_prompt": "A door reading 'ACME'."},
     ]
+    hard = []
+    L.place_owner_check("lf", shots, SUFFIX, hard)
+    assert len(hard) == 1 and "not the plate" in hard[0] and "L61" in hard[0], hard
+
+
+def test_c3_an_unbranded_place_still_has_to_say_so():
+    """An unbranded generic warehouse no longer passes by staying quiet — it declares
+    `owner_ambiguity: true`. That is the narrowing of the supplied-text 'omit' escape."""
+    shots = [{"id": "L25", "place": "brick-co-yard",
+              "still_prompt": "A rented warehouse stands shut and deserted."}]
+    hard = []
+    L.place_owner_check("lf", shots, SUFFIX, hard)
+    assert len(hard) == 1, hard
+    shots[0]["owner_ambiguity"] = True
+    hard2 = []
+    L.place_owner_check("lf", shots, SUFFIX, hard2)
+    assert hard2 == []
+
+
+def test_c3_a_bare_numeral_literal_is_not_an_ownership_declaration():
+    """The old check inferred ownership from any quoted literal; the new one reads the
+    author's declaration, so a lettered ledger value is simply not part of this law."""
+    shots = [{"id": "L35", "place": "plant-office", "owner_ambiguity": True,
+              "still_prompt": "A ledger page nailed to the cash wall is lettered '600 MILLION'."}]
     hard = []
     L.place_owner_check("lf", shots, SUFFIX, hard)
     assert hard == []
 
 
-def test_c3_bare_numeral_literal_is_not_treated_as_an_owner_cue():
+def test_c3_place_owner_is_carried_by_l1_across_the_whole_place():
+    """The declared owner literal is an ordinary carried literal: a later in-place shot
+    that redraws the sign must RE-QUOTE it, never downgrade it to lowercase prose — the
+    CHECKIG mechanism, applied to the owner cue across stage runs."""
     shots = [
-        {"id": "L35", "place": "plant-office", "still_prompt": "A ledger page nailed to the cash wall is lettered '600 MILLION'."},
+        {"id": "L60", "place": "miniscribe-boardroom", "place_owner": "MINISCRIBE", "stage": "a",
+         "still_prompt": "A wall plaque reads 'MINISCRIBE' by the door."},
+        {"id": "L70", "place": "miniscribe-boardroom", "stage": "b",
+         "still_prompt": "The miniscribe plaque hangs above the shut door."},
     ]
     hard = []
-    L.place_owner_check("lf", shots, SUFFIX, hard)
-    assert hard == []
+    L.carried_literal_check("lf", shots, SUFFIX, hard)
+    assert len(hard) == 1 and "L70" in hard[0] and "MINISCRIBE" in hard[0], hard
+    # re-quoted verbatim = silent, in a different stage run
+    shots[1]["still_prompt"] = "The plaque reading 'MINISCRIBE' hangs above the shut door."
+    hard2 = []
+    L.carried_literal_check("lf", shots, SUFFIX, hard2)
+    assert hard2 == []
 
 
 # --- C-5 same-place mirror + place_anchor legality ---------------------------
@@ -325,56 +491,151 @@ def test_bool_field_true_and_absent_are_silent():
 # =============================================================================
 # Action-chain (C-8, presence only)
 # =============================================================================
-def test_action_chain_plant_the_real_l89_l90_drift():
-    """Real bricks-fresh prose (L89, L90) — 'the same wax-sealed box' / 'the same
-    open box', no `stage`, no `hard_cut` — the exact narrative-nonsense mechanism
-    (audit §E4)."""
-    shots = [
-        {"id": "L89", "still_prompt": "`brick-foreman` (`expr-deadpan`, `sit`) sits beside the "
-         "same wax-sealed box, now pried open a crack, with one Allen wrench and one straightened "
-         "paper clip laid at the worked lock plate."},
-        {"id": "L90", "still_prompt": "`brick-foreman` (`expr-deadpan`, `sit`) sits beside the "
-         "same open box. The clean fake sheet is now seated in the gap where the real one sat."},
-    ]
-    hard = []
-    L.action_chain_check("lf", shots, hard)
-    assert len(hard) == 2, hard
-    assert "L89" in hard[0] and "L90" in hard[1], hard
+# Real archived VO lines (7f38d18 shots.json) — the L88->L91 span. The narration keeps
+# working the same BOXES across the L88/L89 cut; L88 held a stage, L89 declared nothing.
+ARCHIVED_VO = {
+    "L88": "The real sheets were locked in the accountants' own boxes,",
+    "L89": "so they popped the boxes open with Allen wrenches and paper clips,",
+    "L90": "took the real count out and put the fake one in,",
+    "L91": "and blamed the whole gap on a typo.",
+}
 
 
-def test_action_chain_declared_stage_is_silent():
-    """The SAME idiom used correctly (real prose, L67): 'the same populated boardroom,
-    same locked framing' — silent because `stage` is declared."""
-    shots = [
-        {"id": "L67", "stage": "public-firing-exit", "stage_role": "base",
-         "still_prompt": "The same populated boardroom, same locked framing: `qt-wiles` at the "
-         "table head. Only this changes: two plain cardboard boxes now rest beside the open "
-         "corridor doorway."},
-    ]
+def _chain(*shots, **kw):
     hard = []
-    L.action_chain_check("lf", shots, hard)
+    L.action_chain_check("lf", list(shots), kw.get("vo", ARCHIVED_VO), hard)
+    return hard
+
+
+def test_action_chain_plant_the_real_archived_l88_l89_drift():
+    """The archived L89 defect, re-authored under the place doctrine: L88 and L89 sit in
+    one place, the VO continues on 'boxes', and L89 declares no chain at all."""
+    hard = _chain(
+        {"id": "L88", "place": "lockbox-office", "stage": "lockbox-office-written",
+         "stage_role": "delta", "still_prompt": "The same written back office, same locked framing."},
+        {"id": "L89", "place": "lockbox-office",
+         "still_prompt": "`brick-foreman` (`expr-deadpan`, `sit`) sits beside the wax-sealed box, "
+         "now pried open a crack, on a stool at the desk edge."})
+    assert len(hard) == 1, hard
+    assert "L89" in hard[0] and "L88" in hard[0] and "box" in hard[0], hard
+
+
+def test_action_chain_a_still_prompt_idiom_can_never_fire():
+    """R2-B2's measured false-positive class. 'at the same eye-line' is the clause C-8's
+    own two-cast law DEMANDS, and 'the same pallet three times' is one plan view — both
+    live in `still_prompt`, which this check does not read at all. The VO shares no prop
+    noun, so nothing fires however the prose is worded."""
+    hard = _chain(
+        {"id": "L38", "place": "brick-co-yard", "still_prompt": "A wide yard."},
+        {"id": "L39", "place": "brick-co-yard",
+         "still_prompt": "`qt-wiles` and `brick-foreman` face each other at the same eye-line "
+         "across a counter's width, drawn small but plainly the same pallet three times."},
+        vo={"L38": "He walked the lot at dawn.", "L39": "Nobody asked him anything."})
     assert hard == []
 
 
-def test_action_chain_declared_hard_cut_is_silent():
-    shots = [{"id": "L90b", "hard_cut": True,
-              "still_prompt": "The same open box is shown one final time before the scene cuts away."}]
-    hard = []
-    L.action_chain_check("lf", shots, hard)
+def test_action_chain_place_exempt_shot_classes_never_fire():
+    """C-3's placeless classes cannot declare `place`, so the adjacency condition can
+    never be met — the archived L204 symbolic insert and L24 map plan-view, which the
+    idiom heuristic used to hard-fail with no legal fix available."""
+    hard = _chain(
+        {"id": "L203", "shot_class": "literal", "place": "warehouse-floor",
+         "still_prompt": "The warehouse floor."},
+        {"id": "L204", "shot_class": "symbolic-stand-in-object",
+         "still_prompt": "The same steel-grey suit jacket `qt-wiles` wore through his rise hangs "
+         "alone on a hook."},
+        vo={"L203": "The bricks sat on the warehouse floor.",
+            "L204": "The bricks were all that was left of him."})
     assert hard == []
 
 
-def test_action_chain_a_fresh_scene_with_no_callback_is_silent():
-    """Real prose (L93) — a genuinely NEW scene (casino corridor), no 'the same'
-    callback, no stage: must not be flagged just for following L89-L91."""
-    shots = [
-        {"id": "L93", "still_prompt": "`brick-foreman` (`expr-deadpan`) stands with an open black "
-         "equipment case on a polished casino-service corridor table, while a crowd of tuxedoed "
-         "accomplices in dark sunglasses gathers around him."},
+def test_action_chain_a_shared_stage_is_silent():
+    """Real prose (L67 idiom) — the same place, the same prop in the VO, but the shots
+    share a `stage`: the chain is declared, so cause->effect readability is the critic's
+    call (critics.md question 7), not lint's."""
+    hard = _chain(
+        {"id": "L66", "place": "miniscribe-boardroom", "stage": "public-firing-exit",
+         "stage_role": "base", "still_prompt": "The populated boardroom."},
+        {"id": "L67", "place": "miniscribe-boardroom", "stage": "public-firing-exit",
+         "stage_role": "delta", "still_prompt": "The same populated boardroom, same locked framing."},
+        vo={"L66": "Two cardboard boxes appeared by the door.",
+            "L67": "The boxes were his."})
+    assert hard == []
+
+
+def test_action_chain_any_declared_chain_is_silent():
+    """Condition 3 is 'declares no chain', not 'declares a DIFFERENT chain'. A shot that
+    opens its own stage has made a positive continuity statement — and the author is never
+    pushed into declaring `hard_cut: true` (which asserts the action does NOT continue) to
+    silence a shot whose action really does continue."""
+    hard = _chain(
+        {"id": "L88", "place": "lockbox-office", "stage": "written-office", "stage_role": "base",
+         "still_prompt": "The back office."},
+        {"id": "L89", "place": "lockbox-office", "stage": "box-tamper", "stage_role": "base",
+         "still_prompt": "The box, pried open."})
+    assert hard == []
+
+
+def test_action_chain_hard_cut_is_silent():
+    hard = _chain(
+        {"id": "L88", "place": "lockbox-office", "stage": "written-office",
+         "still_prompt": "The back office."},
+        {"id": "L89", "place": "lockbox-office", "hard_cut": True,
+         "still_prompt": "A different night, the same box shape on a different desk."})
+    assert hard == []
+
+
+def test_action_chain_a_different_place_is_silent():
+    """Two shots in different places cannot be continuing one staged action."""
+    hard = _chain(
+        {"id": "L88", "place": "lockbox-office", "stage": "written-office",
+         "still_prompt": "The back office."},
+        {"id": "L89", "place": "brick-co-yard", "still_prompt": "The yard."})
+    assert hard == []
+
+
+def test_action_chain_a_fresh_scene_with_no_shared_prop_is_silent():
+    """Real prose (L92/L93) — a genuinely NEW beat in one place: adjacent, unchained, and
+    silent, because the narration shares no prop noun."""
+    hard = _chain(
+        {"id": "L92", "place": "warehouse-floor", "still_prompt": "`auditor-rep` signs a page."},
+        {"id": "L93", "place": "warehouse-floor",
+         "still_prompt": "`brick-foreman` (`expr-deadpan`) stands with an open black equipment "
+         "case on a polished casino-service corridor table."},
+        vo={"L92": "The audit came back clean.",
+            "L93": "Then somebody noticed the numbers."})
+    assert hard == []
+
+
+def test_action_chain_calibration_over_the_archived_file():
+    """Calibration duty, measured (not argued) over the archived 214-shot `shots.json`
+    (git 7f38d18) with EVERY shot forced into one shared place — the maximal-firing
+    hypothesis, since the archived file predates `place` and scores 0 on its own.
+
+    Result: ONE fire in 214 shots, and it is L89, the true positive. Every other adjacent
+    unchained pair shares only stopwords ('the', 'and', 'in'), verb morphology ('counted'),
+    contractions ("wasn't"), or category nouns ('people', 'level') — the four classes
+    `_PROP_EXCLUDE`/`prop_nouns` drop. The pairs below are the real near-misses; they are
+    what the exclusion list is calibrated against, and they must stay silent."""
+    near_misses = [
+        ("L114", "Next level.", "L115", "This was Ocean's Eleven level stuff."),
+        ("L124", "Either way, the same bricks counted as a sale in one quarter,",
+         "L125", "came home, and got counted as inventory in the next."),
+        ("L150", "What finally killed it wasn't the auditors,",
+         "L151", "and it wasn't a regulator."),
+        ("L154", "and some of the people holding pink slips",
+         "L155", "were the same people who had been packing the bricks."),
+        ("L200", "The company kept the numbers in the same order,",
+         "L201", "in front of everyone, in the open."),
     ]
-    hard = []
-    L.action_chain_check("lf", shots, hard)
-    assert hard == []
+    for a_id, a_vo, b_id, b_vo in near_misses:
+        hard = _chain({"id": a_id, "place": "one-place", "stage": "s"},
+                      {"id": b_id, "place": "one-place"},
+                      vo={a_id: a_vo, b_id: b_vo})
+        assert hard == [], (a_id, b_id, hard)
+    # the one true positive in the whole file
+    hard = _chain({"id": "L88", "place": "one-place", "stage": "s"}, {"id": "L89", "place": "one-place"})
+    assert len(hard) == 1 and "box" in hard[0], hard
 
 
 # =============================================================================
@@ -534,6 +795,40 @@ def test_semantic_cast_justified_nearby_lead_is_silent():
     assert hard == []
 
 
+def test_semantic_cast_plural_role_justifies_a_singular_slug():
+    """R2-M5, the commonest justified shape and the check's own documented promise: the VO
+    names the role in the PLURAL ('bankers', 'auditors') and the cast slug is SINGULAR
+    ('hq-banker', 'auditor-rep'). Measured on the archived file, exact-token matching fired
+    on 6 such shots (L45, L76, L80, L150, L182, L191) it promised to leave alone."""
+    chars = CHARS | {"hq-banker", "auditor-rep"}
+    for slug, vo in (("hq-banker", "The bankers signed off on every page."),
+                     ("auditor-rep", "The auditors came back twice that quarter.")):
+        shots = [{"id": "L45", "still_prompt": f"`{slug}` (`expr-deadpan`) initials the page."}]
+        hard = []
+        L.semantic_cast_check("lf", shots, {"L45": vo}, chars, hard)
+        assert hard == [], (slug, hard)
+
+
+def test_semantic_cast_an_irregular_plural_role_still_justifies_its_slug():
+    """`_singular`'s trailing-s rule cannot fold 'foremen'; `_IRREGULAR_ROLE` folds the
+    irregulars the check's own closed role list can produce."""
+    shots = [{"id": "L50", "still_prompt": "`brick-foreman` (`expr-deadpan`) squares the stack."}]
+    hard = []
+    L.semantic_cast_check("lf", shots, {"L50": "The foremen counted the same bricks twice."},
+                          CHARS, hard)
+    assert hard == []
+
+
+def test_semantic_cast_singularization_does_not_swallow_the_real_defect():
+    """The L100 defect must survive the fix: 'managers' folds to 'manager', which is still
+    nowhere near `brick-foreman`/`qt-wiles`."""
+    shots = [{"id": "L100", "still_prompt": "`brick-foreman` and `qt-wiles` lean over the table."}]
+    hard = []
+    L.semantic_cast_check("lf", shots, {"L100": "So the managers put their heads together"},
+                          CHARS, hard)
+    assert len(hard) == 1, hard
+
+
 def test_semantic_cast_no_generic_plural_role_is_silent():
     shots = [
         {"id": "L01", "still_prompt": "`brick-foreman` (`expr-deadpan`) stands alone at the "
@@ -670,3 +965,60 @@ def test_e2e_a_suffix_soft_word_fails():
     data["global_prompt_suffix"] = "flat colours with gentle soft cel shading"
     rc, _ = _main(data)
     assert rc == 1
+
+
+def test_e2e_a_place_recording_no_ownership_decision_fails():
+    """main() wiring for the forced choice — a declared place with neither field set."""
+    rc, _ = _main(_file(place="founder-room", shot_class="literal"))
+    assert rc == 1
+
+
+def test_e2e_a_place_with_its_ownership_decision_recorded_exits_zero():
+    rc, _ = _main(_file(place="founder-room", shot_class="literal", owner_ambiguity=True))
+    assert rc == 0
+
+
+CHAIN_MD = (
+    "1,000 words / 175 wpm\n---\n"
+    "The founder kept his ledgers in a locked cabinet. "
+    "One night somebody popped the cabinet open. "
+    "Investors never heard about it at all."
+)
+CHAIN_ANCHORS = ["The founder kept", "One night somebody", "Investors never heard"]
+
+
+def _chain_file(**second_shot):
+    shots = []
+    for i, a in enumerate(CHAIN_ANCHORS):
+        sh = {"id": f"L{i + 1:02d}", "vo_ref": a, "duration_s": 5, "shot_class": "literal",
+              "source": "ai-gen", "place": "founder-office", "owner_ambiguity": i == 0,
+              "still_prompt": "a plain cartoon scene, every surface completely blank and unlettered",
+              "synthetic": False, "notes": ""}
+        if i != 0:
+            del sh["owner_ambiguity"]        # only the plate records the decision
+        if i == 1:
+            sh.update(second_shot)
+        shots.append(sh)
+    return {"schema": L.SCHEMA_V2, "channel": "the-second-take", "video_slug": "t",
+            "generated": "2026-08-04", "status": "shots-drafted",
+            "global_prompt_suffix": SUFFIX,
+            "long_form": {"aspect_ratio": "16:9", "shots": shots},
+            "thumbnail": {"primary": {"gen_prompt": "a plain cartoon poster"}, "challengers": []},
+            "shorts": []}
+
+
+def test_e2e_an_unchained_same_place_continuation_fails():
+    """main() wiring for the action chain — and proof it works on a file that has never
+    been `--write`-n: the VO comes from the tiling lint derives on this run, not from a
+    stored `vo_text`. L01/L02 share the prop 'cabinet' in one place, and L02 declares
+    nothing."""
+    def run(data):
+        p = Path(tempfile.mkdtemp())
+        (p / "script.md").write_text(CHAIN_MD, encoding="utf-8")
+        f = p / "shots.json"
+        f.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        return L.main([str(f)])
+
+    assert run(_chain_file()) == 1                                  # unchained continuation
+    assert run(_chain_file(stage="cabinet", stage_role="base")) == 0   # a chain declared
+    assert run(_chain_file(hard_cut=True)) == 0                     # or an explicit hard cut

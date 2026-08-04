@@ -73,9 +73,11 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    figure toward background scale by implication even though nothing said so outright? (Mechanism:
 >    audit-drift §D/§E1 — L66's crowd clause was correctly written for the CROWD and still miniaturized the
 >    foreman by proximity, because nothing pinned his plane/scale against Wiles's.)
-> 7. **Action-chain cause→effect readability.** Lint proves consecutive shots that call back to a held
->    prop/scene carry a `stage` chain or `hard_cut: true`; it cannot prove the chain actually READS as one
->    causal action. Walk a `stage` chain (or a run of shots without `hard_cut`) as an audience would: does
+> 7. **Action-chain cause→effect readability.** Lint proves only the narrowest omission: two adjacent shots
+>    in one `place` whose VO continues on a shared prop, where the later shot declares no chain at all and no
+>    `hard_cut: true`. It stays silent the moment ANY chain is declared, and it never reads `still_prompt`
+>    — so whether a declared chain actually READS as one causal action is entirely yours. Walk a `stage`
+>    chain (or a run of shots without `hard_cut`) as an audience would: does
 >    shot N+1 visibly follow FROM shot N's action, and does the chain's last shot deliver the payload the
 >    VO promises (the consequence, the reaction, the reveal)? A chain that is mechanically linked but reads
 >    as disconnected aftermath portraits still fails. (Mechanism: audit-drift §E4 — L89-L91 were three

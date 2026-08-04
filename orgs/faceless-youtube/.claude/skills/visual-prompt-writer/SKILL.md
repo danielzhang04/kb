@@ -126,14 +126,15 @@ at the first act's level.
   `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +
   ≤3 deltas). Declare `place` on every shot in a recurring set; symbolic/abstract/standalone
   object-insert `shot_class`es, a short's `first_frame`, and the thumbnail block declare no `place` and
-  run as seedless roots. A place that hosts ≥2 shots, or that carries owner branding under L-1, requires a
-  plate — forge derives it from the first emitted shot of that place carrying no named cast; a single-use,
-  unbranded place is its own place-first frame and stays seedless (a dedicated plate for it is pure
-  waste). Every declared `place` must map to a span in `script.md` (`script_vocab`) — an invented place
-  fails lint like invented lettering. An institution-owned interior authors ONE visible owner cue on the
-  plate, or records `owner_ambiguity: true`; the cue's literal is per-video data sourced from the shot's
-  own `place` declaration plus `script_vocab` — **never a skill constant** — registered with the existing
-  `carried_literal_check` L-1 carry mechanism. A set invented twice mid-pass gets described twice
+  run as seedless roots. The **plate is the first-in-file shot declaring the place**; for a QUALIFYING
+  place (≥2 shots declare it, or its plate declares `place_owner`) the plate must carry zero named cast
+  and no `stage_role: delta` — a single-use, unbranded place is its own place-first frame and stays
+  seedless (a dedicated plate for it is pure waste). Every declared `place` must map to a span in
+  `script.md` (`script_vocab`) — an invented place fails lint like invented lettering. Every plate makes
+  the **owner forced choice**: declare exactly one of `place_owner: '<LITERAL>'` (the quoted cue must
+  appear in the plate's own `still_prompt`, carried under L-1 by any delta that redraws it) or
+  `owner_ambiguity: true`; the literal is per-video data sourced from the script — **never a skill
+  constant**. A set invented twice mid-pass gets described twice
   differently and renders twice.
 - **The three peaks:** reserve the most striking staging for the opening, the mid-video re-arm (55–65%),
   and the withheld peak in the final 20%. A character enters on the line that NAMES them.
