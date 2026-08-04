@@ -1,0 +1,22 @@
+# Round-5 gen log - Lane V
+
+_2026-08-04 · Lane cap: $1.40 · Single candidate per requested output · B5 `shots.json` at HEAD · no canonical scene, manifest, or review stamp changed_
+
+| request | id | file | tier | cost (USD) | seeds | §3 preliminary verdict | note |
+|---|---|---|---:|---:|---|---|---|
+| root | L19 | `_staging/L19-b5V.png` | 2K | 0.134 | crowd exemplar | PASS preliminary - crowd uses dot-eye tier; rake, cash drift, working blue-boilersuit crew, unlettered cartons, and fore/mid/back depth all land. | Flat-cel palette is on recipe. SHA-256 `4f6a1213673c8a3a32f246b6b654f6433a611f36004452484ec0c54d2f2c905d`. |
+| root | L28 | `_staging/L28-b5V.png` | 2K | 0.134 | staged Terry STEP-1; staged MiniScribe STEP-1; `prop-drive` | PASS preliminary - both named figures retain their seeded identity, pose, and readable faces at natural scale; Terry holds the finished drive and the MiniScribe badge is visible. | Bright Colorado bench scene is full and on palette. SHA-256 `539dc61219bec3b3cb29adc931325e38a33648d477af5ee15daad92ac172f138`. |
+| root | L60 | `_staging/L60-b5V.png` | 2K | 0.134 | staged Wiles powerstance/deadpan STEP-1; staged foreman sit/worried STEP-1; crowd exemplar | PASS preliminary - Wiles holds the table head, the foreman is seated in clear three-quarter view, and the crowd is genuinely rear-zoned behind glass. | Warm boardroom has no legible labels; all named/crowd faces remain earless and noseless. SHA-256 `2c19badccb25b62b850098f02436c02f9cf64e3c8282eaa368112e5cfd8a16d5`. |
+| B5 child | L61 | `_staging/L61-b5V.png` | 2K | 0.134 | staged L60-b5V (SHA-pinned); crowd exemplar | PASS preliminary - held boardroom topology and both lead faces remain legible; one concentric target is behind Wiles. | overlay@2 did not permit replacing a `place_anchor`; direct Forge slate replaces it truthfully with the SHA-pinned staged B5 parent. SHA-256 `3dbb4b42e2b8283dc1b2b0d5c17602aa53f280d0b912df440926b9853786ae19`. |
+| B5 delta | L62 | `_staging/L62-b5V.png` | 2K | 0.134 | staged L61-b5V (SHA-pinned); crowd exemplar | PASS preliminary - L61 set holds and only one fat envelope of banknotes is newly on the table. | Same palette and rear-zone crowd topology. SHA-256 `6dc8f62bd36c54aca1de6a61da65b054440b3fae747c8f6848a19fa47e193c8e`. |
+| B5 branch | L63 | `_staging/L63-b5V.png` | 2K | 0.134 | staged Wiles/foreman STEP-1 frames; staged L60-b5V (SHA-pinned); crowd exemplar | PASS preliminary - Wiles, foreman, and rear crowd retain B5 positions; one ordinary block and flat cleaver land without blood/gore. | Flat-cel boardroom palette holds. SHA-256 `ca4da87657fdf7fa7df60d870e5e32559b025c5504785931bac9d4109328f797`. |
+| B5 branch | L64 | `_staging/L64-b5V.png` | 2K | 0.134 | staged Wiles point/smug STEP-1; staged foreman sit/worried STEP-1; staged L60-b5V (SHA-pinned); crowd exemplar | PASS preliminary - Wiles points, foreman remains clear, crowd stays behind glass, and the single target is visibly pressed into the ceiling line. | No text/label concern. SHA-256 `fda1e31ba958542632f3b50dab2991f9f5ca24a5d84c3d3d034022439556ea0d`. |
+| B5 delta | L65 | `_staging/L65-b5V.png` | 2K | 0.134 | staged L64-b5V (SHA-pinned); crowd exemplar | FLAGGED fidelity - the visible target state is indistinguishable from L64: L64's B5 payload already has the target pressed into the ceiling line. | No retry submitted: the repeated final-state requirement is a `shots_json` mechanism issue, so a content retry could not create the narrated second raise without contradicting the locked payload. SHA-256 `c9e36b4b961802ffaa19ff06c6f1dd0e4e6ff4a60f5359a655e20d60f9db0010`. |
+
+## Lane result
+
+- Provider submissions: 8. Published PNGs: 8. Lane spend: **$1.072 / $1.40**.
+- Preliminary pass staging paths: `_staging/L19-b5V.png`, `_staging/L28-b5V.png`, `_staging/L60-b5V.png`, `_staging/L61-b5V.png`, `_staging/L62-b5V.png`, `_staging/L63-b5V.png`, `_staging/L64-b5V.png`.
+- Flagged output retained as evidence: `_staging/L65-b5V.png` (no distinct second target raise under the B5 payload).
+- Mechanism note: the `forge-retry-overlay@2` L61 preflight correctly rejected a staged parent substitution for a `place_anchor` as non-authoritative. The direct Forge specs for L61-L65 preserve the final B5 payload but replace only the obsolete canonical parent with the named, SHA-256-pinned staged parent; each dry run confirms the actual provider seed list.
+- No content retry was used. No canonical scene, `manifest.json`, or `stamp_review` was changed.
