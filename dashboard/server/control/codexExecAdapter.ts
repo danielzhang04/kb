@@ -5,6 +5,8 @@
  * authority: worker prose alone can never complete an attempt.
  */
 import { spawn as spawnChildProcess } from 'node:child_process';
+import { existsSync as fileExistsSync } from 'node:fs';
+import { win32 } from 'node:path';
 import {
   boundSummary,
   buildQueuedOperatorMessagePrompt,
@@ -21,6 +23,54 @@ const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
 const MAX_AGENT_INSTRUCTION_CHARS = 64 * 1024;
 const ZERO_USAGE: ExecutionUsage = { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 };
+
+/** The executable plus any fixed argv prefix needed to launch the Codex CLI safely. */
+export interface CodexLaunchPair {
+  command: string;
+  prefixArgs: readonly string[];
+}
+
+/** Injectable seams keep Windows npm-shim lookup hermetic under test. */
+export interface CodexLaunchResolverOptions {
+  platform?: NodeJS.Platform;
+  path?: string | undefined;
+  existsSync?: (path: string) => boolean;
+}
+
+/**
+ * Resolve the actual executable used to launch Codex without a shell. Windows npm installs a
+ * .cmd shim, which Node intentionally will not execute with shell:false; invoke its JS target
+ * through this Node executable instead.
+ */
+export function resolveCodexLaunchPair(options: CodexLaunchResolverOptions = {}): CodexLaunchPair {
+  const platform = options.platform ?? process.platform;
+  if (platform !== 'win32') return { command: 'codex', prefixArgs: [] };
+
+  const pathApi = win32;
+  const pathEntries = (options.path ?? process.env.PATH ?? '').split(';').filter((entry) => entry.length > 0);
+  const existsSync = options.existsSync ?? fileExistsSync;
+  const searchedShims = pathEntries.map((entry) => pathApi.join(entry, 'codex.cmd'));
+  const shimPath = searchedShims.find((path) => existsSync(path));
+  if (!shimPath) {
+    throw new Error(
+      `codex adapter could not resolve the Windows npm shim: searched PATH entries for codex.cmd (${searchedShims.join(', ') || 'PATH was empty'})`,
+    );
+  }
+
+  const entrypointPath = pathApi.join(pathApi.dirname(shimPath), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+  if (!existsSync(entrypointPath)) {
+    throw new Error(
+      `codex adapter found Windows npm shim at ${shimPath}, but its JS entrypoint is missing: ${entrypointPath}`,
+    );
+  }
+  return { command: process.execPath, prefixArgs: [entrypointPath] };
+}
+
+let defaultCodexLaunchPair: CodexLaunchPair | undefined;
+
+function resolveDefaultCodexLaunchPair(): CodexLaunchPair {
+  return defaultCodexLaunchPair ??= resolveCodexLaunchPair();
+}
 
 /** A spawn request for one headless `codex exec` child; env has already been allowlist-filtered. */
 export interface CodexExecSpawnRequest {
@@ -149,7 +199,8 @@ export function buildCodexExecArgs(input: { model: string; worktreePath: string;
 
 /** Real Codex process spawn; tests always inject the seam above. */
 export const defaultCodexExecSpawner: CodexExecSpawner = (request) => {
-  const child = spawnChildProcess('codex', [...request.args], {
+  const launch = resolveDefaultCodexLaunchPair();
+  const child = spawnChildProcess(launch.command, [...launch.prefixArgs, ...request.args], {
     cwd: request.cwd,
     env: request.env,
     shell: false,

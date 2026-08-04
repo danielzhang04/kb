@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createCodexExecAdapter,
+  resolveCodexLaunchPair,
   type CodexExecProcess,
   type CodexExecSpawnRequest,
 } from './codexExecAdapter.ts';
@@ -82,6 +83,39 @@ function probeEvents(message = 'PROBE-A-OK'): string {
 }
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+describe('resolveCodexLaunchPair', () => {
+  it('launches the Windows npm shim entrypoint through Node without a shell', () => {
+    const shimDirectory = String.raw`C:\Users\danie\AppData\Roaming\npm`;
+    const shimPath = String.raw`C:\Users\danie\AppData\Roaming\npm\codex.cmd`;
+    const entrypointPath = String.raw`C:\Users\danie\AppData\Roaming\npm\node_modules\@openai\codex\bin\codex.js`;
+    const existsSync = vi.fn((path: string) => path === shimPath || path === entrypointPath);
+
+    expect(resolveCodexLaunchPair({
+      platform: 'win32',
+      path: `${String.raw`C:\Windows\System32`};${shimDirectory}`,
+      existsSync,
+    })).toEqual({ command: process.execPath, prefixArgs: [entrypointPath] });
+    expect(existsSync).toHaveBeenCalledWith(shimPath);
+    expect(existsSync).toHaveBeenCalledWith(entrypointPath);
+  });
+
+  it('fails closed when no Windows npm shim exists on PATH', () => {
+    expect(() => resolveCodexLaunchPair({
+      platform: 'win32',
+      path: String.raw`C:\Windows\System32;C:\Tools`,
+      existsSync: () => false,
+    })).toThrow(/searched PATH entries for codex\.cmd/);
+  });
+
+  it('uses the Codex executable directly off Windows', () => {
+    expect(resolveCodexLaunchPair({
+      platform: 'linux',
+      path: '/ignored',
+      existsSync: () => { throw new Error('should not read the filesystem'); },
+    })).toEqual({ command: 'codex', prefixArgs: [] });
+  });
+});
 
 describe('createCodexExecAdapter.execute', () => {
   it('spawns a first turn with the pinned headless argv and sends the prompt only over stdin', async () => {
