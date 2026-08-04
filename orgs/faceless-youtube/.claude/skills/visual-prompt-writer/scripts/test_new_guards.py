@@ -320,9 +320,17 @@ def test_g8_rejects_non_string_empty_and_non_normalized_paths():
         assert len(hard) == 1 and "normalized video-relative" in hard[0], (anchor, hard)
 
 
-def test_g8_anchor_is_base_only():
+def test_g8_anchor_is_not_valid_on_a_delta():
+    """C-5 widened this from base-only to any NON-DELTA shot (2026-08-04) — a delta
+    still can't carry one; it continues its own base's held scene."""
     hard = _place("assets/scenes/L60.png", stage_role="delta")
-    assert len(hard) == 1 and "only valid on a stage `base`" in hard[0], hard
+    assert len(hard) == 1 and "not valid on a stage `delta`" in hard[0], hard
+
+
+def test_g8_anchor_is_legal_on_a_standalone_shot_with_no_stage_role():
+    """The C-5 widening: a place-first standalone shot (no `stage` at all) may now
+    carry a place_anchor too, not just a regenerated `base`."""
+    assert _place("assets/scenes/L60.png", stage_role=None) == []
 
 
 # =========================================================================

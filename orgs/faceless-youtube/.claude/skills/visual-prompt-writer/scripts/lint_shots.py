@@ -1147,9 +1147,13 @@ _PLACE_ANCHOR = re.compile(r"assets/scenes/[A-Za-z0-9][A-Za-z0-9._-]*\.png\Z")
 def place_anchor_check(label, objs, hard):
     """Structural contract for forge's optional, video-local approved-place seed.
 
-    This owns only authoring shape and base-only placement. File existence and resolved-path
+    This owns only authoring shape and legal-role placement. File existence and resolved-path
     containment belong to forge, which is the runtime that opens the seed.
-    """
+
+    C-5 widened this from base-only to any NON-DELTA shot: a delta continues its own base's held
+    scene (a different seed, already covered by the chain parent), but a standalone place-first
+    shot with no `stage` at all is exactly the single-use-place case C-4's conditional plate law
+    legalizes, and it needs to be able to carry a human-picked place_anchor too."""
     for pid, sh in objs:
         if "place_anchor" not in sh:
             continue
@@ -1159,8 +1163,10 @@ def place_anchor_check(label, objs, hard):
                 f"[{label}] {pid}: `place_anchor` must be a non-empty normalized video-relative "
                 "`assets/scenes/<file>.png` path (no absolute, traversal, or cross-video path).")
             continue
-        if sh.get("stage_role") != "base":
-            hard.append(f"[{label}] {pid}: `place_anchor` is only valid on a stage `base`.")
+        if sh.get("stage_role") == "delta":
+            hard.append(f"[{label}] {pid}: `place_anchor` is not valid on a stage `delta` (a "
+                        "delta continues its own base's held scene via the chain parent; "
+                        "`place_anchor` is a different seed, for a base or standalone shot).")
 
 
 def figures_check(label, objs, hard, soft):
@@ -1276,6 +1282,472 @@ def delta_feasibility_check(label, objs, hard):
                 "or the layered/rebase path.")
 
 
+# ---------------------------------------------------------------------------
+# DOCTRINE RESET 2026-08-04 — style one-voice (C-2), place (C-3/C-5), authoring
+# feasibility (C-7/C-8). Root cause: audit-drift-2026-08-04.md (5 mechanisms) +
+# the design's own correction, adversarial-review-2026-08-04.md M8-M11 — every
+# HARD check below is presence/omission ONLY, the same boundary
+# spatial_tier_check/delta_feasibility_check already draw above. Whether the
+# present clauses actually COHERE (right topology, right cause->effect, right
+# casting call) is the shot critic's job (references/critics.md, questions 6-8),
+# never lint's — a keyword check that tries to judge coherence is Goodhart-able
+# (audit's own L66 diagnosis: the clauses were present and still wrong).
+# ---------------------------------------------------------------------------
+
+# --- C-2: banned render-technique terms + suffix one-voice --------------------
+# Exact list from the design (spec §1 Style, M8's amendment) — case-insensitive,
+# applies to prompts AND `global_prompt_suffix`. Scene-light NOUNS (warm, amber,
+# glow, lit, lamp) are deliberately absent: they describe committed scene
+# lighting, not a render TECHNIQUE, and "warm lamp amber" is correct prose on
+# ~70 real shots (M8's measurement) that this list must never touch.
+_BANNED_RENDER_TERMS = re.compile(
+    r"\bgradient\b"
+    r"|\bgloss(?:y)?\b"
+    r"|\bspecular\b"
+    r"|\bbloom\b"
+    r"|\bdepth[- ]of[- ]field\b"
+    r"|\bblurred\s+(?:background|behind)\b"
+    r"|\bsoft\s+focus\b"
+    r"|\bphotoreal\w*\b"
+    r"|\bsubsurface\b"
+    r"|\brim\s+light\b",
+    re.IGNORECASE)
+
+# The suffix's own extra vocabulary the C-1 recipe deleted ("gentle soft cel
+# shading", "no feathered or blended transitions") — narrower than the prompt
+# ban above because the suffix is boilerplate, not scene content, so a stricter
+# list is cheap here without the false-positive risk a prompt-wide ban on
+# "gentle"/"soft"/"blend" would carry over 214 shots of ordinary prose. Bare
+# "soft" is included (the deleted phrase paired it with "gentle") but excludes
+# "soft focus" — that exact phrase is already the C-2 banned term above, and
+# without the exclusion the same span would report twice.
+_SUFFIX_SOFT = re.compile(
+    r"\bgentle\b|\bblend(?:ed|ing)?\b|\bfeather(?:ed|ing)?\b|\bsoft\b(?!\s+focus)",
+    re.IGNORECASE)
+
+
+def render_technique_check(label, prompts, hard):
+    """C-2 HARD. `prompts` is [(id, field, text)] — the same shape text_supply_check
+    uses, so this call slots into main() beside it for every still_prompt, suffix,
+    thumbnail gen_prompt, and short first_frame."""
+    for pid, field, prompt in prompts:
+        seen = set()
+        for m in _BANNED_RENDER_TERMS.finditer(prompt or ""):
+            t = m.group().lower()
+            if t in seen:
+                continue
+            seen.add(t)
+            hard.append(
+                f"[{label}] {pid}.{field}: banned render-technique term {m.group()!r} — the C-1 "
+                f"unified recipe is flat fills + at most one hard-edged single-step shadow, no "
+                f"soft/blended rendering. A scene-light NOUN (warm, amber, glow, lit, lamp) is "
+                f"never this — only the render-TECHNIQUE word is banned.")
+
+
+def suffix_one_voice_check(suffix, hard):
+    """C-2(a) HARD, one-voice. `global_prompt_suffix` carries no banned render-technique
+    term (shares render_technique_check's own list, so the two checks cannot disagree)
+    and no OTHER soft/gradient-permissive wording. A second voice in the one string
+    appended to every prompt is audit mechanism 1 — the global smooth/glossy drift
+    traced to the suffix and the style-bible descriptor disagreeing with the hardened
+    scene style."""
+    render_technique_check("suffix", [("global_prompt_suffix", "global_prompt_suffix", suffix or "")], hard)
+    seen = set()
+    for m in _SUFFIX_SOFT.finditer(suffix or ""):
+        t = m.group().lower()
+        if t in seen:
+            continue
+        seen.add(t)
+        hard.append(
+            f"[suffix] global_prompt_suffix: soft/gradient-permissive wording {m.group()!r} "
+            f"contradicts the C-1 one-voice recipe (flat fills, one hard-edged shadow, no "
+            f"feathered or blended transitions) — style-bible.md's own text deleted this wording; "
+            f"the suffix must not reintroduce it.")
+
+
+# --- C-3/C-5: place --------------------------------------------------------
+_PLACE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+# The symbolic/abstract/object-insert `shot_class` values (visual-grammar.md §1's
+# table) — each depicts a floating object or abstraction, never a diegetic SET,
+# so `place` is structurally inapplicable, never merely omittable.
+_PLACELESS_SHOT_CLASSES = frozenset((
+    "symbolic-stand-in-object", "number-glued-to-object", "map-plan-view",
+    "physicalized-imbalance", "register-shift-infographic"))
+
+# Structural set-type nouns that name a KIND of place, not a SPECIFIC one — dropped
+# before comparing a place id's tokens against the script's own vocabulary, the same
+# way long_literal_word_check's floor drops words the author had no real choice about.
+_PLACE_GENERIC_TOKEN = frozenset((
+    "room", "office", "yard", "store", "dock", "hall", "floor", "area", "site",
+    "desk", "shop", "zone", "house", "corridor", "table", "warehouse", "lot",
+    "lobby", "wing", "bay", "plant", "boardroom", "exterior", "interior"))
+
+
+def place_key_check(label, objs, hard):
+    """HARD, shape only. `place` is a kebab-case set id (C-3) — never `stage`'s
+    caps/contiguity semantics, just a lower-case, hyphen-separated identity string."""
+    for pid, sh in objs:
+        place = sh.get("place")
+        if place is None:
+            continue
+        if not isinstance(place, str) or not _PLACE_ID.fullmatch(place):
+            hard.append(f"[{label}] {pid}: `place` {place!r} must be a non-empty lower-case "
+                        "kebab-case set id (e.g. 'miniscribe-boardroom') - distinct from `stage`.")
+
+
+def place_shot_class_exempt_check(label, shots, hard):
+    """HARD. The symbolic/abstract/object-insert shot classes never declare `place`
+    (C-3) - visual-grammar.md's own class table shows why: each depicts a floating
+    object/abstraction, never a set."""
+    for sh in shots:
+        sc = sh.get("shot_class")
+        if "place" in sh and sc in _PLACELESS_SHOT_CLASSES:
+            hard.append(
+                f"[{label}] {sh.get('id', '?')}: shot_class {sc!r} declares `place` "
+                f"{sh.get('place')!r} - this class is exempt (C-3): it depicts a floating "
+                f"object/abstraction, never a diegetic set.")
+
+
+def place_context_exempt_check(label, objs, hard):
+    """HARD. A short's `first_frame` and the thumbnail block never declare `place`
+    (C-3) - neither inhabits a per-video diegetic set the way a long-form/short shot
+    does."""
+    for pid, sh in objs:
+        if isinstance(sh, dict) and "place" in sh:
+            hard.append(f"[{label}] {pid}: declares `place` {sh['place']!r} - thumbnail/"
+                        "first_frame never do (C-3); they run seedless under the hardened "
+                        "descriptor unconditionally.")
+
+
+def place_inventory_check(label, objs, vocab, hard):
+    """HARD. Every declared `place` must anchor to a word the script itself uses
+    (`script_vocab`) - the same class of error as an invented lettering literal
+    (long_literal_word_check reuses the identical discriminator). At least one
+    non-generic token (dropping structural set-type nouns like 'room'/'yard', which
+    name a KIND of set, not the specific one) must be real script vocabulary, or the
+    place was invented rather than read off the script. NO SCRIPT VOCAB, NO CHECK -
+    an empty vocabulary is the absence of the discriminator, not a licence to flag
+    every place (same reasoning as long_literal_word_check)."""
+    if not vocab:
+        return
+    for pid, sh in objs:
+        place = sh.get("place")
+        if not isinstance(place, str) or not place.strip():
+            continue
+        toks = [t for t in place.lower().split("-") if len(t) >= 4 and t not in _PLACE_GENERIC_TOKEN]
+        if not toks:
+            continue          # nothing but structural nouns - nothing this check can anchor
+        if not any(t in vocab for t in toks):
+            hard.append(
+                f"[{label}] {pid}: place {place!r} has no token the script itself uses "
+                f"({toks!r} not found in script.md) - an invented place is the same class of "
+                f"error as an invented lettering literal; anchor it to the script's own wording "
+                f"or fold the shot into an existing declared place.")
+
+
+def place_owner_check(label, shots, suffix, hard):
+    """HARD. A branded interior - a `place` group where ANY shot authors an alphabetic
+    trackable literal (L-1's own vocabulary; a proper-noun-shaped quoted string, never
+    a bare numeral, is presumptively the owner's signage/letterhead/plaque) - must
+    carry that SAME literal on its place-first shot (file order within the group
+    mirrors C-4's derived plate: the first emitted no-cast shot of the place), or the
+    group must declare `owner_ambiguity: true` somewhere. Ownership invisible on the
+    establishing frame while a LATER shot quotes the company name is Daniel's failure
+    #6 (office ownership invisible) under another name. The literal is per-video DATA,
+    never a skill constant - this reads only what the author already quoted."""
+    groups = {}
+    for sh in shots:
+        place = sh.get("place")
+        if isinstance(place, str) and place.strip():
+            groups.setdefault(place, []).append(sh)
+    for place, grp in groups.items():
+        if any(sh.get("owner_ambiguity") is True for sh in grp):
+            continue
+        literals = {}
+        for sh in grp:
+            for lit, _s, _e in quoted_literals(sh.get("still_prompt") or "", suffix):
+                if _TRACKABLE_LITERAL.match(lit):
+                    literals.setdefault(lit, []).append(sh.get("id", "?"))
+        if not literals:
+            continue           # nothing branded declared anywhere in this place - not this check's job
+        plate = grp[0]         # C-4: the place-first shot in file order mirrors the derived plate
+        plate_lits = {lit for lit, _s, _e in quoted_literals(plate.get("still_prompt") or "", suffix)}
+        missing = {lit: ids for lit, ids in literals.items() if lit not in plate_lits}
+        if missing:
+            hard.append(
+                f"[{label}] place {place!r}: owner cue(s) {missing!r} quoted elsewhere in the "
+                f"place but absent from its place-first shot {plate.get('id', '?')!r} - author "
+                f"the cue on the plate, or declare `owner_ambiguity: true` if the ambiguity is "
+                f"intentional.")
+
+
+def place_anchor_same_place_check(label, shots, hard):
+    """C-5 HARD mirror of forge's same-place law: a `place_anchor` may only seed a shot
+    within its OWN place - cross-place image seeding is the probe-refuted style-anchor
+    failure under another name (decisions.md 2026-08-04). The anchor's filename stem is
+    the SOURCE shot's own `id` (forge's convention: `assets/scenes/<id>.png`); resolve
+    it in this same file and compare `place` fields. Silent when either side's `place`
+    is unset (an archived pre-place file, or a legitimate no-place root) - this is the
+    same-PLACE law, not a mandatory-place law."""
+    by_id = {sh.get("id"): sh for sh in shots}
+    for sh in shots:
+        anchor = sh.get("place_anchor")
+        if not isinstance(anchor, str):
+            continue
+        stem = Path(anchor).stem
+        source = by_id.get(stem)
+        if source is None:
+            continue           # forge/filesystem resolves cross-file/missing anchors, not this check
+        src_place, dst_place = source.get("place"), sh.get("place")
+        if src_place and dst_place and src_place != dst_place:
+            hard.append(
+                f"[{label}] {sh.get('id', '?')}: `place_anchor` {anchor!r} seeds from {stem!r} "
+                f"(place {src_place!r}) into a shot declared place {dst_place!r} - cross-place "
+                f"image seeding is the probe-refuted style-anchor failure (decisions.md "
+                f"2026-08-04); a plate may only seed shots in its own place.")
+
+
+def bool_field_check(label, objs, field, hard):
+    """HARD, shape only. A non-boolean value silently fails every `... is True` test
+    elsewhere in this file (action_chain_check's `hard_cut`, place_owner_check's
+    `owner_ambiguity`) - shape drift here is a silent false negative downstream."""
+    for pid, sh in objs:
+        if field in sh and not isinstance(sh[field], bool):
+            hard.append(f"[{label}] {pid}: `{field}` is {sh[field]!r}, expected true or false.")
+
+
+# --- C-8: two-cast presence, action-chain, semantic-cast (narrow) -------------
+_BACKTICK = re.compile(r"`([^`]+)`")
+_SENTENCE_SPLIT = re.compile(r"(?<=[.;!?])\s+")
+
+# The registry vocabulary token for the seated POSE PRIMITIVE (kind: pose, name:
+# "sit") - copied, not imported, same precedent as SHOT_CLASSES above: widen only
+# with a real counter-example (a second seated-primitive name) in hand.
+SEATED_PRIMITIVE = "sit"
+
+_SUPPORT_NOUN = r"chair|stool|bench|seat|crate|step|ledge|desk\s+edge|sill"
+_SUPPORT = re.compile(r"\b(?:" + _SUPPORT_NOUN + r")\b", re.IGNORECASE)
+# A physical-contact verb/preposition near the support noun - the "contact phrase"
+# C-7 requires alongside the noun itself.
+_CONTACT_NEAR = re.compile(
+    r"\bon\b|\bin\b|\bagainst\b|\batop\b|\balong\b|\bastride\b|\bstraddl\w*"
+    r"|\bperch\w*|\brest\w*|\blean\w*|\bprop\w*|\bsit(?:s|ting)?\b|\bhips?\b",
+    re.IGNORECASE)
+_CONTACT_WINDOW = 30
+
+_PLANE_CLAUSE = re.compile(
+    r"\bforeground\b|\bbackground\b|\bmidground\b|\bmid-ground\b|\bsame\s+plane\b"
+    r"|\bplane\b|\bnearer\b|\bfarther\b|\bcloser\s+to\b|\bbehind\s+(?:him|her|them)\b"
+    r"|\bin\s+front\s+of\b", re.IGNORECASE)
+_EYELINE_CLAUSE = re.compile(
+    r"\beye[- ]?line\b|\bgaze\b|\blooks?\s+(?:at|toward|across|down\s+at|up\s+at)\b"
+    r"|\bfacing\s+(?:each\s+other|him|her|them|away)\b|\beye\s+contact\b", re.IGNORECASE)
+_SCALE_CLAUSE = re.compile(
+    r"\brelative\s+(?:head\s+)?(?:scale|size)\b|\bhead\s+scale\b"
+    r"|\b(?:larger|smaller|bigger|taller|shorter)\s+(?:in\s+(?:the\s+)?frame|head)\b"
+    r"|\bdominant\b", re.IGNORECASE)
+
+# A generic PLURAL role noun - the exact M11 trigger. Deliberately PLURAL-only:
+# L100's real defect is "managers" (plural), and a singular ("a manager") is far
+# more often a specific individual the shot is right to cast by name.
+_GENERIC_PLURAL_ROLE = re.compile(
+    r"\b(?:managers|executives|workers|employees|officers|clerks|staffers|bankers"
+    r"|auditors|reps|representatives|foremen|colleagues|investors|shareholders"
+    r"|directors|officials|accountants)\b", re.IGNORECASE)
+
+# This project's own continuity idiom, used correctly on delta frames that DO carry
+# a `stage` ("The same shop interior, same locked framing", "The same populated
+# boardroom, same locked framing"). A shot that uses it WITHOUT a `stage`/`hard_cut`
+# is the L89-L91 drift: a backward reference to a held scene with nothing declaring
+# the shots linked.
+_SAME_CALLBACK = re.compile(r"\bthe\s+same\s+[a-z]", re.IGNORECASE)
+
+
+def _named_chars(prompt, chars):
+    """Registry characters backticked in `prompt`, in first-appearance order."""
+    out = []
+    for m in _BACKTICK.finditer(prompt or ""):
+        n = m.group(1)
+        if n in chars and n not in out:
+            out.append(n)
+    return out
+
+
+def video_chars(data, vdir):
+    """The working cast vocabulary for THIS video: the channel `registry.json`'s
+    PROMOTED characters, plus this video's own Pass-1 `assets/library/manifest.json`
+    identities - mirroring forge.py's `merge_vocabulary`. A video's own lead
+    (`qt-wiles`, `brick-foreman` ...) never reaches the channel registry (registry
+    promotion rule, kept, see shots-schema.md/forge.py), so registry-only lookup
+    misses exactly the cast C-7/C-8 exist for. Best-effort: either source
+    missing/unreadable degrades that half silently, never a hard failure - this is a
+    cast-BINDING aid, not the name-resolution gate the critic already owns (question 3)."""
+    chars = set()
+    channel = data.get("channel")
+    if channel:
+        reg_path = vdir.parent.parent / "visual-kit" / "registry" / "registry.json"
+        try:
+            reg = json.loads(reg_path.read_text(encoding="utf-8"))
+            chars |= set(reg.get("characters", {}).keys())
+        except (OSError, ValueError):
+            pass
+    chars.discard("base")
+    mani_path = vdir / "assets" / "library" / "manifest.json"
+    try:
+        mani = json.loads(mani_path.read_text(encoding="utf-8"))
+        for e in mani.get("assets", []):
+            if e.get("kind") in ("identity", "character") and e.get("name"):
+                chars.add(e["name"])
+    except (OSError, ValueError):
+        pass
+    return chars
+
+
+def seat_support_check(label, objs, chars, soft, hard):
+    """C-7 HARD. A NAMED figure carrying the registry `sit` pose primitive - bound by
+    backtick ORDER to the most-recently-named character, mirroring forge.py's
+    `shot_cast`, NEVER the English verb "sits" (this project's own prose uses that
+    verb constantly for OBJECTS: "the metal desk sits pushed aside", "a brick sits on
+    its end", "the cabinet sits blurred") - must name a support noun from the closed
+    list AND a contact phrase in the SAME SENTENCE. Framing sufficiency ("does the
+    render show enough of it") is not lint-decidable - a SOFT heads-up on every
+    structurally-passing seated shot, per M9's amendment."""
+    if not chars:
+        return
+    for pid, sh in objs:
+        prompt = sh.get("still_prompt") or ""
+        cur = None
+        seated = []
+        for m in _BACKTICK.finditer(prompt):
+            name = m.group(1)
+            if name in chars:
+                cur = name
+            elif name == SEATED_PRIMITIVE and cur:
+                seated.append((cur, m))
+        if not seated:
+            continue
+        sentences = []
+        start = 0
+        for m in _SENTENCE_SPLIT.finditer(prompt):
+            sentences.append((start, m.start(), prompt[start:m.start()]))
+            start = m.end()
+        sentences.append((start, len(prompt), prompt[start:]))
+        for char, tok in seated:
+            sent = next((s for (a, b, s) in sentences if a <= tok.start() < b), prompt)
+            sup = _SUPPORT.search(sent)
+            has_contact = bool(sup) and bool(_CONTACT_NEAR.search(
+                sent[max(0, sup.start() - _CONTACT_WINDOW):min(len(sent), sup.end() + _CONTACT_WINDOW)]))
+            if sup and has_contact:
+                soft.append(f"[{label}] {pid}: `{char}` carries `{SEATED_PRIMITIVE}` with support "
+                            f"{sup.group()!r} authored - confirm the render's FRAMING actually "
+                            f"shows the support (not lint-decidable; forced review row).")
+            else:
+                missing = [] if sup else ["a support object (chair|stool|bench|seat|crate|step|"
+                                          "ledge|desk edge|sill)"]
+                if sup and not has_contact:
+                    missing = ["a contact phrase near the support"]
+                hard.append(
+                    f"[{label}] {pid}: `{char}` carries the seated pose primitive "
+                    f"`{SEATED_PRIMITIVE}` but its sentence names no {missing[0]} - a body seated "
+                    f"on nothing (L89's unambiguous floating sit). Name the support and how "
+                    f"`{char}` contacts it in the same sentence.")
+
+
+def two_cast_presence_check(label, objs, chars, hard):
+    """C-8 HARD = presence only. A shot naming >=2 registry characters must state a
+    plane clause, an eye-line clause, and a relative-head-scale clause ("dominant"
+    legally resolves scale via posture/framing, per the design). Whether the stated
+    clauses describe the right TOPOLOGY - the audit's own L66 finding, where the
+    clauses were present and the foreman still miniaturized - is the shot critic's
+    judgment (critics.md question 6), never lint's."""
+    if not chars:
+        return
+    for pid, sh in objs:
+        prompt = sh.get("still_prompt") or ""
+        named = _named_chars(prompt, chars)
+        if len(named) < 2:
+            continue
+        missing = []
+        if not _PLANE_CLAUSE.search(prompt):
+            missing.append("plane")
+        if not _EYELINE_CLAUSE.search(prompt):
+            missing.append("eye line")
+        if not _SCALE_CLAUSE.search(prompt):
+            missing.append("relative head scale")
+        if missing:
+            hard.append(
+                f"[{label}] {pid}: 2+-named-cast shot ({', '.join('`' + c + '`' for c in named)}) "
+                f"states no {', '.join(missing)} clause - presence only (C-8); whether the stated "
+                f"clauses cohere into the right topology is the critic's call.")
+
+
+def action_chain_check(label, shots, hard):
+    """C-8 HARD = presence only. A shot's prose that calls back to a held scene/prop
+    ("the same wax-sealed box" - this project's own idiom, used correctly on delta
+    frames that DO declare a `stage`) but carries no `stage`/`stage_role` of its own
+    and no `hard_cut: true` is exactly the L89-L91 drift: three shots visibly
+    continuing one action (pry the box, swap the sheet, get caught) that ran as three
+    independent seedless roots because nothing declared them linked. Cause->effect
+    READABILITY stays the critic's judgment (critics.md question 7); this only checks
+    the omission."""
+    for sh in shots:
+        if sh.get("stage") or sh.get("hard_cut") is True:
+            continue
+        prompt = sh.get("still_prompt") or ""
+        m = _SAME_CALLBACK.search(prompt)
+        if m:
+            hard.append(
+                f"[{label}] {sh.get('id', '?')}: still_prompt calls back to a held scene/prop "
+                f"({prompt[m.start():m.start() + 40].strip()!r}...) but declares no `stage`/"
+                f"`stage_role` chain and no `hard_cut: true` - an action continuing across shots "
+                f"needs one or the other (the L89-L91 drift: a box-tampering sequence that ran as "
+                f"three independent seedless roots).")
+
+
+def semantic_cast_check(label, shots, id2text, chars, hard):
+    """C-8 HARD, narrow per M11. Fires ONLY the decidable case: a shot's OWN vo_text
+    names a generic PLURAL role ('managers', 'executives' ...) while the shot casts a
+    named character whose slug fragment (a `-`-split token, e.g. 'foreman' from
+    `brick-foreman`) appears NOWHERE in that shot's vo_text or its immediate +/-1
+    neighbours' - the real L100 defect: VO says 'managers', the shot casts
+    `brick-foreman`+`qt-wiles` specifically, and neither name surfaces anywhere near
+    it (vpw-log.md Phase B3's bulk anon_foreground->named-cast conversion is the
+    mechanism). A shot where the VO itself names the role ('the foreman told his
+    crew') is a legitimately justified lead and stays silent. Everything else - is the
+    cast choice dramatically RIGHT - is the critic's call (critics.md question 8), not
+    lint's. Needs `id2text` (vo_text tiling); silently skipped wherever anchors did
+    not tile clean."""
+    if not id2text or not chars:
+        return
+    ordered = [sh.get("id") for sh in shots]
+    for i, sh in enumerate(shots):
+        sid = sh.get("id")
+        vo = id2text.get(sid, "")
+        plural = _GENERIC_PLURAL_ROLE.search(vo)
+        if not plural:
+            continue
+        prompt = sh.get("still_prompt") or ""
+        named = _named_chars(prompt, chars)
+        if not named:
+            continue
+        window_ids = [ordered[k] for k in (i - 1, i, i + 1) if 0 <= k < len(ordered)]
+        window = " ".join(id2text.get(w, "") for w in window_ids).lower()
+        unjustified = [
+            c for c in named
+            if not any(len(tok) >= 3 and re.search(r"\b" + re.escape(tok) + r"\b", window)
+                       for tok in c.split("-"))
+        ]
+        if unjustified:
+            hard.append(
+                f"[{label}] {sid}: vo_text names a generic plural role ({plural.group()!r}) while "
+                f"the shot casts {', '.join('`' + c + '`' for c in unjustified)}, whose name "
+                f"appears nowhere in this VO span or its neighbours - the L100 defect (bulk "
+                f"generic->named conversion casting a specific lead the narration never names "
+                f"here). Either the VO's own words justify the named lead nearby, or recast the "
+                f"shot to the generic role.")
+
+
 def _shot_prompts(shots):
     return [(sh.get("id", "?"), "still_prompt", sh.get("still_prompt") or "") for sh in shots]
 
@@ -1297,6 +1769,7 @@ def main(argv):
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     vdir = Path(path).parent
     script_md = vdir / "script.md"
+    chars = video_chars(data, vdir)          # C-7/C-8: this video's working cast vocabulary
 
     # S3: the VO word-timings render actually matches against (empty if not yet voiced).
     vo_manifest_path = vdir / "assets" / "voiceover.manifest.json"
@@ -1338,18 +1811,31 @@ def main(argv):
     stage_check("long-form", lf_shots, hard, soft,
                 require_stage=strict_schema and len(lf_shots) >= 40)
     suffix = data.get("global_prompt_suffix") or ""
+    suffix_one_voice_check(suffix, hard)     # C-2(a): the suffix's own one-voice check, once
     lf_prompts = _shot_prompts(lf_shots)
     lf_vocab = script_vocab(script_md)
+    lf_objs = [(sh.get("id", "?"), sh) for sh in lf_shots]
     text_supply_check("long-form", lf_prompts, suffix, hard)
     word_cap_check("long-form", lf_prompts, suffix, hard)
     literal_count_check("long-form", lf_prompts, suffix, hard)
     control_leak_check("long-form", lf_prompts, suffix, hard)
     rig_clause_check("long-form", lf_prompts, suffix, hard)
+    render_technique_check("long-form", lf_prompts, hard)
     shot_class_check("long-form", lf_shots, hard, soft, strict_schema)
-    figures_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard, soft)
-    spatial_tier_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard)
-    delta_feasibility_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard)
-    place_anchor_check("long-form", [(sh.get("id", "?"), sh) for sh in lf_shots], hard)
+    figures_check("long-form", lf_objs, hard, soft)
+    spatial_tier_check("long-form", lf_objs, hard)
+    delta_feasibility_check("long-form", lf_objs, hard)
+    place_anchor_check("long-form", lf_objs, hard)
+    place_key_check("long-form", lf_objs, hard)
+    place_shot_class_exempt_check("long-form", lf_shots, hard)
+    place_inventory_check("long-form", lf_objs, lf_vocab, hard)
+    place_owner_check("long-form", lf_shots, suffix, hard)
+    place_anchor_same_place_check("long-form", lf_shots, hard)
+    bool_field_check("long-form", lf_objs, "hard_cut", hard)
+    bool_field_check("long-form", lf_objs, "owner_ambiguity", hard)
+    action_chain_check("long-form", lf_shots, hard)
+    seat_support_check("long-form", lf_objs, chars, soft, hard)
+    two_cast_presence_check("long-form", lf_objs, chars, hard)
     numeral_form_check("long-form", lf_prompts, suffix, soft)
     long_literal_word_check("long-form", lf_prompts, suffix, soft, lf_vocab)
     negation_list_check("long-form", lf_prompts, suffix, soft)
@@ -1364,15 +1850,20 @@ def main(argv):
     th_prompts = [("thumbnail.primary", "gen_prompt", (th.get("primary") or {}).get("gen_prompt") or "")]
     th_prompts += [(f"thumbnail.challengers[{i}]", "gen_prompt", (c or {}).get("gen_prompt") or "")
                    for i, c in enumerate(th.get("challengers") or [])]
+    th_objs = [("thumbnail.primary", th.get("primary") or {})]
+    th_objs += [(f"thumbnail.challengers[{i}]", c or {}) for i, c in enumerate(th.get("challengers") or [])]
     text_supply_check("thumbnail", th_prompts, suffix, hard)
     word_cap_check("thumbnail", th_prompts, suffix, hard)
     literal_count_check("thumbnail", th_prompts, suffix, hard)
     control_leak_check("thumbnail", th_prompts, suffix, hard)
+    render_technique_check("thumbnail", th_prompts, hard)
+    place_context_exempt_check("thumbnail", th_objs, hard)
     long_literal_word_check("thumbnail", th_prompts, suffix, soft, lf_vocab)
     negation_list_check("thumbnail", th_prompts, suffix, soft)
     ordered += lf_shots
     if lf_text:
         id2text_all.update(lf_text)
+    semantic_cast_check("long-form", lf_shots, lf_text, chars, hard)
 
     for short in shorts:
         sshots = short.get("shots", [])
@@ -1396,18 +1887,30 @@ def main(argv):
         # miss what the short names for itself. A missing short md degrades to the
         # long-form set rather than to empty, which would flag everything.
         svocab = script_vocab(smd) | lf_vocab
+        sshot_objs = [(sh.get("id", "?"), sh) for sh in sshots]
         text_supply_check(slabel, sprompts, suffix, hard)
         word_cap_check(slabel, sprompts, suffix, hard)
         literal_count_check(slabel, sprompts, suffix, hard)
         control_leak_check(slabel, sprompts, suffix, hard)
         rig_clause_check(slabel, sprompts, suffix, hard)
+        render_technique_check(slabel, sprompts, hard)
         shot_class_check(slabel, sshots, hard, soft, strict_schema)
-        figures_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
-                      + ([("first_frame", ff_obj)] if ff_obj else []), hard, soft)
-        spatial_tier_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots], hard)
-        delta_feasibility_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots], hard)
-        place_anchor_check(slabel, [(sh.get("id", "?"), sh) for sh in sshots]
-                           + ([("first_frame", ff_obj)] if ff_obj else []), hard)
+        figures_check(slabel, sshot_objs + ([("first_frame", ff_obj)] if ff_obj else []), hard, soft)
+        spatial_tier_check(slabel, sshot_objs, hard)
+        delta_feasibility_check(slabel, sshot_objs, hard)
+        place_anchor_check(slabel, sshot_objs + ([("first_frame", ff_obj)] if ff_obj else []), hard)
+        place_key_check(slabel, sshot_objs, hard)
+        place_shot_class_exempt_check(slabel, sshots, hard)
+        place_inventory_check(slabel, sshot_objs, svocab, hard)
+        place_owner_check(slabel, sshots, suffix, hard)
+        place_anchor_same_place_check(slabel, sshots, hard)
+        place_context_exempt_check(slabel, [("first_frame", ff_obj)] if ff_obj else [], hard)
+        bool_field_check(slabel, sshot_objs, "hard_cut", hard)
+        bool_field_check(slabel, sshot_objs, "owner_ambiguity", hard)
+        action_chain_check(slabel, sshots, hard)
+        seat_support_check(slabel, sshot_objs, chars, soft, hard)
+        two_cast_presence_check(slabel, sshot_objs, chars, hard)
+        semantic_cast_check(slabel, sshots, st, chars, hard)
         numeral_form_check(slabel, sprompts, suffix, soft)
         long_literal_word_check(slabel, sprompts, suffix, soft, svocab)
         negation_list_check(slabel, sprompts, suffix, soft)

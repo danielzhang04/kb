@@ -17,9 +17,12 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
         "id": "L01", "duration_s": 4, "synthetic": false,
         "vo_ref": "VERBATIM opening words of the VO line, copied exactly from script.md — ≥4 where the sentence has them, else its full text",
         "vo_text": "DERIVED by lint_shots.py --write; never hand-authored",
+        "place": "OPTIONAL kebab-case recurring diegetic SET id (e.g. \"miniscribe-boardroom\") — distinct from `stage`; omit on the exempt shot_class values, a short's `first_frame`, and the thumbnail block",
         "stage": "OPTIONAL id shared by consecutive shots on ONE persistent set (e.g. \"guidebook-desk\"); omit or unique = a standalone one-frame stage",
         "stage_role": "base | delta — base establishes the set + subject; delta = ONE element added or moved on the SAME set", "changed_elements": ["+ golden city rises"],
-        "place_anchor": "OPTIONAL on a regenerated base: video-relative assets/scenes/<human-approved-frame>.png to preserve this video's approved place; never a cross-video env reference",
+        "place_anchor": "OPTIONAL on a non-delta shot: video-relative assets/scenes/<human-approved-frame>.png to preserve this video's approved place; never a cross-video env reference, never a shot outside its own `place`",
+        "hard_cut": "OPTIONAL true — this shot's action deliberately does NOT continue the previous shot's, even though it reads like it might (see `place` §2's action-chain law)",
+        "owner_ambiguity": "OPTIONAL true — this place's ownership is intentionally left unmarked (see `place` §2's place-owner law); mutually exclusive with authoring an owner cue",
         "shot_class": "the canonical closed list (picked from visual-grammar.md's narration→shot-class table): personified-character, staged-interaction, symbolic-stand-in-object, number-glued-to-object, diegetic-device, map-plan-view, physicalized-imbalance, register-shift-infographic, ironic-counterpoint, reaction-shot, idiom-pun, aftermath-palette-turn, crowd-multiplication, literal",
         "source": "ai-gen | stock | hybrid | chart | screencap | archival (§3)",
         "still_prompt": "the image-gen prompt: subject, composition/framing + scale, lighting, palette, and the shot's load-bearing scene FACTS. Cast, poses, and expressions are named INLINE by their registry vocabulary name, backticked. In-video text is DIEGETIC + baked here, quoted VERBATIM and kept SHORT (1–4 words)",
@@ -50,6 +53,34 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   nothing can anchor there.
 - **`vo_text` is DERIVED, review-only** — written by `lint_shots.py --write`, never by hand; a long span
   means *densify*.
+- **`place` — a recurring diegetic SET identity, distinct from `stage`.** `place` names the SET
+  (`miniscribe-boardroom`, `brick-co-yard`); `stage` is a continuity CHAIN *within* one place (still capped
+  1 base + ≤3 deltas). A place can host many stage chains — the boardroom's fear beat, firing beat, and
+  planning beat are three `stage`s inside one `place`. **Conditional plate law:** a place hosting ≥2 shots,
+  or one place shot carrying owner branding (see place-owner below), needs a plate — the first emitted shot
+  of that place declaring zero named cast (`forge.py cmd_batch` derives and marks it; VPW never authors
+  `plate` itself). A place used by exactly ONE shot, with no owner branding, needs no plate — that single
+  shot is its own place-first frame and runs seedless, same as today. **Place-inventory law (lint-enforced,
+  HARD):** every declared `place` must anchor to a word `script.md` itself uses (`script_vocab`) — an
+  invented place is the same class of error as an invented lettering literal. **Exempt (never declare
+  `place`):** the symbolic/abstract/object-insert `shot_class` values — `symbolic-stand-in-object`,
+  `number-glued-to-object`, `map-plan-view`, `physicalized-imbalance`, `register-shift-infographic`
+  (`visual-grammar.md §1`'s table: each depicts a floating object or abstraction, never a set) — plus a
+  short's `first_frame` and the thumbnail block; these run as seedless roots under the hardened descriptor
+  regardless of place.
+- **Place-owner law (lint-enforced, HARD).** An institution-owned interior must carry ONE visible owner cue
+  (a quoted literal — a plaque, nameplate, door-glass lettering) on its place's plate/place-first shot, or
+  the place declares `owner_ambiguity: true`. The literal is per-video DATA sourced from the shot's `place`
+  + `script_vocab` — never a skill constant — and once authored it is a normal L-1 carried literal (re-quote
+  it verbatim on every later shot in the place that redraws it). **This narrows the supplied-text law's
+  "omit" escape (§4 resolution 3):** blanking an owner-branded surface with no cue is legal ONLY paired with
+  `owner_ambiguity: true` on that place — a silent blank no longer satisfies the place-owner law the way it
+  satisfies an ordinary unsupported-glyph field.
+- **Action-chain law (lint-enforced, HARD = presence).** A shot whose prose calls back to a held prop/scene
+  ("the same wax-sealed box") but declares no `stage`/`stage_role` chain of its own and no `hard_cut: true`
+  is an unlinked continuation — three shots visibly continuing one action (pry the box, swap the sheet, get
+  caught) must not run as three independent seedless roots. Whether the chain reads as coherent CAUSE→EFFECT
+  is the shot critic's judgment (`critics.md`), never lint's.
 - **`stage` / `stage_role` / `changed_elements` — held evolving stages, INTENT ONLY.** Consecutive shots
   sharing a `stage` id sit on ONE persistent set: the `base` establishes it, each `delta` adds or moves
   exactly ONE element named in `changed_elements` (`"+ cathedral rises"`, `"- ship"`), each its own shot
@@ -57,15 +88,18 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   the scene's architecture) stays a delta frame; a DISCRETE one (a character enters, a stamp slams onto a
   page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint enforces exactly one
   `base`, first, per stage · **≤3 deltas** per chain · contiguity.
-- **`place_anchor` — an approved in-video place, only when regenerating a base composite.** Optional;
-  write the human-picked frame as a non-empty normalized direct `assets/scenes/<id>.png` path, only on a
-  `base` (no absolute, traversal, backslash, nested, or cross-video path). `lint_shots.py` checks that
-  structural contract only; `forge.py batch` requires
-  that exact existing file under this video's own `assets/scenes/` after resolving links/junctions,
-  seeds it after any STEP-1 figure frames and before the crowd exemplar, and does not mark the base
-  as a new `plate`; it can never import a
-  cross-video environment. Omit it for ordinary first-place bases and every existing shot — their current
-  place-first behavior is unchanged.
+- **`place_anchor` — an approved in-video place seed, legal on any non-delta shot with an established
+  `place`.** Optional; write the human-picked frame as a non-empty normalized direct `assets/scenes/<id>.png`
+  path (no absolute, traversal, backslash, nested, or cross-video path), never on a `stage_role: delta` (a
+  delta continues its own base's held scene — a different seed, already covered by the chain parent).
+  `lint_shots.py` checks that structural contract; `forge.py batch` requires that exact existing file under
+  this video's own `assets/scenes/` after resolving links/junctions, seeds it after any STEP-1 figure frames
+  and before the crowd exemplar, and does not mark the base as a new `plate`; it can never import a
+  cross-video environment. **Same-place law (HARD, both lint and forge):** the anchor's source shot (its
+  filename stem is that shot's own `id`) and the anchoring shot must declare the SAME `place` — cross-place
+  image seeding is the probe-refuted style-anchor failure under another name (`decisions.md` 2026-08-04); a
+  plate may only seed shots in its own place. Omit it for ordinary first-place bases and every existing shot
+  — their current place-first behavior is unchanged.
 - **`figures` — crowd is DECLARED here, never described in rig prose.** Optional; omit the whole key when
   a shot has none. **`crowd`**: `true` when the shot stages crowd figures (§2d tier); omit when false.
   `forge.py` expands the declaration into the style-bible §2d clause at gen time, so **no prompt ever
@@ -76,12 +110,36 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   structured cast/pose/expression arrays. A prop making its FIRST appearance has no entry to name and is
   described in prose instead (`visual-grammar.md` §2 owns that rule). `image-generation` resolves names →
   files and surfaces any name the registry lacks at its Pass-1 human gate, before a token is spent.
+- **Seat/support law (lint-enforced, HARD).** A named figure carrying the registry `sit` pose primitive
+  (the binding is the backtick order — a `sit` token bound to the most-recently-named character, mirroring
+  `forge.py`'s `shot_cast` — **never the English verb "sits"**, which this project's own prose uses
+  constantly for OBJECTS: "the metal desk sits pushed aside", "a brick sits on its end") must name, in the
+  SAME SENTENCE, a support from `chair | stool | bench | seat | crate | step | ledge | desk edge | sill`
+  plus a contact phrase. This is presence only; whether the FRAMING actually shows the support is a soft
+  heads-up plus a forced review row, never lint-decidable.
+- **Two-cast presence law (lint-enforced, HARD = presence).** A shot naming 2 registry characters must
+  state a plane clause, an eye-line clause, and a relative-head-scale clause (`"dominant"` legally resolves
+  a scale clause via posture/framing). Presence only — whether the stated clauses actually cohere into the
+  right topology is the shot critic's judgment (`critics.md`), not lint's.
+- **Semantic-cast law (lint-enforced, HARD, narrow).** Fails ONLY the decidable case: a shot's VO span
+  names a generic PLURAL role ("managers", "executives") while the shot casts a named character whose slug
+  fragment appears nowhere in that VO span or its immediate neighbours. A shot where the VO itself names the
+  role ("the foreman told his crew") is a legitimately justified lead and stays silent. Whether a *cast*
+  choice is dramatically right beyond that narrow test is the critic's call.
 - **`assets` (image-gen-owned, added in Pass 1).** `image-generation` writes a per-shot `assets` map
   (`{"<vocab name>": "<library path>"}`) back into this file after its gate passes and Pass 2 reads only
   those tags; VPW never authors it, and `lint_shots.py` + `render-builder` ignore it.
 - **Transitions are HARD CUTS only** — no transition field exists; continuity comes from held stages.
 - **`global_prompt_suffix` is copied verbatim** from `visual-grammar.md`'s header — never re-derived per
-  video — and appended to every `still_prompt`, `first_frame`, and thumbnail `gen_prompt`.
+  video — and appended to every `still_prompt`, `first_frame`, and thumbnail `gen_prompt`. **One-voice law
+  (lint-enforced, HARD):** the suffix carries no banned render-technique term (below) and no other
+  soft/gradient-permissive wording ("gentle", "blended"/"feathered" transitions) — a second voice
+  contradicting `style-bible.md`'s flat-fill recipe is how the global smooth/glossy drift happened. **Banned
+  render-technique terms (lint-enforced, HARD, prompts AND suffix, case-insensitive, exact list):**
+  `gradient`, `gloss`/`glossy`, `specular`, `bloom`, `depth-of-field`/`depth of field`, `blurred
+  background`/`blurred behind`, `soft focus`, `photoreal*`, `subsurface`, `rim light`. Scene-light NOUNS —
+  `warm`, `amber`, `glow`, `lit`, `lamp` — are never flagged; they describe committed scene lighting, not a
+  render technique, and are common in correct prompts ("warm lamp amber").
 - `thumbnail.challengers` is exactly 2 for long-form; shorts have no thumbnail block — `first_frame` IS it.
 - **Deleted fields — do not author.** Consumers ignore unknown keys and `lint_shots.py` warns rather than
   errors on a legacy file; list + rationale in `docs/retired-features.md`.

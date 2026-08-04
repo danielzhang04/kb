@@ -33,7 +33,7 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >
 > **Read first:** `visual-grammar.md` (the class table, the literal/non-literal bar, chain logic, staging,
 > policy), `example-shots.md` (the bar), `registry.json` (the vocabulary). Then walk `shots.json` shot by
-> shot against `script.md` and answer FIVE questions per shot — and only these. Judge each shot at TWO
+> shot against `script.md` and answer EIGHT questions per shot — and only these. Judge each shot at TWO
 > granularities and keep them apart: **whole-scene** (does the frame as written read as this beat?) and
 > **per-element** (does every named entity, each of its attributes, and each stated relation survive as
 > written?). A shot routinely passes one and fails the other, and collapsing both into a single gut verdict
@@ -65,6 +65,29 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    identity, a fate, a twist object/number/place)? If so, flag the **earliest** shot that visually
 >    discloses it before the narration does; the fix is to **re-author** that shot (or its chain) with the
 >    withheld entity **absent entirely**, never merely obscured (a back-to-viewer silhouette dodges it).
+>
+> 6. **Two-cast plane/scale coherence.** Lint proves a 2-named-cast shot STATES a plane, an eye-line, and
+>    a relative-head-scale clause; it cannot prove those clauses describe the right TOPOLOGY. Read the
+>    clauses as a director would stage them: do the two figures actually land on one shared ground plane at
+>    a coherent relative size, or does a "rear zone"/"management section" clause pull the SECOND-named
+>    figure toward background scale by implication even though nothing said so outright? (Mechanism:
+>    audit-drift §D/§E1 — L66's crowd clause was correctly written for the CROWD and still miniaturized the
+>    foreman by proximity, because nothing pinned his plane/scale against Wiles's.)
+> 7. **Action-chain cause→effect readability.** Lint proves consecutive shots that call back to a held
+>    prop/scene carry a `stage` chain or `hard_cut: true`; it cannot prove the chain actually READS as one
+>    causal action. Walk a `stage` chain (or a run of shots without `hard_cut`) as an audience would: does
+>    shot N+1 visibly follow FROM shot N's action, and does the chain's last shot deliver the payload the
+>    VO promises (the consequence, the reaction, the reveal)? A chain that is mechanically linked but reads
+>    as disconnected aftermath portraits still fails. (Mechanism: audit-drift §E4 — L89-L91 were three
+>    individually competent portraits with no visible cause-and-effect between "pried open," "swapped the
+>    sheet," and "got caught.")
+> 8. **Semantic-cast justification.** Lint fails only the narrow case where a generic-plural VO role has
+>    no trace of the shot's named cast nearby; it does not judge the cases lint stays silent on. Where a
+>    shot casts a named character for a beat the VO describes generically, ask: does THIS beat, in THIS
+>    script, actually belong to that named character, or is this a leftover of blanket generic→named
+>    substitution rather than a scene-by-scene casting decision? (Mechanism: vpw-log.md Phase B3, the bulk
+>    `anon_foreground`→named-cast conversion pass; audit-drift §E7 — L100/L101 cast two specific named leads
+>    for a beat the script only ever calls "the managers.")
 >
 > Plan-level: **Balanced human use** — flag story-bearing people, decisions, or relationships hidden behind objects, or
 > habitual people staged where object, place, document, or mechanism is the subject; impose no share target. **Cadence taste** — flag a slow static hold with no earned progressive
