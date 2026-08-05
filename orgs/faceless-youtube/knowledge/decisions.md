@@ -3812,3 +3812,14 @@ per named figure (the design as first written) — reproduces the exact review-c
 mechanism the 2026-08-03 ruling exists to stop. (2) Reverting fully to the 2026-08-03 loosening with
 no machine-emitted rows — leaves the forced-per-invariant procedure unexecuted again, the audit's
 own documented failure mode.
+
+## 2026-08-04 — Doctrine-gate rulings: review re-scope authorized; reset wave budget
+Daniel re-authorized the review re-scope (machine-emitted pre-filtered per-invariant rows;
+named-figure-only comparisons at ordinary viewing scale; no crop battery) — the 2026-08-03
+loosening's intent (no hand-typed row burden) is preserved, its false-PASS gap closed.
+Budget: the bricks reset is a NEW wave with its own **$40 cap**; the prior $30 wave closes with
+its ~$24 spent. Alternatives rejected: extending the old cap to $65 (conflates two waves'
+accounting); per-fifth-only funding (no wave ceiling for the spend law to enforce).
+Sequencing amendment (Daniel, at the gate): before the paid style probe, a $0 validation leg —
+fresh VPW authors the FIRST FIFTH only, adversarially reviewed against the goal state and
+diffed against the archived problem-era shots.json — runs first.
