@@ -9,6 +9,7 @@
  * this registers nothing and logs a one-line notice; every /api/* route is completely untouched.
  */
 import { existsSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
@@ -44,10 +45,28 @@ export function registerStatic(app: FastifyInstance, opts: StaticOptions = {}): 
   app.register(fastifyStatic, { root: distDir, wildcard: false });
 
   app.setNotFoundHandler((req, reply) => {
-    // /assets/* are hashed build files: a miss means a stale reference (e.g. an old cached
-    // index.html), and answering it with index.html makes the browser choke on text/html where it
-    // expected a module script. A hard 404 keeps that failure visible.
-    if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/assets/')) {
+    // /assets/* are hashed build files. wildcard:false only knows what existed at boot, so a
+    // rebuild's new hashes land here instead of a registered route; resolve them from disk at
+    // request time rather than 404ing everything a fresh `vite build` produced. A path that
+    // escapes distDir (traversal) or doesn't exist on disk still hard-404s — never index.html,
+    // which would make the browser choke on text/html where it expected a module script.
+    if (req.method === 'GET' && req.url.startsWith('/assets/')) {
+      let requestedPath: string;
+      try {
+        requestedPath = decodeURIComponent(req.url.slice(1).split('?')[0]);
+      } catch {
+        // malformed percent-encoding (e.g. a bare '%') — garbage input 404s, never throws.
+        return reply.code(404).send({ error: 'not found' });
+      }
+      const resolvedDist = resolve(distDir);
+      const resolvedTarget = resolve(join(distDir, requestedPath));
+      if (resolvedTarget.startsWith(resolvedDist + sep) && existsSync(resolvedTarget)) {
+        return reply.sendFile(requestedPath, distDir);
+      }
+      return reply.code(404).send({ error: 'not found' });
+    }
+
+    if (req.method === 'GET' && !req.url.startsWith('/api/')) {
       return reply.sendFile('index.html', distDir);
     }
     return reply.code(404).send({ error: 'not found' });
