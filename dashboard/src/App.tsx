@@ -193,25 +193,31 @@ function SessionChip(): React.JSX.Element {
     return () => clearInterval(timer);
   }, [session]);
   const minutes = session ? Math.max(0, Math.ceil((session.expiresAt - Date.now()) / 60_000)) : 0;
-  const label = locked ? 'Locked' : `Unlocked · expires in ${minutes}m`;
+  // Locked must LOOK like the action it is — a filled Unlock button, not a status label an operator
+  // can mistake for decoration. Unlocked collapses into the quiet status chip.
+  if (locked) {
+    return (
+      <button
+        type="button"
+        className="mc-btn mc-btn--primary mc-session-chip mc-session-chip--locked"
+        data-testid="session-chip"
+        title="Uses your device passkey. No private key leaves your device. One unlock covers everything."
+        onClick={() => void requireSession()}
+      >
+        Unlock
+      </button>
+    );
+  }
   return (
     <button
       type="button"
       className="mc-session-chip"
       data-testid="session-chip"
-      disabled={!locked}
-      title={locked
-        ? 'Uses your device passkey. No private key leaves your device.'
-        : 'This tab is unlocked until the session expires.'}
-      onClick={() => {
-        if (locked) void requireSession();
-      }}
+      disabled
+      title="This tab is unlocked until the session expires."
     >
-      <span
-        className={`mc-status-dot ${locked ? 'mc-status-dot--idle' : 'mc-status-dot--running'}`}
-        aria-hidden="true"
-      />
-      <span className="mc-session-chip__label">{label}</span>
+      <span className="mc-status-dot mc-status-dot--running" aria-hidden="true" />
+      <span className="mc-session-chip__label">{`Unlocked · expires in ${minutes}m`}</span>
     </button>
   );
 }

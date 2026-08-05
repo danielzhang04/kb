@@ -96,13 +96,13 @@ describe('App shell — entity-first sidebar navigation', () => {
   it('carries exactly ONE unlock affordance: the top-bar lock chip', () => {
     render(<App />);
     const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
-    expect(chip.textContent).toBe('Locked');
+    expect(chip.textContent).toBe('Unlock');
     expect(chip.disabled).toBe(false);
     // No other surface offers an unlock of ANY kind. The execution panel used to carry its own
     // "Unlock execution" button; execution now arms off this one sign-in (App's ExecutionArmingProvider),
-    // so the chip is the only thing in this app the operator ever unlocks.
+    // so the chip is the ONLY unlock-named button in the app — and locked, it reads as one.
     expect(screen.queryAllByRole('button', { name: /unlock/i }).map((b) => b.textContent))
-      .toEqual([]);
+      .toEqual(['Unlock']);
   });
 
   it('restores an unexpired tab session after a refresh-sized remount', () => {
@@ -131,7 +131,7 @@ describe('App shell — entity-first sidebar navigation', () => {
       reason: 'bad-signature',
     }), { status: 401, headers: { 'content-type': 'application/json' } }));
 
-    await waitFor(() => expect(screen.getByTestId('session-chip').textContent).toBe('Locked'));
+    await waitFor(() => expect(screen.getByTestId('session-chip').textContent).toBe('Unlock'));
     expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
   });
 

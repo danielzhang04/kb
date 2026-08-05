@@ -713,6 +713,21 @@ button {
   outline-offset: 1px;
 }
 
+/* Locked = a real filled Unlock button (mc-btn--primary supplies the accent fill); this modifier only
+ * restores the chip's compact top-bar metrics over the button's larger defaults. */
+.mc-session-chip--locked {
+  padding: var(--space-1) var(--space-3);
+  color: var(--mc-accent-fg);
+  font-weight: 600;
+}
+
+.mc-session-chip--locked:hover {
+  color: var(--mc-accent-fg);
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+  filter: brightness(1.06);
+}
+
 /* Quiet theme toggle — a subtle icon button (dark default, light on demand; choice persisted). */
 .mc-theme-toggle {
   flex: 0 0 auto;
