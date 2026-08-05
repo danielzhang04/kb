@@ -123,3 +123,4 @@
 {"ts":"2026-08-05T21:16:45.393Z","action":"pty-open","owner":"operator","result":"spawn-failed","detail":{"error":"File not found: "}}
 {"ts":"2026-08-05T21:19:45.359Z","action":"pty-open","owner":"operator","result":"spawn-failed","detail":{"error":"File not found: "}}
 {"ts":"2026-08-05T23:02:20.165Z","action":"auth","owner":"operator","result":"login"}
+{"ts":"2026-08-05T23:02:31.361Z","action":"control-execution-unlock-authorize","owner":"operator","target":"execution","riskTier":"T3","result":"authorized:unlock","detail":{"method":"session-bearer"}}
