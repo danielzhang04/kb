@@ -11,10 +11,10 @@ import {
   startMergeGateReconciler,
   type ReconcileDeps,
 } from './mergeGateReconciler.ts';
-import type { ParsedCard } from '../planeA/cards.ts';
+import type { CardProjection } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 
-function gateCard(id: string, target: string, state: string, action?: string): ParsedCard {
+function gateCard(id: string, target: string, state: string, action?: string): CardProjection {
   return {
     meta: {
       id,
@@ -25,12 +25,14 @@ function gateCard(id: string, target: string, state: string, action?: string): P
       owner: 'human-operator',
       state,
     },
+    displayName: action ?? `approve:merge:${target}`,
+    shortRef: 1,
     body: '## Work order\n\nmerge it\n',
   };
 }
 
-function index(cards: ParsedCard[]): PlaneAIndex {
-  const grouped: Record<string, ParsedCard[]> = {};
+function index(cards: CardProjection[]): PlaneAIndex {
+  const grouped: Record<string, CardProjection[]> = {};
   for (const c of cards) (grouped[String(c.meta.state)] ??= []).push(c);
   return {
     cards: grouped,
@@ -47,7 +49,7 @@ function index(cards: ParsedCard[]): PlaneAIndex {
 /** A recording deps set that uses the REAL executeCardMutation (so prepare<py ordering is exercised),
  *  with every external effect (index, gh, prepareWrite, runPy, audit, commit) injected. */
 function recordingDeps(
-  cards: ParsedCard[],
+  cards: CardProjection[],
   gh: ReconcileDeps['gh'],
 ): { deps: ReconcileDeps; calls: string[]; ops: Array<{ cardId: string; transitions: string[] }> } {
   const calls: string[] = [];

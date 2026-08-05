@@ -6,7 +6,9 @@
  * that verification starts or resumes execution.
  */
 import { useEffect, useState } from 'react';
-import type { ParsedCard } from '../../server/planeA/cards';
+import type { CardProjection, ParsedCard } from '../../server/planeA/cards';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
 import { buttonsFor } from '../../server/approvals/assurance';
 import type { HumanInboxItem } from '../../server/approvals/humanInbox';
 import { STOP_FILE_ITEM_ID } from '../../server/approvals/humanInbox';
@@ -20,7 +22,7 @@ export interface ApprovalsProps {
   /** Unified feed. When supplied, this is the authoritative list. */
   items?: HumanInboxItem[];
   /** Backward-compatible approval-only feed while the connected container migrates. */
-  pending?: ParsedCard[];
+  pending?: CardProjection[];
   /** Fires ONLY on an explicit verify-evidence click, never on selection/render. */
   onVerify?: (cardId: string, channel: ApprovalChannel) => void;
   /** Fires ONLY on an explicit send-reply / resolve click for an item carrying the `respond` capability. */
@@ -50,7 +52,7 @@ function safeWorkOrder(body: string): string | null {
   }
 }
 
-function legacyDecision(card: ParsedCard): HumanInboxItem {
+function legacyDecision(card: CardProjection): HumanInboxItem {
   return {
     card,
     category: 'decision',
@@ -130,14 +132,16 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
             ].filter(Boolean).join(' ');
             return (
               <li key={card.meta.id}>
-                <button
-                  type="button"
+                <div
                   className={rowClass}
                   aria-current={isSelected ? 'true' : undefined}
-                  onClick={() => setSelectedId(card.meta.id)}
+                  {...entityRowProps(() => setSelectedId(card.meta.id))}
                 >
+                  {/* Inverted: the card's name is the primary line; its id is behind the tooltip/copy. */}
                   <span className="v-approvals__row-copy">
-                    <span className="v-approvals__row-id">{card.meta.id}</span>
+                    <span className="v-approvals__row-id">
+                      <EntityName kind="card" id={card.meta.id} displayName={card.displayName} shortRef={card.shortRef} />
+                    </span>
                     <span className="v-approvals__row-action">{valueOf(card.meta.action)}</span>
                   </span>
                   <span className="v-approvals__row-meta">
@@ -148,7 +152,7 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
                       {riskLabel(card)}
                     </span>
                   </span>
-                </button>
+                </div>
               </li>
             );
           })}

@@ -45,6 +45,8 @@ import {
   type WriteResult,
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
 import { useSse } from '../lib/sseClient';
 import '../styles/views/pipeline.css';
 import { ManagedRuns } from '../control/ManagedRuns';
@@ -146,15 +148,14 @@ export function PipelineNodeBody({
           data-testid={`pipeline-node-${data.id}-dot`}
           aria-hidden="true"
         />
-        <button
-          type="button"
-          className="v-pipe-node__name mc-mono"
+        <div
+          className="v-pipe-node__name"
           data-testid={`pipeline-node-${data.id}-open`}
-          title={`Open ${data.id} timeline / transcript`}
-          onClick={() => onOpenCard(data.id)}
+          aria-label={`Open ${data.displayName} timeline / transcript`}
+          {...entityRowProps(() => onOpenCard(data.id))}
         >
-          {data.id}
-        </button>
+          <EntityName kind="card" id={data.id} displayName={data.displayName} shortRef={data.shortRef} />
+        </div>
         <span className="v-pipe-node__model mc-mono" data-testid={`pipeline-node-${data.id}-model`}>
           {data.model ?? '—'}
         </span>

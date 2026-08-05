@@ -10,6 +10,9 @@ function request(
   return {
     requestRef: `request-${kind}`,
     runRef: 'run-1',
+    // A request's display fields describe its OWNING RUN — see HumanRequestDto.
+    displayName: 'Owning run',
+    shortRef: 1,
     stageRef: null,
     kind,
     revision: 1,

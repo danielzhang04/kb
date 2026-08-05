@@ -25,7 +25,7 @@ describe('HumanRequestsPanel', () => {
     let resolved = false;
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const request = {
-      requestRef: 'request-1', runRef: 'run-1', stageRef: null, kind: 'review', revision: 3, state: 'open',
+      requestRef: 'request-1', runRef: 'run-1', displayName: 'Owning run', shortRef: 1, stageRef: null, kind: 'review', revision: 3, state: 'open',
       title: 'Review scope', prompt: 'Is this within scope?', response: null,
       createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:00:00.000Z',
     };
@@ -59,7 +59,7 @@ describe('HumanRequestsPanel', () => {
     let resolved = false;
     const calls: string[] = [];
     const request = {
-      requestRef: 'gate-1', runRef: 'run-gate', stageRef: 'check-1', kind: 'approval', revision: 1, state: 'open',
+      requestRef: 'gate-1', runRef: 'run-gate', displayName: 'Owning run', shortRef: 1, stageRef: 'check-1', kind: 'approval', revision: 1, state: 'open',
       title: 'Review gate', prompt: 'Approve the reviewed artifact?', response: null,
       createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:00:00.000Z',
     };
@@ -92,7 +92,7 @@ describe('HumanRequestsPanel', () => {
       version: 5, managerGeneration: 1, title: 'Locked recovery',
     };
     const openRequest = {
-      requestRef: 'request-locked', runRef: run.runRef, stageRef: null, kind: 'intervention',
+      requestRef: 'request-locked', runRef: run.runRef, displayName: 'Owning run', shortRef: 1, stageRef: null, kind: 'intervention',
       revision: 1, state: 'open', title: 'Automatic execution activation is gated',
       prompt: 'Unlock execution, then respond.', response: null,
       createdAt: '2026-07-31T10:00:00.000Z', updatedAt: '2026-07-31T10:00:00.000Z',
@@ -137,7 +137,7 @@ describe('HumanRequestsPanel', () => {
   it('surfaces a waiting-human run with NO open request as a distinct, non-actionable inspect row', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (url === '/api/control/runs') {
-        return response({ runs: [{ runRef: 'run-parked', state: 'waiting-human', openHumanRequestCount: 0, title: 'Parked render' }] });
+        return response({ runs: [{ runRef: 'run-parked', state: 'waiting-human', openHumanRequestCount: 0, title: 'Parked render', displayName: 'Parked render', shortRef: 9 }] });
       }
       if (url === '/api/control/runs/run-parked') {
         return response({ ok: true, value: { run: {}, stages: [], attempts: [], sessions: [], humanRequests: [] } });
@@ -149,7 +149,9 @@ describe('HumanRequestsPanel', () => {
 
     const row = await screen.findByTestId('waiting-no-request-run-parked');
     expect(row.textContent).toMatch(/NO open request/i);
-    expect(screen.getByTestId('inspect-run-run-parked').textContent).toMatch(/run-parked/);
+    // Named, not id-printed: the runRef lives behind EntityName's tooltip.
+    expect(screen.getByTestId('inspect-run-run-parked').textContent).toMatch(/Parked render/);
+    expect(screen.getByTestId('inspect-run-run-parked').textContent).not.toMatch(/run-parked/);
     // Non-actionable: no approve/respond buttons for a request-less parked run.
     expect(screen.queryByRole('button', { name: /Approve|Respond|Request changes/i })).toBeNull();
     // The "nothing needs attention" empty note must NOT show when a stranded run is present.
@@ -185,6 +187,8 @@ describe('HumanRequestsPanel', () => {
           sessions: [],
           humanRequests: [{
             requestRef: 'request-accepted',
+            displayName: 'Owning run',
+            shortRef: 1,
             runRef: 'run-resumable',
             stageRef: null,
             kind: 'intervention',
@@ -230,7 +234,7 @@ describe('HumanRequestsPanel', () => {
 
   it('does not surface a waiting-human run that HAS an open request as a stranded row (it renders as a request)', async () => {
     const request = {
-      requestRef: 'req-x', runRef: 'run-y', stageRef: null, kind: 'review', revision: 1, state: 'open',
+      requestRef: 'req-x', runRef: 'run-y', displayName: 'Owning run', shortRef: 1, stageRef: null, kind: 'review', revision: 1, state: 'open',
       title: 'Approve me', prompt: 'ok?', response: null,
       createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:00:00.000Z',
     };
@@ -254,7 +258,7 @@ describe('HumanRequestsPanel', () => {
       openHumanRequestCount: 1, title: 'Validate one all-Codex faceless-video opening slice',
     };
     const request = {
-      requestRef: 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e', runRef: run.runRef, stageRef: null,
+      requestRef: 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e', runRef: run.runRef, displayName: 'Owning run', shortRef: 1, stageRef: null,
       kind: 'governance-refusal', revision: 1, state: 'open', title: 'Automatic execution activation is gated',
       prompt: 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.',
       response: null, createdAt: '2026-08-01T02:04:04.762Z', updatedAt: '2026-08-01T02:04:04.762Z',
@@ -297,7 +301,7 @@ describe('HumanRequestsPanel', () => {
         ...drift, openHumanRequestCount: 1, title: 'Drifted legacy run',
       };
       const request = {
-        requestRef: 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e', runRef: run.runRef, stageRef: null,
+        requestRef: 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e', runRef: run.runRef, displayName: 'Owning run', shortRef: 1, stageRef: null,
         kind: 'governance-refusal', revision: 1, state: 'open', title: 'Automatic execution activation is gated',
         prompt: 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.',
         response: null, createdAt: '2026-08-01T02:04:04.762Z', updatedAt: '2026-08-01T02:04:04.762Z',

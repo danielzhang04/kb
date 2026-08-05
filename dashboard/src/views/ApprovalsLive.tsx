@@ -44,13 +44,21 @@ export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Elem
     };
   }, [count, fetchImpl]);
 
+  /**
+   * The operator-facing NAME of a card, read straight off the inbox DTO — status lines say "deploy:prod
+   * was verified", never a raw id. Falls back to the id only if the item vanished between click and
+   * render (a refetch race), which is the one case where no display name exists to read.
+   */
+  const nameFor = (cardId: string): string =>
+    items.find((item) => item.card.meta.id === cardId)?.card.displayName ?? cardId;
+
   const onVerify = (cardId: string, channel: ApprovalChannel): void => {
     // Fired only on an explicit, post-corroboration verify click (see Approvals). If this tab has not
     // been unlocked yet, that same click runs the passkey ceremony before any verify request.
     void (async () => {
       setOutcome({
         kind: 'progress',
-        message: sessionToken ? `Preparing verification for ${cardId}…` : 'Unlocking dashboard…',
+        message: sessionToken ? `Preparing verification for ${nameFor(cardId)}…` : 'Unlocking dashboard…',
       });
       let token = (await requireSession())?.token;
       if (!token) {
@@ -58,7 +66,7 @@ export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Elem
         return;
       }
 
-      setOutcome({ kind: 'progress', message: `Verifying ${cardId}…` });
+      setOutcome({ kind: 'progress', message: `Verifying ${nameFor(cardId)}…` });
       let result = await verifyApproval(cardId, channel, { token, fetchImpl });
       if (result.status === 401) {
         // A daemon restart invalidates an otherwise unexpired stateless bearer; the governed 401 clears
@@ -74,7 +82,7 @@ export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Elem
       if (result.ok) {
         setOutcome({
           kind: 'success',
-          message: result.reason ? `${cardId}: ${result.reason}` : `${cardId} was verified.`,
+          message: result.reason ? `${nameFor(cardId)}: ${result.reason}` : `${nameFor(cardId)} was verified.`,
         });
         try {
           setItems((await fetchHumanInbox(fetchImpl)).items);
@@ -85,8 +93,8 @@ export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Elem
         setOutcome({
           kind: 'error',
           message: result.reason
-            ? `${cardId} was not verified: ${result.reason}`
-            : `${cardId} was not verified (HTTP ${result.status}).`,
+            ? `${nameFor(cardId)} was not verified: ${result.reason}`
+            : `${nameFor(cardId)} was not verified (HTTP ${result.status}).`,
         });
       }
     })();
@@ -99,7 +107,7 @@ export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Elem
       const verb = action === 'reply' ? 'reply' : 'resolution';
       setOutcome({
         kind: 'progress',
-        message: sessionToken ? `Sending ${verb} for ${cardId}…` : 'Unlocking dashboard…',
+        message: sessionToken ? `Sending ${verb} for ${nameFor(cardId)}…` : 'Unlocking dashboard…',
       });
       let token = (await requireSession())?.token;
       if (!token) {
@@ -107,7 +115,7 @@ export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Elem
         return;
       }
 
-      setOutcome({ kind: 'progress', message: `Sending ${verb} for ${cardId}…` });
+      setOutcome({ kind: 'progress', message: `Sending ${verb} for ${nameFor(cardId)}…` });
       let result = await respondToCard(cardId, action, message, { token, fetchImpl });
       if (result.status === 401) {
         const replacement = await requireSession();
@@ -120,7 +128,7 @@ export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Elem
       if (result.ok) {
         // G3 reply-liveness: the write committed, but a reply only PROGRESSES if a consumer runs. When the
         // server reports no online consumer for the owner, say so plainly instead of implying delivery.
-        const committed = action === 'reply' ? `${cardId}: reply recorded and committed.` : `${cardId}: resolved and committed.`;
+        const committed = action === 'reply' ? `${nameFor(cardId)}: reply recorded and committed.` : `${nameFor(cardId)}: resolved and committed.`;
         const liveness = result.liveness;
         const ownerRaw = items.find((item) => item.card.meta.id === cardId)?.card.meta.owner;
         const ownerLabel = typeof ownerRaw === 'string' && ownerRaw ? `\`${ownerRaw}\`` : 'its owner';
@@ -139,8 +147,8 @@ export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Elem
         setOutcome({
           kind: 'error',
           message: result.reason
-            ? `${cardId} was not updated: ${result.reason}`
-            : `${cardId} was not updated (HTTP ${result.status}).`,
+            ? `${nameFor(cardId)} was not updated: ${result.reason}`
+            : `${nameFor(cardId)} was not updated (HTTP ${result.status}).`,
         });
       }
     })();

@@ -11,6 +11,8 @@ import { useSse } from '../lib/sseClient';
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 import { useSession } from '../lib/sessionContext';
 import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
 import { listProposalRevisions, listRuns, type ProposalRevisionMetadataDto, type RunMetadataDto } from '../control/controlClient';
 import { runsForWorkflow, WORKFLOW_COMPOSER_REF } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
@@ -437,16 +439,19 @@ export function Workflows({
                   <td className="v-workflows__cell-id">
                     {/* The definition name opens its detail. A button, not a row handler: the Launch
                      *  control in this same row is a governed write and must keep its own click. */}
-                    <button
-                      type="button"
+                    <div
                       className="v-workflows__open"
                       data-testid={`workflow-open-${d.ref}`}
-                      aria-label={`Open ${d.title ?? d.ref} detail`}
-                      onClick={() => openWorkflow(d.ref)}
+                      aria-label={`Open ${d.displayName} detail`}
+                      /* The definition's file path is technical detail, not its identity: it moves to
+                       * the row tooltip so the workflow's own name is the only primary text here. */
+                      title={d.path}
+                      {...entityRowProps(() => openWorkflow(d.ref))}
                     >
-                      <span className="v-workflows__wf-name">{d.title ?? d.ref}</span>
-                      <span className="v-workflows__wf-id mc-mono">{d.path}</span>
-                    </button>
+                      <span className="v-workflows__wf-name">
+                        <EntityName kind="workflow" id={d.ref} displayName={d.displayName} shortRef={d.shortRef} />
+                      </span>
+                    </div>
                   </td>
                   <td className="v-workflows__cell-profile mc-mono">{d.profile ?? '—'}</td>
                   <td className="v-workflows__cell-stages">

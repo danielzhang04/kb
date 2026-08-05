@@ -31,6 +31,7 @@ import type {
   StageDto,
 } from './controlClient';
 import { decisionsForHumanRequest } from './humanBoundaries';
+import { EntityName } from '../components/EntityName';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import { agentIdsForRun } from './entityLinks';
 import type { NavTarget } from '../nav/stack';
@@ -694,7 +695,7 @@ export function RunCockpit({
   return (
     <EntityDetail
       entity={{ kind: 'run', id: detail.run.runRef }}
-      eyebrow={`Governed run · ${detail.run.runRef}`}
+      eyebrow={<>Governed run · <EntityName kind="run" id={detail.run.runRef} displayName={detail.run.displayName} shortRef={detail.run.shortRef} muted /></>}
       title={detail.run.title}
       status={{ label: detail.run.state, tone: runTone(detail.run.state) }}
       facts={[

@@ -100,7 +100,8 @@ function makeStage(stageId: string, agentId: string, dependsOn: string[] = []) {
 function makeDetail(): RunDetailDto {
   return {
     run: {
-      runRef: 'run-1', predecessorRunRef: null, title: 'headless run', proposalRef: 'p-1', proposalRevision: 1,
+      runRef: 'run-1', predecessorRunRef: null, title: 'headless run',
+      displayName: 'headless run', shortRef: 1, proposalRef: 'p-1', proposalRevision: 1,
       proposalHash: 'a'.repeat(64), publicationState: 'published', state: 'running', version: 1,
       managerSessionRef: 'session-mgr', managerGeneration: 1,
       managerAssignment: { agentId: 'fyt-runner', declarationPath: 'agents/fyt-runner.md', declarationHash: 'h'.repeat(64), profileId: 'p', runtime: 'claude', model: 'fable-5' },
@@ -199,7 +200,8 @@ describe('RunCanvas', () => {
 
   it('loads public events beside the selected run detail', async () => {
     const runs: RunMetadataDto[] = [{
-      runRef: 'run-1', predecessorRunRef: null, title: 'headless run', proposalRef: 'p-1', proposalRevision: 1,
+      runRef: 'run-1', predecessorRunRef: null, title: 'headless run',
+      displayName: 'headless run', shortRef: 1, proposalRef: 'p-1', proposalRevision: 1,
       proposalHash: 'a'.repeat(64), publicationState: 'published', state: 'running', version: 1,
       managerSessionRef: 'session-mgr', managerGeneration: 1, managerAssignment: null,
       createdAt: '2026-08-04T00:00:00.000Z', updatedAt: '2026-08-04T00:00:00.000Z',

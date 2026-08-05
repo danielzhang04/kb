@@ -31,6 +31,8 @@ import { useAssignableOwners } from '../lib/assignableOwners';
 import { LaunchControls } from './launchControls';
 import { ExecutionUnlock, type ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import { parseExecutionPosture, type ExecutionPostureDto } from '../control/controlClient';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
 import '../styles/views/home.css';
 
 const EMPTY_INDEX: PlaneAIndex = {
@@ -151,6 +153,7 @@ function KpiTiles({
  */
 function ResumeRow({
   id,
+  entity,
   main,
   meta,
   tier,
@@ -159,6 +162,8 @@ function ResumeRow({
   onNavigate,
 }: {
   id: string;
+  /** The card/entity identity this row is about. Absent for rows that name no entity (ledger beats). */
+  entity?: { kind: 'card'; displayName: string; shortRef: number };
   main: string;
   meta?: string;
   tier?: unknown;
@@ -167,18 +172,24 @@ function ResumeRow({
   onNavigate?: (id: DestinationId) => void;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <div
       className="v-home__row"
-      onClick={() => onNavigate?.(to)}
-      aria-label={`Open ${id} in ${to}`}
+      aria-label={`Open ${entity?.displayName ?? id} in ${to}`}
+      {...entityRowProps(() => onNavigate?.(to))}
     >
       {dot ? <span className={`mc-status-dot mc-status-dot--${dot}`} aria-hidden="true" /> : null}
-      <span className="v-home__row-id mc-mono">{id}</span>
+      {/* Inverted: the human name leads, the id lives in EntityName's tooltip + copy button. */}
+      {entity ? (
+        <span className="v-home__row-id">
+          <EntityName kind={entity.kind} id={id} displayName={entity.displayName} shortRef={entity.shortRef} />
+        </span>
+      ) : (
+        <span className="v-home__row-id mc-mono">{id}</span>
+      )}
       <span className="v-home__row-main">{main}</span>
       {meta ? <span className="v-home__row-meta mc-mono">{meta}</span> : null}
       {tier ? <span className={`mc-badge${tierClass(tier)}`}>{String(tier)}</span> : null}
-    </button>
+    </div>
   );
 }
 
@@ -227,6 +238,7 @@ function RunningResume({
           <ResumeRow
             key={String(c.meta.id)}
             id={String(c.meta.id)}
+            entity={{ kind: 'card', displayName: c.displayName, shortRef: c.shortRef }}
             main={cardMain(c)}
             meta={typeof c.meta.owner === 'string' ? c.meta.owner : undefined}
             tier={c.meta['risk-tier']}
@@ -249,6 +261,7 @@ function RunningResume({
           <ResumeRow
             key={String(item.card.meta.id)}
             id={String(item.card.meta.id)}
+            entity={{ kind: 'card', displayName: item.card.displayName, shortRef: item.card.shortRef }}
             main={cardMain(item.card)}
             meta={item.categoryLabel}
             tier={item.card.meta['risk-tier']}
@@ -265,6 +278,7 @@ function RunningResume({
             <ResumeRow
               key={String(c.meta.id)}
               id={String(c.meta.id)}
+              entity={{ kind: 'card', displayName: c.displayName, shortRef: c.shortRef }}
               main={cardMain(c)}
               tier={c.meta['risk-tier']}
               dot="blocked"

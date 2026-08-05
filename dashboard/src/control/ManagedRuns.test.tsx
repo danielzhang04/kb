@@ -30,14 +30,16 @@ const LONG_TITLE =
 
 const runs: RunMetadataDto[] = [
   {
-    runRef: 'run-1', predecessorRunRef: null, title: LONG_TITLE, proposalRef: 'proposal-1',
+    runRef: 'run-1', predecessorRunRef: null, title: LONG_TITLE,
+    displayName: LONG_TITLE, shortRef: 1, proposalRef: 'proposal-1',
     proposalRevision: 2, proposalHash: 'a'.repeat(64), publicationState: 'published', state: 'running',
     version: 4, managerSessionRef: 'session-manager', managerGeneration: 1, managerAssignment: null,
     createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T11:56:00.000Z',
     stageCount: 6, attemptCount: 11, sessionCount: 3, openHumanRequestCount: 0, eventCount: 340,
   },
   {
-    runRef: 'run-2', predecessorRunRef: null, title: 'A second run', proposalRef: 'proposal-2',
+    runRef: 'run-2', predecessorRunRef: null, title: 'A second run',
+    displayName: 'A second run', shortRef: 2, proposalRef: 'proposal-2',
     proposalRevision: 1, proposalHash: 'b'.repeat(64), publicationState: 'published', state: 'succeeded',
     version: 2, managerSessionRef: 'session-manager-2', managerGeneration: 1, managerAssignment: null,
     createdAt: '2026-07-18T09:00:00.000Z', updatedAt: '2026-07-18T09:30:00.000Z',
@@ -69,6 +71,7 @@ const detailFor = (runRef: string) => ({
 const HISTORICAL_RUN: RunMetadataDto = {
   runRef: 'run-0aa72053-b9d7-41fa-a034-19871b66d214', predecessorRunRef: null,
   title: 'Validate one all-Codex faceless-video opening slice',
+  displayName: 'Validate one all-Codex faceless-video opening slice', shortRef: 3,
   proposalRef: 'proposal-3725fb98-e20e-4619-b6e7-c9055138a50d', proposalRevision: 1,
   proposalHash: '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9',
   publicationState: 'published', state: 'failed', version: 7,
@@ -407,8 +410,10 @@ describe('ManagedRuns', () => {
     render(unlocked(<Harness />));
 
     expect(screen.getByTestId('run-grid')).toBeTruthy();
-    expect(screen.getByTestId('run-card-run-1-title').textContent).toBe(LONG_TITLE);
-    expect(screen.getByTestId('run-card-run-2-title').textContent).toBe('A second run');
+    // Titles render through EntityName (name + #ordinal), so `toContain` — the runRef is not text.
+    expect(screen.getByTestId('run-card-run-1-title').textContent).toContain(LONG_TITLE);
+    expect(screen.getByTestId('run-card-run-1-title').textContent).not.toContain('run-1');
+    expect(screen.getByTestId('run-card-run-2-title').textContent).toContain('A second run');
     // The landing state is the list — no run detail is auto-opened.
     expect(screen.queryByTestId('entity-detail-run')).toBeNull();
   });

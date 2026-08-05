@@ -17,7 +17,7 @@
  * untrusted card content. Pure data out; this module holds no UI, no reactflow, no I/O.
  */
 import type { PlaneAIndex } from '../planeA/indexer.ts';
-import type { CardFieldValue, ParsedCard } from '../planeA/cards.ts';
+import type { CardFieldValue, CardProjection } from '../planeA/cards.ts';
 
 /** States that count as "released" for a `depends-on` edge. Schema: released ⇔ `done`. */
 export const RELEASED_STATES: ReadonlySet<string> = new Set(['done']);
@@ -25,6 +25,10 @@ export const RELEASED_STATES: ReadonlySet<string> = new Set(['done']);
 /** The data a single DAG node carries — everything the pipeline canvas node renders. */
 export interface DagNodeData {
   id: string;
+  /** Server-owned display identity for the card, carried straight through from the Plane-A index so
+   *  the canvas never has to build a human label out of `id`. */
+  displayName: string;
+  shortRef: number;
   action: string;
   target: string;
   state: string;
@@ -83,7 +87,7 @@ function summarize(action: string, target: string): string {
  * canvas layout is deterministic across re-indexes.
  */
 export function buildDag(index: Pick<PlaneAIndex, 'cards'>): Dag {
-  const cards: ParsedCard[] = Object.values(index.cards).flat();
+  const cards: CardProjection[] = Object.values(index.cards).flat();
 
   // First pass: authoritative state per card id, used to resolve depends-on release.
   const stateById = new Map<string, string>();
@@ -105,6 +109,8 @@ export function buildDag(index: Pick<PlaneAIndex, 'cards'>): Dag {
       id,
       data: {
         id,
+        displayName: c.displayName,
+        shortRef: c.shortRef,
         action,
         target,
         state: String(c.meta.state),

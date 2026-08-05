@@ -85,7 +85,8 @@ vi.mock('reactflow', async () => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const entry = (over: Partial<WorkflowDefEntry> = {}): WorkflowDefEntry => ({
-  ref: 'kb~network.md', project: 'kb-ops', path: 'orgs/kb-ops/workflows/network.md', sourceHash: 'a'.repeat(64),
+  ref: 'kb~network.md', displayName: over.title ?? 'Network', shortRef: 1,
+  project: 'kb-ops', path: 'orgs/kb-ops/workflows/network.md', sourceHash: 'a'.repeat(64),
   valid: true, title: 'Network', profile: null, stageCount: 3, riskTier: 'T2', detail: null,
   governedBy: 'alpha',
   stages: [

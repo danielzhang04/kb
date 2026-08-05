@@ -8,7 +8,8 @@ afterEach(cleanup);
 
 const detail: RunDetailDto = {
   run: {
-    runRef: 'run-1', predecessorRunRef: null, title: 'Synthetic control run', proposalRef: 'proposal-1', proposalRevision: 2,
+    runRef: 'run-1', predecessorRunRef: null, title: 'Synthetic control run',
+    displayName: 'Synthetic control run', shortRef: 1, proposalRef: 'proposal-1', proposalRevision: 2,
     proposalHash: 'a'.repeat(64), publicationState: 'published', state: 'running', version: 4, managerSessionRef: 'session-manager',
     managerGeneration: 1,
     managerAssignment: {
@@ -37,7 +38,8 @@ const detail: RunDetailDto = {
     version: 2, createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
   }],
   humanRequests: [{
-    requestRef: 'request-1', runRef: 'run-1', stageRef: 'stage-1', kind: 'review', revision: 3,
+    requestRef: 'request-1', runRef: 'run-1', displayName: 'Synthetic control run', shortRef: 1,
+    stageRef: 'stage-1', kind: 'review', revision: 3,
     state: 'open', title: 'Review the diff', prompt: 'Is this change inside the approved scope?', response: null,
     createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T10:01:00.000Z',
   }],

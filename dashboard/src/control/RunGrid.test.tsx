@@ -12,6 +12,7 @@ const LONG_TITLE =
 function run(overrides: Partial<RunMetadataDto> = {}): RunMetadataDto {
   return {
     runRef: 'run-8f2c19ab', predecessorRunRef: null, title: 'Synthetic control run',
+    displayName: 'Synthetic control run', shortRef: 1,
     proposalRef: 'proposal-1', proposalRevision: 2, proposalHash: 'a'.repeat(64),
     publicationState: 'published', state: 'running', version: 4, managerSessionRef: 'session-manager',
     managerGeneration: 1, managerAssignment: null, createdAt: '2026-07-18T10:00:00.000Z', updatedAt: '2026-07-18T11:56:00.000Z',
@@ -26,10 +27,13 @@ describe('RunGrid', () => {
   it('renders a long run title IN FULL rather than truncating it', () => {
     // This is the actual defect the grid replaced: the old strip clipped every title with
     // `text-overflow: ellipsis` inside a horizontal scroller, so a run could not be identified.
-    render(<RunGrid runs={[run({ title: LONG_TITLE })]} onSelect={vi.fn()} now={NOW} />);
+    render(<RunGrid runs={[run({ title: LONG_TITLE, displayName: LONG_TITLE })]} onSelect={vi.fn()} now={NOW} />);
 
     const title = screen.getByTestId('run-card-run-8f2c19ab-title');
-    expect(title.textContent).toBe(LONG_TITLE);
+    expect(title.textContent).toContain(LONG_TITLE);
+    // The canonical runRef is never text: it lives in EntityName's tooltip + copy affordance.
+    expect(title.textContent).not.toContain('run-8f2c19ab');
+    expect(title.querySelector('[data-testid="entity-name"]')?.getAttribute('title')).toBe('run-8f2c19ab');
 
     // Nothing may re-introduce clipping: no ellipsis, no single-line clamp, no fixed height.
     const style = title.style;

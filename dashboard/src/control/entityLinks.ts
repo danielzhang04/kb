@@ -157,6 +157,9 @@ export function runsForAgent(agentId: string, loaded: RunWithStages[], owners: M
 /** The queue cards an agent owns, newest-id-last, from the Plane-A snapshot. */
 export interface AgentCardRef {
   id: string;
+  /** Carried straight from the server card DTO — never derived here. */
+  displayName: string;
+  shortRef: number;
   action: string;
   state: string;
   bucket: string;
@@ -176,6 +179,8 @@ export function cardsForAgent(agentId: string, index: PlaneAIndex): AgentCardRef
       if (typeof id !== 'string' || id === '') continue;
       cards.push({
         id,
+        displayName: card.displayName,
+        shortRef: card.shortRef,
         action: typeof card.meta.action === 'string' ? card.meta.action : '—',
         state: typeof card.meta.state === 'string' ? card.meta.state : bucket,
         bucket,

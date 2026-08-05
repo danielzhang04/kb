@@ -21,6 +21,8 @@
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { RunMetadataDto } from '../control/controlClient';
 import { cardsForAgent } from '../control/entityLinks';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import type { AgentDetailDto } from '../lib/agentClient';
 import { renderMarkdown } from '../lib/markdown';
@@ -30,9 +32,11 @@ import '../styles/views/entity.css';
 /** Everything the detail renders about one agent. A superset of the roster table's row. */
 export interface AgentDetailRow {
   id: string;
+  /** Server-owned agent display identity, or null on a card-ownership fallback row (see Agents.tsx). */
+  display: { displayName: string; shortRef: number } | null;
   role: string | null;
   working: boolean;
-  current: { action: string; id: string } | null;
+  current: { action: string; id: string; displayName: string; shortRef: number } | null;
   projects: string[];
   cardCount: number;
   lastActive: string | null;
@@ -347,16 +351,16 @@ export function AgentDetail({
       <section className="entity-block" aria-label="Current work">
         <h3 className="entity-block__title">Doing now</h3>
         {agent.current ? (
-          <button
-            type="button"
+          <div
             className="entity-row entity-row--link"
             data-testid={`agent-current-${agent.current.id}`}
-            disabled={!onNavigate}
-            onClick={() => onNavigate?.({ view: 'tasks', focus: { kind: 'card', id: agent.current!.id } })}
+            aria-disabled={!onNavigate || undefined}
+            {...entityRowProps(() => onNavigate?.({ view: 'tasks', focus: { kind: 'card', id: agent.current!.id } }))}
           >
-            <span className="entity-row__main">{agent.current.action}</span>
-            <span className="mc-mono entity-row__ref">{agent.current.id}</span>
-          </button>
+            <span className="entity-row__main">
+              <EntityName kind="card" id={agent.current.id} displayName={agent.current.displayName} shortRef={agent.current.shortRef} />
+            </span>
+          </div>
         ) : (
           <p className="entity-note" data-testid="agent-idle">
             Idle — this agent owns no card in the <code className="mc-mono">working</code> state.
@@ -372,17 +376,17 @@ export function AgentDetail({
           <ol className="entity-list" data-testid="agent-cards">
             {cards.map((card) => (
               <li key={card.id}>
-                <button
-                  type="button"
+                <div
                   className="entity-row entity-row--link"
                   data-testid={`agent-card-${card.id}`}
-                  disabled={!onNavigate}
-                  onClick={() => onNavigate?.({ view: 'tasks', focus: { kind: 'card', id: card.id } })}
+                  aria-disabled={!onNavigate || undefined}
+                  {...entityRowProps(() => onNavigate?.({ view: 'tasks', focus: { kind: 'card', id: card.id } }))}
                 >
-                  <span className="entity-row__main">{card.action}</span>
-                  <span className="mc-mono entity-row__ref">{card.id}</span>
+                  <span className="entity-row__main">
+                    <EntityName kind="card" id={card.id} displayName={card.displayName} shortRef={card.shortRef} />
+                  </span>
                   <span className="mc-mono entity-row__meta">{card.state}</span>
-                </button>
+                </div>
               </li>
             ))}
           </ol>
@@ -455,17 +459,17 @@ export function AgentDetail({
         <ol className="entity-list" data-testid="agent-runs">
           {runs.map((run) => (
             <li key={run.runRef}>
-              <button
-                type="button"
+              <div
                 className="entity-row entity-row--link"
                 data-testid={`agent-run-${run.runRef}`}
-                disabled={!onNavigate}
-                onClick={() => onNavigate?.({ view: 'pipeline', focus: { kind: 'run', id: run.runRef } })}
+                aria-disabled={!onNavigate || undefined}
+                {...entityRowProps(() => onNavigate?.({ view: 'pipeline', focus: { kind: 'run', id: run.runRef } }))}
               >
-                <span className="entity-row__main">{run.title}</span>
-                <span className="mc-mono entity-row__ref">{run.runRef}</span>
+                <span className="entity-row__main">
+                  <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} />
+                </span>
                 <span className="mc-mono entity-row__meta">{run.state}</span>
-              </button>
+              </div>
             </li>
           ))}
         </ol>
@@ -513,7 +517,9 @@ export function AgentDetail({
   return (
     <EntityDetail
       entity={{ kind: 'agent', id: agent.id }}
-      eyebrow={`Fleet agent · ${agent.id}`}
+      eyebrow={agent.display
+        ? <>Fleet agent · <EntityName kind="agent" id={agent.id} displayName={agent.display.displayName} shortRef={agent.display.shortRef} muted /></>
+        : `Fleet agent · ${agent.id}`}
       title={agent.role ? `${agent.id} · ${agent.role}` : agent.id}
       status={{
         label: agent.working ? 'working' : 'idle',

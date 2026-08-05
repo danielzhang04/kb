@@ -8,12 +8,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { Tasks, type CardsByState } from './Tasks';
 import { SessionProvider } from '../lib/sessionContext';
-import type { ParsedCard } from '../../server/planeA/cards';
+import type { CardProjection } from '../../server/planeA/cards';
 import type { RoutingSnapshot } from '../lib/routingClient';
 
 afterEach(cleanup);
 
-function card(over: Partial<ParsedCard['meta']> & { id: string }, body = ''): ParsedCard {
+function card(over: Partial<CardProjection['meta']> & { id: string }, body = ''): CardProjection {
   return {
     meta: {
       project: 'kb',
@@ -25,6 +25,8 @@ function card(over: Partial<ParsedCard['meta']> & { id: string }, body = ''): Pa
       ...over,
     },
     body,
+    displayName: String(over.action ?? 'demo'),
+    shortRef: 1,
   };
 }
 
@@ -50,9 +52,11 @@ describe('Tasks view', () => {
     expect(screen.getByLabelText('Working cards')).toBeTruthy();
     expect(screen.getByLabelText('Approvals cards')).toBeTruthy();
     // Cards land under the right group.
-    expect(within(screen.getByLabelText('Inbox cards')).getByText('card-100')).toBeTruthy();
-    expect(within(screen.getByLabelText('Working cards')).getByText('card-200')).toBeTruthy();
-    expect(within(screen.getByLabelText('Approvals cards')).getByText('card-300')).toBeTruthy();
+    // Rows are named, not id-printed: the group holds the card's action, and its id is a tooltip.
+    expect(within(screen.getByLabelText('Inbox cards')).getAllByText('draft-plan').length).toBeGreaterThan(0);
+    expect(within(screen.getByLabelText('Working cards')).getAllByText('run-build').length).toBeGreaterThan(0);
+    expect(within(screen.getByLabelText('Approvals cards')).getAllByText('push-remote').length).toBeGreaterThan(0);
+    expect(within(screen.getByLabelText('Inbox cards')).queryByText('card-100')).toBeNull();
   });
 
   it('always renders the four primary buckets, empty ones calm (Done here has no cards)', () => {
@@ -72,7 +76,8 @@ describe('Tasks view', () => {
     // Frontmatter block: key + value pairs.
     expect(within(detail).getByText('risk-tier')).toBeTruthy();
     expect(within(detail).getByText('T3')).toBeTruthy();
-    expect(within(detail).getByText('push-remote')).toBeTruthy();
+    // `push-remote` appears twice now: the EntityName heading and the frontmatter `action` value.
+    expect(within(detail).getAllByText('push-remote').length).toBe(2);
     // Body rendered through the safe markdown renderer (heading + list item become real elements).
     expect(within(detail).getByRole('heading', { name: 'Work order' })).toBeTruthy();
     expect(within(detail).getByText('step one')).toBeTruthy();

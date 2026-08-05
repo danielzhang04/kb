@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
 import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
-import { auditFn, type SurfaceContext } from '../http/context.ts';
+import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
@@ -20,7 +20,7 @@ import {
 } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
-import type { ControlResult, JsonObject, ProposalDecision, Run } from './types.ts';
+import type { ControlResult, HumanRequest, JsonObject, ProposalDecision, Run, RunDetail } from './types.ts';
 import {
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
   AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
@@ -44,6 +44,7 @@ import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
 import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf } from './launch.ts';
 import { registerPaidActionRoute } from './paidActionRoute.ts';
+import type { EntityDisplay } from '../naming.ts';
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -64,6 +65,34 @@ function sendResult<T>(reply: FastifyReply, result: ControlResult<T>, success = 
 
 function subject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
+}
+
+/**
+ * Display-identity embedding for the run DTOs. The canonical `runRef` is untouched and still on the
+ * wire — these two fields exist so the cockpit, run grid, and Inbox never have to print it as the
+ * primary text an operator reads.
+ */
+function runDisplay<T extends { runRef: string; title: string }>(ctx: SurfaceContext, run: T): T & EntityDisplay {
+  return { ...run, ...namingFor(ctx).displayFor('run', run.runRef, run.title) };
+}
+
+/**
+ * A Human Request has no identity of its own in the naming registry: the operator reads it as "this
+ * RUN needs you", and every surface that lists one renders the owning run beside the request's own
+ * `title`. So the two display fields on a request describe its OWNING RUN (kind `'run'`, keyed by
+ * `request.runRef`) — never the request.
+ */
+function humanRequestDisplay(ctx: SurfaceContext, request: HumanRequest, runTitle: string): HumanRequest & EntityDisplay {
+  return { ...request, ...namingFor(ctx).displayFor('run', request.runRef, runTitle) };
+}
+
+/** The `/api/control/runs/:runRef` DTO: the run and each of its requests carry the run's display identity. */
+function runDetailDto(ctx: SurfaceContext, detail: RunDetail): RunDetail {
+  return {
+    ...detail,
+    run: runDisplay(ctx, detail.run),
+    humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
+  };
 }
 
 /** Challenge purpose prefix that separates an execution-unlock ceremony from a sign-in one. */
@@ -559,7 +588,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
 
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
     const sub = subject(req);
-    return sub ? reply.send({ runs: ctx.controlStore.listRuns(sub) }) : reply.code(401).send({ error: 'unauthenticated' });
+    return sub
+      ? reply.send({ runs: ctx.controlStore.listRuns(sub).map((run) => runDisplay(ctx, run)) })
+      : reply.code(401).send({ error: 'unauthenticated' });
   });
 
   scope.get('/api/control/runs/:runRef', { preHandler }, async (req, reply) => {
@@ -570,7 +601,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!detail.ok) return sendResult(reply, detail);
     return reply.send({
       ok: true,
-      value: detail.value,
+      value: runDetailDto(ctx, detail.value),
       replayed: detail.replayed ?? false,
       execution: executionPosture(ctx),
     });

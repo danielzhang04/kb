@@ -19,7 +19,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { auditFn, type SurfaceContext } from '../http/context.ts';
+import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { requireSession, verifiedSession, writeRateLimitHook } from '../http/middleware.ts';
 import { originPlugin } from '../security/origin.ts';
 import { loadWorkflowCompileEnvironment, workflowProfileIds } from '../control/environment.ts';
@@ -64,7 +64,12 @@ export interface WorkflowAssignmentPreview {
   profileId: string;
 }
 
-export interface WorkflowDefEntry {
+/**
+ * A scanned definition, before the DTO builder attaches its display identity. `scanWorkflowDefs` is a
+ * pure filesystem projection with no naming registry; {@link entryWithCompileStatus} is the one place
+ * that turns a record into the wire {@link WorkflowDefEntry}.
+ */
+export interface WorkflowDefRecord {
   /** URL id: the definition's own id when it parses, else a stable path-derived fallback. */
   ref: string;
   project: string;
@@ -92,6 +97,16 @@ export interface WorkflowDefEntry {
   /** Server-owned durable amendment state. It stays blocking until active canonical bytes equal its proposal. */
   pendingAmendment?: PendingDefinitionAmendment | null;
   pendingAmendmentError?: string | null;
+}
+
+/**
+ * The wire shape of one definition. The workflow's TITLE is its identity — `path` and `sourceHash`
+ * are technical detail — so the display fields are derived from `title` (the registry falls back to a
+ * truncated ref for a definition too broken to parse a title out of).
+ */
+export interface WorkflowDefEntry extends WorkflowDefRecord {
+  displayName: string;
+  shortRef: number;
 }
 
 const ORGS_DIR = 'orgs';
@@ -135,7 +150,7 @@ function highestTier(def: WorkflowDef): 'T1' | 'T2' | 'T3' {
 }
 
 export interface ScannedDef {
-  entry: WorkflowDefEntry;
+  entry: WorkflowDefRecord;
   def: WorkflowDef | null;
 }
 
@@ -389,7 +404,7 @@ function compiledPreview(repoRoot: string, def: WorkflowDef): { proposalId: stri
 }
 
 /** Preserve parser validity while exposing the compiler's exact semantic launch decision. */
-function pendingAmendmentFor(ctx: SurfaceContext, entry: WorkflowDefEntry): { pending: PendingDefinitionAmendment | null; error: string | null } {
+function pendingAmendmentFor(ctx: SurfaceContext, entry: WorkflowDefRecord): { pending: PendingDefinitionAmendment | null; error: string | null } {
   if (!entry.sourceHash) return { pending: null, error: null };
   const lookup = ctx.definitionAmendmentStore.lookup(entry.path, entry.sourceHash);
   if (!lookup.ok) return { pending: null, error: lookup.detail };
@@ -398,10 +413,13 @@ function pendingAmendmentFor(ctx: SurfaceContext, entry: WorkflowDefEntry): { pe
 
 function entryWithCompileStatus(scanned: ScannedDef, ctx: SurfaceContext): WorkflowDefEntry {
   const amendment = pendingAmendmentFor(ctx, scanned.entry);
-  if (!scanned.def) return { ...scanned.entry, pendingAmendment: amendment.pending, pendingAmendmentError: amendment.error };
+  // The DTO-build site: every definition leaves here with the display identity the roster renders.
+  const display = namingFor(ctx).displayFor('workflow', scanned.entry.ref, scanned.entry.title ?? undefined);
+  if (!scanned.def) return { ...scanned.entry, ...display, pendingAmendment: amendment.pending, pendingAmendmentError: amendment.error };
   const preview = compiledPreview(ctx.repoRoot, scanned.def);
   return {
     ...scanned.entry,
+    ...display,
     pendingAmendment: amendment.pending,
     pendingAmendmentError: amendment.error,
     launchable: !('error' in preview),

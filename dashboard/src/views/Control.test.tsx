@@ -10,7 +10,7 @@ import { Control, StopControls } from './Control';
 import { LaunchControls } from './launchControls';
 import { App } from '../App';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { ParsedCard } from '../../server/planeA/cards';
+import type { CardProjection } from '../../server/planeA/cards';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
 
@@ -20,7 +20,7 @@ function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: (
   return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
 }
 
-function card(owner: string | null, state: string): ParsedCard {
+function card(owner: string | null, state: string): CardProjection {
   return {
     meta: {
       id: `id-${state}-${owner ?? 'none'}`,
@@ -32,6 +32,8 @@ function card(owner: string | null, state: string): ParsedCard {
       state,
     },
     body: '',
+    displayName: 'demo',
+    shortRef: 1,
   };
 }
 

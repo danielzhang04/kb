@@ -30,6 +30,17 @@ export interface ParsedCard {
   body: string;
 }
 
+/**
+ * A card as it leaves a DTO builder: the parsed card plus the server-owned display identity
+ * (`server/naming.ts`). The canonical `meta.id` is untouched — these two fields exist so no view has
+ * to invent a human label from an id, and they are added by {@link ../planeA/indexer.ts#indexRepo},
+ * never by the parser (which has no registry and must stay pure).
+ */
+export interface CardProjection extends ParsedCard {
+  displayName: string;
+  shortRef: number;
+}
+
 /** All seven schema card states (mirrors scripts/cards.py `STATES`). */
 export const CARD_STATES = [
   'inbox',
@@ -123,12 +134,22 @@ export function parseCardFrontmatter(text: string): ParsedCard {
   return { meta: meta as CardMeta, body };
 }
 
-/** Group parsed cards by their `state` field. One bucket per state that appears. */
-export function groupByState(cards: ParsedCard[]): Record<string, ParsedCard[]> {
-  const grouped: Record<string, ParsedCard[]> = {};
+/** Group parsed cards by their `state` field. One bucket per state that appears. Generic so the
+ *  indexer can group already-projected cards without losing their display fields. */
+export function groupByState<T extends ParsedCard>(cards: T[]): Record<string, T[]> {
+  const grouped: Record<string, T[]> = {};
   for (const card of cards) {
     const state = String(card.meta.state);
     (grouped[state] ??= []).push(card);
   }
   return grouped;
+}
+
+/**
+ * The card's human name. Cards carry no `title` field (governance/card-schema.md), so the dispatcher-set
+ * `action` verb phrase IS the name an operator reads; an empty one leaves the naming registry to fall
+ * back to a truncated id. `target` is deliberately excluded — it is a path, not a name.
+ */
+export function cardTitle(card: ParsedCard): string {
+  return typeof card.meta.action === 'string' ? card.meta.action : '';
 }

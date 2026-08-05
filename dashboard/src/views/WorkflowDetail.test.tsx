@@ -20,6 +20,8 @@ beforeEach(() => {
 });
 
 const def = (over: Partial<WorkflowDefEntry> & { ref: string }): WorkflowDefEntry => ({
+  displayName: over.title ?? 'Video pipeline',
+  shortRef: 1,
   project: 'kb',
   path: 'orgs/kb/workflows/video.md',
   sourceHash: 'a'.repeat(64),
@@ -51,6 +53,8 @@ const revision = (over: Partial<ProposalRevisionMetadataDto> = {}): ProposalRevi
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline and republish the audio stage',
+  displayName: 'Rebuild the faceless video pipeline and republish the audio stage',
+  shortRef: 1,
   proposalRef: 'wf-aaa',
   proposalRevision: 1,
   proposalHash: 'hash-a',

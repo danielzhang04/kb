@@ -16,6 +16,8 @@
  */
 import { useEffect, useState } from 'react';
 import type { ProposalRoutingDto, ProposalStageDto, ResolvedAgentAssignmentDto, RunMetadataDto } from '../control/controlClient';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
 import { EntityDetail, type DetailSection } from '../entity/EntityDetail';
 import type { NavTarget } from '../nav/stack';
 import { WorkflowAgentGraph, type GovernanceAgentOption, type GovernanceDraft } from './WorkflowAgentGraph';
@@ -24,6 +26,10 @@ import '../styles/views/entity.css';
 /** One definition entry from `GET /api/workflows` (mirrors `server/workflows/routes.ts`). */
 export interface WorkflowDefEntry {
   ref: string;
+  /** Server-owned display identity (`server/workflows/routes.ts#entryWithCompileStatus`). The
+   *  workflow's TITLE is its identity here; `path` and `sourceHash` are technical detail. */
+  displayName: string;
+  shortRef: number;
   project: string;
   path: string;
   sourceHash: string | null;
@@ -347,18 +353,18 @@ export function WorkflowDetail({
         <ol className="entity-list" data-testid="workflow-runs">
           {runs.map((run) => (
             <li key={run.runRef}>
-              <button
-                type="button"
+              <div
                 className="entity-row entity-row--link"
                 data-testid={`workflow-run-${run.runRef}`}
-                disabled={!onNavigate}
-                onClick={() => onNavigate?.({ view: 'pipeline', focus: { kind: 'run', id: run.runRef } })}
+                aria-disabled={!onNavigate || undefined}
+                {...entityRowProps(() => onNavigate?.({ view: 'pipeline', focus: { kind: 'run', id: run.runRef } }))}
               >
-                <span className="entity-row__main">{run.title}</span>
-                <span className="mc-mono entity-row__ref">{run.runRef}</span>
+                <span className="entity-row__main">
+                  <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} />
+                </span>
                 <span className="mc-mono entity-row__meta">{run.state}</span>
                 <span className="mc-mono entity-row__meta">{run.stageCount} stages</span>
-              </button>
+              </div>
             </li>
           ))}
         </ol>
@@ -461,8 +467,8 @@ export function WorkflowDetail({
   return (
     <EntityDetail
       entity={{ kind: 'workflow', id: entry.ref }}
-      eyebrow={`Workflow definition · ${entry.ref}`}
-      title={entry.title ?? entry.ref}
+      eyebrow={<>Workflow definition · <EntityName kind="workflow" id={entry.ref} displayName={entry.displayName} shortRef={entry.shortRef} muted /></>}
+      title={entry.displayName}
       status={{ label: entry.valid ? 'valid' : 'invalid', tone: entry.valid ? 'ok' : 'error' }}
       facts={[
         { label: 'Project', value: entry.project, mono: true },

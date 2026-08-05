@@ -16,7 +16,7 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { ParsedCard } from '../../server/planeA/cards';
+import type { CardProjection, ParsedCard } from '../../server/planeA/cards';
 import type { AgentRosterEntry } from '../../server/agents/roster';
 import { useSession } from '../lib/sessionContext';
 import {
@@ -28,6 +28,8 @@ import {
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
 import { AgentDetail } from './AgentDetail';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
 import { fetchAgentDetail, fetchSystemWorkers, type AgentDetailDto, type SystemWorkerDto } from '../lib/agentClient';
 import { getRun, listRuns, type RunMetadataDto } from '../control/controlClient';
 import { cardOwnerIndex, runsForAgent, type RunWithStages } from '../control/entityLinks';
@@ -54,8 +56,15 @@ const EMPTY_INDEX: PlaneAIndex = {
 
 interface AgentRow {
   id: string;
+  /**
+   * The server-owned agent display identity from `/api/agents`, or null when this row came from the
+   * card-ownership FALLBACK (`deriveRoster`) — that snapshot carries no agent registry entry, and
+   * inventing an ordinal client-side would be a second, disagreeing source of truth. The id is itself
+   * a human name, so the fallback simply renders it.
+   */
+  display: { displayName: string; shortRef: number } | null;
   working: boolean;
-  current: { action: string; id: string } | null;
+  current: { action: string; id: string; displayName: string; shortRef: number } | null;
   projects: string[];
   cardCount: number;
   /** Role from `routines/roles/` (only when the enriched `/api/agents` roster is loaded). */
@@ -92,7 +101,7 @@ function projectsOf(card: ParsedCard): string[] {
  * not loaded — role/lastActive are null in that case.
  */
 export function deriveRoster(index: PlaneAIndex): AgentRow[] {
-  const byOwner = new Map<string, ParsedCard[]>();
+  const byOwner = new Map<string, CardProjection[]>();
   for (const bucket of Object.values(index.cards)) {
     for (const card of bucket) {
       const owner = card.meta.owner;
@@ -109,8 +118,16 @@ export function deriveRoster(index: PlaneAIndex): AgentRow[] {
     const projects = [...new Set(cards.flatMap(projectsOf))].sort();
     rows.push({
       id,
+      display: null,
       working: workingCard !== null,
-      current: workingCard ? { action: String(workingCard.meta.action), id: String(workingCard.meta.id) } : null,
+      current: workingCard
+        ? {
+            action: String(workingCard.meta.action),
+            id: String(workingCard.meta.id),
+            displayName: workingCard.displayName,
+            shortRef: workingCard.shortRef,
+          }
+        : null,
       projects,
       cardCount: cards.length,
       role: null,
@@ -139,6 +156,7 @@ export function deriveRoster(index: PlaneAIndex): AgentRow[] {
 function rowFromEntry(e: AgentRosterEntry): AgentRow {
   return {
     id: e.id,
+    display: { displayName: e.displayName, shortRef: e.shortRef },
     working: e.working,
     current: e.current,
     projects: e.projects,
@@ -239,11 +257,14 @@ function AgentRosterTable({
             return (
               <tr key={agent.id} data-testid={`agent-row-${agent.id}`}>
                 <td>
-                  <button type="button" className="v-agents__agent v-agents__agent--link" data-testid={`agent-open-${agent.id}`}
-                    aria-label={`Open ${agent.id} detail`} onClick={() => onOpenAgent(agent.id)}>
+                  <div className="v-agents__agent v-agents__agent--link" data-testid={`agent-open-${agent.id}`}
+                    aria-label={`Open ${agent.display?.displayName ?? agent.id} detail`} {...entityRowProps(() => onOpenAgent(agent.id))}>
                     <span className={`mc-status-dot ${agent.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`} aria-hidden="true" />
-                    <span className="mc-mono">{agent.id}</span><span className="v-agents__state">{agent.working ? 'working' : 'idle'}</span>
-                  </button>
+                    {agent.display
+                      ? <EntityName kind="agent" id={agent.id} displayName={agent.display.displayName} shortRef={agent.display.shortRef} />
+                      : <span className="mc-mono">{agent.id}</span>}
+                    <span className="v-agents__state">{agent.working ? 'working' : 'idle'}</span>
+                  </div>
                 </td>
                 <td>{agent.role ? <span className="v-agents__role mc-mono">{agent.role}</span> : <span className="v-agents__idle">—</span>}</td>
                 <td>
@@ -265,7 +286,8 @@ function AgentRosterTable({
                     {agent.declaredRuntime ? <span className="mc-mono v-agents__declared-runtime">{agent.declaredRuntime}</span> : null}
                   </span>
                 </td>
-                <td>{agent.current ? <span className="v-agents__doing"><span className="v-agents__action">{agent.current.action}</span><span className="mc-mono v-agents__card-id">{agent.current.id}</span></span> : <span className="v-agents__idle">idle</span>}</td>
+                {/* The card being worked is named, not id-printed; its id stays in the tooltip/copy. */}
+                <td>{agent.current ? <span className="v-agents__doing"><span className="v-agents__action">{agent.current.action}</span><span className="v-agents__card-id"><EntityName kind="card" id={agent.current.id} displayName={agent.current.displayName} shortRef={agent.current.shortRef} muted /></span></span> : <span className="v-agents__idle">idle</span>}</td>
                 <td>{agent.projects.length ? <span className="v-agents__projects">{agent.projects.map((project) => <span key={project} className="v-agents__proj mc-mono">{project}</span>)}</span> : <span className="v-agents__idle">—</span>}</td>
                 <td className="mc-mono v-agents__col-num">{agent.cardCount}</td>
                 <td className="mc-mono v-agents__last-active">{agent.lastActive ?? <span className="v-agents__idle">—</span>}</td>

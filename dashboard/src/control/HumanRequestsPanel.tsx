@@ -14,6 +14,7 @@ import {
   type RunMetadataDto,
 } from './controlClient';
 import type { FetchLike } from './controlClient';
+import { EntityName } from '../components/EntityName';
 import { canResumePublishedRun, decisionsForHumanRequest } from './humanBoundaries';
 
 function requestKey(request: HumanRequestDto, decision: HumanRequestDecision): string {
@@ -168,7 +169,7 @@ export function HumanRequestsPanel({ fetchImpl }: { fetchImpl?: FetchLike }): Re
       {strandedRuns.map(({ run, resumeBinding }) => (
         <article key={run.runRef} className="control-request control-request--stranded" data-testid={`waiting-no-request-${run.runRef}`}>
           <p className="control-eyebrow">waiting-human · no open request</p>
-          <h3>{run.title}</h3>
+          <h3><EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} /></h3>
           <p>{resumeBinding
             ? 'The request is resolved. Resume this existing run when execution is active.'
             : 'This run is waiting on a human with NO open request — inspect the run to see why it is parked.'}</p>
@@ -177,12 +178,19 @@ export function HumanRequestsPanel({ fetchImpl }: { fetchImpl?: FetchLike }): Re
               Resume run
             </button>
           ) : null}
-          <p className="control-help mc-mono" data-testid={`inspect-run-${run.runRef}`}>run {run.runRef}</p>
+          {/* The runRef itself is technical detail: it stays reachable through EntityName's tooltip/copy. */}
+          <p className="control-help" data-testid={`inspect-run-${run.runRef}`}>
+            Inspect <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} muted />
+          </p>
         </article>
       ))}
       {requests.map(({ request, completionGate, legacyRecovery }) => (
         <article key={request.requestRef} className="control-request" data-review-completion-gate={completionGate || undefined}>
-          <p className="control-eyebrow">{request.kind} · revision {request.revision} · run {request.runRef}</p>
+          {/* `displayName`/`shortRef` on a request describe its OWNING RUN — see HumanRequestDto. */}
+          <p className="control-eyebrow">
+            {request.kind} · revision {request.revision} ·{' '}
+            <EntityName kind="run" id={request.runRef} displayName={request.displayName} shortRef={request.shortRef} muted />
+          </p>
           <h3>{completionGate ? `Review completion gate: ${request.title}` : request.title}</h3>
           <p>{request.prompt}</p>
           {legacyRecovery ? (

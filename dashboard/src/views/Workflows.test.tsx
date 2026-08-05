@@ -22,6 +22,8 @@ const definition = (over: Partial<{
 }> = {}) => ({
   ref: 'research-brief', project: 'kb-ops', path: 'orgs/kb-ops/workflows/research-brief.md', valid: true,
   sourceHash: 'a'.repeat(64),
+  // The server embeds the display identity; `displayName` is the definition's title.
+  displayName: over.title ?? 'Research brief (cited)', shortRef: 1,
   title: 'Research brief (cited)', profile: 'research', parameters: [], stageCount: 1, riskTier: 'T2',
   stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }], detail: null,
   ...over,

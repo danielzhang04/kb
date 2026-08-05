@@ -20,6 +20,7 @@ afterEach(cleanup);
 
 function agent(over: Partial<AgentDetailRow> & { id: string }): AgentDetailRow {
   return {
+    display: { displayName: over.id, shortRef: 1 },
     role: null,
     working: false,
     current: null,
@@ -41,6 +42,8 @@ function agent(over: Partial<AgentDetailRow> & { id: string }): AgentDetailRow {
 
 function entry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEntry {
   return {
+    displayName: over.id,
+    shortRef: 1,
     role: null,
     working: false,
     current: null,
@@ -74,6 +77,8 @@ const EMPTY_INDEX: PlaneAIndex = {
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline',
+  displayName: 'Rebuild the faceless video pipeline',
+  shortRef: 1,
   proposalRef: 'wf-aaa',
   proposalRevision: 1,
   proposalHash: 'hash-a',
@@ -316,7 +321,7 @@ describe('agent work and runs', () => {
     const onNavigate = vi.fn();
     render(
       <AgentDetail
-        agent={agent({ id: 'claude-worker', working: true, current: { action: 'build', id: 'card-100' } })}
+        agent={agent({ id: 'claude-worker', working: true, current: { action: 'build', id: 'card-100', displayName: 'build', shortRef: 4 } })}
         onNavigate={onNavigate}
       />,
     );

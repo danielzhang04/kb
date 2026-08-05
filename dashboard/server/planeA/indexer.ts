@@ -7,15 +7,19 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
-import { groupByState, parseCardFrontmatter } from './cards.ts';
-import type { ParsedCard } from './cards.ts';
+import { cardTitle, groupByState, parseCardFrontmatter } from './cards.ts';
+import type { CardProjection, ParsedCard } from './cards.ts';
+import { defaultNamingRegistry } from '../naming.ts';
+import type { NamingRegistry } from '../naming.ts';
 import { rollupLedgers } from './ledgers.ts';
 import type { LedgerRollup } from './ledgers.ts';
 import { readOrgStates } from './states.ts';
 import type { OrgState } from './states.ts';
 
 export interface PlaneAIndex {
-  cards: Record<string, ParsedCard[]>;
+  /** Cards carry their server-owned `displayName`/`shortRef`: this index IS the DTO `/api/index`,
+   *  `/api/dag`, `/api/agents`, and `/api/human-inbox` are all built from. */
+  cards: Record<string, CardProjection[]>;
   ledgers: LedgerRollup;
   orgStates: OrgState[];
 }
@@ -31,16 +35,21 @@ export interface PlaneADelta {
 
 const QUEUE_DIRS = ['inbox', 'working', 'approvals', 'done'];
 
+/** Attach the server-owned display identity to one parsed card. */
+export function projectCard(card: ParsedCard, naming: NamingRegistry): CardProjection {
+  return { ...card, ...naming.displayFor('card', String(card.meta.id), cardTitle(card)) };
+}
+
 /** Read and parse every card across the four physical queue dirs. */
-function readCards(repoRoot: string): ParsedCard[] {
-  const cards: ParsedCard[] = [];
+function readCards(repoRoot: string, naming: NamingRegistry): CardProjection[] {
+  const cards: CardProjection[] = [];
   for (const dir of QUEUE_DIRS) {
     const full = join(repoRoot, 'queue', dir);
     if (!existsSync(full)) continue;
     for (const name of readdirSync(full)) {
       if (!name.endsWith('.md')) continue;
       try {
-        cards.push(parseCardFrontmatter(readFileSync(join(full, name), 'utf-8')));
+        cards.push(projectCard(parseCardFrontmatter(readFileSync(join(full, name), 'utf-8')), naming));
       } catch {
         // A malformed/partially-written card must never crash the index; skip it this pass.
       }
@@ -49,10 +58,11 @@ function readCards(repoRoot: string): ParsedCard[] {
   return cards;
 }
 
-/** Build the full Plane-A index from scratch. */
-export function indexRepo(repoRoot: string): PlaneAIndex {
+/** Build the full Plane-A index from scratch. `naming` is injectable so a test can point the ordinal
+ *  registry at a temp file instead of the process-wide state root. */
+export function indexRepo(repoRoot: string, naming: NamingRegistry = defaultNamingRegistry()): PlaneAIndex {
   return {
-    cards: groupByState(readCards(repoRoot)),
+    cards: groupByState(readCards(repoRoot, naming)),
     ledgers: rollupLedgers(repoRoot),
     orgStates: readOrgStates(repoRoot),
   };
@@ -71,10 +81,10 @@ function classify(repoRoot: string, changed: string): PlaneASlice {
 }
 
 /** Rebuild only the slice a change touched, returning a fresh index. */
-function reindexSlice(repoRoot: string, prev: PlaneAIndex, kind: PlaneASlice): PlaneAIndex {
+function reindexSlice(repoRoot: string, prev: PlaneAIndex, kind: PlaneASlice, naming: NamingRegistry): PlaneAIndex {
   switch (kind) {
     case 'cards':
-      return { ...prev, cards: groupByState(readCards(repoRoot)) };
+      return { ...prev, cards: groupByState(readCards(repoRoot, naming)) };
     case 'ledgers':
       return { ...prev, ledgers: rollupLedgers(repoRoot) };
     case 'states':
@@ -92,10 +102,11 @@ function reindexSlice(repoRoot: string, prev: PlaneAIndex, kind: PlaneASlice): P
 export function watchPlaneA(
   repoRoot: string,
   onChange: (delta: PlaneADelta) => void,
-  opts: { debounceMs?: number } = {},
+  opts: { debounceMs?: number; naming?: NamingRegistry } = {},
 ): Promise<FSWatcher> {
   const debounceMs = opts.debounceMs ?? 50;
-  let index = indexRepo(repoRoot);
+  const naming = opts.naming ?? defaultNamingRegistry();
+  let index = indexRepo(repoRoot, naming);
 
   // Only watch surfaces that exist — chokidar stalls its `ready` event on absent glob/dir paths, and the
   // fleet repo may legitimately lack e.g. dashboards/ or skills/ at a given moment.
@@ -120,7 +131,7 @@ export function watchPlaneA(
   const flush = (): void => {
     timer = undefined;
     for (const [kind, path] of pending) {
-      index = reindexSlice(repoRoot, index, kind);
+      index = reindexSlice(repoRoot, index, kind, naming);
       onChange({ kind, path, index });
     }
     pending.clear();

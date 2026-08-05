@@ -55,8 +55,9 @@ export interface EntityFact {
 
 export interface EntityDetailProps {
   entity: EntityRef;
-  /** "Governed run · <runRef>" */
-  eyebrow: string;
+  /** "Governed run · <EntityName …>" — a node, not a string, so the entity's identity renders through
+   *  the one `EntityName` component instead of being string-interpolated into a raw ref. */
+  eyebrow: React.ReactNode;
   title: string;
   status?: { label: string; tone: StatusTone };
   facts: EntityFact[];

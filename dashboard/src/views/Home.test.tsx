@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { Home } from './Home';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { ParsedCard } from '../../server/planeA/cards';
+import type { CardProjection } from '../../server/planeA/cards';
 import type { AgentRosterEntry } from '../../server/agents/roster';
 import type { ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import type { ExecutionPostureDto } from '../control/controlClient';
@@ -30,6 +30,8 @@ function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: (
 /** Build a full roster entry with sane defaults, overriding only the fields a test cares about. */
 function rosterEntry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEntry {
   return {
+    displayName: over.id,
+    shortRef: 1,
     role: null,
     working: false,
     current: null,
@@ -86,10 +88,15 @@ function executionClient(posture: ExecutionPostureDto): ExecutionUnlockClient {
   };
 }
 
-function card(id: string, owner: string | null, state: string, tier = 'T1'): ParsedCard {
+/** A card as the server projects it: `displayName` is the card's action (planeA/cards.ts#cardTitle),
+ *  which is what the resume rows render — the raw id never appears as text. */
+function card(id: string, owner: string | null, state: string, tier = 'T1'): CardProjection {
+  const action = `demo:${id}`;
   return {
-    meta: { id, project: 'kb', action: 'demo', target: 'docs/x.md', 'risk-tier': tier, owner, state },
+    meta: { id, project: 'kb', action, target: 'docs/x.md', 'risk-tier': tier, owner, state },
     body: '',
+    displayName: action,
+    shortRef: 1,
   };
 }
 
@@ -149,10 +156,14 @@ describe('Home view — running / resume hero', () => {
     render0(<Home snapshot={SNAPSHOT} />);
     const resume = screen.getByTestId('home-resume');
 
-    expect(resume.textContent).toContain('id-work-1');
-    expect(resume.textContent).toContain('id-work-2');
+    // Rows name the card; the raw id is never rendered as text.
+    expect(resume.textContent).toContain('demo:id-work-1');
+    expect(resume.textContent).toContain('demo:id-work-2');
+    // The canonical id is reachable only through EntityName's tooltip, never as row text.
+    expect([...resume.querySelectorAll('[data-testid="entity-name"]')].map((n) => n.getAttribute('title')))
+      .toContain('id-work-1');
     // The approval waiting on a signature is surfaced here too.
-    expect(resume.textContent).toContain('id-appr-1');
+    expect(resume.textContent).toContain('demo:id-appr-1');
     // Project STATE one-liner is reconstructed for resume.
     expect(resume.textContent).toContain('demo');
     expect(resume.textContent).toContain('Building the Plane-A indexer.');
@@ -176,15 +187,17 @@ describe('Home view — running / resume hero', () => {
  * These snapshots contain NOTHING in `approvals`, so the old state-keyed code renders 0 and the false
  * empty state; every assertion below fails against it.
  */
-function gate(id: string, action: string, owner: string | null = 'human-operator', tier = 'T3'): ParsedCard {
+function gate(id: string, action: string, owner: string | null = 'human-operator', tier = 'T3'): CardProjection {
   return {
     meta: { id, project: 'kb', action, target: '.', 'risk-tier': tier, owner, state: 'inbox' },
     body: '## Work order\n\nClear the gate.\n',
+    displayName: action,
+    shortRef: 1,
   };
 }
 
-function snapshotOf(cards: ParsedCard[]): PlaneAIndex {
-  const grouped: Record<string, ParsedCard[]> = {};
+function snapshotOf(cards: CardProjection[]): PlaneAIndex {
+  const grouped: Record<string, CardProjection[]> = {};
   for (const value of cards) (grouped[String(value.meta.state)] ??= []).push(value);
   return { ...SNAPSHOT, cards: grouped, orgStates: [] };
 }
@@ -218,7 +231,7 @@ describe('Home view — counts who must act, not card state', () => {
     ])} />);
     const resume = screen.getByTestId('home-resume');
 
-    expect(resume.textContent).toContain('6a5d6b23-12ddfee2');
+    expect(resume.textContent).not.toContain('6a5d6b23-12ddfee2');
     expect(resume.textContent).toContain('approve:oauth-gate-g1');
     expect(resume.textContent).toContain('decide:budget-gate-measures-nothing');
     // The false empty state must be impossible while anything at all awaits the human.
@@ -246,7 +259,7 @@ describe('Home view — navigation', () => {
     const onNavigate = vi.fn();
     render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Open id-work-1 in tasks/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Open demo:id-work-1 in tasks/i }));
     expect(onNavigate).toHaveBeenCalledWith('tasks');
   });
 

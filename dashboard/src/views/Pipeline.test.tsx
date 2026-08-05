@@ -21,6 +21,8 @@ const REGISTRY: Record<string, RuntimeRegistryEntry> = {
 
 function nodeData(over: Partial<DagNodeData> & { id: string }): DagNodeData {
   return {
+    displayName: String(over.action ?? 'run-build'),
+    shortRef: 1,
     action: 'run-build',
     target: 'src/',
     state: 'working',
@@ -105,7 +107,11 @@ describe('PipelineNodeBody', () => {
         onOpenCard={() => {}}
       />,
     );
-    expect(screen.getByTestId('pipeline-node-card-42-open').textContent).toBe('card-42');
+    // The node names the card; `card-42` is reachable only via EntityName's tooltip + copy button.
+    const open = screen.getByTestId('pipeline-node-card-42-open');
+    expect(open.textContent).toContain('run-build');
+    expect(open.textContent).not.toContain('card-42');
+    expect(open.querySelector('[data-testid="entity-name"]')?.getAttribute('title')).toBe('card-42');
     expect(screen.getByTestId('pipeline-node-card-42-dot')).toBeTruthy();
     const model = screen.getByTestId('pipeline-node-card-42-model');
     expect(model.textContent).toBe('claude-opus-4-8');

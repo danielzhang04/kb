@@ -6,6 +6,9 @@
  * back to its real default (shell git/py/claude); route tests inject recording fakes so no real
  * subprocess, git remote, or `queue/` tree is ever touched — the security chain itself is never faked.
  */
+import { join, resolve } from 'node:path';
+import { NamingRegistry, defaultNamingRegistry } from '../naming.ts';
+import { resolveDashboardStateRoot } from '../composer/store.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
@@ -131,9 +134,35 @@ export interface SurfaceContext {
   /** Per-context TTL cache backing the liveness probe, created once per process in `makeSurfaceContext`
    *  (so a slow schtasks is queried at most once per TTL across responds) and fresh per test context. */
   livenessCache?: LivenessCache;
+  /** Display-name/short-ref registry used when a route builds an entity DTO. Left undefined in
+   *  production and in tests: {@link namingFor} then derives one from this context's own `stateRoot`,
+   *  so a test whose `stateRoot` is a temp dir automatically gets an isolated ordinal file. */
+  naming?: NamingRegistry;
 }
 
 /** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */
 export function auditFn(ctx: SurfaceContext): AppendAuditFn {
   return ctx.appendAudit ?? realAppendAudit;
+}
+
+/**
+ * One {@link NamingRegistry} per state root. Ordinals are append-only and each save rewrites the WHOLE
+ * document from that instance's own in-memory snapshot, so two instances over one file would hand out
+ * "the next ordinal" from stale snapshots and silently clobber each other's assignments. Every caller
+ * on a given state root therefore shares one instance.
+ */
+const registryByStateRoot = new Map<string, NamingRegistry>();
+
+/** The display-name registry a DTO builder should use for this context. */
+export function namingFor(ctx: SurfaceContext): NamingRegistry {
+  if (ctx.naming) return ctx.naming;
+  // The ungoverned Plane-A reads (`/api/index`, `/api/dag`, `/api/agents`) hold no SurfaceContext and
+  // use `defaultNamingRegistry()` over the SAME shared file. On the production state root this must
+  // resolve to that very instance, never a second one.
+  if (resolve(ctx.stateRoot) === resolve(resolveDashboardStateRoot())) return defaultNamingRegistry();
+  const existing = registryByStateRoot.get(ctx.stateRoot);
+  if (existing) return existing;
+  const created = new NamingRegistry(join(ctx.stateRoot, 'naming.json'));
+  registryByStateRoot.set(ctx.stateRoot, created);
+  return created;
 }

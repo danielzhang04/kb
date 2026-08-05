@@ -8,6 +8,8 @@
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { indexRepo } from '../planeA/indexer.ts';
+import { defaultNamingRegistry } from '../naming.ts';
+import type { NamingRegistry } from '../naming.ts';
 import { buildDag } from './graph.ts';
 
 /** dashboard/server/dag/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
@@ -16,6 +18,10 @@ export function resolveRepoRoot(): string {
 }
 
 /** Register the read-only pipeline DAG route on the Fastify app. */
-export function registerDag(app: FastifyInstance, repoRoot: string = resolveRepoRoot()): void {
-  app.get('/api/dag', async () => buildDag(indexRepo(repoRoot)));
+export function registerDag(
+  app: FastifyInstance,
+  repoRoot: string = resolveRepoRoot(),
+  naming: NamingRegistry = defaultNamingRegistry(),
+): void {
+  app.get('/api/dag', async () => buildDag(indexRepo(repoRoot, naming)));
 }

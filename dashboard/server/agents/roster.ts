@@ -14,18 +14,21 @@ import { existsSync, readdirSync, readFileSync, lstatSync, realpathSync } from '
 import { join, relative, resolve, isAbsolute } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
-import type { ParsedCard } from '../planeA/cards.ts';
+import type { CardProjection, ParsedCard } from '../planeA/cards.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
 import { parseLedgerName } from '../planeA/ledgers.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 import { effectiveForAgent } from '../routing/effective.ts';
 import type { Effective } from '../routing/effective.ts';
+import { defaultNamingRegistry } from '../naming.ts';
+import type { NamingRegistry } from '../naming.ts';
 
 export interface AgentRosterRow {
   id: string;
   working: boolean;
-  /** The card the agent is actively working, if any. */
-  current: { action: string; id: string } | null;
+  /** The card the agent is actively working, if any — carrying that card's display identity so the
+   *  Agents table names it instead of printing its raw id. */
+  current: { action: string; id: string; displayName: string; shortRef: number } | null;
   projects: string[];
   cardCount: number;
   /** Effective routing for this agent (agent-scope override -> policy role_default -> safe default). */
@@ -45,7 +48,7 @@ function projectsOf(card: ParsedCard): string[] {
  * then id-alphabetical (same ordering as the client `deriveRoster`).
  */
 export function listAgents(index: PlaneAIndex, policy: PolicyDoc, override: OverrideDoc): AgentRosterRow[] {
-  const byOwner = new Map<string, ParsedCard[]>();
+  const byOwner = new Map<string, CardProjection[]>();
   for (const bucket of Object.values(index.cards)) {
     for (const card of bucket) {
       const owner = card.meta.owner;
@@ -64,7 +67,12 @@ export function listAgents(index: PlaneAIndex, policy: PolicyDoc, override: Over
       id,
       working: workingCard !== null,
       current: workingCard
-        ? { action: String(workingCard.meta.action), id: String(workingCard.meta.id) }
+        ? {
+            action: String(workingCard.meta.action),
+            id: String(workingCard.meta.id),
+            displayName: workingCard.displayName,
+            shortRef: workingCard.shortRef,
+          }
         : null,
       projects,
       cardCount: cards.length,
@@ -93,10 +101,14 @@ export interface AgentLedgerActivity {
 /** One roster entry, unioned across queue owners + ledger writers, annotated with role + routing. */
 export interface AgentRosterEntry {
   id: string;
+  /** Server-owned display identity (`server/naming.ts`). An agent's id IS its human name, so the
+   *  registry is handed that id as the title; the ordinal is what makes it nameable ("agent #4"). */
+  displayName: string;
+  shortRef: number;
   /** The role this agent occupies (matched against `routines/roles/*`), or null when unknown. */
   role: string | null;
   working: boolean;
-  current: { action: string; id: string } | null;
+  current: AgentRosterRow['current'];
   projects: string[];
   cardCount: number;
   ledger: AgentLedgerActivity;
@@ -540,6 +552,7 @@ export function buildRoster(
   repoRoot: string,
   policy: PolicyDoc,
   override: OverrideDoc,
+  naming: NamingRegistry = defaultNamingRegistry(),
 ): AgentRosterEntry[] {
   const cardRows = listAgents(index, policy, override);
   const byId = new Map(cardRows.map((r) => [r.id, r]));
@@ -560,6 +573,7 @@ export function buildRoster(
     if (writers.has(id)) sources.push('ledger');
     entries.push({
       id,
+      ...naming.displayFor('agent', id, id),
       // A declared agent's own frontmatter role annotates the entry; otherwise fall back to a derived match.
       role: dec?.role ?? roleFor(id, roles),
       working: cr?.working ?? false,

@@ -17,7 +17,8 @@
  * stands alone until the integrator adds the `case`.
  */
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import type { ParsedCard, CardFieldValue } from '../../server/planeA/cards';
+import type { CardProjection, ParsedCard, CardFieldValue } from '../../server/planeA/cards';
+import { EntityName } from '../components/EntityName';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import { useSession } from '../lib/sessionContext';
 import {
@@ -32,7 +33,7 @@ import { renderMarkdown } from '../lib/markdown';
 import '../styles/views/tasks.css';
 
 /** Cards grouped by state — the shape of `PlaneAIndex.cards`. */
-export type CardsByState = Record<string, ParsedCard[]>;
+export type CardsByState = Record<string, CardProjection[]>;
 
 type DotKind = 'idle' | 'running' | 'blocked' | 'done' | 'error';
 
@@ -113,7 +114,7 @@ function CardRow({
   selected,
   onSelect,
 }: {
-  card: ParsedCard;
+  card: CardProjection;
   selected: boolean;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
@@ -136,7 +137,10 @@ function CardRow({
         }
       }}
     >
-      <td className="v-tasks__cell-id mc-mono">{id}</td>
+      {/* The card's name, not its id: the id stays reachable through the tooltip + copy affordance. */}
+      <td className="v-tasks__cell-id">
+        <EntityName kind="card" id={id} displayName={card.displayName} shortRef={card.shortRef} />
+      </td>
       <td className="v-tasks__cell-action">{fieldStr(card.meta.action)}</td>
       <td className="v-tasks__cell-tier">
         {cls ? <span className={`mc-badge ${cls}`}>{tier}</span> : null}
@@ -156,7 +160,7 @@ function StateGroup({
   onSelect,
 }: {
   state: string;
-  cards: ParsedCard[];
+  cards: CardProjection[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
@@ -174,7 +178,8 @@ function StateGroup({
         <table className="v-tasks__table">
           <thead>
             <tr>
-              <th>ID</th>
+              {/* The card's NAME now leads this column; its id lives in the EntityName tooltip. */}
+              <th>Card</th>
               <th>Action</th>
               <th>Tier</th>
               <th>Owner</th>
@@ -201,6 +206,7 @@ function StateGroup({
  *  and a governed card-scope override toggle. Card frontmatter is the TOP-precedence routing input. */
 function CardRoutingBar({
   cardId,
+  cardName,
   cardState,
   cardOwner,
   view,
@@ -209,6 +215,8 @@ function CardRoutingBar({
   onClear,
 }: {
   cardId: string;
+  /** The card's display name — the aria labels below name the card, never its id. */
+  cardName: string;
   cardState: string;
   cardOwner: unknown;
   view: CardRoutingView | undefined;
@@ -231,7 +239,7 @@ function CardRoutingBar({
       )}
       <span className="v-routing-bar__label">effective routing</span>
       <RoutingControl
-        label={cardId}
+        label={cardName}
         testIdPrefix={`card-${cardId}`}
         registry={registry}
         effective={view?.effective ?? null}
@@ -251,7 +259,7 @@ function DetailPane({
   onApplyRouting,
   onClearRouting,
 }: {
-  card: ParsedCard;
+  card: CardProjection;
   routingView: CardRoutingView | undefined;
   registry: RoutingSnapshot['policy']['runtimes'];
   onApplyRouting: (cardId: string, runtime: string, model: string) => Promise<{ ok: boolean; reason?: string }>;
@@ -262,11 +270,14 @@ function DetailPane({
   const cardId = String(card.meta.id);
   return (
     <aside className="v-tasks__detail" aria-label="Card detail">
-      <h2 className="v-tasks__detail-id mc-mono">{cardId}</h2>
+      <h2 className="v-tasks__detail-id">
+        <EntityName kind="card" id={cardId} displayName={card.displayName} shortRef={card.shortRef} />
+      </h2>
       <p className="v-tasks__detail-caption">Card content below is rendered as inert data.</p>
 
       <CardRoutingBar
         cardId={cardId}
+        cardName={card.displayName}
         cardState={String(card.meta.state)}
         cardOwner={card.meta.owner}
         view={routingView}
@@ -371,7 +382,7 @@ export function Tasks({
 
   // Flat lookup so selection resolves regardless of which state bucket a card sits in.
   const byId = useMemo(() => {
-    const m = new Map<string, ParsedCard>();
+    const m = new Map<string, CardProjection>();
     for (const bucket of Object.values(cards)) {
       for (const card of bucket) m.set(String(card.meta.id), card);
     }

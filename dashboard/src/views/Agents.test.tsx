@@ -16,12 +16,14 @@ function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
   return <SessionProvider>{ui}</SessionProvider>;
 }
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { ParsedCard } from '../../server/planeA/cards';
+import type { CardProjection } from '../../server/planeA/cards';
 import type { AgentRosterEntry } from '../../server/agents/roster';
 
 /** Build a full roster entry with sane defaults, overriding only the fields a test cares about. */
 function entry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEntry {
   return {
+    displayName: over.id,
+    shortRef: 1,
     role: null,
     working: false,
     current: null,
@@ -41,7 +43,7 @@ function entry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEnt
   };
 }
 
-function card(owner: string | null, state: string, extra: Partial<ParsedCard['meta']> = {}): ParsedCard {
+function card(owner: string | null, state: string, extra: Partial<CardProjection['meta']> = {}): CardProjection {
   return {
     meta: {
       id: `id-${state}-${owner ?? 'none'}`,
@@ -54,6 +56,8 @@ function card(owner: string | null, state: string, extra: Partial<ParsedCard['me
       ...extra,
     },
     body: '',
+    displayName: String(extra.action ?? 'demo'),
+    shortRef: 1,
   };
 }
 
@@ -78,7 +82,7 @@ const SNAPSHOT: PlaneAIndex = {
 
 // The primary roster is declaration-only; historical card/ledger owners are deliberately absent.
 const PRIMARY_ROSTER: AgentRosterEntry[] = [
-  entry({ id: 'claude-m1', declared: true, working: true, current: { action: 'ship-dashboard', id: 'card-77' }, cardCount: 2, projects: ['kb'] }),
+  entry({ id: 'claude-m1', declared: true, working: true, current: { action: 'ship-dashboard', id: 'card-77', displayName: 'ship-dashboard', shortRef: 7 }, cardCount: 2, projects: ['kb'] }),
   entry({ id: 'codex-a', declared: true, cardCount: 1, projects: ['atlas', 'kb'], runnerBound: true, declaredRuntime: 'codex' }),
 ];
 
@@ -97,7 +101,7 @@ describe('deriveRoster', () => {
     expect(roster.map((r) => r.id)).toEqual(['claude-m1', 'codex-a']);
     // claude-m1 owns the working card → working + a current card; codex-a only owns a done card → idle.
     expect(roster[0]).toMatchObject({ id: 'claude-m1', working: true, cardCount: 2 });
-    expect(roster[0].current).toEqual({ action: 'ship-dashboard', id: 'card-77' });
+    expect(roster[0].current).toEqual({ action: 'ship-dashboard', id: 'card-77', displayName: 'ship-dashboard', shortRef: 1 });
     expect(roster[1]).toMatchObject({ id: 'codex-a', working: false, current: null });
     // Projects are collected + de-duped across the agent's owned cards (string | string[]).
     expect(roster[1].projects).toEqual(['atlas', 'kb']);
@@ -115,8 +119,11 @@ describe('Agents view', () => {
     expect(screen.getByLabelText('Agents view')).toBeTruthy();
     const row = screen.getByTestId('agent-row-claude-m1');
     expect(within(row).getByText('claude-m1')).toBeTruthy();
-    expect(within(row).getByText('ship-dashboard')).toBeTruthy();
-    expect(within(row).getByText('card-77')).toBeTruthy();
+    // The current card is NAMED (its action) and its raw id sits behind EntityName's tooltip.
+    expect(within(row).getAllByText('ship-dashboard').length).toBeGreaterThan(0);
+    expect(within(row).queryByText('card-77')).toBeNull();
+    expect([...row.querySelectorAll('[data-testid="entity-name"]')].map((n) => n.getAttribute('title')))
+      .toContain('card-77');
     // The status dot carries the running (working) modifier for a working agent.
     expect(row.querySelector('.mc-status-dot--running')).toBeTruthy();
 

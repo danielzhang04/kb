@@ -15,6 +15,8 @@
  */
 import type { RunMetadataDto, RunState } from './controlClient';
 import { relativeAge } from './runEvents';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
 import type { StatusTone } from '../entity/EntityDetail';
 
 /** Map a run state onto a data-encoding tone. No new hues — these resolve to existing status tokens. */
@@ -61,19 +63,18 @@ export function RunGrid({ runs, selectedRunRef, onSelect, now }: RunGridProps): 
         const tone = runTone(run.state);
         const selected = selectedRunRef === run.runRef;
         return (
-          <button
+          <div
             key={run.runRef}
-            type="button"
             className={`run-card${selected ? ' run-card--selected' : ''}`}
             data-testid={`run-card-${run.runRef}`}
             aria-pressed={selected}
-            onClick={() => onSelect(run.runRef)}
+            {...entityRowProps(() => onSelect(run.runRef))}
           >
-            {/* Full title, wrapped. No clamp, no ellipsis — reading the whole title IS the requirement. */}
+            {/* Full title, wrapped. No clamp, no ellipsis — reading the whole title IS the requirement.
+              * The runRef is no longer a second line: it lives in EntityName's tooltip + copy button. */}
             <span className="run-card__title" data-testid={`run-card-${run.runRef}-title`}>
-              {run.title}
+              <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} />
             </span>
-            <span className="run-card__ref mc-mono">{run.runRef}</span>
             <span className="run-card__state">
               <span className={`mc-status-dot mc-status-dot--${DOT_BY_TONE[tone]}`} aria-hidden="true" />
               <span>{run.state}</span>
@@ -91,7 +92,7 @@ export function RunGrid({ runs, selectedRunRef, onSelect, now }: RunGridProps): 
               {run.eventCount} events
             </span>
             <span className="run-card__age mc-mono">updated {relativeAge(run.updatedAt, now)}</span>
-          </button>
+          </div>
         );
       })}
     </div>

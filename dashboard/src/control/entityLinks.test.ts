@@ -29,6 +29,8 @@ const run = (over: Partial<RunMetadataDto>): RunMetadataDto => ({
   runRef: 'run-1',
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline',
+  displayName: 'Rebuild the faceless video pipeline',
+  shortRef: 1,
   proposalRef: 'wf-aaa',
   proposalRevision: 1,
   proposalHash: 'hash-a',

@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { parseYaml } from '../routing/yaml.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
-import type { ParsedCard } from '../planeA/cards.ts';
+import type { CardProjection } from '../planeA/cards.ts';
 import {
   listAgents,
   buildRoster,
@@ -34,12 +34,12 @@ policy:
 role_default: { runtime: claude, model: sonnet }
 `) as PolicyDoc;
 
-function card(meta: Record<string, unknown>): ParsedCard {
-  return { meta: meta as ParsedCard['meta'], body: '' };
+function card(meta: Record<string, unknown>): CardProjection {
+  return { meta: meta as CardProjection['meta'], body: '', displayName: String(meta.action ?? 'card'), shortRef: 1 };
 }
 
-function indexOf(cards: ParsedCard[]): PlaneAIndex {
-  const byState: Record<string, ParsedCard[]> = {};
+function indexOf(cards: CardProjection[]): PlaneAIndex {
+  const byState: Record<string, CardProjection[]> = {};
   for (const c of cards) (byState[String(c.meta.state)] ??= []).push(c);
   return { cards: byState, ledgers: {} as PlaneAIndex['ledgers'], orgStates: [] };
 }

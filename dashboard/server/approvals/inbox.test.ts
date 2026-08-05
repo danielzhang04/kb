@@ -14,7 +14,7 @@ import {
 import type { DriveVerifyDeps, VerifiedCardView } from './inbox.ts';
 import type { PyRunner, PyRunResult } from '../write/launch.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
-import type { ParsedCard } from '../planeA/cards.ts';
+import type { CardProjection } from '../planeA/cards.ts';
 
 /** Records every invocation so tests can assert exactly what would have been shelled (or wasn't). */
 function recordingPyRunner(
@@ -35,10 +35,12 @@ const EMPTY_LEDGERS: PlaneAIndex['ledgers'] = {
   activity: { count: 0, rows: [] },
 };
 
-function card(id: string, riskTier: string): ParsedCard {
+function card(id: string, riskTier: string): CardProjection {
   return {
     meta: { id, project: 'kb', action: 'demo', target: '.', 'risk-tier': riskTier, owner: null, state: 'approvals' },
     body: '',
+    displayName: 'demo',
+    shortRef: 1,
   };
 }
 

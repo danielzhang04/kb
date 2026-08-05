@@ -133,6 +133,10 @@ export interface RunDto {
   runRef: string;
   predecessorRunRef: string | null;
   title: string;
+  /** Server-owned display identity (`server/naming.ts`, embedded by `server/control/routes.ts`).
+   *  `runRef` stays canonical and stays on the wire; it just never reaches primary UI text again. */
+  displayName: string;
+  shortRef: number;
   proposalRef: string;
   proposalRevision: number;
   proposalHash: string;
@@ -206,6 +210,13 @@ export interface ManagedSessionDto {
 export interface HumanRequestDto {
   requestRef: string;
   runRef: string;
+  /**
+   * The OWNING RUN's display identity, not the request's — a Human Request has no registry identity of
+   * its own, and every surface listing one shows "which run needs you" beside the request's `title`.
+   * Feed these to `<EntityName kind="run" id={request.runRef} …>`.
+   */
+  displayName: string;
+  shortRef: number;
   stageRef: string | null;
   kind: 'input' | 'approval' | 'review' | 'intervention' | 'governance-refusal';
   revision: number;
