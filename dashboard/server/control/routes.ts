@@ -1,8 +1,5 @@
-import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
-import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
-import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
@@ -134,9 +131,6 @@ function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail): RunD
     humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
   };
 }
-
-/** Challenge purpose prefix that separates an execution-unlock ceremony from a sign-in one. */
-const EXECUTION_UNLOCK_PURPOSE = 'kb.execution-unlock';
 
 /** The latch posture every execution-touching response carries, so the UI never has to guess. */
 function executionPosture(ctx: SurfaceContext): {
@@ -403,32 +397,22 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   });
 
   // ── EXECUTION UNLOCK LATCH ─────────────────────────────────────────────────────────────────────────
-  // The daemon boots LOCKED: no broker, no engine, no worker processes. Construction is authorized by a
-  // fresh WebAuthn passkey assertion over a purpose-bound challenge — a login token alone is not enough,
-  // so a stolen/replayed bearer cannot turn execution on. Lock is the fail-safe direction and needs only
-  // the session. Both transitions are audited like every other consequential control action.
+  // The daemon boots LOCKED: no broker, no engine, no worker processes. Construction is authorized by the
+  // operator's WebAuthn-minted SESSION BEARER — the same one governing every other consequential control
+  // action — verified by the scope's `requireSession` preHandler before this handler runs.
+  //
+  // This route used to run a SECOND, purpose-bound WebAuthn ceremony of its own. That was removed
+  // deliberately: the platform's binding requirement is ONE dashboard unlock for the whole platform, and
+  // the second biometric prompt made an operator who had already signed in unlock twice to arm the
+  // executor. Nothing else was relaxed — origin guard, session verification, and the T3 audit row all
+  // still gate this route, and the audit still happens BEFORE anything is constructed. The latch records
+  // `source: 'passkey'` truthfully: the authorization chain still roots in a passkey assertion, just the
+  // sign-in one. Arming stays an EXPLICIT act — signing in never unlocks execution on its own; the
+  // operator must still call this route. Lock remains the fail-safe direction and is unchanged.
   scope.get('/api/control/execution', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     return reply.send({ execution: executionPosture(ctx) });
-  });
-
-  scope.post('/api/control/execution/unlock/options', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ctx.executionLatch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
-    let config;
-    try {
-      config = ctx.webAuthnConfig();
-    } catch {
-      return reply.code(503).send({ error: 'webauthn-unconfigured', reason: 'DASHBOARD_RP_ORIGIN is not set' });
-    }
-    // Purpose-bound challenge: the authenticator signs over "unlock execution for THIS subject", never a
-    // generic login nonce, so an assertion captured on the sign-in path cannot be presented here.
-    const challenge = `${EXECUTION_UNLOCK_PURPOSE}:${sub}:${randomBytes(18).toString('base64url')}`;
-    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
-    const { ceremonyId } = rememberChallenge(options.challenge);
-    return reply.send({ ceremonyId, options });
   });
 
   scope.post('/api/control/execution/unlock', { preHandler }, async (req, reply) => {
@@ -436,42 +420,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const latch = ctx.executionLatch;
     if (!latch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
-    const body = record(req.body);
-    const expectedChallenge = consumeChallenge(string(body.ceremonyId));
-    if (!expectedChallenge) {
-      return reply.code(400).send({ error: 'bad-ceremony', reason: 'unknown or expired unlock ceremony' });
-    }
-    // The ceremony must be an UNLOCK ceremony minted for THIS operator. A login ceremony's challenge, or
-    // another subject's, is refused here even though both are single-use and unexpired.
-    const preimage = Buffer.from(expectedChallenge, 'base64url').toString('utf8');
-    if (!preimage.startsWith(`${EXECUTION_UNLOCK_PURPOSE}:${sub}:`)) {
-      return reply.code(400).send({ error: 'bad-ceremony', reason: 'challenge is not an execution-unlock challenge for this operator' });
-    }
-    const response = record(body.response);
-    const credential = findCredential(ctx.credentials(), string(response.id));
-    if (!credential) {
-      // Fail closed: no registered passkey means execution cannot be unlocked at all. That is the correct
-      // posture, not a bug — the operator provisions a credential out of band first.
-      return reply.code(401).send({ error: 'unauthenticated', reason: 'no registered credential for this assertion' });
-    }
-    let config;
-    try {
-      config = ctx.webAuthnConfig();
-    } catch {
-      return reply.code(503).send({ error: 'webauthn-unconfigured', reason: 'DASHBOARD_RP_ORIGIN is not set' });
-    }
-    let verification;
-    try {
-      verification = await verifyAssertion(body.response as never, { expectedChallenge, credential, config });
-    } catch (error) {
-      return reply.code(401).send({ error: 'unauthenticated', reason: error instanceof Error ? error.message : 'assertion failed' });
-    }
-    if (!verification.verified) return reply.code(401).send({ error: 'unauthenticated', reason: 'assertion not verified' });
     // Audit BEFORE constructing anything: an unlock that cannot be recorded does not happen.
     try {
       await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-execution-unlock-authorize', owner: sub, target: 'execution', riskTier: 'T3',
-        result: 'authorized:unlock', detail: { method: 'webauthn-passkey' },
+        result: 'authorized:unlock', detail: { method: 'session-bearer' },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'execution-unlock-audit-required' });

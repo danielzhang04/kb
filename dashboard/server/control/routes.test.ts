@@ -1889,8 +1889,10 @@ describe('control proposal routes', () => {
 
 /**
  * The runtime execution latch routes. The daemon boots LOCKED, so a launch refusal must be distinct
- * enough for the UI to raise an unlock prompt, unlock must require a fresh purpose-bound passkey
- * assertion (a session bearer alone is never enough), and Lock must be reachable with the session only.
+ * enough for the UI to raise an unlock prompt, and BOTH transitions are authorized by the operator's
+ * WebAuthn-minted session bearer plus an audit row — never by a second, purpose-bound ceremony of their
+ * own. That second ceremony was removed: the platform's requirement is ONE dashboard unlock, and it made
+ * an already-signed-in operator unlock twice to arm the executor.
  */
 const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
 
@@ -2052,65 +2054,74 @@ describe('control execution latch routes', () => {
     }
   });
 
-  it('issues a PURPOSE-BOUND unlock ceremony and refuses a sign-in ceremony at the unlock route', async () => {
-    const { app, token } = buildApp();
+  it('unlocks under the ONE dashboard session with no second ceremony, and audits the transition', async () => {
+    const { latch, unlock } = fakeLatch('locked');
+    const { app, token, audit } = buildApp({ executionLatch: latch });
     try {
-      const options = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock/options', headers: headers(token), payload: {},
+      const unlocked = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token), payload: {},
       });
-      expect(options.statusCode).toBe(200);
-      const body = options.json() as { ceremonyId: string; options: { challenge: string; userVerification: string } };
-      expect(typeof body.ceremonyId).toBe('string');
-      // The authenticator signs over "unlock execution for THIS operator", not a bare login nonce.
-      const preimage = Buffer.from(body.options.challenge, 'base64url').toString('utf8');
-      expect(preimage.startsWith('kb.execution-unlock:operator:')).toBe(true);
-      expect(body.options.userVerification).toBe('required');
-
-      // A LOGIN ceremony cannot be redeemed at the unlock route even though it is fresh and single-use.
-      const login = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: headers(token), payload: {} });
-      const loginCeremony = (login.json() as { ceremonyId: string }).ceremonyId;
-      const crossed = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
-        payload: { ceremonyId: loginCeremony, response: { id: 'cred-1' } },
+      expect(unlocked.statusCode, unlocked.body).toBe(200);
+      expect(unlocked.json()).toMatchObject({ ok: true });
+      // The bearer's own subject authorizes it — no assertion, no ceremonyId, no second biometric.
+      expect(unlock).toHaveBeenCalledWith({ subject: 'operator' });
+      const row = audit.find((entry) => entry.action === 'control-execution-unlock-authorize');
+      expect(row).toMatchObject({
+        owner: 'operator', target: 'execution', riskTier: 'T3',
+        result: 'authorized:unlock', detail: { method: 'session-bearer' },
       });
-      expect(crossed.statusCode).toBe(400);
-      expect(crossed.json()).toMatchObject({ error: 'bad-ceremony' });
     } finally {
       await app.close();
     }
   });
 
-  it('never unlocks without a verified assertion: no credential, unknown ceremony, or replay all fail closed', async () => {
-    const { latch, unlock } = fakeLatch('locked');
-    const { app, token } = buildApp({ executionLatch: latch });
+  it('the removed purpose-bound unlock ceremony route is gone entirely', async () => {
+    const { app, token } = buildApp();
     try {
-      // Unknown ceremony → refused before any credential lookup.
-      const unknown = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
-        payload: { ceremonyId: 'never-issued', response: { id: 'cred-1' } },
-      });
-      expect(unknown.statusCode).toBe(400);
-
-      // Real ceremony, but the credential store is fail-closed empty (the pre-passkey reality).
       const options = await app.inject({
         method: 'POST', url: '/api/control/execution/unlock/options', headers: headers(token), payload: {},
       });
-      const ceremonyId = (options.json() as { ceremonyId: string }).ceremonyId;
-      const attempt = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
-        payload: { ceremonyId, response: { id: 'cred-1' } },
-      });
-      expect(attempt.statusCode).toBe(401);
-      expect(attempt.json()).toMatchObject({ error: 'unauthenticated' });
+      expect(options.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
 
-      // The same ceremony cannot be replayed (single-use), and the latch was never asked to unlock.
-      const replay = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
-        payload: { ceremonyId, response: { id: 'cred-1' } },
+  it('still fails closed without a session, and never unlocks when the latch is absent', async () => {
+    const { latch, unlock } = fakeLatch('locked');
+    const { app } = buildApp({ executionLatch: latch });
+    try {
+      // No bearer: the scope's requireSession preHandler refuses before the handler runs.
+      const anonymous = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock',
+        headers: { origin: ORIGIN, host: 'localhost:5317' }, payload: {},
       });
-      expect(replay.statusCode).toBe(400);
+      expect(anonymous.statusCode).toBe(401);
+
+      // A forged/garbage bearer is refused the same way — the session is verified, never trusted.
+      const forged = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock',
+        headers: { origin: ORIGIN, host: 'localhost:5317', authorization: 'Bearer not.a.real.token' }, payload: {},
+      });
+      expect(forged.statusCode).toBe(401);
+
       expect(unlock).not.toHaveBeenCalled();
       expect(latch.snapshot().state).toBe('locked');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses to unlock when no execution latch is wired', async () => {
+    // An injected executor skips latch construction entirely (`activationOverridden` in surface.ts),
+    // so there is nothing to unlock and the route says so rather than pretending it armed anything.
+    const { app, token } = buildApp({ controlBroker: { drain: () => {} } });
+    try {
+      const unlocked = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token), payload: {},
+      });
+      expect(unlocked.statusCode).toBe(409);
+      expect(unlocked.json()).toMatchObject({ error: 'execution-latch-unavailable' });
     } finally {
       await app.close();
     }

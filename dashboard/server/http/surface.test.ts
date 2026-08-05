@@ -166,8 +166,8 @@ describe('write surface — composition chain', () => {
     expect(bad.statusCode).toBe(401);
   });
 
-  it('429s once the rate-limit window is breached (before the session check)', async () => {
-    // limit 1 / window: the 2nd valid-origin request in the window is throttled.
+  it('429s a WRITE once the write rate-limit window is breached (before the session check)', async () => {
+    // limit 1 / window: the 2nd valid-origin mutation in the window is throttled.
     const { lockout, rateLimit } = await import('../security/ratelimit.ts');
     const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
     ({ app } = buildApp({ rateGuard: guard }));
@@ -177,6 +177,49 @@ describe('write surface — composition chain', () => {
     const second = await app.inject({ method: 'POST', url: '/api/write/stop', headers: headers(false), payload: {} });
     expect(second.statusCode).toBe(429);
     expect(second.json()).toMatchObject({ error: 'throttled' });
+  });
+
+  it('429s a GET once the READ rate-limit window is breached (before the session check)', async () => {
+    const { lockout, rateLimit } = await import('../security/ratelimit.ts');
+    const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+    ({ app } = buildApp({ readRateGuard: guard }));
+
+    const first = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(false) });
+    expect(first.statusCode).toBe(401); // passed origin + rate-limit, failed session
+    const second = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(false) });
+    expect(second.statusCode).toBe(429);
+    expect(second.json()).toMatchObject({ error: 'throttled' });
+  });
+
+  it('a GET storm NEVER consumes the write budget (the live 429-lockout defect)', async () => {
+    // The defect: ONE shared 30/min bucket fronted every governed GET the UI polls AND every write, so
+    // ordinary polling burned the write budget, escalated into the 5-minute lockout, and 429'd the whole
+    // dashboard. Two independent buckets, dispatched by method, are what make that impossible.
+    const { lockout, rateLimit } = await import('../security/ratelimit.ts');
+    const writeGuard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 5, lockoutMs: 5 * 60_000 });
+    const readGuard = lockout(rateLimit({ limit: 300, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+    ({ app } = buildApp({ rateGuard: writeGuard, readRateGuard: readGuard }));
+
+    for (let i = 0; i < 60; i += 1) {
+      const poll = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(false) });
+      expect(poll.statusCode).toBe(401); // never 429 — reads are metered on their own budget
+    }
+    // The write budget is untouched by all of that: the first mutation still reaches the session check.
+    const first = await app.inject({ method: 'POST', url: '/api/write/stop', headers: headers(false), payload: {} });
+    expect(first.statusCode).toBe(401);
+    // ...and it still throttles on its own terms (limit 1) — the write budget itself is unchanged.
+    const second = await app.inject({ method: 'POST', url: '/api/write/stop', headers: headers(false), payload: {} });
+    expect(second.statusCode).toBe(429);
+  });
+
+  it('the SHIPPED default read budget survives a realistic UI poll burst', async () => {
+    // No guard overrides: exactly what production wires. 120 polled reads is well past the old 30/min
+    // shared budget that took the live dashboard down, and comfortably inside the 300/min read budget.
+    ({ app } = buildApp());
+    for (let i = 0; i < 120; i += 1) {
+      const poll = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(false) });
+      expect(poll.statusCode).toBe(401);
+    }
   });
 
   it('writes exactly one audit row on a successful governed save', async () => {

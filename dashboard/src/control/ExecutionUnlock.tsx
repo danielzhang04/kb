@@ -40,10 +40,14 @@ function emptyView(sessionToken: string | undefined, client: ExecutionUnlockClie
 }
 
 /**
- * The execution posture panel. Execution has its OWN purpose-bound passkey check, distinct from the
- * dashboard session; both are reached from the single "Unlock execution" button — a locked tab mints
- * the shared session first (one ceremony, via the session context), and the execution ceremony is the
- * next click once the posture is known.
+ * The execution posture panel.
+ *
+ * ONE passkey ceremony for the whole platform: the shared sign-in from `sessionContext`. Arming
+ * execution is authorized by that same session bearer, so this panel runs NO ceremony of its own — the
+ * second biometric prompt it used to raise is gone. What remains is a plain one-click action, kept
+ * explicit on purpose: signing in must never silently arm the executor, so the operator still performs
+ * a visible "Unlock execution" act. From a locked tab the first click mints the shared session (the one
+ * ceremony) and the arming click follows once the posture is known.
  */
 export function ExecutionUnlock({
   client = defaultClient,
@@ -136,8 +140,9 @@ export function ExecutionUnlock({
   };
 
   const handleUnlock = async (): Promise<void> => {
-    // A locked tab needs the shared session before the posture can even be read; the execution
-    // ceremony itself runs on the next click, once the loaded posture says it is still locked.
+    // A locked tab needs the shared session before the posture can even be read. That sign-in is the
+    // ONE passkey ceremony; arming then happens on the next click, once the loaded posture confirms
+    // execution is still locked. No second ceremony runs on either click.
     if (!sessionToken) {
       await requireSession();
       return;
@@ -167,7 +172,8 @@ export function ExecutionUnlock({
         ) : null}
       </div>
       <p className="v-home__execution-help">
-        Execution uses its own purpose-bound passkey check. Signing in does not start agents or unlock runs.
+        Arming execution is authorized by your dashboard sign-in — no second passkey prompt. It stays a
+        deliberate act: signing in does not start agents or unlock runs.
       </p>
       {currentView.error ? <p className="v-home__execution-error" role="alert">{currentView.error}</p> : null}
     </section>

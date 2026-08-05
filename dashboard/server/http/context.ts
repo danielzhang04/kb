@@ -62,7 +62,11 @@ export interface SurfaceContext {
    *  every write route. Re-resolving per request would mint a fresh random secret and break everything. */
   sessionConfig: SessionConfig;
   allowedOrigins: AllowedOrigins;
+  /** The MUTATION budget (POST/PUT/PATCH/DELETE/...) on the governed scope. */
   rateGuard: LockoutGuard;
+  /** The independent GET/HEAD budget on the governed scope. A separate bucket by design: UI polling
+   *  must never be able to spend the write budget or trip its lockout. See `middleware.ts`. */
+  readRateGuard: LockoutGuard;
   /** Lazy — `auth/webauthn.ts#resolveWebAuthnConfig` THROWS when `DASHBOARD_RP_ORIGIN` is unset, so it
    *  is only ever called inside a handler (which the origin guard already blocked when the allowlist is
    *  empty), never at registration time. */

@@ -20,7 +20,7 @@ import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
 import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
 import { resolveCredentials } from '../auth/credentialStore.ts';
-import { makeDefaultWriteRateGuard, writeRateLimitHook } from './middleware.ts';
+import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
@@ -135,6 +135,7 @@ export function makeSurfaceContext(
     sessionConfig,
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
+    readRateGuard: overrides.readRateGuard ?? makeDefaultReadRateGuard(),
     // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
     // (which the origin guard has already blocked when the allowlist is empty), never at registration.
     webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),
@@ -220,8 +221,11 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
   });
   app.register(async (scope) => {
     // Order matters: origin guard first (fail-closed), then the rate-limiter, both as onRequest hooks.
+    // The rate-limiter meters GET/HEAD and mutations against SEPARATE budgets (see middleware.ts):
+    // this scope fronts every governed read the UI polls, and metering those against the 30/min write
+    // budget threw the whole dashboard into a 5-minute lockout under ordinary polling load.
     originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
-    scope.addHook('onRequest', writeRateLimitHook(ctx.rateGuard));
+    scope.addHook('onRequest', surfaceRateLimitHook(ctx.readRateGuard, ctx.rateGuard));
 
     registerAuthRoutes(scope, ctx);
     registerWriteRoutes(scope, ctx);

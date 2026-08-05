@@ -6,9 +6,6 @@
  * public protocol. Governed mutations always carry an exact hash/version and an idempotency key.
  */
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
-import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
-import { performAssertion, realWebAuthnBrowser } from '../lib/webauthnClient';
-import type { WebAuthnBrowserLike } from '../lib/webauthnClient';
 
 export type FetchLike = typeof fetch;
 export type JsonPrimitive = string | number | boolean | null;
@@ -510,38 +507,19 @@ export async function getExecutionPosture(token: string, fetchImpl?: FetchLike):
   return posture;
 }
 
-export interface UnlockExecutionDeps {
-  fetchImpl?: FetchLike;
-  browser?: WebAuthnBrowserLike;
-}
-
 /**
- * Run the dedicated execution-unlock ceremony. This intentionally does not call `signIn`: the server
- * challenge is purpose-bound to `kb.execution-unlock`, and the existing bearer only authenticates who
- * is asking. A 200 response is accepted only when the server confirms a passkey-sourced unlock.
+ * Arm the daemon's execution latch under the operator's EXISTING dashboard session.
+ *
+ * This used to run a second, purpose-bound WebAuthn ceremony of its own, which meant an operator who
+ * had already signed in was prompted for a biometric TWICE. The platform's requirement is one dashboard
+ * unlock for the whole platform, so authorization is now the session bearer every other governed
+ * mutation carries; the server independently verifies it and writes the same T3 audit row. Arming is
+ * still an explicit act — signing in never calls this. A 200 is accepted only when the server confirms
+ * a passkey-sourced unlocked posture.
  */
-export async function unlockExecution(token: string, deps: UnlockExecutionDeps = {}): Promise<ExecutionPostureDto> {
-  const optionsBody = await write<{ ceremonyId?: unknown; options?: unknown }>(
-    '/api/control/execution/unlock/options', {}, token, deps.fetchImpl,
-  );
-  if (
-    typeof optionsBody.ceremonyId !== 'string'
-    || optionsBody.ceremonyId.trim().length === 0
-    || !optionsBody.options
-    || typeof optionsBody.options !== 'object'
-    || Array.isArray(optionsBody.options)
-    || Object.keys(optionsBody.options).length === 0
-  ) {
-    throw new Error('execution unlock options response was invalid');
-  }
-  const response = await performAssertion(
-    optionsBody.options as PublicKeyCredentialRequestOptionsJSON,
-    deps.browser ?? realWebAuthnBrowser,
-  );
-  const unlockedBody = await request<{ ok?: unknown; execution?: unknown }>(
-    '/api/control/execution/unlock',
-    { method: 'POST', body: JSON.stringify({ ceremonyId: optionsBody.ceremonyId, response }) },
-    { token, fetchImpl: deps.fetchImpl, preserveSessionOnAuthFailure: isExecutionAssertionRefusal },
+export async function unlockExecution(token: string, fetchImpl?: FetchLike): Promise<ExecutionPostureDto> {
+  const unlockedBody = await write<{ ok?: unknown; execution?: unknown }>(
+    '/api/control/execution/unlock', {}, token, fetchImpl,
   );
   const posture = parseExecutionPosture(unlockedBody.execution);
   if (unlockedBody.ok !== true || posture?.state !== 'unlocked' || posture.source !== 'passkey') {
@@ -579,24 +557,15 @@ export function executionUnlockErrorMessage(error: unknown): string {
 interface RequestOptions {
   token?: string;
   fetchImpl?: FetchLike;
-  /** Exact protocol classifier for a second-factor refusal that is not a bearer failure. */
-  preserveSessionOnAuthFailure?: (status: number, body: Record<string, unknown>) => boolean;
 }
 
 /**
- * The unlock handler and the bearer pre-handler both use HTTP 401. Preserve a valid bearer only for
- * the stable assertion-refusal envelopes emitted after the pre-handler has passed. Everything
- * else, including `expired`, `bad-signature`, `malformed`, and `missing session token`, flows through
- * the shared session invalidator. Deliberately exact: arbitrary verifier prose never grants an
- * exception to invalidation.
+ * Every governed 401 on this surface is now a bearer failure: the execution-unlock route no longer
+ * verifies a second WebAuthn assertion, so there is no longer a class of 401 that means "your session
+ * is fine, the second factor was refused". The `preserveSessionOnAuthFailure` seam that carved out
+ * those assertion-refusal envelopes was removed with it — a 401 here always invalidates the session,
+ * and nothing else (notably 429) ever does.
  */
-function isExecutionAssertionRefusal(status: number, body: Record<string, unknown>): boolean {
-  if (status !== 401 || body.error !== 'unauthenticated' || typeof body.reason !== 'string') return false;
-  return body.reason === 'no registered credential for this assertion'
-    || body.reason === 'assertion failed'
-    || body.reason === 'assertion not verified';
-}
-
 async function request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const headers = new Headers(init.headers);
@@ -615,11 +584,7 @@ async function request<T>(path: string, init: RequestInit, options: RequestOptio
     }
   }
   const body = await response.json().catch(() => ({})) as T & { reason?: unknown; detail?: unknown; error?: unknown };
-  const bodyRecord = body && typeof body === 'object' && !Array.isArray(body)
-    ? body as Record<string, unknown>
-    : {};
-  const preserveSession = options.preserveSessionOnAuthFailure?.(response.status, bodyRecord) === true;
-  if (!preserveSession && authFailureResponse) {
+  if (authFailureResponse) {
     await invalidateSessionOnGovernedAuthFailure(authFailureResponse);
   }
   if (!response.ok) {

@@ -415,7 +415,7 @@ export function Home({
   onNavigate?: (id: DestinationId) => void;
   /** Open one exact entity. Wired by the shell to its nav stack; rows fall back to `onNavigate`. */
   onNavigateTarget?: (target: NavTarget) => void;
-  /** Hermetic seam for the purpose-bound execution ceremony; production uses the real control client. */
+  /** Hermetic seam for session-authorized execution arming; production uses the real control client. */
   executionClient?: ExecutionUnlockClient;
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
@@ -450,7 +450,8 @@ export function Home({
         </div>
         <div className="v-home__col">
           <UsagePanel index={index} />
-          {/* Arming PAID execution is a deliberate, separate act from launching anything — it stays. */}
+          {/* Arming PAID execution is a deliberate, separate act from launching anything — it stays.
+              It is authorized by the ONE dashboard sign-in and raises no second passkey prompt. */}
           <ExecutionUnlock client={executionClient} />
         </div>
       </div>
