@@ -125,3 +125,4 @@
 {"ts":"2026-08-05T23:02:20.165Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-08-05T23:02:31.361Z","action":"control-execution-unlock-authorize","owner":"operator","target":"execution","riskTier":"T3","result":"authorized:unlock","detail":{"method":"session-bearer"}}
 {"ts":"2026-08-05T23:04:17.718Z","action":"pty-open","owner":"operator","result":"opened","detail":{"sessionId":"pty-1785971057701-1","spawn":"workflow","workflowRef":"video-run","sessionRunRef":"srun-03df8a67-4cfb-42ae-bfe1-a73f40882603"}}
+{"ts":"2026-08-05T23:10:39.485Z","action":"auth","owner":"operator","result":"login"}
