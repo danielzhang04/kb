@@ -646,9 +646,42 @@ def seeding_law_violations(k, r, seeds):
         bad.append(f"{name}: `figures.crowd` is declared but the slate carries no crowd exemplar "
                    f"(refs/base/crowd-exemplar.png) — the crowd's only seed.")
     if len(seeds) > SEED_CAP:
-        bad.append(f"{name}: {len(seeds)} seeds over the cap of {SEED_CAP} — "
-                   f"{', '.join(_stem(s) for s in seeds[SEED_CAP:])} did not fit. Nothing is "
-                   f"truncated: restage the shot (fewer cast) rather than drop a seed.")
+        # `cmd_batch`'s walk already ran the priority-order drop (crowd exemplar, then interaction
+        # template, then a tagged prop) before this ever reaches preflight, so a role-bearing spec
+        # arriving here still over the cap has NOTHING legal left to drop — every seed present is
+        # cast identity, the place plate/chain parent, or the LOCKED §5 lettering exemplar. Naming
+        # one of those as "did not fit" is exactly the bricks-fresh seed-cap failure (a mechanism
+        # steering a casting decision): the message states the true bind — cast count vs the cap —
+        # and never singles out a protected seed. A spec with no `seed_roles` (hand-authored, never
+        # walked through displacement) keeps the old positional message, since role identity is
+        # unknown here and a droppable seed may genuinely still be present.
+        roles_list = r.get("seed_roles") if isinstance(r.get("seed_roles"), list) else None
+        # A `crowd` seed is only IN CONTEXT for step 1 (and so only "still droppable" here) when a
+        # place/parent role sits beside it — step 1's own condition, mirrored rather than
+        # re-derived, so the two can never read the crowd exemplar's legality differently. With no
+        # place present the walk never had a legal drop to make, so a lone crowd role left in the
+        # slate is exactly as non-droppable as the cast/place/lettering seeds around it.
+        has_place = bool(roles_list) and any(
+            isinstance(entry, dict) and entry.get("role") in ("place", "parent")
+            for entry in roles_list)
+        droppable_present = bool(roles_list) and any(
+            isinstance(entry, dict)
+            and (entry.get("role") in ("interaction", "prop")
+                 or (entry.get("role") == "crowd" and has_place))
+            for entry in roles_list)
+        if roles_list is not None and not droppable_present:
+            n_cast = sum(1 for entry in roles_list
+                        if isinstance(entry, dict) and entry.get("role") in ("figure", "canonical"))
+            bad.append(f"{name}: {len(seeds)} seeds over the cap of {SEED_CAP} after every legal "
+                       f"displacement (crowd exemplar, interaction template, tagged prop) has "
+                       f"already been dropped where present — {n_cast} named-cast seed(s) plus the "
+                       f"place plate/chain parent and, if text-bearing, the locked §5 lettering "
+                       f"exemplar are what remain. Nothing is truncated and no locked seed is "
+                       f"dropped: the true bind is cast count against `SEED_CAP`, not a misfit seed.")
+        else:
+            bad.append(f"{name}: {len(seeds)} seeds over the cap of {SEED_CAP} — "
+                       f"{', '.join(_stem(s) for s in seeds[SEED_CAP:])} did not fit. Nothing is "
+                       f"truncated: restage the shot rather than drop a seed.")
     chars = k.reg.get("characters", {})
     cast = [(c, [p for p in prims if p not in omitted])
             for c, prims in shot_cast(k.reg, delta)]
@@ -1548,16 +1581,51 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
             seed_roles = _dedupe_seed_roles(fig_roles + canon_roles + interaction_roles
                                             + [place_role] + prim_roles
                                             + [crowd_role] + tagged_roles)
+        # CAP DISPLACEMENT — an ORDERED, multi-step drop within `SEED_CAP` (boss ruling
+        # 2026-08-05, the seed-cap exercise in `fix-G2-report.md`): step through the priority
+        # order below and drop one seed at a time UNTIL the slate fits, never all at once and
+        # never past what the overage requires. NEVER droppable, at any step: the place
+        # plate/chain parent, the derived §5 lettering exemplar (LOCKED), or any character
+        # STEP-1 — dropping one of those to make room is the exact failure this displaces:
+        # forge naming a locked seed "did not fit" and a refusal advising fewer cast, a
+        # mechanism steering a casting decision. Every drop is recorded in both `why` and
+        # `assets_omitted` — the SAME bookkeeping the single-step version already used, just
+        # walked more than once.
         displaced = []
         if len(seed_roles) > SEED_CAP and place_role and crowd_role in seed_roles:
-            # The crowd is the pipeline's only anonymous tier and is staged as rear-zone mass, which
-            # the place frame already holds in pixels; the exemplar is what pins its proportion when
-            # nothing else does. Over the cap, the place outranks it — recorded here and honoured by
-            # the law through `assets_omitted`, never a silent truncation.
+            # (1) the crowd exemplar. The pipeline's only anonymous tier, staged as rear-zone
+            # mass — mass the place frame already holds in pixels; the exemplar only pins its
+            # proportion, which the place plate does not need restated once it is over the cap.
             seed_roles = [role for role in seed_roles if role is not crowd_role]
             displaced.append(_stem(crowd_ex))
             why.append("CAP DISPLACEMENT — crowd exemplar dropped; the place frame carries the "
                        "rear crowd mass")
+        if len(seed_roles) > SEED_CAP:
+            # (2) the interaction template. Its contact geometry is restated in the shot's own
+            # authored prose and lands in pixels a second time via the two named figures' own
+            # STEP-1 cards, so the pixel template is reinforcement, not the geometry's only
+            # carrier — droppable where the crowd exemplar alone did not clear the cap.
+            dropped_template = next((role for role in seed_roles if role in interaction_roles), None)
+            if dropped_template:
+                seed_roles = [role for role in seed_roles if role is not dropped_template]
+                stem = _stem(dropped_template["path"])
+                displaced.append(stem)
+                why.append(f"CAP DISPLACEMENT — interaction template `{stem}` dropped; its "
+                           "geometry survives in role prose and the two figures' STEP-1 cards")
+        if len(seed_roles) > SEED_CAP:
+            # (3) a tagged PROP exemplar — never an environment reference, which this priority
+            # order does not touch. The prompt already names the prop by its own backticked
+            # slug; forge's derived prop seed reinforces that naming, it does not solely carry
+            # it, so it is the last displaceable tier before the place/lettering/STEP-1 floor.
+            dropped_prop = next((role for role in seed_roles
+                                 if role in tagged_roles and role["role"] == "prop"), None)
+            if dropped_prop:
+                seed_roles = [role for role in seed_roles if role is not dropped_prop]
+                stem = _stem(dropped_prop["path"])
+                displaced.append(stem)
+                why.append(f"CAP DISPLACEMENT — tagged prop `{stem}` dropped; the prompt "
+                           "already names it, and forge's seed is a reinforcement, not its only "
+                           "carrier")
         seeds = [role["path"] for role in seed_roles]
         # C-4: the PLATE marker is DERIVED, never authored. A scene carrying no image seed at all is
         # the frame that establishes its own place — a place-first shot with no cast, a single-use

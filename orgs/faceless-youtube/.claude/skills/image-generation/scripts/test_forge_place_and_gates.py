@@ -216,16 +216,97 @@ def test_over_cap_the_place_plate_displaces_the_crowd_exemplar():
     assert c2["assets_omitted"] == ["crowd-exemplar"], c2["assets_omitted"]
 
 
-def test_a_shot_still_over_cap_after_displacement_is_restaged_never_truncated():
+def test_a_shot_still_over_cap_after_all_legal_drops_is_restaged_never_truncated():
+    """Even the full 3-step priority order (crowd, interaction, prop) can only clear ONE of the
+    two seeds this shot is over by — a droppable `prop-beige-pc` plus a non-droppable
+    `stamp-block-outlined` (environment, never a displacement target) and a text-bearing prompt
+    that locks in the §5 lettering exemplar. What remains after both legal drops (2 cast + place +
+    stamp + lettering = 5) is entirely non-droppable, so the refusal must still stand."""
     crowded = dict(_CROWDED)
     crowded["assets"] = {"prop-beige-pc": REFS + "env/prop-beige-pc.png",
                          "stamp-block-outlined": REFS + "env/stamp-block-outlined.png"}
     crowded["still_prompt"] = crowded["still_prompt"].replace(
-        "beside a `prop-beige-pc`", "beside a `prop-beige-pc` and a `stamp-block-outlined`")
+        "beside a `prop-beige-pc`.",
+        "beside a `prop-beige-pc` and a `stamp-block-outlined` reading '26,000' in marker.")
     spec, err, _ = _run(_doc(
         {"id": "C1", "place": "records-room",
          "still_prompt": "A warm records room with a bare central table."}, crowded))
-    assert spec is None and "5 seeds over the cap" in err and "restage the shot" in err, err
+    assert spec is None, spec
+    assert "5 seeds over the cap of 4" in err, err
+    assert "cast count" in err, err
+    assert "did not fit" not in err, err
+    assert "lettering-marker-italic" not in err and "stamp-block-outlined" not in err, err
+
+
+# --- G3: the boss ruling of 2026-08-05 — displacement as an ORDERED, multi-step drop ------------
+# `fix-G2-report.md`'s seed-cap exercise: act 2's real shape is 2 named cast + place + crowd +
+# derived §5 lettering + ONE more (an interaction template or a tagged prop) = 6 seeds. The
+# single-step crowd-only displacement landed at 5 and refused, naming the LOCKED lettering
+# exemplar as the misfit and advising "fewer cast" — a mechanism steering a casting decision.
+# Displacement now walks crowd -> interaction template -> tagged prop, one drop at a time, until
+# the slate fits or nothing legal is left to drop.
+
+_BOARDROOM_PLATE = {"id": "B0", "place": "miniscribe-boardroom",
+                    "still_prompt": "The MiniScribe boardroom, a long table under fluorescent light."}
+
+
+def test_the_interaction_shape_resolves_by_two_ordered_drops():
+    """G2's shape 2a: 2 cast + interaction template + place + crowd + derived lettering = 6, over
+    the cap by 2 — one single-step displacement cannot clear it, two ordered ones can."""
+    spec, err, _ = _run(_doc(dict(_BOARDROOM_PLATE), {
+        "id": "B1", "place": "miniscribe-boardroom", "figures": {"crowd": True},
+        "still_prompt": ("`ibm-suit`, `expr-deadpan`, and `terry-johnson`, `expr-delighted`, meet "
+                         "in `handshake` across the boardroom table, a whiteboard behind them "
+                         "reading '20 MILLION' in marker.")}))
+    assert err is None, err
+    b1 = _by_name(spec, "B1")
+    stems = [Path(s).stem for s in b1["seed"]]
+    assert len(stems) == 4, stems
+    assert "crowd-exemplar" not in stems and "handshake" not in stems, stems
+    assert "lettering-marker-italic" in stems, stems     # LOCKED — never a displacement target
+    assert "_staging/B0.png" in b1["seed"], b1["seed"]   # the place plate — never displaced
+    assert sorted(b1["assets_omitted"]) == ["crowd-exemplar", "handshake"], b1["assets_omitted"]
+    assert b1["why"].count("CAP DISPLACEMENT") == 2, b1["why"]
+    assert "crowd exemplar dropped" in b1["why"], b1["why"]
+    assert "interaction template `handshake` dropped" in b1["why"], b1["why"]
+
+
+def test_the_prop_shape_resolves_by_two_ordered_drops():
+    """G2's shape 2b: 2 cast + place + crowd + derived lettering + a tagged prop = 6, over the cap
+    by 2 — resolved by dropping the crowd exemplar, then the tagged prop."""
+    spec, err, _ = _run(_doc(dict(_BOARDROOM_PLATE), {
+        "id": "B2", "place": "miniscribe-boardroom", "figures": {"crowd": True},
+        "still_prompt": ("`ibm-suit`, `expr-deadpan`, and `terry-johnson`, `expr-delighted`, "
+                         "review a `prop-drive` on the boardroom table, a ledger behind them "
+                         "reading 'QUOTA 26,000' in marker.")}))
+    assert err is None, err
+    b2 = _by_name(spec, "B2")
+    stems = [Path(s).stem for s in b2["seed"]]
+    assert len(stems) == 4, stems
+    assert "crowd-exemplar" not in stems and "prop-drive" not in stems, stems
+    assert "lettering-marker-italic" in stems, stems
+    assert "_staging/B0.png" in b2["seed"], b2["seed"]
+    assert sorted(b2["assets_omitted"]) == ["crowd-exemplar", "prop-drive"], b2["assets_omitted"]
+    assert b2["why"].count("CAP DISPLACEMENT") == 2, b2["why"]
+    assert "tagged prop `prop-drive` dropped" in b2["why"], b2["why"]
+
+
+def test_never_droppable_seeds_refuse_naming_cast_count_not_a_locked_seed():
+    """3 named cast (3 STEP-1s) + place + derived lettering = 5, over the cap by 1, with NOTHING
+    displaceable (no crowd, no interaction, no prop). The slate only fits if the LOCKED lettering
+    exemplar is dropped — which the law forbids — so the refusal must stand, and it must name the
+    true bind (cast count vs the cap), never call lettering the misfit."""
+    spec, err, _ = _run(_doc(dict(_BOARDROOM_PLATE), {
+        "id": "B3", "place": "miniscribe-boardroom",
+        "still_prompt": ("`ibm-suit`, `expr-deadpan`, `terry-johnson`, `expr-delighted`, and "
+                         "`miniscribe-rep`, `expr-smug`, stand at the boardroom table beneath a "
+                         "whiteboard reading 'QUOTA 26,000' in marker.")}))
+    assert spec is None, spec
+    assert "5 seeds over the cap of 4" in err, err
+    assert "cast count" in err, err
+    assert "3 named-cast seed(s)" in err, err
+    assert "did not fit" not in err, err
+    assert "lettering-marker-italic" not in err, err
 
 
 # --- C-6: the staged-figure review record --------------------------------------------------------

@@ -83,12 +83,26 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
    high-risk case in `notes`. Field spec: `shots-schema.md §2`.
 
-   **Seed-cap displacement (plan at authoring time, not at forge's dry-run):** a place plate outranks a
-   background-tier crowd exemplar seed — the plate already carries the rear-zone mass, so forge drops the
-   crowd exemplar and records the displacement rather than erroring. Worked example: 2 named cast + crowd +
-   one tagged prop + the place plate = 5 seeds, over `SEED_CAP` (4) — the plate displaces the crowd
-   exemplar → 4, legal. A shot still over cap after displacement is restaged with fewer named cast, never
-   truncated.
+   **Seed-cap displacement (plan at authoring time, not at forge's dry-run):** over `SEED_CAP` (4), forge
+   drops ONE seed at a time in priority order — never all at once, never past what the overage requires —
+   and records each drop rather than erroring: (1) the crowd exemplar, when the place plate carries the
+   rear-zone mass (it already holds that mass in pixels; the exemplar only pins proportion); (2) an
+   interaction template, since its contact geometry also lands in the shot's own prose and in the two named
+   figures' own STEP-1 cards; (3) a tagged prop, since the prompt already names it by its own backticked
+   slug and forge's derived seed is a reinforcement, not its only carrier. **Never displaced, at any step:**
+   the place plate/chain parent, the LOCKED §5 lettering exemplar, or any character STEP-1 — a shape that
+   only fits by dropping one of those refuses instead, naming the true bind (cast count against the cap),
+   never a locked seed.
+
+   Worked examples, both real act-2 shapes: **(a) crowd + tagged prop** — 2 named cast + crowd + one tagged
+   prop + the place plate = 5 seeds, over cap by 1 — the plate displaces the crowd exemplar → 4, legal, one
+   drop. **(b) crowd + interaction template + derived lettering**, one step further — 2 named cast + an
+   interaction template + crowd + a text-bearing line (the LOCKED lettering exemplar) + the place plate = 6
+   seeds, over cap by 2 — the plate displaces the crowd exemplar (→5), then the interaction template
+   displaces (its geometry survives in prose + both figures' STEP-1s) → 4, legal, two drops. The same shape
+   with a tagged prop in place of the interaction template resolves identically: crowd, then the prop, two
+   drops → 4. A shot still over cap once crowd, interaction, and prop are ALL legally exhausted is restaged
+   — the true bind is cast count against the cap, never a dropped lettering exemplar or place plate.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
    of South America", not "the continent"), framing + scale, the committed scene palette,

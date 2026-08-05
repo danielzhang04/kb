@@ -374,16 +374,27 @@ def test_explicit_nonfigure_tags_route_without_duplicating_figure_or_crowd_seeds
 
 
 def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
+    """T01 declares no `place`, so the crowd exemplar (the ONE displacement step that needs a
+    place plate to absorb the mass) can never legally clear here — and both explicit tags are
+    `environment`, not `prop`, so step 3 has nothing to take either. With no droppable seed
+    anywhere the refusal must stand, naming cast count rather than either locked tag."""
     _, shots, out = _scope_fixture()
     doc = json.load(open(shots, encoding="utf-8"))
     shot = doc["long_form"]["shots"][0]
+    shot["still_prompt"] = shot["still_prompt"].replace(
+        "`miniscribe-rep`, `expr-smug`, `action-powerstance`, at",
+        "`miniscribe-rep`, `expr-smug`, `action-powerstance`, and `ibm-suit`, `expr-deadpan`, at")
     shot["figures"] = {"crowd": True}
     shot["assets"] = {n: f"channels/the-second-take/visual-kit/refs/env/{n}.png" for n in (
-        "prop-beige-pc", "lettering-marker-italic", "stamp-block-outlined")}
+        "lettering-marker-italic", "stamp-block-outlined")}
     json.dump(doc, open(shots, "w", encoding="utf-8"))
     spec, err = _batch(shots, out, ["T01"])
-    assert spec is None and "5 seeds over the cap" in err, err
-    assert "stamp-block-outlined did not fit" in err and not os.path.exists(out), err
+    assert spec is None, spec
+    assert "5 seeds over the cap of 4" in err, err
+    assert "cast count" in err, err
+    assert "did not fit" not in err, err
+    assert "lettering-marker-italic" not in err and "stamp-block-outlined" not in err, err
+    assert not os.path.exists(out), err
 
 
 def test_character_free_place_plate_emits_with_no_image_seed():

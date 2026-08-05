@@ -152,8 +152,16 @@ before paying for the batch.
 is not a supported input.** It builds one deterministic slate per shot from the shot's own `assets` tags and
 `figures`, orchestrates the two steps below, **reuses an existing step-1 figure frame before generating one — but only
 one carrying an all-pass, digest-current review record** (the C-6 gate, §Reviewing the run), records
-every slate decision on the item (`why`) and on stdout, and **never truncates** — an over-cap or under-seeded shot is
-a hard error naming the shot and the seed that did not fit, and that list is the re-authoring input. The retry path
+every slate decision on the item (`why`) and on stdout, and **never truncates**. Over the cap, displacement runs an
+**ORDERED, one-drop-at-a-time** walk — (1) crowd exemplar, when the place plate carries the rear mass; (2)
+interaction template, whose contact geometry survives in the shot's own prose and in the two named figures' own
+STEP-1 cards; (3) a tagged prop, since the prompt already names it and forge's derived seed is a reinforcement, not
+its only carrier — stopping the instant the slate fits, never dropping more than the overage requires. **Never
+droppable, at any step:** the place plate/chain parent, the LOCKED §5 lettering exemplar, or any character STEP-1.
+Every drop is recorded in `why` AND `assets_omitted` — the one displacement ledger, not a parallel one. If the slate
+still exceeds the cap once that order is exhausted, it is a hard error naming the shot and the **true bind — cast
+count against the cap** — never a locked seed, and never advice to restage with fewer cast (a mechanism steering a
+casting decision, which the doctrine forbids); that count is the re-authoring input. The retry path
 reuses the same builder, so a retry cannot invent a seed the original never had. Behind it, **the SEEDING LAW is
 structural in `forge.py` and no caller can opt out**: a gen that cannot inherit a named figure's rig — a step-1 frame
 when fresh, the canonical plus an in-chain parent when a delta — hard-errors before the API call, at $0.
