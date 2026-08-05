@@ -432,3 +432,65 @@ exit 0. Detail in `vpw-fifth2-report.md`.
     fifth 1's own L33/L44/L47 behave identically. Re-probe with the plate id added to `--shots` before
     calling it a lineage defect (here: `L48: [fig-…, L28]` once L28 was in scope). Scoping is also how a
     partial file gets a clean run at all while an unrelated staged STEP-1 elsewhere in the file is refusing.
+
+---
+
+# FIFTH 3 - act 3 authored fresh (L090-L148), 2026-08-05
+
+FRESH-AUTHORING over P10-P14, appended after the LOCKED L01-L89 (byte-identical, verified: the
+first 125,436 bytes and the whole `thumbnail` tail are unchanged). Inputs: the VPW SKILL,
+`vpw-fresh-skeleton.md`, this log (lessons 1-17), `vpw-fifth2-report.md`, `script.md`, the real
+word timings in `assets/voiceover.manifest.json`, `visual-grammar.md`, `shots-schema.md`,
+`registry.json` (worktree + the MAIN-checkout de-badged `miniscribe-rep`),
+`assets/library/manifest.json`, and the CURRENT `shots.json` for lineage. No archived or
+quarantined file was read. $0, no provider call, nothing committed.
+
+**59 shots, 129.38 s, avg 2.19 s, every real hold inside 1.5-3.0 s.** New place
+`brick-company-yard` (plate L113, `place_owner: "COLORADO BRICK"`); `brick-warehouse` (L03),
+`miniscribe-plant` (L28), `wiles-office` (L63) and `miniscribe-boardroom` (L71) all revisited.
+59 scenes + 10 STEP-1 figure gens (only 8 of them new to the file). Lint: **1 HARD**, the
+duration-sum coverage artifact - the 140-shot floor HARD has CLEARED at 148 shots. Forge dry-run
+over L090-L148: zero refusals, exit 0. Detail in `vpw-fifth3-report.md`.
+
+## Lessons for the remaining fifths
+
+18. **The semantic-cast law fires on a POSSESSIVE plural too, and the fix is a cast-free frame, not
+    a reworded prompt.** L093's span is "The real sheets were locked in the accountants' own" - the
+    plural names the boxes' OWNER, not the actors, and the check cannot tell the difference. The
+    repair is structural: make that beat a cast-free frame of the object and open the chain one cut
+    later, on the span whose own words are clean ("boxes, so they popped the boxes open with").
+    Reading the tiled span BEFORE choosing cast (lesson 14) is what makes this a $0 decision instead
+    of a re-author; check the possessive forms, not just the bare plurals.
+19. **A place's owner literal is established for the WHOLE place, across stage runs - so plan the
+    prose vocabulary of every in-place shot when you choose `place_owner`.** Declaring
+    `place_owner: "COLORADO BRICK"` on L113 makes that string a carried literal for L114-L116 under
+    L-1: any later yard shot writing "Colorado brick" in lowercase prose would HARD-fail. The
+    working rule is to keep the sign out of frame on the follower shots and refer to the material
+    ("red clay bricks", "the brick yard"), never to the branded phrase. This is a *drafting*
+    constraint that comes with the decisive owner call, and it is cheap once it is decided up front.
+20. **A branded place's plate is gated by DISCLOSURE, so the shot before it must decline the
+    place.** The VO named "a local company" one cut before "the Colorado Brick Company", and setting
+    that earlier shot in the yard would have made IT the plate - which then must quote the owner
+    literal, putting the brand on screen a line before the narration says it. Authoring the earlier
+    beat as a placeless one-frame world (an unbranded merchant counter) satisfies both laws at once.
+    Same shape as the plate/reveal seam, one level up: the seam is plate-then-reveal, this is
+    no-place-then-plate.
+21. **Fix base/delta hold inversions and the >3 s holds in the SAME anchor pass, before writing a
+    word of prose.** Five inversions and one 3.52 s hold in this fifth all closed by moving one
+    anchor inside its own sentence; doing it on the timing table cost minutes, and doing it after
+    the prose was written would have meant re-deriving every affected shot's payload. Build the cut
+    list first, run it against the forced-alignment timings until every hold is in band AND no delta
+    is longer than its base, and only then author.
+22. **STEP-1 card reuse is a real budget lever and it is decided at casting, not at forge.** Eleven
+    cast-bearing frames in this fifth cost 8 new cards, because three of them deliberately named a
+    pose/expression pair fifth 2 already mints (`fig-qt-wiles--point-at-thing--expr-smug`,
+    `fig-auditor-rep--hold-paper-by-sides--expr-deadpan`, `fig-brick-foreman--expr-worried`) and two
+    more share a card minted inside the fifth. The name IS the reuse key, so reuse only where the
+    register genuinely wants that face - but check the existing card list before minting a near-
+    duplicate.
+23. **The out-of-scope violation count in a scoped forge run is a scoping artifact of DELTAS whose
+    parent sits outside `--shots`, and it grows as the file grows.** Fifth 3's run reports "5
+    seeding-law violation(s) remain OUTSIDE the scope" - all five are fifth 2's deltas (L50, L51,
+    L57, L73, L80) reporting "no in-chain parent frame in the slate" purely because L49/L56/L72/L79
+    are not in scope. Prove it the same way lesson 17 proves the place seeds: re-run the earlier
+    range in its own scope and confirm 0. Do not read a rising out-of-scope count as regression.

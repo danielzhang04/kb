@@ -1098,6 +1098,840 @@
         "source": "ai-gen",
         "still_prompt": "`brick-foreman`, `expr-caught`, `hold-paper-by-sides`, stands at the end of the bare shelf run turned square to the camera and unobstructed, a count sheet in front of him with its ruled column inked full and its edge creased. Behind him the bay stands bare to the pegboard above the last of the cartons and the aisle runs away into the half-lit far end. Framing: medium, him stage-right and near with the emptied bay stage-left. Palette: drained brown, pegboard grey, buff sheet card, cold overhead light.",
         "notes": "The punchline lands on a face, which is where this channel's grammar puts an aside: the man who filled the column in L80 standing in front of the shelf that disagrees with it. Closes fifth 2 on the act seam — the hole is found, and the cover-up starts on the next paragraph. [F-08, F-12, Q-02]"
+      },
+      {
+        "id": "L090",
+        "duration_s": 2.1,
+        "synthetic": false,
+        "vo_ref": "And coming up short like that",
+        "shot_class": "physicalized-imbalance",
+        "source": "ai-gen",
+        "still_prompt": "A storage bay in the plant's stores seen straight on, with a builder's string line strung taut across the full width of the bay at the height the stack is meant to reach. The ranked flat drive cartons beneath it top out a clear arm's length below that line, leaving an open band of bare shelf board and air between the last carton and the string. A crowd of counters stands at the far side of the shelving racks with clipboards down at their sides, every head turned to that band. Framing: medium-wide straight on to the bay, the string line high and the shortfall band across the middle third. Palette: brown board, buff card, taut white line, cold overhead light.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Relative height is the whole argument - the stack measured against the line it was supposed to reach - so the shortfall reads in one beat without a caption. Place-exempt class, so no `place` is declared even though the set is the plant's own stores. Figure bias: the count crew is in frame on the far side of the racks, a positive rear zone. [F-08]"
+      },
+      {
+        "id": "L091",
+        "duration_s": 2.4,
+        "synthetic": false,
+        "vo_ref": "fired, so instead of reporting it,",
+        "place": "miniscribe-plant",
+        "stage": "clock-row",
+        "stage_role": "base",
+        "shot_class": "reaction-shot",
+        "source": "ai-gen",
+        "still_prompt": "`brick-foreman`, `expr-fear`, stands square to the camera with his face unobstructed at the card rack beside the plant's shipping-office door, his own time card drawn half out of its slot and the rack of slotted cards running away stage-left, every card face standing blank and unlettered. Behind him a shut roll-up shipping door closes the wall with a stack of empty pallets leaning against it, the overhead tubes cold above. Framing: medium at chest height, him stage-right and near with the card rack receding stage-left. Palette: cold concrete grey, buff card, drained beige, hard tube white.",
+        "notes": "The consequence staged on the body it lands on rather than on an object: the line says somebody was getting fired and this is the man who hears it. Fresh stage BASE, so his STEP-1 card carries pose and expression. Seeds the `miniscribe-plant` plate (L28); the plate's owner board hangs over the floor entrance, not this wall, so no established literal is redrawn here. [F-05, Q-02]"
+      },
+      {
+        "id": "L092",
+        "duration_s": 1.7,
+        "synthetic": false,
+        "vo_ref": "they wrote down a better number.",
+        "shot_class": "diegetic-device",
+        "source": "ai-gen",
+        "still_prompt": "A plain office desk under a low lamp with one buff count sheet squared up on it, its true column struck out end to end with a single red line and a fresh run of small hand-inked marks set down beside it, none of them legible at this distance. A wire basket at the desk's far corner holds a dozen more sheets struck the same way and a pen lies across the blotter. Framing: medium at desk height, the struck sheet near and central. Palette: buff paper, dark desk timber, warm lamp amber, the struck line the one red accent.",
+        "notes": "The falsification drawn as a physical act on paper rather than as a value: the script supplies no figure for it, so the replacement is authored as an illegible inked run (supplied-text law, resolution 3, the resolution act 2 already used on L080) - which is also the truer image, since what went into the column was not a count anybody had. Red is semantic here: the strike-out is the alarm. Figure bias: absence EARNED - the subject is the sheet, the run is one frame long and both neighbours are peopled. [F-08]"
+      },
+      {
+        "id": "L093",
+        "duration_s": 1.8,
+        "synthetic": false,
+        "vo_ref": "The real sheets were locked in",
+        "place": "miniscribe-plant",
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "Three steel deed boxes stand ranked along a trestle set up across the plant's main aisle at night, cast-free, each one shut with its hasp dropped over a small padlock. The front box stands nearest camera with its lid unsecured and its broad flat top clear, and the trestle's near end beside it stands empty. Behind them the aisle runs back between the dark workbenches to the shut shipping door with every overhead tube switched off, and one work lamp on a tripod throws a hard pool of light across the trestle. Framing: medium-wide at trestle height, the three boxes running away stage-right out of the lamp pool. Palette: cold steel, buff paper card, warm lamp amber, charcoal shadow.",
+        "notes": "The accountants' own boxes, established as the objects the next three frames work on. Deliberately cast-free: this VO span names a generic plural role ('the accountants'') and nothing near it justifies a named lead, so the frame stays on the object and the man who does the work enters on the very next cut, where his own span is clean (semantic-cast law). Seeds the `miniscribe-plant` plate (L28). Figure bias: absence EARNED - the subject of this clause is whose boxes they are. [F-08, F-12]"
+      },
+      {
+        "id": "L094",
+        "duration_s": 2.3,
+        "synthetic": false,
+        "vo_ref": "boxes, so they popped the boxes",
+        "place": "miniscribe-plant",
+        "stage": "lockbox-swap",
+        "stage_role": "base",
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "`brick-foreman`, `expr-worried`, `action-armscrossed`, stands side-on and unobstructed at the near end of that lamp-lit trestle with his face turned to camera, the front deed box beside him now standing open on its sprung-back lid and the other two still shut over their padlocks. The open lid lies back flat with its top clear, the trestle's near end stands empty beside it, and the dark aisle runs back to the shut shipping door behind. Framing: medium-wide at trestle height, him stage-left and near with the open box central in the lamp pool. Palette: cold steel, buff paper card, warm lamp amber, charcoal shadow.",
+        "notes": "The entrance is a stage BASE, never a delta, so the STEP-1 card carries pose AND expression. FEASIBILITY GATE sized to the LAST delta of the chain rather than the next one (round-3 lesson 10): the sprung lid is authored lying back flat with its top clear so L095 can lay tools on it, and the trestle's near end is authored empty so L096 has somewhere to stand the lifted sheaf. Figure bias: the line's subject is people opening boxes, so the man doing it is in frame. [F-08]"
+      },
+      {
+        "id": "L095",
+        "duration_s": 1.7,
+        "synthetic": false,
+        "vo_ref": "Allen wrenches and paper clips,",
+        "place": "miniscribe-plant",
+        "stage": "lockbox-swap",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ a stubby Allen key and a straightened paper clip lying together on the open lid's flat top"
+        ],
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "The same lamp-lit trestle held exactly: `brick-foreman`, `expr-worried`, `action-armscrossed`, side-on at its near end with his face to camera, the front deed box open on its sprung-back lid, the other two shut over their padlocks, the trestle's near end empty, the dark aisle and shut shipping door behind. Only this changes: a stubby Allen key and a straightened paper clip now lie together on the open lid's flat top; everything else exactly as established.",
+        "notes": "The tools get their own frame because the line names them, and they land on a surface the parent already reserved. One change, and the held figure keeps the same pose and expression the base seeded, so the delta slate stays [parent + canonical] with nothing changed by prose alone (round-2 lesson 13). [F-08]"
+      },
+      {
+        "id": "L096",
+        "duration_s": 2.7,
+        "synthetic": false,
+        "vo_ref": "took the real count out and",
+        "place": "miniscribe-plant",
+        "stage": "lockbox-swap",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ the box's buff sheaf standing squared up on the trestle's clear near end with one fresh sheet lying alone in the box in its place"
+        ],
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "The same lamp-lit trestle held exactly: `brick-foreman`, `expr-worried`, `action-armscrossed`, side-on at its near end with his face to camera, the front deed box open on its sprung-back lid with the Allen key and paper clip lying on that lid, the other two boxes shut, the dark aisle and shut shipping door behind. Only this changes: the box's buff sheaf now stands squared up on the trestle's clear near end and one single fresh sheet lies alone in the box in its place; everything else exactly as established.",
+        "notes": "The swap itself, as one physical transformation on a parent that reserved the space for it. Both sheaves are authored ruled and blank - the script supplies no count for either and inventing one would be a fabricated figure on a documented fraud. Chain closes here at two deltas. [F-08, F-12]"
+      },
+      {
+        "id": "L097",
+        "duration_s": 2.3,
+        "synthetic": false,
+        "vo_ref": "and blamed the whole gap on",
+        "shot_class": "idiom-pun",
+        "source": "ai-gen",
+        "still_prompt": "A plain office typewriter standing alone on a bare metal desk with a sheet wound into its platen, that sheet standing blank and unlettered and one key raised clear of the bank. Through the open doorway behind the desk the plant's stores aisle runs away with a whole bay standing bare to the pegboard, and a crowd of counters stands beyond that doorway looking at the bare run. Framing: medium at desk height, the typewriter near and stage-left with the lit doorway stage-right. Palette: charcoal enamel, buff paper, brown board, cold tube light.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The excuse and the hole in one frame: one raised key in the foreground against the whole missing bay behind it. The platen sheet is authored blank because the script supplies no wording for it. Crowd through the doorway, a positive rear zone. [F-08]"
+      },
+      {
+        "id": "L098",
+        "duration_s": 1.8,
+        "synthetic": false,
+        "vo_ref": "The audit came back clean.",
+        "place": "miniscribe-plant",
+        "stage": "audit-clean",
+        "stage_role": "base",
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "`auditor-rep`, `expr-deadpan`, `action-thumbsup`, stands square to the camera with his face unobstructed in the plant's front lobby, the shut steel deed boxes stacked waist-high on a trolley at his side with their hasps padlocked again. A crowd of accountants files out through the propped double door behind him into a cold morning with document cases under their arms; the lobby floor is pale sealed concrete and a bench runs along the wall stage-left. Framing: medium at chest height, him stage-left and near with the doorway stage-right. Palette: cold morning blue, dark overcoat, pale concrete, steel grey.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The channel's signature move on a lie: the verdict delivered as a cheerful all-clear, standing over the very boxes that were opened in the night. Fresh stage BASE for his appearance on this set. Crowd through the doorway, a positive rear zone. The plate's owner board hangs over the assembly-floor entrance off this lobby and is not redrawn here. [F-11, F-12]"
+      },
+      {
+        "id": "L099",
+        "duration_s": 1.5,
+        "synthetic": false,
+        "vo_ref": "Not exactly Ocean's Eleven level,",
+        "shot_class": "reaction-shot",
+        "source": "ai-gen",
+        "still_prompt": "A green baize card table standing alone in a dark room under one hard overhead spotlight, a canvas tool roll opened flat across its middle holding exactly two items - a stubby Allen key and a straightened paper clip - each in its own stitched pocket, with every other pocket on the roll standing empty. Framing: medium-wide from slightly above, the table centred in its pool of light with the dark room falling away all round it. Palette: baize green, charcoal dark, dull steel, hard white spotlight.",
+        "notes": "A deadpan cutaway on the payload word, which is where this channel's grammar puts an aside: the heist register is borrowed and deflated in the same frame, because the whole kit is two things anybody has in a drawer. A generic caper archetype, never a named film's staging (originality moat). Figure bias: absence EARNED - the empty pockets ARE the joke, and the frame holds 1.5s between two peopled ones."
+      },
+      {
+        "id": "L100",
+        "duration_s": 1.5,
+        "synthetic": false,
+        "vo_ref": "but pretty close.",
+        "place": "miniscribe-plant",
+        "stage": "close-enough",
+        "stage_role": "base",
+        "shot_class": "reaction-shot",
+        "source": "ai-gen",
+        "still_prompt": "`brick-foreman`, `expr-smug`, stands square to the camera with his face unobstructed in the plant's night aisle beside the trestle, the three deed boxes ranked shut and padlocked along it behind him and the work lamp throwing its pool up the wall. The aisle runs away dark to the shut shipping door. Framing: medium close at chest height, him centred and near with the trestle stage-left. Palette: warm lamp amber, cold steel, charcoal shadow, drained beige.",
+        "notes": "The narrator concedes it was almost a heist and the man who did it agrees - the aside lands on a face. New stage BASE, so the STEP-1 card carries the expression. Seeds the `miniscribe-plant` plate (L28)."
+      },
+      {
+        "id": "L101",
+        "duration_s": 2.2,
+        "synthetic": false,
+        "vo_ref": "But a clean audit doesn't lower",
+        "place": "wiles-office",
+        "stage": "target-again",
+        "stage_role": "base",
+        "shot_class": "diegetic-device",
+        "source": "ai-gen",
+        "still_prompt": "`qt-wiles`, `expr-smug`, `point-at-thing`, stands side-on and unobstructed at the wall board in the Los Angeles office with his face turned to camera, the venetian-blinded windows throwing hard bars of light across the carpet stage-right. The board's face stands blank and unlettered apart from one red rule ruled straight across it at shoulder height, and his walnut desk stands across the foreground with a shut buff audit folder squared up on it. Framing: medium-wide at standing height, the board stage-left filling the upper half and the desk across the lower foreground. Palette: warm walnut, cream blind slats, hot white daylight, olive carpet, the rule the one red accent.",
+        "notes": "Callback to the quota board established in act 2: the clean audit arrives on his desk shut, and the rule on the board has not moved. Seeds the `wiles-office` plate (L63). The board carries no quota value because the script names none (supplied-text law, resolution 3). Fresh stage BASE; its STEP-1 card is shared with act 2's L69, so no new figure gen. FEASIBILITY GATE: the board is authored with clear blank face above the rule so L102 has somewhere to move it to. [F-02, F-04]"
+      },
+      {
+        "id": "L102",
+        "duration_s": 2.2,
+        "synthetic": false,
+        "vo_ref": "target, it raises it.",
+        "place": "wiles-office",
+        "stage": "target-again",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ the red rule now ruled a full hand's width higher up the board"
+        ],
+        "shot_class": "diegetic-device",
+        "source": "ai-gen",
+        "still_prompt": "The same office held exactly: `qt-wiles`, `expr-smug`, `point-at-thing`, side-on at the wall board with his face to camera, the blinded windows barring the carpet stage-right, the board's face blank and unlettered apart from its single red rule, the walnut desk across the foreground with the shut buff audit folder squared up on it. Only this changes: the red rule now runs a full hand's width higher up the board, with clear blank board standing below it where it used to sit; everything else exactly as established.",
+        "notes": "The line's whole point as one physical move on a held frame: the clean audit did not lower the line, it raised it. The held figure keeps the same pose and expression the base seeded, so nothing on him is changed by prose alone. [F-04]"
+      },
+      {
+        "id": "L103",
+        "duration_s": 2.6,
+        "synthetic": false,
+        "vo_ref": "So the fake numbers had to",
+        "shot_class": "symbolic-stand-in-object",
+        "source": "ai-gen",
+        "still_prompt": "A steel document spike standing on a plain desk under a low lamp, driven through a sheaf of quarterly sheets stacked so deep up its shaft that the spike leans right over under the load and the top sheets fan out past the desk's edge. Every sheet in the stack is ruled and stands blank and unlettered. A second spike stands beside it with nothing on it at all. Framing: medium at desk height, the loaded spike near and stage-left, leaning into frame. Palette: buff paper, dull steel, warm lamp amber, dark desk timber.",
+        "notes": "Act 2's spike frame (L085) come back one paragraph later with three times the load and a lean on it - escalation drawn as physical depth rather than as a value. Columns blank throughout, so no figure is asserted anywhere. Figure bias: absence EARNED - the subject is the accumulating paper, one frame between peopled ones. [F-12]"
+      },
+      {
+        "id": "L104",
+        "duration_s": 1.8,
+        "synthetic": false,
+        "vo_ref": "and a swapped count sheet wasn't",
+        "place": "miniscribe-plant",
+        "stage": "paper-bridge",
+        "stage_role": "base",
+        "shot_class": "idiom-pun",
+        "source": "ai-gen",
+        "still_prompt": "Two stacked pallets stand a stride apart on the plant's stores floor with one single buff count sheet laid flat across the gap between them like a plank, its ruled column standing blank and unlettered and its ends just catching each pallet's edge. A cast-iron press weight stands on the floor beside the near pallet, and a crowd of counters works the far side of the shelving racks behind them. Framing: low medium straight on to the gap, the sheet bridging the middle of the frame at knee height. Palette: brown board, buff card, dull iron, cold overhead light.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The idiom staged as a physical bridge so the next cut can break it. FEASIBILITY GATE sized to the chain's one delta: the weight is authored standing on the floor beside the pallet HERE, so L105 only has to move a thing the parent already contains. Crowd on the far side of the racks. Seeds the `miniscribe-plant` plate (L28). [F-08]"
+      },
+      {
+        "id": "L105",
+        "duration_s": 1.8,
+        "synthetic": false,
+        "vo_ref": "going to carry that much weight.",
+        "place": "miniscribe-plant",
+        "stage": "paper-bridge",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ the cast-iron press weight now standing on the middle of the count sheet, the sheet folded straight down under it to the floor"
+        ],
+        "shot_class": "idiom-pun",
+        "source": "ai-gen",
+        "still_prompt": "The same stores floor held exactly: two stacked pallets a stride apart with the buff count sheet bridging the gap between them, the crowd of counters working the far side of the shelving racks behind. Only this changes: the cast-iron press weight now stands on the middle of that sheet and the sheet is folded straight down under it to the floor with both ends torn clear of the pallet edges; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "'Wasn't going to carry that much weight' drawn exactly, on a parent that already held the weight. One change, and its consequence stated as part of the same transformation rather than as a second one. [F-08]"
+      },
+      {
+        "id": "L106",
+        "duration_s": 1.6,
+        "synthetic": false,
+        "vo_ref": "They needed product.",
+        "place": "miniscribe-plant",
+        "stage": "needed-product",
+        "stage_role": "base",
+        "shot_class": "reaction-shot",
+        "source": "ai-gen",
+        "still_prompt": "`brick-foreman`, `expr-worried`, `action-armscrossed`, stands square to the camera with his face unobstructed in the plant's stores aisle, one bare empty pallet on the floor in front of him and the bay behind him standing bare to the pegboard from waist height up. The aisle runs away to the shut shipping door with half the overhead tubes switched off. Framing: medium-wide at eye level, him stage-right and near with the empty pallet low and central. Palette: drained brown, pegboard grey, cold steel, charcoal shadow.",
+        "notes": "The need staged on the man who has to meet it, standing in front of the exact emptiness he has to fill. Its STEP-1 card is shared with L094, so the register holds and the gen does not repeat. Seeds the `miniscribe-plant` plate (L28)."
+      },
+      {
+        "id": "L107",
+        "duration_s": 2.9,
+        "synthetic": false,
+        "vo_ref": "Something an auditor could walk up",
+        "place": "miniscribe-plant",
+        "stage": "something-solid",
+        "stage_role": "base",
+        "shot_class": "personified-character",
+        "source": "ai-gen",
+        "still_prompt": "`auditor-rep`, `expr-deadpan`, `action-walk`, moves down the plant's stores aisle three-quarters turned so his face stays clear of his own shoulder, heading for one shrink-wrapped pallet of sealed cartons standing alone in the pool of an aisle light at the far end. Every bay he passes stands bare to the pegboard and the floor is sealed pale concrete. Framing: wide one-point view straight down the aisle, him near and stage-left with the lit pallet small and central at the end of the run. Palette: pegboard grey, brown board, pale concrete, one warm pool of aisle light.",
+        "notes": "What the scheme actually needs, staged as a want: a man walking a bare aisle toward the one thing in the building he can put his hands on. The VO names the role in the singular ('an auditor'), so the named lead is justified. Fresh stage BASE for his appearance on this set. Seeds the `miniscribe-plant` plate (L28). [F-11]"
+      },
+      {
+        "id": "L108",
+        "duration_s": 2.3,
+        "synthetic": false,
+        "vo_ref": "on, and tick off a list.",
+        "shot_class": "symbolic-stand-in-object",
+        "source": "ai-gen",
+        "still_prompt": "A clipboard lying squared up on a plain trestle top under a work lamp, its ruled sheet standing blank and unlettered line after line, with a run of small pencil ticks marching straight down the left margin from the head of the page to the foot of it. A pencil lies across the board's clip and a second blank sheet waits underneath. Framing: medium at trestle height, the clipboard filling the lower two-thirds and angled toward camera. Palette: buff paper, dull steel clip, warm lamp amber, dark trestle timber.",
+        "notes": "The audit reduced to its physical residue - a column of ticks and nothing else. The sheet's lines are authored blank because the script supplies no wording for them, and the ticks carry the meaning without a string being authored (shots-schema section 4: the string you do not author cannot garble). Figure bias: absence EARNED - the subject is the procedure, one frame between peopled ones. [F-11]"
+      },
+      {
+        "id": "L109",
+        "duration_s": 2.1,
+        "synthetic": false,
+        "vo_ref": "So the managers put their heads",
+        "place": "miniscribe-boardroom",
+        "stage": "plan-room",
+        "stage_role": "base",
+        "shot_class": "idiom-pun",
+        "source": "ai-gen",
+        "still_prompt": "The boardroom from the near end of the long table: a crowd of managers is bent right in over the table's middle from both far sides with their heads drawn together into one tight ring above a completely bare table top, chairs pushed back behind them. The pendant shades hang down the table's length, the door at the far end stands shut and the plaster walls carry nothing. Framing: wide one-point view straight down the table, the ring of heads central and low in frame. Palette: dark table timber, drained shirt white, cream plaster, cold pendant light.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The idiom drawn as staging: heads literally together over an empty table. Semantic-cast law - this VO span names a generic plural role ('the managers') and nothing near it justifies a named lead, so the beat is staged as mass action with crowd only, which is also the truer image: the line's subject is a room agreeing with itself. FEASIBILITY GATE: the table top is authored completely bare so L110 has the whole length to unroll onto. Crowd along the far sides of the table. Seeds the `miniscribe-boardroom` plate (L71). [Q-01]"
+      },
+      {
+        "id": "L110",
+        "duration_s": 2.1,
+        "synthetic": false,
+        "vo_ref": "came up with a brilliant plan.",
+        "place": "miniscribe-boardroom",
+        "stage": "plan-room",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ a long roll of butcher paper now unrolled the full length of the table beneath the ring of heads"
+        ],
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "The same boardroom held exactly: the crowd of managers bent in over the table's middle from both far sides with their heads drawn together into one tight ring, the pendant shades above, the shut door at the far end, the plaster walls carrying nothing. Only this changes: a long roll of butcher paper now runs unrolled the full length of the table beneath them, drawn over end to end with thick hand-drawn boxes and arrows and standing entirely unlettered; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "'A brilliant plan' shown as what it actually was - a roll of butcher paper covered in boxes and arrows that nobody would put a name to. Authored unlettered throughout: the script supplies no wording for any of it. One change, quantified across the whole length of the table."
+      },
+      {
+        "id": "L111",
+        "duration_s": 2.1,
+        "synthetic": false,
+        "vo_ref": "They rented a warehouse near headquarters,",
+        "place": "brick-warehouse",
+        "stage": "rented-shell",
+        "stage_role": "base",
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "The rented warehouse in flat daylight with its roller door run right up: bare grey concrete running back into the dark, empty steel shelving down the right wall, high dusty windows, and every wall face standing completely blank and unlettered. A crowd of managers in shirtsleeves stands out on the apron beyond the open doorway looking in, one flat hand truck parked beside them. Through that doorway, across a scrubby lot, the plant's own long roofline and its shipping door stand close enough to walk to. Framing: wide static from inside the empty floor, the bright doorway central and the dark room in the foreground. Palette: cold concrete grey, hard daylight white, brown board, pale sky.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The place comes back empty and in daylight, which is what 'they rented a warehouse' means before anything is in it - and the plant standing in plain view through the door is the 'near headquarters' half of the line. Seeds the `brick-warehouse` plate (L03); that plate's `owner_ambiguity` still reads, because nothing is drawn on any wall. Crowd through the doorway, a positive rear zone. [F-06]"
+      },
+      {
+        "id": "L112",
+        "duration_s": 2.0,
+        "synthetic": false,
+        "vo_ref": "and went shopping at a local",
+        "shot_class": "idiom-pun",
+        "source": "ai-gen",
+        "still_prompt": "A builders' merchant counter seen from the buyer's side, a plain scrubbed timber top running the width of the frame with one wire shopping basket sitting on it and a folded blank order form standing up in the basket. Behind the counter a crowd of yard hands works the far side of it, loading a flat steel trolley off a rack of banded materials, and every board and rail on the back wall stands blank and unlettered. Framing: medium straight on at counter height, the basket near and central with the working far side beyond it. Palette: scrubbed timber, galvanised wire, buff card, cold daylight.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "'Went shopping' drawn as literal shopping - a wire basket on a trade counter - which is the joke the line is making about a corporate fraud. Deliberately unbranded: the VO has not yet named the company, and an image never runs ahead of the narration (disclosure order), so the yard's own plate lands on the very next cut, where the script names it. No `place` declared - the counter is a one-frame world. Crowd on the far side of the counter. [F-07]"
+      },
+      {
+        "id": "L113",
+        "duration_s": 2.3,
+        "synthetic": false,
+        "vo_ref": "the Colorado Brick Company.",
+        "place": "brick-company-yard",
+        "place_owner": "COLORADO BRICK",
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "A brick company's open yard on a flat plain, cast-free. Long ranks of red clay bricks stand banded into shoulder-high stacks running away in rows toward a low open-fronted drying shed, a yard crane on rails stands over the nearest rank, a flat steel trolley waits empty in the roadway between two stacks, and the ground is packed red dust. Framing: wide static at eye level down the roadway, the stacks filling the lower two-thirds under a wide pale sky. Palette: brick red, packed red dust, weathered grey timber, pale sky. A broad plank board over the yard gate stage-left carries 'COLORADO BRICK'.",
+        "notes": "PLATE of the new place `brick-company-yard` - cast-free, no chain parent, and the frame every later yard shot seeds. Ownership is recorded as a DRAWN cue rather than as ambiguity because this is the one business in the story the script names out loud and puts a transaction through ('they went shopping at a local company: the Colorado Brick Company'), so a board over its own gate is read off the script, not invented. Two words, inside the caps, in the final clause. [F-07]"
+      },
+      {
+        "id": "L114",
+        "duration_s": 2.7,
+        "synthetic": false,
+        "vo_ref": "They bought 26,000 bricks,",
+        "place": "brick-company-yard",
+        "stage": "yard-load",
+        "stage_role": "base",
+        "shot_class": "crowd-multiplication",
+        "source": "ai-gen",
+        "still_prompt": "The yard's loading roadway from ground level: a crowd of yard hands works the far side of the roadway lifting banded courses of red clay bricks off the ranks and setting them onto three flat steel trolleys drawn up nose to tail, with the drying shed standing beyond them and the crane slewed over the nearest rank. The ground is packed red dust and the sky above stands wide and pale. Framing: wide static low down the roadway, the loaded trolleys running away stage-right. Palette: brick red, packed red dust, weathered grey timber, drained shirt white. A weighbridge ticket board propped at the roadway's edge carries '26,000'.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Scale as argument: the count is a crowd of people moving stock all day, not a caption. Authored in a non-exempt class deliberately so the beat keeps its SET - a number-glued-to-object frame would have had to drop `place` and re-invent the yard (shots-schema section 2's sanctioned swap). Seeds the yard plate (L113); the gate board is out of this frame, so the place's owner literal is not redrawn and there is nothing to carry. '26,000' is the script's own brick count, in the final clause. Crowd on the far side of the roadway. [F-05, F-07]"
+      },
+      {
+        "id": "L115",
+        "duration_s": 1.9,
+        "synthetic": false,
+        "vo_ref": "handpicked to match the weight and",
+        "place": "brick-company-yard",
+        "stage": "handpicked",
+        "stage_role": "base",
+        "shot_class": "crowd-multiplication",
+        "source": "ai-gen",
+        "still_prompt": "A long trestle set up beside the nearest rank of bricks in the yard, its top lined end to end with open brown cartons and the carton at the near end standing open and completely empty. A crowd of yard hands works the far side of the trestle lifting bricks one at a time off the rank, weighing each in the hand and setting the chosen ones down into the open cartons, with the passed-over bricks stacked apart in a low heap on the ground at the trestle's foot. Framing: medium-wide at trestle height, the line of open cartons running away stage-left with the rank and the drying shed behind. Palette: brick red, brown board, packed red dust, weathered grey timber.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Handpicking staged as the labour it actually was - a line of people sorting by hand with a reject heap growing at their feet. FEASIBILITY GATE for the chain's one delta: the near-end carton is authored open and empty so L116 has somewhere to put the pattern drive. Seeds the yard plate (L113). Crowd on the far side of the trestle. [F-07]"
+      },
+      {
+        "id": "L116",
+        "duration_s": 1.9,
+        "synthetic": false,
+        "vo_ref": "real boxed hard drive.",
+        "place": "brick-company-yard",
+        "stage": "handpicked",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ one genuine beige hard drive lying in the open carton at the near end of the line"
+        ],
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "The same trestle held exactly: the line of open brown cartons running away along its top, the crowd of yard hands working the far side of it lifting bricks off the rank and setting the chosen ones down, the reject heap at the trestle's foot, the rank and the drying shed behind. Only this changes: one genuine beige hard drive now lies in the open carton at the near end of the line, filling that box exactly the way the bricks fill theirs; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The pattern the picks are matched against, placed in the frame where the picking is happening so the comparison is physical rather than asserted. One change, into a carton the parent authored empty. [F-07]"
+      },
+      {
+        "id": "L117",
+        "duration_s": 1.7,
+        "synthetic": false,
+        "vo_ref": "They put the bricks in boxes,",
+        "place": "brick-warehouse",
+        "stage": "pallet-build",
+        "stage_role": "base",
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "The rented warehouse at night under its work lamp, the roller door shut at the rear and the empty shelving down the right wall. A long packing trestle runs across the lit floor with open brown cartons ranked along it, every one of them standing open with its end face clear, and a crowd of packers works the far side of the trestle laying one red clay brick down into each carton off a barrow at the trestle's end. Two part-built pallets of closed cartons stand behind them. Framing: medium-wide at trestle height, the open cartons running away stage-right through the lamp pool. Palette: cold concrete grey, warm lamp amber, brick red, brown board.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Seeds the `brick-warehouse` plate (L03). FEASIBILITY GATE sized to the chain's one delta: every carton on the trestle is authored open with its end face clear, so L118 only has to wire a ticket onto each. Figure bias: the VO narrates packing, which people do. Crowd on the far side of the trestle. [F-05, F-07]"
+      },
+      {
+        "id": "L118",
+        "duration_s": 1.7,
+        "synthetic": false,
+        "vo_ref": "gave each one a serial number,",
+        "place": "brick-warehouse",
+        "stage": "pallet-build",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ a small buff ticket wired to the end face of every carton along the trestle"
+        ],
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "The same lamp-lit warehouse held exactly: the long packing trestle with its ranked open brown cartons, the crowd of packers working the far side of it off the barrow of bricks, the two part-built pallets behind, the shut roller door and empty shelving beyond. Only this changes: a small buff ticket is now wired to the end face of every carton along the trestle, each ticket carrying its own short run of small hand-inked marks, none of them legible at this distance; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Serialisation as a physical act - a wired ticket on every box - with the value authored as an illegible inked run because the script supplies none (supplied-text law, resolution 3). Completion state quantified across every carton on the trestle. [F-05]"
+      },
+      {
+        "id": "L119",
+        "duration_s": 2.3,
+        "synthetic": false,
+        "vo_ref": "because hard drives have serial numbers,",
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "A drive maker's finishing bench with one genuine beige drive lying squared up on the mat under a bench lamp and a small buff ticket wired to its case - the same buff card, the same wire, the same short hand-inked run as the ones on the cartons. A crowd of assemblers works the far side of the bench with trays of small parts ranked between them. Framing: medium at bench height, the drive near and central under its own lamp. Palette: beige, steel grey, buff card, warm bench lamp amber.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The counterpoint that makes the whole fraud work: the real product carries exactly the artefact the fake one was given, so the artefact proves nothing. No `place` declared - this is a one-frame bench world, and declaring the plant here would break the contiguity of the warehouse chain either side of it. Crowd on the far side of the bench. [F-07]"
+      },
+      {
+        "id": "L120",
+        "duration_s": 2.5,
+        "synthetic": false,
+        "vo_ref": "and shrink wrapped them onto pallets,",
+        "place": "brick-warehouse",
+        "stage": "wrap-line",
+        "stage_role": "base",
+        "shot_class": "crowd-multiplication",
+        "source": "ai-gen",
+        "still_prompt": "The warehouse floor at night with three pallets built shoulder-high in ticketed brown cartons standing in the lamp pool and two more stacks still loose on the concrete beside them. A crowd of packers works the far side of the near pallet drawing clear film round it course by course off a hand roll, the film already run tight round its lower half and the whole of its top standing bare. The roller door is shut at the rear and the empty shelving lines the right wall. Framing: wide static from floor level, the half-wrapped pallet near and stage-left with the loose stacks stage-right. Palette: cold concrete grey, warm lamp amber, brown board, pale film white.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Seeds the `brick-warehouse` plate (L03). FEASIBILITY GATE sized to the chain's one delta: two stacks are authored still loose and the near pallet only half wrapped, so L121 has something left to finish. Crowd on the far side of the pallet. [F-05]"
+      },
+      {
+        "id": "L121",
+        "duration_s": 1.5,
+        "synthetic": false,
+        "vo_ref": "premium Colorado clay sitting on the",
+        "place": "brick-warehouse",
+        "stage": "wrap-line",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ every pallet on the floor now standing wrapped clear to the top and strapped, with no loose carton left on the concrete"
+        ],
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "The same lamp-lit warehouse held exactly: the pallets of ticketed brown cartons in the lamp pool, the crowd of packers on the far side of the near pallet with the film roll, the shut roller door and the empty shelving beyond. Only this changes: every pallet on the floor now stands wrapped clear to the top and strapped, and no loose carton remains anywhere on the concrete; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The euphemism gets the ironic counterpoint: what the books will call premium Colorado clay is a finished, strapped, entirely ordinary-looking pallet. One change, with the completion state quantified both ways - every pallet wrapped, no carton left loose."
+      },
+      {
+        "id": "L122",
+        "duration_s": 2.0,
+        "synthetic": false,
+        "vo_ref": "books as inventory.",
+        "place": "brick-warehouse",
+        "stage": "on-the-books",
+        "stage_role": "base",
+        "shot_class": "diegetic-device",
+        "source": "ai-gen",
+        "still_prompt": "A heavy bound inventory ledger stands propped open on a crate in the warehouse's lamp pool with its ruled columns standing blank and unlettered, squared up level with the wrapped pallets it claims. The wrapped and strapped pallets run away behind it into the dark toward the shut roller door, and a crowd of packers stands at the far side of the last pallet with the film roll down at their sides. Framing: medium-low from floor level, the open ledger near and stage-right with the pallet run receding stage-left. Palette: buff ledger card, cold concrete grey, warm lamp amber, brown board.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The thesis of the whole video in one frame - the book and the thing the book claims, side by side, and the thing is bricks. Columns authored blank throughout: the script supplies no inventory value and one would be fabricated. Seeds the `brick-warehouse` plate (L03). Crowd on the far side of the last pallet. [F-06, F-07]"
+      },
+      {
+        "id": "L123",
+        "duration_s": 2.1,
+        "synthetic": false,
+        "vo_ref": "Perfectly indistinguishable.",
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "Two sealed brown cartons stand side by side on a plain inspection bench under one lamp, identical in size, in board colour, in tape run and in the small buff ticket wired to each end face, with nothing on either of them to tell one from the other. A crowd of packers works the far side of the bench without looking up. Framing: medium straight on at bench height, the two cartons filling the middle of the frame at exactly equal scale. Palette: brown board, buff card, warm lamp amber, drained shirt white.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The claim tested by putting the two boxes at identical scale in one frame and giving the viewer nothing to choose between - the composition carries the meaning, so no string is authored and none can garble. Crowd on the far side of the bench. [F-07]"
+      },
+      {
+        "id": "L124",
+        "duration_s": 1.6,
+        "synthetic": false,
+        "vo_ref": "My Peloton bike is a scam,",
+        "shot_class": "reaction-shot",
+        "source": "ai-gen",
+        "still_prompt": "A stationary exercise bike standing alone in the corner of an ordinary flat, a bath towel and a winter coat hung over its handlebars and a thin film of dust across its frame, its display panel dark and every panel and rail on it standing blank and unlettered. A skirting board, a radiator and a stretch of plain carpet close the corner behind it. Framing: medium-wide straight on, the bike centred and small in a plain corner with air all round it. Palette: charcoal enamel, drained carpet beige, cream plaster, flat daylight.",
+        "notes": "The narrator's aside gets a deadpan cutaway to a mundane object, which is where this channel's grammar puts one. Deliberately unbranded - no maker's name is drawn anywhere, and the joke is the coat on the handlebars. Figure bias: absence EARNED - the subject is an object nobody is using, which is the gag."
+      },
+      {
+        "id": "L125",
+        "duration_s": 2.4,
+        "synthetic": false,
+        "vo_ref": "these guys? Next level.",
+        "place": "brick-warehouse",
+        "stage": "next-level",
+        "stage_role": "base",
+        "shot_class": "idiom-pun",
+        "source": "ai-gen",
+        "still_prompt": "The warehouse floor at night from low down, the wrapped pallets now stacked two high right across the floor in a solid block that runs back past the lamp into the dark. A forklift stands at the near stack with its mast run right up holding one more wrapped pallet above the top level, and a crowd of packers works the far side of the block guiding it in. The roller door is shut at the rear. Framing: low wide angle looking up the face of the stacked block, the raised pallet high and central against the roof. Palette: cold concrete grey, warm lamp amber, brown board, charcoal shadow.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The idiom drawn: 'next level' is a literal second tier going on. Seeds the `brick-warehouse` plate (L03). Crowd on the far side of the block. [F-05]"
+      },
+      {
+        "id": "L126",
+        "duration_s": 2.8,
+        "synthetic": false,
+        "vo_ref": "This was Ocean's Eleven level stuff.",
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "The same green baize card table under its one hard spotlight in the dark room, the canvas tool roll opened flat across it and now filled pocket by pocket - a stubby Allen key, a straightened paper clip, a hand roll of clear film, a spool of buff tickets, a reel of wire and a banding strap - with one red clay brick standing on end at the middle of the roll where the prize would sit. Framing: medium-wide from slightly above, the table centred in its pool of light with the dark room falling away all round it. Palette: baize green, charcoal dark, dull steel, brick red, hard white spotlight.",
+        "notes": "Callback that completes L099's joke on the same table under the same light: the kit is full now, and the loot in the middle of it is a brick. A generic caper archetype, never a named film's staging (originality moat). Figure bias: absence EARNED - the frame is a punchline about objects, held 2.8s between two peopled ones. [F-07]"
+      },
+      {
+        "id": "L127",
+        "duration_s": 1.9,
+        "synthetic": false,
+        "vo_ref": "Then they shipped it, because a",
+        "place": "brick-warehouse",
+        "stage": "ship-out",
+        "stage_role": "base",
+        "shot_class": "crowd-multiplication",
+        "source": "ai-gen",
+        "still_prompt": "The warehouse roller door run right up onto a night apron with a flatbed truck backed square to the opening, its bed already carrying two wrapped pallets. A crowd of packers works the far side of the loading gap running a third wrapped pallet out on a pallet truck, and the work lamp inside throws their shadows out across the apron. Framing: wide static from inside the floor looking out through the open door, the truck bed central and the lit floor in the foreground. Palette: cold concrete grey, warm lamp amber, night blue, brown board.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Seeds the `brick-warehouse` plate (L03). Figure bias: shipping is done by people and they are in frame, on the far side of the loading gap. [F-09]"
+      },
+      {
+        "id": "L128",
+        "duration_s": 2.0,
+        "synthetic": false,
+        "vo_ref": "own warehouse isn't a sale,",
+        "place": "brick-warehouse",
+        "stage": "not-a-sale",
+        "stage_role": "base",
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "One wrapped pallet standing alone in the middle of the shut warehouse floor with the roller door down behind it and every other bay of the floor empty. A wooden crate beside the pallet carries an invoice spike with nothing on it and a cash drawer standing open and completely empty, its coin tray bare. The work lamp is off and the only light is grey daylight through the high dusty windows. Framing: wide static from floor level, the single pallet central and small with bare floor all round it. Palette: cold concrete grey, flat grey daylight, brown board, dull steel.",
+        "notes": "Ironic counterpoint on the line's own logic: the goods are there and the money is not. Authored in a non-exempt class on purpose so the beat keeps its SET - a symbolic insert would have had to drop `place` and re-invent the room (shots-schema section 2's sanctioned swap). Figure bias: absence EARNED - the emptiness IS the argument, and the frames either side are peopled. Seeds the `brick-warehouse` plate (L03). [F-09]"
+      },
+      {
+        "id": "L129",
+        "duration_s": 2.4,
+        "synthetic": false,
+        "vo_ref": "and Wiles wanted sales.",
+        "place": "wiles-office",
+        "stage": "wanted-sales",
+        "stage_role": "base",
+        "shot_class": "personified-character",
+        "source": "ai-gen",
+        "still_prompt": "`qt-wiles`, `expr-greedy`, `sit`, leans forward on the swivel chair at his walnut desk in the Los Angeles office with his hips right back in the chair and his forearms on the desk edge, turned three-quarters to camera with his face unobstructed. A wire out-tray at his elbow stands heaped over with folded shipping dockets, the black telephone lies off its cradle beside it, and the venetian blinds bar hot daylight across the carpet stage-right. Framing: medium at desk height, him stage-left and near with the heaped tray central. Palette: warm walnut, cream blind slats, hot white daylight, buff docket card.",
+        "notes": "The appetite that drives the rest of the paragraph, staged on the man rather than narrated: he is not looking at the product, he is looking at the paperwork the product produces. Seeds the `wiles-office` plate (L63). Fresh stage BASE, so the STEP-1 card carries pose and expression. Seat/support: `sit` names the chair and the contact in the same sentence. [F-02]"
+      },
+      {
+        "id": "L130",
+        "duration_s": 2.5,
+        "synthetic": false,
+        "vo_ref": "Some of the pallets went overseas",
+        "shot_class": "map-plan-view",
+        "source": "ai-gen",
+        "still_prompt": "A flat wall map of the Pacific in plain block colours, pinned at its corners and seen straight on, its coastlines drawn plain and its faces otherwise standing unlettered. One thick red arrow leaves a small brown pallet token set on the North American plate and sweeps right across the ocean to a second pallet token resting on a small island off the south-east Asian coast. Framing: the map fills the frame edge to edge, the arrow sweeping across the middle third. Palette: pale ocean blue, olive land, brown pallet tokens, the arrow the one red accent. A small card pinned beside that island token carries 'SINGAPORE'.",
+        "notes": "Place-exempt class, so no `place` is declared. Callback to L026, which drew the same routing with its destinations deliberately unlettered because the script had not yet named one; the script names Singapore in this very line, so the card is legal here and lands in the final clause. Red is semantic - the arrow IS the routing and it is the only red in frame. Figure bias: absence EARNED - the subject is territory. [F-09]"
+      },
+      {
+        "id": "L131",
+        "duration_s": 1.8,
+        "synthetic": false,
+        "vo_ref": "Others went out to customers who",
+        "shot_class": "crowd-multiplication",
+        "source": "ai-gen",
+        "still_prompt": "Four plain loading docks stand side by side in one long frontage seen head on, each with its shutter run up and one wrapped pallet standing just inside the opening, untouched. A crowd of dock hands works the far side of the frontage out on the loading roadway behind, none of them at the pallets. The apron in front is empty concrete under a flat pale sky. Framing: wide static straight on to the frontage, the four openings evenly spaced across the width. Palette: brown board, drained shutter grey, pale concrete, flat pale sky.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Crowd multiplication on a repeated unit: four docks, four identical pallets and nobody touching any of them - the arrangement drawn as stillness. No `place` declared: a one-frame customer world the file does not return to. Crowd on the far side of the frontage. [F-09]"
+      },
+      {
+        "id": "L132",
+        "duration_s": 2.4,
+        "synthetic": false,
+        "vo_ref": "advance to leave the pallets wrapped",
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "A wholesale stockroom in daylight with one wrapped pallet standing roped off in the middle of the floor behind a red cord slung between two steel stanchions, its film unbroken and its strapping untouched. A crowd of the buyer's own staff works the far side of the shelving racks beyond it, pulling and shelving ordinary stock and going nowhere near the roped pallet. Framing: medium-wide at eye level, the roped pallet central and near with the working racks behind. Palette: brown board, drained shelf steel, pale daylight, the cord the one red accent.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The agreement made visible as a prohibition: the pallet is in the building, and it is the one thing in the building nobody is allowed to open. Red is semantic - prohibition. Crowd on the far side of the racks. [F-09]"
+      },
+      {
+        "id": "L133",
+        "duration_s": 2.2,
+        "synthetic": false,
+        "vo_ref": "and mail them back a few",
+        "place": "brick-warehouse",
+        "stage": "come-home",
+        "stage_role": "base",
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "The warehouse roller door run up onto a daylight apron with a flatbed truck backed to it and its tail-lift down, two wrapped pallets riding the lift back in through the door with their film still unbroken and their strapping still run. A crowd of packers works the far side of the loading gap taking them off, and the floor behind them stands part filled with pallets that have already come back. Framing: wide static from inside the floor looking out through the open door, the tail-lift central and the returning pallets in the foreground. Palette: cold concrete grey, flat daylight white, brown board, pale sky.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The round trip closed on the same door the pallets left by, with the film still unbroken - the visible proof that nothing was ever sold. Seeds the `brick-warehouse` plate (L03). Crowd on the far side of the loading gap. [F-09]"
+      },
+      {
+        "id": "L134",
+        "duration_s": 2.7,
+        "synthetic": false,
+        "vo_ref": "Either Wiles was one charismatic guy,",
+        "place": "wiles-office",
+        "stage": "charm",
+        "stage_role": "base",
+        "shot_class": "personified-character",
+        "source": "ai-gen",
+        "still_prompt": "`qt-wiles`, `expr-delighted`, `action-present`, stands square to the camera with his face unobstructed in the middle of the Los Angeles office, both arms opened out over the desk toward a wire tray of folded shipping dockets, the venetian blinds barring hot daylight across the carpet stage-right behind him and the shut plain-glassed door in the background wall. A low filing cabinet with a fern on it closes the wall stage-left. Framing: medium-wide at standing height, him centred and near with the desk across the lower foreground. Palette: warm walnut, cream blind slats, hot white daylight, olive carpet.",
+        "notes": "The first of the line's two explanations, staged as the sell: the man at his warmest, presenting nothing but paperwork. Seeds the `wiles-office` plate (L63). Fresh stage BASE, so the STEP-1 card carries pose and expression - and the register dial's warm face is spent here, on the one beat in the fifth that is a sell. [F-02]"
+      },
+      {
+        "id": "L135",
+        "duration_s": 2.8,
+        "synthetic": false,
+        "vo_ref": "or there was money changing hands",
+        "shot_class": "idiom-pun",
+        "source": "ai-gen",
+        "still_prompt": "A long meeting table seen from the side at floor level so the whole underside of it stands open to camera, with a crowd of dark-suited figures seated along the far side of the table, every hand up on the table top and every folder shut in front of them. Down in the shadow under the table's middle a banded brick of notes stands on the carpet halfway between two pairs of feet. Framing: low wide angle from floor height, the table edge running across the upper third and the banded notes small and central in the shadow beneath it. Palette: dark table timber, charcoal suiting, olive carpet, banknote green.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The idiom drawn exactly as the script hedges it: everything above the table is proper, nobody is named, and the money is simply a thing on the floor. The script says the payment is a possibility, so the frame asserts no giver and no taker - no named cast, and the policy line on depicting real people is not crossed. Crowd on the far side of the table. [F-09]"
+      },
+      {
+        "id": "L136",
+        "duration_s": 3.0,
+        "synthetic": false,
+        "vo_ref": "Either way, the same bricks counted",
+        "shot_class": "map-plan-view",
+        "source": "ai-gen",
+        "still_prompt": "A flat plan view seen straight down on a plain field: one warehouse token drawn at the centre, a customer dock token out to its right, and a single thick red arrow running from the warehouse out to the dock and curving straight back round to the warehouse again in one closed loop. A small brown pallet token sits on the outward leg of that loop and an identical one sits on the return leg, so the same pallet stands twice on one circle. The field the loop is drawn on stands plain and unlettered. Framing: the plan fills the frame edge to edge, the loop centred and open in the middle. Palette: pale plan cream, olive land blocks, brown pallet tokens, the loop the one red accent.",
+        "notes": "The skeleton's designated mid-video re-arm: the whole scheme reduced to one closed circle a viewer reads in a second, with the same pallet visibly on the circle twice. Place-exempt class, no `place` declared. Red is semantic - the loop IS the mechanism. Figure bias: absence EARNED - the subject is a route. [F-09]"
+      },
+      {
+        "id": "L137",
+        "duration_s": 3.0,
+        "synthetic": false,
+        "vo_ref": "came home, and got counted as",
+        "place": "brick-warehouse",
+        "stage": "counted-twice",
+        "stage_role": "base",
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "The returned pallet standing back in its own place on the warehouse floor with its film unbroken, and the heavy bound inventory ledger propped open on the crate beside it again, its ruled columns standing blank and unlettered. Another dozen returned pallets run away behind it toward the shut roller door, and a crowd of packers works the far side of that run squaring them up. Framing: medium-wide from floor level, the pallet and the open ledger together near and stage-right with the run receding stage-left. Palette: buff ledger card, cold concrete grey, brown board, flat grey daylight.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Deliberate rhyme with L122 - the same pallet, the same crate, the same open ledger - so the second count of the same object reads as the repeat it is. Columns blank throughout. Seeds the `brick-warehouse` plate (L03). Crowd on the far side of the run. [F-09]"
+      },
+      {
+        "id": "L138",
+        "duration_s": 2.5,
+        "synthetic": false,
+        "vo_ref": "So how does a warehouse full",
+        "place": "brick-warehouse",
+        "stage": "full-house",
+        "stage_role": "base",
+        "shot_class": "literal",
+        "source": "ai-gen",
+        "still_prompt": "The rented warehouse packed out, wide static from floor level: wrapped pallets stacked two high in solid ranks from the near foreground right back to the shut roller door and out to both side walls, leaving one narrow aisle down the middle. A crowd of accountants in overcoats stands at the far side of the nearest rank just inside the personnel door with document cases under their arms, looking down the aisle. Every wall face and every pallet wrap stands blank and unlettered. Framing: wide one-point view down the narrow aisle, the ranks filling both sides of the frame up to the roof. Palette: cold concrete grey, brown board, dark overcoat, flat grey daylight.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The question the paragraph asks, staged as the scale of it: a room with more boxes in it than anybody could ever open. Seeds the `brick-warehouse` plate (L03), and that plate's `owner_ambiguity` still reads - there is nothing on any wall. Crowd on the far side of the nearest rank. [F-06, F-11]"
+      },
+      {
+        "id": "L139",
+        "duration_s": 2.6,
+        "synthetic": false,
+        "vo_ref": "Well, MiniScribe's outside accounting firm was",
+        "place": "brick-warehouse",
+        "stage": "firm-arrives",
+        "stage_role": "base",
+        "shot_class": "personified-character",
+        "source": "ai-gen",
+        "still_prompt": "`auditor-rep`, `expr-deadpan`, `hold-paper-by-sides`, stands square to the camera with his face unobstructed just inside the warehouse's personnel door, holding an audit programme up in front of him with its ruled sheet standing blank and unlettered. A stacked pair of steel deed boxes stands on the concrete at his feet and the ranked wrapped pallets rise behind him to the roof, the narrow aisle running away stage-right. Framing: medium at chest height, him stage-left and near with the pallet ranks filling the rest of the frame. Palette: dark overcoat, buff sheet card, cold concrete grey, brown board.",
+        "notes": "The firm personified at the door of the thing it is about to certify. Fresh stage BASE for his appearance on this set; the STEP-1 card is shared with act 2's L086, so this frame costs no new figure gen. Seeds the `brick-warehouse` plate (L03). [F-11]"
+      },
+      {
+        "id": "L140",
+        "duration_s": 2.9,
+        "synthetic": false,
+        "vo_ref": "Coopers & Lybrand, one of the",
+        "shot_class": "crowd-multiplication",
+        "source": "ai-gen",
+        "still_prompt": "An enormous open-plan accounting floor seen from its doorway, desk after identical desk in ruled rows running away past the columns and out of frame both ways, every one of them worked by the crowd on the far side of a low glazed partition that runs across the near end. Green-shaded lamps hang in a grid above the desks and the ceiling runs on out of sight. Framing: wide one-point view down the rows from the doorway, the rows converging hard at the far end. Palette: dark desk timber, green lamp shades, drained shirt white, cold ceiling light.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "'One of the giants' carried by scale and repetition rather than by a lettered nameplate: the composition says it, so no string is authored and none can garble (shots-schema section 4). No `place` declared - a one-frame world. Crowd on the far side of the glazed partition, a positive rear zone. [F-11]"
+      },
+      {
+        "id": "L141",
+        "duration_s": 2.6,
+        "synthetic": false,
+        "vo_ref": "and nobody there is opening all",
+        "place": "brick-warehouse",
+        "stage": "walk-past",
+        "stage_role": "base",
+        "shot_class": "ironic-counterpoint",
+        "source": "ai-gen",
+        "still_prompt": "The narrow aisle between the pallet ranks with a crowd of accountants walking down it in single file on the far side of the nearest stack, document cases under their arms and hands clear of the stock, every carton on both sides of them standing sealed with its tape run unbroken. The ranks rise past their heads to the roof and the aisle runs on into shadow at the far end. Framing: wide one-point view down the aisle, the sealed carton faces filling both sides. Palette: brown board, dark overcoat, cold concrete grey, charcoal shadow.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The counterpoint the line makes: the one act that would have ended the whole thing is walking straight past it. Absence authored as a positive state - every carton sealed and its tape unbroken - rather than as a list of what is missing. Seeds the `brick-warehouse` plate (L03). [F-11]"
+      },
+      {
+        "id": "L142",
+        "duration_s": 2.3,
+        "synthetic": false,
+        "vo_ref": "What they do instead is called",
+        "shot_class": "register-shift-infographic",
+        "source": "ai-gen",
+        "still_prompt": "A clean flat schematic on a plain field: a rectangular grid of small identical boxes drawn in even rows and columns standing for one pallet's stack, with three of those boxes drawn pulled forward clear of the grid and set down in a line below it and a small tick beside each of the three. The rest of the grid stands closed and the whole field stands unlettered. Framing: the schematic fills the frame edge to edge, the grid across the upper two-thirds and the three pulled boxes across the lower third. Palette: pale field cream, brown box blocks, dull steel tick marks.",
+        "notes": "The one register shift in the fifth, spent where the line explicitly announces a procedure by name - this channel keeps explainer devices to flavour (visual-grammar section 4). Place-exempt class, no `place` declared. Nothing lettered: the mechanism is legible from the geometry alone. Figure bias: absence EARNED - the subject is a procedure. [F-11]"
+      },
+      {
+        "id": "L143",
+        "duration_s": 2.0,
+        "synthetic": false,
+        "vo_ref": "They pull a sample, count it,",
+        "place": "brick-warehouse",
+        "stage": "test-count",
+        "stage_role": "base",
+        "shot_class": "staged-interaction",
+        "source": "ai-gen",
+        "still_prompt": "`auditor-rep`, `expr-deadpan`, `hold-paper-by-sides`, and `brick-foreman`, `expr-worried`, stand on the same plane at a trestle in the warehouse aisle at a matching eye line, facing each other in profile with nothing crossing either face and `auditor-rep` dominant in the frame. Three sealed brown cartons stand on the trestle between them, lifted down off the nearest pallet, whose film is cut back at one corner and hangs loose; the rest of the trestle top stands clear. A crowd of counters works the far side of that pallet rank behind them. Framing: medium-wide two-shot at trestle height with the pallet ranks filling the background. Palette: brown board, buff sheet card, cold concrete grey, dark overcoat.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Fresh two-cast shot, so it is authored as a stage BASE per the cast-cap table; plane, eye line and relative head scale are all stated (presence law). No `interaction` slug - the beat is a standoff across a trestle, not contact, and the free slot is left unspent. Both STEP-1 cards are shared with act 2's L086, so this two-cast frame costs no new figure gen. FEASIBILITY GATE for the chain's one delta: the rest of the trestle top is authored clear so L144 has somewhere to lay the sheet. Crowd on the far side of the rank. [F-11, F-12]"
+      },
+      {
+        "id": "L144",
+        "duration_s": 1.8,
+        "synthetic": false,
+        "vo_ref": "sample matches the paperwork,",
+        "place": "brick-warehouse",
+        "stage": "test-count",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ a buff count sheet now lying squared up on the clear trestle top beside the three cartons"
+        ],
+        "shot_class": "staged-interaction",
+        "source": "ai-gen",
+        "still_prompt": "The same trestle held exactly: `auditor-rep`, `expr-deadpan`, `hold-paper-by-sides`, and `brick-foreman`, `expr-worried`, on the same plane at a matching eye line, facing each other in profile with nothing crossing either face and `auditor-rep` dominant in the frame, the three sealed cartons standing on the trestle between them, the cut-back film hanging at the pallet corner, the crowd of counters on the far side of the rank behind. Only this changes: a buff count sheet now lies squared up on the clear trestle top beside the three cartons, its ruled column standing blank and unlettered; everything else exactly as established.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The match the whole procedure turns on, landing as one object on a surface the parent reserved. Both held figures keep the pose and expression their bases seeded, so the delta slate stays [parent + both canonicals] with nothing changed by prose alone. [F-11]"
+      },
+      {
+        "id": "L145",
+        "duration_s": 2.3,
+        "synthetic": false,
+        "vo_ref": "everything else in the building gets",
+        "place": "brick-warehouse",
+        "stage": "whole-building",
+        "stage_role": "base",
+        "shot_class": "crowd-multiplication",
+        "source": "ai-gen",
+        "still_prompt": "The whole warehouse floor from up at the head of the aisle, the three sample cartons and their trestle small and alone in the near foreground and rank after rank of untouched wrapped pallets running away behind them to the shut roller door and out to both walls. A crowd of accountants files away from the trestle toward the personnel door on the far side of the nearest rank with document cases under their arms. Framing: wide one-point view from the head of the aisle, the trestle low and central with the ranks filling the rest of the frame. Palette: brown board, cold concrete grey, dark overcoat, flat grey daylight.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "Scale as argument: three boxes carry a building, and the frame puts the three and the building in one shot so the size of the pass is the picture. Seeds the `brick-warehouse` plate (L03). Crowd on the far side of the nearest rank. [F-11]"
+      },
+      {
+        "id": "L146",
+        "duration_s": 1.7,
+        "synthetic": false,
+        "vo_ref": "It's the TSA.",
+        "shot_class": "idiom-pun",
+        "source": "ai-gen",
+        "still_prompt": "An airport screening line seen head on: a plain steel roller conveyor running through a square scanner arch with one wrapped pallet of brown cartons riding the belt through the arch on its side, and a crowd of travellers queued behind a webbing barrier on the far side of the conveyor with their bags at their feet. The hall behind is plain tiled wall and every board and rail in it stands blank and unlettered. Framing: medium-wide straight on to the arch, the pallet central and mid-way through it. Palette: drained steel grey, brown board, tiled cream, flat hall light.",
+        "figures": {
+          "crowd": true
+        },
+        "notes": "The comparison drawn literally, which is the joke: the mechanism really is the same mechanism, so the frame simply puts the pallet in the machine. Evergreen and unbranded - no agency, airline or maker's marks are drawn. Crowd on the far side of the conveyor."
+      },
+      {
+        "id": "L147",
+        "duration_s": 2.7,
+        "synthetic": false,
+        "vo_ref": "And a box with a brick",
+        "stage": "same-weight",
+        "stage_role": "base",
+        "shot_class": "physicalized-imbalance",
+        "source": "ai-gen",
+        "still_prompt": "A heavy two-pan beam balance standing on a plain trestle in a bare room, one sealed brown carton set square on its left pan and driving that pan right down onto its stop, the right pan standing empty and riding high at the top of its travel. The trestle top stands clear and the wall behind is plain plaster. Framing: medium straight on at pan height, the balance filling the width with the two pans at opposite ends of their travel. Palette: dull brass, brown board, cream plaster, cold flat light.",
+        "notes": "Place-exempt class, so no `place` is declared. FEASIBILITY GATE for the chain's one delta: the right pan is authored empty and high, so L148 only has to set the second carton on it. Figure bias: absence EARNED - the argument is a physical equivalence between two objects, and a body in frame would only compete with it. [F-07]"
+      },
+      {
+        "id": "L148",
+        "duration_s": 2.4,
+        "synthetic": false,
+        "vo_ref": "box with a hard drive in",
+        "stage": "same-weight",
+        "stage_role": "delta",
+        "changed_elements": [
+          "+ a second identical sealed carton now standing square on the right pan, the beam settled dead level"
+        ],
+        "shot_class": "physicalized-imbalance",
+        "source": "ai-gen",
+        "still_prompt": "The same balance held exactly: the beam balance on its plain trestle in the bare room with the first sealed brown carton square on the left pan and the plain plaster wall behind. Only this changes: a second identical sealed carton now stands square on the right pan and the beam has settled dead level, both pans standing at exactly the same height; everything else exactly as established.",
+        "notes": "Closes the fifth on the line's own punchline: the two boxes are indistinguishable on the one measurement the audit could actually make. Chain closes at one delta. As the last shot of the authored range its lint span tiles to the end of the script until fifth 4 lands, which is the standard partial-coverage artifact. [F-07]"
       }
     ]
   },
