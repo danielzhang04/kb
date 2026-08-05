@@ -13,8 +13,13 @@ Reported; not spent against — $0.**
 (worktree detached at the same commit `89c720e`, unchanged). Repeat dry-run confirmed one voice.
 Paid calls fired dependency-ordered.** Provider returned sustained HTTP 503 ("high demand") across
 most attempts — **1 of 5 items generated (L28, $0.134); the other 4 exhausted their one allowed
-re-issue at $0 each and were not generated.** Total actual spend: **$0.134**. See §7 for the full
-call ledger and §8 for what remains.
+re-issue at $0 each and were not generated.** Total actual spend after Part 2: **$0.134**. See §7
+for the full call ledger and §8 for what remained.
+
+**PART 3 (§9 below): boss-authorized provider-recovery round, ~25 min after the 503 wall.** Canary
+call on the STEP-1 card (per the established lane pattern — one probe call, no burned re-issue if
+the provider is still down) returned HTTP 503 again, no image. **Round stopped immediately per
+instruction; L29/L35/L34 not attempted.** Spend unchanged: **$0.134 total to date.**
 
 ## 0. Pre-flight — quarantine check ($0)
 
@@ -243,3 +248,25 @@ Supporting evidence on disk, this directory: `probe-slate.json` (full 55-item wh
 `probe-items.json` (the 5 selected items, seed-ordered), `probe-item-<id>.json` (single-item batch
 files used for the controlled live calls), `probe-dryrun-output.txt` (pre-fix dry-run),
 `probe-dryrun-output-2.txt` (post-fix dry-run, confirmed one voice).
+
+## 9. Part 3 — boss-authorized provider-recovery round (~25 min after the 503 wall)
+
+Instruction (coordinator): fire the STEP-1 card first as a **canary** — one probe call, no burned
+re-issue — because the established lane pattern treats a still-down provider as a wait-longer
+condition, not a re-issue target. If the canary returns 503 with no image: log $0, stop the round
+immediately, do not attempt L29/L35/L34, report. If it succeeds: proceed L29 → L35 → L34 in order,
+same spend law as Part 2 (one re-issue per mechanical no-image failure from there).
+
+| # | request | attempt | result | price | SHA-256 |
+|---|---------|---------|--------|-------|---------|
+| canary | **fig-miniscribe-rep--action-powerstance--expr-deadpan** (STEP-1) | 02:50:34–02:53:14 `HTTP 503`, no image | **CANARY FAILED — round stopped per instruction, no re-issue burned** | $0.00 | — |
+
+Round stopped immediately on the canary result, exactly as instructed. **L29, L35, L34 were not
+attempted this round.** No `--force` collisions checked/needed since nothing fired past the canary.
+
+**Spend this round: $0.00. Total probe spend to date (Parts 1–3): $0.134** — unchanged from Part 2,
+still only `L28`. `probe-board.html` is unchanged from Part 2 (still 1 generated frame + 4 pending
+status cards; the STEP-1/L29/L35/L34 cards' text already reflected "not generated" and remains
+accurate — the canary's fresh timestamp is recorded here, not duplicated onto the board). Slate
+(`probe-items.json` / `probe-item-*.json`) is untouched and still ready to fire as-is on the next
+recovery attempt.
