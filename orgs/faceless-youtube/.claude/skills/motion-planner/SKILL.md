@@ -76,6 +76,7 @@ animations). Rules: `references/animation-rules.md`. Critic: `references/critics
 
 ## What image-gen then does
 For each layered shot, image-generation materializes `plates/<id>.png` (from `plate_prompt`) + each
-`cutouts/<id>-<layer>.png` (gen the `cutout_prompt` on a plain plate → `forge cutout`), human-QC-gated on
-the hand crop. Passthrough shots keep using `scenes/<id>.png`. Then `build_motion --motion-plan` merges
+`cutouts/<id>-<layer>.png` (gen the `cutout_prompt` on a plain plate → `forge cutout`), human-QC-gated at
+**ordinary viewing scale** — `crop_battery.py` is RETIRED; no verdict depends on a hand crop (2026-08-03
+ruling). Passthrough shots keep using `scenes/<id>.png`. Then `build_motion --motion-plan` merges
 the layers into motion.json and the engine renders them (LayerView).

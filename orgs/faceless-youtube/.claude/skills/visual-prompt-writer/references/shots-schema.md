@@ -57,15 +57,18 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 - **`place` — a recurring diegetic SET identity, distinct from `stage`.** `place` names the SET
   (`miniscribe-boardroom`, `brick-co-yard`); `stage` is a continuity CHAIN *within* one place (still capped
   1 base + ≤3 deltas). A place can host many stage chains — the boardroom's fear beat, firing beat, and
-  planning beat are three `stage`s inside one `place`. **The plate of a place is the FIRST-IN-FILE shot
-  declaring that place** — one definition, decidable from the authored file alone (`lint_shots.py`'s
-  `place_groups`). **Conditional plate law (lint-enforced, HARD):** a place QUALIFIES when ≥2 shots declare
-  it, or its plate declares `place_owner`; a qualifying place's plate must declare **zero named cast and no
-  `stage_role: delta`**, because every other shot in the place seeds it and whatever it contains bleeds into
-  all of them. A place used by exactly ONE shot, with no `place_owner`, needs no plate — that single shot is
-  its own place-first frame and runs seedless, same as today. `forge.py cmd_batch` derives the same frame
-  MECHANICALLY (the slate that ended up with zero seeds is the one it marks `plate`; VPW never authors
-  `plate` itself), so lint asserts on the authoring side, at $0, the coincidence forge assumes at gen time.
+  planning beat are three `stage`s inside one `place`. **The plate of a place is the FIRST-IN-FILE GENERATED
+  shot declaring that place** (`source: ai-gen | hybrid`, absent defaults to `ai-gen`) — one definition,
+  decidable from the authored file alone (`lint_shots.py`'s `place_groups`). A stock/chart/screencap/archival
+  shot is skipped, mirroring `forge.py cmd_batch`'s own skip of non-generated shots before it ever picks a
+  plate; a place with no generated shot has no plate at all. **Conditional plate law (lint-enforced, HARD):**
+  a place QUALIFIES when ≥2 shots declare it, or its plate declares `place_owner`; a qualifying place's plate
+  must declare **zero named cast and no `stage_role: delta`**, because every other shot in the place seeds it
+  and whatever it contains bleeds into all of them. A place used by exactly ONE shot, with no `place_owner`,
+  needs no plate — that single shot is its own place-first frame and runs seedless, same as today. `forge.py
+  cmd_batch` derives the same frame MECHANICALLY (the slate that ended up with zero seeds is the one it
+  marks `plate`; VPW never authors `plate` itself), so lint asserts on the authoring side, at $0, the
+  coincidence forge assumes at gen time.
   **Place-inventory law (lint-enforced,
   HARD):** every declared `place` must anchor to a word `script.md` itself uses (`script_vocab`) — an
   invented place is the same class of error as an invented lettering literal. **Exempt (never declare

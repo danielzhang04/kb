@@ -881,7 +881,14 @@ _ANATOMY = frozenset(
     "eyelash eyelashes pupil pupils iris irises finger fingers thumb thumbs toe toes "
     "lip lips tongue chin chins neck necks wrinkle wrinkles freckle freckles "
     "detail details face faces".split())
-_SENTENCE = re.compile(r"(?<=[.;])\s+")
+# Shared sentence splitter for every "same sentence" check in this file (negation_list_check
+# below, seat_support_check's contact-phrase window). One terminator class only: `.;!?` — the
+# fuller class is the more correct one (a prompt clause can legally end on `!` or `?`, and
+# under the narrower `.;`-only class those clauses would wrongly fuse into their neighbor,
+# letting a negation or a support noun "count" across a sentence it never appeared in). Two
+# splitters with different terminator classes drifted apart before (R1-M1); this is the one
+# splitter both call sites use.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.;!?])\s+")
 
 
 def negation_list_check(label, prompts, suffix, soft):
@@ -890,7 +897,7 @@ def negation_list_check(label, prompts, suffix, soft):
     for pid, field, prompt in prompts:
         body = strip_suffix(prompt or "", suffix)
         reported = set()
-        for sent in _SENTENCE.split(body):
+        for sent in _SENTENCE_SPLIT.split(body):
             nouns = []
             for m in _NEG_NOUN.finditer(sent):
                 n = m.group(1).lower()
@@ -1206,10 +1213,20 @@ def figures_check(label, objs, hard, soft):
                         f"like {{\"crowd\": true}}.")
             continue
         unknown = [k for k in fig if k not in FIGURES_KEYS]
+        if "anon_foreground" in unknown:
+            # forge.py keeps `anon_foreground` a KNOWN key precisely so it can refuse it BY NAME
+            # (forge.py:557) instead of a bare unknown-key error — same remedy on both engines,
+            # stated identically here so lint never hands the author a second, different fix.
+            hard.append(
+                f"[{label}] {pid}: `figures.anon_foreground` is abolished — forge.py hard-rejects "
+                f"it by name (SystemExit, forge.py:557): name the figure in the video's cast "
+                f"(seeded) or stage the people at crowd scale (crowd exemplar).")
+            unknown = [k for k in unknown if k != "anon_foreground"]
         if unknown:
             hard.append(f"[{label}] {pid}: `figures` has unknown key(s) {unknown!r}. The field is "
-                        f"closed: {list(FIGURES_KEYS)!r} (shots-schema.md). forge.py ignores "
-                        f"anything else, so a misspelled key drops the rig clause silently.")
+                        f"closed: {list(FIGURES_KEYS)!r} (shots-schema.md); forge.py hard-rejects "
+                        f"anything outside its own known set too (SystemExit), so a misspelled key "
+                        f"fails loud at gen time instead of silently dropping the rig clause.")
         if "crowd" in fig:
             if not isinstance(fig["crowd"], bool):
                 hard.append(f"[{label}] {pid}: `figures.crowd` is {fig['crowd']!r}, expected true "
@@ -1505,21 +1522,36 @@ def place_inventory_check(label, objs, vocab, hard):
                 f"or fold the shot into an existing declared place.")
 
 
+# Mirrors forge.py's own skip test (forge.py:1293-1297: `src = shot.get("source", "ai-gen");
+# if src not in ("ai-gen", "hybrid"): continue` — BEFORE `place_first` is ever set). A
+# stock/chart/screencap/archival shot is invisible to forge's plate math entirely; lint has to
+# skip it the same way or it can name a plate forge would never pick.
+_PLATE_ELIGIBLE_SOURCES = ("ai-gen", "hybrid")
+
+
+def _plate_eligible(sh):
+    return sh.get("source", "ai-gen") in _PLATE_ELIGIBLE_SOURCES
+
+
 def place_groups(shots):
     """THE definition of a place's plate - one definition, used by every place law here.
 
-    **The plate of a place is the FIRST-IN-FILE shot declaring that place.** Not "the
-    first no-cast shot", not "the first shot forge happens to emit": one rule, decidable
-    from the authored file alone, so lint and the author always agree about which shot
-    the plate laws are talking about.
+    **The plate of a place is the FIRST-IN-FILE GENERATED shot declaring that place** (source
+    `ai-gen`/`hybrid`/absent - absent defaults to `ai-gen`, same as forge). Not "the first
+    shot", not "the first shot forge happens to emit": one rule, decidable from the authored
+    file alone, so lint and the author always agree about which shot the plate laws are
+    talking about. A place whose shots are declared but none of them generated (pure
+    stock/chart/screencap/archival) has no plate at all - forge builds nothing for it either,
+    so no plate law applies.
 
     A place QUALIFIES for the plate law when >=2 shots declare it, or when its plate
     declares `place_owner` (C-4's conditional plate law: a single-use, unbranded place is
     its own place-first frame, runs seedless, and needs no plate demanded of it).
 
     Forge's plate is the MECHANICAL mirror of this one: `forge.py cmd_batch` marks the
-    slate that ended up with zero seeds (`plate = not seeds`). The two coincide only when
-    the AUTHORING is right - the place's first shot has to be the one with no cast to
+    slate that ended up with zero seeds (`plate = not seeds`), after skipping non-generated
+    shots the same way `_plate_eligible` does above. The two coincide only when the
+    AUTHORING is right - the place's first GENERATED shot has to be the one with no cast to
     seed - and asserting that coincidence on the authoring side, at $0, is exactly
     `place_plate_check`'s job. Lint never re-derives forge's marker and forge never
     re-checks the authoring.
@@ -1532,7 +1564,9 @@ def place_groups(shots):
             groups.setdefault(place, []).append(sh)
     out = []
     for place, grp in groups.items():
-        plate = grp[0]
+        plate = next((sh for sh in grp if _plate_eligible(sh)), None)
+        if plate is None:
+            continue          # nothing generated for this place - forge builds no plate either
         qualifying = len(grp) >= 2 or "place_owner" in plate
         out.append((place, plate, grp, qualifying))
     return out
@@ -1674,7 +1708,7 @@ def bool_field_check(label, objs, field, hard):
 
 # --- C-8: two-cast presence, action-chain, semantic-cast (narrow) -------------
 _BACKTICK = re.compile(r"`([^`]+)`")
-_SENTENCE_SPLIT = re.compile(r"(?<=[.;!?])\s+")
+# _SENTENCE_SPLIT is defined once, near negation_list_check above — shared by both checks.
 
 # The registry vocabulary token for the seated POSE PRIMITIVE (kind: pose, name:
 # "sit") - copied, not imported, same precedent as SHOT_CLASSES above: widen only

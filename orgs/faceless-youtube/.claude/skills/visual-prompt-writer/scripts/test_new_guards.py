@@ -165,6 +165,16 @@ def test_g4_the_positive_form_is_silent():
                 "The stage front and the oversized phone are both left COMPLETELY BLANK.") == []
 
 
+def test_g4_splitter_terminates_on_bang_and_question_too():
+    """R1-M1: one shared splitter, terminator class `.;!?`. Each sentence below carries
+    only ONE negation; a splitter that ignores `!`/`?` (the old negation-check pattern)
+    would fuse them into one sentence and false-positive a 2-negation report."""
+    assert _run(L.negation_list_check,
+                "No prices are visible! No labels are shown either.") == []
+    assert _run(L.negation_list_check,
+                "No prices are visible? No labels are shown either.") == []
+
+
 # =========================================================================
 # GUARD 5 — shot_class closed enum (HARD)
 # =========================================================================
@@ -274,9 +284,11 @@ def test_g7_plant_crowd_wrong_type():
     assert len(hard) == 1 and "expected true" in hard[0]
 
 
-def test_g7_anon_foreground_is_an_unknown_key():
+def test_g7_anon_foreground_gets_forges_named_refusal_not_a_generic_unknown_key():
     hard, soft = _fig({"anon_foreground": ["one anonymous person"]})
-    assert len(hard) == 1 and "unknown key" in hard[0], hard
+    assert len(hard) == 1, hard
+    assert "unknown key" not in hard[0], hard
+    assert "abolished" in hard[0] and "crowd exemplar" in hard[0], hard
 
 
 def test_g7_crowd_false_is_soft_not_hard():

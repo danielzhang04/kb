@@ -264,6 +264,45 @@ def test_c4_the_plate_is_the_first_in_file_shot_of_the_place():
     assert groups["brick-co-yard"] == ("L62", ["L62"], False)   # single-use, unbranded
 
 
+def test_c4_new_seam_the_plate_skips_a_non_generated_first_shot():
+    """New seam (2026-08-04): forge.py:1293-1297 skips any shot whose `source` is outside
+    ai-gen|hybrid BEFORE `place_first` is ever set, so a place whose first-in-file shot is
+    `stock`/`chart`/etc is invisible to forge's plate math. Lint's plate must be the first-in-
+    file GENERATED shot, mirroring that skip exactly - not merely the first-in-file shot."""
+    shots = [
+        {"id": "L59", "place": "miniscribe-boardroom", "source": "stock",
+         "still_prompt": "Stock photo of a generic boardroom."},
+        {"id": "L60", "place": "miniscribe-boardroom", "still_prompt": "The empty boardroom."},
+        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The boardroom again."},
+    ]
+    groups = {p: (plate["id"], [s["id"] for s in grp], q) for p, plate, grp, q in L.place_groups(shots)}
+    assert groups["miniscribe-boardroom"] == ("L60", ["L59", "L60", "L61"], True)
+
+
+def test_c4_new_seam_a_place_with_no_generated_shot_has_no_plate():
+    """No generated shot -> forge builds nothing for this place, so no plate law applies."""
+    shots = [
+        {"id": "L59", "place": "archive-hall", "source": "stock", "still_prompt": "Stock archive photo."},
+        {"id": "L60", "place": "archive-hall", "source": "chart", "still_prompt": "A chart overlay."},
+    ]
+    assert L.place_groups(shots) == []
+
+
+def test_c4_new_seam_a_stock_first_shot_still_lets_the_generated_plate_require_no_cast():
+    """The plate law fires on the first GENERATED shot even when a stock shot precedes it -
+    a named-cast stock frame does not exempt the real (generated) plate from C-4."""
+    shots = [
+        {"id": "L59", "place": "miniscribe-boardroom", "source": "stock",
+         "still_prompt": "Stock photo, no cast."},
+        {"id": "L60", "place": "miniscribe-boardroom",
+         "still_prompt": "`qt-wiles` (`expr-smug`) sits at the head of the long table."},
+        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The same table, now empty."},
+    ]
+    hard = []
+    L.place_plate_check("lf", shots, CHARS, hard)
+    assert len(hard) == 1 and "qt-wiles" in hard[0] and "L60" in hard[0], hard
+
+
 def test_c4_plant_a_qualifying_plate_carrying_named_cast():
     """The R2-M1 gap: a recurring place entered on a cast-bearing frame. Every later
     in-place shot would seed a cast-bearing rendered scene as its place frame."""

@@ -126,7 +126,9 @@ at the first act's level.
   `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +
   ≤3 deltas). Declare `place` on every shot in a recurring set; symbolic/abstract/standalone
   object-insert `shot_class`es, a short's `first_frame`, and the thumbnail block declare no `place` and
-  run as seedless roots. The **plate is the first-in-file shot declaring the place**; for a QUALIFYING
+  run as seedless roots. The **plate is the first-in-file generated shot declaring the place**
+  (`source: ai-gen | hybrid`, absent defaults to `ai-gen`; a stock/chart/screencap/archival shot is
+  skipped, mirroring forge's own skip); for a QUALIFYING
   place (≥2 shots declare it, or its plate declares `place_owner`) the plate must carry zero named cast
   and no `stage_role: delta` — a single-use, unbranded place is its own place-first frame and stays
   seedless (a dedicated plate for it is pure waste). Every declared `place` must map to a span in
