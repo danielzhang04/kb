@@ -98,12 +98,18 @@ behind the technical fold.
 
 ## 5. Inbox
 
-- Remove the "Select an item…" placeholder pane; empty selection renders nothing beyond
-  the list.
+- Remove the "Select an item…" placeholder pane and the stat-tile row (5 tiles for 3 items);
+  the list IS the view.
+- Each item: concise plain-language line (what needs you, why, tier) + a deep link to the
+  run/agent surface holding full context (stream tiles, transcript, two-way messaging) —
+  gates are addressed THERE with context, not answered inline from the inbox. The separate
+  "Run requests" panel merges into the one list.
 - Inbox = pure live projection of queue card state (SSE-refreshed): when ANY writer
   (kb-platform agent, terminal, VS Code session) moves a card out of a needs-human state,
   the item disappears on its own. Any dashboard-side resolution bookkeeping that can
   disagree with queue truth is deleted.
+- Home stays the landing page: digestible waiting-on-you + live workflows; launch form and
+  raw-ID lists go.
 
 ## 6. Stop floor
 
