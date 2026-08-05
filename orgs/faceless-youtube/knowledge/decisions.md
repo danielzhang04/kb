@@ -3869,3 +3869,31 @@ and contrary to the audit's own finding that "the provider resolves the conflict
 detailed-middle look," i.e. the softer wording, not the harder one.
 **Evidence.** `videos/2026-07-28-bricks-fresh/scratchpad/probe-genlog.md`,
 `scratchpad/probe-dryrun-output.txt` (pre-fix), `scratchpad/probe-dryrun-output-2.txt` (post-fix).
+
+## 2026-08-05 — miniscribe-rep de-badged: canonical v2 promoted + costume text fixed at the root
+
+**Decision.** Daniel scratched the "drive-shaped enamel badge" on miniscribe-rep at the style-probe
+board ("why is there a USB on his chest... Scratch that"). Root cause was doctrine, not gen drift:
+`registry/registry.json` pinned the badge in the costume text as the character's "single identity
+tag", so every faithful render re-drew it. Fixed at the root: (1) surgical identity-mode remint of
+the canonical (v2, chest plain, verified by boss eye + chest-region pixel diff), promoted to
+`refs/miniscribe-rep/miniscribe-rep.png` (pre-v2 original archived in
+`_staging/_archive-pre-reset-2026-08-04/`); (2) registry costume clause rewritten to "chest and
+lapels plain — no badge, pin, or logo". Identity now carries via silhouette/palette/hair only.
+**Residue routed.** L29 + L32 still author the badge in prose → scoped-repair queued in the
+full-file review phase (shots.json locked byte-identical during per-fifth authoring).
+**Alternatives rejected.** Pixel-swap alone (costume text would re-author the badge on every future
+gen); hand-editing the two shot prompts now (would break the byte-identical lock the in-flight
+fifth-authors depend on).
+
+## 2026-08-05 — crowd variety: bounded variety kept, uniform bald/cream rejected
+
+**Decision.** Analysis (`videos/2026-07-28-bricks-fresh/scratchpad/crowd-variety-analysis.md`):
+keep varied crowd hair/outfits — 11+ prior VPW rounds logged varied crowds with zero variety-caused
+defects; the real crowd failure mode is seed-cap economics when crowds share frames with named cast.
+Two bounding changes adopted: (1) crowd variety bounded to 2–3 repeating hair/headwear silhouettes
+per group (no open-ended invention); (2) CROWD-RIG simplified-face rule made explicitly per-figure
+in multi-figure shots (targets the drawn-nose leak reproduced in the L35 probe retry). Daniel's
+veto point: the next artifact board.
+**Alternatives rejected.** Uniform bald/cream crowds — solves a problem the record says we don't
+have, and reads as cloned filler against the channel's originality bar.

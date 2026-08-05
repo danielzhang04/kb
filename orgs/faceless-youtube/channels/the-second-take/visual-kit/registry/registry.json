@@ -46,7 +46,7 @@
     "miniscribe-rep": {
       "role": "MiniScribe personified \u2014 the disk-drive company as an actor; the bricks story's lead. Appears L26-L35, L39, L40.",
       "head_tone": "#e2b78c",
-      "costume": "PINNED canonical outfit: boxy tan blazer worn open over a brown open-collar shirt, plain dark trousers and dark shoes, and ONE small steel-grey drive-shaped enamel badge pinned at the left lapel (its single identity tag); short dark-brown side-parted hair, stocky build. Renders in this unless a shot authors a change.",
+      "costume": "PINNED canonical outfit: boxy tan blazer worn open over a brown open-collar shirt (chest and lapels plain — no badge, pin, or logo), plain dark trousers and dark shoes; short dark-brown side-parted hair, stocky build. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
     },
     "ibm-suit": {
