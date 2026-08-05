@@ -5,10 +5,10 @@
  * layout/CSS change (a destination with a dedicated view also gets one `case` in App's body switch;
  * everything else falls through to the shared U3 placeholder).
  *
- * This SUPERSEDES the design brief §D verb-grouping (Operate/Build/Knowledge/System). Daniel locked an
- * entity-first IA: the groups are UNLABELLED — hairline dividers only (Linear pattern), no uppercase
- * group headers. The brief's sidebar BEHAVIOUR (48px rail, hover tooltips, expand to ~220px) and every
- * §E/§F visual rule remain authoritative.
+ * The design brief §D was rewritten to match this file (2026-08-05 docs sync) — brief and config now
+ * agree: an entity-first IA where the groups are UNLABELLED — hairline dividers only (Linear pattern),
+ * no uppercase group headers. The brief's sidebar BEHAVIOUR (48px rail, hover tooltips, expand to
+ * ~220px) and every §E/§F visual rule remain authoritative.
  *
  *   ── (divider, below the [+ New] menu) ──
  *   Home · Approvals(n) · Activity · Atlas(live — Atlas V1) · Terminal(live — D3.2)

@@ -66,44 +66,30 @@ No colored/glow shadows.
 
 ## D) Information Architecture — scalable, config-array driven
 
-Sidebar is a collapsible GROUPED nav driven by a config array so a new layer/agent/workflow is ONE
-entry — no layout/routing/CSS change. (The committed draft already implements `NAV_SECTIONS` in
-App.tsx with Operate/Build/Knowledge/System + section-collapse + rail-collapse — extend that, or
-lift it to `src/nav/config.ts`.) Groups:
-- **OPERATE:** Board (default), Approvals (badge = pending count; glows tier-t3 red on a waiting T3),
-  Timeline (full view + embedded in Board), Terminal (status:soon, greyed "D3/v2" until D3.1-3.3).
-- **BUILD:** Editor, Vibe, Pipeline (status:future React Flow DAG, greyed until D3.4),
-  Registry (internally tabbed Skills/Workflows/Connections — sub-tabs, not sidebar rows).
-- **KNOWLEDGE:** Browser (KB tree+file), Atlas (status:future jarvis stub).
-- **SYSTEM:** Agents (roster from fleet strip+STATE), Ledgers (usage = step-count+model-mix,
-  NEVER a dollar figure — matches Control.tsx suppression), Sentinel (future stub),
-  Session/Stop floor (pinned bottom, hairline-separated, always reachable — WebAuthn state + scoped
-  stop + nuclear STOP; the one control that must never require hunting).
+Sidebar is a single typed config array (`src/nav/config.ts` `NAV_SECTIONS`) so a new destination is
+ONE entry — no layout/routing/CSS change. Daniel locked an entity-first IA: three UNLABELLED,
+divider-separated groups (hairline dividers only, no uppercase group headers — Linear pattern), all
+13 destinations live:
+- Home · Approvals (labelled "Inbox" in-nav; badge = pending count) · Activity · Atlas · Terminal
+- Workflows · Agents · Tasks · Projects · Files
+- Connectors · Ledgers · Sentinel
+
+There is no pinned Session/Stop floor. Session state is the top-bar lock chip; the emergency-stop
+controls (WebAuthn state + scoped stop + nuclear STOP) live on the Sentinel view, next to the
+fleet-health readout they act on, not in a pinned shell region.
 
 Collapse: icon-only 48px rail default (icon+tooltip hover, VS Code activity-bar/Linear pattern),
-pin/expand to ~220px with labels + uppercase xs group headers. Command palette (Ctrl/Cmd+K, Raycast
-pattern): centered overlay, navigate (any destination incl. greyed/future) + act (approve/launch/stop
-— governed endpoints stay WebAuthn-gated; palette is a shortcut, never a bypass). Room for a 5th group
-(INTELLIGENCE for Atlas+Sentinel once real) without restructuring.
+pin/expand to ~220px with item labels (groups stay unlabelled — dividers only). Command palette
+(Ctrl/Cmd+K, Raycast pattern): centered overlay, navigate (any destination) + act (approve/launch/stop
+— governed endpoints stay WebAuthn-gated; palette is a shortcut, never a bypass).
 
 ## E) Per-view layout
 
-- **Board (Control):** KPI tiles (mono tabular xl, flat hairline panels) + 2fr/1fr grid — left wide
-  working surface (Timeline, KB), right status+controls (org STATEs, Registry, Launch/Stop). Stays a
-  ROLLUP — depth lives in dedicated views; don't bolt new panes on as layers arrive.
 - **Approvals (security-critical):** two-pane — ranked list left (mono id + tier badge, highest-tier
   first, T3 gets tier-t3 left-border), corroboration panel right rendering id/action/risk-tier/
   `## Work order` body the INSTANT a card is selected, BEFORE any biometric prompt (ordering is
   load-bearing — never imply the challenge shows after a verify-click). Panel = border-strong frame +
   "this is what your signature covers" caption. Unavailable verify channels ABSENT, never disabled ghosts.
-- **Registry:** one view, internal underline-tabs Skills/Workflows/Connections (accent-strong underline
-  active — not pills). Dense tables, mono ids/paths, status dots, calm empty states (not errors).
-- **Editor (CodeMirror):** two-pane IDE — slim tree left (reuse Browser tree), CodeMirror on bg-sunken
-  well, single-line path breadcrumb, dirty-dot in accent-strong, no toolbar clutter; author CM syntax
-  theme from THESE tokens (don't import a separate editor theme).
-- **Vibe:** chat — assistant turns bg-panel bubble, operator turns plain; streaming = pulsing accent
-  cursor not a spinner; fixed input bar (bg-elevated, radius-md) with mono model name; tool calls
-  collapse to one-line chip (tool + mono target), expand on click, never raw JSON in flow.
 - **Timeline:** dense single-column log — mono timestamp, fg-dim actor, content; tool-use rows get an
   accent LEFT-BORDER (not full-row highlight). Auto-scroll on tail, freeze on manual scroll-up + "N new" pill.
 - **Browser:** two-pane VS-Code explorer — tree left (indent guides in border, chevrons fg-faint),
