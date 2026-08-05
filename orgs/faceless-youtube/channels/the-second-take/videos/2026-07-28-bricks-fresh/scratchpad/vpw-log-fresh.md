@@ -494,3 +494,64 @@ over L090-L148: zero refusals, exit 0. Detail in `vpw-fifth3-report.md`.
     L57, L73, L80) reporting "no in-chain parent frame in the slate" purely because L49/L56/L72/L79
     are not in scope. Prove it the same way lesson 17 proves the place seeds: re-run the earlier
     range in its own scope and confirm 0. Do not read a rising out-of-scope count as regression.
+
+---
+
+# FIFTH 4 - act 4 opening authored fresh (L149-L195), 2026-08-05
+
+FRESH-AUTHORING over P15-P18, appended after the LOCKED L01-L148 (byte-identical, verified: the
+first 201,779 bytes and the whole `thumbnail` tail are unchanged). Inputs: the VPW SKILL,
+`vpw-fresh-skeleton.md`, this log (lessons 1-23), `vpw-fifth3-report.md`, `script.md`, the real
+word timings in `assets/voiceover.manifest.json`, `visual-grammar.md`, `style-bible.md` (§1/§2/§2d),
+`shots-schema.md`, `registry.json` (MAIN checkout), `assets/library/manifest.json`, `research.md`,
+`lint_shots.py` + `forge.py`, and the CURRENT `shots.json` for lineage. No archived or quarantined
+file was read. $0, no provider call, nothing committed.
+
+**47 shots, 98.60 s, avg 2.10 s, every real hold inside 1.52-3.0 s.** New place `denver-newsroom`
+(plate L172, `owner_ambiguity: true`); `brick-warehouse` (L03), `miniscribe-plant` (L28),
+`wiles-office` (L63) and `miniscribe-boardroom` (L71) all revisited. 47 scenes + 11 STEP-1 figure
+gens (only 8 of them new to the file). The fifth ends at **exactly 80.0 % of the VO** - the end of
+P18, t = 432.060 s. Lint: **1 HARD**, the duration-sum coverage artifact. Forge dry-run over
+L149-L195: zero refusals, exit 0. Detail in `vpw-fifth4-report.md`.
+
+## Lessons for the final fifth
+
+24. **A whole-file scoped run is the only clean proof that an "outside the scope" count is an
+    artifact - and it costs one command.** Lesson 23 said to re-run the earlier range in its own
+    scope; that shows the earlier fifth is clean but never proves nothing real is left anywhere.
+    Scoping to ALL shots (here: the 194 that are not L29, whose `_staging/` refusal predates this
+    run) reported `0 seeding-law violation(s) remain OUTSIDE the scope`, exit 0, which settles the
+    whole file in one probe instead of one probe per fifth. Do that first; only bisect if it is
+    non-zero.
+25. **An un-minted cast slug ships as a BARE CONTROL TOKEN, and the dry-run says so silently.**
+    `rifenburgh-ceo` is planned by the skeleton and legal to author (the Pass-1 gate exists exactly
+    for it), but forge's `shot_cast` cannot resolve a name the registry and the video's Pass-1
+    library both lack: it emits NO STEP-1 card and passes the backticked slug straight into the
+    scene payload, with no refusal and no warning - the shot just reads `(no cast - the scene
+    composes from the place)`. That is the `prop-drive` failure act 1 fixed, wearing a cast name.
+    Author the slug, but read the dry-run's per-shot cast line to confirm what forge actually saw,
+    and write the Pass-1 mint into the shot's own `notes` as a prerequisite.
+26. **A near-miss on the POSE is a new STEP-1 card, whatever the expression says.** L168 wanted
+    `miniscribe-rep` deadpan and act 1 already mints a deadpan card - but as
+    `fig-miniscribe-rep--action-powerstance--expr-deadpan`. The card name is the reuse key and the
+    pose is half of it, so "we already have that face" is not a budget saving unless the POSE also
+    matches the beat. Check the pose before claiming reuse in a report; the dry-run's
+    `GENERATE`/`shared` verdict is the arbiter.
+27. **Watch the class that matches the ACT's shape, not just the class that repeats.** Act 4 is
+    rooms full of people, so the first pass reached for `crowd-multiplication` on 30 % of the range
+    - not by copying itself, but by answering "there are people in it" with the same class every
+    time. The fix is to re-ask what each beat IS: a conspiracy huddle is `staged-interaction`, a
+    found object is `literal`, a year on a ledger spine is `number-glued-to-object`. Lesson 12
+    watches the repeated WORLD; this is its sibling - a repeated ANSWER to a repeated question.
+28. **Fixing a hold inversion can pay a CONTENT dividend, so try the anchor move before accepting
+    the flag.** `junk-padding`'s base was 1.56 s against a 2.34 s delta AND was showing empty
+    cartons through a line already naming what went into them. Moving one anchor to
+    `"and factory scrap, and whatever"` closed the inversion and handed the base the broken drives
+    its own span names, leaving the delta the scrap its own span names. The cadence rule and the
+    depiction rule wanted the same cut.
+29. **The honest owner call gets easier, not harder, when the script names a CLASS.** "the Denver
+    newspapers" is a plural class with no masthead anywhere in the script or the fact ledger, so
+    `owner_ambiguity` is not the fallback - it is the only non-fabricating answer, and the unmarked
+    newsroom is also the truer image (the tip went to the papers, so the room is any of them).
+    Compare `brick-company-yard`, where the script names one business and puts a transaction through
+    it: that is what a `place_owner` looks like.
