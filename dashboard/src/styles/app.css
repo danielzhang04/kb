@@ -1005,6 +1005,65 @@ button {
   background: var(--error);
 }
 
+/* ---- Entity name (spec §2: displayName + #shortRef, id hidden behind title/copy) ----
+ * The ref chip reuses .mc-badge + .mc-mono verbatim (same hairline vocabulary as tier/status pills);
+ * only the label/copy-glyph chrome below is new. No new colours — copy affordance sits in --fg-faint
+ * at rest and borrows --status-done only to confirm a copy, never to decorate. */
+.entity-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.entity-name__label {
+  color: var(--fg-primary);
+  overflow-wrap: anywhere;
+}
+
+.entity-name--muted .entity-name__label {
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+
+.entity-name--muted .entity-name__ref {
+  font-size: 10px;
+}
+
+.entity-name__ref {
+  white-space: nowrap;
+}
+
+.entity-name__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.entity-name__copy:hover {
+  color: var(--fg-primary);
+  background: var(--bg-elevated);
+}
+
+.entity-name__copy:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+.entity-name__copy--copied {
+  color: var(--status-done);
+}
+
 /* ---- Buttons ---- */
 .mc-btn {
   display: inline-flex;
