@@ -25,6 +25,7 @@ import {
   WorkflowAgentGraph,
   type AssignTarget,
   type Assignment,
+  type ResolvedAssignment,
   type WorkflowAssignmentOptions,
 } from './WorkflowAgentGraph';
 import '../styles/views/entity.css';
@@ -50,12 +51,20 @@ export interface WorkflowDefEntry {
   /** Required string parameters declared by the immutable workflow definition. */
   parameters?: string[];
   manager?: Assignment | null;
+  /**
+   * Who the server says runs this workflow today — the declared manager when there is one, else the
+   * default it resolved from the file (its governing agent, the project's manager, …). Optional: an
+   * older payload carries only `manager`, and the graph degrades to that.
+   */
+  resolvedManager?: ResolvedAssignment | null;
   stageCount: number;
   riskTier: string | null;
   stages: Array<{
     id: string; title?: string; action: string; target: string; riskTier: string; dependsOn?: string[];
     governedBy?: string | null;
     declaredAssignment?: Assignment | null;
+    /** Who the server says runs this step today, declaration or resolved default alike. See above. */
+    resolvedAssignment?: ResolvedAssignment | null;
     review?: { subjectStageId: string; maxCreatorReworks: number } | null;
     completionGate?: { id: string; kind: 'approval'; requiresReview: 'pass' } | null;
   }>;
@@ -92,6 +101,11 @@ export interface WorkflowDetailProps {
   onNavigate?: (target: NavTarget) => void;
   onBack?: () => void;
   backLabel?: string;
+  /**
+   * The ONE primary action: hand this workflow to a terminal session primed as the agent that runs it.
+   * The operator picks nothing and assigns nothing first — the definition already says who runs what.
+   */
+  onRunWorkflow?: (workflow: { ref: string }) => void;
   /** Inputs the definition declares. Values live in the owner view so opening detail never changes intent. */
   parameterValues?: Record<string, string>;
   onParameterChange?: (name: string, value: string) => void;
@@ -159,6 +173,7 @@ export function WorkflowDetail({
   onNavigate,
   onBack,
   backLabel,
+  onRunWorkflow,
   parameterValues = {},
   onParameterChange,
   onLaunch,
@@ -342,41 +357,57 @@ export function WorkflowDetail({
           ) : (
             <p className="entity-note">This workflow declares no steps.</p>
           )}
+
+          {/*
+            * The control-plane launch: a governed run started straight from the definition, with the
+            * inputs it declares. It stays fully wired — it is how the governing agent and power use
+            * start a run — but it is no longer what an operator meets first. "Run workflow" above is.
+            */}
+          <h4 className="entity-block__title">Start a governed run directly</h4>
+          <div className="v-workflows__direct-launch" data-testid="workflow-direct-launch">
+            {parameters.map((name) => (
+              <label key={name} className="entity-detail__param">
+                <span>{name}</span>
+                <input
+                  aria-label={`Workflow parameter ${name}`}
+                  value={parameterValues[name] ?? ''}
+                  onChange={(event) => onParameterChange?.(name, event.target.value)}
+                />
+              </label>
+            ))}
+            <button
+              type="button"
+              className="mc-btn"
+              disabled={!canLaunch}
+              title={blockedReason ?? (parametersMissing ? 'Fill in every input first.' : undefined)}
+              onClick={() => onLaunch?.()}
+            >
+              {launching ? 'Launching…' : 'Launch'}
+            </button>
+            {launchStatus ? (
+              <span className="v-workflows__run-status" data-testid={`workflow-def-status-${entry.ref}`}>{launchStatus}</span>
+            ) : null}
+          </div>
         </div>
       </details>
     </>
   );
 
   /**
-   * ONE Launch, with the workflow's declared inputs beside it. The old surface put the inputs in a tab,
-   * disabled the button, and explained the disablement in a sentence the operator had to hunt for.
+   * ONE button. It opens a terminal session primed as the agent that runs this workflow — no channel to
+   * type, no slug to fill in, no assignment to make first. The definition already says who runs what,
+   * and the direct governed launch (with its declared inputs) lives behind the technical fold.
    */
-  const actions = (
-    <>
-      {parameters.map((name) => (
-        <label key={name} className="entity-detail__param">
-          <span>{name}</span>
-          <input
-            aria-label={`Workflow parameter ${name}`}
-            value={parameterValues[name] ?? ''}
-            onChange={(event) => onParameterChange?.(name, event.target.value)}
-          />
-        </label>
-      ))}
-      <button
-        type="button"
-        className="mc-btn mc-btn--primary"
-        disabled={!canLaunch}
-        title={blockedReason ?? (parametersMissing ? 'Fill in every input first.' : undefined)}
-        onClick={() => onLaunch?.()}
-      >
-        {launching ? 'Launching…' : 'Launch'}
-      </button>
-      {launchStatus ? (
-        <span className="v-workflows__run-status" data-testid={`workflow-def-status-${entry.ref}`}>{launchStatus}</span>
-      ) : null}
-    </>
-  );
+  const actions = onRunWorkflow ? (
+    <button
+      type="button"
+      className="mc-btn mc-btn--primary"
+      data-testid="workflow-run"
+      onClick={() => onRunWorkflow({ ref: entry.ref })}
+    >
+      Run workflow
+    </button>
+  ) : null;
 
   const sections: DetailSection[] = [{ id: 'workflow', label: 'Workflow', render: () => body }];
 

@@ -3,9 +3,10 @@
  * The workflow detail — one graph, one Launch, one list of runs.
  *
  * The headline assertions are the collapse itself: a run is reachable from the workflow that produced
- * it (through the server's grouping key, not a client-side re-derivation), the launch is one button
- * with its inputs beside it, and the engine vocabulary the surface used to lead with — "compiled
- * proposal", "proposal revision", "amendment" — is behind the technical fold or gone.
+ * it (through the server's grouping key, not a client-side re-derivation), running the workflow is ONE
+ * button that needs nothing filled in first, and the engine vocabulary the surface used to lead with —
+ * "compiled proposal", "proposal revision", "amendment", and now the parameterised governed launch
+ * itself — is behind the technical fold or gone.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -118,7 +119,57 @@ describe('reaching a workflow detail and coming back', () => {
   });
 });
 
-describe('one Launch, with its inputs beside it', () => {
+/**
+ * The primary action is ONE button that needs nothing filled in first. The definition already says who
+ * runs what, so running a workflow is a click, not a form. The governed direct launch — with the inputs
+ * the definition declares — is still fully wired, one fold down, for the governing agent and power use.
+ */
+describe('one Run workflow button', () => {
+  it('offers exactly one primary action and hands the workflow up by reference', () => {
+    const onRunWorkflow = vi.fn();
+    render(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
+      compiled={null}
+      onRunWorkflow={onRunWorkflow}
+      onLaunch={vi.fn()}
+    />);
+
+    const actions = screen.getByTestId('entity-detail-workflow').querySelector('.entity-detail__actions');
+    expect(actions?.textContent).toBe('Run workflow');
+    fireEvent.click(screen.getByRole('button', { name: 'Run workflow' }));
+    expect(onRunWorkflow).toHaveBeenCalledWith({ ref: 'kb~video.md' });
+  });
+
+  it('moves the inputs and the direct Launch into the technical fold, still working', () => {
+    const onParameterChange = vi.fn();
+    const onLaunch = vi.fn();
+    render(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
+      compiled={null}
+      onRunWorkflow={vi.fn()}
+      onLaunch={onLaunch}
+      parameterValues={{ channel: 'the-second-take', slug: '2026-07-19-wells-fargo' }}
+      onParameterChange={onParameterChange}
+    />);
+
+    const fold = screen.getByTestId('workflow-technical');
+    expect(fold.contains(screen.getByTestId('workflow-direct-launch'))).toBe(true);
+    expect(fold.contains(screen.getByLabelText('Workflow parameter channel'))).toBe(true);
+    expect(fold.contains(screen.getByRole('button', { name: 'Launch' }))).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Workflow parameter slug'), { target: { value: '2026-08-05-bricks' } });
+    expect(onParameterChange).toHaveBeenCalledWith('slug', '2026-08-05-bricks');
+    fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+    expect(onLaunch).toHaveBeenCalled();
+  });
+
+  it('leaves the primary surface empty when nothing can run a workflow from here', () => {
+    render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} />);
+    expect(screen.queryByRole('button', { name: 'Run workflow' })).toBeNull();
+  });
+});
+
+describe('the governed direct launch, with its inputs, behind the fold', () => {
   it('enables Launch when the definition compiles and states the refusal when it does not', () => {
     const onLaunch = vi.fn();
     const { rerender } = render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} onLaunch={onLaunch} />);

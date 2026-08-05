@@ -1,14 +1,24 @@
 // @vitest-environment jsdom
+/**
+ * The workflow graph is STAGE-keyed: one box per step, arrows from the steps' own `dependsOn`.
+ *
+ * The headline test is the regression pin. Real definitions carry `manager: null` and no per-step
+ * assignment at all; the previous agent-keyed projection collapsed every such workflow into a single
+ * "Nobody yet" box with zero arrows, which is what "I see nothing in the agent graph" was. A
+ * fourteen-step chain with nobody assigned must still draw fourteen boxes and its full chain of arrows.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { WorkflowDefEntry } from './WorkflowDetail';
 import {
-  UNASSIGNED_AGENT,
+  MANAGER_NODE,
   WorkflowAgentGraph,
-  agentNodePositions,
-  agentOrder,
-  handoffEdges,
-  type HandoffData,
+  dependencyEdges,
+  stageNodeId,
+  stageNodePositions,
+  stageRanks,
+  stageSlot,
+  type ResolvedAssignment,
   type WorkflowAssignmentOptions,
 } from './WorkflowAgentGraph';
 
@@ -20,13 +30,10 @@ vi.mock('reactflow', async () => {
     id: string;
     source: string;
     target: string;
-    label?: React.ReactNode;
-    markerStart?: unknown;
     markerEnd?: unknown;
     sourceHandle?: string;
     targetHandle?: string;
     ariaLabel?: string;
-    data?: unknown;
   };
   return {
     Background: () => null,
@@ -53,18 +60,14 @@ vi.mock('reactflow', async () => {
           data-testid={`reactflow-edge-${edge.id}`}
           data-source={edge.source}
           data-target={edge.target}
-          data-label={String(edge.label)}
-          data-marker-start={String(Boolean(edge.markerStart))}
           data-marker-end={String(Boolean(edge.markerEnd))}
           data-source-handle={edge.sourceHandle}
           data-target-handle={edge.targetHandle}
           aria-label={edge.ariaLabel}
-        >
-          {JSON.stringify(edge.data)}
-        </div>
+        />
       ))}
       {children}
-      <button type="button" onClick={() => onNodesChange([{ id: 'alpha', type: 'position', position: { x: 900, y: 0 } }])}>Move alpha node</button>
+      <button type="button" onClick={() => onNodesChange([{ id: 'stage:draft', type: 'position', position: { x: 0, y: 0 } }])}>Move the draft step</button>
     </div>,
     useNodesState: (initial: MockNode[]) => {
       const [nodes, setNodes] = React.useState(initial);
@@ -81,8 +84,10 @@ vi.mock('reactflow', async () => {
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-/** `agentId` is what puts a step in a node; `profileId` is the model it runs on. */
 const assign = (agentId: string) => ({ agentId, profileId: `worker:${agentId}` });
+const resolved = (over: Partial<ResolvedAssignment> & { agentId: string }): ResolvedAssignment => ({
+  profileId: `worker:${over.agentId}`, model: 'claude-sonnet-5', source: 'declared', ...over,
+});
 
 const entry = (over: Partial<WorkflowDefEntry> = {}): WorkflowDefEntry => ({
   ref: 'kb~network.md', displayName: over.title ?? 'Network', shortRef: 1,
@@ -107,16 +112,199 @@ const options = (over: Partial<WorkflowAssignmentOptions> = {}): WorkflowAssignm
   ...over,
 });
 
-describe('WorkflowAgentGraph', () => {
-  it('groups steps by the agent assigned to run them, with an explicit node for the unassigned', () => {
-    render(<WorkflowAgentGraph entry={entry()} assignmentOptions={options()} />);
-    expect(screen.getByTestId('workflow-agent-node-alpha').textContent).toContain('Research');
-    expect(screen.getByTestId('workflow-agent-node-beta').textContent).toContain('Draft');
-    expect(screen.getByTestId('workflow-agent-node-__unassigned__').textContent).toContain('Review');
-    // The manager is a role ON a node, never a separate whole-workflow dropdown.
-    expect(screen.getByTestId('workflow-agent-node-alpha').textContent).toContain('runs the workflow');
+/** The shape live `/api/workflows` actually returns: no manager, no assignment, a real chain. */
+const bare = (): WorkflowDefEntry => entry({
+  manager: null,
+  stageCount: 5,
+  stages: [
+    { id: 'idea', title: 'Idea', action: 'idea', target: 'idea.md', riskTier: 'T1', declaredAssignment: null },
+    { id: 'research', title: 'Research', action: 'research', target: 'research.md', riskTier: 'T1', dependsOn: ['idea'], declaredAssignment: null },
+    { id: 'script', title: 'Script', action: 'script', target: 'script.md', riskTier: 'T1', dependsOn: ['research'], declaredAssignment: null },
+    { id: 'judge-gate', title: 'Judge', action: 'judge', target: 'judgement.md', riskTier: 'T2', dependsOn: ['script'], declaredAssignment: null },
+    { id: 'render', title: 'Render', action: 'render', target: 'final.mp4', riskTier: 'T2', dependsOn: ['judge-gate'], declaredAssignment: null },
+  ],
+});
+
+describe('the graph draws the workflow, assigned or not', () => {
+  /**
+   * THE PIN. `manager: null` and every `declaredAssignment: null` is the live payload, not an edge case.
+   */
+  it('renders every step and every dependency of a workflow nobody has been assigned to', () => {
+    render(<WorkflowAgentGraph entry={bare()} />);
+
+    for (const [id, title] of [['idea', 'Idea'], ['research', 'Research'], ['script', 'Script'], ['judge-gate', 'Judge'], ['render', 'Render']]) {
+      expect(screen.getByTestId(`workflow-step-node-${id}`).textContent).toContain(title);
+    }
+    expect(screen.getByTestId('reactflow-edge-step-idea~research')).toBeTruthy();
+    expect(screen.getByTestId('reactflow-edge-step-research~script')).toBeTruthy();
+    expect(screen.getByTestId('reactflow-edge-step-script~judge-gate')).toBeTruthy();
+    expect(screen.getByTestId('reactflow-edge-step-judge-gate~render')).toBeTruthy();
+    // No manager to draw, and no phantom "everything hands off to nobody" collapse.
+    expect(screen.queryByTestId('workflow-manager-node')).toBeNull();
+    expect(dependencyEdges(bare())).toHaveLength(4);
   });
 
+  it('names each arrow in plain words and points it at the step that runs later', () => {
+    const edge = dependencyEdges(bare()).find((candidate) => candidate.id === 'step-script~judge-gate');
+    expect(edge).toMatchObject({
+      source: stageNodeId('script'),
+      target: stageNodeId('judge-gate'),
+      markerEnd: expect.objectContaining({ type: 'arrowclosed' }),
+    });
+    expect(edge?.ariaLabel).toBe('Judge runs after Script');
+  });
+
+  it('skips a dependency naming a step this workflow does not declare', () => {
+    const edges = dependencyEdges(entry({ manager: null, stages: [
+      { id: 'one', action: 'one', target: 'one', riskTier: 'T1' },
+      { id: 'two', action: 'two', target: 'two', riskTier: 'T1', dependsOn: ['one', 'missing'] },
+    ] }));
+    expect(edges.map((edge) => edge.id)).toEqual(['step-one~two']);
+  });
+
+  it('lays steps out in dependency lanes, with the manager in front of the first step', () => {
+    const workflow = entry();
+    expect(Object.fromEntries(stageRanks(workflow))).toEqual({ research: 0, draft: 1, review: 2 });
+    const positions = stageNodePositions(workflow);
+    expect(positions.get(MANAGER_NODE)).toEqual({ x: 0, y: 0 });
+    expect(positions.get(stageNodeId('research'))).toEqual({ x: 400, y: 0 });
+    expect(positions.get(stageNodeId('draft'))).toEqual({ x: 800, y: 0 });
+    expect(positions.get(stageNodeId('review'))).toEqual({ x: 1200, y: 0 });
+    // Nobody running the workflow → no empty lane held open for a manager that does not exist.
+    expect(stageNodePositions(bare()).get(stageNodeId('idea'))).toEqual({ x: 0, y: 0 });
+  });
+
+  it('stacks steps that can run at the same time into rows of one lane', () => {
+    const workflow = entry({ manager: null, stages: [
+      { id: 'shots', action: 'shots', target: 'shots', riskTier: 'T1' },
+      { id: 'images', action: 'images', target: 'images', riskTier: 'T1', dependsOn: ['shots'] },
+      { id: 'motion', action: 'motion', target: 'motion', riskTier: 'T1', dependsOn: ['shots'] },
+    ] });
+    const positions = stageNodePositions(workflow);
+    expect(positions.get(stageNodeId('images'))).toEqual({ x: 400, y: 0 });
+    expect(positions.get(stageNodeId('motion'))).toEqual({ x: 400, y: 240 });
+  });
+
+  it('renders a malformed step cycle instead of recursing forever', () => {
+    const workflow = entry({ manager: null, stages: [
+      { id: 'a', action: 'a', target: 'a', riskTier: 'T1', dependsOn: ['b'] },
+      { id: 'b', action: 'b', target: 'b', riskTier: 'T1', dependsOn: ['a'] },
+    ] });
+    render(<WorkflowAgentGraph entry={workflow} />);
+    expect(screen.getByTestId('workflow-step-node-a')).toBeTruthy();
+    expect(screen.getByTestId('workflow-step-node-b')).toBeTruthy();
+  });
+
+  it('says so plainly when a workflow has no steps yet', () => {
+    render(<WorkflowAgentGraph entry={entry({ stages: [], manager: null })} />);
+    expect(screen.getByTestId('workflow-agent-network-empty').textContent).toContain('no steps');
+  });
+});
+
+describe('who will run each step', () => {
+  it('shows a resolved default with a default tag, its model, and where it came from', () => {
+    const workflow = entry({ manager: null, stages: [
+      {
+        id: 'script', title: 'Script', action: 'script', target: 'script.md', riskTier: 'T1',
+        declaredAssignment: null,
+        resolvedAssignment: resolved({ agentId: 'fyt-preproduction', source: 'stage-governed-by', model: 'claude-opus-4-8' }),
+      },
+    ] });
+    render(<WorkflowAgentGraph entry={workflow} />);
+
+    const slot = screen.getByTestId('workflow-step-node-script-agent');
+    expect(slot.textContent).toContain('fyt-preproduction');
+    expect(slot.textContent).toContain('claude-opus-4-8');
+    expect(slot.textContent).toContain('default');
+    expect(slot.querySelector('[title]')?.getAttribute('title')).toBe('The agent that governs this step.');
+    // A resolved default is the wanted case, so the box never asks anybody to go and assign anything.
+    expect(screen.getByTestId('workflow-step-node-script').textContent).not.toMatch(/assign/i);
+  });
+
+  it('shows an explicitly declared agent with no default tag', () => {
+    const workflow = entry({ manager: null, stages: [
+      {
+        id: 'draft', title: 'Draft', action: 'draft', target: 'draft.md', riskTier: 'T1',
+        declaredAssignment: assign('beta'),
+        resolvedAssignment: resolved({ agentId: 'beta', source: 'declared' }),
+      },
+    ] });
+    render(<WorkflowAgentGraph entry={workflow} />);
+    const slot = screen.getByTestId('workflow-step-node-draft-agent');
+    expect(slot.textContent).toContain('beta');
+    expect(slot.textContent).not.toContain('default');
+  });
+
+  it('omits the model when the roster does not pin one', () => {
+    const workflow = entry({ manager: null, stages: [
+      {
+        id: 'draft', title: 'Draft', action: 'draft', target: 'draft.md', riskTier: 'T1',
+        resolvedAssignment: resolved({ agentId: 'beta', source: 'manager-default', model: null }),
+      },
+    ] });
+    render(<WorkflowAgentGraph entry={workflow} />);
+    const slot = screen.getByTestId('workflow-step-node-draft-agent');
+    expect(slot.textContent).toContain('beta');
+    expect(slot.textContent).toContain('default');
+    expect(slot.textContent).not.toMatch(/claude-/);
+  });
+
+  it('states an unresolvable slot as a fact, never as a job to do', () => {
+    const workflow = entry({ manager: null, stages: [
+      { id: 'draft', title: 'Draft', action: 'draft', target: 'draft.md', riskTier: 'T1', declaredAssignment: null },
+    ] });
+    render(<WorkflowAgentGraph entry={workflow} />);
+    const empty = screen.getByTestId('workflow-step-node-draft-nobody');
+    expect(empty.textContent).toBe('no default agent resolvable');
+    expect(screen.getByTestId('workflow-step-node-draft').textContent).not.toMatch(/assign|unassigned|nobody yet/i);
+  });
+
+  it('carries a varied per-step cast rather than one name repeated down the column', () => {
+    const workflow = entry({ manager: null, stages: [
+      { id: 'script', title: 'Script', action: 'script', target: 's', riskTier: 'T1', resolvedAssignment: resolved({ agentId: 'fyt-preproduction', source: 'stage-governed-by' }) },
+      { id: 'judge-gate', title: 'Judge', action: 'judge', target: 'j', riskTier: 'T2', dependsOn: ['script'], resolvedAssignment: resolved({ agentId: 'fyt-checker', source: 'stage-governed-by' }) },
+      { id: 'render', title: 'Render', action: 'render', target: 'r', riskTier: 'T2', dependsOn: ['judge-gate'], resolvedAssignment: resolved({ agentId: 'fyt-production', source: 'stage-governed-by' }) },
+    ] });
+    render(<WorkflowAgentGraph entry={workflow} />);
+    expect(screen.getByTestId('workflow-step-node-script-agent').textContent).toContain('fyt-preproduction');
+    expect(screen.getByTestId('workflow-step-node-judge-gate-agent').textContent).toContain('fyt-checker');
+    expect(screen.getByTestId('workflow-step-node-render-agent').textContent).toContain('fyt-production');
+  });
+
+  /** An older payload predates `resolvedAssignment`; the declaration in the file is still the truth. */
+  it('falls back to the step governing agent when the server sent no resolution', () => {
+    const stage = { id: 'script', action: 'script', target: 's', riskTier: 'T1', governedBy: 'fyt-preproduction' };
+    expect(stageSlot(stage)).toEqual({ agentId: 'fyt-preproduction', model: null, source: 'stage-governed-by', isDefault: true });
+    render(<WorkflowAgentGraph entry={entry({ manager: null, stages: [stage] })} />);
+    expect(screen.getByTestId('workflow-step-node-script-agent').textContent).toContain('fyt-preproduction');
+    expect(screen.getByTestId('workflow-step-node-script-agent').textContent).toContain('default');
+  });
+
+  it('keeps a manager box for the agent that runs the workflow, resolved or declared', () => {
+    render(<WorkflowAgentGraph entry={entry()} />);
+    expect(screen.getByTestId('workflow-manager-node').textContent).toContain('runs the workflow');
+    expect(screen.getByTestId('workflow-manager-node-agent').textContent).toContain('alpha');
+    cleanup();
+
+    render(<WorkflowAgentGraph entry={entry({ manager: null, governedBy: 'fyt-runner' })} />);
+    const manager = screen.getByTestId('workflow-manager-node-agent');
+    expect(manager.textContent).toContain('fyt-runner');
+    expect(manager.textContent).toContain('default');
+    // The manager kicks off every step that starts the workflow.
+    expect(screen.getByTestId('reactflow-edge-start-research').dataset.source).toBe(MANAGER_NODE);
+  });
+
+  it('opens the agent a step will run as, without a network write', () => {
+    const onOpenAgent = vi.fn();
+    vi.stubGlobal('fetch', vi.fn());
+    render(<WorkflowAgentGraph entry={entry()} onOpenAgent={onOpenAgent} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open agent' })[2]);
+    expect(onOpenAgent).toHaveBeenCalledWith('beta');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('the override, which is the same one governed write', () => {
   it('edits one step through the caller governed write, with no local draft and no batch submit', () => {
     const onAssign = vi.fn();
     vi.stubGlobal('fetch', vi.fn());
@@ -128,7 +316,7 @@ describe('WorkflowAgentGraph', () => {
     fireEvent.change(screen.getByLabelText('Who runs the workflow'), { target: { value: JSON.stringify(['beta', 'worker:beta']) } });
     expect(onAssign).toHaveBeenLastCalledWith({ kind: 'manager' }, assign('beta'));
 
-    // Clearing is the same one write with a null assignment — not a second path.
+    // Clearing an override is the same one write with a null assignment — the default takes over again.
     fireEvent.change(screen.getByLabelText('Who runs Research'), { target: { value: '' } });
     expect(onAssign).toHaveBeenLastCalledWith({ kind: 'stage', stageId: 'research' }, null);
 
@@ -136,12 +324,17 @@ describe('WorkflowAgentGraph', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('offers keeping the default rather than choosing nobody', () => {
+    render(<WorkflowAgentGraph entry={entry()} assignmentOptions={options()} />);
+    expect((screen.getByLabelText('Who runs Review') as HTMLSelectElement).options[0].textContent).toBe('Keep the default');
+  });
+
   it('states an unavailable choice rather than offering an empty picker', () => {
     render(<WorkflowAgentGraph
       entry={entry()}
       assignmentOptions={options({ stages: { ...options().stages, draft: { options: [], unavailable: 'Human binding required.' } } })}
     />);
-    expect(screen.getByTestId('workflow-agent-stage-draft').textContent).toContain('Human binding required.');
+    expect(screen.getByTestId('workflow-step-node-draft').textContent).toContain('Human binding required.');
     expect(screen.queryByLabelText('Who runs Draft')).toBeNull();
   });
 
@@ -150,7 +343,6 @@ describe('WorkflowAgentGraph', () => {
       entry={entry()}
       assignmentOptions={options({ stages: { ...options().stages, draft: { options: [assign('alpha')], unavailable: null } } })}
     />);
-    // Dropping the value silently would read as "unassigned" — the opposite of what the file says.
     const picker = screen.getByLabelText('Who runs Draft') as HTMLSelectElement;
     expect(picker.value).toBe(JSON.stringify(['beta', 'worker:beta']));
   });
@@ -160,143 +352,19 @@ describe('WorkflowAgentGraph', () => {
     expect((screen.getByLabelText('Who runs Draft') as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByLabelText('Who runs the workflow') as HTMLSelectElement).disabled).toBe(true);
   });
+});
 
-  it('bundles reciprocal handoffs on one trunk and omits work an agent hands to itself', () => {
-    const workflow = entry({ stages: [
-      { id: 'a1', action: 'a', target: 'a', riskTier: 'T1', declaredAssignment: assign('alpha') },
-      { id: 'b1', action: 'b', target: 'b', riskTier: 'T1', declaredAssignment: assign('beta'), dependsOn: ['a1'] },
-      { id: 'a2', action: 'a2', target: 'a2', riskTier: 'T1', declaredAssignment: assign('alpha'), dependsOn: ['b1', 'a1'] },
-    ] });
-    const edges = handoffEdges(workflow);
-    expect(edges).toHaveLength(1);
-    expect(edges[0]).toMatchObject({
-      source: 'alpha',
-      target: 'beta',
-      label: 'hands off 2 steps',
-      markerStart: expect.objectContaining({ type: 'arrowclosed' }),
-      markerEnd: expect.objectContaining({ type: 'arrowclosed' }),
-    });
-    expect(edges[0]?.ariaLabel).toContain('alpha hands off to beta: a1 then b1');
-    expect(edges[0]?.ariaLabel).toContain('beta hands off to alpha: b1 then a2');
-    expect((edges[0]?.data as HandoffData).directions).toHaveLength(2);
-  });
-
-  it('uses a single directional marker for a one-way handoff', () => {
-    const alphaBeta = handoffEdges(entry()).find((edge) => edge.source === 'alpha' && edge.target === 'beta');
-    expect(alphaBeta).toMatchObject({ label: 'hands off 1 step', markerEnd: expect.any(Object) });
-    expect(alphaBeta?.markerStart).toBeUndefined();
-  });
-
-  it('keeps pair IDs unique for hyphenated agent names and skips unknown dependencies', () => {
-    const workflow = entry({ stages: [
-      { id: 'one', action: 'one', target: 'one', riskTier: 'T1', declaredAssignment: assign('a') },
-      { id: 'two', action: 'two', target: 'two', riskTier: 'T1', declaredAssignment: assign('b-c'), dependsOn: ['one'] },
-      { id: 'three', action: 'three', target: 'three', riskTier: 'T1', declaredAssignment: assign('a-b') },
-      { id: 'four', action: 'four', target: 'four', riskTier: 'T1', declaredAssignment: assign('c'), dependsOn: ['three', 'missing'] },
-    ] });
-    const edges = handoffEdges(workflow);
-    expect(edges.map((edge) => edge.id).sort()).toEqual(['handoff-a-b~c', 'handoff-a~b-c']);
-    expect(edges.some((edge) => edge.source === UNASSIGNED_AGENT)).toBe(false);
-  });
-
-  it('orders and positions agents from step flow independently of declaration order', () => {
-    const workflow = entry();
-    const visible = ['orchestrator', 'beta', 'alpha', UNASSIGNED_AGENT];
-    expect(agentOrder(workflow, visible)).toEqual(['alpha', 'beta', UNASSIGNED_AGENT, 'orchestrator']);
-    const first = agentNodePositions(workflow, visible);
-    const shuffled = agentNodePositions(workflow, [...visible].reverse());
-    for (const id of visible) expect(shuffled.get(id)).toEqual(first.get(id));
-  });
-
-  it('compresses late ranks into adjacent lanes', () => {
-    const stages: WorkflowDefEntry['stages'] = Array.from({ length: 13 }, (_, index) => ({
-      id: `stage-${index}`,
-      action: `stage-${index}`,
-      target: `stage-${index}`,
-      riskTier: 'T1',
-      declaredAssignment: assign(index === 12 ? 'beta' : 'alpha'),
-      dependsOn: index === 0 ? undefined : [`stage-${index - 1}`],
-    }));
-    const positions = agentNodePositions(entry({ stages }), ['alpha', 'beta']);
-    expect(positions.get('alpha')).toEqual({ x: 0, y: 0 });
-    expect(positions.get('beta')).toEqual({ x: 430, y: 0 });
-  });
-
-  it('keeps a local review cycle in one lane without circularizing the surrounding workflow', () => {
-    const workflow = entry({ stages: [
-      { id: 'a', action: 'a', target: 'a', riskTier: 'T1', declaredAssignment: assign('alpha') },
-      { id: 'b1', action: 'b1', target: 'b1', riskTier: 'T1', declaredAssignment: assign('beta'), dependsOn: ['a'] },
-      { id: 'c', action: 'c', target: 'c', riskTier: 'T1', declaredAssignment: assign('checker'), dependsOn: ['b1'] },
-      { id: 'b2', action: 'b2', target: 'b2', riskTier: 'T1', declaredAssignment: assign('beta'), dependsOn: ['c'] },
-      { id: 'd', action: 'd', target: 'd', riskTier: 'T1', declaredAssignment: assign('delta'), dependsOn: ['b2'] },
-      { id: 'e', action: 'e', target: 'e', riskTier: 'T1', declaredAssignment: assign('echo'), dependsOn: ['d'] },
-    ] });
-    const positions = agentNodePositions(workflow, ['echo', 'checker', 'delta', 'alpha', 'beta']);
-    expect(positions.get('alpha')?.x).toBe(0);
-    expect(positions.get('beta')?.x).toBe(430);
-    expect(positions.get('checker')?.x).toBe(430);
-    expect(positions.get('delta')?.x).toBe(860);
-    expect(positions.get('echo')?.x).toBe(1290);
-  });
-
-  it('projects the FYT agent cycle as five routed trunks around a stable four-node ring', () => {
-    const workflow = entry({ stages: [
-      { id: 'idea', action: 'idea', target: 'idea', riskTier: 'T1', declaredAssignment: assign('fyt-preproduction') },
-      { id: 'research', action: 'research', target: 'research', riskTier: 'T1', declaredAssignment: assign('fyt-preproduction'), dependsOn: ['idea'] },
-      { id: 'script', action: 'script', target: 'script', riskTier: 'T1', declaredAssignment: assign('fyt-preproduction'), dependsOn: ['research'] },
-      { id: 'judge', action: 'judge', target: 'judge', riskTier: 'T1', declaredAssignment: assign('fyt-checker'), dependsOn: ['script'] },
-      { id: 'shorts', action: 'shorts', target: 'shorts', riskTier: 'T1', declaredAssignment: assign('fyt-preproduction'), dependsOn: ['judge'] },
-      { id: 'metadata', action: 'metadata', target: 'metadata', riskTier: 'T1', declaredAssignment: assign('fyt-preproduction'), dependsOn: ['judge'] },
-      { id: 'shots', action: 'shots', target: 'shots', riskTier: 'T1', declaredAssignment: assign('fyt-preproduction'), dependsOn: ['judge'] },
-      { id: 'motion', action: 'motion', target: 'motion', riskTier: 'T1', declaredAssignment: assign('fyt-preproduction'), dependsOn: ['shots'] },
-      { id: 'images', action: 'images', target: 'images', riskTier: 'T1', declaredAssignment: assign('fyt-production'), dependsOn: ['shots'] },
-      { id: 'image-review', action: 'review', target: 'review', riskTier: 'T1', declaredAssignment: assign('fyt-runner'), dependsOn: ['images', 'motion'] },
-      { id: 'voiceover', action: 'voiceover', target: 'voiceover', riskTier: 'T1', declaredAssignment: assign('fyt-production'), dependsOn: ['judge'] },
-      { id: 'audio-plan', action: 'audio', target: 'audio', riskTier: 'T1', declaredAssignment: assign('fyt-production'), dependsOn: ['script', 'shots', 'voiceover'] },
-      { id: 'render', action: 'render', target: 'render', riskTier: 'T1', declaredAssignment: assign('fyt-production'), dependsOn: ['metadata', 'shorts', 'motion', 'image-review', 'audio-plan'] },
-      { id: 'verify', action: 'verify', target: 'verify', riskTier: 'T1', declaredAssignment: assign('fyt-checker'), dependsOn: ['render'] },
-    ] });
-    const owners = ['fyt-runner', 'fyt-production', 'fyt-checker', 'fyt-preproduction'];
-    expect(Object.fromEntries(agentNodePositions(workflow, owners))).toEqual({
-      'fyt-preproduction': { x: 132, y: 116 },
-      'fyt-checker': { x: 768, y: 116 },
-      'fyt-production': { x: 768, y: 484 },
-      'fyt-runner': { x: 132, y: 484 },
-    });
-    const edges = handoffEdges(workflow);
-    expect(edges).toHaveLength(5);
-    expect(edges.flatMap((edge) => edge.data?.directions ?? [])
-      .reduce((count, direction) => count + direction.stagePairs.length, 0)).toBe(15);
-    expect(edges.find((edge) => edge.id === 'handoff-fyt-checker~fyt-production')).toMatchObject({
-      sourceHandle: 'source-bottom',
-      targetHandle: 'target-top',
-    });
-    expect(edges.find((edge) => edge.id === 'handoff-fyt-preproduction~fyt-runner')).toMatchObject({
-      sourceHandle: 'source-bottom',
-      targetHandle: 'target-top',
-    });
-  });
-
+describe('the canvas', () => {
   it('retains a dragged position and reroutes its edges through it', () => {
     render(<WorkflowAgentGraph entry={entry()} assignmentOptions={options()} />);
-    expect(screen.getByTestId('reactflow-edge-handoff-alpha~beta').dataset.sourceHandle).toBe('source-right');
-    fireEvent.click(screen.getByRole('button', { name: 'Move alpha node' }));
-    expect(screen.getByTestId('reactflow-position-alpha').dataset.position).toBe('900,0');
-    expect(screen.getByTestId('reactflow-edge-handoff-alpha~beta').dataset.sourceHandle).toBe('source-left');
+    expect(screen.getByTestId('reactflow-edge-step-research~draft').dataset.sourceHandle).toBe('source-right');
+    fireEvent.click(screen.getByRole('button', { name: 'Move the draft step' }));
+    expect(screen.getByTestId('reactflow-position-stage:draft').dataset.position).toBe('0,0');
+    expect(screen.getByTestId('reactflow-edge-step-research~draft').dataset.sourceHandle).toBe('source-left');
   });
 
-  it('explains itself in plain words and opens an agent without a network write', () => {
-    const onOpenAgent = vi.fn();
-    vi.stubGlobal('fetch', vi.fn());
-    render(<WorkflowAgentGraph entry={entry()} assignmentOptions={options()} onOpenAgent={onOpenAgent} />);
-    expect(screen.getByTestId('reactflow-panel').textContent).toContain('who hands work to whom');
-    fireEvent.click(screen.getAllByRole('button', { name: 'Open agent' })[1]);
-    expect(onOpenAgent).toHaveBeenCalledWith('beta');
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it('says so plainly when a workflow has no steps yet', () => {
-    render(<WorkflowAgentGraph entry={entry({ stages: [], manager: null })} />);
-    expect(screen.getByTestId('workflow-agent-network-empty').textContent).toContain('no steps');
+  it('explains itself in plain words', () => {
+    render(<WorkflowAgentGraph entry={entry()} />);
+    expect(screen.getByTestId('reactflow-panel').textContent).toContain('arrows show what runs after what');
   });
 });

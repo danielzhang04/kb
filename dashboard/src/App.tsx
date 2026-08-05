@@ -392,6 +392,7 @@ function ViewBody({
   onSectionChange,
   onNavigateTarget,
   onRunAgent,
+  onRunWorkflow,
 }: {
   view: DestinationId;
   onNavigate: (id: DestinationId) => void;
@@ -404,6 +405,7 @@ function ViewBody({
   onSectionChange: (id: string) => void;
   onNavigateTarget: (target: NavTarget) => void;
   onRunAgent: (agent: { id: string }) => void;
+  onRunWorkflow: (workflow: { ref: string }) => void;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
@@ -436,6 +438,7 @@ function ViewBody({
           onOpenRun={(runRef) => onPush(focusTarget({ kind: 'run', id: runRef }))}
           onBack={onBack}
           onNavigate={onNavigateTarget}
+          onRunWorkflow={onRunWorkflow}
         />
       );
     case 'agents':
@@ -536,6 +539,8 @@ function AppShell(): React.JSX.Element {
   const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
   // The agent a "Run agent" click asked for. Handed to the persistent Terminal, which consumes it once.
   const [runAgentId, setRunAgentId] = useState<string | null>(null);
+  // The workflow a "Run workflow" click asked for. Same one-shot handoff to the persistent Terminal.
+  const [runWorkflowRef, setRunWorkflowRef] = useState<string | null>(null);
   const approvalsCount = useApprovalsCount();
   // Unlike ordinary destination bodies, Terminal is a long-lived workspace: navigating away hides it but
   // must not unmount its xterm instances or close their WebSockets. Composer behaves like another overlay.
@@ -659,6 +664,16 @@ function AppShell(): React.JSX.Element {
     goTo('terminal');
   };
 
+  /**
+   * "Run workflow": the same one-click path, for a workflow instead of an agent. The Terminal opens a
+   * shell primed as the agent that runs that definition (the server resolves the ref — nothing here
+   * builds a path or picks an agent), then reports the target consumed.
+   */
+  const runWorkflow = (workflow: { ref: string }): void => {
+    setRunWorkflowRef(workflow.ref);
+    goTo('terminal');
+  };
+
   const closeComposerTab = (composerRef: string): void => {
     if (runningComposerRefs.has(composerRef)) return;
     setOpenComposerRefs((current) => {
@@ -770,6 +785,8 @@ function AppShell(): React.JSX.Element {
             visible={terminalVisible}
             agentTarget={runAgentId}
             onAgentTargetConsumed={() => setRunAgentId(null)}
+            workflowTarget={runWorkflowRef}
+            onWorkflowTargetConsumed={() => setRunWorkflowRef(null)}
           />
         </div>
         {openWorkspaces.map((workspace) => (
@@ -799,6 +816,7 @@ function AppShell(): React.JSX.Element {
             onSectionChange={setSection}
             onNavigateTarget={navigateTo}
             onRunAgent={runAgent}
+            onRunWorkflow={runWorkflow}
           />
         ) : null}
       </main>

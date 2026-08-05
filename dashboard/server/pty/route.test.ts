@@ -7,8 +7,11 @@
  * Every allowed-origin attempt writes exactly one audit row. A socket close now DETACHES (the shell keeps
  * running); the shell dies only on an explicit close frame, a shell exit, or the shutdown drain.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
@@ -16,6 +19,7 @@ import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { HostOpenRequest, PtyHandle, PtyHost, PtySession } from './host.ts';
 import { createPersistentSessionRegistry } from './persistentSessions.ts';
 import type { PersistentSessionRegistry } from './persistentSessions.ts';
+import { declaredWorkflowDefPath } from '../workflows/routes.ts';
 import {
   buildSpawnCommand,
   handlePtyConnection,
@@ -24,6 +28,7 @@ import {
   registerPtyRoute,
   sessionParamFromUrl,
   tokenFromSubprotocol,
+  workflowPrimingFileName,
 } from './route.ts';
 import type { PtyRouteContext, PtySocketLike } from './route.ts';
 
@@ -165,6 +170,17 @@ function fakePtyHost(options: { spawnError?: Error; sessionId?: string } = {}) {
   };
 }
 
+/** Temp directories created by a test; swept after each so no priming file or fixture repo survives. */
+const scratchDirs: string[] = [];
+function scratchDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  scratchDirs.push(dir);
+  return dir;
+}
+afterEach(() => {
+  while (scratchDirs.length > 0) rmSync(scratchDirs.pop() as string, { recursive: true, force: true });
+});
+
 function harness(options: {
   preamble?: PreambleRunner;
   host?: ReturnType<typeof fakePtyHost>;
@@ -172,6 +188,9 @@ function harness(options: {
   maxConcurrent?: number;
   appendAudit?: PtyRouteContext['appendAudit'];
   resolveAgentFile?: PtyRouteContext['resolveAgentFile'];
+  resolveWorkflowFile?: PtyRouteContext['resolveWorkflowFile'];
+  repoRoot?: string;
+  workflowPrimingRoot?: string;
 } = {}): {
   ctx: PtyRouteContext;
   audit: ReturnType<typeof recordingAppendAudit>;
@@ -189,7 +208,7 @@ function harness(options: {
     return run(repoRoot);
   };
   const ctx = makePtyRouteContext({
-    repoRoot: '/repo',
+    repoRoot: options.repoRoot ?? '/repo',
     sessionConfig: SESSION_CONFIG,
     allowedOrigins: ALLOWED,
     ptyHost: host.host,
@@ -197,9 +216,13 @@ function harness(options: {
     runPreamble,
     appendAudit: options.appendAudit ?? audit.fn,
     maxConcurrent: options.maxConcurrent,
-    // Hermetic by default: NO agent id resolves unless a test supplies the allowlist explicitly, so a
-    // spawn test can never accidentally depend on the real `agents/` directory of this checkout.
+    // Hermetic by default: NO agent id and NO workflow ref resolves unless a test supplies the allowlist
+    // explicitly, so a spawn test can never accidentally depend on this checkout's own `agents/` or
+    // `orgs/**/workflows/` trees.
     resolveAgentFile: options.resolveAgentFile ?? (() => null),
+    resolveWorkflowFile: options.resolveWorkflowFile ?? (() => null),
+    // Never the repo, never the real daemon state root: a temp directory per test.
+    workflowPrimingRoot: options.workflowPrimingRoot ?? scratchDir('kb-pty-priming-'),
   });
   return { ctx, audit, host, registry, preambleCalls: () => calls };
 }
@@ -235,11 +258,15 @@ describe('parseSpawnParams / buildSpawnCommand — the "Run agent" admission rul
     expect(parseSpawnParams('/api/pty?session=pty-9')).toEqual({ ok: true, spawn: null });
   });
 
-  it('accepts only the two exact known modes with exactly their required companion parameter', () => {
+  it('accepts only the three exact known modes with exactly their required companion parameter', () => {
     expect(parseSpawnParams('/api/pty?spawn=claude')).toEqual({ ok: true, spawn: { mode: 'claude' } });
     expect(parseSpawnParams('/api/pty?spawn=agent&agent=fyt-runner')).toEqual({
       ok: true,
       spawn: { mode: 'agent', agentId: 'fyt-runner' },
+    });
+    expect(parseSpawnParams('/api/pty?spawn=workflow&workflow=video-run')).toEqual({
+      ok: true,
+      spawn: { mode: 'workflow', workflowRef: 'video-run' },
     });
   });
 
@@ -253,16 +280,42 @@ describe('parseSpawnParams / buildSpawnCommand — the "Run agent" admission rul
     expect(parseSpawnParams('/api/pty?session=pty-9&spawn=claude')).toEqual({ ok: false, reason: 'spawn-with-attach' });
   });
 
-  it('builds an ARGV ARRAY, with the server-resolved declaration path as its own element', () => {
+  it('refuses every malformed or cross-wired WORKFLOW spawn request', () => {
+    expect(parseSpawnParams('/api/pty?spawn=workflow')).toEqual({ ok: false, reason: 'workflow-required' });
+    expect(parseSpawnParams('/api/pty?spawn=workflow&workflow=')).toEqual({ ok: false, reason: 'workflow-required' });
+    expect(parseSpawnParams('/api/pty?spawn=workflow&agent=fyt-runner')).toEqual({ ok: false, reason: 'agent-not-allowed' });
+    expect(parseSpawnParams('/api/pty?spawn=workflow&workflow=video-run&agent=fyt-runner')).toEqual({ ok: false, reason: 'agent-not-allowed' });
+    expect(parseSpawnParams('/api/pty?spawn=claude&workflow=video-run')).toEqual({ ok: false, reason: 'workflow-not-allowed' });
+    expect(parseSpawnParams('/api/pty?spawn=agent&agent=fyt-runner&workflow=video-run')).toEqual({ ok: false, reason: 'workflow-not-allowed' });
+    // A BARE workflow= is NOT an ordinary shell open — same rule a bare agent= has always had.
+    expect(parseSpawnParams('/api/pty?workflow=video-run')).toEqual({ ok: false, reason: 'unknown-spawn-mode' });
+    expect(parseSpawnParams('/api/pty?session=pty-9&spawn=workflow&workflow=video-run')).toEqual({ ok: false, reason: 'spawn-with-attach' });
+  });
+
+  it('builds an ARGV ARRAY, with the server-resolved priming path as its own element', () => {
     expect(buildSpawnCommand({ mode: 'claude' }, null)).toEqual({ file: 'claude', args: [] });
     expect(buildSpawnCommand({ mode: 'agent', agentId: 'fyt-runner' }, '/repo/agents/fyt-runner.md')).toEqual({
       file: 'claude',
       args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md'],
     });
+    expect(buildSpawnCommand({ mode: 'workflow', workflowRef: 'video-run' }, '/state/pty-priming/workflow-video-run.md')).toEqual({
+      file: 'claude',
+      args: ['--append-system-prompt-file', '/state/pty-priming/workflow-video-run.md'],
+    });
   });
 
-  it('refuses to build an agent-primed argv without a resolved path rather than dropping the flag', () => {
+  it('refuses to build a primed argv without a resolved path rather than dropping the flag', () => {
     expect(() => buildSpawnCommand({ mode: 'agent', agentId: 'x' }, null)).toThrow(/server-resolved/);
+    expect(() => buildSpawnCommand({ mode: 'workflow', workflowRef: 'x' }, null)).toThrow(/server-generated/);
+  });
+
+  it('derives a deterministic per-ref priming filename that can never carry a path separator', () => {
+    expect(workflowPrimingFileName('video-run')).toBe('workflow-video-run.md');
+    expect(workflowPrimingFileName('video-run')).toBe(workflowPrimingFileName('video-run'));
+    const hostile = workflowPrimingFileName('../../etc/passwd');
+    expect(hostile).toMatch(/^workflow-[a-f0-9]{32}\.md$/);
+    expect(hostile).not.toContain('/');
+    expect(hostile).not.toContain('..');
   });
 });
 
@@ -357,6 +410,155 @@ describe('agent-primed spawn (Run agent)', () => {
     const ws = fakeSocket();
     // No bearer in the subprotocol: the session refusal must come first, and no roster read may happen.
     await handlePtyConnection(ws.sock, req(GOOD_HEADERS(), '/api/pty?spawn=agent&agent=fyt-runner'), h.ctx);
+
+    expect(resolver).not.toHaveBeenCalled();
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unauthenticated' });
+  });
+});
+
+describe('workflow-primed spawn (Run workflow)', () => {
+  /**
+   * A scratch repo whose definition has ZERO executable assignment — no `manager:`, no stage
+   * `agentId`/`profileId`. That is the shape of ALL FIVE real definitions in this repo today, so it is
+   * the shape that must spawn cleanly. Governance (`governedBy`) is what names the cast.
+   */
+  function zeroAssignmentRepo(options: { withAgents?: boolean } = {}): string {
+    const repoRoot = scratchDir('kb-pty-workflow-repo-');
+    const workflows = join(repoRoot, 'orgs', 'kb-ops', 'workflows');
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(
+      join(workflows, 'email-triage.md'),
+      [
+        '---', 'id: email-triage', 'project: kb-ops', 'title: Email triage (draft-only)', 'profile: gmail-triage',
+        'governedBy: chief',
+        'stages:',
+        '  - id: triage', '    title: Triage the inbox', '    action: research:email-triage',
+        '    target: orgs/kb-ops/output', '    riskTier: T2', '    workOrder: triage it',
+        '  - id: report', '    title: Write the report', '    action: draft:triage-report',
+        '    target: orgs/kb-ops/output', '    workOrder: write it', '    dependsOn: [triage]',
+        '    governedBy: scribe',
+        '---', 'body', '',
+      ].join('\n'),
+      'utf8',
+    );
+    if (options.withAgents) {
+      const agents = join(repoRoot, 'agents');
+      mkdirSync(agents, { recursive: true });
+      for (const [id, role] of [['chief', 'manage'], ['scribe', 'work']]) {
+        writeFileSync(
+          join(agents, `${id}.md`),
+          ['---', `id: ${id}`, `role: ${role}`, 'runtime: claude', 'model: claude-sonnet-5', 'projects: [kb-ops]', 'runner-bound: true', '---', 'Bounded declaration.', ''].join('\n'),
+          'utf8',
+        );
+      }
+    }
+    return repoRoot;
+  }
+
+  it('spawns claude primed with a GENERATED file outside the repo, naming the resolved cast', async () => {
+    const repoRoot = zeroAssignmentRepo({ withAgents: true });
+    const primingRoot = scratchDir('kb-pty-priming-out-');
+    // The REAL allowlist and the REAL priming writer — only the repo root and the state root are scratch.
+    const h = harness({ repoRoot, workflowPrimingRoot: primingRoot, resolveWorkflowFile: declaredWorkflowDefPath });
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=workflow&workflow=email-triage'),
+      h.ctx,
+    );
+
+    expect(h.host.opens).toHaveLength(1);
+    const command = h.host.opens[0].command as { file: string; args: readonly string[] };
+    expect(command.file).toBe('claude');
+    expect(command.args[0]).toBe('--append-system-prompt-file');
+    const primingPath = command.args[1];
+    expect(primingPath).toBe(join(primingRoot, 'workflow-email-triage.md'));
+    expect(primingPath.startsWith(repoRoot)).toBe(false); // NEVER inside the repo
+    expect(h.host.opens[0].cwd).toBe(repoRoot); // still the repo the daemon serves
+
+    const primed = readFileSync(primingPath, 'utf8');
+    expect(primed).toContain('# Governing agent — workflow: Email triage (draft-only)');
+    expect(primed).toContain('HEAD, GOVERNING agent');
+    expect(primed).toContain('- workflow ref: email-triage');
+    expect(primed).toContain('- definition (repo-relative): orgs/kb-ops/workflows/email-triage.md');
+    expect(primed).toContain('- default manager: chief (claude-sonnet-5) [governed-by]');
+    expect(primed).toContain('triage — Triage the inbox — research:email-triage → chief (claude-sonnet-5) [manager-default]');
+    expect(primed).toContain('report — Write the report — draft:triage-report → scribe (claude-sonnet-5) [stage-governed-by]');
+    expect(primed).toContain('CONVERSATIONALLY');
+    expect(primed).not.toContain('CLAUDE_CODE_OAUTH_TOKEN'); // no credential name ever reaches the file
+
+    expect(h.audit.rows).toHaveLength(1);
+    expect(h.audit.rows[0].event).toMatchObject({
+      action: 'pty-open',
+      result: 'opened',
+      detail: { spawn: 'workflow', workflowRef: 'email-triage' },
+    });
+  });
+
+  it('spawns CLEANLY for a def with no resolvable cast, printing the honest refusal per stage', async () => {
+    // Zero declared agents in the project: manager null, every stage null. The spawn must still succeed.
+    const repoRoot = zeroAssignmentRepo();
+    const primingRoot = scratchDir('kb-pty-priming-empty-');
+    const h = harness({ repoRoot, workflowPrimingRoot: primingRoot, resolveWorkflowFile: declaredWorkflowDefPath });
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=workflow&workflow=email-triage'),
+      h.ctx,
+    );
+
+    expect(h.host.opens).toHaveLength(1);
+    expect(h.registry.liveCount()).toBe(1);
+    const primed = readFileSync((h.host.opens[0].command as { args: readonly string[] }).args[1], 'utf8');
+    expect(primed).toContain('- default manager: no default agent resolvable');
+    expect(primed).toContain('triage — Triage the inbox — research:email-triage → no default agent resolvable');
+    expect(primed).toContain('report — Write the report — draft:triage-report → no default agent resolvable');
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { spawn: 'workflow' } });
+  });
+
+  it('refuses an unknown workflow ref BEFORE anything is spawned or written', async () => {
+    const primingRoot = scratchDir('kb-pty-priming-unknown-');
+    const h = harness({ workflowPrimingRoot: primingRoot }); // default allowlist resolves nothing
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=workflow&workflow=not-a-workflow'),
+      h.ctx,
+    );
+
+    expect(h.host.opens).toHaveLength(0);
+    expect(h.registry.liveCount()).toBe(0);
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unknown-workflow' });
+    expect(ws.closes[0]?.code).toBe(1008);
+    expect(h.audit.rows).toHaveLength(1);
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'unknown-workflow', detail: { workflowRef: 'not-a-workflow' } });
+  });
+
+  it('refuses a traversing ref without ever handing it to a path join', async () => {
+    const seen: string[] = [];
+    const h = harness({
+      resolveWorkflowFile: (_root, ref) => {
+        seen.push(ref);
+        return null;
+      },
+    });
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=workflow&workflow=..%2F..%2Fetc%2Fpasswd'),
+      h.ctx,
+    );
+
+    expect(seen).toEqual(['../../etc/passwd']); // reaches the ALLOWLIST, never a join
+    expect(h.host.opens).toHaveLength(0);
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unknown-workflow' });
+  });
+
+  it('refuses a workflow spawn before authentication has passed — auth still wins', async () => {
+    const resolver = vi.fn(() => '/repo/orgs/kb-ops/workflows/email-triage.md');
+    const h = harness({ resolveWorkflowFile: resolver });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(), '/api/pty?spawn=workflow&workflow=email-triage'), h.ctx);
 
     expect(resolver).not.toHaveBeenCalled();
     expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unauthenticated' });
@@ -639,6 +841,7 @@ describe('registerPtyRoute REST session endpoints', () => {
   async function restApp(
     registry: PersistentSessionRegistry,
     resolveAgentFile: PtyRouteContext['resolveAgentFile'] = () => null,
+    resolveWorkflowFile: PtyRouteContext['resolveWorkflowFile'] = () => null,
   ) {
     const app = Fastify({ logger: false });
     const host = fakePtyHost();
@@ -651,6 +854,8 @@ describe('registerPtyRoute REST session endpoints', () => {
       runPreamble: okPreamble(),
       appendAudit: recordingAppendAudit().fn,
       resolveAgentFile,
+      resolveWorkflowFile,
+      workflowPrimingRoot: scratchDir('kb-pty-priming-rest-'),
     });
     await registerPtyRoute(app, ctx);
     await app.ready();
@@ -682,6 +887,37 @@ describe('registerPtyRoute REST session endpoints', () => {
       // A roster-known agent clears admission; the non-upgrade GET then falls through to the route's
       // own 404, which is exactly what proves the hook did NOT refuse it.
       const allowed = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=fyt-runner' });
+      expect(allowed.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('400s an unknown workflow ref on the upgrade, and lets an allowlisted ref through', async () => {
+    const app = await restApp(
+      createPersistentSessionRegistry(),
+      () => null,
+      (repoRoot, ref) => (ref === 'email-triage' ? `${repoRoot}/orgs/kb-ops/workflows/email-triage.md` : null),
+    );
+    try {
+      const unknown = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=ghost' });
+      expect(unknown.statusCode).toBe(400);
+      expect(unknown.json()).toEqual({ error: 'unknown-workflow' });
+
+      const traversal = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=..%2F..%2Fsecrets' });
+      expect(traversal.statusCode).toBe(400);
+      expect(traversal.json()).toEqual({ error: 'unknown-workflow' });
+
+      const missingRef = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow' });
+      expect(missingRef.statusCode).toBe(400);
+      expect(missingRef.json()).toMatchObject({ error: 'bad-spawn-request', reason: 'workflow-required' });
+
+      const crossWired = await app.inject({ method: 'GET', url: '/api/pty?spawn=claude&workflow=email-triage' });
+      expect(crossWired.statusCode).toBe(400);
+      expect(crossWired.json()).toMatchObject({ error: 'bad-spawn-request', reason: 'workflow-not-allowed' });
+
+      // An allowlisted ref clears admission; the non-upgrade GET then falls through to the route's 404.
+      const allowed = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=email-triage' });
       expect(allowed.statusCode).toBe(404);
     } finally {
       await app.close();

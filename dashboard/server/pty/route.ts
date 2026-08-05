@@ -23,17 +23,24 @@
  * Either way exactly ONE audit row is written per allowed-origin connection, and a `{type:'session'}`
  * control frame is sent to the browser FIRST so the client can bind its tab id before the replay flush.
  *
- * SPAWN MODES (the Agents view's "Run agent"): an OPEN may ask for something other than the login shell
- * via `?spawn=claude` or `?spawn=agent&agent=<id>`. `agent` is validated against the server's DECLARED
- * agent roster (`declaredAgentFilePath`) — an exact-match allowlist — before any path or argv exists; the
- * declaration path is then resolved server-side and passed as its own argv element, never interpolated
- * into a command string. A bad mode or an unknown id is refused twice over: HTTP 400 on the upgrade from
- * the route's `preValidation` hook, and a fail-closed re-check in the handler.
+ * SPAWN MODES (the Agents view's "Run agent" / the Workflows view's "Run workflow"): an OPEN may ask for
+ * something other than the login shell via `?spawn=claude`, `?spawn=agent&agent=<id>`, or
+ * `?spawn=workflow&workflow=<ref>`. `agent` is validated against the server's DECLARED agent roster
+ * (`declaredAgentFilePath`) and `workflow` against the scanned definition registry
+ * (`declaredWorkflowDefPath`) — exact-match allowlists — before any path or argv exists; the resolved
+ * path is server-side and is passed as its own argv element, never interpolated into a command string.
+ * A workflow spawn additionally GENERATES its governing-agent priming file into the daemon state root
+ * (never into the repo) and primes claude with that. A bad mode, an unknown id, or an unknown ref is
+ * refused twice over: HTTP 400 on the upgrade from the route's `preValidation` hook, and a fail-closed
+ * re-check in the handler.
  *
  * REST companion (same origin-guarded scope): `GET /api/pty/sessions` lists the caller's live sessions
  * and `DELETE /api/pty/sessions/:id` kills one — both bearer-verified with the SAME `verifySession`, no
  * audit (a read and a not-audited-today close, respectively).
  */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import fastifyWebsocket from '@fastify/websocket';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { assertOrigin, resolveAllowedOrigins } from '../security/origin.ts';
@@ -48,6 +55,8 @@ import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow } from '../audit/log.ts';
 import { resolveRepoRoot } from '../http/surface.ts';
 import { declaredAgentFilePath } from '../agents/roster.ts';
+import { declaredWorkflowDefPath, workflowPrimingText } from '../workflows/routes.ts';
+import { resolveDashboardStateRoot } from '../composer/store.ts';
 import type { PtyCommand, PtyHost } from './host.ts';
 import { createPersistentSessionRegistry, SESSION_ID_RE } from './persistentSessions.ts';
 import type { PersistentSessionRegistry, SessionSink } from './persistentSessions.ts';
@@ -81,16 +90,20 @@ export interface PtySocketLike {
 /**
  * The non-default programs a terminal may be opened as (the "Run agent" path). Absent = today's login
  * shell, byte-identical to the pre-existing behaviour.
- *   `claude` — a plain interactive Claude Code session in the repo the daemon serves.
- *   `agent`  — the same session PRIMED with one declared agent's own `agents/<id>.md`.
+ *   `claude`   — a plain interactive Claude Code session in the repo the daemon serves.
+ *   `agent`    — the same session PRIMED with one declared agent's own `agents/<id>.md`.
+ *   `workflow` — the same session PRIMED as the GOVERNING agent for one workflow definition, from a
+ *                priming file this server generates into its own state root (never into the repo).
  */
-export type PtySpawnMode = 'claude' | 'agent';
+export type PtySpawnMode = 'claude' | 'agent' | 'workflow';
 
-/** A parsed, SYNTACTICALLY valid spawn request. `agentId` is present exactly when `mode` is `agent`,
- *  and is NOT yet known to name a real agent — {@link PtyRouteContext.resolveAgentFile} decides that. */
+/** A parsed, SYNTACTICALLY valid spawn request. `agentId` is present exactly when `mode` is `agent` and
+ *  `workflowRef` exactly when `mode` is `workflow`; neither is yet known to name anything real —
+ *  {@link PtyRouteContext.resolveAgentFile} / {@link PtyRouteContext.resolveWorkflowFile} decide that. */
 export interface PtySpawnRequest {
   mode: PtySpawnMode;
   agentId?: string;
+  workflowRef?: string;
 }
 
 /** Why a spawn request was refused. Each maps to one HTTP 400 on the upgrade and one audit row. */
@@ -98,6 +111,8 @@ export type SpawnParamRefusal =
   | 'unknown-spawn-mode'
   | 'agent-required'
   | 'agent-not-allowed'
+  | 'workflow-required'
+  | 'workflow-not-allowed'
   | 'spawn-with-attach';
 
 export type SpawnParamResult =
@@ -117,36 +132,103 @@ export const CLAUDE_COMMAND = 'claude';
  * an exact known mode with exactly the companion parameter that mode requires, and it may never be
  * combined with `session=` (an ATTACH reuses a live shell and spawns nothing, so a spawn request there
  * would be silently ignored — refusing is the honest reading). No value parsed here is ever used to
- * build a path; `agentId` still has to clear the roster allowlist.
+ * build a path; `agentId` still has to clear the roster allowlist and `workflowRef` the definition
+ * allowlist. A BARE `agent=` or `workflow=` with no `spawn=` is a refusal, never an ordinary shell open:
+ * silently ignoring a named target would be the same lie as silently ignoring a spawn on an attach.
  */
 export function parseSpawnParams(url: string | undefined): SpawnParamResult {
   const q = url === undefined ? -1 : url.indexOf('?');
   const params = new URLSearchParams(q < 0 ? '' : (url as string).slice(q + 1));
   const mode = params.get('spawn');
   const agentId = params.get('agent');
-  if (mode === null && agentId === null) return { ok: true, spawn: null };
+  const workflowRef = params.get('workflow');
+  if (mode === null && agentId === null && workflowRef === null) return { ok: true, spawn: null };
   const attach = params.get('session');
   if (attach !== null && attach !== '') return { ok: false, reason: 'spawn-with-attach' };
-  if (mode !== 'claude' && mode !== 'agent') return { ok: false, reason: 'unknown-spawn-mode' };
+  if (mode !== 'claude' && mode !== 'agent' && mode !== 'workflow') return { ok: false, reason: 'unknown-spawn-mode' };
   if (mode === 'claude') {
     if (agentId !== null) return { ok: false, reason: 'agent-not-allowed' };
+    if (workflowRef !== null) return { ok: false, reason: 'workflow-not-allowed' };
     return { ok: true, spawn: { mode } };
   }
-  if (agentId === null || agentId === '') return { ok: false, reason: 'agent-required' };
-  return { ok: true, spawn: { mode, agentId } };
+  if (mode === 'agent') {
+    if (workflowRef !== null) return { ok: false, reason: 'workflow-not-allowed' };
+    if (agentId === null || agentId === '') return { ok: false, reason: 'agent-required' };
+    return { ok: true, spawn: { mode, agentId } };
+  }
+  if (agentId !== null) return { ok: false, reason: 'agent-not-allowed' };
+  if (workflowRef === null || workflowRef === '') return { ok: false, reason: 'workflow-required' };
+  return { ok: true, spawn: { mode, workflowRef } };
 }
 
 /**
- * Build the child argv for an ALREADY-VALIDATED spawn request. `agentFile` is the server-resolved
- * absolute path from the roster allowlist — never a client string — and it lands as its own argv element
+ * Build the child argv for an ALREADY-VALIDATED spawn request. `primingFile` is a SERVER-OWNED absolute
+ * path — the agent declaration resolved through the roster allowlist for `agent`, or the priming file
+ * this server just generated for `workflow` — never a client string. It lands as its own argv element
  * beside the flag, so a path is a path and can never become extra arguments or a shell fragment.
  */
-export function buildSpawnCommand(spawn: PtySpawnRequest, agentFile: string | null): PtyCommand {
+export function buildSpawnCommand(spawn: PtySpawnRequest, primingFile: string | null): PtyCommand {
   if (spawn.mode === 'claude') return { file: CLAUDE_COMMAND, args: [] };
-  if (agentFile === null || agentFile === '') {
-    throw new Error('buildSpawnCommand: an agent-primed spawn needs a server-resolved declaration path');
+  if (primingFile === null || primingFile === '') {
+    throw new Error(
+      spawn.mode === 'workflow'
+        ? 'buildSpawnCommand: a workflow-primed spawn needs a server-generated priming file path'
+        : 'buildSpawnCommand: an agent-primed spawn needs a server-resolved declaration path',
+    );
   }
-  return { file: CLAUDE_COMMAND, args: ['--append-system-prompt-file', agentFile] };
+  return { file: CLAUDE_COMMAND, args: ['--append-system-prompt-file', primingFile] };
+}
+
+/** A workflow ref safe to reuse verbatim as a filename stem (the parser's own definition-id grammar). */
+const SAFE_WORKFLOW_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/** A deterministic, per-ref filename inside the priming directory. A ref that already cleared the
+ *  definition allowlist always matches the id grammar; the hash branch is a belt-and-braces backstop so
+ *  a ref can never contribute a path separator or a `..` to the filename under any future scan change. */
+export function workflowPrimingFileName(ref: string): string {
+  if (SAFE_WORKFLOW_REF.test(ref)) return `workflow-${ref}.md`;
+  return `workflow-${createHash('sha256').update(ref, 'utf8').digest('hex').slice(0, 32)}.md`;
+}
+
+/**
+ * Generate the governing-agent priming file for an ALREADY-ALLOWLISTED workflow ref and return its
+ * absolute path.
+ *
+ * It is written into the DAEMON STATE ROOT (`resolveDashboardStateRoot`, the same directory the composer
+ * and control stores use), never into the repo: the repo is the operator's working tree and a terminal
+ * spawn must not litter it or make it dirty. Regenerated on every spawn under a deterministic per-ref
+ * name, so the file always describes the definition as it is RIGHT NOW and an overwrite is expected.
+ *
+ * The content is built from the definition's own declared text (`workflowPrimingText`). If the priming
+ * text cannot be built — which should be unreachable, since the ref already cleared the allowlist — a
+ * minimal but honest preamble naming the ref and its path is written instead: the operator still gets a
+ * governing terminal rather than a refused spawn. No credential, token, or environment value is ever
+ * rendered into this file.
+ */
+export function writeWorkflowPrimingFile(
+  repoRoot: string,
+  ref: string,
+  primingRoot: string,
+  defFile: string,
+): string {
+  const primed = workflowPrimingText(repoRoot, ref);
+  const text = primed?.text ?? [
+    `# Governing agent — workflow: ${ref}`,
+    '',
+    'You are the HEAD, GOVERNING agent for this workflow. This session is not a stage worker.',
+    '',
+    `- workflow ref: ${ref}`,
+    `- definition: ${defFile}`,
+    '',
+    'The server could not summarise this definition. READ the definition file first, gather any declared',
+    'parameters CONVERSATIONALLY from the operator, then drive the stages through the platform\'s normal',
+    'mechanisms. Do not invent an agent for a stage that names none — ask the operator.',
+    '',
+  ].join('\n');
+  mkdirSync(primingRoot, { recursive: true });
+  const path = join(primingRoot, workflowPrimingFileName(ref));
+  writeFileSync(path, text, 'utf8');
+  return path;
 }
 
 /** Everything a PTY connection needs, all hermetic-test-injectable. */
@@ -174,6 +256,19 @@ export interface PtyRouteContext {
    * Defaults to `declaredAgentFilePath`; injected in tests so no declaration filesystem is read.
    */
   resolveAgentFile: (repoRoot: string, agentId: string) => string | null;
+  /**
+   * The workflow ALLOWLIST behind "Run workflow": resolve one workflow ref to its authoritative
+   * definition file inside the repo THIS daemon serves, or null when the ref names no valid, uniquely
+   * identified definition. Defaults to `declaredWorkflowDefPath`; injected in tests exactly like
+   * {@link resolveAgentFile}, so no test depends on this checkout's real workflow-definition tree.
+   */
+  resolveWorkflowFile: (repoRoot: string, ref: string) => string | null;
+  /**
+   * Where generated workflow priming files are written. ALWAYS outside the repo — it defaults to a
+   * `pty-priming` directory under the daemon state root (`resolveDashboardStateRoot`). Tests point it
+   * at a temp directory.
+   */
+  workflowPrimingRoot: string;
 }
 
 /** Build a full {@link PtyRouteContext}, filling every unset field with its real default. The session
@@ -203,6 +298,8 @@ export function makePtyRouteContext(overrides: Partial<PtyRouteContext> = {}): P
     auditOptions: overrides.auditOptions,
     maxConcurrent: overrides.maxConcurrent ?? MAX_CONCURRENT_PTY,
     resolveAgentFile: overrides.resolveAgentFile ?? declaredAgentFilePath,
+    resolveWorkflowFile: overrides.resolveWorkflowFile ?? declaredWorkflowDefPath,
+    workflowPrimingRoot: overrides.workflowPrimingRoot ?? join(resolveDashboardStateRoot(), 'pty-priming'),
   };
 }
 
@@ -393,21 +490,41 @@ export async function handlePtyConnection(
 
   // ── OPEN PATH ──────────────────────────────────────────────────────────────────────────────────────
   // 4a. Resolve the child program. `null` spawn = the login shell (unchanged). An agent-primed spawn
-  //     resolves its declaration path SERVER-SIDE from the validated id; an id that is not on the roster
-  //     is refused here and never reaches a path join, an argv, or a process.
+  //     resolves its declaration path SERVER-SIDE from the validated id; a workflow-primed spawn
+  //     resolves its DEFINITION path the same way and then generates its priming file outside the repo.
+  //     An id or ref that is not on its allowlist is refused here (fail-closed backstop for the route's
+  //     `preValidation` 400) and never reaches a path join, an argv, or a process.
   let command: PtyCommand | undefined;
   if (spawnParams.spawn) {
-    let agentFile: string | null = null;
+    let primingFile: string | null = null;
     if (spawnParams.spawn.mode === 'agent') {
-      agentFile = ctx.resolveAgentFile(ctx.repoRoot, spawnParams.spawn.agentId as string);
-      if (agentFile === null) {
+      primingFile = ctx.resolveAgentFile(ctx.repoRoot, spawnParams.spawn.agentId as string);
+      if (primingFile === null) {
         await audit('unknown-agent', owner, { agentId: spawnParams.spawn.agentId });
         if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'unknown-agent' }));
         socket.close(1008, 'unknown-agent');
         return;
       }
     }
-    command = buildSpawnCommand(spawnParams.spawn, agentFile);
+    if (spawnParams.spawn.mode === 'workflow') {
+      const workflowRef = spawnParams.spawn.workflowRef as string;
+      const defFile = ctx.resolveWorkflowFile(ctx.repoRoot, workflowRef);
+      if (defFile === null) {
+        await audit('unknown-workflow', owner, { workflowRef });
+        if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'unknown-workflow' }));
+        socket.close(1008, 'unknown-workflow');
+        return;
+      }
+      try {
+        primingFile = writeWorkflowPrimingFile(ctx.repoRoot, workflowRef, ctx.workflowPrimingRoot, defFile);
+      } catch (err) {
+        await audit('spawn-failed', owner, { workflowRef, error: (err as Error).message });
+        if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'spawn-failed' }));
+        socket.close(1011, 'priming-write-failed');
+        return;
+      }
+    }
+    command = buildSpawnCommand(spawnParams.spawn, primingFile);
   }
 
   // 4b. Concurrency cap — count LIVE SESSIONS, refuse over the ceiling BEFORE spawning anything.
@@ -450,6 +567,7 @@ export async function handlePtyConnection(
       // same action, and an audit that could not tell them apart would be a hole.
       spawn: spawnParams.spawn?.mode ?? 'shell',
       ...(spawnParams.spawn?.agentId ? { agentId: spawnParams.spawn.agentId } : {}),
+      ...(spawnParams.spawn?.workflowRef ? { workflowRef: spawnParams.spawn.workflowRef } : {}),
     });
   } catch {
     registry.close(owner, sessionId);
@@ -515,6 +633,10 @@ export async function registerPtyRoute(
         }
         if (parsed.spawn?.mode === 'agent' && ctx.resolveAgentFile(ctx.repoRoot, parsed.spawn.agentId as string) === null) {
           await reply.code(400).send({ error: 'unknown-agent' });
+          return;
+        }
+        if (parsed.spawn?.mode === 'workflow' && ctx.resolveWorkflowFile(ctx.repoRoot, parsed.spawn.workflowRef as string) === null) {
+          await reply.code(400).send({ error: 'unknown-workflow' });
         }
       },
     },

@@ -345,6 +345,10 @@ describe('Terminal — agent-primed sessions', () => {
     expect(ptyQuery('pty-9', { mode: 'agent', agentId: 'fyt-runner' })).toBe('?session=pty-9');
     // An `agent` mode with no id degrades to plain claude rather than emitting `agent=undefined`.
     expect(ptyQuery(undefined, { mode: 'agent' })).toBe('?spawn=claude');
+    // A workflow is named by its ref; the server resolves it to a definition and to the agent that runs it.
+    expect(ptyQuery(undefined, { mode: 'workflow', workflowRef: 'kb~video.md' })).toBe('?spawn=workflow&workflow=kb%7Evideo.md');
+    expect(ptyQuery(undefined, { mode: 'workflow' })).toBe('?spawn=claude');
+    expect(ptyQuery('pty-9', { mode: 'workflow', workflowRef: 'kb~video.md' })).toBe('?session=pty-9');
   });
 
   it('opens a primed tab for the requested agent, names the tab after it, and reports it consumed', async () => {
@@ -451,5 +455,118 @@ describe('Terminal — agent-primed sessions', () => {
     await waitFor(() => expect(sockets.length).toBe(1));
     expect(screen.queryByTestId('terminal-mode')).toBeNull();
     expect(screen.getByTestId('terminal-tab-1').textContent).toContain('powershell');
+  });
+});
+
+/**
+ * "Run workflow" from a workflow's detail is the SAME path as "Run agent", for a workflow: one click has
+ * to land the operator in a live session already primed as the agent that runs it. The browser only ever
+ * names the workflow — the server resolves the ref to a definition and to its agent.
+ */
+describe('Terminal — workflow-primed sessions', () => {
+  it('opens a primed tab for the requested workflow, names the tab after it, and reports it consumed', async () => {
+    const { factory, sockets } = makeFactory();
+    const consumed = vi.fn();
+    render(
+      unlocked(
+        <Terminal
+          workflowTarget="kb~video.md"
+          onWorkflowTargetConsumed={consumed}
+          socketFactory={factory}
+          sessionsClient={makeSessionsClient()}
+        />,
+      ),
+    );
+
+    await waitFor(() => expect(sockets.length).toBeGreaterThan(0));
+    expect(sockets[0].spawn).toEqual({ mode: 'workflow', workflowRef: 'kb~video.md' });
+    expect(consumed).toHaveBeenCalledTimes(1);
+    // The tab reads as the workflow it runs, never as an ordinal shell.
+    expect(screen.getByTestId('terminal-tab-1').textContent).toContain('kb~video.md');
+    expect(screen.getByTestId('terminal-tab-1').textContent).not.toContain('powershell');
+    await act(async () => Promise.resolve());
+    expect(sockets).toHaveLength(1);
+  });
+
+  it('never respawns the same workflow twice, but runs it again after the caller clears it', async () => {
+    const { factory, sockets } = makeFactory();
+    const { rerender } = render(
+      unlocked(<Terminal workflowTarget="kb~video.md" socketFactory={factory} sessionsClient={makeSessionsClient()} />),
+    );
+    await waitFor(() => expect(sockets.length).toBe(1));
+
+    rerender(unlocked(<Terminal workflowTarget="kb~video.md" socketFactory={factory} sessionsClient={makeSessionsClient()} />));
+    await act(async () => Promise.resolve());
+    expect(sockets).toHaveLength(1);
+
+    rerender(unlocked(<Terminal workflowTarget={null} socketFactory={factory} sessionsClient={makeSessionsClient()} />));
+    rerender(unlocked(<Terminal workflowTarget="kb~video.md" socketFactory={factory} sessionsClient={makeSessionsClient()} />));
+    await waitFor(() => expect(sockets.length).toBe(2));
+    expect(sockets[1].spawn).toEqual({ mode: 'workflow', workflowRef: 'kb~video.md' });
+  });
+
+  it('does not spawn a workflow while the terminal is hidden or locked', async () => {
+    const { factory } = makeFactory();
+    const { rerender } = render(
+      <SessionProvider>
+        <Terminal workflowTarget="kb~video.md" socketFactory={factory} sessionsClient={makeSessionsClient()} />
+      </SessionProvider>,
+    );
+    await act(async () => Promise.resolve());
+    expect(factory).not.toHaveBeenCalled(); // locked
+
+    rerender(
+      unlocked(
+        <Terminal visible={false} workflowTarget="kb~video.md" socketFactory={factory} sessionsClient={makeSessionsClient()} />,
+      ),
+    );
+    await act(async () => Promise.resolve());
+    expect(factory).not.toHaveBeenCalled(); // hidden
+  });
+
+  it('offers the workflow and plain claude on a workflow tab, and nothing else', async () => {
+    const { factory, sockets } = makeFactory();
+    render(
+      unlocked(<Terminal workflowTarget="kb~video.md" socketFactory={factory} sessionsClient={makeSessionsClient()} />),
+    );
+    await waitFor(() => expect(sockets.length).toBe(1));
+    await act(async () => {
+      sockets[0].onopen?.();
+      sockets[0].onmessage?.({ data: JSON.stringify({ type: 'session', sessionId: 'pty-workflow' }) });
+    });
+
+    const toggle = screen.getByTestId('terminal-mode');
+    expect(within(toggle).getByTestId('terminal-mode-workflow').getAttribute('aria-pressed')).toBe('true');
+    // A workflow tab has no agent position: nobody picked an agent, the definition did.
+    expect(within(toggle).queryByTestId('terminal-mode-agent')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('terminal-mode-claude'));
+    });
+    expect(sockets[0].controls()).toContainEqual({ type: 'close' });
+    await waitFor(() => expect(sockets.length).toBe(2));
+    expect(sockets[1].spawn).toEqual({ mode: 'claude', workflowRef: 'kb~video.md' });
+
+    await act(async () => {
+      sockets[0].onclose?.({ reason: 'closed by operator' });
+    });
+    await waitFor(() => expect(screen.getByTestId('terminal-mode-claude').getAttribute('aria-pressed')).toBe('true'));
+
+    // And back: the toggle re-primes on the same workflow without the operator naming it again.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('terminal-mode-workflow'));
+    });
+    await waitFor(() => expect(sockets.length).toBe(3));
+    expect(sockets[2].spawn).toEqual({ mode: 'workflow', workflowRef: 'kb~video.md' });
+  });
+
+  it('never offers a flip INTO workflow mode from a tab that was not opened for one', async () => {
+    const { factory, sockets } = makeFactory();
+    render(
+      unlocked(<Terminal agentTarget="fyt-runner" socketFactory={factory} sessionsClient={makeSessionsClient()} />),
+    );
+    await waitFor(() => expect(sockets.length).toBe(1));
+    expect(screen.queryByTestId('terminal-mode-workflow')).toBeNull();
+    expect(screen.getByTestId('terminal-mode-agent')).toBeTruthy();
   });
 });

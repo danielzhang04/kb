@@ -74,15 +74,18 @@ const MAX_TERMINALS = 8;
 
 /**
  * What a tab RUNS. Absent = the login shell (the historical default, unchanged).
- *   `claude` — a plain interactive Claude Code session in the repo the daemon serves.
- *   `agent`  — the same session primed with `agentId`'s own declaration file.
+ *   `claude`   — a plain interactive Claude Code session in the repo the daemon serves.
+ *   `agent`    — the same session primed with `agentId`'s own declaration file.
+ *   `workflow` — the same session primed as the agent that runs `workflowRef`'s definition.
  *
- * `agentId` is retained even in `claude` mode so the header toggle can switch back without the operator
- * re-picking the agent. The SERVER resolves the id to a file; the browser only ever names it.
+ * `agentId`/`workflowRef` are retained even in `claude` mode so the header toggle can switch back
+ * without the operator re-picking anything. The SERVER resolves either reference to a file; the browser
+ * only ever names it.
  */
 export interface PtySpawnTarget {
-  mode: 'claude' | 'agent';
+  mode: 'claude' | 'agent' | 'workflow';
   agentId?: string;
+  workflowRef?: string;
 }
 
 /** Opens the PTY WebSocket to the governed endpoint, bearer token carried as a subprotocol (never the
@@ -104,7 +107,9 @@ export function ptyQuery(attachSessionId?: string, spawn?: PtySpawnTarget): stri
   const params =
     spawn.mode === 'agent' && spawn.agentId
       ? new URLSearchParams({ spawn: 'agent', agent: spawn.agentId })
-      : new URLSearchParams({ spawn: 'claude' });
+      : spawn.mode === 'workflow' && spawn.workflowRef
+        ? new URLSearchParams({ spawn: 'workflow', workflow: spawn.workflowRef })
+        : new URLSearchParams({ spawn: 'claude' });
   return `?${params.toString()}`;
 }
 
@@ -426,6 +431,13 @@ export interface TerminalProps {
    */
   agentTarget?: string | null;
   onAgentTargetConsumed?: () => void;
+  /**
+   * A workflow the operator asked to run ("Run workflow" on a workflow's detail). Consumed ONCE, exactly
+   * like {@link agentTarget}: the view opens a tab primed as the agent that runs that workflow and calls
+   * {@link onWorkflowTargetConsumed}, so coming back to the terminal never respawns it unasked.
+   */
+  workflowTarget?: string | null;
+  onWorkflowTargetConsumed?: () => void;
 }
 
 /** A tab plus a monotonically-increasing id so React keys stay stable across insert/remove. `sessionId`
@@ -440,9 +452,12 @@ interface TabEntry {
   spawn?: PtySpawnTarget;
 }
 
-/** The tab-bar label for one tab. Agent tabs are named by their agent, not by an ordinal shell number. */
+/** The tab-bar label for one tab. A primed tab is named by what it runs — its agent or its workflow —
+ *  never by an ordinal shell number. The workflow's own reference is the label: deriving a prettier
+ *  name here would be this view inventing an identity the server never sent it. */
 export function tabLabel(tab: TabEntry, index: number): string {
   if (tab.spawn?.mode === 'agent' && tab.spawn.agentId) return tab.spawn.agentId;
+  if (tab.spawn?.mode === 'workflow' && tab.spawn.workflowRef) return tab.spawn.workflowRef;
   if (tab.spawn?.mode === 'claude') return `claude ${index + 1}`;
   return `powershell ${index + 1}`;
 }
@@ -459,6 +474,8 @@ export function Terminal({
   sessionsClient = defaultTerminalSessionsClient,
   agentTarget = null,
   onAgentTargetConsumed,
+  workflowTarget = null,
+  onWorkflowTargetConsumed,
 }: TerminalProps): React.JSX.Element {
   const { session, requireSession } = useSession();
   const sessionToken = session?.token;
@@ -474,11 +491,15 @@ export function Terminal({
   // The last agent target actually spawned. Reset to null whenever the caller clears the target, so the
   // SAME agent can be run again later; without the reset a second "Run agent" on one agent would no-op.
   const consumedAgentRef = useRef<string | null>(null);
-  // Latest tabs/consumed-callback, read by callbacks that must not re-identify on every render.
+  // The same consumed-once guard for "Run workflow", with the same reset-on-clear semantics.
+  const consumedWorkflowRef = useRef<string | null>(null);
+  // Latest tabs/consumed-callbacks, read by callbacks that must not re-identify on every render.
   const tabsRef = useRef<TabEntry[]>([]);
   const consumedCallbackRef = useRef<(() => void) | undefined>(onAgentTargetConsumed);
+  const consumedWorkflowCallbackRef = useRef<(() => void) | undefined>(onWorkflowTargetConsumed);
   tabsRef.current = tabs;
   consumedCallbackRef.current = onAgentTargetConsumed;
+  consumedWorkflowCallbackRef.current = onWorkflowTargetConsumed;
 
   const openTab = useCallback((spawn?: PtySpawnTarget) => {
     setTabs((prev) => {
@@ -538,10 +559,12 @@ export function Terminal({
     (id: number, mode: PtySpawnTarget['mode']) => {
       const tab = tabsRef.current.find((t) => t.id === id);
       if (!tab?.spawn || tab.spawn.mode === mode) return;
-      const agentId = tab.spawn.agentId;
+      const { agentId, workflowRef } = tab.spawn;
       if (mode === 'agent' && !agentId) return; // nothing to prime with; leave the tab alone
+      // A tab that was never about a workflow has no workflow position to flip INTO.
+      if (mode === 'workflow' && !workflowRef) return;
       requestCloseTab(id);
-      openTab({ mode, ...(agentId ? { agentId } : {}) });
+      openTab({ mode, ...(agentId ? { agentId } : {}), ...(workflowRef ? { workflowRef } : {}) });
     },
     [openTab, requestCloseTab],
   );
@@ -624,6 +647,23 @@ export function Terminal({
     openTab({ mode: 'agent', agentId: agentTarget });
     consumedCallbackRef.current?.();
   }, [agentTarget, sessionToken, visible, openTab]);
+
+  /**
+   * "Run workflow", one click from a workflow's detail: open a tab running claude primed as the agent
+   * that runs that workflow. Same consumed-once guard as "Run agent" — the server resolves the ref to a
+   * definition and to the agent that runs it; the browser only ever names the workflow.
+   */
+  useEffect(() => {
+    if (!workflowTarget) {
+      consumedWorkflowRef.current = null;
+      return;
+    }
+    if (!sessionToken || !visible) return;
+    if (consumedWorkflowRef.current === workflowTarget) return;
+    consumedWorkflowRef.current = workflowTarget;
+    openTab({ mode: 'workflow', workflowRef: workflowTarget });
+    consumedWorkflowCallbackRef.current?.();
+  }, [workflowTarget, sessionToken, visible, openTab]);
 
   // Persist the remembered tab order whenever it changes — only tabs with a confirmed sessionId, and only
   // while signed in (a session-loss teardown sets `tabs` to [] but must NOT wipe storage: the shells live).
@@ -727,16 +767,31 @@ export function Terminal({
 
           {activeSpawn && activeTab ? (
             <div className="terminal__mode" role="group" aria-label="Session mode" data-testid="terminal-mode">
-              <button
-                type="button"
-                className={`terminal__mode-option${activeSpawn.mode === 'agent' ? ' terminal__mode-option--on' : ''}`}
-                aria-pressed={activeSpawn.mode === 'agent'}
-                disabled={!activeSpawn.agentId}
-                onClick={() => setTabMode(activeTab.id, 'agent')}
-                data-testid="terminal-mode-agent"
-              >
-                {activeSpawn.agentId ? `As ${activeSpawn.agentId}` : 'As an agent'}
-              </button>
+              {/* The primed position belongs to whatever this tab was opened FOR. A workflow tab offers
+                  its workflow; every other tab keeps the agent position exactly as it shipped. There is
+                  no way to flip a non-workflow tab INTO a workflow. */}
+              {activeSpawn.workflowRef ? (
+                <button
+                  type="button"
+                  className={`terminal__mode-option${activeSpawn.mode === 'workflow' ? ' terminal__mode-option--on' : ''}`}
+                  aria-pressed={activeSpawn.mode === 'workflow'}
+                  onClick={() => setTabMode(activeTab.id, 'workflow')}
+                  data-testid="terminal-mode-workflow"
+                >
+                  Running {activeSpawn.workflowRef}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={`terminal__mode-option${activeSpawn.mode === 'agent' ? ' terminal__mode-option--on' : ''}`}
+                  aria-pressed={activeSpawn.mode === 'agent'}
+                  disabled={!activeSpawn.agentId}
+                  onClick={() => setTabMode(activeTab.id, 'agent')}
+                  data-testid="terminal-mode-agent"
+                >
+                  {activeSpawn.agentId ? `As ${activeSpawn.agentId}` : 'As an agent'}
+                </button>
+              )}
               <button
                 type="button"
                 className={`terminal__mode-option${activeSpawn.mode === 'claude' ? ' terminal__mode-option--on' : ''}`}

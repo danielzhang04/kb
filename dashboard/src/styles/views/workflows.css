@@ -124,10 +124,19 @@
   font-size: var(--type-meta-size);
 }
 
-/* The launch outcome line, under the Launch button in the workflow header. */
+/* The launch outcome line, beside the direct-launch button behind the technical fold. */
 .v-workflows__run-status {
   color: var(--fg-faint);
   font-size: var(--type-meta-size);
+}
+
+/* The governed direct launch and the inputs a definition declares. It used to be the primary header
+ * action; "Run workflow" is now, and this is the power path behind the fold. */
+.v-workflows__direct-launch {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 
 /* ---- Runs no workflow owns -------------------------------------------- */
@@ -186,8 +195,13 @@
   outline-offset: 2px;
 }
 
-.v-workflow-agent {
-  width: 21rem;
+/* One STEP box: what it is, who will run it, and a quiet override. The step's own name is the primary
+ * text; the agent slot is the second line; the picker is the smallest thing on the box. */
+.v-workflow-step {
+  width: 19rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid var(--border);
   border-left: 2px solid transparent;
@@ -195,11 +209,58 @@
   background: var(--bg-panel);
 }
 
-.v-workflow-agent--unassigned { border-style: dashed; }
-.v-workflow-agent__handle { opacity: 0; pointer-events: none; }
-.v-workflow-agent__head { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }
-.v-workflow-agent__stages { display: flex; flex-direction: column; gap: var(--space-1); }
-.v-workflow-agent__open {
+/* The agent that runs the whole workflow. Named by its accent rail, never by a second box shape. */
+.v-workflow-step--manager { border-left-color: var(--mc-accent); }
+
+.v-workflow-step__handle { opacity: 0; pointer-events: none; }
+
+.v-workflow-step__head {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.v-workflow-step__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--fg-primary);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
+}
+
+/* Who will run this step. A filled slot is an ordinary statement of fact, not a highlight. */
+.v-workflow-step__agent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: var(--type-meta-size);
+}
+
+.v-workflow-step__agent-id { color: var(--fg-primary); overflow-wrap: anywhere; }
+.v-workflow-step__model { color: var(--fg-dim); }
+
+/* "default" — the agent was resolved from the file rather than named on this step. A quiet tag, never
+ * a warning: a resolved default is the normal, wanted case. */
+.v-workflow-step__default {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-faint);
+  font-size: var(--type-section-size);
+}
+
+/* Nothing resolved. A statement, not a call to action — so no border, no button, no accent. */
+.v-workflow-step__nobody { margin: 0; }
+
+.v-workflow-step__open {
+  margin-left: auto;
   border: 0;
   padding: 0.15rem 0.3rem;
   color: var(--fg-dim);
@@ -207,32 +268,24 @@
   font: inherit;
   font-size: var(--type-meta-size);
   cursor: pointer;
+  transition: color var(--transition);
 }
-.v-workflow-agent__open:hover { color: var(--fg-primary); }
+.v-workflow-step__open:hover { color: var(--fg-primary); }
 
-/* One step and the picker that decides who runs it. The picker IS the governed write. */
-.v-workflow-agent__stage {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+/* The override. It changes who runs the step, so it stays reachable — and small. */
+.v-workflow-step__override { display: flex; }
+.v-workflow-step__override select {
   max-width: 100%;
-  padding: 0.2rem 0.35rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg-primary);
-  background: var(--bg-elevated);
+  font: inherit;
   font-size: var(--type-meta-size);
+  color: var(--fg-dim);
 }
-
-.v-workflow-agent__stage-name { min-width: 0; overflow-wrap: anywhere; }
-.v-workflow-agent__stage select { max-width: 12rem; font: inherit; font-size: var(--type-meta-size); }
-.v-workflow-agent__unavailable { color: var(--fg-faint); font-size: var(--type-meta-size); }
-.v-workflow-agent__open:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.v-workflow-step__unavailable { color: var(--fg-faint); font-size: var(--type-meta-size); }
+.v-workflow-step__open:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 
 @media (max-width: 820px) {
   .v-workflow-network__canvas { min-height: 25rem; }
-  .v-workflow-agent { width: min(19rem, calc(100vw - 5rem)); }
+  .v-workflow-step { width: min(17rem, calc(100vw - 5rem)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

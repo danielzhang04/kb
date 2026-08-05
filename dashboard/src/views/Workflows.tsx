@@ -75,6 +75,7 @@ export function Workflows({
   onOpenRun,
   onBack,
   onNavigate,
+  onRunWorkflow,
   runs: injectedRuns,
   now,
 }: {
@@ -89,6 +90,9 @@ export function Workflows({
   onOpenRun?: (runRef: string) => void;
   onBack?: () => void;
   onNavigate?: (target: NavTarget) => void;
+  /** "Run workflow" on a workflow's detail — handed up to the app, which primes a terminal session.
+   *  The roster rows are unchanged: a row still just opens the workflow. */
+  onRunWorkflow?: (workflow: { ref: string }) => void;
   /** Injected by tests; otherwise loaded from the control plane. */
   runs?: RunMetadataDto[];
   now?: number;
@@ -325,6 +329,7 @@ export function Workflows({
           onNavigate={onNavigate}
           onBack={back}
           backLabel="All workflows"
+          onRunWorkflow={onRunWorkflow}
           parameterValues={parameterValues[openDef.ref] ?? {}}
           onParameterChange={(name, value) => setParameterValues((current) => ({
             ...current, [openDef.ref]: { ...current[openDef.ref], [name]: value },
