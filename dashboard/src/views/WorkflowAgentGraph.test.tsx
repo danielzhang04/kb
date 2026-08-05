@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 /**
- * The workflow graph is STAGE-keyed: one box per step, arrows from the steps' own `dependsOn`.
+ * The workflow graph is AGENT-keyed: one card per agent, the steps it governs listed inside it, and
+ * arrows only where work actually changes hands between agents.
  *
- * The headline test is the regression pin. Real definitions carry `manager: null` and no per-step
- * assignment at all; the previous agent-keyed projection collapsed every such workflow into a single
- * "Nobody yet" box with zero arrows, which is what "I see nothing in the agent graph" was. A
- * fourteen-step chain with nobody assigned must still draw fourteen boxes and its full chain of arrows.
+ * Two real definition shapes pin the projection, both copied from live `GET /api/workflows`:
+ *
+ *  - FULL CAST (`videoRun()`): faceless-youtube's fourteen-step pipeline. Fourteen steps, four agents,
+ *    one of which (`fyt-runner`) both manages the workflow and governs a step — so it must be ONE card
+ *    wearing both roles, never two. This is the shape Daniel was looking at when he said the graph
+ *    should show agents rather than skills, and that the nodes were too small and too far apart.
+ *  - ZERO CAST (`bare()`): a kb-ops definition with no manager, no `governedBy`, and no per-step
+ *    assignment. Nothing resolves, so the graph must draw ONE honest card saying so — never an empty
+ *    canvas, and never a picker that vanished with the step boxes.
+ *
+ * The grouping, ordering, edge-collapse and layout rules are all exported pure functions, so they are
+ * tested as data rather than through the DOM.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -13,11 +22,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { WorkflowDefEntry } from './WorkflowDetail';
 import {
-  MANAGER_NODE,
+  AGENT_GRID_COLUMNS,
+  AGENT_NODE_GAP_X,
+  AGENT_NODE_WIDTH,
+  UNRESOLVED_NODE,
   WorkflowAgentGraph,
-  dependencyEdges,
-  stageNodeId,
-  stageNodePositions,
+  agentEdges,
+  agentGroups,
+  agentNodeHeight,
+  agentNodeId,
+  agentNodePositions,
   stageRanks,
   stageSlot,
   type ResolvedAssignment,
@@ -45,13 +59,22 @@ vi.mock('reactflow', async () => {
     Panel: ({ children }: { children: React.ReactNode }) => <div data-testid="reactflow-panel">{children}</div>,
     Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    ReactFlow: ({ nodes, edges, nodeTypes, onNodesChange, children }: {
+    ReactFlow: ({ nodes, edges, nodeTypes, onNodesChange, fitViewOptions, minZoom, maxZoom, children }: {
       nodes: MockNode[];
       edges: MockEdge[];
       nodeTypes: Record<string, React.ComponentType<{ data: unknown }>>;
       onNodesChange: (changes: MockChange[]) => void;
+      fitViewOptions?: { padding?: number; minZoom?: number; maxZoom?: number };
+      minZoom?: number;
+      maxZoom?: number;
       children: React.ReactNode;
-    }) => <div data-testid="reactflow-mock">
+    }) => <div
+      data-testid="reactflow-mock"
+      data-fit-max-zoom={String(fitViewOptions?.maxZoom)}
+      data-fit-min-zoom={String(fitViewOptions?.minZoom)}
+      data-min-zoom={String(minZoom)}
+      data-max-zoom={String(maxZoom)}
+    >
       {nodes.map((node) => {
         const Component = nodeTypes[node.type]!;
         return <div key={node.id} data-testid={`reactflow-position-${node.id}`} data-position={`${node.position.x},${node.position.y}`}><Component data={node.data} /></div>;
@@ -69,7 +92,7 @@ vi.mock('reactflow', async () => {
         />
       ))}
       {children}
-      <button type="button" onClick={() => onNodesChange([{ id: 'stage:draft', type: 'position', position: { x: 0, y: 0 } }])}>Move the draft step</button>
+      <button type="button" onClick={() => onNodesChange([{ id: 'agent:fyt-preproduction', type: 'position', position: { x: 0, y: 900 } }])}>Move the preproduction card</button>
     </div>,
     useNodesState: (initial: MockNode[]) => {
       const [nodes, setNodes] = React.useState(initial);
@@ -97,11 +120,55 @@ const entry = (over: Partial<WorkflowDefEntry> = {}): WorkflowDefEntry => ({
   valid: true, title: 'Network', profile: null, stageCount: 3, riskTier: 'T2', detail: null,
   manager: assign('alpha'),
   stages: [
-    { id: 'research', title: 'Research', action: 'research', target: 'notes.md', riskTier: 'T1', declaredAssignment: assign('alpha') },
-    { id: 'draft', title: 'Draft', action: 'draft', target: 'draft.md', riskTier: 'T1', dependsOn: ['research'], declaredAssignment: assign('beta') },
-    { id: 'review', title: 'Review', action: 'review', target: 'review.md', riskTier: 'T2', dependsOn: ['draft'], declaredAssignment: null },
+    { id: 'research', title: 'Research', action: 'research', target: 'notes.md', riskTier: 'T1', declaredAssignment: assign('alpha'), resolvedAssignment: resolved({ agentId: 'alpha' }) },
+    { id: 'draft', title: 'Draft', action: 'draft', target: 'draft.md', riskTier: 'T1', dependsOn: ['research'], declaredAssignment: assign('beta'), resolvedAssignment: resolved({ agentId: 'beta' }) },
+    { id: 'review', title: 'Review', action: 'review', target: 'review.md', riskTier: 'T2', dependsOn: ['draft'], declaredAssignment: null, resolvedAssignment: resolved({ agentId: 'alpha' }) },
   ],
   ...over,
+});
+
+/**
+ * THE FULL-CAST SHAPE, verbatim from live `/api/workflows` (`video-run`, faceless-youtube): fourteen
+ * steps, every one governed by a `governedBy` default rather than a declaration, and a manager that
+ * also governs `image-review`.
+ */
+const governed = (agentId: string, model: string): ResolvedAssignment =>
+  ({ agentId, profileId: `worker:${model}`, model, source: 'stage-governed-by' });
+const SOL = 'gpt-5.6-sol';
+const OPUS = 'claude-opus-4-8';
+
+const videoRun = (): WorkflowDefEntry => entry({
+  ref: 'video-run', project: 'faceless-youtube', title: 'Produce one video (faceless pipeline)',
+  displayName: 'Produce one video (faceless pipeline)', path: 'orgs/faceless-youtube/workflows/video-run.md',
+  governedBy: 'fyt-runner', manager: null, stageCount: 14,
+  resolvedManager: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-opus-4-8', model: OPUS, source: 'governed-by' },
+  stages: [
+    { id: 'idea', title: 'Pick and brief one video idea', action: 'idea', target: 'idea.md', riskTier: 'T1', dependsOn: [], governedBy: 'fyt-preproduction', resolvedAssignment: governed('fyt-preproduction', SOL) },
+    { id: 'research', title: 'Research the picked idea', action: 'research', target: 'dossier.md', riskTier: 'T1', dependsOn: ['idea'], governedBy: 'fyt-preproduction', resolvedAssignment: governed('fyt-preproduction', SOL) },
+    { id: 'script', title: 'Write the long-form voiceover script', action: 'script', target: 'script.md', riskTier: 'T1', dependsOn: ['research'], governedBy: 'fyt-preproduction', resolvedAssignment: governed('fyt-preproduction', SOL) },
+    { id: 'judge-gate', title: 'Fresh-eyes acceptance gate on the script', action: 'judge', target: 'judgement.md', riskTier: 'T2', dependsOn: ['script'], governedBy: 'fyt-checker', resolvedAssignment: governed('fyt-checker', OPUS) },
+    { id: 'shorts', title: 'Derive the short-form bench', action: 'shorts', target: 'shorts.md', riskTier: 'T1', dependsOn: ['judge-gate'], governedBy: 'fyt-preproduction', resolvedAssignment: governed('fyt-preproduction', SOL) },
+    { id: 'metadata', title: 'Author publishing metadata (no upload)', action: 'metadata', target: 'metadata.md', riskTier: 'T1', dependsOn: ['judge-gate'], governedBy: 'fyt-preproduction', resolvedAssignment: governed('fyt-preproduction', SOL) },
+    { id: 'shots', title: 'Build the visual shot list and prompts', action: 'shots', target: 'shots.md', riskTier: 'T1', dependsOn: ['judge-gate'], governedBy: 'fyt-preproduction', resolvedAssignment: governed('fyt-preproduction', SOL) },
+    { id: 'motion', title: 'Plan the per-shot motion layers', action: 'motion', target: 'motion.md', riskTier: 'T1', dependsOn: ['shots'], governedBy: 'fyt-preproduction', resolvedAssignment: governed('fyt-preproduction', SOL) },
+    { id: 'images', title: 'Generate the on-style stills (SPENDS REAL MONEY)', action: 'images', target: 'stills', riskTier: 'T2', dependsOn: ['shots'], governedBy: 'fyt-production', resolvedAssignment: governed('fyt-production', SOL) },
+    { id: 'image-review', title: 'Batched review of every generated still', action: 'image-review', target: 'review.md', riskTier: 'T2', dependsOn: ['images', 'motion'], governedBy: 'fyt-runner', resolvedAssignment: { agentId: 'fyt-runner', profileId: 'manager:claude:claude-opus-4-8', model: OPUS, source: 'stage-governed-by' } },
+    { id: 'voiceover', title: 'Generate the narration audio (paid TTS)', action: 'voiceover', target: 'vo.wav', riskTier: 'T2', dependsOn: ['judge-gate'], governedBy: 'fyt-production', resolvedAssignment: governed('fyt-production', SOL) },
+    { id: 'audio-plan', title: 'Author the unified audio plan', action: 'audio-plan', target: 'audio.json', riskTier: 'T1', dependsOn: ['script', 'shots', 'voiceover'], governedBy: 'fyt-production', resolvedAssignment: governed('fyt-production', SOL) },
+    { id: 'render', title: 'Assemble the finished cut (heavyweight)', action: 'render', target: 'final.mp4', riskTier: 'T2', dependsOn: ['metadata', 'shorts', 'motion', 'image-review', 'audio-plan'], governedBy: 'fyt-production', resolvedAssignment: governed('fyt-production', SOL) },
+    { id: 'verify', title: 'Verify the render against the manifests', action: 'verify', target: 'verification.md', riskTier: 'T2', dependsOn: ['render'], governedBy: 'fyt-checker', resolvedAssignment: governed('fyt-checker', OPUS) },
+  ],
+});
+
+/** THE ZERO-CAST SHAPE, verbatim from live `/api/workflows` (kb-ops): nothing resolves for anything. */
+const bare = (): WorkflowDefEntry => entry({
+  ref: 'research-brief', title: 'Research brief (cited)', manager: null, resolvedManager: null,
+  governedBy: null, stageCount: 3,
+  stages: [
+    { id: 'gather', title: 'Gather', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2', declaredAssignment: null },
+    { id: 'write', title: 'Write', action: 'write', target: 'brief.md', riskTier: 'T1', dependsOn: ['gather'], declaredAssignment: null },
+    { id: 'cite', title: 'Cite', action: 'cite', target: 'brief.md', riskTier: 'T1', dependsOn: ['write'], declaredAssignment: null },
+  ],
 });
 
 const options = (over: Partial<WorkflowAssignmentOptions> = {}): WorkflowAssignmentOptions => ({
@@ -114,195 +181,321 @@ const options = (over: Partial<WorkflowAssignmentOptions> = {}): WorkflowAssignm
   ...over,
 });
 
-/** The shape live `/api/workflows` actually returns: no manager, no assignment, a real chain. */
-const bare = (): WorkflowDefEntry => entry({
-  manager: null,
-  stageCount: 5,
-  stages: [
-    { id: 'idea', title: 'Idea', action: 'idea', target: 'idea.md', riskTier: 'T1', declaredAssignment: null },
-    { id: 'research', title: 'Research', action: 'research', target: 'research.md', riskTier: 'T1', dependsOn: ['idea'], declaredAssignment: null },
-    { id: 'script', title: 'Script', action: 'script', target: 'script.md', riskTier: 'T1', dependsOn: ['research'], declaredAssignment: null },
-    { id: 'judge-gate', title: 'Judge', action: 'judge', target: 'judgement.md', riskTier: 'T2', dependsOn: ['script'], declaredAssignment: null },
-    { id: 'render', title: 'Render', action: 'render', target: 'final.mp4', riskTier: 'T2', dependsOn: ['judge-gate'], declaredAssignment: null },
-  ],
-});
+const groupsByKey = (workflow: WorkflowDefEntry) =>
+  Object.fromEntries(agentGroups(workflow).map((group) => [group.key, group.stages.map((stage) => stage.id)]));
 
-describe('the graph draws the workflow, assigned or not', () => {
-  /**
-   * THE PIN. `manager: null` and every `declaredAssignment: null` is the live payload, not an edge case.
-   */
-  it('renders every step and every dependency of a workflow nobody has been assigned to', () => {
-    render(<WorkflowAgentGraph entry={bare()} />);
-
-    for (const [id, title] of [['idea', 'Idea'], ['research', 'Research'], ['script', 'Script'], ['judge-gate', 'Judge'], ['render', 'Render']]) {
-      expect(screen.getByTestId(`workflow-step-node-${id}`).textContent).toContain(title);
-    }
-    expect(screen.getByTestId('reactflow-edge-step-idea~research')).toBeTruthy();
-    expect(screen.getByTestId('reactflow-edge-step-research~script')).toBeTruthy();
-    expect(screen.getByTestId('reactflow-edge-step-script~judge-gate')).toBeTruthy();
-    expect(screen.getByTestId('reactflow-edge-step-judge-gate~render')).toBeTruthy();
-    // No manager to draw, and no phantom "everything hands off to nobody" collapse.
-    expect(screen.queryByTestId('workflow-manager-node')).toBeNull();
-    expect(dependencyEdges(bare())).toHaveLength(4);
-  });
-
-  it('names each arrow in plain words and points it at the step that runs later', () => {
-    const edge = dependencyEdges(bare()).find((candidate) => candidate.id === 'step-script~judge-gate');
-    expect(edge).toMatchObject({
-      source: stageNodeId('script'),
-      target: stageNodeId('judge-gate'),
-      markerEnd: expect.objectContaining({ type: 'arrowclosed' }),
+describe('grouping steps under the agent that governs them', () => {
+  /** THE PIN for "show each AGENT, not each SKILL": fourteen steps become four cards. */
+  it('collapses the fourteen-step pipeline into one card per agent, steps in pipeline order', () => {
+    const groups = agentGroups(videoRun());
+    expect(groups.map((group) => group.key)).toEqual([
+      'fyt-runner', 'fyt-preproduction', 'fyt-checker', 'fyt-production',
+    ]);
+    expect(groupsByKey(videoRun())).toEqual({
+      'fyt-runner': ['image-review'],
+      'fyt-preproduction': ['idea', 'research', 'script', 'shorts', 'metadata', 'shots', 'motion'],
+      'fyt-checker': ['judge-gate', 'verify'],
+      'fyt-production': ['voiceover', 'images', 'audio-plan', 'render'],
     });
-    expect(edge?.ariaLabel).toBe('Judge runs after Script');
+    // Every step is accounted for exactly once, and nothing fell into the unresolved bucket.
+    expect(groups.flatMap((group) => group.stages)).toHaveLength(14);
+    expect(groups.some((group) => group.key === '')).toBe(false);
   });
 
-  it('skips a dependency naming a step this workflow does not declare', () => {
-    const edges = dependencyEdges(entry({ manager: null, stages: [
-      { id: 'one', action: 'one', target: 'one', riskTier: 'T1' },
-      { id: 'two', action: 'two', target: 'two', riskTier: 'T1', dependsOn: ['one', 'missing'] },
-    ] }));
-    expect(edges.map((edge) => edge.id)).toEqual(['step-one~two']);
+  /** The manager also governs `image-review`. That is ONE card wearing both roles. */
+  it('gives an agent that both manages and works a single card, not two', () => {
+    const groups = agentGroups(videoRun());
+    expect(groups.filter((group) => group.isManager)).toHaveLength(1);
+    const runner = groups[0]!;
+    expect(runner).toMatchObject({ key: 'fyt-runner', isManager: true, models: [OPUS] });
+    expect(runner.stages.map((stage) => stage.id)).toEqual(['image-review']);
   });
 
-  it('lays steps out in dependency lanes, with the manager in front of the first step', () => {
-    const workflow = entry();
-    expect(Object.fromEntries(stageRanks(workflow))).toEqual({ research: 0, draft: 1, review: 2 });
-    const positions = stageNodePositions(workflow);
-    expect(positions.get(MANAGER_NODE)).toEqual({ x: 0, y: 0 });
-    expect(positions.get(stageNodeId('research'))).toEqual({ x: 400, y: 0 });
-    expect(positions.get(stageNodeId('draft'))).toEqual({ x: 800, y: 0 });
-    expect(positions.get(stageNodeId('review'))).toEqual({ x: 1200, y: 0 });
-    // Nobody running the workflow → no empty lane held open for a manager that does not exist.
-    expect(stageNodePositions(bare()).get(stageNodeId('idea'))).toEqual({ x: 0, y: 0 });
+  it('keeps a manager that governs no step as its own card with no steps', () => {
+    const groups = agentGroups(entry({ manager: null, governedBy: 'fyt-runner' }));
+    expect(groups[0]).toMatchObject({ key: 'fyt-runner', isManager: true, stages: [] });
+    expect(groups.map((group) => group.key)).toEqual(['fyt-runner', 'alpha', 'beta']);
   });
 
-  it('stacks steps that can run at the same time into rows of one lane', () => {
-    const workflow = entry({ manager: null, stages: [
-      { id: 'shots', action: 'shots', target: 'shots', riskTier: 'T1' },
-      { id: 'images', action: 'images', target: 'images', riskTier: 'T1', dependsOn: ['shots'] },
-      { id: 'motion', action: 'motion', target: 'motion', riskTier: 'T1', dependsOn: ['shots'] },
+  it('orders agents by their earliest step, with the manager at the head of the chain', () => {
+    // Ranks put preproduction first (idea, rank 0), then checker (judge-gate, 3), then production
+    // (voiceover, 4). fyt-runner's own step is rank 6 — it leads anyway, because it starts the run.
+    const ranks = stageRanks(videoRun());
+    expect(ranks.get('idea')).toBe(0);
+    expect(ranks.get('judge-gate')).toBe(3);
+    expect(ranks.get('voiceover')).toBe(4);
+    expect(ranks.get('image-review')).toBe(6);
+    expect(agentGroups(videoRun()).map((group) => group.key))
+      .toEqual(['fyt-runner', 'fyt-preproduction', 'fyt-checker', 'fyt-production']);
+
+    // Without a manager the pure earliest-step order stands on its own.
+    const unmanaged = videoRun();
+    unmanaged.resolvedManager = null;
+    unmanaged.governedBy = null;
+    expect(agentGroups(unmanaged).map((group) => group.key))
+      .toEqual(['fyt-preproduction', 'fyt-checker', 'fyt-production', 'fyt-runner']);
+  });
+
+  it('reports each agent effective model and tags a resolved default', () => {
+    const groups = agentGroups(videoRun());
+    expect(groups.find((group) => group.key === 'fyt-preproduction')).toMatchObject({
+      models: [SOL], isDefault: true, source: 'stage-governed-by',
+    });
+    expect(groups.find((group) => group.key === 'fyt-checker')?.models).toEqual([OPUS]);
+  });
+
+  it('claims no default tag for an agent whose steps are not all defaults', () => {
+    const mixed = entry({ manager: null, governedBy: null, stages: [
+      { id: 'one', title: 'One', action: 'one', target: 'o', riskTier: 'T1', resolvedAssignment: resolved({ agentId: 'alpha', source: 'declared' }) },
+      { id: 'two', title: 'Two', action: 'two', target: 't', riskTier: 'T1', dependsOn: ['one'], resolvedAssignment: resolved({ agentId: 'alpha', source: 'stage-governed-by' }) },
     ] });
-    const positions = stageNodePositions(workflow);
-    expect(positions.get(stageNodeId('images'))).toEqual({ x: 400, y: 0 });
-    expect(positions.get(stageNodeId('motion'))).toEqual({ x: 400, y: 240 });
+    expect(agentGroups(mixed)[0]).toMatchObject({ key: 'alpha', isDefault: false });
   });
 
-  it('renders a malformed step cycle instead of recursing forever', () => {
-    const workflow = entry({ manager: null, stages: [
-      { id: 'a', action: 'a', target: 'a', riskTier: 'T1', dependsOn: ['b'] },
-      { id: 'b', action: 'b', target: 'b', riskTier: 'T1', dependsOn: ['a'] },
+  it('lists every distinct model an agent runs its steps on, inventing none', () => {
+    const twoProfiles = entry({ manager: null, governedBy: null, stages: [
+      { id: 'one', title: 'One', action: 'one', target: 'o', riskTier: 'T1', resolvedAssignment: resolved({ agentId: 'alpha', model: 'claude-opus-4-8' }) },
+      { id: 'two', title: 'Two', action: 'two', target: 't', riskTier: 'T1', dependsOn: ['one'], resolvedAssignment: resolved({ agentId: 'alpha', model: 'claude-haiku-4-5' }) },
+      { id: 'three', title: 'Three', action: 'three', target: 'h', riskTier: 'T1', dependsOn: ['two'], resolvedAssignment: resolved({ agentId: 'alpha', model: null }) },
     ] });
-    render(<WorkflowAgentGraph entry={workflow} />);
-    expect(screen.getByTestId('workflow-step-node-a')).toBeTruthy();
-    expect(screen.getByTestId('workflow-step-node-b')).toBeTruthy();
-  });
-
-  it('says so plainly when a workflow has no steps yet', () => {
-    render(<WorkflowAgentGraph entry={entry({ stages: [], manager: null })} />);
-    expect(screen.getByTestId('workflow-agent-network-empty').textContent).toContain('no steps');
-  });
-});
-
-describe('who will run each step', () => {
-  it('shows a resolved default with a default tag, its model, and where it came from', () => {
-    const workflow = entry({ manager: null, stages: [
-      {
-        id: 'script', title: 'Script', action: 'script', target: 'script.md', riskTier: 'T1',
-        declaredAssignment: null,
-        resolvedAssignment: resolved({ agentId: 'fyt-preproduction', source: 'stage-governed-by', model: 'claude-opus-4-8' }),
-      },
-    ] });
-    render(<WorkflowAgentGraph entry={workflow} />);
-
-    const slot = screen.getByTestId('workflow-step-node-script-agent');
-    expect(slot.textContent).toContain('fyt-preproduction');
-    expect(slot.textContent).toContain('claude-opus-4-8');
-    expect(slot.textContent).toContain('default');
-    expect(slot.querySelector('[title]')?.getAttribute('title')).toBe('The agent that governs this step.');
-    // A resolved default is the wanted case, so the box never asks anybody to go and assign anything.
-    expect(screen.getByTestId('workflow-step-node-script').textContent).not.toMatch(/assign/i);
-  });
-
-  it('shows an explicitly declared agent with no default tag', () => {
-    const workflow = entry({ manager: null, stages: [
-      {
-        id: 'draft', title: 'Draft', action: 'draft', target: 'draft.md', riskTier: 'T1',
-        declaredAssignment: assign('beta'),
-        resolvedAssignment: resolved({ agentId: 'beta', source: 'declared' }),
-      },
-    ] });
-    render(<WorkflowAgentGraph entry={workflow} />);
-    const slot = screen.getByTestId('workflow-step-node-draft-agent');
-    expect(slot.textContent).toContain('beta');
-    expect(slot.textContent).not.toContain('default');
-  });
-
-  it('omits the model when the roster does not pin one', () => {
-    const workflow = entry({ manager: null, stages: [
-      {
-        id: 'draft', title: 'Draft', action: 'draft', target: 'draft.md', riskTier: 'T1',
-        resolvedAssignment: resolved({ agentId: 'beta', source: 'manager-default', model: null }),
-      },
-    ] });
-    render(<WorkflowAgentGraph entry={workflow} />);
-    const slot = screen.getByTestId('workflow-step-node-draft-agent');
-    expect(slot.textContent).toContain('beta');
-    expect(slot.textContent).toContain('default');
-    expect(slot.textContent).not.toMatch(/claude-/);
-  });
-
-  it('states an unresolvable slot as a fact, never as a job to do', () => {
-    const workflow = entry({ manager: null, stages: [
-      { id: 'draft', title: 'Draft', action: 'draft', target: 'draft.md', riskTier: 'T1', declaredAssignment: null },
-    ] });
-    render(<WorkflowAgentGraph entry={workflow} />);
-    const empty = screen.getByTestId('workflow-step-node-draft-nobody');
-    expect(empty.textContent).toBe('no default agent resolvable');
-    expect(screen.getByTestId('workflow-step-node-draft').textContent).not.toMatch(/assign|unassigned|nobody yet/i);
-  });
-
-  it('carries a varied per-step cast rather than one name repeated down the column', () => {
-    const workflow = entry({ manager: null, stages: [
-      { id: 'script', title: 'Script', action: 'script', target: 's', riskTier: 'T1', resolvedAssignment: resolved({ agentId: 'fyt-preproduction', source: 'stage-governed-by' }) },
-      { id: 'judge-gate', title: 'Judge', action: 'judge', target: 'j', riskTier: 'T2', dependsOn: ['script'], resolvedAssignment: resolved({ agentId: 'fyt-checker', source: 'stage-governed-by' }) },
-      { id: 'render', title: 'Render', action: 'render', target: 'r', riskTier: 'T2', dependsOn: ['judge-gate'], resolvedAssignment: resolved({ agentId: 'fyt-production', source: 'stage-governed-by' }) },
-    ] });
-    render(<WorkflowAgentGraph entry={workflow} />);
-    expect(screen.getByTestId('workflow-step-node-script-agent').textContent).toContain('fyt-preproduction');
-    expect(screen.getByTestId('workflow-step-node-judge-gate-agent').textContent).toContain('fyt-checker');
-    expect(screen.getByTestId('workflow-step-node-render-agent').textContent).toContain('fyt-production');
+    expect(agentGroups(twoProfiles)[0]?.models).toEqual(['claude-opus-4-8', 'claude-haiku-4-5']);
   });
 
   /** An older payload predates `resolvedAssignment`; the declaration in the file is still the truth. */
   it('falls back to the step governing agent when the server sent no resolution', () => {
     const stage = { id: 'script', action: 'script', target: 's', riskTier: 'T1', governedBy: 'fyt-preproduction' };
     expect(stageSlot(stage)).toEqual({ agentId: 'fyt-preproduction', model: null, source: 'stage-governed-by', isDefault: true });
-    render(<WorkflowAgentGraph entry={entry({ manager: null, stages: [stage] })} />);
-    expect(screen.getByTestId('workflow-step-node-script-agent').textContent).toContain('fyt-preproduction');
-    expect(screen.getByTestId('workflow-step-node-script-agent').textContent).toContain('default');
+    expect(agentGroups(entry({ manager: null, governedBy: null, stages: [stage] }))[0]?.key).toBe('fyt-preproduction');
+  });
+});
+
+describe('the zero-cast definition', () => {
+  /** THE PIN for "one honest node, never an empty canvas". */
+  it('gathers every unresolvable step under one card that says nothing resolved', () => {
+    const groups = agentGroups(bare());
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ key: '', agentId: null, isManager: false, models: [] });
+    expect(groups[0]?.stages.map((stage) => stage.id)).toEqual(['gather', 'write', 'cite']);
+    expect(agentNodeId(null)).toBe(UNRESOLVED_NODE);
   });
 
-  it('keeps a manager box for the agent that runs the workflow, resolved or declared', () => {
-    render(<WorkflowAgentGraph entry={entry()} />);
-    expect(screen.getByTestId('workflow-manager-node').textContent).toContain('runs the workflow');
-    expect(screen.getByTestId('workflow-manager-node-agent').textContent).toContain('alpha');
-    cleanup();
-
-    render(<WorkflowAgentGraph entry={entry({ manager: null, governedBy: 'fyt-runner' })} />);
-    const manager = screen.getByTestId('workflow-manager-node-agent');
-    expect(manager.textContent).toContain('fyt-runner');
-    expect(manager.textContent).toContain('default');
-    // The manager kicks off every step that starts the workflow.
-    expect(screen.getByTestId('reactflow-edge-start-research').dataset.source).toBe(MANAGER_NODE);
+  it('draws that card, states the fact, and keeps every step override reachable', () => {
+    render(<WorkflowAgentGraph
+      entry={bare()}
+      assignmentOptions={{
+        manager: { options: [], unavailable: null },
+        stages: { gather: { options: [assign('writer')], unavailable: null } },
+      }}
+    />);
+    const card = screen.getByTestId('workflow-agent-node-unresolved');
+    expect(screen.getByTestId('workflow-agent-node-unresolved-nobody').textContent).toBe('no default agent resolvable');
+    expect(card.textContent).not.toMatch(/assign|unassigned|nobody yet/i);
+    for (const title of ['Gather', 'Write', 'Cite']) expect(card.textContent).toContain(title);
+    // The override survived the redesign: one picker per step, still inside the card.
+    expect(screen.getByLabelText('Who runs Gather')).toBeTruthy();
+    expect(screen.getByLabelText('Who runs Cite')).toBeTruthy();
+    // Nobody manages it, so there is no workflow-level picker to offer.
+    expect(screen.queryByLabelText('Who runs the workflow')).toBeNull();
+    expect(screen.queryByTestId('workflow-agent-network-empty')).toBeNull();
   });
 
-  it('opens the agent a step will run as, without a network write', () => {
+  it('draws no handoff arrows, because one card cannot hand off to itself', () => {
+    expect(agentEdges(bare())).toEqual([]);
+  });
+});
+
+describe('arrows are handoffs BETWEEN agents', () => {
+  it('collapses fourteen step dependencies into the deduped agent-level handoffs', () => {
+    const edges = agentEdges(videoRun());
+    const pairs = edges.map((edge) => `${edge.source}->${edge.target}`).sort();
+    expect(pairs).toEqual([
+      'agent:fyt-checker->agent:fyt-preproduction',
+      'agent:fyt-checker->agent:fyt-production',
+      'agent:fyt-preproduction->agent:fyt-checker',
+      'agent:fyt-preproduction->agent:fyt-production',
+      'agent:fyt-preproduction->agent:fyt-runner',
+      'agent:fyt-production->agent:fyt-checker',
+      'agent:fyt-production->agent:fyt-runner',
+      'agent:fyt-runner->agent:fyt-preproduction',
+      'agent:fyt-runner->agent:fyt-production',
+    ].sort());
+    // Deduped: three separate steps depend on `judge-gate`, and they draw ONE checker->preproduction arrow.
+    expect(new Set(pairs).size).toBe(pairs.length);
+  });
+
+  it('never draws an agent handing off to itself', () => {
+    // `idea -> research -> script` and `shots -> motion` are all preproduction; none of them is an arrow.
+    for (const edge of agentEdges(videoRun())) expect(edge.source).not.toBe(edge.target);
+    const soloAgent = entry({ manager: null, governedBy: null, stages: [
+      { id: 'one', title: 'One', action: 'one', target: 'o', riskTier: 'T1', resolvedAssignment: resolved({ agentId: 'alpha' }) },
+      { id: 'two', title: 'Two', action: 'two', target: 't', riskTier: 'T1', dependsOn: ['one'], resolvedAssignment: resolved({ agentId: 'alpha' }) },
+    ] });
+    expect(agentEdges(soloAgent)).toEqual([]);
+  });
+
+  it('reaches the agent that owns the opening step from the manager, distinctly', () => {
+    const start = agentEdges(videoRun()).find((edge) => edge.id === 'start-fyt-preproduction');
+    expect(start).toMatchObject({
+      source: agentNodeId('fyt-runner'),
+      target: agentNodeId('fyt-preproduction'),
+      markerEnd: expect.objectContaining({ type: 'arrowclosed' }),
+    });
+    expect(start?.ariaLabel).toBe('fyt-preproduction starts the workflow');
+  });
+
+  it('names a handoff in plain words and points it at the agent that runs later', () => {
+    const edge = agentEdges(videoRun()).find((candidate) => candidate.id === 'handoff-fyt-preproduction~fyt-checker');
+    expect(edge?.ariaLabel).toBe('fyt-checker takes over from fyt-preproduction');
+    expect(edge?.source).toBe(agentNodeId('fyt-preproduction'));
+    expect(edge?.target).toBe(agentNodeId('fyt-checker'));
+  });
+
+  it('skips a dependency naming a step this workflow does not declare', () => {
+    const edges = agentEdges(entry({ manager: null, governedBy: null, stages: [
+      { id: 'one', action: 'one', target: 'one', riskTier: 'T1', resolvedAssignment: resolved({ agentId: 'alpha' }) },
+      { id: 'two', action: 'two', target: 'two', riskTier: 'T1', dependsOn: ['one', 'missing'], resolvedAssignment: resolved({ agentId: 'beta' }) },
+    ] }));
+    expect(edges.map((edge) => edge.id)).toEqual(['handoff-alpha~beta']);
+  });
+
+  it('survives a malformed step cycle instead of recursing forever', () => {
+    const workflow = entry({ manager: null, governedBy: null, stages: [
+      { id: 'a', title: 'A', action: 'a', target: 'a', riskTier: 'T1', dependsOn: ['b'], resolvedAssignment: resolved({ agentId: 'alpha' }) },
+      { id: 'b', title: 'B', action: 'b', target: 'b', riskTier: 'T1', dependsOn: ['a'], resolvedAssignment: resolved({ agentId: 'beta' }) },
+    ] });
+    render(<WorkflowAgentGraph entry={workflow} />);
+    expect(screen.getByTestId('workflow-agent-node-alpha')).toBeTruthy();
+    expect(screen.getByTestId('workflow-agent-node-beta')).toBeTruthy();
+    expect(agentEdges(workflow)).toHaveLength(2);
+  });
+});
+
+describe('the layout frames the whole cast', () => {
+  /** THE PIN for "each node is too small and far apart I can't really see anything". */
+  it('wraps the cast into at most two columns instead of one long thin chain', () => {
+    const positions = agentNodePositions(videoRun());
+    expect(AGENT_GRID_COLUMNS).toBe(2);
+    const xs = [...positions.values()].map((point) => point.x);
+    expect(new Set(xs)).toEqual(new Set([0, AGENT_NODE_WIDTH + AGENT_NODE_GAP_X]));
+    // Four agents, two columns: the whole graph is two cards wide and two rows tall.
+    const width = Math.max(...xs) + AGENT_NODE_WIDTH;
+    expect(width).toBe(2 * AGENT_NODE_WIDTH + AGENT_NODE_GAP_X);
+    expect(new Set([...positions.values()].map((point) => point.y)).size).toBe(2);
+  });
+
+  it('reads left to right in pipeline order, then wraps', () => {
+    const positions = agentNodePositions(videoRun());
+    const at = (agentId: string) => positions.get(agentNodeId(agentId))!;
+    expect(at('fyt-runner')).toEqual({ x: 0, y: 0 });
+    expect(at('fyt-preproduction')).toEqual({ x: AGENT_NODE_WIDTH + AGENT_NODE_GAP_X, y: 0 });
+    expect(at('fyt-checker').x).toBe(0);
+    expect(at('fyt-checker').y).toBeGreaterThan(0);
+    expect(at('fyt-production').y).toBe(at('fyt-checker').y);
+  });
+
+  it('spaces a row by its TALLEST card, so a seven-step card never overlaps the row below', () => {
+    const groups = agentGroups(videoRun());
+    const preproduction = groups.find((group) => group.key === 'fyt-preproduction')!;
+    const runner = groups.find((group) => group.key === 'fyt-runner')!;
+    expect(agentNodeHeight(preproduction)).toBeGreaterThan(agentNodeHeight(runner));
+    const positions = agentNodePositions(videoRun());
+    expect(positions.get(agentNodeId('fyt-checker'))!.y).toBeGreaterThan(agentNodeHeight(preproduction));
+  });
+
+  it('puts a single card at the origin rather than holding a column open', () => {
+    expect([...agentNodePositions(bare()).values()]).toEqual([{ x: 0, y: 0 }]);
+  });
+
+  /** `fitView` framed a chain wider than the canvas before, clipped by reactflow's own 0.5 zoom floor. */
+  it('frames at 1:1 at most and is allowed to zoom below the reactflow default floor', () => {
+    render(<WorkflowAgentGraph entry={videoRun()} />);
+    const canvas = screen.getByTestId('reactflow-mock');
+    expect(canvas.dataset.fitMaxZoom).toBe('1');
+    expect(Number(canvas.dataset.minZoom)).toBeLessThan(0.5);
+    expect(Number(canvas.dataset.fitMinZoom)).toBeLessThanOrEqual(0.3);
+  });
+
+  it('retains a dragged card and reroutes its handoffs through the new place', () => {
+    render(<WorkflowAgentGraph entry={videoRun()} />);
+    expect(screen.getByTestId('reactflow-edge-start-fyt-preproduction').dataset.sourceHandle).toBe('source-right');
+    fireEvent.click(screen.getByRole('button', { name: 'Move the preproduction card' }));
+    expect(screen.getByTestId('reactflow-position-agent:fyt-preproduction').dataset.position).toBe('0,900');
+    expect(screen.getByTestId('reactflow-edge-start-fyt-preproduction').dataset.sourceHandle).toBe('source-bottom');
+  });
+
+  it('says so plainly when a workflow has no steps yet', () => {
+    render(<WorkflowAgentGraph entry={entry({ stages: [], manager: null })} />);
+    expect(screen.getByTestId('workflow-agent-network-empty').textContent).toContain('no steps');
+  });
+
+  it('explains itself in plain words', () => {
+    render(<WorkflowAgentGraph entry={videoRun()} />);
+    expect(screen.getByTestId('reactflow-panel').textContent).toContain('arrows show the handoffs between them');
+  });
+});
+
+describe('what one agent card says', () => {
+  it('leads with the agent, its model, and the steps it governs in order', () => {
+    render(<WorkflowAgentGraph entry={videoRun()} />);
+    const card = screen.getByTestId('workflow-agent-node-fyt-preproduction');
+    expect(card.textContent).toContain('fyt-preproduction');
+    expect(screen.getByTestId('workflow-agent-node-fyt-preproduction-agent').textContent).toContain(SOL);
+    expect(screen.getByTestId('workflow-agent-node-fyt-preproduction-agent').textContent).toContain('default');
+
+    const listed = [...screen.getByTestId('workflow-agent-node-fyt-preproduction-stages').children]
+      .map((row) => row.textContent);
+    expect(listed).toHaveLength(7);
+    expect(listed[0]).toContain('Pick and brief one video idea');
+    expect(listed[6]).toContain('Plan the per-shot motion layers');
+    // Numbered, because the order of an agent's own worklist is the point.
+    expect(listed[0]?.startsWith('1')).toBe(true);
+  });
+
+  it('marks the manager card and explains where a default came from', () => {
+    render(<WorkflowAgentGraph entry={videoRun()} />);
+    const runner = screen.getByTestId('workflow-agent-node-fyt-runner');
+    expect(runner.textContent).toContain('runs the workflow');
+    expect(runner.textContent).toContain('Batched review of every generated still');
+    expect(screen.getByTestId('workflow-agent-node-fyt-runner-agent').querySelector('[title]')?.getAttribute('title'))
+      .toBe('The agent that governs these steps.');
+    // Every other card is an ordinary worker.
+    expect(screen.getByTestId('workflow-agent-node-fyt-checker').textContent).not.toContain('runs the workflow');
+  });
+
+  it('shows an explicitly declared agent with no default tag, and omits an unpinned model', () => {
+    render(<WorkflowAgentGraph
+      entry={entry({ manager: null, governedBy: null, stages: [
+        { id: 'draft', title: 'Draft', action: 'draft', target: 'd', riskTier: 'T1', declaredAssignment: assign('beta'), resolvedAssignment: resolved({ agentId: 'beta', source: 'declared', model: null }) },
+      ] })}
+      onOpenAgent={vi.fn()}
+    />);
+    const slot = screen.getByTestId('workflow-agent-node-beta-agent');
+    expect(slot.textContent).toContain('Open agent');
+    expect(slot.textContent).not.toContain('default');
+    expect(slot.textContent).not.toMatch(/claude-|gpt-/);
+  });
+
+  /** Nothing true to say on the second line — so there is no empty bordered strip pretending there is. */
+  it('drops the model line entirely when the roster pins nothing and there is nowhere to open', () => {
+    render(<WorkflowAgentGraph entry={entry({ manager: null, governedBy: null, stages: [
+      { id: 'draft', title: 'Draft', action: 'draft', target: 'd', riskTier: 'T1', declaredAssignment: assign('beta'), resolvedAssignment: resolved({ agentId: 'beta', source: 'declared', model: null }) },
+    ] })} />);
+    expect(screen.getByTestId('workflow-agent-node-beta').textContent).toContain('beta');
+    expect(screen.queryByTestId('workflow-agent-node-beta-agent')).toBeNull();
+  });
+
+  it('opens the agent a card is, without a network write', () => {
     const onOpenAgent = vi.fn();
     vi.stubGlobal('fetch', vi.fn());
-    render(<WorkflowAgentGraph entry={entry()} onOpenAgent={onOpenAgent} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Open agent' })[2]);
-    expect(onOpenAgent).toHaveBeenCalledWith('beta');
+    render(<WorkflowAgentGraph entry={videoRun()} onOpenAgent={onOpenAgent} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open agent' })[1]!);
+    expect(onOpenAgent).toHaveBeenCalledWith('fyt-preproduction');
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('states a manager that governs no step of its own rather than showing an empty list', () => {
+    render(<WorkflowAgentGraph entry={entry({ manager: null, governedBy: 'fyt-runner' })} />);
+    expect(screen.getByTestId('workflow-agent-node-fyt-runner').textContent).toContain('no steps of its own');
   });
 });
 
@@ -326,9 +519,21 @@ describe('the override, which is the same one governed write', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('keeps exactly one picker per step, on the card of the agent that governs it', () => {
+    render(<WorkflowAgentGraph entry={videoRun()} assignmentOptions={{
+      manager: { options: [assign('fyt-runner')], unavailable: null },
+      stages: { 'image-review': { options: [assign('fyt-checker')], unavailable: null } },
+    }} />);
+    const runner = screen.getByTestId('workflow-agent-node-fyt-runner');
+    expect(runner.querySelectorAll('select')).toHaveLength(2); // the workflow itself + image-review
+    expect(screen.getByTestId('workflow-agent-node-fyt-preproduction').querySelectorAll('select')).toHaveLength(7);
+    expect(screen.getByTestId('workflow-agent-node-fyt-checker').querySelectorAll('select')).toHaveLength(2);
+    expect(screen.getAllByLabelText(/^Who runs /)).toHaveLength(15); // 14 steps + the workflow
+  });
+
   it('offers keeping the default rather than choosing nobody', () => {
     render(<WorkflowAgentGraph entry={entry()} assignmentOptions={options()} />);
-    expect((screen.getByLabelText('Who runs Review') as HTMLSelectElement).options[0].textContent).toBe('Keep the default');
+    expect((screen.getByLabelText('Who runs Review') as HTMLSelectElement).options[0]!.textContent).toBe('Keep the default');
   });
 
   it('states an unavailable choice rather than offering an empty picker', () => {
@@ -336,7 +541,7 @@ describe('the override, which is the same one governed write', () => {
       entry={entry()}
       assignmentOptions={options({ stages: { ...options().stages, draft: { options: [], unavailable: 'Human binding required.' } } })}
     />);
-    expect(screen.getByTestId('workflow-step-node-draft').textContent).toContain('Human binding required.');
+    expect(screen.getByTestId('workflow-agent-node-beta').textContent).toContain('Human binding required.');
     expect(screen.queryByLabelText('Who runs Draft')).toBeNull();
   });
 
@@ -345,29 +550,13 @@ describe('the override, which is the same one governed write', () => {
       entry={entry()}
       assignmentOptions={options({ stages: { ...options().stages, draft: { options: [assign('alpha')], unavailable: null } } })}
     />);
-    const picker = screen.getByLabelText('Who runs Draft') as HTMLSelectElement;
-    expect(picker.value).toBe(JSON.stringify(['beta', 'worker:beta']));
+    expect((screen.getByLabelText('Who runs Draft') as HTMLSelectElement).value).toBe(JSON.stringify(['beta', 'worker:beta']));
   });
 
   it('freezes every picker while a change is in flight', () => {
     render(<WorkflowAgentGraph entry={entry()} assignmentOptions={options()} readOnly />);
     expect((screen.getByLabelText('Who runs Draft') as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByLabelText('Who runs the workflow') as HTMLSelectElement).disabled).toBe(true);
-  });
-});
-
-describe('the canvas', () => {
-  it('retains a dragged position and reroutes its edges through it', () => {
-    render(<WorkflowAgentGraph entry={entry()} assignmentOptions={options()} />);
-    expect(screen.getByTestId('reactflow-edge-step-research~draft').dataset.sourceHandle).toBe('source-right');
-    fireEvent.click(screen.getByRole('button', { name: 'Move the draft step' }));
-    expect(screen.getByTestId('reactflow-position-stage:draft').dataset.position).toBe('0,0');
-    expect(screen.getByTestId('reactflow-edge-step-research~draft').dataset.sourceHandle).toBe('source-left');
-  });
-
-  it('explains itself in plain words', () => {
-    render(<WorkflowAgentGraph entry={entry()} />);
-    expect(screen.getByTestId('reactflow-panel').textContent).toContain('arrows show what runs after what');
   });
 });
 
@@ -418,5 +607,15 @@ describe('the canvas height contract (the invisible-graph regression)', () => {
     const narrow = canvasBlocks().slice(1);
     expect(narrow.length).toBeGreaterThan(0);
     for (const block of narrow) expect(block).toMatch(/(^|[;\s])height\s*:\s*\d/);
+  });
+
+  /**
+   * The layout positions cards by `AGENT_NODE_WIDTH`, but the CARD's real width comes from CSS. If the
+   * two drift, `fitView` frames a box that is not the graph and the cards overlap or gape.
+   */
+  it('sizes the card in CSS to the same width the layout positions it by', () => {
+    const rule = /\.v-workflow-agent\s*\{([^}]*)\}/.exec(css);
+    const width = /width\s*:\s*([\d.]+)rem/.exec(rule?.[1] ?? '');
+    expect(Number(width?.[1]) * 16).toBe(AGENT_NODE_WIDTH);
   });
 });

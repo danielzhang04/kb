@@ -202,26 +202,34 @@
   outline-offset: 2px;
 }
 
-/* One STEP box: what it is, who will run it, and a quiet override. The step's own name is the primary
- * text; the agent slot is the second line; the picker is the smallest thing on the box. */
-.v-workflow-step {
+/* One AGENT card: who it is, what it runs on, the steps it governs, and a folded-away override.
+ *
+ * The width here is the width the layout in `WorkflowAgentGraph.tsx` reasons in
+ * (`AGENT_NODE_WIDTH` = 304px = 19rem). Change one and change the other, or `fitView` frames the
+ * wrong box. Few large cards is the whole point of the agent-keyed graph: the step-keyed one drew
+ * fourteen small boxes and could only fit them by zooming the text down to nothing. */
+.v-workflow-agent {
   width: 19rem;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-2);
+  padding: var(--space-3);
   border: 1px solid var(--border);
   border-left: 2px solid transparent;
   border-radius: var(--radius-md);
   background: var(--bg-panel);
 }
 
-/* The agent that runs the whole workflow. Named by its accent rail, never by a second box shape. */
-.v-workflow-step--manager { border-left-color: var(--mc-accent); }
+/* The agent that runs the whole workflow. Named by its accent rail plus its chip — never by a
+ * second box shape, because an agent that both manages and works is still one agent. */
+.v-workflow-agent--manager { border-left-color: var(--mc-accent); }
 
-.v-workflow-step__handle { opacity: 0; pointer-events: none; }
+/* Nothing resolved for these steps. Quieter than a real cast card, and still a card, not a void. */
+.v-workflow-agent--unresolved { border-style: dashed; background: var(--bg-sunken); }
 
-.v-workflow-step__head {
+.v-workflow-agent__handle { opacity: 0; pointer-events: none; }
+
+.v-workflow-agent__head {
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
@@ -229,16 +237,18 @@
   justify-content: space-between;
 }
 
-.v-workflow-step__name {
+/* The agent's name is the loudest thing on the canvas — it is what the graph is now keyed by. */
+.v-workflow-agent__name {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--fg-primary);
-  font-size: var(--type-body-size);
+  font-size: var(--type-title-size);
   font-weight: var(--type-title-weight);
+  line-height: 1.2;
 }
 
-/* Who will run this step. A filled slot is an ordinary statement of fact, not a highlight. */
-.v-workflow-step__agent {
+/* What it runs on. An ordinary statement of fact, not a highlight. */
+.v-workflow-agent__meta {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -250,12 +260,11 @@
   font-size: var(--type-meta-size);
 }
 
-.v-workflow-step__agent-id { color: var(--fg-primary); overflow-wrap: anywhere; }
-.v-workflow-step__model { color: var(--fg-dim); }
+.v-workflow-agent__model { color: var(--fg-dim); overflow-wrap: anywhere; }
 
-/* "default" — the agent was resolved from the file rather than named on this step. A quiet tag, never
- * a warning: a resolved default is the normal, wanted case. */
-.v-workflow-step__default {
+/* "default" — the agent was resolved from the file rather than named on these steps. A quiet tag,
+ * never a warning: a resolved default is the normal, wanted case. */
+.v-workflow-agent__default {
   padding: 0 var(--space-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -264,9 +273,9 @@
 }
 
 /* Nothing resolved. A statement, not a call to action — so no border, no button, no accent. */
-.v-workflow-step__nobody { margin: 0; }
+.v-workflow-agent__nobody { margin: 0; }
 
-.v-workflow-step__open {
+.v-workflow-agent__open {
   margin-left: auto;
   border: 0;
   padding: 0.15rem 0.3rem;
@@ -277,23 +286,70 @@
   cursor: pointer;
   transition: color var(--transition);
 }
-.v-workflow-step__open:hover { color: var(--fg-primary); }
+.v-workflow-agent__open:hover { color: var(--fg-primary); }
 
-/* The override. It changes who runs the step, so it stays reachable — and small. */
-.v-workflow-step__override { display: flex; }
-.v-workflow-step__override select {
-  max-width: 100%;
-  font: inherit;
+/* The steps this agent governs, in pipeline order. Numbered, because the order is the point.
+ * Row height here is `AGENT_STAGE_ROW_HEIGHT` (21px) in the layout — keep them in step. */
+.v-workflow-agent__stages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.v-workflow-agent__stage {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-height: 21px;
+  color: var(--fg-secondary);
   font-size: var(--type-meta-size);
+  line-height: 1.35;
+}
+
+.v-workflow-agent__stage-index { color: var(--fg-faint); font-size: var(--type-section-size); }
+.v-workflow-agent__stage-title { min-width: 0; overflow-wrap: anywhere; }
+.v-workflow-agent__stages-empty { margin: 0; }
+
+/* The override, folded away. It changes who runs a step, so it stays reachable — and quiet. */
+.v-workflow-agent__override > summary {
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  cursor: pointer;
+  list-style-position: inside;
+}
+.v-workflow-agent__override > summary:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+
+.v-workflow-agent__override-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.v-workflow-agent__override-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--type-section-size);
   color: var(--fg-dim);
 }
-.v-workflow-step__unavailable { color: var(--fg-faint); font-size: var(--type-meta-size); }
-.v-workflow-step__open:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.v-workflow-agent__override-name { min-width: 0; overflow-wrap: anywhere; }
+.v-workflow-agent__override-row select {
+  max-width: 10rem;
+  font: inherit;
+  font-size: var(--type-section-size);
+  color: var(--fg-dim);
+}
+.v-workflow-agent__unavailable { color: var(--fg-faint); font-size: var(--type-section-size); }
+.v-workflow-agent__open:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 
 @media (max-width: 820px) {
   /* Same contract as the base rule: an explicit height, never a bare min-height. */
   .v-workflow-network__canvas { height: 25rem; }
-  .v-workflow-step { width: min(17rem, calc(100vw - 5rem)); }
+  .v-workflow-agent { width: min(19rem, calc(100vw - 5rem)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
