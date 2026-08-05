@@ -95,3 +95,11 @@
 - LESSON: review gates that emit aggregate "rig holds" sentences pass the same eye-geometry defect repeatedly; force per-invariant verdicts with canonical side-by-side crops.
 - LESSON: a genlog "style concern" note that never maps to a FAIL axis is a ratchet for drift — every review axis needs a fail condition or it is decoration.
 - REMAINS: Daniel gate on ~$4.12 fix list; handoffs/2026-08-04-fyt-bricks-middle-path.md rewritten as the drift-audit pickup.
+
+## 2026-08-05 — dashboard UX overhaul, 7 phases built through (boss session)
+- WORKED: spec→plan→7 phases each as ONE opus/sonnet subagent with explicit ownership maps (files owned / files forbidden), boss re-running every verification before committing explicit paths; parallel P4+P5 with disjoint maps had zero collisions. Handoff = handoffs/2026-08-05-dashboard-ux-overhaul.md.
+- WORKED: adversarial deletion pipeline — read-only scout inventory → opus refuter re-verifies EVERY item against the post-change tree → refuter writes an executable line-exact manifest (committed as evidence) → separate executor forbidden to improvise → boss gates ambiguous items to KEEP. Refuter saved 3 would-be-deleted live contracts (auth/challenge.ts = cross-language conformance mirror w/ zero importers BY DESIGN; staged-scaffold catalog.ts; GET /api/approvals security-test probe) and found a 456-LOC cascade the scout missed. "Zero importers" alone is NOT a delete verdict.
+- FAILED: trusting vitest pass-count as green — P4's suite passed 534/534 WITH 2 uncaught render exceptions ("Errors" line + exit 1) from a blanket fetch mock feeding the wrong body to a post-write refetch. Grade the Errors line and exit code, not the pass count; blanket mocks must be route-aware.
+- FAILED: PowerShell piping (`2>&1 | Select-String`) mangles native exit codes, and `git commit -m` with embedded quotes shreds argv — always `git commit -F <file>` and read $LASTEXITCODE unpiped.
+- LEARNED: model-verification grep also surfaces NESTED spawns (worker's own Explore subagents show as extra "model" lines) — read the odd line's context before flagging; a lone sonnet line inside an opus transcript was its legitimate sub-Explore.
+- LEARNED: mid-stream API-stall kills of background agents are cleanly resumable via SendMessage IF the resume message orders "re-read disk state first, don't assume your edits landed".
