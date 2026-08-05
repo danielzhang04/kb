@@ -21,6 +21,11 @@ call on the STEP-1 card (per the established lane pattern — one probe call, no
 the provider is still down) returned HTTP 503 again, no image. **Round stopped immediately per
 instruction; L29/L35/L34 not attempted.** Spend unchanged: **$0.134 total to date.**
 
+**PART 4 (§10 below): second recovery round, on Daniel's nudge (not waiting for the backoff timer).**
+Canary (STEP-1) **succeeded**. L29 → L35 → L34 fired in order, **all four generated clean on their
+first attempt — zero further 503s.** **All 5 planned probe items are now generated.** Total probe
+spend to date (Parts 1–4): **$0.575** — exactly the brief's original plan.
+
 ## 0. Pre-flight — quarantine check ($0)
 
 Confirmed clean before touching anything:
@@ -270,3 +275,46 @@ status cards; the STEP-1/L29/L35/L34 cards' text already reflected "not generate
 accurate — the canary's fresh timestamp is recorded here, not duplicated onto the board). Slate
 (`probe-items.json` / `probe-item-*.json`) is untouched and still ready to fire as-is on the next
 recovery attempt.
+
+## 10. Part 4 — second recovery round (Daniel's nudge, ahead of the backoff timer)
+
+Same pattern as Part 3: STEP-1 canary first, 503-with-no-image would log $0 and stop the round
+immediately. This time the canary succeeded, so the standing spend law resumed for L29 → L35 → L34,
+each `--force`d (a stale pre-reset `_staging/<id>.png` from the old run still sits under those exact
+names — the same collision caught for `L28`/`L35` in Part 2 — so `--force` was kept on every
+scene-mode call throughout, cheap insurance against silently reusing pre-doctrine pixels).
+
+| # | request | attempt 1 | result | price | SHA-256 |
+|---|---------|-----------|--------|-------|---------|
+| canary | **fig-miniscribe-rep--action-powerstance--expr-deadpan** (STEP-1) | 03:08:04–03:10:36 **OK** → `_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png` | **GENERATED** | **$0.039** | `d9f93841a7386f8b70c9444ebbc447cd28d3ffc4743f3a7f3bc929a8b56f5f3f` |
+| next | **L29** (figure-bearing interior) | 03:11:07–03:12:30 **OK** → `_staging/L29.png` | **GENERATED** | **$0.134** | `2745d4c322cb331f0edb68e44bf23aa2f6bf8f1a75807da73e8db7de0e5fe6d4` |
+| next | **L35** (crowd-bearing) | 03:12:47–03:13:23 **OK** → `_staging/L35.png` | **GENERATED** | **$0.134** | `510865901b4168107cfb04e54288497b3551694665eefb96c22abb0701e5eba8` |
+| next | **L34** (prop insert) | 03:13:38–03:14:34 **OK** → `_staging/L34.png` | **GENERATED** | **$0.134** | `f8deef96b026836e3950222ccded59cdcf6718e272e43c0e1a1f3b15add7cf1d` |
+
+**Zero 503s, zero re-issues needed this round — every one of the 4 remaining requests cleared on its
+first attempt.** No re-issue law was exercised because none was needed.
+
+**Spend this round: $0.441. Total probe spend to date (Parts 1–4): $0.575** — exactly the brief's
+original plan, $0.275 under the $0.85 hard-abort ceiling. **All 5 planned probe items are now
+generated:**
+
+| id | what it probes | staging path | price |
+|---|---|---|---|
+| L28 | miniscribe-plant place plate — plate + `'MINISCRIBE'` lettering + flatness | `visual-kit/_staging/L28.png` | $0.134 |
+| fig-miniscribe-rep--action-powerstance--expr-deadpan | STEP-1 figure card L29 seeds | `visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png` | $0.039 |
+| L29 | figure-bearing interior scene (reveal, seeds the STEP-1 + L28) | `visual-kit/_staging/L29.png` | $0.134 |
+| L35 | crowd-bearing scene (plant apron, crew of loaders) | `visual-kit/_staging/L35.png` | $0.134 |
+| L34 | prop/object insert, no figures | `visual-kit/_staging/L34.png` | $0.134 |
+
+`probe-board.html` rebuilt (§11) to show all 5 frames large, each with its probe question and a seed
+crop, lightbox + arrow nav across all of them. No verdicts — Daniel's eye.
+
+## 11. Board rebuild
+
+Same construction as Part 2's board (self-contained JPEG data URIs, resized to display scale,
+lightbox with left/right nav wired across every frame in file order). New crops added: `L28`'s
+lettering-exemplar seed crop is kept; `L29` gets its STEP-1 figure-card seed crop side by side (the
+portable card the scene composed from) plus a small L28-plate reference crop (the place continuity
+seed); `L35` gets its L28-plate crop plus the crowd-exemplar seed crop; `L34` carries no seed crop
+(zero-seed root, by design — noted on its card instead of an empty box). File:
+`videos/2026-07-28-bricks-fresh/scratchpad/probe-board.html`, self-contained, under the 9MB cap.
