@@ -18,8 +18,8 @@ import type { CardProjection, ParsedCard } from '../planeA/cards.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
 import { parseLedgerName } from '../planeA/ledgers.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
-import { effectiveForAgent } from '../routing/effective.ts';
-import type { Effective } from '../routing/effective.ts';
+import { effectiveForAgent, RoutingError } from '../routing/effective.ts';
+import type { Effective, AgentDeclarationRouting } from '../routing/effective.ts';
 import { defaultNamingRegistry } from '../naming.ts';
 import type { NamingRegistry } from '../naming.ts';
 
@@ -31,8 +31,36 @@ export interface AgentRosterRow {
   current: { action: string; id: string; displayName: string; shortRef: number } | null;
   projects: string[];
   cardCount: number;
-  /** Effective routing for this agent (agent-scope override -> policy role_default -> safe default). */
+  /** Effective routing for this agent: its own `agents/<id>.md` declaration -> agent-scope override ->
+   *  the policy row for its DECLARED role -> safe default. */
   effective: Effective;
+}
+
+/** The declarations `listAgents`/`buildRoster` resolve routing against, keyed by agent id. */
+export type AgentDeclarationMap = ReadonlyMap<string, AgentDeclarationRouting>;
+
+const NO_DECLARATIONS: AgentDeclarationMap = new Map();
+
+/**
+ * One agent's effective routing, never fatal to the roster. The resolver is deliberately FAIL-LOUD when a
+ * declaration names a model its runtime does not know; the roster is a read projection that must never
+ * crash (a single bad `agents/<id>.md` cannot be allowed to 500 the whole Agents view), so that one case
+ * drops ONLY the unusable pair — the declared role is kept, and the agent shows the policy answer for its
+ * role. Every other failure mode is left to propagate, unchanged from before.
+ */
+function agentEffective(
+  id: string,
+  policy: PolicyDoc,
+  override: OverrideDoc,
+  declaration: AgentDeclarationRouting | null,
+): Effective {
+  try {
+    return effectiveForAgent(id, policy, override, declaration);
+  } catch (err) {
+    if (!(err instanceof RoutingError) || declaration === null) throw err;
+    if (declaration.runtime == null && declaration.model == null) throw err;
+    return effectiveForAgent(id, policy, override, { role: declaration.role ?? null, runtime: null, model: null });
+  }
 }
 
 /** Normalise a card's `project` field (string | string[]) into a flat list. */
@@ -46,8 +74,18 @@ function projectsOf(card: ParsedCard): string[] {
  * Build the roster from the Plane-A snapshot: group every card by its non-null owner, then annotate
  * each agent with status/current-card/projects/count and its effective routing. Sorted working-first,
  * then id-alphabetical (same ordering as the client `deriveRoster`).
+ *
+ * `declarations` supplies each agent's own `agents/<id>.md` routing frontmatter (role/runtime/model) so
+ * the effective routing is the agent's REAL one. Still pure — the caller does the reading (`buildRoster`
+ * already scans the declarations; `routing/routes.ts` passes `readDeclaredAgents(repoRoot)`). Omitting it
+ * resolves every agent from policy alone, which is the honest answer only when no declaration exists.
  */
-export function listAgents(index: PlaneAIndex, policy: PolicyDoc, override: OverrideDoc): AgentRosterRow[] {
+export function listAgents(
+  index: PlaneAIndex,
+  policy: PolicyDoc,
+  override: OverrideDoc,
+  declarations: AgentDeclarationMap = NO_DECLARATIONS,
+): AgentRosterRow[] {
   const byOwner = new Map<string, CardProjection[]>();
   for (const bucket of Object.values(index.cards)) {
     for (const card of bucket) {
@@ -76,7 +114,7 @@ export function listAgents(index: PlaneAIndex, policy: PolicyDoc, override: Over
         : null,
       projects,
       cardCount: cards.length,
-      effective: effectiveForAgent(id, policy, override),
+      effective: agentEffective(id, policy, override, declarations.get(id) ?? null),
     });
   }
 
@@ -576,11 +614,13 @@ export function buildRoster(
   override: OverrideDoc,
   naming: NamingRegistry = defaultNamingRegistry(),
 ): AgentRosterEntry[] {
-  const cardRows = listAgents(index, policy, override);
+  const declared = readDeclaredAgents(repoRoot);
+  // Declarations are read FIRST: they are rung 1 of the routing precedence, so `listAgents` needs them
+  // to compute a truthful effective model for the agents that also own cards.
+  const cardRows = listAgents(index, policy, override, declared);
   const byId = new Map(cardRows.map((r) => [r.id, r]));
   const writers = readLedgerWriters(repoRoot);
   const roles = readRoles(repoRoot);
-  const declared = readDeclaredAgents(repoRoot);
   const declarationProblems = readAgentDeclarationProblems(repoRoot);
 
   const ids = new Set<string>([...byId.keys(), ...writers.keys(), ...declared.keys(), ...declarationProblems.keys()]);
@@ -604,7 +644,7 @@ export function buildRoster(
       cardCount: cr?.cardCount ?? 0,
       ledger,
       sources,
-      effective: cr?.effective ?? effectiveForAgent(id, policy, override),
+      effective: cr?.effective ?? agentEffective(id, policy, override, dec ?? null),
       declared: dec !== undefined,
       runnerBound: dec?.runnerBound ?? false,
       declaredRuntime: dec?.runtime ?? null,

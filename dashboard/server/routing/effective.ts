@@ -8,6 +8,10 @@
  *
  * One-winner precedence (proposal §4), field-by-field for runtime + model independently:
  *   card frontmatter > queue/routing-override.yaml > governance/model-routing.yaml > SAFE_DEFAULT
+ * For an AGENT (no card in hand) rung 1 is the agent's OWN authored frontmatter — `agents/<id>.md`'s
+ * `runtime`/`model` — which is why `effectiveForAgent` reports it as source `card`: same rung, same
+ * authority, just the agent's declaration file instead of a card file. `governance/model-routing.yaml`
+ * defines no agent-specific level of its own; the agent-specific level is rung 2's `scope: agent`.
  * Within the override file a `scope: card` entry (key == card id) outranks a `scope: agent` entry
  * (key == card owner); same scope+key -> last wins; an entry at/after its `expires` is treated as absent.
  * An unknown *named* model (not in the runtime's `known_models`) throws `RoutingError` — never a silent
@@ -236,16 +240,51 @@ export function effectiveForCard(
 }
 
 /**
- * Effective routing for an AGENT with no specific card: an agent-scope override (key == agentId), else
- * the policy `role_default`, else the safe default. Modelled as a card with no role/tier match (so
- * `policyCell` falls straight to `role_default`) and the agent id as `owner` (so agent-scope override
- * matches). Reports the winning source per field.
+ * The routing-relevant fields of an agent's own `agents/<id>.md` declaration (structurally a subset of
+ * `DeclaredAgent`, so the roster's declaration map is passed straight through).
+ */
+export interface AgentDeclarationRouting {
+  /** The declared role (`manage`/`work`/`inspect`/…) — selects the policy row. */
+  role?: string | null;
+  /** The declared default runtime — rung 1, the agent's own frontmatter. */
+  runtime?: string | null;
+  /** The declared default model — rung 1, the agent's own frontmatter. */
+  model?: string | null;
+}
+
+/**
+ * Effective routing for an AGENT with no specific card, over the SAME four rungs as a card:
+ *   1. the agent's own `agents/<id>.md` frontmatter `runtime`/`model`  (source `card`)
+ *   2. a `scope: agent` override entry keyed by this agent id          (source `override`)
+ *   3. `governance/model-routing.yaml` — policy[declared role][tier] -> [role]["*"] -> role_default
+ *                                                                       (source `policy`)
+ *   4. SAFE_DEFAULT                                                     (source `default`)
+ *
+ * The agent id is passed as `owner` so rung 2's agent-scope matching works. The declared ROLE selects the
+ * policy row (previously hard-coded to `''`, which made rung 3 collapse to `role_default` for EVERY agent
+ * — the defect this replaces). An agent carries no risk tier, so the tier key is `''`: `policyCell` then
+ * takes the role's `"*"` cell when it has one and otherwise falls to `role_default` — no tier is invented.
+ * Throws `RoutingError` (fail loud, parity with dispatch) when a declaration names a model its resolved
+ * runtime does not know.
  */
 export function effectiveForAgent(
   agentId: string,
   policy: PolicyDoc,
   override: OverrideDoc,
+  declaration: AgentDeclarationRouting | null = null,
   nowMs: number = Date.now(),
 ): Effective {
-  return resolveRouting({ id: null, owner: agentId, runtime: null, model: null }, '', '', policy, override, nowMs);
+  return resolveRouting(
+    {
+      id: null,
+      owner: agentId,
+      runtime: declaration?.runtime ?? null,
+      model: declaration?.model ?? null,
+    },
+    declaration?.role ?? '',
+    '',
+    policy,
+    override,
+    nowMs,
+  );
 }
