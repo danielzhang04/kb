@@ -4,10 +4,22 @@ Daniel-approved direction, brainstormed 2026-08-04. Goal: the dashboard reads as
 operator surface — one unlock, human names instead of IDs, one Workflows surface instead of
 Runs/cockpit/canvas, digestible panels, and a measurably smaller codebase.
 
-Branch: `claude/dashboard-ux-overhaul` (worktree `kb-worktrees/boss-dashboard-ux`, cut from
-main @6c58426). Build = Claude subagents (haiku/sonnet/opus by stakes, model verified at
+Branch: `claude/dashboard-ux-overhaul` (worktree `kb-worktrees/boss-dashboard-ux`), based on
+`claude/headless-roster` @ae8a80c — the thin-slice terminal's platform tip (headless
+execution T1–T6; supersedes `claude/fyt-paid-wiring`, which it contains). Acceptance daemon =
+the isolated 4620 launcher (`start-headless-daemon.mjs`), repointed to this worktree during
+implementation. Build = Claude subagents (haiku/sonnet/opus by stakes, model verified at
 grading via transcript grep); boss verifies every unit. NOT codex dispatch this arc
 (Daniel's 2026-08-04 override).
+
+Live-UI evidence (4620 walkthrough, 2026-08-04): SIX distinct unlock surfaces visible
+(sidebar "Unlock dashboard", Home "Sign in to inspect execution state", Home "Sign in to
+launch or rerun cards", Run Canvas full-page sign-in banner, Runs "Unlock cockpit", Inbox
+"Unlock run requests"). Nav carries Workflows AND Runs AND Run Canvas. Inbox renders raw
+card IDs as primary text with the human name demoted to small grey. Workflows list keys rows
+on file paths with an overflowing governance-chip column and zero run info. 8 runs sit
+parked (6 waiting-human, 2 failed) — all stale thin-slice validation attempts whose open
+"asks" are TUI-era boot failures the headless rework already obsoleted.
 
 ## 1. Single unlock
 
@@ -40,19 +52,39 @@ Humans see titles + short ordinals; backends keep real IDs.
 
 ## 3. Workflows unification
 
-One surface for definitions + their executions.
+One surface for definitions + their executions. The platform's two parallel vocabularies —
+control plane (proposals/runs/stages/attempts, cockpit) and queue (cards, DAG) — collapse to
+ONE presented concept: a workflow and its runs. Cards/stages are implementation detail
+behind the technical fold.
 
-- Nav: `pipeline` ("Runs") destination REMOVED. `DestinationId`, App body switch, palette,
-  and entity links updated — no redirect stub.
-- Workflows tab: workflow list; each workflow shows live runs + past runs. Runs not born
-  from a definition (ad-hoc/managed) appear under one catch-all group ("Ad-hoc").
-- Run detail: today's `RunCockpit` content, de-jargoned per §2, plus the run's own card DAG
-  inline — the React Flow projection scoped to that run's cards. The whole-queue canvas
-  (Pipeline.tsx) dies; `/api/dag` gains a per-run scope (or the run detail filters the
-  existing projection — implementer's call, whichever keeps the server slimmer).
-- `ManagedRuns` list wrapper, `RunGrid`, and the cockpit-vs-graph split collapse into this
-  surface. `RetentionPanel` survives only if the bloat sweep proves it earns its place;
-  otherwise its essential controls fold into run detail.
+- Nav: `pipeline` ("Runs") AND the Run Canvas destinations REMOVED. `DestinationId`, App
+  body switch, palette, and entity links updated — no redirect stubs. One "Workflows" entry.
+- Workflows tab: informative list — name, project, status of latest run, live-run indicator,
+  last-run outcome/time. No file paths, no governance-chip dump.
+- Workflow detail: each workflow shows live + past runs. Runs not born from a definition
+  appear under one catch-all group ("Ad-hoc").
+- Launch: ONE button on the workflow. The pre-launch manager-assignment ceremony (governor
+  dropdown, amendment phases, "enter all required parameters" wall) dies. Per-agent
+  assignment/model is edited inline on the graph node ("per-agent fix on the graph");
+  launch uses what the graph shows.
+- The workflow graph replaces the "agent handoff network" jargon panel: agent nodes with
+  plain-language handoff edges, editable assignment/model per node, no dead canvas space.
+  Stage/agent copy de-jargoned throughout.
+- Run detail (Run Canvas content absorbed): per-agent live stream tiles + two-way operator
+  messaging (T4/T5 machinery), the run's own card DAG inline (scoped projection — the
+  whole-queue canvas dies), de-jargoned per §2.
+- `ManagedRuns` wrapper, `RunGrid`, cockpit-vs-graph split all collapse into this surface.
+  `RetentionPanel` survives only if the bloat sweep proves it earns its place.
+
+### 3b. Waiting-on-human runs
+
+- Every run in `waiting-human` renders a plain-language ask (what happened, what you can
+  do) — never raw error text or tracebacks as the prompt.
+- Add an archive/dismiss action for dead runs and their open requests (T3-audited write);
+  parked runs stop haunting every list forever.
+- At implementation validation: archive the 8 stale thin-slice validation runs (6
+  waiting-human, 2 failed) whose asks are obsolete TUI-era boot failures; root-cause any
+  ask that survives (e.g. canonical-result identity mismatch) before archiving it.
 
 ## 4. Agents
 
@@ -97,8 +129,12 @@ A first-class workstream, not a cleanup afterthought:
   Boss gates the list (Daniel sees anything load-bearing); then deletions execute.
 - Includes everything §§1–6 orphan (Pipeline canvas, ManagedRuns wrapper, unlock plumbing,
   Composer-from-Agents path, stop-floor CSS).
-- Constraint: `claude/fyt-paid-wiring` (unmerged) touches `dashboard/server/control` — the
-  sweep must not gut files that branch depends on until it merges.
+- Named fix: static serving (`server/static/routes.ts`) registers asset routes only from
+  the dist present at boot (`wildcard: false`), so any rebuild 404s the UI until a daemon
+  restart — serve `/assets/*` from disk at request time.
+- Base is `claude/headless-roster`, which already contains `claude/fyt-paid-wiring` — no
+  cross-branch constraint remains; the T6 deletion (−6,362 lines) already cleared the TUI
+  roster layer, so the sweep targets what's left.
 - Success: measurable LOC/file-count reduction, reported before/after.
 
 ## Testing & verification
