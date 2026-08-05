@@ -98,10 +98,11 @@ describe('App shell — entity-first sidebar navigation', () => {
     const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
     expect(chip.textContent).toBe('Locked');
     expect(chip.disabled).toBe(false);
-    // No other surface offers a SESSION unlock — every governed action mints at point of action.
-    // ("Unlock execution" is a different, purpose-bound ceremony on its own posture, not this session.)
+    // No other surface offers an unlock of ANY kind. The execution panel used to carry its own
+    // "Unlock execution" button; execution now arms off this one sign-in (App's ExecutionArmingProvider),
+    // so the chip is the only thing in this app the operator ever unlocks.
     expect(screen.queryAllByRole('button', { name: /unlock/i }).map((b) => b.textContent))
-      .toEqual(['Unlock execution']);
+      .toEqual([]);
   });
 
   it('restores an unexpired tab session after a refresh-sized remount', () => {

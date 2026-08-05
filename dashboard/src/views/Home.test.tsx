@@ -254,15 +254,17 @@ describe('Home view — navigation', () => {
   });
 });
 
-describe('Home view — execution unlock stays', () => {
-  it('keeps the ExecutionUnlock panel and has no launch form beside it', async () => {
+describe('Home view — execution status stays', () => {
+  it('keeps the execution panel and has no launch form beside it', async () => {
     render(withSession(
       <Home snapshot={SNAPSHOT} executionClient={executionClient(LOCKED_EXECUTION)} />,
       { stored: 'fake-session-token' },
     ));
 
-    // Arming PAID execution is a deliberate act of its own and deliberately survives the sweep.
-    expect(await screen.findByRole('button', { name: 'Unlock execution' })).toBeTruthy();
+    // The panel survives the sweep, but as a STATUS readout. Execution arms with the sign-in, so
+    // there is no unlock button left here for the operator to press a second time.
+    expect(await screen.findByText('Execution armed · passkey')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Unlock execution' })).toBeNull();
     // The launch/rerun form does not: work is launched from the workflow that owns it.
     expect(screen.queryByTestId('home-launch')).toBeNull();
     expect(screen.queryByLabelText('Launch card')).toBeNull();

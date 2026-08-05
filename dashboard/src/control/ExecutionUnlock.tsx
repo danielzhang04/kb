@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { useSession } from '../lib/sessionContext';
 import {
   executionUnlockErrorMessage,
@@ -18,36 +19,178 @@ const defaultClient: ExecutionUnlockClient = {
   unlock: (token) => unlockExecution(token),
 };
 
-interface Scope {
-  sessionToken: string | undefined;
-  client: ExecutionUnlockClient;
-}
-
-interface ViewState extends Scope {
+/** What the operator is told about the automatic arm. `retry` exists ONLY after a failed attempt. */
+export interface ExecutionArmingState {
+  /** The authoritative server posture, or null while unknown / unreadable. */
   posture: ExecutionPostureDto | null;
-  loading: boolean;
-  unlocking: boolean;
+  /** An arm attempt (posture read plus any unlock POST) is in flight for the current session. */
+  pending: boolean;
+  /** Operator-facing reason the automatic arm failed. Null whenever execution is armed or idle. */
   error: string | null;
+  /** Non-null only while `error` is set — a failed arm is the one thing worth a click. */
+  retry: (() => void) | null;
+  /** Whether a live dashboard session exists at all. Without one there is nothing to arm under. */
+  signedIn: boolean;
 }
 
-interface UnlockRequest {
-  scope: Scope;
-  id: symbol;
-}
+const ExecutionArmingContext = createContext<ExecutionArmingState | null>(null);
 
-function emptyView(sessionToken: string | undefined, client: ExecutionUnlockClient): ViewState {
-  return { sessionToken, client, posture: null, loading: Boolean(sessionToken), unlocking: false, error: null };
+type ArmOutcome =
+  | { ok: true; posture: ExecutionPostureDto }
+  | { ok: false; posture: ExecutionPostureDto | null; error: string };
+
+function requirePosture(value: ExecutionPostureDto): ExecutionPostureDto {
+  const parsed = parseExecutionPosture(value);
+  // Keep the UI boundary fail-closed even when a test/injected client returns a malformed success.
+  if (!parsed) throw new Error('execution state response was invalid');
+  return parsed;
 }
 
 /**
- * The execution posture panel.
+ * Arm execution for ONE session bearer.
  *
- * ONE passkey ceremony for the whole platform: the shared sign-in from `sessionContext`. Arming
- * execution is authorized by that same session bearer, so this panel runs NO ceremony of its own — the
- * second biometric prompt it used to raise is gone. What remains is a plain one-click action, kept
- * explicit on purpose: signing in must never silently arm the executor, so the operator still performs
- * a visible "Unlock execution" act. From a locked tab the first click mints the shared session (the one
- * ceremony) and the arming click follows once the posture is known.
+ * Reads the authoritative posture first, and only POSTs the unlock when the latch is genuinely locked —
+ * an already-unlocked or injected runtime needs no call at all. Every failure path re-reads the posture
+ * before it reports anything, because the interesting refusals here (the 409 a latch raises when it is
+ * already armed or unavailable, an env-override arm, a concurrent arm that won the race) all mean
+ * "execution is armed", not "arming failed". Only a posture that is still `locked` is a real failure.
+ */
+async function armExecution(client: ExecutionUnlockClient, token: string): Promise<ArmOutcome> {
+  let posture: ExecutionPostureDto;
+  try {
+    posture = requirePosture(await client.getPosture(token));
+  } catch {
+    return {
+      ok: false,
+      posture: null,
+      error: 'Execution state could not be loaded. Execution remains unavailable.',
+    };
+  }
+  if (posture.state !== 'locked') return { ok: true, posture };
+  try {
+    const next = requirePosture(await client.unlock(token));
+    if (next.state !== 'unlocked' || next.source !== 'passkey') {
+      throw new Error('execution unlock response was not passkey-authorized');
+    }
+    return { ok: true, posture: next };
+  } catch (reason) {
+    const settled = await client.getPosture(token)
+      .then((value) => parseExecutionPosture(value))
+      .catch(() => null);
+    if (settled && settled.state !== 'locked') return { ok: true, posture: settled };
+    return { ok: false, posture: settled, error: executionUnlockErrorMessage(reason) };
+  }
+}
+
+/** One arm attempt, tagged with the exact scope that owns it so a stale settle can never be adopted. */
+interface Attempt {
+  token: string;
+  client: ExecutionUnlockClient;
+  nonce: number;
+  promise: Promise<ArmOutcome>;
+}
+
+/**
+ * The session→execution bridge: EXACTLY ONE unlock POST per session mint, fired the moment the shared
+ * session goes locked→unlocked.
+ *
+ * Daniel's requirement is that the first unlock unlocks everything he needs — so signing in arms
+ * execution, with no second click and (since the route stopped running its own ceremony) no second
+ * passkey prompt. Nothing about the server contract moved: the unlock route is still explicit, still
+ * bearer-verified, and still writes its T3 audit row per arm. What changed is only who presses it.
+ *
+ * `enabled` is what keeps this legal AND single-owner. The panel below always calls this hook, and
+ * simply passes `false` when a {@link ExecutionArmingProvider} above it already owns the attempt — a
+ * conditional hook would be a rules-of-hooks violation, and a second live owner would be a second POST.
+ *
+ * The in-flight promise lives in a ref keyed by scope, and each effect run JOINS it rather than starting
+ * its own. That is what survives React 18 StrictMode, which mounts every effect twice: the second run
+ * finds the same attempt and subscribes to it, so the double mount still produces a single request.
+ */
+function useSessionArmedExecution(client: ExecutionUnlockClient, enabled: boolean): ExecutionArmingState {
+  const { session } = useSession();
+  const sessionToken = session?.token;
+  const attemptRef = useRef<Attempt | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const [settled, setSettled] = useState<{ attempt: Attempt; outcome: ArmOutcome } | null>(null);
+
+  useEffect(() => {
+    if (!enabled || !sessionToken) {
+      // Sign-out, expiry, or a governed 401 drops the token: forget the attempt so the NEXT mint arms
+      // again from scratch rather than showing the dead session's outcome.
+      attemptRef.current = null;
+      setSettled(null);
+      return;
+    }
+    const existing = attemptRef.current;
+    const attempt: Attempt = existing
+      && existing.token === sessionToken && existing.client === client && existing.nonce === nonce
+      ? existing
+      : { token: sessionToken, client, nonce, promise: armExecution(client, sessionToken) };
+    attemptRef.current = attempt;
+    let alive = true;
+    setSettled(null);
+    void attempt.promise.then((outcome) => {
+      if (!alive || attemptRef.current !== attempt) return;
+      setSettled({ attempt, outcome });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [enabled, sessionToken, client, nonce]);
+
+  // Resolved against this render's own scope, never against a ref. An outcome belonging to a replaced
+  // token/client/nonce is dropped here, so an abandoned render fails closed to "still working".
+  const outcome = settled
+    && settled.attempt.token === sessionToken
+    && settled.attempt.client === client
+    && settled.attempt.nonce === nonce
+    ? settled.outcome
+    : null;
+  const error = outcome && !outcome.ok ? outcome.error : null;
+
+  return useMemo<ExecutionArmingState>(() => ({
+    posture: outcome?.posture ?? null,
+    pending: enabled && Boolean(sessionToken) && !outcome,
+    error,
+    retry: error ? () => setNonce((value) => value + 1) : null,
+    signedIn: Boolean(sessionToken),
+  }), [outcome, error, enabled, sessionToken]);
+}
+
+/**
+ * The app's single arming owner. Mount it once, directly under `SessionProvider` (see `App.tsx`), so a
+ * sign-in arms execution no matter which view is on screen — the Home panel is a STATUS readout and is
+ * unmounted most of the time, so owning the attempt there would silently skip arming for anyone who
+ * signs in from the topbar chip while looking at Terminal, Workflows, or anything else.
+ */
+export function ExecutionArmingProvider({
+  client = defaultClient,
+  children,
+}: {
+  client?: ExecutionUnlockClient;
+  children: ReactNode;
+}): JSX.Element {
+  const arming = useSessionArmedExecution(client, true);
+  return <ExecutionArmingContext.Provider value={arming}>{children}</ExecutionArmingContext.Provider>;
+}
+
+/** Read the shared arming state, or null when rendered outside {@link ExecutionArmingProvider}. */
+export function useExecutionArming(): ExecutionArmingState | null {
+  return useContext(ExecutionArmingContext);
+}
+
+/**
+ * The execution posture panel — a STATUS readout, not a control.
+ *
+ * There is ONE ceremony and ONE click for the whole platform: the shared dashboard sign-in. This panel
+ * used to raise a second biometric prompt; that went when the unlock route dropped its own ceremony.
+ * Now the remaining CLICK is gone too — {@link ExecutionArmingProvider} arms execution off the session
+ * mint, and this panel reports the result. Arming stays explicit and audited ON THE SERVER (one governed,
+ * bearer-verified, T3-audited POST per arm); it just is not the operator's chore any more.
+ *
+ * The one affordance left is a RETRY, and only when an arm actually failed — a button that appears when
+ * there is nothing to fix is how the second click grew back last time.
  */
 export function ExecutionUnlock({
   client = defaultClient,
@@ -55,106 +198,25 @@ export function ExecutionUnlock({
 }: {
   client?: ExecutionUnlockClient;
   onPostureChange?: (posture: ExecutionPostureDto | null) => void;
-}): React.JSX.Element {
-  const { session, requireSession } = useSession();
-  const sessionToken = session?.token;
-  const committedScopeRef = useRef<Scope | null>(null);
-  const requestRef = useRef<UnlockRequest | null>(null);
-  const [view, setView] = useState<ViewState>(() => emptyView(sessionToken, client));
-  // View state is immutable-tagged. A new render therefore fails closed without mutating any shared ref,
-  // including when React abandons that render before committing it.
-  const currentView = view.sessionToken === sessionToken && view.client === client
-    ? view
-    : emptyView(sessionToken, client);
+}): JSX.Element {
+  const hosted = useExecutionArming();
+  // Always called; inert whenever a provider above already owns the attempt (see the hook's doc).
+  const local = useSessionArmedExecution(client, hosted === null);
+  const arming = hosted ?? local;
+  const { posture, pending, error, retry, signedIn } = arming;
 
+  // Held in a ref so a parent's inline callback cannot restart anything; the effect tracks POSTURE only.
+  const postureListener = useRef(onPostureChange);
+  postureListener.current = onPostureChange;
   useEffect(() => {
-    const scope: Scope = { sessionToken, client };
-    let alive = true;
-    committedScopeRef.current = scope;
-    setView(emptyView(sessionToken, client));
-    // This callback belongs to this committed token/client effect. It is intentionally captured rather
-    // than stored in a render-mutated ref, so an abandoned render cannot replace it.
-    onPostureChange?.(null);
-    if (sessionToken) {
-      client.getPosture(sessionToken)
-        .then((next) => {
-          if (!alive || committedScopeRef.current !== scope) return;
-          const parsed = parseExecutionPosture(next);
-          if (!parsed) throw new Error('execution state response was invalid');
-          setView({ ...emptyView(sessionToken, client), posture: parsed, loading: false });
-          onPostureChange?.(parsed);
-        })
-        .catch(() => {
-          if (!alive || committedScopeRef.current !== scope) return;
-          setView({
-            ...emptyView(sessionToken, client),
-            loading: false,
-            error: 'Execution state could not be loaded. Execution remains unavailable.',
-          });
-          onPostureChange?.(null);
-        });
-    }
-    return () => {
-      alive = false;
-      if (committedScopeRef.current === scope) committedScopeRef.current = null;
-      if (requestRef.current?.scope === scope) requestRef.current = null;
-    };
-    // `onPostureChange` is captured for the committed token/client scope. Depending on an inline callback
-    // would restart the authentication read after every parent posture update.
-  }, [sessionToken, client]);
+    postureListener.current?.(posture);
+  }, [posture]);
 
-  const requestUnlock = async (): Promise<void> => {
-    const scope = committedScopeRef.current;
-    if (!sessionToken || !scope || scope.sessionToken !== sessionToken || scope.client !== client) return;
-    if (requestRef.current?.scope === scope) return;
-    const request: UnlockRequest = { scope, id: Symbol('execution-unlock') };
-    requestRef.current = request;
-    setView((current) => current.sessionToken === sessionToken && current.client === client
-      ? { ...current, unlocking: true, error: null }
-      : { ...emptyView(sessionToken, client), loading: false, unlocking: true });
-    try {
-      const next = await client.unlock(sessionToken);
-      if (committedScopeRef.current !== scope || requestRef.current !== request) return;
-      const parsed = parseExecutionPosture(next);
-      // Keep the UI boundary fail-closed even when a test/injected client returns a malformed success.
-      if (parsed?.state !== 'unlocked' || parsed.source !== 'passkey') {
-        throw new Error('execution unlock response was not passkey-authorized');
-      }
-      setView((current) => current.sessionToken === sessionToken && current.client === client
-        ? { ...current, posture: parsed }
-        : current);
-      onPostureChange?.(parsed);
-    } catch (reason) {
-      if (committedScopeRef.current !== scope || requestRef.current !== request) return;
-      setView((current) => current.sessionToken === sessionToken && current.client === client
-        ? { ...current, error: executionUnlockErrorMessage(reason) }
-        : current);
-    } finally {
-      if (committedScopeRef.current === scope && requestRef.current === request) {
-        requestRef.current = null;
-        setView((current) => current.sessionToken === sessionToken && current.client === client
-          ? { ...current, unlocking: false }
-          : current);
-      }
-    }
-  };
-
-  const handleUnlock = async (): Promise<void> => {
-    // A locked tab needs the shared session before the posture can even be read. That sign-in is the
-    // ONE passkey ceremony; arming then happens on the next click, once the loaded posture confirms
-    // execution is still locked. No second ceremony runs on either click.
-    if (!sessionToken) {
-      await requireSession();
-      return;
-    }
-    await requestUnlock();
-  };
-
-  const label = currentView.loading
-    ? 'Checking execution…'
-    : currentView.posture?.state === 'unlocked'
-      ? `Execution unlocked · ${currentView.posture.source ?? 'unknown source'}`
-      : currentView.posture?.state === 'injected'
+  const label = pending
+    ? 'Arming execution…'
+    : posture?.state === 'unlocked'
+      ? `Execution armed · ${posture.source ?? 'unknown source'}`
+      : posture?.state === 'injected'
         ? 'Execution supplied by an injected runtime'
         : 'Execution locked';
 
@@ -165,17 +227,23 @@ export function ExecutionUnlock({
           <span className="v-home__eyebrow">Execution</span>
           <p className="v-home__execution-state">{label}</p>
         </div>
-        {!currentView.loading && (!sessionToken || currentView.posture?.state === 'locked') ? (
-          <button type="button" className="mc-btn mc-btn--primary" disabled={currentView.unlocking} onClick={() => void handleUnlock()}>
-            {currentView.unlocking ? 'Unlocking execution…' : 'Unlock execution'}
+        {retry ? (
+          <button
+            type="button"
+            className="mc-btn mc-btn--primary"
+            data-testid="execution-arm-retry"
+            onClick={retry}
+          >
+            Retry arming
           </button>
         ) : null}
       </div>
       <p className="v-home__execution-help">
-        Arming execution is authorized by your dashboard sign-in — no second passkey prompt. It stays a
-        deliberate act: signing in does not start agents or unlock runs.
+        {signedIn
+          ? 'Execution arms with your sign-in. The dashboard makes that governed, audited call for you — no second prompt, no second click.'
+          : 'Execution arms with your sign-in. Unlock this tab and execution arms with it.'}
       </p>
-      {currentView.error ? <p className="v-home__execution-error" role="alert">{currentView.error}</p> : null}
+      {error ? <p className="v-home__execution-error" role="alert">{error}</p> : null}
     </section>
   );
 }

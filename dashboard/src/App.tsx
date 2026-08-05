@@ -61,6 +61,7 @@ import { FlightRecorder } from './views/panels/FlightRecorder';
 import { Atlas } from './views/Atlas';
 import { AtlasMiniOrb } from './components/AtlasMiniOrb';
 import { Terminal } from './views/Terminal';
+import { ExecutionArmingProvider } from './control/ExecutionUnlock';
 import { DeployOutcome } from './composer/DeployOutcome';
 import { WorkspaceTabs } from './composer/WorkspaceTabs';
 import {
@@ -506,11 +507,15 @@ function persistOpenComposerRefs(refs: string[]): void {
 }
 
 /** The app's single session boundary: everything below `SessionProvider` shares one bearer and one
- *  passkey ceremony (see `lib/sessionContext.tsx`). */
+ *  passkey ceremony (see `lib/sessionContext.tsx`). `ExecutionArmingProvider` sits directly under it as
+ *  the app's ONE arming owner, so that single sign-in also arms execution from whatever view is on
+ *  screen — a per-view effect would skip anyone who signs in while not looking at Home. */
 export function App(): React.JSX.Element {
   return (
     <SessionProvider>
-      <AppShell />
+      <ExecutionArmingProvider>
+        <AppShell />
+      </ExecutionArmingProvider>
     </SessionProvider>
   );
 }

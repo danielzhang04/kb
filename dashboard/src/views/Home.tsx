@@ -415,7 +415,8 @@ export function Home({
   onNavigate?: (id: DestinationId) => void;
   /** Open one exact entity. Wired by the shell to its nav stack; rows fall back to `onNavigate`. */
   onNavigateTarget?: (target: NavTarget) => void;
-  /** Hermetic seam for session-authorized execution arming; production uses the real control client. */
+  /** Hermetic seam for the panel's own arming attempt when Home is rendered outside the app shell
+   *  (tests). Inside the shell the App-level arming provider owns the attempt and this is unused. */
   executionClient?: ExecutionUnlockClient;
 } = {}): React.JSX.Element {
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
@@ -450,8 +451,8 @@ export function Home({
         </div>
         <div className="v-home__col">
           <UsagePanel index={index} />
-          {/* Arming PAID execution is a deliberate, separate act from launching anything — it stays.
-              It is authorized by the ONE dashboard sign-in and raises no second passkey prompt. */}
+          {/* A STATUS readout, not a control: execution arms off the ONE dashboard sign-in (App's
+              `ExecutionArmingProvider` owns that), and this reports the posture it produced. */}
           <ExecutionUnlock client={executionClient} />
         </div>
       </div>
