@@ -9,7 +9,7 @@
  * sends a `{type:'close'}` frame and clears storage.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testing-library/react';
 
 // jsdom has no matchMedia; a real xterm instance (should the mock ever miss under concurrent dynamic
 // imports) calls it during construction. Stub it so a stray real-xterm mount can never crash the suite.
@@ -77,7 +77,8 @@ vi.mock('@xterm/addon-fit', () => {
 // The component imports the xterm CSS as a side effect; stub it so jsdom/vitest doesn't parse a real sheet.
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
-import { Terminal } from './Terminal';
+import { Terminal, ptyQuery } from './Terminal';
+import type { PtySpawnTarget } from './Terminal';
 import type { PtySessionSummary, TerminalSessionsClient } from '../lib/terminalClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
@@ -95,6 +96,7 @@ class FakeWS {
   closed = false;
   protocols: string[] | undefined;
   attachSessionId: string | undefined;
+  spawn: PtySpawnTarget | undefined;
   onopen: (() => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
   onclose: ((ev?: { reason?: string }) => void) | null = null;
@@ -132,10 +134,11 @@ afterEach(() => {
 /** A socket factory that hands out (and records) a fresh FakeWS per tab, capturing its attach id. */
 function makeFactory() {
   const sockets: FakeWS[] = [];
-  const factory = vi.fn((token: string, attachSessionId?: string) => {
+  const factory = vi.fn((token: string, attachSessionId?: string, spawn?: PtySpawnTarget) => {
     const ws = new FakeWS();
     ws.protocols = ['kb-pty.v1', token];
     ws.attachSessionId = attachSessionId;
+    ws.spawn = spawn;
     sockets.push(ws);
     return ws as unknown as WebSocket;
   });
@@ -171,7 +174,8 @@ describe('Terminal — session gating + subprotocol token', () => {
     const { factory, sockets } = makeFactory();
     render(unlocked(<Terminal socketFactory={factory} sessionsClient={makeSessionsClient()} />));
     await waitFor(() => expect(sockets.length).toBe(1));
-    expect(factory).toHaveBeenCalledWith('tok-abc', undefined); // a fresh tab has no attach id
+    // A fresh tab has no attach id and no spawn target — it is the plain login shell.
+    expect(factory).toHaveBeenCalledWith('tok-abc', undefined, undefined);
     expect(sockets[0].protocols).toEqual(['kb-pty.v1', 'tok-abc']);
     expect(screen.getByTestId('terminal-tab-1')).toBeTruthy();
     expect(screen.getByTestId('terminal-identity').textContent).toMatch(/dashboard daemon user/i);
@@ -322,5 +326,130 @@ describe('Terminal — tabs', () => {
     });
     expect(screen.getByTestId('terminal-notice')).toBeTruthy();
     await waitFor(() => expect(screen.queryByTestId('terminal-tab-1')).toBeNull());
+  });
+});
+
+/**
+ * "Run agent": one click on the Agents surface has to land the operator in a live session already
+ * primed as that agent. The browser only ever NAMES the agent — the server resolves it to a file and
+ * refuses anything not on its roster — so what these pin is the wire shape and the respawn semantics.
+ */
+describe('Terminal — agent-primed sessions', () => {
+  it('encodes the upgrade query for attach, agent-primed, plain claude, and the default shell', () => {
+    expect(ptyQuery(undefined, undefined)).toBe('');
+    expect(ptyQuery('pty-9')).toBe('?session=pty-9');
+    expect(ptyQuery(undefined, { mode: 'claude' })).toBe('?spawn=claude');
+    expect(ptyQuery(undefined, { mode: 'agent', agentId: 'fyt-runner' })).toBe('?spawn=agent&agent=fyt-runner');
+    // An attach reuses a live shell: it wins, and no spawn parameter is emitted alongside it (the
+    // server refuses that combination outright).
+    expect(ptyQuery('pty-9', { mode: 'agent', agentId: 'fyt-runner' })).toBe('?session=pty-9');
+    // An `agent` mode with no id degrades to plain claude rather than emitting `agent=undefined`.
+    expect(ptyQuery(undefined, { mode: 'agent' })).toBe('?spawn=claude');
+  });
+
+  it('opens a primed tab for the requested agent, names the tab after it, and reports it consumed', async () => {
+    const { factory, sockets } = makeFactory();
+    const consumed = vi.fn();
+    render(
+      unlocked(
+        <Terminal
+          agentTarget="fyt-runner"
+          onAgentTargetConsumed={consumed}
+          socketFactory={factory}
+          sessionsClient={makeSessionsClient()}
+        />,
+      ),
+    );
+
+    await waitFor(() => expect(sockets.length).toBeGreaterThan(0));
+    expect(sockets[0].spawn).toEqual({ mode: 'agent', agentId: 'fyt-runner' });
+    expect(consumed).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('terminal-tab-1').textContent).toContain('fyt-runner');
+    // One click, one shell: the blank fallback tab must not race in beside the primed one.
+    await act(async () => Promise.resolve());
+    expect(sockets).toHaveLength(1);
+  });
+
+  it('never respawns the same target twice, but runs the same agent again after the caller clears it', async () => {
+    const { factory, sockets } = makeFactory();
+    const { rerender } = render(
+      unlocked(<Terminal agentTarget="fyt-runner" socketFactory={factory} sessionsClient={makeSessionsClient()} />),
+    );
+    await waitFor(() => expect(sockets.length).toBe(1));
+
+    // A re-render with the SAME target is not a second request.
+    rerender(unlocked(<Terminal agentTarget="fyt-runner" socketFactory={factory} sessionsClient={makeSessionsClient()} />));
+    await act(async () => Promise.resolve());
+    expect(sockets).toHaveLength(1);
+
+    // Cleared, then requested again: that IS a second request and must open a second primed shell.
+    rerender(unlocked(<Terminal agentTarget={null} socketFactory={factory} sessionsClient={makeSessionsClient()} />));
+    rerender(unlocked(<Terminal agentTarget="fyt-runner" socketFactory={factory} sessionsClient={makeSessionsClient()} />));
+    await waitFor(() => expect(sockets.length).toBe(2));
+    expect(sockets[1].spawn).toEqual({ mode: 'agent', agentId: 'fyt-runner' });
+  });
+
+  it('does not spawn an agent while the terminal is hidden or locked', async () => {
+    const { factory } = makeFactory();
+    const { rerender } = render(
+      <SessionProvider>
+        <Terminal agentTarget="fyt-runner" socketFactory={factory} sessionsClient={makeSessionsClient()} />
+      </SessionProvider>,
+    );
+    await act(async () => Promise.resolve());
+    expect(factory).not.toHaveBeenCalled(); // locked
+
+    rerender(
+      unlocked(
+        <Terminal visible={false} agentTarget="fyt-runner" socketFactory={factory} sessionsClient={makeSessionsClient()} />,
+      ),
+    );
+    await act(async () => Promise.resolve());
+    expect(factory).not.toHaveBeenCalled(); // hidden: a background surface must not spend a shell slot
+  });
+
+  it('toggling to plain claude kills the primed shell and respawns the tab in the other mode', async () => {
+    const { factory, sockets } = makeFactory();
+    render(
+      unlocked(<Terminal agentTarget="fyt-runner" socketFactory={factory} sessionsClient={makeSessionsClient()} />),
+    );
+    await waitFor(() => expect(sockets.length).toBe(1));
+    await act(async () => {
+      sockets[0].onopen?.();
+      sockets[0].onmessage?.({ data: JSON.stringify({ type: 'session', sessionId: 'pty-primed' }) });
+    });
+
+    const toggle = screen.getByTestId('terminal-mode');
+    expect(within(toggle).getByTestId('terminal-mode-agent').getAttribute('aria-pressed')).toBe('true');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('terminal-mode-claude'));
+    });
+
+    // The old shell is torn down through the governed close path, not merely detached...
+    expect(sockets[0].controls()).toContainEqual({ type: 'close' });
+    // ...and a fresh socket opens in plain-claude mode, still remembering the agent for the way back.
+    await waitFor(() => expect(sockets.length).toBe(2));
+    expect(sockets[1].spawn).toEqual({ mode: 'claude', agentId: 'fyt-runner' });
+
+    await act(async () => {
+      sockets[0].onclose?.({ reason: 'closed by operator' });
+    });
+    await waitFor(() => expect(screen.getByTestId('terminal-mode-claude').getAttribute('aria-pressed')).toBe('true'));
+
+    // And back again: the toggle can re-prime without the operator re-picking the agent.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('terminal-mode-agent'));
+    });
+    await waitFor(() => expect(sockets.length).toBe(3));
+    expect(sockets[2].spawn).toEqual({ mode: 'agent', agentId: 'fyt-runner' });
+  });
+
+  it('shows no mode toggle for an ordinary shell tab — it has no claude position to switch to', async () => {
+    const { factory, sockets } = makeFactory();
+    render(unlocked(<Terminal socketFactory={factory} sessionsClient={makeSessionsClient()} />));
+    await waitFor(() => expect(sockets.length).toBe(1));
+    expect(screen.queryByTestId('terminal-mode')).toBeNull();
+    expect(screen.getByTestId('terminal-tab-1').textContent).toContain('powershell');
   });
 });

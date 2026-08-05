@@ -188,29 +188,63 @@ describe('Agents view', () => {
       entry({ id: 'worker-desktop', role: 'worker', declared: false, runnerBound: false, sources: ['ledger'] }),
     ];
 
-    it('surfaces a declared-but-idle agent with a "declared — no runner" status', () => {
+    it('surfaces an agent with a definition even when it owns nothing and wrote no ledger', () => {
       render(unlocked(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} />));
       const row = screen.getByTestId('agent-row-composer-scribe');
-      // The declared identity surfaces even with zero cards + zero ledger activity.
       expect(within(row).getByText('composer-scribe')).toBeTruthy();
-      const binding = within(row).getByTestId('agent-binding-composer-scribe');
-      expect(within(binding).getByText('declared')).toBeTruthy();
-      expect(within(binding).getByText('no runner')).toBeTruthy();
-      // Its declared role + runtime are shown (role in its column, runtime in the binding cell).
-      expect(within(row).getByText('writer')).toBeTruthy();
-      expect(within(binding).getByText('claude')).toBeTruthy();
+      expect(within(row).getByText('writer')).toBeTruthy(); // its role
+      expect(within(row).getAllByText('idle').length).toBeGreaterThan(0);
     });
 
-    it('keeps declared runner binding distinct from an observed runtime default', () => {
+    /**
+     * The roster is for FINDING an agent, not auditing its metadata: `declared`, `runner-bound` and the
+     * runtime-default chip are terms of art and belong on the agent's own detail, behind its one fold.
+     */
+    it('keeps declaration and runner jargon off the roster entirely', () => {
       render(unlocked(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} />));
-      // Declared + human-bound → runner-bound.
-      const bound = within(screen.getByTestId('agent-row-codex-a')).getByTestId('agent-binding-codex-a');
-      expect(within(bound).getByText('runner-bound')).toBeTruthy();
-      expect(within(bound).queryByText('no runner')).toBeNull();
-      // Not declared, but a registry default_worker → a runtime routing fact, not a declaration claim.
+      const roster = screen.getByRole('region', { name: /Your agents/ });
+      expect(roster.textContent).not.toMatch(/runner-bound|no runner|declared|observed/i);
+      expect(screen.queryByTestId('agent-binding-codex-a')).toBeNull();
+      // System workers keep their own registry facts, in their own disclosure.
       const dw = screen.getByTestId('system-worker-worker-desktop');
       expect(dw.textContent).toContain('runtime default');
       expect(dw.textContent).toContain('queue-addressable');
+    });
+
+    it('shows last activity as an age and offers a one-click Run agent per row', () => {
+      const onRunAgent = vi.fn();
+      render(
+        unlocked(
+          <Agents
+            roster={[entry({ id: 'composer-scribe', declared: true, ledger: { dispatches: 0, steps: 0, days: 1, lastActive: '2026-07-18' } })]}
+            routing={ROUTING as never}
+            onRunAgent={onRunAgent}
+            now={Date.parse('2026-07-20T00:00:00Z')}
+          />,
+        ),
+      );
+      const row = screen.getByTestId('agent-row-composer-scribe');
+      // A raw date is a record; an age is a status.
+      expect(within(row).getByText('2d ago')).toBeTruthy();
+      expect(within(row).queryByText('2026-07-18')).toBeNull();
+
+      fireEvent.click(within(row).getByTestId('agent-run-composer-scribe'));
+      expect(onRunAgent).toHaveBeenCalledWith({ id: 'composer-scribe' });
+    });
+
+    it('deep-links the task an agent is working from its row', () => {
+      const onNavigate = vi.fn();
+      render(
+        unlocked(
+          <Agents
+            roster={[entry({ id: 'codex-a', declared: true, working: true, current: { action: 'build', id: 'card-9', displayName: 'build', shortRef: 3 } })]}
+            routing={ROUTING as never}
+            onNavigate={onNavigate}
+          />,
+        ),
+      );
+      fireEvent.click(screen.getByTestId('agent-doing-codex-a'));
+      expect(onNavigate).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: 'card-9' } });
     });
 
     it('keeps the existing per-agent routing control rendering for declared agents', () => {

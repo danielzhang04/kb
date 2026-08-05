@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
@@ -16,6 +16,7 @@ import {
   roleFor,
   readDeclaredAgents,
   executionAssignmentRole,
+  declaredAgentFilePath,
 } from './roster.ts';
 
 const POLICY = parseYaml(`version: 1
@@ -378,5 +379,46 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(problems.get('mismatch')?.problem).toBe('id-mismatch');
     expect(problems.get('first')?.problem).toBe('duplicate-id');
     expect(problems.get('second')?.problem).toBe('duplicate-id');
+  });
+});
+
+/**
+ * The exact-match allowlist behind the dashboard's "Run agent" action. Anything that turns an operator
+ * string into a spawn path goes through here, so the refusals are the security boundary, not a nicety.
+ */
+describe('declaredAgentFilePath — the Run-agent allowlist', () => {
+  it('resolves a declared agent to its own file inside the served repo', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    const resolved = declaredAgentFilePath(root, 'research-worker');
+    expect(resolved).not.toBeNull();
+    expect(realpathSync(resolved as string)).toBe(realpathSync(join(root, 'agents', 'research-worker.md')));
+  });
+
+  it('refuses every id that is not exactly a declared agent', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    for (const id of [
+      'ghost',                       // simply not declared
+      'Research-Worker',             // case is not a match; ids are lower-case by contract
+      '../../etc/passwd',            // traversal
+      'research-worker.md',          // the filename, not the id
+      'research-worker\u0000',       // NUL smuggling
+      '',                            // empty
+      'research worker',             // whitespace
+    ]) {
+      expect(declaredAgentFilePath(root, id)).toBeNull();
+    }
+    // Non-strings never reach a path join either.
+    expect(declaredAgentFilePath(root, undefined)).toBeNull();
+    expect(declaredAgentFilePath(root, 42)).toBeNull();
+    expect(declaredAgentFilePath(root, { id: 'research-worker' })).toBeNull();
+  });
+
+  it('refuses an id whose declaration was rejected by the scanner, and a repo with no agents dir', () => {
+    const rejected = repoWithAgents({ 'mismatch.md': '---\nid: different\n---\nmismatch\n' });
+    expect(declaredAgentFilePath(rejected, 'mismatch')).toBeNull();
+    expect(declaredAgentFilePath(rejected, 'different')).toBeNull();
+
+    const bare = mkdtempSync(join(tmpdir(), 'roster-noagents-path-'));
+    expect(declaredAgentFilePath(bare, 'research-worker')).toBeNull();
   });
 });

@@ -72,17 +72,49 @@ export const HOUSE_XTERM_THEME = {
 /** The hard cap the server enforces across the whole daemon; the `+` button mirrors it locally. */
 const MAX_TERMINALS = 8;
 
+/**
+ * What a tab RUNS. Absent = the login shell (the historical default, unchanged).
+ *   `claude` — a plain interactive Claude Code session in the repo the daemon serves.
+ *   `agent`  — the same session primed with `agentId`'s own declaration file.
+ *
+ * `agentId` is retained even in `claude` mode so the header toggle can switch back without the operator
+ * re-picking the agent. The SERVER resolves the id to a file; the browser only ever names it.
+ */
+export interface PtySpawnTarget {
+  mode: 'claude' | 'agent';
+  agentId?: string;
+}
+
 /** Opens the PTY WebSocket to the governed endpoint, bearer token carried as a subprotocol (never the
  *  URL). An optional `attachSessionId` reattaches to an existing persistent shell via `?session=<id>`
- *  (a non-secret reference; ownership is enforced server-side). Injectable so a component test can drive
- *  a tab through a fake socket. */
-export type PtySocketFactory = (sessionToken: string, attachSessionId?: string) => WebSocket;
+ *  (a non-secret reference; ownership is enforced server-side); an optional `spawn` asks the server to
+ *  open something other than the login shell. Injectable so a component test can drive a tab through a
+ *  fake socket. */
+export type PtySocketFactory = (
+  sessionToken: string,
+  attachSessionId?: string,
+  spawn?: PtySpawnTarget,
+) => WebSocket;
 
-export const defaultPtySocketFactory: PtySocketFactory = (sessionToken, attachSessionId) => {
+/** The upgrade query for one tab. An attach and a spawn are mutually exclusive (the server refuses the
+ *  combination): reattaching reuses a live shell, so there is nothing left to spawn. */
+export function ptyQuery(attachSessionId?: string, spawn?: PtySpawnTarget): string {
+  if (attachSessionId) return `?${new URLSearchParams({ session: attachSessionId }).toString()}`;
+  if (!spawn) return '';
+  const params =
+    spawn.mode === 'agent' && spawn.agentId
+      ? new URLSearchParams({ spawn: 'agent', agent: spawn.agentId })
+      : new URLSearchParams({ spawn: 'claude' });
+  return `?${params.toString()}`;
+}
+
+export const defaultPtySocketFactory: PtySocketFactory = (sessionToken, attachSessionId, spawn) => {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const query = attachSessionId ? `?session=${encodeURIComponent(attachSessionId)}` : '';
   // The token rides as a subprotocol value, not a query param — keeps it out of access logs / history.
-  return new WebSocket(`${proto}//${window.location.host}/api/pty${query}`, ['kb-pty.v1', sessionToken]);
+  return new WebSocket(
+    `${proto}//${window.location.host}/api/pty${ptyQuery(attachSessionId, spawn)}`,
+    ['kb-pty.v1', sessionToken],
+  );
 };
 
 /** Per-tab connection state. Streaming-only — there is no passkey handshake in this path any more. */
@@ -132,6 +164,8 @@ interface TerminalTabProps {
   id: number;
   /** When set, reattach to this existing persistent shell instead of opening a new one. */
   attachSessionId?: string;
+  /** What to open when this is a FRESH tab (see {@link PtySpawnTarget}). Ignored on a reattach. */
+  spawn?: PtySpawnTarget;
   /** Whether this tab is the visible one. Drives visibility + a re-fit when the tab becomes active. */
   active: boolean;
   socketFactory: PtySocketFactory;
@@ -150,6 +184,7 @@ interface TerminalTabProps {
 function TerminalTab({
   id,
   attachSessionId,
+  spawn,
   active,
   socketFactory,
   removeSession,
@@ -225,7 +260,7 @@ function TerminalTab({
       fitRef.current = fitAddon as unknown as typeof fitRef.current;
       fitAndResize(); // initial size (guarded no-op if this tab mounts hidden)
 
-      const ws = socketFactory(sessionToken, attachSessionId);
+      const ws = socketFactory(sessionToken, attachSessionId, spawn);
       socketRef.current = ws;
       ws.onopen = () => {
         if (disposed) return;
@@ -283,7 +318,7 @@ function TerminalTab({
       xtermRef.current = null;
       fitRef.current = null;
     };
-  }, [id, sessionToken, attachSessionId, socketFactory, onError, onSession, onClosed, fitAndResize]);
+  }, [id, sessionToken, attachSessionId, spawn, socketFactory, onError, onSession, onClosed, fitAndResize]);
 
   // Publish an imperative close control so the manager's shared close button can tear down THIS tab's
   // persistent shell: a graceful `{type:'close'}` when the socket is live (the server kills + closes,
@@ -384,6 +419,13 @@ export interface TerminalProps {
   socketFactory?: PtySocketFactory;
   /** Persistence client (live-session list + REST kill). Injected in tests; defaults to the real fetch. */
   sessionsClient?: TerminalSessionsClient;
+  /**
+   * An agent the operator asked to run ("Run agent" on the Agents surface). Consumed ONCE: the view
+   * opens a primed tab for it and calls {@link onAgentTargetConsumed}, so returning to the terminal
+   * later never respawns the same agent behind the operator's back.
+   */
+  agentTarget?: string | null;
+  onAgentTargetConsumed?: () => void;
 }
 
 /** A tab plus a monotonically-increasing id so React keys stay stable across insert/remove. `sessionId`
@@ -393,6 +435,16 @@ interface TabEntry {
   id: number;
   sessionId?: string;
   attachSessionId?: string;
+  /** What this tab runs. Absent = the login shell. Restored tabs carry none: the server already knows
+   *  what a live session is running, and inventing a mode client-side would be a second, lying source. */
+  spawn?: PtySpawnTarget;
+}
+
+/** The tab-bar label for one tab. Agent tabs are named by their agent, not by an ordinal shell number. */
+export function tabLabel(tab: TabEntry, index: number): string {
+  if (tab.spawn?.mode === 'agent' && tab.spawn.agentId) return tab.spawn.agentId;
+  if (tab.spawn?.mode === 'claude') return `claude ${index + 1}`;
+  return `powershell ${index + 1}`;
 }
 
 /**
@@ -405,6 +457,8 @@ export function Terminal({
   fleetIdentity = 'dashboard daemon user',
   socketFactory = defaultPtySocketFactory,
   sessionsClient = defaultTerminalSessionsClient,
+  agentTarget = null,
+  onAgentTargetConsumed,
 }: TerminalProps): React.JSX.Element {
   const { session, requireSession } = useSession();
   const sessionToken = session?.token;
@@ -417,14 +471,22 @@ export function Terminal({
   const closersRef = useRef(new Map<number, TabControl>());
   // Reconcile the persistent-session list against storage exactly ONCE per signed-in visible session.
   const reconciledRef = useRef(false);
+  // The last agent target actually spawned. Reset to null whenever the caller clears the target, so the
+  // SAME agent can be run again later; without the reset a second "Run agent" on one agent would no-op.
+  const consumedAgentRef = useRef<string | null>(null);
+  // Latest tabs/consumed-callback, read by callbacks that must not re-identify on every render.
+  const tabsRef = useRef<TabEntry[]>([]);
+  const consumedCallbackRef = useRef<(() => void) | undefined>(onAgentTargetConsumed);
+  tabsRef.current = tabs;
+  consumedCallbackRef.current = onAgentTargetConsumed;
 
-  const openTab = useCallback(() => {
+  const openTab = useCallback((spawn?: PtySpawnTarget) => {
     setTabs((prev) => {
       if (prev.length >= MAX_TERMINALS) return prev;
       const id = nextIdRef.current++;
       setActiveId(id);
       setNotice(null);
-      return [...prev, { id }];
+      return [...prev, { id, ...(spawn ? { spawn } : {}) }];
     });
   }, []);
 
@@ -464,6 +526,24 @@ export function Terminal({
       else removeTab(id);
     },
     [removeTab],
+  );
+
+  /**
+   * Flip a tab between agent-primed and plain claude. A PTY's program is fixed at spawn, so switching is
+   * a RESPAWN, not a setting: the old shell is torn down through the same governed close path the ×
+   * button uses, and a fresh tab opens in the other mode carrying the same agent id. The old tab lingers
+   * until the server confirms its close, so a failed kill is visible rather than silently forgotten.
+   */
+  const setTabMode = useCallback(
+    (id: number, mode: PtySpawnTarget['mode']) => {
+      const tab = tabsRef.current.find((t) => t.id === id);
+      if (!tab?.spawn || tab.spawn.mode === mode) return;
+      const agentId = tab.spawn.agentId;
+      if (mode === 'agent' && !agentId) return; // nothing to prime with; leave the tab alone
+      requestCloseTab(id);
+      openTab({ mode, ...(agentId ? { agentId } : {}) });
+    },
+    [openTab, requestCloseTab],
   );
 
   // Stable per-manager error sink. `too-many-terminals` becomes an inline notice and drops the offending
@@ -512,15 +592,38 @@ export function Terminal({
         setActiveId(restored[0].id);
         saveStoredTabs(ordered.map((sessionId) => ({ sessionId })));
       } else {
-        const id = nextIdRef.current++;
-        setTabs([{ id }]);
-        setActiveId(id);
+        // Functional, and only when the surface is still empty: a "Run agent" arrival can open its
+        // primed tab while this list request is in flight, and a blank shell must not then race in
+        // beside it. Whichever lands first wins; the operator never gets a phantom second tab.
+        setTabs((prev) => {
+          if (prev.length > 0) return prev;
+          const id = nextIdRef.current++;
+          setActiveId(id);
+          return [{ id }];
+        });
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [sessionToken, visible, sessionsClient]);
+
+  /**
+   * "Run agent", one click from the Agents surface: open a tab running claude primed as that agent and
+   * report the target consumed. Guarded by `consumedAgentRef` so a re-render (or the caller's own clear)
+   * cannot spawn a second shell for the same request.
+   */
+  useEffect(() => {
+    if (!agentTarget) {
+      consumedAgentRef.current = null;
+      return;
+    }
+    if (!sessionToken || !visible) return;
+    if (consumedAgentRef.current === agentTarget) return;
+    consumedAgentRef.current = agentTarget;
+    openTab({ mode: 'agent', agentId: agentTarget });
+    consumedCallbackRef.current?.();
+  }, [agentTarget, sessionToken, visible, openTab]);
 
   // Persist the remembered tab order whenever it changes — only tabs with a confirmed sessionId, and only
   // while signed in (a session-loss teardown sets `tabs` to [] but must NOT wipe storage: the shells live).
@@ -540,6 +643,10 @@ export function Terminal({
   }
 
   const atCap = tabs.length >= MAX_TERMINALS;
+  // The mode toggle belongs to the ACTIVE tab and only exists for tabs that run claude at all — a plain
+  // shell has no "agent-primed" position to switch to.
+  const activeTab = tabs.find((tab) => tab.id === activeId) ?? null;
+  const activeSpawn = activeTab?.spawn ?? null;
 
   return (
     <section className="terminal" aria-label="Terminal view" aria-hidden={!visible}>
@@ -576,6 +683,7 @@ export function Terminal({
           <div className="terminal__tabbar" role="tablist" aria-label="Open terminals">
             {tabs.map((tab, index) => {
               const isActive = tab.id === activeId;
+              const label = tabLabel(tab, index);
               return (
                 <div
                   key={tab.id}
@@ -588,15 +696,15 @@ export function Terminal({
                     type="button"
                     className="terminal__tab-label"
                     onClick={() => setActiveId(tab.id)}
-                    title={`powershell ${index + 1}`}
+                    title={label}
                   >
-                    powershell {index + 1}
+                    {label}
                   </button>
                   <button
                     type="button"
                     className="terminal__tab-close"
                     onClick={() => requestCloseTab(tab.id)}
-                    aria-label={`Close powershell ${index + 1}`}
+                    aria-label={`Close ${label}`}
                     data-testid={`terminal-tab-close-${tab.id}`}
                   >
                     ×
@@ -607,7 +715,7 @@ export function Terminal({
             <button
               type="button"
               className="terminal__tab-add"
-              onClick={openTab}
+              onClick={() => openTab()}
               disabled={atCap}
               aria-label="Open a new terminal"
               title={atCap ? `Maximum of ${MAX_TERMINALS} terminals reached` : 'Open a new terminal'}
@@ -616,6 +724,31 @@ export function Terminal({
               +
             </button>
           </div>
+
+          {activeSpawn && activeTab ? (
+            <div className="terminal__mode" role="group" aria-label="Session mode" data-testid="terminal-mode">
+              <button
+                type="button"
+                className={`terminal__mode-option${activeSpawn.mode === 'agent' ? ' terminal__mode-option--on' : ''}`}
+                aria-pressed={activeSpawn.mode === 'agent'}
+                disabled={!activeSpawn.agentId}
+                onClick={() => setTabMode(activeTab.id, 'agent')}
+                data-testid="terminal-mode-agent"
+              >
+                {activeSpawn.agentId ? `As ${activeSpawn.agentId}` : 'As an agent'}
+              </button>
+              <button
+                type="button"
+                className={`terminal__mode-option${activeSpawn.mode === 'claude' ? ' terminal__mode-option--on' : ''}`}
+                aria-pressed={activeSpawn.mode === 'claude'}
+                onClick={() => setTabMode(activeTab.id, 'claude')}
+                data-testid="terminal-mode-claude"
+              >
+                Plain Claude
+              </button>
+              <span className="terminal__mode-note">Switching restarts this session.</span>
+            </div>
+          ) : null}
 
           {notice ? (
             <p className="terminal__notice" role="status" data-testid="terminal-notice">
@@ -629,6 +762,7 @@ export function Terminal({
                 key={tab.id}
                 id={tab.id}
                 attachSessionId={tab.attachSessionId}
+                spawn={tab.spawn}
                 active={visible && tab.id === activeId}
                 socketFactory={socketFactory}
                 removeSession={sessionsClient.remove}

@@ -261,12 +261,49 @@ describe('the not-declared empty state', () => {
     expect(screen.getByTestId('agent-allowed-profiles').textContent).toContain('worker:claude:claude-opus-4-8');
   });
 
-  it('opens a dedicated Composer workspace only for a declared agent', () => {
-    const onWorkWithAgent = vi.fn();
-    render(<AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} onWorkWithAgent={onWorkWithAgent} />);
+  it('offers "Run agent" only for an agent that has a definition file to be primed with', () => {
+    const onRunAgent = vi.fn();
+    const { rerender } = render(
+      <AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} onRunAgent={onRunAgent} />,
+    );
 
-    fireEvent.click(screen.getByTestId('agent-work-with'));
-    expect(onWorkWithAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'fyt-runner' }));
+    fireEvent.click(screen.getByTestId('agent-run'));
+    expect(onRunAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'fyt-runner' }));
+
+    // No declaration = nothing to prime a session with, so the action is not offered at all.
+    rerender(<AgentDetail agent={agent({ id: 'observed-only', declared: false })} onRunAgent={onRunAgent} />);
+    expect(screen.queryByTestId('agent-run')).toBeNull();
+  });
+
+  /**
+   * The de-jargon rule for this surface: `declared`, `runner-bound` and `binding` are terms of art. They
+   * may exist inside the technical fold; they may not be the first thing an operator reads.
+   */
+  it('keeps machinery terms and the declaration file out of the primary surface, inside ONE fold', () => {
+    render(
+      <AgentDetail
+        agent={agent({ id: 'fyt-runner', declared: true, runnerBound: true, declaredRuntime: 'claude' })}
+        detailState="ready"
+        detail={{
+          id: 'fyt-runner',
+          declaration: { path: 'agents/fyt-runner.md', source: 'faceless-youtube', instructions: '', defaultProfile: null, allowedProfiles: null },
+          codebases: [],
+          workflows: [],
+          howItRuns: null,
+        }}
+      />,
+    );
+
+    const fold = screen.getByTestId('agent-technical');
+    expect(fold.textContent).toContain('agents/fyt-runner.md');
+    expect(fold.textContent).toMatch(/runner/i);
+    // Exactly ONE fold on this surface.
+    expect(document.querySelectorAll('.entity-fold')).toHaveLength(1);
+
+    // Everything outside the fold is plain language.
+    fold.remove();
+    expect(document.body.textContent).not.toMatch(/runner-bound|\bbinding\b|DECLARED/i);
+    expect(document.body.textContent).not.toContain('agents/fyt-runner.md');
   });
 
   it('links a related workflow to its canonical detail and Launch surface', () => {
@@ -298,9 +335,9 @@ describe('fields the roster fetched and never rendered', () => {
         agent={agent({ id: 'claude-worker', ledger: { dispatches: 12, steps: 340, days: 5 }, lastActive: '2026-07-20' })}
       />,
     );
-    fireEvent.click(screen.getByTestId('entity-tab-activity'));
 
-    const ledger = screen.getByTestId('agent-ledger');
+    // Ledger rollups are machinery: they live inside the one technical fold, not in primary UI.
+    const ledger = within(screen.getByTestId('agent-technical')).getByTestId('agent-ledger');
     expect(ledger.textContent).toContain('12');
     expect(ledger.textContent).toContain('340');
     expect(ledger.textContent).toContain('5');
@@ -326,7 +363,6 @@ describe('agent work and runs', () => {
         onNavigate={onNavigate}
       />,
     );
-    fireEvent.click(screen.getByTestId('entity-tab-work'));
     fireEvent.click(screen.getByTestId('agent-current-card-100'));
 
     expect(onNavigate).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: 'card-100' } });
@@ -350,11 +386,11 @@ describe('agent work and runs', () => {
   it('distinguishes runs-not-loaded from runs-none', () => {
     const { rerender } = render(<AgentDetail agent={agent({ id: 'claude-worker' })} />);
     fireEvent.click(screen.getByTestId('entity-tab-runs'));
-    expect(screen.getByTestId('agent-runs-unloaded').textContent).toMatch(/needs an unlocked cockpit session/i);
+    expect(screen.getByTestId('agent-runs-unloaded').textContent).toMatch(/needs an unlocked session/i);
 
     rerender(<AgentDetail agent={agent({ id: 'claude-worker' })} runs={[]} />);
     expect(screen.queryByTestId('agent-runs-unloaded')).toBeNull();
-    expect(screen.getByTestId('agent-runs-empty').textContent).toMatch(/No managed run/i);
+    expect(screen.getByTestId('agent-runs-empty').textContent).toMatch(/No run is working a task/i);
   });
 
   it('labels the run join as derived, because it goes through queue cards', () => {

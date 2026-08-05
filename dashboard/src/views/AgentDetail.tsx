@@ -1,26 +1,29 @@
 /**
- * arc-3 step 3 — the agent detail, on the shared {@link EntityDetail} shell.
+ * The agent detail, on the shared {@link EntityDetail} shell.
  *
- * The Agents view was a table with no clickable row and no detail surface at all, while `/api/agents`
- * had been returning `description`, `declaredModel`, `ledger.{dispatches,steps,days}` and `sources`
- * provenance on every load, none of it rendered anywhere. This view is where those land.
+ * ── Shape (UX overhaul §4): identity, then what it is DOING, then ONE technical fold ──
  *
- * ── The not-declared state is the load-bearing design decision here ──
+ * Primary UI answers an operator's three questions in order: who is this agent, what is it doing right
+ * now, and can I talk to it (the "Run agent" action, one click into a live primed session). Everything
+ * that is machinery rather than status — the declaration file and its instructions, declared runtime /
+ * model / execution profiles, the runner flag, roster provenance, governed workflows and stages, ledger
+ * rollups, and the effective-routing control — lives behind a SINGLE "Technical details" fold. There is
+ * no second fold and no jargon in the primary text: `declared`, `runner-bound` and `binding` are terms
+ * of art, and terms of art belong inside the fold that explains them.
  *
- * `agents/` does not exist in this checkout, so `readDeclaredAgents` fails OPEN to an empty map and
- * every roster row is `observed` / `no runner` with a null `description`, `declaredRuntime` and
- * `declaredModel`. Rendering those nulls as blanks would produce a detail view that looks broken —
- * the operator cannot tell "we failed to load this" from "this was never written down".
+ * ── The not-declared state is still stated, never implied ──
  *
- * So the absence is stated, not implied: a NOT-DECLARED panel names the exact missing file, says what
- * the agent is known from instead, and lists what a declaration would add. That is honest whether or
- * not `agents/` is ever populated, and it degrades to nothing the moment a declaration exists.
- *
- * No new hues: the panel is neutral chrome. A missing declaration is a fact, not an error.
+ * On a checkout with no `agents/` directory, `readDeclaredAgents` fails OPEN to an empty map and every
+ * roster row arrives with a null `description`, `declaredRuntime` and `declaredModel`. Rendering those
+ * nulls as blanks would look broken — the operator could not tell "we failed to load this" from "this
+ * was never written down". So the primary surface says it in one plain line, and the fold names the
+ * exact missing file and what writing it would add. Neutral chrome throughout: a missing declaration is
+ * a fact, not an error.
  */
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { RunMetadataDto } from '../control/controlClient';
 import { cardsForAgent, runLink } from '../control/entityLinks';
+import { relativeAge } from '../control/runEvents';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
@@ -75,8 +78,12 @@ export interface AgentDetailProps {
   detail?: AgentDetailDto | null;
   /** Distinguishes a request still in flight from a detail that has no optional relationships. */
   detailState?: 'loading' | 'ready' | 'unavailable';
-  /** Opens the existing Composer workspace targeted to this declared agent; it never starts a runner directly. */
-  onWorkWithAgent?: (agent: AgentDetailRow) => void;
+  /**
+   * Start an interactive session as this agent: the caller lands the operator in a live terminal with
+   * claude already primed by the agent's own file. One click, no intermediate workspace. Only offered
+   * for an agent that HAS a definition file — there is nothing to prime a session with otherwise.
+   */
+  onRunAgent?: (agent: AgentDetailRow) => void;
   activeSectionId?: string;
   onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
@@ -87,6 +94,15 @@ export interface AgentDetailProps {
 /** A value that exists, or an explicit dash — never an empty cell that reads as a load failure. */
 function orDash(value: string | null): React.ReactNode {
   return value ?? <span className="entity-empty-value">—</span>;
+}
+
+/**
+ * Last activity as an age ("3d ago"), which is what an operator actually reads for. A raw `YYYY-MM-DD`
+ * is a record, not a status. `null` means the agent has never written a ledger row, and says so.
+ */
+export function lastActiveLabel(lastActive: string | null, now: number = Date.now()): React.ReactNode {
+  if (lastActive === null) return <span className="entity-empty-value">never</span>;
+  return relativeAge(lastActive, now);
 }
 
 /** Profile declarations are distinct from legacy runtime/model defaults and must not render as blanks. */
@@ -142,7 +158,7 @@ export function AgentDetail({
   routing,
   detail,
   detailState,
-  onWorkWithAgent,
+  onRunAgent,
   activeSectionId,
   onSectionChange,
   onNavigate,
@@ -166,21 +182,10 @@ export function AgentDetail({
     ...(agent.role && !agent.declared ? ['role catalog'] : []),
   ];
 
-  const overview = (
+  /** Everything technical about this agent, folded once. Nothing below this line is primary UI. */
+  const technical = (
     <>
       {agent.declared ? null : <NotDeclaredPanel agent={agent} />}
-
-      <section className="entity-block" aria-label="What this agent exists to do">
-        <h3 className="entity-block__title">Purpose</h3>
-        {agent.description ? (
-          <p className="entity-prose" data-testid="agent-description">{agent.description}</p>
-        ) : (
-          <p className="entity-note" data-testid="agent-description-absent">
-            No description recorded. A declared agent states its purpose in one line in its
-            <code className="mc-mono"> agents/{agent.id}.md</code> frontmatter.
-          </p>
-        )}
-      </section>
 
       <section className="entity-block" aria-label="Declared defaults">
         <h3 className="entity-block__title">Declared defaults</h3>
@@ -346,8 +351,44 @@ export function AgentDetail({
     </>
   );
 
-  const work = (
+  const activity = (
+    <section className="entity-block" aria-label="Ledger activity">
+      <h3 className="entity-block__title">Ledger activity</h3>
+      <dl className="entity-kv" data-testid="agent-ledger">
+        <div className="entity-kv__row">
+          <dt>Dispatches</dt>
+          <dd className="mc-mono">{agent.ledger.dispatches}</dd>
+        </div>
+        <div className="entity-kv__row">
+          {/* Steps, never dollars. Cost is deliberately not a surface in this product. */}
+          <dt>Steps</dt>
+          <dd className="mc-mono">{agent.ledger.steps}</dd>
+        </div>
+        <div className="entity-kv__row">
+          <dt>Active days</dt>
+          <dd className="mc-mono">{agent.ledger.days}</dd>
+        </div>
+        <div className="entity-kv__row">
+          <dt>Last active</dt>
+          <dd className="mc-mono">{orDash(agent.lastActive)}</dd>
+        </div>
+      </dl>
+      <p className="entity-note">
+        Counted from <code className="mc-mono">ledgers/&lt;kind&gt;/{agent.id}-&lt;date&gt;.tsv</code> rows.
+      </p>
+    </section>
+  );
+
+  const overview = (
     <>
+      {agent.declared ? null : (
+        // One plain line in the primary surface; the fold below carries the full explanation.
+        <p className="entity-note" data-testid="agent-undefined-note">
+          There is no definition file for this agent yet, so everything here is inferred from what it has
+          actually done.
+        </p>
+      )}
+
       <section className="entity-block" aria-label="Current work">
         <h3 className="entity-block__title">Doing now</h3>
         {agent.current ? (
@@ -362,8 +403,18 @@ export function AgentDetail({
             </span>
           </div>
         ) : (
-          <p className="entity-note" data-testid="agent-idle">
-            Idle — this agent owns no card in the <code className="mc-mono">working</code> state.
+          <p className="entity-note" data-testid="agent-idle">Idle — it has no task in progress.</p>
+        )}
+      </section>
+
+      <section className="entity-block" aria-label="What this agent exists to do">
+        <h3 className="entity-block__title">Purpose</h3>
+        {agent.description ? (
+          <p className="entity-prose" data-testid="agent-description">{agent.description}</p>
+        ) : (
+          <p className="entity-note" data-testid="agent-description-absent">
+            No description recorded. An agent states its purpose in one line at the top of its own
+            definition file — named under Technical details below.
           </p>
         )}
       </section>
@@ -407,35 +458,27 @@ export function AgentDetail({
           <p className="entity-note">No project recorded on any owned card.</p>
         )}
       </section>
-    </>
-  );
 
-  const activity = (
-    <section className="entity-block" aria-label="Ledger activity">
-      <h3 className="entity-block__title">Ledger activity</h3>
-      <dl className="entity-kv" data-testid="agent-ledger">
-        <div className="entity-kv__row">
-          <dt>Dispatches</dt>
-          <dd className="mc-mono">{agent.ledger.dispatches}</dd>
+      {/* THE fold. One disclosure holds every technical fact about this agent — definition file,
+          declared defaults, roster provenance, governed workflows, runner facts, ledger rollups and the
+          governed routing control. Primary UI above it stays plain-language. */}
+      <details className="entity-fold" data-testid="agent-technical">
+        <summary>Technical details</summary>
+        <div className="entity-fold__body">
+          {technical}
+          {activity}
+          {routing ? (
+            <section className="entity-block" aria-label="Model routing">
+              <h3 className="entity-block__title">Effective routing</h3>
+              {routing}
+              <p className="entity-note">
+                Changing the model is a governed, audited server write and needs a passkey session.
+              </p>
+            </section>
+          ) : null}
         </div>
-        <div className="entity-kv__row">
-          {/* Steps, never dollars. Cost is deliberately not a surface in this product. */}
-          <dt>Steps</dt>
-          <dd className="mc-mono">{agent.ledger.steps}</dd>
-        </div>
-        <div className="entity-kv__row">
-          <dt>Active days</dt>
-          <dd className="mc-mono">{agent.ledger.days}</dd>
-        </div>
-        <div className="entity-kv__row">
-          <dt>Last active</dt>
-          <dd className="mc-mono">{orDash(agent.lastActive)}</dd>
-        </div>
-      </dl>
-      <p className="entity-note">
-        Counted from <code className="mc-mono">ledgers/&lt;kind&gt;/{agent.id}-&lt;date&gt;.tsv</code> rows.
-      </p>
-    </section>
+      </details>
+    </>
   );
 
   /**
@@ -448,12 +491,11 @@ export function AgentDetail({
       <h3 className="entity-block__title">Runs</h3>
       {runs === undefined ? (
         <p className="entity-note" data-testid="agent-runs-unloaded">
-          Not loaded. Runs are joined to agents through queue-card ownership, which needs an unlocked
-          cockpit session to read.
+          Not loaded — reading this agent's runs needs an unlocked session.
         </p>
       ) : runs.length === 0 ? (
         <p className="entity-note" data-testid="agent-runs-empty">
-          No managed run has a stage whose canonical queue card this agent owns.
+          No run is working a task this agent owns.
         </p>
       ) : (
         <ol className="entity-list" data-testid="agent-runs">
@@ -475,35 +517,18 @@ export function AgentDetail({
         </ol>
       )}
       <p className="entity-note">
-        Agent-workspace launches are joined by their immutable recorded declaration provenance. Older
-        runs are derived via queue cards through canonical queue-card ownership.
+        Runs this agent started directly are matched by their recorded provenance. Derived via queue cards
+        for older runs, through the tasks this agent owns.
         {runs !== undefined && runScanLimit ? (
-          <> Scanned the {runScanLimit} most recent runs only for that legacy queue-card inference.</>
+          <> Scanned the {runScanLimit} most recent runs only for that older inference.</>
         ) : null}
       </p>
     </section>
   );
 
   const sections: DetailSection[] = [
-    { id: 'overview', label: 'Overview', render: () => overview },
-    { id: 'work', label: 'Work', count: cards.length, render: () => work },
-    { id: 'activity', label: 'Activity', render: () => activity },
+    { id: 'overview', label: 'Overview', count: cards.length, render: () => overview },
     { id: 'runs', label: 'Runs', count: runs?.length, render: () => runsSection },
-    ...(routing
-      ? [{
-          id: 'routing',
-          label: 'Routing',
-          render: () => (
-            <section className="entity-block" aria-label="Model routing">
-              <h3 className="entity-block__title">Effective routing</h3>
-              {routing}
-              <p className="entity-note">
-                Writing an override is a governed, audited server write and needs a passkey session.
-              </p>
-            </section>
-          ),
-        }]
-      : []),
   ];
 
   const links: EntityLink[] = agent.current
@@ -525,12 +550,12 @@ export function AgentDetail({
         label: agent.working ? 'working' : 'idle',
         tone: agent.working ? 'running' : 'idle',
       }}
+      // Identity only. Declaration/runner status is machinery and lives in the fold, not the header.
       facts={[
         { label: 'Role', value: orDash(agent.role), mono: true },
-        { label: 'Definition', value: agent.declared ? 'declared' : 'not declared', mono: true },
-        { label: 'Runner', value: agent.runnerBound ? 'bound' : 'no runner', mono: true },
-        { label: 'Cards', value: agent.cardCount, mono: true },
-        { label: 'Last active', value: orDash(agent.lastActive), mono: true },
+        { label: 'Model', value: orDash(agent.declaredModel), mono: true },
+        { label: 'Tasks', value: agent.cardCount, mono: true },
+        { label: 'Last active', value: lastActiveLabel(agent.lastActive), mono: true },
       ]}
       links={links}
       sections={sections}
@@ -539,17 +564,17 @@ export function AgentDetail({
       onNavigate={onNavigate}
       onBack={onBack}
       backLabel={backLabel}
-      actions={agent.declared && onWorkWithAgent ? (
+      actions={agent.declared && onRunAgent ? (
         <div>
           <button
             type="button"
             className="mc-btn mc-btn--primary"
-            data-testid="agent-work-with"
-            onClick={() => onWorkWithAgent(agent)}
+            data-testid="agent-run"
+            onClick={() => onRunAgent(agent)}
           >
-            Work with this agent
+            Run agent
           </button>
-          <p className="entity-note">Opens a Composer workspace; it does not start the background runner.</p>
+          <p className="entity-note">Opens a terminal session you can type into, set up as this agent.</p>
         </div>
       ) : undefined}
     />

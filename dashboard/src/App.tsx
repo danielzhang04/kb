@@ -409,7 +409,7 @@ function ViewBody({
   onBack,
   onSectionChange,
   onNavigateTarget,
-  onWorkWithAgent,
+  onRunAgent,
 }: {
   view: DestinationId;
   onNavigate: (id: DestinationId) => void;
@@ -421,7 +421,7 @@ function ViewBody({
   onBack: () => void;
   onSectionChange: (id: string) => void;
   onNavigateTarget: (target: NavTarget) => void;
-  onWorkWithAgent: (agent: { id: string }) => void;
+  onRunAgent: (agent: { id: string }) => void;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
@@ -466,7 +466,7 @@ function ViewBody({
           activeSectionId={entry.section}
           onSectionChange={onSectionChange}
           onNavigate={onNavigateTarget}
-          onWorkWithAgent={onWorkWithAgent}
+          onRunAgent={onRunAgent}
         />
       );
     case 'tasks':
@@ -550,6 +550,8 @@ function AppShell(): React.JSX.Element {
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   // Card id a card click-through (a run's card graph, a step's canonical card) wants opened in Tasks.
   const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
+  // The agent a "Run agent" click asked for. Handed to the persistent Terminal, which consumes it once.
+  const [runAgentId, setRunAgentId] = useState<string | null>(null);
   const approvalsCount = useApprovalsCount();
   // Unlike ordinary destination bodies, Terminal is a long-lived workspace: navigating away hides it but
   // must not unmount its xterm instances or close their WebSockets. Composer behaves like another overlay.
@@ -667,14 +669,15 @@ function AppShell(): React.JSX.Element {
     });
   };
 
-  /** Open a normal persistent Composer workspace, scoped to a declared agent's authoritative file. */
-  const workWithAgent = (agent: { id: string }): void => {
-    void withWorkspaceToken(async (token) => {
-      const created = await createComposerSession(token, { title: `Agent · ${agent.id}`, agentId: agent.id });
-      upsertComposerSession(created);
-      setOpenComposerRefs((current) => [...current.filter((ref) => ref !== created.composerRef), created.composerRef]);
-      setActiveComposerRef(created.composerRef);
-    });
+  /**
+   * "Run agent": hand the agent id to the persistent terminal surface and go there. The Terminal opens a
+   * shell running claude primed as that agent (the server validates the id against its own roster and
+   * resolves the file — nothing here builds a path), then reports the target consumed so a later visit
+   * does not respawn it. One click from the Agents roster to a session Daniel can type into.
+   */
+  const runAgent = (agent: { id: string }): void => {
+    setRunAgentId(agent.id);
+    goTo('terminal');
   };
 
   const closeComposerTab = (composerRef: string): void => {
@@ -784,7 +787,11 @@ function AppShell(): React.JSX.Element {
           aria-hidden={!terminalVisible}
           data-testid="persistent-terminal-surface"
         >
-          <Terminal visible={terminalVisible} />
+          <Terminal
+            visible={terminalVisible}
+            agentTarget={runAgentId}
+            onAgentTargetConsumed={() => setRunAgentId(null)}
+          />
         </div>
         {openWorkspaces.map((workspace) => (
           <div
@@ -812,7 +819,7 @@ function AppShell(): React.JSX.Element {
             onBack={back}
             onSectionChange={setSection}
             onNavigateTarget={navigateTo}
-            onWorkWithAgent={workWithAgent}
+            onRunAgent={runAgent}
           />
         ) : null}
       </main>

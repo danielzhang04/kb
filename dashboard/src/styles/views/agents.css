@@ -122,121 +122,44 @@
   color: var(--fg-faint);
 }
 
-/* Project chips — mono, hairline, neutral (not the accent; scope/identity, not action). */
-.v-agents__projects {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.v-agents__proj {
-  font-size: var(--text-xs);
-  color: var(--fg-dim);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  line-height: 1.6;
-}
-
-.v-agents__col-num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
 /* Role chip — mono, neutral (identity, not action). */
 .v-agents__role {
   font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 
-/*
- * Binding cell (C7.4) — declared-vs-observed provenance + runner-bound status. Neutral, no hue
- * taxonomy: registered-but-inert reads as muted/dashed (like the model placeholder), runnable reads
- * as a quiet solid chip. Identity, not action → no accent.
- */
-.v-agents__binding {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.v-agents__provenance {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+/* The "Doing" cell is a deep link into the task itself — same quiet hover as the agent cell. */
+.v-agents__doing--link {
+  cursor: pointer;
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);
-  line-height: 1.6;
-  border: 1px solid var(--border);
+  margin: 0 calc(var(--space-1) * -1);
 }
 
-/* Declared: authoritative agents/<id>.md — a touch more present than merely-observed. */
-.v-agents__provenance--declared {
-  color: var(--fg-dim);
-  background: var(--bg-elevated);
+.v-agents__doing--link:hover .v-agents__action {
+  color: var(--fg-primary);
 }
 
-/* Observed: unioned in from card/ledger activity only, no declaration. */
-.v-agents__provenance--observed {
-  color: var(--fg-faint);
-  background: transparent;
-  border-style: dashed;
+.v-agents__doing--link:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 1px;
 }
 
-.v-agents__runner {
-  font-size: var(--text-xs);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
-  line-height: 1.6;
+.v-agents__doing--link[aria-disabled='true'] {
+  cursor: default;
 }
 
-/* Runnable — a runner claims its cards: quiet solid chip. */
-.v-agents__runner--bound {
-  color: var(--fg-dim);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+/* Per-row Run action — the one thing a roster row DOES. Quiet button chrome, never an accent fill. */
+.v-agents__run {
+  white-space: nowrap;
 }
 
-/* Declared but inert — no runner yet: muted + dashed, mirroring the disabled-slot signature. */
-.v-agents__runner--unbound {
-  color: var(--fg-faint);
-  background: var(--bg-sunken);
-  border: 1px dashed var(--border-strong);
-}
-
-.v-agents__declared-runtime {
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-}
-
-/* Last-active date — identifier-shaped → mono tabular. */
+/* Last-active age — identifier-shaped → mono tabular. */
 .v-agents__last-active {
   font-size: var(--text-sm);
   color: var(--fg-dim);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-/*
- * Disabled model placeholder — a visual slot for the Phase-R per-agent model toggle. Deliberately
- * muted and inert: no accent, reduced opacity, help cursor to signal "not yet interactive".
- */
-.v-agents__model {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.5rem;
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-  background: var(--bg-sunken);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-2);
-  line-height: 1.7;
-  opacity: 0.7;
-  cursor: help;
 }
 
 .v-agents__note {

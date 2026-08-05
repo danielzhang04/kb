@@ -162,6 +162,48 @@
   cursor: not-allowed;
 }
 
+/* Agent-primed <-> plain-Claude switch for the ACTIVE tab. A two-position segmented control in the same
+ * neutral chrome as the tab bar; the ON position uses the house selected-wash, never a decorative hue. */
+.terminal__mode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.terminal__mode-option {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.terminal__mode-option:hover:not(:disabled) {
+  color: var(--fg-primary);
+  border-color: var(--border-strong);
+}
+
+.terminal__mode-option--on {
+  background: var(--accent-quiet);
+  color: var(--fg-primary);
+  border-color: var(--border-strong);
+}
+
+.terminal__mode-option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.terminal__mode-note {
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+}
+
 /* Inline notice (e.g. server-side too-many-terminals). Neutral warning tone, no accent chrome. */
 .terminal__notice {
   margin: 0;

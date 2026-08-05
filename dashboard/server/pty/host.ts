@@ -195,12 +195,26 @@ export interface PtyHostDeps {
   sessionId?: () => string;
 }
 
+/**
+ * A program to run in the PTY instead of the login shell, expressed as an ARGV ARRAY.
+ *
+ * Load-bearing: `file` and `args` stay separate all the way into `node-pty`. No caller composes a shell
+ * command string, so nothing a request carries is ever re-parsed by a shell — the only way to influence
+ * the child is to add an argv element, and every producer of one is server-side.
+ */
+export interface PtyCommand {
+  file: string;
+  args: readonly string[];
+}
+
 /** A request to open a PTY, as received from the daemon over the authenticated channel. */
 export interface HostOpenRequest {
   requestId: string;
   cols: number;
   rows: number;
   cwd: string;
+  /** Non-default program for this session (see {@link PtyCommand}). Absent = the login shell, no args. */
+  command?: PtyCommand;
 }
 
 /** The PTY host: opens tracked sessions and reaps them by scope. */
@@ -239,7 +253,11 @@ export function createPtyHost(deps: PtyHostDeps = {}): PtyHost {
   return {
     open(req) {
       const env = buildChildEnv(parentEnv, allowlist);
-      const handle = factory(shell, [], { cwd: req.cwd, cols: req.cols, rows: req.rows, env, name: termName });
+      // The env is built the SAME way for every session — a non-shell program (e.g. an agent-primed
+      // `claude`) inherits exactly the allowlisted, denylist-scrubbed environment a plain shell does.
+      const file = req.command ? req.command.file : shell;
+      const args = req.command ? [...req.command.args] : [];
+      const handle = factory(file, args, { cwd: req.cwd, cols: req.cols, rows: req.rows, env, name: termName });
       const sessionId = nextId();
       const session: PtySession = { sessionId, handle };
       live.set(sessionId, session);

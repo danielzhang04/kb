@@ -509,6 +509,28 @@ export function readAgentDeclarationProblems(repoRoot: string): Map<string, Agen
   return scanAgentDeclarations(repoRoot).problems;
 }
 
+/**
+ * Resolve a DECLARED agent's authoritative `agents/<id>.md` to an absolute path, or null when the id is
+ * not on this server's declared roster.
+ *
+ * This is the EXACT-MATCH ALLOWLIST that any caller turning an operator-supplied agent id into a path or
+ * an argv MUST go through. Nothing here joins the caller's string onto a directory before the check: the
+ * id must first match `SAFE_AGENT_ID`, and then must be a key of the scanned declaration map — a map
+ * whose entries are already proven to be direct, non-symlink, size-bounded, canonical children of
+ * `<repoRoot>/agents` whose filename stem equals the declared id. An unknown, malformed, traversing, or
+ * merely-observed id therefore yields null and can never become a spawn argument.
+ */
+export function declaredAgentFilePath(repoRoot: string, agentId: unknown): string | null {
+  if (typeof agentId !== 'string' || !SAFE_AGENT_ID.test(agentId)) return null;
+  const directory = declarationDirectory(repoRoot);
+  if (!directory) return null;
+  const detail = readDeclaredAgentDetails(repoRoot).get(agentId);
+  // Belt-and-braces: the scan already enforces stem === declared id, so `source` is the one filename we
+  // are allowed to rebuild. Re-asserting it here keeps the path derivation honest if the scan ever drifts.
+  if (!detail || detail.id !== agentId || detail.source !== `agents/${agentId}.md`) return null;
+  return join(directory.agentsDir, `${agentId}.md`);
+}
+
 export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent> {
   const out = new Map<string, DeclaredAgent>();
   for (const detail of readDeclaredAgentDetails(repoRoot).values()) {

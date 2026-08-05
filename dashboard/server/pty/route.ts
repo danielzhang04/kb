@@ -23,6 +23,13 @@
  * Either way exactly ONE audit row is written per allowed-origin connection, and a `{type:'session'}`
  * control frame is sent to the browser FIRST so the client can bind its tab id before the replay flush.
  *
+ * SPAWN MODES (the Agents view's "Run agent"): an OPEN may ask for something other than the login shell
+ * via `?spawn=claude` or `?spawn=agent&agent=<id>`. `agent` is validated against the server's DECLARED
+ * agent roster (`declaredAgentFilePath`) — an exact-match allowlist — before any path or argv exists; the
+ * declaration path is then resolved server-side and passed as its own argv element, never interpolated
+ * into a command string. A bad mode or an unknown id is refused twice over: HTTP 400 on the upgrade from
+ * the route's `preValidation` hook, and a fail-closed re-check in the handler.
+ *
  * REST companion (same origin-guarded scope): `GET /api/pty/sessions` lists the caller's live sessions
  * and `DELETE /api/pty/sessions/:id` kills one — both bearer-verified with the SAME `verifySession`, no
  * audit (a read and a not-audited-today close, respectively).
@@ -40,7 +47,8 @@ import { withOpsTransaction } from '../write/asyncGit.ts';
 import { appendAudit as defaultAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow } from '../audit/log.ts';
 import { resolveRepoRoot } from '../http/surface.ts';
-import type { PtyHost } from './host.ts';
+import { declaredAgentFilePath } from '../agents/roster.ts';
+import type { PtyCommand, PtyHost } from './host.ts';
 import { createPersistentSessionRegistry, SESSION_ID_RE } from './persistentSessions.ts';
 import type { PersistentSessionRegistry, SessionSink } from './persistentSessions.ts';
 
@@ -70,6 +78,77 @@ export interface PtySocketLike {
   on(event: 'error', cb: (err?: unknown) => void): void;
 }
 
+/**
+ * The non-default programs a terminal may be opened as (the "Run agent" path). Absent = today's login
+ * shell, byte-identical to the pre-existing behaviour.
+ *   `claude` — a plain interactive Claude Code session in the repo the daemon serves.
+ *   `agent`  — the same session PRIMED with one declared agent's own `agents/<id>.md`.
+ */
+export type PtySpawnMode = 'claude' | 'agent';
+
+/** A parsed, SYNTACTICALLY valid spawn request. `agentId` is present exactly when `mode` is `agent`,
+ *  and is NOT yet known to name a real agent — {@link PtyRouteContext.resolveAgentFile} decides that. */
+export interface PtySpawnRequest {
+  mode: PtySpawnMode;
+  agentId?: string;
+}
+
+/** Why a spawn request was refused. Each maps to one HTTP 400 on the upgrade and one audit row. */
+export type SpawnParamRefusal =
+  | 'unknown-spawn-mode'
+  | 'agent-required'
+  | 'agent-not-allowed'
+  | 'spawn-with-attach';
+
+export type SpawnParamResult =
+  | { ok: true; spawn: PtySpawnRequest | null }
+  | { ok: false; reason: SpawnParamRefusal };
+
+/**
+ * The claude CLI as an argv[0]. Same command name the governed worker adapter spawns
+ * (`server/control/claudeWorkerAdapter.ts`), resolved through the child's allowlisted PATH.
+ */
+export const CLAUDE_COMMAND = 'claude';
+
+/**
+ * Parse the optional `spawn`/`agent` query parameters off the upgrade URL.
+ *
+ * Strict and closed by construction: an absent pair is the ordinary shell open; anything present must be
+ * an exact known mode with exactly the companion parameter that mode requires, and it may never be
+ * combined with `session=` (an ATTACH reuses a live shell and spawns nothing, so a spawn request there
+ * would be silently ignored — refusing is the honest reading). No value parsed here is ever used to
+ * build a path; `agentId` still has to clear the roster allowlist.
+ */
+export function parseSpawnParams(url: string | undefined): SpawnParamResult {
+  const q = url === undefined ? -1 : url.indexOf('?');
+  const params = new URLSearchParams(q < 0 ? '' : (url as string).slice(q + 1));
+  const mode = params.get('spawn');
+  const agentId = params.get('agent');
+  if (mode === null && agentId === null) return { ok: true, spawn: null };
+  const attach = params.get('session');
+  if (attach !== null && attach !== '') return { ok: false, reason: 'spawn-with-attach' };
+  if (mode !== 'claude' && mode !== 'agent') return { ok: false, reason: 'unknown-spawn-mode' };
+  if (mode === 'claude') {
+    if (agentId !== null) return { ok: false, reason: 'agent-not-allowed' };
+    return { ok: true, spawn: { mode } };
+  }
+  if (agentId === null || agentId === '') return { ok: false, reason: 'agent-required' };
+  return { ok: true, spawn: { mode, agentId } };
+}
+
+/**
+ * Build the child argv for an ALREADY-VALIDATED spawn request. `agentFile` is the server-resolved
+ * absolute path from the roster allowlist — never a client string — and it lands as its own argv element
+ * beside the flag, so a path is a path and can never become extra arguments or a shell fragment.
+ */
+export function buildSpawnCommand(spawn: PtySpawnRequest, agentFile: string | null): PtyCommand {
+  if (spawn.mode === 'claude') return { file: CLAUDE_COMMAND, args: [] };
+  if (agentFile === null || agentFile === '') {
+    throw new Error('buildSpawnCommand: an agent-primed spawn needs a server-resolved declaration path');
+  }
+  return { file: CLAUDE_COMMAND, args: ['--append-system-prompt-file', agentFile] };
+}
+
 /** Everything a PTY connection needs, all hermetic-test-injectable. */
 export interface PtyRouteContext {
   repoRoot: string;
@@ -89,6 +168,12 @@ export interface PtyRouteContext {
   auditOptions?: AppendAuditOptions;
   /** The concurrency cap ceiling. Defaults to {@link MAX_CONCURRENT_PTY}. */
   maxConcurrent?: number;
+  /**
+   * The agent ALLOWLIST behind "Run agent": resolve one declared agent id to its authoritative
+   * `agents/<id>.md` inside the repo THIS daemon serves, or null when the id is not on the roster.
+   * Defaults to `declaredAgentFilePath`; injected in tests so no declaration filesystem is read.
+   */
+  resolveAgentFile: (repoRoot: string, agentId: string) => string | null;
 }
 
 /** Build a full {@link PtyRouteContext}, filling every unset field with its real default. The session
@@ -117,6 +202,7 @@ export function makePtyRouteContext(overrides: Partial<PtyRouteContext> = {}): P
     appendAudit: overrides.appendAudit ?? defaultAppendAudit,
     auditOptions: overrides.auditOptions,
     maxConcurrent: overrides.maxConcurrent ?? MAX_CONCURRENT_PTY,
+    resolveAgentFile: overrides.resolveAgentFile ?? declaredAgentFilePath,
   };
 }
 
@@ -220,6 +306,18 @@ export async function handlePtyConnection(
   }
   const owner = session.claims.sub;
 
+  // 3b. Spawn-mode gate. Parsed AFTER authentication and BEFORE anything touches a path, an argv, or the
+  //     concurrency cap, so an unknown mode or an unknown agent id costs a refusal and nothing else. The
+  //     route's `preValidation` hook already 400s these on the upgrade; this is the fail-closed backstop
+  //     for any future mounting of the handler without that hook.
+  const spawnParams = parseSpawnParams(req.url);
+  if (!spawnParams.ok) {
+    await audit('bad-spawn-request', owner, { reason: spawnParams.reason });
+    if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'bad-spawn-request' }));
+    socket.close(1008, 'bad-spawn-request');
+    return;
+  }
+
   // A sink over this socket. `send`/`closed` relay bytes; `onExit` closes the socket when the shell dies;
   // `onEvicted` closes it (with an error frame) when a newer socket supersedes this attach.
   const makeSink = (): SessionSink => ({
@@ -294,7 +392,25 @@ export async function handlePtyConnection(
   }
 
   // ── OPEN PATH ──────────────────────────────────────────────────────────────────────────────────────
-  // 4. Concurrency cap — count LIVE SESSIONS, refuse over the ceiling BEFORE spawning anything.
+  // 4a. Resolve the child program. `null` spawn = the login shell (unchanged). An agent-primed spawn
+  //     resolves its declaration path SERVER-SIDE from the validated id; an id that is not on the roster
+  //     is refused here and never reaches a path join, an argv, or a process.
+  let command: PtyCommand | undefined;
+  if (spawnParams.spawn) {
+    let agentFile: string | null = null;
+    if (spawnParams.spawn.mode === 'agent') {
+      agentFile = ctx.resolveAgentFile(ctx.repoRoot, spawnParams.spawn.agentId as string);
+      if (agentFile === null) {
+        await audit('unknown-agent', owner, { agentId: spawnParams.spawn.agentId });
+        if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'unknown-agent' }));
+        socket.close(1008, 'unknown-agent');
+        return;
+      }
+    }
+    command = buildSpawnCommand(spawnParams.spawn, agentFile);
+  }
+
+  // 4b. Concurrency cap — count LIVE SESSIONS, refuse over the ceiling BEFORE spawning anything.
   if (registry.liveCount() >= maxConcurrent) {
     await audit('too-many-terminals', owner, { maxConcurrent });
     if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'too-many-terminals' }));
@@ -308,9 +424,12 @@ export async function handlePtyConnection(
   try {
     created = registry.create(owner, ctx.ptyHost, {
       requestId: '',
+      // Always the repo THIS daemon serves — resolved from the server's own config, never from the
+      // request. An agent-primed claude therefore starts in the same checkout the agent file came from.
       cwd: ctx.repoRoot,
       cols: DEFAULT_COLS,
       rows: DEFAULT_ROWS,
+      ...(command ? { command } : {}),
     });
   } catch (err) {
     await audit('spawn-failed', owner, { error: (err as Error).message });
@@ -325,7 +444,13 @@ export async function handlePtyConnection(
   // Opening the shell is the consequential action. If its audit cannot be recorded, fail closed: kill the
   // just-created session, close the WS, and contain the exception here.
   try {
-    await audit('opened', owner, { sessionId });
+    await audit('opened', owner, {
+      sessionId,
+      // What was actually spawned is part of the record: a shell and an agent-primed claude are not the
+      // same action, and an audit that could not tell them apart would be a hole.
+      spawn: spawnParams.spawn?.mode ?? 'shell',
+      ...(spawnParams.spawn?.agentId ? { agentId: spawnParams.spawn.agentId } : {}),
+    });
   } catch {
     registry.close(owner, sessionId);
     if (isOpen(socket)) {
@@ -373,9 +498,30 @@ export async function registerPtyRoute(
 ): Promise<void> {
   await app.register(fastifyWebsocket);
 
-  app.get('/api/pty', { websocket: true }, (socket, req) => {
-    void handlePtyConnection(socket as unknown as PtySocketLike, req, ctx);
-  });
+  /**
+   * Spawn-mode admission control, run on the UPGRADE request itself so a bad or unknown target is a
+   * plain HTTP 400 and the WebSocket is never established. The check is exact-match against the server's
+   * declared-agent roster and happens before any path is built; the handler re-checks fail-closed.
+   */
+  app.get(
+    '/api/pty',
+    {
+      websocket: true,
+      preValidation: async (req: FastifyRequest, reply: FastifyReply) => {
+        const parsed = parseSpawnParams(req.url);
+        if (!parsed.ok) {
+          await reply.code(400).send({ error: 'bad-spawn-request', reason: parsed.reason });
+          return;
+        }
+        if (parsed.spawn?.mode === 'agent' && ctx.resolveAgentFile(ctx.repoRoot, parsed.spawn.agentId as string) === null) {
+          await reply.code(400).send({ error: 'unknown-agent' });
+        }
+      },
+    },
+    (socket, req) => {
+      void handlePtyConnection(socket as unknown as PtySocketLike, req, ctx);
+    },
+  );
 
   // REST: list my live sessions (read — no audit). Bearer verified exactly like the WS.
   app.get('/api/pty/sessions', async (req: FastifyRequest, reply: FastifyReply) => {
