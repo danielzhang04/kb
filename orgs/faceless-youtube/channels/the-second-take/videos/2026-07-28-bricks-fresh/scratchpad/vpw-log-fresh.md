@@ -555,3 +555,65 @@ L149-L195: zero refusals, exit 0. Detail in `vpw-fifth4-report.md`.
     newsroom is also the truer image (the tip went to the papers, so the room is any of them).
     Compare `brick-company-yard`, where the script names one business and puts a transaction through
     it: that is what a `place_owner` looks like.
+
+---
+
+# FIFTH 5 - the FINAL fifth authored fresh (L196-L248); THE FILE IS COMPLETE, 2026-08-05
+
+FRESH-AUTHORING over P19-P23 to the END of the VO, appended after the LOCKED L01-L195
+(byte-identical, verified: the first 263,545 bytes and the whole 2,431-byte `thumbnail` tail are
+unchanged). Inputs: the VPW SKILL, `vpw-fresh-skeleton.md`, this log (lessons 1-29),
+`vpw-fifth4-report.md`, `script.md`, the real word timings in `assets/voiceover.manifest.json`,
+`visual-grammar.md`, `style-bible.md`, `shots-schema.md`, `registry.json` (MAIN checkout),
+`assets/library/manifest.json`, `research.md`, `lint_shots.py` + `forge.py`, and the CURRENT
+`shots.json` for lineage. No archived or quarantined file was read. $0, no provider call, nothing
+committed.
+
+**53 shots, 108.02 s, avg 2.04 s, every real hold inside 1.51-2.85 s, zero base/delta inversions.**
+New place `jury-courtroom` (plate L196, `owner_ambiguity: true`, five non-contiguous runs);
+`brick-warehouse` (L03), `miniscribe-plant` (L28) and `brick-company-yard` (L113) revisited. The
+skeleton's withheld peak is SPENT here: L217 (the only floor-level look-up in 248 shots), L244 (the
+tug-of-war over the audit) and L248 (the endless warehouse aisle, a bookend to the L03 hook).
+
+**File total: 248 shots, 541.29 s. Lint: ZERO HARD - both partial-coverage HARDs cleared on measured
+VO (541.29 s against a 474.45 s bar; 248 shots against a 140 floor), nothing padded. Whole-file forge
+dry-run: exit 0, zero refusals, `0 seeding-law violation(s) remain OUTSIDE the scope`. 248 scenes + 48
+STEP-1 cards + 8 plates.** Detail in `vpw-fifth5-report.md`.
+
+## Lessons (the file is done; these are for the NEXT video)
+
+30. **Two named cast must never share one expression slug in the same shot.** `forge.py` binds an
+    expression token once per shot, so the second figure's STEP-1 card comes back with NO expression at
+    all - L212's draft gave `hq-banker` and `auditor-rep` both `expr-deadpan` and minted
+    `fig-auditor-rep--hold-paper-by-sides` (register-less) instead of reusing the deadpan card that
+    already existed. The fix is a register decision, not a wording one: give each figure the expression
+    its own half of the beat wants. Caught at the dry-run at $0; it would have generated a faceless
+    reference card at gen time. Same family as lesson 13 - the seeding layer, not the grammar, decides
+    what an authored token actually buys.
+31. **An ampersand (or any punctuation-only token) inside a `vo_ref`'s first FOUR words makes the anchor
+    un-matchable.** `render.py::match_shots_to_tokens` builds the needle from `vo_ref.split()` and DROPS
+    empty-normalizing tokens, while the VO-timing stream lint feeds it KEEPS them - so `"Hambrecht &
+    Quist got"` becomes the 3-token needle `[hambrecht, quist, got]` and can never match `hambrecht`,
+    `""`, `quist`, `got` in the stream. P19's H&Q beat anchors on `"Quist got hit too,"` instead. Check
+    the first four words of every anchor for `&`, dashes and bare numerals-with-symbols before authoring.
+32. **A place's plate is proved by the SEEDS its followers get, not by forge's printed `PLATE` tag.**
+    Forge tags the frame whose slate ended up EMPTY; a text-bearing plate carries the derived
+    `lettering-marker-italic` seed, so L196 printed as a LETTERING row and not as `PLATE` while still
+    being the place-first frame every courtroom shot seeds (`L197/L206/L216/L217/L218/L222/L226: [L196,
+    ...]`). Read the followers' slates before concluding a plate did not take.
+33. **Check the coverage arithmetic before densifying to clear the duration-sum HARD.** The bar is 85 %
+    of `vo_words / header_wpm * 60`, and the fifths' MEASURED VO already overshot it here by 66.8 s
+    (541.29 s against 474.45 s) - a file sized off forced-alignment timings clears the header-derived
+    bar with room to spare, because the real voice runs faster than the header's rate. Densifying to
+    "make the number" would have been padding a check that was already going to pass.
+34. **An anonymous individual the beat seems to demand has a THIRD answer: draw the ACT, not the actor.**
+    P20 puts a judge on screen and P19 a jury foreman, and both are individuals with a face requirement -
+    which under the tier law means named cast or restage. With the video's planned cast closed four acts
+    earlier, neither was minted: L206 draws the verdict card out on the corridor floor past an open side
+    door, and L197 propped on the box rail. The rule of thumb - cast, mass action, or the RESIDUE of the
+    act - keeps a late act from inventing a slug for one line.
+35. **Build the last cut to the END of the audio, not to the last word's start.** `real_cadence_check`
+    skips the final shot (no next anchor), so nothing will flag a closing hold sized wrong; the outro
+    beat is the author's to size. L248 anchors at 537.160 s and is declared 2.92 s to the track's
+    ~540.08 s end. Sizing it to the last word would have declared 0 s and left `render-builder` to
+    stretch it.
