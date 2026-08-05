@@ -3823,3 +3823,49 @@ accounting); per-fifth-only funding (no wave ceiling for the spend law to enforc
 Sequencing amendment (Daniel, at the gate): before the paid style probe, a $0 validation leg —
 fresh VPW authors the FIRST FIFTH only, adversarially reviewed against the goal state and
 diffed against the archived problem-era shots.json — runs first.
+
+## 2026-08-05 — Style probe pre-flight: main-checkout/worktree doctrine-text sync gap found and closed; descriptor bytes pinned
+
+**Finding.** The Phase-4 style-probe worker's first live `forge.py gen --dry-run` (against the MAIN
+checkout kit, which generation reads per this wave's tree split — §2/M14) showed every one of the 5
+probe requests assembling a two-voice style instruction: `style-bible.md` §2b still asserted "simple
+flat colours with gentle soft cel shading" immediately followed by forge's `HARDENED_SCENE_STYLE`
+block asserting "NO gradient... NO gloss... NO soft focus." This is the exact mechanism named as this
+wave's own root cause (`scratchpad/audit-drift-2026-08-04.md` §9 "Global smooth/glossy style drift,"
+fix item (1) of "9 doctrine items, $0 generation"), and the exact edit committed to in this design's
+§1 "Style — one voice, text-only." The edit existed — but only in the worktree
+(`kb-worktrees/boss-bricks-reset`, branch `claude/bricks-doctrine-reset`); the main checkout's
+tracked copy of `style-bible.md` (and `visual-grammar.md`'s documented suffix) was still on the
+pre-audit branch, so paid generation would have run against the OLD, contradictory text regardless of
+what had landed on the doctrine branch. The probe worker stopped at $0 rather than spend against it
+(full writeup: `videos/2026-07-28-bricks-fresh/scratchpad/probe-genlog.md` §4).
+**Resolution.** The coordinator switched the MAIN checkout to branch `claude/bricks-doctrine-reset`
+(worktree left detached at the same commit `89c720e`, files unchanged, forge still run from there).
+A repeat dry-run against the now-current main-checkout kit shows the two blocks speaking with ONE
+voice — no "gentle soft" / "gentle...cel shading" anywhere in the assembled prompt for any of the 5
+probe requests (checked byte-for-byte against `scratchpad/probe-dryrun-output-2.txt`).
+**Pinned descriptor bytes** (the two blocks that must agree, exactly as `forge.py` assembled them
+2026-08-05, from the now-unified `style-bible.md` §2b + the code-owned `HARDENED_SCENE_STYLE`
+constant — later drift in either is a diff against this fence):
+
+```
+MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colour fills — one flat
+base colour per surface plus at most ONE hard-edged single-step shadow shape, no feathered or
+blended transitions, uniform highlight-free surfaces — rounded friendly shapes, no realistic
+detail. No text, no words, no labels.
+
+HARDENED SCENE STYLE. Enforce the STYLE-ONLY descriptor exactly: flat colour fills — one flat
+base colour per surface plus at most ONE hard-edged single-step shadow shape — no feathered or
+blended transitions, uniform highlight-free surfaces, and even medium-thick dark warm
+brown-black outlines on everything. NO gradient; NO gloss or specular highlight; NO bloom;
+NO depth-of-field blur or soft focus; NO subsurface or rim light; NO photorealistic texture.
+Commit the authored scene palette; it is never neutral grey alone.
+```
+
+**Alternatives rejected.** (1) Pinning the pre-fix bytes captured in the first dry-run — would have
+enshrined a known bug as if it were ratified doctrine; not written. (2) Proceeding to spend against
+the contradictory text on the theory that the `HARDENED_SCENE_STYLE` block "usually wins" — untested
+and contrary to the audit's own finding that "the provider resolves the conflict toward a polished
+detailed-middle look," i.e. the softer wording, not the harder one.
+**Evidence.** `videos/2026-07-28-bricks-fresh/scratchpad/probe-genlog.md`,
+`scratchpad/probe-dryrun-output.txt` (pre-fix), `scratchpad/probe-dryrun-output-2.txt` (post-fix).

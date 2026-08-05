@@ -1,0 +1,150 @@
+[
+  {
+    "name": "L28",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference â€” preserve its authored place facts.\n\nA disk-drive assembly floor, cast-free, wide static eye-level from the aisle. Two long workbenches recede stage-right laid out with beige drive shells, screwdrivers and trays of small parts; steel shelving lines the left wall stacked with flat cartons; a shut roll-up shipping door closes the rear wall; fluorescent tubes run overhead and the concrete floor is sealed and pale. Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left. Palette: beige, steel grey, cool white tube light. Above the floor entrance stage-left, a broad plank board carries 'MINISCRIBE'.",
+    "payload": "A disk-drive assembly floor, cast-free, wide static eye-level from the aisle. Two long workbenches recede stage-right laid out with beige drive shells, screwdrivers and trays of small parts; steel shelving lines the left wall stacked with flat cartons; a shut roll-up shipping door closes the rear wall; fluorescent tubes run overhead and the concrete floor is sealed and pale. Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left. Palette: beige, steel grey, cool white tube light. Above the floor entrance stage-left, a broad plank board carries 'MINISCRIBE'.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-powerstance--expr-deadpan",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical â€” identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-deadpan` expression reference for `miniscribe-rep` â€” copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-powerstance` pose reference for `miniscribe-rep` â€” copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-powerstance / expr-deadpan)"
+  },
+  {
+    "name": "L29",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure â€” carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place â€” preserve its set, palette, outline weight and lighting. The THIRD image is the `lettering-marker-italic` environment reference â€” preserve its authored place facts.\n\n`miniscribe-rep`, `expr-deadpan`, `action-powerstance`, stands planted square in the plant's floor entrance stage-left, facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light and the broad plank board carrying 'MINISCRIBE' on the wall directly above him. Behind him the assembly floor runs back down the aisle between the two workbenches to the shut shipping door under the fluorescent tubes. Framing: medium, him large in the lit entrance and filling the left third, the aisle running back stage-right. Palette beige, steel grey, cool white tube light.",
+    "payload": "`miniscribe-rep`, `expr-deadpan`, `action-powerstance`, stands planted square in the plant's floor entrance stage-left, facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light and the broad plank board carrying 'MINISCRIBE' on the wall directly above him. Behind him the assembly floor runs back down the aisle between the two workbenches to the shut shipping door under the fluorescent tubes. Framing: medium, him large in the lit entrance and filling the left third, the aisle running back stage-right. Palette beige, steel grey, cool white tube light.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png",
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-deadpan GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L35",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place â€” preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar â€” use only its anonymous crowd proportion and face tier.\n\nThe plant's concrete shipping apron under flat daylight: four pallet stacks of flat drive cartons stand in a row receding stage-right, each one built higher than the last until the furthest runs out of the top of frame. The roll-up shipping door stands open behind them on the aisle, and a crew of loaders works the tallest stack from a ramp on its far side, passing cartons up hand to hand. Framing: wide, the row of stacks stepping up from foreground-left. Palette brown board, grey concrete, beige, pale sky.",
+    "payload": "The plant's concrete shipping apron under flat daylight: four pallet stacks of flat drive cartons stand in a row receding stage-right, each one built higher than the last until the furthest runs out of the top of frame. The roll-up shipping door stands open behind them on the aisle, and a crew of loaders works the tallest stack from a ramp on its far side, passing cartons up hand to hand. Framing: wide, the row of stacks stepping up from foreground-left. Palette brown board, grey concrete, beige, pale sky.",
+    "seed": [
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast — the scene composes from the place"
+  },
+  {
+    "name": "L34",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "An opened beige computer case lies on its side on a service bench, its lid propped against the wall behind, and a drive unit sits seated square in its front bay with a ribbon cable run back to the board. Hand tools and a saucer of screws lie beside it, a coil of spare cable hangs on the wall hook above; a work lamp lights the opening from over the bench. Framing: medium at bench height, the open case filling the lower two-thirds. Palette beige, green board, steel, warm lamp amber.",
+    "payload": "An opened beige computer case lies on its side on a service bench, its lid propped against the wall behind, and a drive unit sits seated square in its front bay with a ribbon cable run back to the board. Hand tools and a saucer of screws lie beside it, a coil of spare cable hangs on the wall hook above; a work lamp lights the opening from over the bench. Framing: medium at bench height, the open case filling the lower two-thirds. Palette beige, green board, steel, warm lamp amber.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "PLATE — place-first frame, hardened descriptor, no image anchor"
+  }
+]

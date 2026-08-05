@@ -1,0 +1,1672 @@
+[
+  {
+    "name": "L01",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nA wood-panelled suburban den at dusk, wide static eye-level from the doorway. A boxy television on a low walnut cabinet holds the centre with its screen dark and blank; orange shag carpet runs to the frame edge, a plaid armchair stands angled stage-left with a knitted throw over its arm, a hanging globe lamp warms the mid-ground, and heavy curtains close the background wall. A household crowd fills the far side of the room behind the armchair, settled along a low sofa and down onto the carpet facing the set, in wide collars, denim and lacquered teased hair. Framing: wide from the doorway, the television centre and the seated crowd ranked along the back wall. Palette: mustard, burnt orange, walnut brown, warm lamp amber.",
+    "payload": "A wood-panelled suburban den at dusk, wide static eye-level from the doorway. A boxy television on a low walnut cabinet holds the centre with its screen dark and blank; orange shag carpet runs to the frame edge, a plaid armchair stands angled stage-left with a knitted throw over its arm, a hanging globe lamp warms the mid-ground, and heavy curtains close the background wall. A household crowd fills the far side of the room behind the armchair, settled along a low sofa and down onto the carpet facing the set, in wide collars, denim and lacquered teased hair. Framing: wide from the doorway, the television centre and the seated crowd ranked along the back wall. Palette: mustard, burnt orange, walnut brown, warm lamp amber.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L02",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe same wood-panelled den held exactly: the boxy television centre on its low walnut cabinet, orange shag carpet, plaid armchair stage-left under the hanging globe lamp, heavy curtains drawn behind, the household crowd settled along the low sofa and the carpet on the far side of the room facing the set. Only this changes: the television screen now carries a dark blue maze grid with one yellow wedge and three small drifting shapes inside it, its cool light falling across the carpet; everything else exactly as established.",
+    "payload": "The same wood-panelled den held exactly: the boxy television centre on its low walnut cabinet, orange shag carpet, plaid armchair stage-left under the hanging globe lamp, heavy curtains drawn behind, the household crowd settled along the low sofa and the carpet on the far side of the room facing the set. Only this changes: the television screen now carries a dark blue maze grid with one yellow wedge and three small drifting shapes inside it, its cool light falling across the carpet; everything else exactly as established.",
+    "seed": [
+      "_staging/L01.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L01.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L03",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A rented warehouse interior at night, cast-free. Bare grey concrete runs back to a shut roller door at the rear, empty steel shelving lines the right wall, high dusty windows sit black above, and one work lamp on a tripod stands stage-left throwing a hard pool of light across the floor. Every wall face, pallet wrap and carton side stands completely blank and unlettered. Framing: wide static from floor level, the lamp pool close to camera and the dark room falling away behind it. Palette: cold concrete grey, warm amber lamp pool, brown board. Standing in that pool, near and high in frame, are three shrink-wrapped pallets of sealed brown cartons, stranded alone in the middle of a large dark room.",
+    "payload": "A rented warehouse interior at night, cast-free. Bare grey concrete runs back to a shut roller door at the rear, empty steel shelving lines the right wall, high dusty windows sit black above, and one work lamp on a tripod stands stage-left throwing a hard pool of light across the floor. Every wall face, pallet wrap and carton side stands completely blank and unlettered. Framing: wide static from floor level, the lamp pool close to camera and the dark room falling away behind it. Palette: cold concrete grey, warm amber lamp pool, brown board. Standing in that pool, near and high in frame, are three shrink-wrapped pallets of sealed brown cartons, stranded alone in the middle of a large dark room.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "PLATE \u2014 place-first frame, hardened descriptor, no image anchor"
+  },
+  {
+    "name": "L04",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nA pavement newsstand on a busy morning street. The stand's racks are packed three tiers deep with folded newspapers and magazines, every cover face and masthead standing blank and unlettered; a green-and-cream awning shades the plank counter and a bundle of unsold papers sits bound with twine at its foot. Framing: wide static eye-level from the far kerb, the stand foreground-right, the passing stream filling the left two-thirds. Palette: newsprint grey, awning green and cream, cold morning blue. A crowd of commuters streams past on the far side of the stand in overcoats and scarves, briefcases swinging, and not one head is turned toward the racks.",
+    "payload": "A pavement newsstand on a busy morning street. The stand's racks are packed three tiers deep with folded newspapers and magazines, every cover face and masthead standing blank and unlettered; a green-and-cream awning shades the plank counter and a bundle of unsold papers sits bound with twine at its foot. Framing: wide static eye-level from the far kerb, the stand foreground-right, the passing stream filling the left two-thirds. Palette: newsprint grey, awning green and cream, cold morning blue. A crowd of commuters streams past on the far side of the stand in overcoats and scarves, briefcases swinging, and not one head is turned toward the racks.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L05",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nA high-street computer shop interior in daylight, cast-free, wide static eye-level. Three shelf bays fill the back wall, each stacked with beige boxed home computers; a varnished oak counter crosses the foreground-right carrying a brass till; the floor is cream-and-teal linoleum; the street door stands open stage-left with light spilling across it. Framing: wide from the door side, the counter foreground-right and the three bays filling the back wall. Palette: beige, teal, warm oak, cream. Propped inside the window glass at the counter's far end, a small card carries '1983'.",
+    "payload": "A high-street computer shop interior in daylight, cast-free, wide static eye-level. Three shelf bays fill the back wall, each stacked with beige boxed home computers; a varnished oak counter crosses the foreground-right carrying a brass till; the floor is cream-and-teal linoleum; the street door stands open stage-left with light spilling across it. Framing: wide from the door side, the counter foreground-right and the three bays filling the back wall. Palette: beige, teal, warm oak, cream. Propped inside the window glass at the counter's far end, a small card carries '1983'.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L06",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nThe same shop interior held exactly: three shelf bays of beige boxed home computers on the back wall, oak counter foreground-right with the brass till, cream-and-teal linoleum, the street door open stage-left, the window card carrying '1983'. Only this changes: an opened wooden crate now stands at the counter's near end with packing straw spilling over its lip and one beige machine half unwrapped inside it; everything else exactly as established.",
+    "payload": "The same shop interior held exactly: three shelf bays of beige boxed home computers on the back wall, oak counter foreground-right with the brass till, cream-and-teal linoleum, the street door open stage-left, the window card carrying '1983'. Only this changes: an opened wooden crate now stands at the counter's near end with packing straw spilling over its lip and one beige machine half unwrapped inside it; everything else exactly as established.",
+    "seed": [
+      "_staging/L05.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L05.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L07",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe 1983 high-street computer shop from down on the shop floor: the varnished oak counter crosses the foreground with its brass till and the opened straw-filled crate at its near end, the three shelf bays stacked with beige boxed home computers rise behind, cream-and-teal linoleum runs underfoot and daylight washes in from the street door. Framing: medium-wide at counter height, the counter edge across the foreground and the room beyond it filled back to the bays. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, banknotes held up over the shoulders in front of them and the head of the queue pressed to the counter edge.",
+    "payload": "The 1983 high-street computer shop from down on the shop floor: the varnished oak counter crosses the foreground with its brass till and the opened straw-filled crate at its near end, the three shelf bays stacked with beige boxed home computers rise behind, cream-and-teal linoleum runs underfoot and daylight washes in from the street door. Framing: medium-wide at counter height, the counter edge across the foreground and the room beyond it filled back to the bays. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, banknotes held up over the shoulders in front of them and the head of the queue pressed to the counter edge.",
+    "seed": [
+      "_staging/L05.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L05.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L08",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe same shop held exactly: the oak counter across the foreground with its brass till and the straw-filled crate at its near end, the three shelf bays of beige boxed home computers rising behind, the queue of buyers packed along the counter's far side and ranked back between the bays. Only this changes: every buyer in that queue now carries a boxed beige machine under one arm, held in tight against the coat; everything else exactly as established.",
+    "payload": "The same shop held exactly: the oak counter across the foreground with its brass till and the straw-filled crate at its near end, the three shelf bays of beige boxed home computers rising behind, the queue of buyers packed along the counter's far side and ranked back between the bays. Only this changes: every buyer in that queue now carries a boxed beige machine under one arm, held in tight against the coat; everything else exactly as established.",
+    "seed": [
+      "_staging/L07.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L07.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L09",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting.\n\nOne beige boxed home computer hangs in the air above the emptied middle shelf bay of the shop, held dead level like a museum piece, two stiff paper wings taped to its sides and spread wide. Below and behind it the three bays run bare to the pegboard, the varnished oak counter crosses the foreground-right with its brass till, and the open street door throws daylight across the cream-and-teal linoleum. Framing: medium-wide from the counter side, the winged box centred with open air above it. Palette beige, teal, warm oak, cream.",
+    "payload": "One beige boxed home computer hangs in the air above the emptied middle shelf bay of the shop, held dead level like a museum piece, two stiff paper wings taped to its sides and spread wide. Below and behind it the three bays run bare to the pegboard, the varnished oak counter crosses the foreground-right with its brass till, and the open street door throws daylight across the cream-and-teal linoleum. Framing: medium-wide from the counter side, the winged box centred with open air above it. Palette beige, teal, warm oak, cream.",
+    "seed": [
+      "_staging/L05.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L05.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L10",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe same shop seen from inside before dawn: the varnished oak counter and the bare shelf bays sit unlit across the foreground, and beyond the window glass a queue of overnight buyers curls away down the pavement in blue half-light, folding chairs, sleeping bags and flasks along the kerb, breath showing in the cold. Framing: wide from behind the counter, the glass splitting the still interior from the packed street. Palette: blue-grey dawn outside, unlit warm brown inside.",
+    "payload": "The same shop seen from inside before dawn: the varnished oak counter and the bare shelf bays sit unlit across the foreground, and beyond the window glass a queue of overnight buyers curls away down the pavement in blue half-light, folding chairs, sleeping bags and flasks along the kerb, breath showing in the cold. Framing: wide from behind the counter, the glass splitting the still interior from the packed street. Palette: blue-grey dawn outside, unlit warm brown inside.",
+    "seed": [
+      "_staging/L05.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L05.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L11",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `pc-boxy` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `prop-drive` prop canonical \u00e2\u20ac\u201d preserve that object's design.\n\n`pc-boxy`, `expr-delighted`, stands squarely on a plain service bench, beige case front-on to the camera and stubby legs planted. Directly in front of it on the bench stands `prop-drive`, up on its end and turned to show its flat top face. A pegboard of hand tools fills the wall behind and a rack of spare shells stands under the bench; a work lamp lights the bench from stage-right. Framing: medium at bench height, the machine stage-left and the drive centre-right. Palette beige, steel grey, warm lamp amber.",
+    "payload": "`pc-boxy`, `expr-delighted`, stands squarely on a plain service bench, beige case front-on to the camera and stubby legs planted. Directly in front of it on the bench stands `prop-drive`, up on its end and turned to show its flat top face. A pegboard of hand tools fills the wall behind and a rack of spare shells stands under the bench; a work lamp lights the bench from stage-right. Framing: medium at bench height, the machine stage-left and the drive centre-right. Palette beige, steel grey, warm lamp amber.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical"
+  },
+  {
+    "name": "L12",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "One beige drive unit stands alone on a waist-high dark plinth in a records room, lit hard from stage-left, its case standing as tall and as wide as four courses of the drawer wall behind it. Its front face carries a small steel vault door with a spoked wheel handle centred on it, shut tight, and the unit's power lamp is dark. Behind the plinth a wall of shallow oak card-index drawers runs the width of the room with brass pulls in even rows; a banker's lamp stands lit on a side table stage-right beside a stack of ledgers, and a worn parquet floor runs back to the skirting. Framing: medium, the drive centred against the drawer wall with air above it. Palette: warm beige casing, cold steel wheel, oak drawer fronts, charcoal shadow.",
+    "payload": "One beige drive unit stands alone on a waist-high dark plinth in a records room, lit hard from stage-left, its case standing as tall and as wide as four courses of the drawer wall behind it. Its front face carries a small steel vault door with a spoked wheel handle centred on it, shut tight, and the unit's power lamp is dark. Behind the plinth a wall of shallow oak card-index drawers runs the width of the room with brass pulls in even rows; a banker's lamp stands lit on a side table stage-right beside a stack of ledgers, and a worn parquet floor runs back to the skirting. Framing: medium, the drive centred against the drawer wall with air above it. Palette: warm beige casing, cold steel wheel, oak drawer fronts, charcoal shadow.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "PLATE \u2014 place-first frame, hardened descriptor, no image anchor"
+  },
+  {
+    "name": "L13",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition.\n\nThe same beige drive unit on its dark plinth in the records room, the wall of oak card-index drawers behind it and the banker's lamp lit on the side table stage-right, its steel vault door and spoked wheel held exactly, power lamp dark. Only this changes: the vault door now stands swung fully open on its hinge, showing three narrow shelves inside, each ruled with a shallow lip and standing empty and unlettered; everything else exactly as established.",
+    "payload": "The same beige drive unit on its dark plinth in the records room, the wall of oak card-index drawers behind it and the banker's lamp lit on the side table stage-right, its steel vault door and spoked wheel held exactly, power lamp dark. Only this changes: the vault door now stands swung fully open on its hinge, showing three narrow shelves inside, each ruled with a shallow lip and standing empty and unlettered; everything else exactly as established.",
+    "seed": [
+      "_staging/L12.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L12.png",
+        "role": "parent",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L14",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition.\n\nThe same beige drive unit on its dark plinth, vault door swung open on its three ruled shelves, the oak drawer wall behind and the banker's lamp lit stage-right. Only this changes: the top two shelves now stand filled \u2014 the upper packed edge to edge with upright manila folders, their tabs staggered and blank, the middle ranked with flat boxed program sleeves stood on their spines and unlettered; everything else exactly as established.",
+    "payload": "The same beige drive unit on its dark plinth, vault door swung open on its three ruled shelves, the oak drawer wall behind and the banker's lamp lit stage-right. Only this changes: the top two shelves now stand filled \u2014 the upper packed edge to edge with upright manila folders, their tabs staggered and blank, the middle ranked with flat boxed program sleeves stood on their spines and unlettered; everything else exactly as established.",
+    "seed": [
+      "_staging/L13.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L13.png",
+        "role": "parent",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L15",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition.\n\nThe same beige drive unit on its dark plinth, vault door open, the top shelf packed with upright manila folders and the middle ranked with boxed program sleeves, the oak drawer wall behind. Only this changes: a small brown curtain is now drawn fully across the bottom shelf on a little rail, closing off whatever stands behind it; everything else exactly as established.",
+    "payload": "The same beige drive unit on its dark plinth, vault door open, the top shelf packed with upright manila folders and the middle ranked with boxed program sleeves, the oak drawer wall behind. Only this changes: a small brown curtain is now drawn fully across the bottom shelf on a little rail, closing off whatever stands behind it; everything else exactly as established.",
+    "seed": [
+      "_staging/L14.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L14.png",
+        "role": "parent",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 3,
+    "lineage": 3,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L16",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A long plain shelf runs from foreground-left deep into a grey stockroom, ranked the whole length of its run with identical beige computer cases nose-out, each with an identical drive seated in its front bay. The nearest case's bay is lit from inside; the rest recede evenly into shadow. Steel uprights and crossbraces frame the run and flat cardboard sleeves are stacked on the shelf below it. Framing: low wide angle straight down the shelf's length. Palette beige on grey.",
+    "payload": "A long plain shelf runs from foreground-left deep into a grey stockroom, ranked the whole length of its run with identical beige computer cases nose-out, each with an identical drive seated in its front bay. The nearest case's bay is lit from inside; the rest recede evenly into shadow. Steel uprights and crossbraces frame the run and flat cardboard sleeves are stacked on the shelf below it. Framing: low wide angle straight down the shelf's length. Palette beige on grey.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "PLATE \u2014 place-first frame, hardened descriptor, no image anchor"
+  },
+  {
+    "name": "L17",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nTwo oversized beige computer cases stand butted front to front on a lit shop-window display platform, seen from inside the window: shoved hard against each other like wrestlers locked up, corners dented where they meet and the platform's paint scuffed in an arc beneath them. Behind them the plate glass runs the width of the frame, and a crowd of passers-by is packed along the pavement on its far side in coats and headscarves with shopping bags at their knees, faces turned in to watch. One spotlight above throws two hard shadows out to the sides. Framing: wide from inside the display, both cases at the same height dead centre, the watching crowd beyond the glass. Palette beige, black platform, warm spotlight, one red accent on the scuffed arc.",
+    "payload": "Two oversized beige computer cases stand butted front to front on a lit shop-window display platform, seen from inside the window: shoved hard against each other like wrestlers locked up, corners dented where they meet and the platform's paint scuffed in an arc beneath them. Behind them the plate glass runs the width of the frame, and a crowd of passers-by is packed along the pavement on its far side in coats and headscarves with shopping bags at their knees, faces turned in to watch. One spotlight above throws two hard shadows out to the sides. Framing: wide from inside the display, both cases at the same height dead centre, the watching crowd beyond the glass. Palette beige, black platform, warm spotlight, one red accent on the scuffed arc.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L18",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe same lit shop-window display seen from inside: two oversized beige computer cases butted front to front, dented at the corners, the platform scuffed beneath them, the plate glass behind with the crowd of passers-by packed along the pavement on its far side, one spotlight above. Only this changes: two flat black glass slabs now stand upright at the front edge of the platform, butted face to face and shoved hard against each other with a matching dent where they meet and their bottom edges skidded apart under the push, locked up exactly like the two cases behind them at their own smaller scale; everything else exactly as established.",
+    "payload": "The same lit shop-window display seen from inside: two oversized beige computer cases butted front to front, dented at the corners, the platform scuffed beneath them, the plate glass behind with the crowd of passers-by packed along the pavement on its far side, one spotlight above. Only this changes: two flat black glass slabs now stand upright at the front edge of the platform, butted face to face and shoved hard against each other with a matching dent where they meet and their bottom edges skidded apart under the push, locked up exactly like the two cases behind them at their own smaller scale; everything else exactly as established.",
+    "seed": [
+      "_staging/L17.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L17.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L19",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nA drive maker's own shipping back-of-house, off its loading dock: a steel cash box stands open on a packing bench stage-right, packed tight with banded banknotes, and a pallet of finished drive units waits beside it with its dust sheet folded back. On the far side of the racks a crew of packers in overalls works the shelves, banding notes into bundles and stacking them into a strongbox on a trestle. The dock's roll-up door stands open stage-left on a waiting truck, throwing a hard slab of daylight across the concrete. Framing: wide static, the money low in frame and the lit dock door high. Palette: cool grey concrete, warm doorway amber, green banknote banding.",
+    "payload": "A drive maker's own shipping back-of-house, off its loading dock: a steel cash box stands open on a packing bench stage-right, packed tight with banded banknotes, and a pallet of finished drive units waits beside it with its dust sheet folded back. On the far side of the racks a crew of packers in overalls works the shelves, banding notes into bundles and stacking them into a strongbox on a trestle. The dock's roll-up door stands open stage-left on a waiting truck, throwing a hard slab of daylight across the concrete. Framing: wide static, the money low in frame and the lit dock door high. Palette: cool grey concrete, warm doorway amber, green banknote banding.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L20",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe same shipping back-of-house: the open cash box of banded banknotes on its packing bench stage-right, the pallet of finished drive units beside it, the crew of packers working the shelves on the far side of the racks, the open dock door stage-left throwing its slab of light across the concrete. Only this changes: a long garden rake now lies across the floor with its head buried in a raked heap of loose banknotes, drag lines fanning out behind it through the dust; everything else exactly as established.",
+    "payload": "The same shipping back-of-house: the open cash box of banded banknotes on its packing bench stage-right, the pallet of finished drive units beside it, the crew of packers working the shelves on the far side of the racks, the open dock door stage-left throwing its slab of light across the concrete. Only this changes: a long garden rake now lies across the floor with its head buried in a raked heap of loose banknotes, drag lines fanning out behind it through the dust; everything else exactly as established.",
+    "seed": [
+      "_staging/L19.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L19.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L21",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nA gold-rush supply stall on a muddy riverbank in flat morning light: a plank counter under a canvas awning, the rack behind it hung with pick heads, shovel blades and coils of rope. Behind the counter a crew of aproned sellers works the stall, passing tools across it and hauling more from a stack of crates at their backs; the board above the awning is broad, plain and unlettered. Prospectors work the shallows on the far side of the creek, bent over pans in a long line. Framing: wide, the stall foreground-right, the diggings receding stage-left. Palette: mud brown, canvas cream, steel grey. On the counter among the pick heads and blades stands one beige drive unit, out of place and unremarked.",
+    "payload": "A gold-rush supply stall on a muddy riverbank in flat morning light: a plank counter under a canvas awning, the rack behind it hung with pick heads, shovel blades and coils of rope. Behind the counter a crew of aproned sellers works the stall, passing tools across it and hauling more from a stack of crates at their backs; the board above the awning is broad, plain and unlettered. Prospectors work the shallows on the far side of the creek, bent over pans in a long line. Framing: wide, the stall foreground-right, the diggings receding stage-left. Palette: mud brown, canvas cream, steel grey. On the counter among the pick heads and blades stands one beige drive unit, out of place and unremarked.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L22",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nThe rented warehouse again, lamp-lit: the roller door shut at the rear, empty steel shelving down the right wall, the work lamp on its tripod stage-left. The three pallets now stand built shoulder-high with sealed brown cartons ranked in tight rows that recede toward the door; the clear film is drawn hard round the lower courses but is cut back and peeled clear of the whole top row, which stands loose and unwrapped along the length of each stack. A crew of packers works the far pallet in the shadow beyond the lamp, lifting cartons up off a hand truck. Framing: wide static from floor level, the lit pallets filling the lower two-thirds. Palette: cold concrete grey, warm lamp amber, brown board. A tally card propped against the front pallet carries '26,000'.",
+    "payload": "The rented warehouse again, lamp-lit: the roller door shut at the rear, empty steel shelving down the right wall, the work lamp on its tripod stage-left. The three pallets now stand built shoulder-high with sealed brown cartons ranked in tight rows that recede toward the door; the clear film is drawn hard round the lower courses but is cut back and peeled clear of the whole top row, which stands loose and unwrapped along the length of each stack. A crew of packers works the far pallet in the shadow beyond the lamp, lifting cartons up off a hand truck. Framing: wide static from floor level, the lit pallets filling the lower two-thirds. Palette: cold concrete grey, warm lamp amber, brown board. A tally card propped against the front pallet carries '26,000'.",
+    "seed": [
+      "_staging/L03.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L03.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L23",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nThe same lamp-lit warehouse: shoulder-high pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet. Only this changes: the front carton on that unwrapped top row now stands with its flaps folded open, one red clay brick lying inside it on crumpled paper and filling the box exactly; everything else exactly as established.",
+    "payload": "The same lamp-lit warehouse: shoulder-high pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet. Only this changes: the front carton on that unwrapped top row now stands with its flaps folded open, one red clay brick lying inside it on crumpled paper and filling the box exactly; everything else exactly as established.",
+    "seed": [
+      "_staging/L22.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L22.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L24",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nThe same lamp-lit warehouse: pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the front carton on that row open on its red clay brick. Only this changes: every remaining carton along that unwrapped top row now stands with its flaps folded open too, one red clay brick lying inside each on crumpled paper and filling its box exactly; everything else exactly as established.",
+    "payload": "The same lamp-lit warehouse: pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the front carton on that row open on its red clay brick. Only this changes: every remaining carton along that unwrapped top row now stands with its flaps folded open too, one red clay brick lying inside each on crumpled paper and filling its box exactly; everything else exactly as established.",
+    "seed": [
+      "_staging/L23.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L23.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 3,
+    "lineage": 3,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L25",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nThe same lamp-lit warehouse: pallets receding toward the shut roller door, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the whole top row of cartons standing open on one red clay brick each. Only this changes: the front face of every one of those open cartons now carries 'HARD DRIVE' lettered across the middle of the board; everything else exactly as established.",
+    "payload": "The same lamp-lit warehouse: pallets receding toward the shut roller door, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the whole top row of cartons standing open on one red clay brick each. Only this changes: the front face of every one of those open cartons now carries 'HARD DRIVE' lettered across the middle of the board; everything else exactly as established.",
+    "seed": [
+      "_staging/L24.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L24.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 4,
+    "lineage": 4,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L26",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A flat wall map of the world in plain block colours, pinned at its corners and seen straight on. Three thick red arrows leave one point on the North American plate and sweep out across the Pacific and the Atlantic, each ending on a small brown carton resting on a different coast. The map's coastlines are drawn plain and its faces stand unlettered. Framing: the map fills the frame edge to edge. Palette: pale ocean blue, olive land, brown cartons, the arrows the one red accent.",
+    "payload": "A flat wall map of the world in plain block colours, pinned at its corners and seen straight on. Three thick red arrows leave one point on the North American plate and sweep out across the Pacific and the Atlantic, each ending on a small brown carton resting on a different coast. The map's coastlines are drawn plain and its faces stand unlettered. Framing: the map fills the frame edge to edge. Palette: pale ocean blue, olive land, brown cartons, the arrows the one red accent.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "PLATE \u2014 place-first frame, hardened descriptor, no image anchor"
+  },
+  {
+    "name": "L27",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A buff card dossier stands open on a plain wooden desk in a records office, its ruled pages blank and unlettered, a red cord tied round the cover and hanging loose over the desk edge. Behind the desk a wall of olive filing cabinets runs the width of the room, a coat stand fills the corner, and a shaded desk lamp burns at the near end beside a wire tray of unopened envelopes; a shaft of window light crosses the pages from stage-right. Framing: medium, the dossier centred and filling the lower half. Palette: buff card, warm desk wood, olive cabinet green, the cord the one red accent.",
+    "payload": "A buff card dossier stands open on a plain wooden desk in a records office, its ruled pages blank and unlettered, a red cord tied round the cover and hanging loose over the desk edge. Behind the desk a wall of olive filing cabinets runs the width of the room, a coat stand fills the corner, and a shaded desk lamp burns at the near end beside a wire tray of unopened envelopes; a shaft of window light crosses the pages from stage-right. Framing: medium, the dossier centred and filling the lower half. Palette: buff card, warm desk wood, olive cabinet green, the cord the one red accent.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "PLATE \u2014 place-first frame, hardened descriptor, no image anchor"
+  },
+  {
+    "name": "L28",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nA disk-drive assembly floor, cast-free, wide static eye-level from the aisle. Two long workbenches recede stage-right laid out with beige drive shells, screwdrivers and trays of small parts; steel shelving lines the left wall stacked with flat cartons; a shut roll-up shipping door closes the rear wall; fluorescent tubes run overhead and the concrete floor is sealed and pale. Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left. Palette: beige, steel grey, cool white tube light. Above the floor entrance stage-left, a broad plank board carries 'MINISCRIBE'.",
+    "payload": "A disk-drive assembly floor, cast-free, wide static eye-level from the aisle. Two long workbenches recede stage-right laid out with beige drive shells, screwdrivers and trays of small parts; steel shelving lines the left wall stacked with flat cartons; a shut roll-up shipping door closes the rear wall; fluorescent tubes run overhead and the concrete floor is sealed and pale. Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left. Palette: beige, steel grey, cool white tube light. Above the floor entrance stage-left, a broad plank board carries 'MINISCRIBE'.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-powerstance--expr-deadpan",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-deadpan` expression reference for `miniscribe-rep` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-powerstance` pose reference for `miniscribe-rep` \u00e2\u20ac\u201d copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-powerstance / expr-deadpan)"
+  },
+  {
+    "name": "L29",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u00e2\u20ac\u201d carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The THIRD image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\n`miniscribe-rep`, `expr-deadpan`, `action-powerstance`, stands planted square in the plant's floor entrance stage-left, facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light and the broad plank board carrying 'MINISCRIBE' on the wall directly above him. Behind him the assembly floor runs back down the aisle between the two workbenches to the shut shipping door under the fluorescent tubes. Framing: medium, him large in the lit entrance and filling the left third, the aisle running back stage-right. Palette beige, steel grey, cool white tube light.",
+    "payload": "`miniscribe-rep`, `expr-deadpan`, `action-powerstance`, stands planted square in the plant's floor entrance stage-left, facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light and the broad plank board carrying 'MINISCRIBE' on the wall directly above him. Behind him the assembly floor runs back down the aisle between the two workbenches to the shut shipping door under the fluorescent tubes. Framing: medium, him large in the lit entrance and filling the left third, the aisle running back stage-right. Palette beige, steel grey, cool white tube light.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png",
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-deadpan GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L30",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The SECOND image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nThe same assembly floor at the far end of its run, cast-free and mostly dark: one workbench stands lit at the near end of a long unlit floor, an opened drive shell and a soldering stand on it, the benches beyond it bare under dead tubes and the shipping door shut in shadow at the rear. Stacked crates and a hand truck line the wall behind. Framing: wide, the one lit bench small at the bottom of a large dark room. Palette: warm bench lamp amber, cold grey shadow, beige. Across the plank end of the nearest crate, a date reads '1980'.",
+    "payload": "The same assembly floor at the far end of its run, cast-free and mostly dark: one workbench stands lit at the near end of a long unlit floor, an opened drive shell and a soldering stand on it, the benches beyond it bare under dead tubes and the shipping door shut in shadow at the rear. Stacked crates and a hand truck line the wall behind. Framing: wide, the one lit bench small at the bottom of a large dark room. Palette: warm bench lamp amber, cold grey shadow, beige. Across the plank end of the nearest crate, a date reads '1980'.",
+    "seed": [
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "fig-terry-johnson--action-present--expr-delighted",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/action-present.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+        "role": "canonical",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-present.png",
+        "role": "pose",
+        "character": "terry-johnson"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `terry-johnson` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-present` pose reference for `terry-johnson` \u00e2\u20ac\u201d copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `terry-johnson` (action-present / expr-delighted)"
+  },
+  {
+    "name": "L31",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s complete STEP-1 figure \u00e2\u20ac\u201d carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting.\n\n`terry-johnson`, `expr-delighted`, `action-present`, stands stage-left at the near workbench facing right and unobstructed, presenting an opened drive shell with its platter and arm exposed. The bench behind him carries trays of small parts and a soldering stand; the assembly floor recedes past him between the benches to the shut shipping door; tube light falls flat over everything. Framing: medium at bench height, him stage-left and the opened shell filling the centre of the frame. Palette beige, steel, cool white.",
+    "payload": "`terry-johnson`, `expr-delighted`, `action-present`, stands stage-left at the near workbench facing right and unobstructed, presenting an opened drive shell with its platter and arm exposed. The bench behind him carries trays of small parts and a soldering stand; the assembly floor recedes past him between the benches to the shut shipping door; tube light falls flat over everything. Framing: medium at bench height, him stage-left and the opened shell filling the centre of the frame. Palette beige, steel, cool white.",
+    "seed": [
+      "_staging/fig-terry-johnson--action-present--expr-delighted.png",
+      "_staging/L28.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-terry-johnson--action-present--expr-delighted.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`terry-johnson` STEP-1 fig-terry-johnson--action-present--expr-delighted GENERATE"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-celebrate--expr-greedy",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+      "channels/the-second-take/visual-kit/refs/base/action-celebrate.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-celebrate.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-greedy` expression reference for `miniscribe-rep` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-celebrate` pose reference for `miniscribe-rep` \u00e2\u20ac\u201d copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-celebrate / expr-greedy)"
+  },
+  {
+    "name": "L32",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u00e2\u20ac\u201d carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The THIRD image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\n`miniscribe-rep`, `expr-greedy`, `action-celebrate`, stands mid-aisle facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light. Behind him the floor runs at full tilt: a crowd of assemblers works both benches on the far side of the aisle with trays and shells stacked along every station, and the shipping door stands rolled up at the rear on white daylight with a loaded pallet waiting in it. Framing: low wide angle from floor level, him large stage-right against the overhead tubes with the busy floor running back deep stage-left. Palette beige, steel grey, daylight white.",
+    "payload": "`miniscribe-rep`, `expr-greedy`, `action-celebrate`, stands mid-aisle facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light. Behind him the floor runs at full tilt: a crowd of assemblers works both benches on the far side of the aisle with trays and shells stacked along every station, and the shipping door stands rolled up at the rear on white daylight with a loaded pallet waiting in it. Framing: low wide angle from floor level, him large stage-right against the overhead tubes with the busy floor running back deep stage-left. Palette beige, steel grey, daylight white.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-celebrate--expr-greedy.png",
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-celebrate--expr-greedy.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-celebrate--expr-greedy GENERATE"
+  },
+  {
+    "name": "fig-ibm-suit--expr-deadpan",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+        "role": "canonical",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "ibm-suit"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-deadpan` expression reference for `ibm-suit` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `ibm-suit` (no pose / expr-deadpan)"
+  },
+  {
+    "name": "fig-terry-johnson--expr-delighted",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+        "role": "canonical",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "terry-johnson"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `terry-johnson` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `terry-johnson` (no pose / expr-delighted)"
+  },
+  {
+    "name": "L33",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s complete STEP-1 figure \u00e2\u20ac\u201d carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is `terry-johnson`'s complete STEP-1 figure \u00e2\u20ac\u201d carry that figure's identity, costume, pose, hands and expression exactly. The THIRD image is the `handshake` interaction template \u00e2\u20ac\u201d two blank mannequins holding the contact geometry for BOTH figures; copy only the clasp/limb geometry, relative placement and eye-line, and give it to neither figure's identity, costume or expression. The FOURTH image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting.\n\n`ibm-suit`, `expr-deadpan`, and `terry-johnson`, `expr-delighted`, meet in `handshake` at the plant's open shipping door, both standing on the same plane on the concrete apron at a matching eye-line and the same relative head scale, facing each other in profile with nothing crossing either face. Between and behind them a loaded pallet of flat cartons waits at the door's lip; a delivery truck's tail closes the background; flat daylight floods in from the open door. Framing: medium-wide two-shot, the clasp centred at chest height. Palette navy pinstripe, white shirt, beige cartons, grey concrete.",
+    "payload": "`ibm-suit`, `expr-deadpan`, and `terry-johnson`, `expr-delighted`, meet in `handshake` at the plant's open shipping door, both standing on the same plane on the concrete apron at a matching eye-line and the same relative head scale, facing each other in profile with nothing crossing either face. Between and behind them a loaded pallet of flat cartons waits at the door's lip; a delivery truck's tail closes the background; flat daylight floods in from the open door. Framing: medium-wide two-shot, the clasp centred at chest height. Palette navy pinstripe, white shirt, beige cartons, grey concrete.",
+    "seed": [
+      "_staging/fig-ibm-suit--expr-deadpan.png",
+      "_staging/fig-terry-johnson--expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/handshake.png",
+      "_staging/L28.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-ibm-suit--expr-deadpan.png",
+        "role": "figure",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "_staging/fig-terry-johnson--expr-delighted.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/handshake.png",
+        "role": "interaction",
+        "character": null
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`ibm-suit` STEP-1 fig-ibm-suit--expr-deadpan GENERATE; `terry-johnson` STEP-1 fig-terry-johnson--expr-delighted GENERATE"
+  },
+  {
+    "name": "L34",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "An opened beige computer case lies on its side on a service bench, its lid propped against the wall behind, and a drive unit sits seated square in its front bay with a ribbon cable run back to the board. Hand tools and a saucer of screws lie beside it, a coil of spare cable hangs on the wall hook above; a work lamp lights the opening from over the bench. Framing: medium at bench height, the open case filling the lower two-thirds. Palette beige, green board, steel, warm lamp amber.",
+    "payload": "An opened beige computer case lies on its side on a service bench, its lid propped against the wall behind, and a drive unit sits seated square in its front bay with a ribbon cable run back to the board. Hand tools and a saucer of screws lie beside it, a coil of spare cable hangs on the wall hook above; a work lamp lights the opening from over the bench. Framing: medium at bench height, the open case filling the lower two-thirds. Palette beige, green board, steel, warm lamp amber.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "PLATE \u2014 place-first frame, hardened descriptor, no image anchor"
+  },
+  {
+    "name": "L35",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe plant's concrete shipping apron under flat daylight: four pallet stacks of flat drive cartons stand in a row receding stage-right, each one built higher than the last until the furthest runs out of the top of frame. The roll-up shipping door stands open behind them on the aisle, and a crew of loaders works the tallest stack from a ramp on its far side, passing cartons up hand to hand. Framing: wide, the row of stacks stepping up from foreground-left. Palette brown board, grey concrete, beige, pale sky.",
+    "payload": "The plant's concrete shipping apron under flat daylight: four pallet stacks of flat drive cartons stand in a row receding stage-right, each one built higher than the last until the furthest runs out of the top of frame. The roll-up shipping door stands open behind them on the aisle, and a crew of loaders works the tallest stack from a ramp on its far side, passing cartons up hand to hand. Framing: wide, the row of stacks stepping up from foreground-left. Palette brown board, grey concrete, beige, pale sky.",
+    "seed": [
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L36",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nA hand-cranked adding machine stands square on a bookkeeper's table under a low pendant lamp, its crank arm at rest and its paper tape running up out of the machine, over the table edge and down into a loose coil on the floorboards. A wooden card index and a spike of dockets stand beside it, a stool is pushed in under the table, and a shuttered window closes the wall behind with a hat on a hook next to it. Framing: medium at table height, the machine stage-left and the tape running down through the frame stage-right. Palette black machine enamel, warm pendant amber, buff paper, brown floorboards. The tape's exposed end, face up on the coil, carries '125 MILLION'.",
+    "payload": "A hand-cranked adding machine stands square on a bookkeeper's table under a low pendant lamp, its crank arm at rest and its paper tape running up out of the machine, over the table edge and down into a loose coil on the floorboards. A wooden card index and a spike of dockets stand beside it, a stool is pushed in under the table, and a shuttered window closes the wall behind with a hat on a hook next to it. Framing: medium at table height, the machine stage-left and the tape running down through the frame stage-right. Palette black machine enamel, warm pendant amber, buff paper, brown floorboards. The tape's exposed end, face up on the coil, carries '125 MILLION'.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L37",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe assembly floor running flat out, wide static down the main aisle: three shipping bays stand rolled up at the rear on white daylight, pallets of flat cartons ranked four deep along both sides of the aisle, a forklift stopped mid-aisle with its load raised, and packers working shoulder to shoulder on the far side of the shelving racks stage-left. Tube light above, daylight flooding in from the bays. Framing: wide one-point view straight along the aisle. Palette beige, steel grey, white daylight.",
+    "payload": "The assembly floor running flat out, wide static down the main aisle: three shipping bays stand rolled up at the rear on white daylight, pallets of flat cartons ranked four deep along both sides of the aisle, a forklift stopped mid-aisle with its load raised, and packers working shoulder to shoulder on the far side of the shelving racks stage-left. Tube light above, daylight flooding in from the bays. Framing: wide one-point view straight along the aisle. Palette beige, steel grey, white daylight.",
+    "seed": [
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L38",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier. The SECOND image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nThe customer's own yard under a low sun: one shoulder-high pallet of flat drive cartons stands at the foot of a loading ramp, dwarfed by the open rear mouth of an articulated trailer that rises three times its height above it, and the line of trailers runs back nose to tail down the yard behind it. A crew of yard hands works the far side of the ramp with a hand truck and a stack of empty skids. Framing: wide, the pallet low and foreground-left, the trailer mouth filling the right two-thirds and cropped at the top. Palette trailer white, asphalt grey, low sun amber, brown board. The near trailer's flank carries 'COMPAQ' lettered across it.",
+    "payload": "The customer's own yard under a low sun: one shoulder-high pallet of flat drive cartons stands at the foot of a loading ramp, dwarfed by the open rear mouth of an articulated trailer that rises three times its height above it, and the line of trailers runs back nose to tail down the yard behind it. A crew of yard hands works the far side of the ramp with a hand truck and a stack of empty skids. Framing: wide, the pallet low and foreground-left, the trailer mouth filling the right two-thirds and cropped at the top. Palette trailer white, asphalt grey, low sun amber, brown board. The near trailer's flank carries 'COMPAQ' lettered across it.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L39",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier. The SECOND image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nA bank's public banking hall in daylight: a long marble counter runs the width of the frame with a brass grille above it and tellers working their windows on the far side of the grille, a row of writing desks with inkstands stands against the near wall, and tall windows throw hard shafts across the polished floor. A wheeled porter's trolley stands halted in the middle of that floor, heaped with banded banknote bundles and strapped down over the load. Framing: wide static from the door, the trolley centred and low in frame with the counter running behind it. Palette cream marble, brass, green banknote, cold window light. A board wired to the trolley's handle carries '600 MILLION'.",
+    "payload": "A bank's public banking hall in daylight: a long marble counter runs the width of the frame with a brass grille above it and tellers working their windows on the far side of the grille, a row of writing desks with inkstands stands against the near wall, and tall windows throw hard shafts across the polished floor. A wheeled porter's trolley stands halted in the middle of that floor, heaped with banded banknote bundles and strapped down over the load. Framing: wide static from the door, the trolley centred and low in frame with the counter running behind it. Palette cream marble, brass, green banknote, cold window light. A board wired to the trolley's handle carries '600 MILLION'.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L40",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nA plain white board propped on a wooden easel in a bare workroom, carrying one column of stacked coin discs drawn as flat circles rising almost to the top rule; beside it a second baseline is ruled and stands empty, and the rest of the board's face is blank. A trestle of paint tins and a folded dust sheet sit at the easel's foot and a shuttered window closes the wall behind. Framing: straight-on medium, the board filling the frame. Palette cream board, brown discs, charcoal rule. A base card under the drawn column carries '1988'.",
+    "payload": "A plain white board propped on a wooden easel in a bare workroom, carrying one column of stacked coin discs drawn as flat circles rising almost to the top rule; beside it a second baseline is ruled and stands empty, and the rest of the board's face is blank. A trestle of paint tins and a folded dust sheet sit at the easel's foot and a shuttered window closes the wall behind. Framing: straight-on medium, the board filling the frame. Palette cream board, brown discs, charcoal rule. A base card under the drawn column carries '1988'.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L41",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u00e2\u20ac\u201d preserve its held set and existing composition. The SECOND image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nThe same white board on its easel in the bare workroom, the left column of stacked coin discs rising almost to the top rule with its base card carrying '1988', the second baseline ruled empty beside it, the paint tins and folded dust sheet at the easel's foot. Only this changes: that second baseline now carries its own column of coin discs, filled in to top the left column by a hand's width, with a base card under it carrying 'TODAY'; everything else exactly as established.",
+    "payload": "The same white board on its easel in the bare workroom, the left column of stacked coin discs rising almost to the top rule with its base card carrying '1988', the second baseline ruled empty beside it, the paint tins and folded dust sheet at the easel's foot. Only this changes: that second baseline now carries its own column of coin discs, filled in to top the left column by a hand's width, with a base card under it carrying 'TODAY'; everything else exactly as established.",
+    "seed": [
+      "_staging/L40.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L40.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-present--expr-smug",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/action-present.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-present.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-smug` expression reference for `miniscribe-rep` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-present` pose reference for `miniscribe-rep` \u00e2\u20ac\u201d copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-present / expr-smug)"
+  },
+  {
+    "name": "L42",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u00e2\u20ac\u201d carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\n`miniscribe-rep`, `expr-smug`, `action-present`, stands stage-left behind a plain trestle in a dark room under a single work lamp, facing the camera and unobstructed, presenting one flat drive carton stood upright on the trestle with its lid flaps folded fully open on one red clay brick lying inside it on crumpled paper and filling the box exactly. The lamp's hard pool falls on him and the carton and the room beyond runs black. Framing: medium, him stage-left and the open carton centre-right at trestle height. Palette brown board, red clay, warm lamp amber, black surround. The carton's face carries '600 MILLION' lettered across it.",
+    "payload": "`miniscribe-rep`, `expr-smug`, `action-present`, stands stage-left behind a plain trestle in a dark room under a single work lamp, facing the camera and unobstructed, presenting one flat drive carton stood upright on the trestle with its lid flaps folded fully open on one red clay brick lying inside it on crumpled paper and filling the box exactly. The lamp's hard pool falls on him and the carton and the room beyond runs black. Framing: medium, him stage-left and the open carton centre-right at trestle height. Palette brown board, red clay, warm lamp amber, black surround. The carton's face carries '600 MILLION' lettered across it.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-present--expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-present--expr-smug.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-present--expr-smug GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L43",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u00e2\u20ac\u201d preserve its authored place facts.\n\nA desk calendar stands on a bare window sill in cold morning light, a loose pile of torn-off leaves stacked beside its block, a chipped mug and a pair of work gloves further along the sill. Beyond the sill the window shows a flat plain and a line of foothills under a wide pale sky. Framing: tight medium, the calendar stage-right and the plain beyond it stage-left. Palette cream leaves, cold blue light, brown sill. The block's exposed top leaf carries '1984' large across it.",
+    "payload": "A desk calendar stands on a bare window sill in cold morning light, a loose pile of torn-off leaves stacked beside its block, a chipped mug and a pair of work gloves further along the sill. Beyond the sill the window shows a flat plain and a line of foothills under a wide pale sky. Framing: tight medium, the calendar stage-right and the plain beyond it stage-left. Palette cream leaves, cold blue light, brown sill. The block's exposed top leaf carries '1984' large across it.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "fig-ibm-suit--action-armscrossed--expr-deadpan",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+        "role": "canonical",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+        "role": "pose",
+        "character": "ibm-suit"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-deadpan` expression reference for `ibm-suit` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-armscrossed` pose reference for `ibm-suit` \u00e2\u20ac\u201d copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `ibm-suit` (action-armscrossed / expr-deadpan)"
+  },
+  {
+    "name": "L44",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s complete STEP-1 figure \u00e2\u20ac\u201d carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting.\n\n`ibm-suit`, `expr-deadpan`, `action-armscrossed`, stands planted on the concrete apron outside the plant's open shipping door stage-right, square to the camera and unobstructed, a shut order book tucked under one arm and his back to the building. Behind him a loaded pallet of flat cartons stands stranded on the apron with its banding cut and its ramp swung up shut against an empty truck bay; through the open door the aisle runs back into the plant with the benches gone quiet. Cold daylight throws his shadow long across the concrete. Framing: wide, him hard stage-right, the stranded pallet centre. Palette navy pinstripe, grey concrete, beige cartons, one red accent on the cut banding.",
+    "payload": "`ibm-suit`, `expr-deadpan`, `action-armscrossed`, stands planted on the concrete apron outside the plant's open shipping door stage-right, square to the camera and unobstructed, a shut order book tucked under one arm and his back to the building. Behind him a loaded pallet of flat cartons stands stranded on the apron with its banding cut and its ramp swung up shut against an empty truck bay; through the open door the aisle runs back into the plant with the benches gone quiet. Cold daylight throws his shadow long across the concrete. Framing: wide, him hard stage-right, the stranded pallet centre. Palette navy pinstripe, grey concrete, beige cartons, one red accent on the cut banding.",
+    "seed": [
+      "_staging/fig-ibm-suit--action-armscrossed--expr-deadpan.png",
+      "_staging/L28.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-ibm-suit--action-armscrossed--expr-deadpan.png",
+        "role": "figure",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`ibm-suit` STEP-1 fig-ibm-suit--action-armscrossed--expr-deadpan GENERATE"
+  },
+  {
+    "name": "L45",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "A red rock cliff edge on a flat high plain under a cold sky, seen from the side. Twin skid ruts run across the lip and over the edge; far below on the scree a burst pallet of flat cartons lies scattered and still, board and film spread across the rocks. The plain above the lip runs empty to the horizon. Framing: wide, the lip on the upper third and the scattered load small at the bottom. Palette rust rock, grey-blue sky, brown board, one red accent on a torn strip of banding on the scree.",
+    "payload": "A red rock cliff edge on a flat high plain under a cold sky, seen from the side. Twin skid ruts run across the lip and over the edge; far below on the scree a burst pallet of flat cartons lies scattered and still, board and film spread across the rocks. The plain above the lip runs empty to the horizon. Framing: wide, the lip on the upper third and the scattered load small at the bottom. Palette rust rock, grey-blue sky, brown board, one red accent on a torn strip of banding on the scree.",
+    "seed": [],
+    "seed_roles": [],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "PLATE \u2014 place-first frame, hardened descriptor, no image anchor"
+  },
+  {
+    "name": "L46",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\nThe assembly floor gone quiet, wide static down the aisle: four workbenches in a row stage-right, the three furthest still holding drive shells and trays, the nearest one entirely bare with its stool pushed under and its lamp dark. Half the overhead tubes are switched off, leaving the far end in shadow. Packers file out through the doorway at the rear in a slow line with coats over their arms, the near side of that doorway standing clear. Framing: wide, the bare bench foreground-right, the doorway small at the end of the aisle. Palette drained to grey-beige and cold steel.",
+    "payload": "The assembly floor gone quiet, wide static down the aisle: four workbenches in a row stage-right, the three furthest still holding drive shells and trays, the nearest one entirely bare with its stool pushed under and its lamp dark. Half the overhead tubes are switched off, leaving the far end in shadow. Packers file out through the doorway at the rear in a slow line with coats over their arms, the near side of that doorway standing clear. Framing: wide, the bare bench foreground-right, the doorway small at the end of the aisle. Palette drained to grey-beige and cold steel.",
+    "seed": [
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "fig-terry-johnson--carry-by-handle--expr-crestfallen",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+      "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+        "role": "canonical",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+        "role": "expression",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
+        "role": "pose",
+        "character": "terry-johnson"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s character canonical \u00e2\u20ac\u201d identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-crestfallen` expression reference for `terry-johnson` \u00e2\u20ac\u201d copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `carry-by-handle` pose reference for `terry-johnson` \u00e2\u20ac\u201d copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `terry-johnson` (carry-by-handle / expr-crestfallen)"
+  },
+  {
+    "name": "L47",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s complete STEP-1 figure \u00e2\u20ac\u201d carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u00e2\u20ac\u201d preserve its set, palette, outline weight and lighting. The THIRD image is the crowd exemplar \u00e2\u20ac\u201d use only its anonymous crowd proportion and face tier.\n\n`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stands at the near side of the plant's rear doorway stage-right, square to the camera and unobstructed, a plain lidless carton of desk things carried at his side. Behind him the assembly floor runs quiet down the aisle: four workbenches stage-left with the nearest entirely bare and its stool pushed under, half the overhead tubes switched off leaving the far end in shadow, and the last of the packers filing out through the doorway beyond him. Framing: medium-wide, him stage-right in the doorway with the emptied aisle deep behind. Palette drained to grey-beige and cold steel.",
+    "payload": "`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stands at the near side of the plant's rear doorway stage-right, square to the camera and unobstructed, a plain lidless carton of desk things carried at his side. Behind him the assembly floor runs quiet down the aisle: four workbenches stage-left with the nearest entirely bare and its stool pushed under, half the overhead tubes switched off leaving the far end in shadow, and the last of the packers filing out through the doorway beyond him. Framing: medium-wide, him stage-right in the doorway with the emptied aisle deep behind. Palette drained to grey-beige and cold steel.",
+    "seed": [
+      "_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`terry-johnson` STEP-1 fig-terry-johnson--carry-by-handle--expr-crestfallen GENERATE"
+  }
+]
