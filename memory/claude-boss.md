@@ -103,3 +103,18 @@
 - FAILED: PowerShell piping (`2>&1 | Select-String`) mangles native exit codes, and `git commit -m` with embedded quotes shreds argv — always `git commit -F <file>` and read $LASTEXITCODE unpiped.
 - LEARNED: model-verification grep also surfaces NESTED spawns (worker's own Explore subagents show as extra "model" lines) — read the odd line's context before flagging; a lone sonnet line inside an opus transcript was its legitimate sub-Explore.
 - LEARNED: mid-stream API-stall kills of background agents are cleanly resumable via SendMessage IF the resume message orders "re-read disk state first, don't assume your edits landed".
+
+## 2026-08-05 — bricks doctrine-reset: per-fifth authoring + gate (session 1b21aff8)
+- WORKED: one fresh opus agent per VPW fifth (skeleton + locked-prefix + lessons-log carries continuity;
+  byte-identical prefix check per fifth caught nothing but proves the lock cheaply). Whole-file adversarial
+  pass after assembly found 24 real defects the per-fifth acceptance missed — the seam/whole-file review is
+  NOT optional. Verify pass on the repair found 1 ripple (stale provenance note) — repair-then-verify pays.
+- WORKED: root-causing a recurring visual defect to PINNED DOCTRINE (registry costume text authored the
+  "USB" badge; pixels alone would have resurrected it). Check the registry/doctrine text before blaming drift.
+- FAILED twice: big agents die mid-run (529/stall) — disk-incremental reports + SendMessage resume with a
+  re-anchor listing recovered both at $0 lost. Always demand incremental writes; always reconcile disk state
+  in the resume message. A stalled 600s agent usually gorged on one oversized read — cap reads in the brief.
+- GOTCHA: worktree kit mirrors go stale (registry predated the de-badge commit; a repair worker would have
+  re-introduced the defect). Sync worktree kit files from main before any worker that reads them.
+- REMAINS: Daniel's 6 board rulings → C-6 stamp (forge refuses all 51 staged figures until stamped) → 1/10
+  gen. Handoff: handoffs/2026-08-05-fyt-bricks-doctrine-reset-gate.md.
