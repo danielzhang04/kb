@@ -1112,32 +1112,32 @@ def seed_roles_text(seed_roles):
         path = entry["path"]
         character = entry.get("character") or _stem(path)
         if role == "place":
-            detail = "the destination place â€” preserve its set, palette, outline weight and lighting"
+            detail = "the destination place — preserve its set, palette, outline weight and lighting"
         elif role == "figure":
-            detail = (f"`{character}`'s complete STEP-1 figure â€” carry that figure's identity, "
+            detail = (f"`{character}`'s complete STEP-1 figure — carry that figure's identity, "
                       "costume, pose, hands and expression exactly")
         elif role == "canonical":
-            detail = (f"`{character}`'s character canonical â€” identity, head tone, hair and the "
+            detail = (f"`{character}`'s character canonical — identity, head tone, hair and the "
                       "pinned costume come from this image only")
         elif role == "parent":
-            detail = "the in-chain parent scene â€” preserve its held set and existing composition"
+            detail = "the in-chain parent scene — preserve its held set and existing composition"
         elif role == "pose":
-            detail = (f"the `{_stem(path)}` pose reference for `{character}` â€” copy only body pose, "
+            detail = (f"the `{_stem(path)}` pose reference for `{character}` — copy only body pose, "
                       "hands and limb placement; ignore identity and costume")
         elif role == "expression":
-            detail = (f"the `{_stem(path)}` expression reference for `{character}` â€” copy only "
+            detail = (f"the `{_stem(path)}` expression reference for `{character}` — copy only "
                       "eye/brow/mouth shape; ignore identity, head tone and hairline")
         elif role == "crowd":
-            detail = "the crowd exemplar â€” use only its anonymous crowd proportion and face tier"
+            detail = "the crowd exemplar — use only its anonymous crowd proportion and face tier"
         elif role == "interaction":
-            detail = (f"the `{_stem(path)}` interaction template â€” two blank mannequins holding "
+            detail = (f"the `{_stem(path)}` interaction template — two blank mannequins holding "
                       "the contact geometry for BOTH figures; copy only the clasp/limb geometry, "
                       "relative placement and eye-line, and give it to neither figure's identity, "
                       "costume or expression")
         elif role == "prop":
-            detail = f"the `{character}` prop canonical â€” preserve that object's design"
+            detail = f"the `{character}` prop canonical — preserve that object's design"
         elif role == "environment":
-            detail = f"the `{character}` environment reference â€” preserve its authored place facts"
+            detail = f"the `{character}` environment reference — preserve its authored place facts"
         else:
             detail = f"the `{character}` supporting reference"
         lines.append(f"The {ordinal} image is {detail}.")

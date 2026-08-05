@@ -70,8 +70,11 @@ character-bearing seed (non-identity mode). The wording exempts crowds, so both 
 > squat head-to-body proportion as the base rig** — a large round head on a short compact body, NOT
 > taller/lanky — hands, where visible, are the same four-digit cartoon hand. The seed reference
 > contributes ONLY this head/face/hand simplification, NEVER its own clothing: dress every crowd
-> figure for THIS shot's own scene era and setting, not the seed's period dress. Keep every crowd
-> figure on this same simplified rig — do not give them individual detailed faces.
+> figure for THIS shot's own scene era and setting, not the seed's period dress, and vary hair/headwear
+> across at most 2–3 repeating silhouettes for the whole group — never a distinct hairstyle or headwear
+> invented per individual figure. Apply this identical simplified face — dot eyes, one simple mouth, no
+> nose, no ears — to EVERY crowd figure individually and without exception in a multi-figure group; a
+> single detailed or individuated face anywhere in the group is a rig FAIL.
 
 The crowd rig differs from the full rig **ONLY in the FACE** — proportion is IDENTICAL to the base rig, and
 taller/lankier figures are the standing drift and a review axis (§3). **No prompt ever carries this

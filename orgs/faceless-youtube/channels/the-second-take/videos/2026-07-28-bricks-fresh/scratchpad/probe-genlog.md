@@ -318,3 +318,288 @@ portable card the scene composed from) plus a small L28-plate reference crop (th
 seed); `L35` gets its L28-plate crop plus the crowd-exemplar seed crop; `L34` carries no seed crop
 (zero-seed root, by design — noted on its card instead of an empty box). File:
 `videos/2026-07-28-bricks-fresh/scratchpad/probe-board.html`, self-contained, under the 9MB cap.
+
+## 12. Probe-fix pass (2026-08-05) — Daniel's 3 content fixes + 1 analysis
+
+Dispatched as the probe-fix worker. Root cause per boss's eye-rule: the STEP-1/L29 chest "USB" object
+is painted on the CANONICAL `refs/miniscribe-rep/miniscribe-rep.png` itself, so STEP-1 carried it
+faithfully. Fix at the source, per brief: (1) canonical surgical remint, (2) STEP-1 re-derive off the
+new canonical, (3) L29 recompose, (4) L35 the one sanctioned content retry, (5) $0 crowd-variety
+analysis. Ran from the worktree `C:/Users/danie/kb-worktrees/boss-bricks-reset`, `--kit` pointed at
+the main-checkout `visual-kit` per brief. Dry-run before every paid call, one re-issue law honored
+(not exercised — every live call cleared on its first attempt this round).
+
+### 12.1 Task 1 — canonical surgical remint ($0.039, GENERATED + VERIFIED)
+
+Old canonical SHA-256 (`refs/miniscribe-rep/miniscribe-rep.png`, unchanged, not touched):
+`b6b58023c8009ab36f826a52fec0e43e4569bbbe03a38c9d40d8852ad4803abb`.
+
+Single-asset "iterate on THIS" loop: `mode: identity` (the LOCKED STYLE §2 descriptor — "keep this the
+SAME single character as the reference"), seeded off the OLD canonical only, `image_size: 1K`, delta
+surgically named ONE change: remove the small USB-stick-shaped pin/badge on the jacket chest near the
+left lapel, leave the area plain fabric, change nothing else. Dry-run clean (0 violations) →
+`scratchpad/probe-fix-item-1-canonical.json`.
+
+| attempt | result | price | SHA-256 |
+|---|---|---|---|
+| 1 | **OK** → `_staging/fig-miniscribe-rep-canonical-v2.png` (first attempt, no re-issue needed) | **$0.039** | `eacb88262baef1406754643dc7e51f59aa1488751f8dd2d4464083e2576385ed` |
+
+**Verification (§3, forced per-invariant, by eye against the old canonical, at ordinary viewing
+scale + one Pillow measurement):**
+
+| invariant | verdict | note |
+|---|---|---|
+| Head shape/proportion | PASS | unchanged round near-circle, same head-to-body ratio |
+| Facial layout (eyes/brows/mouth, no nose/ears) | PASS | unchanged |
+| Outline weight/colour | PASS | unchanged `#241a12` |
+| Head tone vs old canonical | PASS | unchanged tan tone |
+| Hair vs old canonical | PASS | unchanged dark side-part |
+| Costume vs old canonical | PASS | same tan blazer / brown shirt / dark trousers+shoes |
+| Proportion (squat base) | PASS | unchanged |
+| Chest/lapel — the target of the edit | **PASS (fixed)** | USB/pin object removed; plain fabric, no replacement object added |
+| Background/framing | PASS | unchanged neutral studio backdrop |
+
+**Measured, not just eyeballed:** Pillow mean-abs-diff (0–255 scale) between the old 2K canonical and
+the new 1K file (resized to match) = **2.07 overall** (most of the frame genuinely unchanged, as an
+anchored surgical edit should be) vs **4.86 in the chest region** sampled around the old pin location
+— the change registered where intended, not a near-zero/ignored edit.
+
+**Staged, NOT promoted** — sits at `visual-kit/_staging/fig-miniscribe-rep-canonical-v2.png` exactly
+as briefed; `refs/` and `registry.json` untouched. Boss owns the swap.
+
+### 12.2 Tasks 2+3 — STEP-1 re-derive / L29 recompose: BLOCKED, $0, structural (not a bug)
+
+Attempted the STEP-1 remint seeded off `_staging/fig-miniscribe-rep-canonical-v2.png` (SHA-pinned via
+`seed_sha256`, per brief), same pose/expression primitives. **Forge's own SEEDING LAW hard-refused it
+at the dry-run/preflight stage, $0, before any API call:**
+
+```
+SEEDING LAW — 1 violation(s); nothing generated, nothing charged:
+  fig-miniscribe-rep--action-powerstance--expr-deadpan: STEP-1 figure frame for `miniscribe-rep`
+  without `miniscribe-rep`'s canonical — the one seed that owns identity, head tone, hair and costume.
+```
+
+This is `forge.py`'s `_is_canonical()` check (`seeding_law_violations`, line ~692): a seed only
+counts as a truthful `canonical` role when it either lives under `refs/<character>/` or matches the
+registry's pinned `base` file for that character. The v2 file is staged, not yet promoted to either —
+by design, since the brief (and `registry/refs are boss-owned`) forbids me from writing into `refs/`
+or `registry.json` myself. I tried the one workaround that keeps the structured role field honest (a
+`reference` role instead of a false `canonical` claim, with the identity/head-tone/costume copy
+instruction moved into authored payload prose instead) — that clears the role-truthfulness check, but
+hits a SEPARATE, independent structural check specific to STEP-1 requests (`name.startswith("fig-")`):
+it inspects the actual seed PATH via `_is_canonical()` directly, not the declared role, and refuses
+regardless of labeling. Per `SKILL.md`: *"the SEEDING LAW is structural in `forge.py` and no caller can
+opt out"* and *"Never hand-mint a STEP-1 with `gen --seed a,b,c`... One minter, one truth."* This is
+the tool correctly refusing to mint a production STEP-1 off an unapproved candidate — not a bug to
+route around, and not mine to force (would require either writing into `refs/` myself, forbidden by
+the brief, or a registry edit, also boss-owned).
+
+**Task 2 (STEP-1 re-derive) and Task 3 (L29 recompose, which depends on Task 2's output) are therefore
+BLOCKED, not attempted, $0 spent** — the seeding-law refusal is caught at preflight before any paid
+call, exactly as designed. **Unblock path:** once the boss promotes `fig-miniscribe-rep-canonical-v2.png`
+into `refs/miniscribe-rep/` (replacing or beside the old file) and/or updates `registry.json`'s
+`miniscribe-rep.base`, both tasks are ready to fire as-is —
+`scratchpad/probe-fix-item-2-step1.json` is built and dry-run-clean once role `reference`→`canonical`
+is swapped back (trivial edit after the swap), and L29 recompose follows the same shape as the
+original `probe-items.json` item 3, re-pointed at the fresh STEP-1 output.
+
+### 12.3 Task 4 — L35 the ONE sanctioned content retry ($0.134, GENERATED, still FLAGGED)
+
+Real shot (`shots.json` `L35`, `shot_class: crowd-multiplication`, `figures.crowd: true`). Per the
+seed law's rig-fix rule ("a rig FIX never seeds the defective frame"), regenerated FRESH off the SAME
+two seeds as the original — never the failed `L35.png` — with an exact-replace of the crew clause
+naming both of Daniel's flagged defects surgically: every loader keeps a complete, uncropped head
+(explicit headroom stated), and every loader is drawn on the CROWD RIG's squat proportion (matching
+`crowd-exemplar.png`), not a normally-proportioned adult body. Seeds SHA-pinned. Delta computed via
+`forge.placement_delta()` directly (not hand-typed) after a hand-typed first attempt failed the
+seed-role-prose check from an em-dash mojibake on this machine's default write path — logged per
+CLAUDE.md's `F-encoding` note; fixed by writing the JSON via an explicit-UTF-8 Python script.
+Dry-run clean → `scratchpad/probe-fix-item-4-L35-retry.json`.
+
+| attempt | result | price | SHA-256 |
+|---|---|---|---|
+| 1 | **OK** → `_staging/L35-retry1.png` (first attempt, no re-issue needed) | **$0.134** | `d829d20d6049e97ab4da95cdd2fb6301e4b80437c9db07cac075ea9746c59161` |
+
+**Verification (§3, forced per-invariant, at ordinary viewing scale, crop-assisted):**
+
+| invariant | verdict | note |
+|---|---|---|
+| Every crowd figure has a complete head | **PASS (fixed)** | all 5 loaders fully in frame, no cropping — the flagged defect is gone |
+| No noses on crowd figures | **FAIL (new)** | every one of the 5 loaders carries a clearly drawn nose, a direct §2d violation, on a crowd-only shot with zero seed-cap pressure |
+| Crowd proportion (squat, matches `crowd-exemplar`) | **FAIL (borderline, called honestly)** | visibly closer to squat than the original L35, but still more elongated/adult-limbed than the exemplar's own ratio — not downgraded to "minor" per doctrine |
+| No ears/teeth, dot eyes, simple mouth | PASS | held |
+| Place/palette/composition | PASS | matches L28 plate, palette on-brief |
+
+**Per doctrine, the single sanctioned retry is now spent and the frame still fails §3 invariants — STOP,
+no second retry.** `L35-retry1.png` is FLAGGED, not verified; kept alongside the original `L35.png` on
+the rebuilt board (§13) as "superseded"/"retry, still flagged" for Daniel's eye, with the specific
+root-cause read: the auto-appended §2d clause already states "NO noses" in plain words, and the
+provider is not reliably holding it on a **multi-figure group** crowd shot even with zero named-cast
+seed pressure — `suspected_mechanism_layer: provider_limitation` on the nose invariant specifically
+(the clause is present, correct, and unambiguous; the render simply didn't obey it), feeding directly
+into the crowd-variety analysis (§12.4/`crowd-variety-analysis.md`) recommendation to state the
+per-figure face invariant harder for GROUP shots specifically.
+
+### 12.4 Task 5 — crowd-variety analysis ($0, written)
+
+Full analysis at `scratchpad/crowd-variety-analysis.md`. Three-sentence summary: current doctrine
+(§2d) is already NOT uniform bald/cream — outfit varies by shot per an explicit clause, and the
+channel's own `vpw-log.md` shows "varied hair" authored repeatedly across 11+ prior crowd-tier shots
+with no defect history tied to variety itself (the documented crowd killer is seed-cap economics when
+crowd co-occurs with named cast, unrelated to hair/outfit choice). Recommend KEEPING variety
+(reverting would regress established practice against no evidence) but BOUNDING it to 2–3 repeating
+hair/headwear silhouettes per crowd group instead of open-ended per-figure invention, and adding an
+explicit §2d sentence that the simplified face applies to EVERY figure in a multi-figure group without
+exception — directly targeting this session's own reproduced defect (every L35 loader grew a nose
+despite the clause already forbidding it). Both are §2d wording changes for the boss to route; no
+generation was needed to reach the recommendation.
+
+### 12.5 Spend total, this pass
+
+| item | price |
+|---|---|
+| Task 1 — canonical remint | $0.039 |
+| Task 2/3 — STEP-1/L29 | $0.00 (blocked, structural, caught at preflight) |
+| Task 4 — L35 retry | $0.134 |
+| Task 5 — analysis | $0.00 |
+| **Total** | **$0.173** |
+
+Against the $0.60 budget — **$0.427 unspent**, all of it the direct result of Task 2/3's structural
+block rather than any spend-law stop.
+
+## Continuation (boss-dispatched)
+
+Boss verified and PROMOTED the canonical: `refs/miniscribe-rep/miniscribe-rep.png` in the MAIN
+checkout kit is now the de-badged v2, SHA-256 `eacb88262baef1406754643dc7e51f59aa1488751f8dd2d4464083e2576385ed`
+(confirmed by direct read: `registry/registry.json`'s `characters.miniscribe-rep.base` already points
+there, `characters.miniscribe-rep.costume` already reads "chest and lapels plain — no badge, pin, or
+logo"). Two tasks: (1) STEP-1 re-derive off the promoted canonical, (2) two surgical CROWD-RIG §2d
+doctrine edits. Never touch git; never touch `refs/`/registry/`shots.json`; never recompose L29 or
+retry L35 again.
+
+### T1.1 — probe-fix-item-2-step1.json needed a mechanical (not creative) edit, not literal reuse
+
+Ran the file completely unedited first: its seed still pointed at `_staging/fig-miniscribe-rep-canonical-v2.png`
+with a hand-authored `reference` role (Task 2/3's own workaround, logged §12.2, built BEFORE promotion
+existed to point at). `_is_canonical()` (`forge.py` line 523) truthfully tests the seed's actual PATH —
+either `/refs/<character>/` in it, or its filename stem matching the registry's pinned `base` stem —
+never a SHA or a declared role label. A `_staging` path with a `-v2` suffix satisfies neither test
+regardless of promotion, so byte-for-byte reuse would still structurally refuse; §12.2's own predicted
+unblock path ("role `reference`→`canonical` is swapped back, trivial edit after the swap") confirms this
+was expected, not a new finding.
+
+**Rebuilt it through the BUILDER, per SKILL.md's "one minter, one truth" — never hand-typed.** A stale
+pre-fix STEP-1 output already sat at `_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png`
+(the Part-4 badge-carrying frame, SHA `d9f93841...`), which made `forge.py batch --shots L29` refuse it
+as a reuse candidate (no review record in `_staging/review.json` — a separate, correct refusal, not
+the promotion question). Archived, not deleted, before rebuilding: moved to
+`_staging/_pre-refs-promotion-archive/fig-miniscribe-rep--action-powerstance--expr-deadpan-PREFIX-badge.png`
+(main-checkout kit) — preserves the pre-fix evidence, unblocks the fresh mint. Then
+`forge.py batch --kit <main-checkout> --batch shots.json --shots L29 --out probe-fix-item-2-step1-rebuilt.json`
+mechanically regenerated the STEP-1 card (mirrors §Two-step figure seeding's normal build path, no
+longer needing Task 2/3's workaround prose): seed = `refs/miniscribe-rep/miniscribe-rep.png` (the
+promoted file, directly), role **`canonical`** (true, not `reference`), payload/delta both
+forge-computed via `figure_card_payload()`/`placement_delta()` — no hand-authored "no badge" clause
+needed, since the fix now lives in the seed pixel itself, exactly as the root-cause diagnosis (§12
+intro) intended. `L29` was also in the rebuild's output (forge always emits a shot's full seed slate)
+but was **discarded, not used** — recomposing L29 is explicitly out of scope this pass.
+
+Copied that STEP-1 item (seed/seed_roles/payload/delta byte-for-byte, forge's own output, via an
+explicit-UTF-8 Python script per `CLAUDE.md`'s F-encoding note) into `probe-fix-item-2-step1.json`,
+adding back a `seed_sha256` pin on the promoted canonical and an updated `why`. **Known pre-existing,
+out-of-scope issue, not touched:** `forge.py`'s own source carries an em-dash mojibake in its
+`seed_roles_text()`/style-bible separator characters (independently reproduced in §12.3's Task-4 note
+on this same machine) — the SEED ROLES prose and the flat-cel descriptor both carry it in the dry-run
+below. This is baked into `forge.py`/`style-bible.md` themselves, not introduced by this edit, and the
+brief forbids editing forge — left as-is, flagged for the boss.
+
+### T1.2 — dry-run: GENERATE, canonical seed accepted, zero refusals ($0)
+
+```
+py -3 forge.py gen --kit <main-checkout>/visual-kit --batch probe-fix-item-2-step1.json --dry-run
+```
+`[1/1] fig-miniscribe-rep--action-powerstance--expr-deadpan: DRY (no API call) mode=environment
+aspect=2:3 size=1K` — seeds resolve to `refs/miniscribe-rep/miniscribe-rep.png` +
+`refs/base/expr-deadpan.png` + `refs/base/action-powerstance.png`; the SEEDING LAW raised **zero
+violations** this time (Task 2/3's exact blocker, now cleared).
+
+### T1.3 — live call ($0.039, GENERATED, first attempt, no re-issue needed)
+
+```
+py -3 forge.py gen --kit <main-checkout>/visual-kit --batch probe-fix-item-2-step1.json
+```
+
+| attempt | timing | result | price | SHA-256 |
+|---|---|---|---|---|
+| 1 | 04:0x–04:09 | **OK** → `_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png` | **$0.039** | `9476a15f8b6679e44065a78804d3cbfa88e59a888a27d179c047596f82f2bb6d` |
+
+Well under the $0.427 remaining budget and the 4-minute ceiling — no re-issue exercised.
+
+**Verification (per-invariant, by eye at ordinary viewing scale, against the PROMOTED canonical
+`refs/miniscribe-rep/miniscribe-rep.png`):**
+
+| invariant | verdict | note |
+|---|---|---|
+| Silhouette (head shape, stocky compact build) | PASS | unchanged round head, same proportion |
+| Palette / head tone | PASS | matches canonical's tan skin tone |
+| Hair | PASS | same dark side-part hairstyle |
+| Outfit | PASS | boxy tan blazer over brown open-collar shirt, dark trousers, dark shoes |
+| **Chest/lapel — the fix under test** | **PASS** | plain fabric on BOTH the canonical and this STEP-1 frame — no badge, pin, or USB-shaped object; the fix now lives in the seed pixel, confirmed carried through faithfully |
+| Expression (`expr-deadpan`) | PASS | droopy half-lidded eyes, flat neutral mouth — reads as deadpan, correctly distinct from the canonical's pleasant-neutral default |
+| Pose (`action-powerstance`) | PASS | hands on hips, wide stable stance, matches the pose primitive |
+| No nose / no ears | PASS | held on both images |
+| Flat-cel style axes (fill, outline weight/colour, no gradient/gloss) | PASS | flat colour fills, even `#241a12`-weight dark outline, no soft shading on either image |
+
+**Verdict: all invariants PASS.** The chest USB/badge defect that Task 2/3 was blocked from testing is
+confirmed fixed at its source — the STEP-1 figure faithfully inherits the promoted canonical's plain
+chest, with zero prose workaround needed. Staged at
+`visual-kit/_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png`, **NOT registered/promoted
+further** (a video-local STEP-1 asset by design — never enters `refs/`). Not entered into the review
+loop (`stamp_review.py`) — this run is verification-only, per brief; the production reuse path (L29
+recompose) remains explicitly out of scope this pass.
+
+### T1 spend: $0.039 total (of $0.427 available)
+
+### T2 — two surgical CROWD-RIG §2d doctrine edits ($0, worktree `style-bible.md` only)
+
+Located §2d at `channels/the-second-take/visual-kit/style-bible.md` lines 66–74 (the "verbatim template
+— `forge.py` expands it at gen time" blockquote; confirmed via `forge.blockquote_after(md, "CROWD-RIG
+clause")` that this exact blockquote text IS what's mechanically sent at gen time — no separate copy
+elsewhere to edit). Both edits integrated IN PLACE inside the existing blockquote, no new section, per
+`crowd-variety-analysis.md`'s two adopted recommendations:
+
+**(a) bound crowd variety — 2–3 repeating silhouettes, never open-ended per-figure invention.**
+Before: `"...dress every crowd figure for THIS shot's own scene era and setting, not the seed's period
+dress. Keep every crowd figure on this same simplified rig — do not give them individual detailed
+faces."` After (clothing sentence extended, new bound appended before the old final sentence):
+`"...dress every crowd figure for THIS shot's own scene era and setting, not the seed's period dress,
+and vary hair/headwear across at most 2–3 repeating silhouettes for the whole group — never a distinct
+hairstyle or headwear invented per individual figure."`
+
+**(b) simplified-face rule applies PER-FIGURE in multi-figure shots, without exception.** Before:
+`"Keep every crowd figure on this same simplified rig — do not give them individual detailed faces."`
+After: `"Apply this identical simplified face — dot eyes, one simple mouth, no nose, no ears — to EVERY
+crowd figure individually and without exception in a multi-figure group; a single detailed or
+individuated face anywhere in the group is a rig FAIL."` — directly targets this session's own
+reproduced defect (every L35 loader grew a nose despite the clause already forbidding it in aggregate
+but not per-figure/multi-figure-explicit language).
+
+**Verified mechanically, not just by eye:** re-ran `forge.blockquote_after(md, "CROWD-RIG clause")`
+after the edit — parses clean, full clause text intact, both new sentences present; checked every
+non-ASCII codepoint in the result (`ord(c) > 127`) and confirmed only U+2014 (em dash) and U+2013 (en
+dash, from "2–3") — no mojibake introduced by this edit. `decisions.md` NOT touched, per brief (its
+rationale entry already covers this).
+
+### Continuation spend total: $0.039
+
+Task 1 (STEP-1 re-derive): $0.039, one live call, first attempt, no re-issue. Task 2 (doctrine edits):
+$0 (text-only). Cumulative total across this file (Parts 1–4 + §12 probe-fix pass + this continuation):
+$0.575 + $0.173 + $0.039 = **$0.787**.
+
+**Not touched:** git (no commits), `refs/`, `registry.json`, `shots.json`, `decisions.md`, L29 (still
+not recomposed), L35 (its one sanctioned retry stays spent, not retried again). Housekeeping only: the
+stale pre-fix badge-carrying STEP-1 frame moved to
+`_staging/_pre-refs-promotion-archive/` (main-checkout kit) so the fresh mint could proceed; one stray
+misplaced output file from a `forge.py batch --out` path-resolution quirk (relative `--out` resolves
+against the kit's org root, not cwd, when run from the worktree — a forge behavior, not edited) was
+generated then deleted after its content was copied into `probe-fix-item-2-step1.json`.

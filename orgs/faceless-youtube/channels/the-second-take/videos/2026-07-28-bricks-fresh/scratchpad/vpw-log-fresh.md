@@ -385,3 +385,50 @@ half of N-1's declare-or-restage. Figure-bearing frames 26 to 28 of 47 (60%).
     carried four different `shot_class` values and still rendered as one image, because all four reached
     for the same nouns (cartons, apron, pale sky). Vary the world and the vantage per shot, not just the
     class.
+
+---
+
+# FIFTH 2 — act 2 authored fresh (L48–L89), 2026-08-05
+
+FRESH-AUTHORING over P07–P09, appended after the LOCKED L01–L47 (byte-identical, verified). Inputs:
+the VPW SKILL, `vpw-fresh-skeleton.md`, this log, `script.md`, the real word timings in
+`assets/voiceover.manifest.json`, `visual-grammar.md`, `example-shots.md`, `shots-schema.md`,
+`registry.json`, `assets/library/manifest.json`, `research.md`, and the CURRENT `shots.json` for
+lineage. No archived or quarantined file was read. $0, no provider call, nothing committed.
+
+**42 shots, 101.86 s, avg 2.43 s.** New places `wiles-office` (plate L63) and `miniscribe-boardroom`
+(plate L71), both `owner_ambiguity: true`; `miniscribe-plant` revisited off L28. 42 scenes + 16 STEP-1
+figure gens. Lint: 2 HARD, both partial-coverage artifacts. Forge dry-run over L48–L89: zero refusals,
+exit 0. Detail in `vpw-fifth2-report.md`.
+
+## Lessons for the remaining fifths
+
+13. **An expression-swap delta refuses at forge, even though the grammar sanctions it.** `visual-grammar.md`
+    §2 says "a swap is a legitimate delta", but forge's seeding law rejects one: the delta slate is
+    [parent + canonical] and an expression changed by prose alone reverts to the engine's prior. Clearing
+    it needs `delta_primitives`, which is **image-generation's field, not VPW's** — the SKILL says it is
+    declared only "after that exact route proved necessary". So when a beat wants a register change on a
+    held figure, author the delta's one change as a **SCENE** change that carries the same meaning (L73:
+    the whole table sitting bolt upright, not Wiles' face going smug), or open a fresh base. Caught at the
+    dry-run, at $0, and it would have refused the whole batch at gen time.
+14. **The semantic-cast law is a CASTING constraint, decided before the prose.** It fires on any shot whose
+    own `vo_text` names a generic plural role while the named slug's tokens appear nowhere in the ±1 span
+    window, and it compares SINGULARIZED forms only — it does not synonymize. So "bankers" justifies
+    `hq-banker`, but **"accountants" does NOT justify `auditor-rep`**, and "managers" does not justify
+    `brick-foreman`. Read the tiled span before choosing cast: four beats here (L71, L78, L81, L84) sit on
+    plural-role spans and are staged as mass action with crowd only, with the named lead landing on the
+    adjacent clean span (L72, L79, L82). That is also the better staging — those lines' subject is a room.
+15. **Snap a fifth to the ACT boundary, not to the fraction.** Words and VO-time disagree by ~4 points on
+    this file (P09's end is 34.1 % by words but 37.8 % by time). Both candidate boundaries sat within 2
+    points of 2/5; the act seam broke the tie, and it is the only one of the two that does not stop one
+    beat into the next act's escalation ladder.
+16. **Let the VO's clause lengths set the shot count, not a target average.** A minimum-count DP over the
+    forced-alignment timings (holds constrained to 1.5–3.0 s, cuts penalised off clause boundaries) returns
+    the real floor for a span — 45 shots unconstrained, 47 with clause preference, 54 if every beat that
+    "deserves" a frame gets one. Author from that number outward instead of dividing seconds by 2.6: it
+    tells you which splits the VO forces and which are yours to spend.
+17. **`forge.py batch --shots <range>` is the way to prove a partial file, and its place seeds look wrong
+    if you misread it.** An in-place shot shows no place seed when its plate sits OUTSIDE the scoped set —
+    fifth 1's own L33/L44/L47 behave identically. Re-probe with the plate id added to `--shots` before
+    calling it a lineage defect (here: `L48: [fig-…, L28]` once L28 was in scope). Scoping is also how a
+    partial file gets a clean run at all while an unrelated staged STEP-1 elsewhere in the file is refusing.
