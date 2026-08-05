@@ -31,7 +31,7 @@
  *              + --tracking-eyebrow.  A VIEW STYLES BY ROLE, never by raw --text-* or a px literal.
  *   Radius     --radius-sm 6 / --radius-md 8 / --radius-lg 12
  *   Motion     --transition (the ONE duration+easing for every hover / state change)
- *   Accent     --mc-accent / --mc-accent-fg (the single accent slot; defaults to the neutral)
+ *   Accent     --mc-accent / --mc-accent-fg (the single accent slot; warm parchment, landed 2026-08-05)
  *   Elevation  --shadow-elevated / --shadow-overlay / --shadow-sunken (panels are border-only)
  *   Layout     --sidebar-w / --sidebar-w-rail / --topbar-h
  *
@@ -165,12 +165,12 @@
    * quiet acknowledgement, never an animation — nothing here moves, only colour and border shift. ---- */
   --transition: 120ms ease-out;
 
-  /* ---- Accent slot (Phase 6 Unit C — PLUMBING ONLY, no colour landed). Every place an accent would
-   * touch (active nav rail, primary button fill, focus rings, the unlock chip) reads --mc-accent so a
-   * single swatch decision is a ONE-LINE change here. It defaults to the neutral --accent-strong, so
-   * the UI is byte-for-byte unchanged until Daniel picks from docs/superpowers/plans/
-   * 2026-08-05-accent-swatches.md. --mc-accent-fg is the text colour that sits ON a filled accent. ---- */
-  --mc-accent: var(--accent-strong);
+  /* ---- Accent slot. Every place an accent touches (active nav rail, primary button fill, focus
+   * rings, the unlock chip) reads --mc-accent. Landed 2026-08-05: candidate C "warm parchment" from
+   * docs/superpowers/plans/2026-08-05-accent-swatches.md — #d9c7a8 dark / #6b5b41 light, low-chroma
+   * sand deliberately distinct from the saturated amber/tier chips. --mc-accent-fg is the text colour
+   * that sits ON a filled accent; --bg-base is correct in both themes. ---- */
+  --mc-accent: #d9c7a8;
   --mc-accent-fg: var(--bg-base);
 
   /* ---- Elevation (hairline borders do most of the work; shadows reserved for floating,
@@ -205,6 +205,7 @@
     --accent-strong: #2b2925;
     --accent: #6b6558;
     --accent-quiet: rgba(0, 0, 0, 0.05);
+    --mc-accent: #6b5b41;
 
     /* Light hairline is a dark low-alpha line (structure requires the token; value unchanged from the
      * prior --border/--border-strong so light is visually identical to before this sharpen pass). */
@@ -246,6 +247,7 @@
   --accent-strong: #2b2925;
   --accent: #6b6558;
   --accent-quiet: rgba(0, 0, 0, 0.05);
+  --mc-accent: #6b5b41;
 
   --hairline: rgba(0, 0, 0, 0.1);
   --hairline-strong: rgba(0, 0, 0, 0.16);
@@ -283,6 +285,7 @@
   --accent-strong: #ededea;
   --accent: #a3a099;
   --accent-quiet: rgba(245, 244, 239, 0.06);
+  --mc-accent: #d9c7a8;
 
   --hairline: rgba(255, 255, 255, 0.1);
   --hairline-strong: rgba(255, 255, 255, 0.16);

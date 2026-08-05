@@ -1,8 +1,8 @@
 # Accent swatches — three candidates for Daniel (2026-08-05)
 
-**Status: nothing is landed.** Phase 6 Unit C plumbed the accent slot and defaulted it to the current
-neutral, so the UI is visually unchanged. This document proposes the three candidates. Daniel picks one
-(or none); applying it is a later, separate change.
+**Status: DECIDED — C (warm parchment) landed 2026-08-05.** Daniel picked C from live previews
+(https://claude.ai/code/artifact/d26251c1-141e-4ef5-98ae-15e1f3b4d72a); `#d9c7a8` dark / `#6b5b41`
+light now set in all four theme blocks of `app.css`. Candidates A/B below kept for the record.
 
 ## What is already wired
 
