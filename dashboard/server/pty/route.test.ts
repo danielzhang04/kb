@@ -425,6 +425,29 @@ describe('agent-primed spawn (Run agent)', () => {
     expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { spawn: 'shell' } });
   });
 
+  /**
+   * The session LIST has to say what each session is, not just that it exists. Without it an embedded
+   * console (an agent's own detail) cannot tell "the shell already primed for this agent" from "somebody
+   * else's shell", so remounting that surface would spawn a second one — and every leaked shell is one
+   * the Terminal's tabs can no longer open, since the 8-terminal cap is daemon-wide.
+   */
+  it('records what each session was opened as, so the list can be matched to an entity', async () => {
+    const registry = createPersistentSessionRegistry();
+    const primed = harness({ resolveAgentFile: ALLOWLIST, registry, host: fakePtyHost({ sessionId: 'pty-agent' }) });
+    await handlePtyConnection(
+      fakeSocket().sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'),
+      primed.ctx,
+    );
+    const plain = harness({ resolveAgentFile: ALLOWLIST, registry, host: fakePtyHost({ sessionId: 'pty-shell' }) });
+    await handlePtyConnection(fakeSocket().sock, req(GOOD_HEADERS(validToken())), plain.ctx);
+
+    const byId = new Map(registry.list('operator-1').map((s) => [s.sessionId, s]));
+    expect(byId.get('pty-agent')).toMatchObject({ kind: 'agent', targetRef: 'fyt-runner' });
+    // The login shell names no entity and must not be adoptable by any surface looking for one.
+    expect(byId.get('pty-shell')).toMatchObject({ kind: 'shell', targetRef: null });
+  });
+
   it('refuses an agent id that is not on the roster BEFORE anything is spawned', async () => {
     const h = harness({ resolveAgentFile: ALLOWLIST });
     const ws = fakeSocket();

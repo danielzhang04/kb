@@ -665,10 +665,14 @@ function AppShell(): React.JSX.Element {
   };
 
   /**
-   * "Run agent": hand the agent id to the persistent terminal surface and go there. The Terminal opens a
-   * shell running claude primed as that agent (the server validates the id against its own roster and
-   * resolves the file — nothing here builds a path), then reports the target consumed so a later visit
-   * does not respawn it. One click from the Agents roster to a session Daniel can type into.
+   * "Run agent" FROM THE ROSTER: hand the agent id to the persistent terminal surface and go there. The
+   * Terminal opens a shell running claude primed as that agent (the server validates the id against its
+   * own roster and resolves the file — nothing here builds a path), then reports the target consumed so a
+   * later visit does not respawn it.
+   *
+   * The agent DETAIL no longer comes through here. It has its own embedded console, so running an agent
+   * from its page keeps the operator on that page instead of throwing them at the Terminal destination.
+   * This path remains for surfaces that have nowhere of their own to land — the roster's row action.
    */
   const runAgent = (agent: { id: string }): void => {
     setRunAgentId(agent.id);

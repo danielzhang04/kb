@@ -211,8 +211,12 @@
   font-size: var(--text-sm);
 }
 
-/* The panel stack: every tab's panel occupies the SAME grid cell so switching is a pure visibility flip
- * — inactive panels stay mounted (socket + scrollback preserved), just hidden. */
+/* The panel stack: every tab's `<ConsolePane>` occupies the SAME grid cell so switching is a pure
+ * visibility flip — inactive panes stay mounted (socket + scrollback preserved), just hidden.
+ *
+ * The pane's OWN chrome (the framed well, the xterm host, the error line, and crucially the
+ * `display:none` hiding that `fitAndResize` depends on) now lives in `styles/console.css`, shared with
+ * every embedded console. All this view still owns is where the stack sits. */
 .terminal__panels {
   position: relative;
   flex: 1 1 auto;
@@ -220,65 +224,6 @@
   display: grid;
 }
 
-.terminal__panel {
-  grid-area: 1 / 1; /* stack all panels on top of each other */
-  display: none;
-  flex-direction: column;
-  min-height: 0;
-  gap: var(--space-2);
-}
-
-.terminal__panel--active {
-  display: flex;
-}
-
-/* Per-panel error line (surfaced from a server error frame that isn't the too-many-terminals notice). */
-.terminal__panel-error {
-  margin: 0;
-  color: var(--error);
-  font-size: var(--text-sm);
-  font-family: var(--font-mono);
-}
-
-/* The framed well: deepest sunken surface, hairline-bordered, sunken shadow — the "code gutter" chrome.
- * It owns the border, rounding, padding and `overflow:hidden`, but it is NOT the xterm host: FitAddon
- * measures its host's content box, and padding + border there would make it compute a row grid taller than
- * the visible (clipped) area, cutting off the bottom rows. So this stays a flex column and delegates the
- * actual xterm mount to the zero-padding `.terminal__screen` inside it. */
-.terminal__surface {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-sunken);
-  box-shadow: var(--shadow-sunken);
-  padding: var(--space-2);
-  overflow: hidden;
-}
-
-/* The true xterm host — no padding, no border, so FitAddon's measurement of this box exactly matches the
- * pixels xterm can draw into. Fills the framed surface's padded content box with a definite height. */
-.terminal__screen {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-}
-
-/* Belt-and-suspenders: force the xterm viewport onto the sunken surface so no default black shows
- * through before the JS theme applies, and keep the scrollbar neutral. */
-.terminal__surface .xterm,
-.terminal__surface .xterm-viewport,
-.terminal__surface .xterm-screen {
-  background: var(--bg-sunken) !important;
-}
-
-/* Scrollback scrolling stays (wheel/touch/keys drive xterm's viewport); the bar chrome is hidden. */
-.terminal__surface .xterm-viewport {
-  scrollbar-width: none;
-}
-
-.terminal__surface .xterm-viewport::-webkit-scrollbar {
-  display: none;
+.terminal__panels > .console-pane {
+  grid-area: 1 / 1; /* stack all panes on top of each other */
 }

@@ -261,17 +261,25 @@ describe('the not-declared empty state', () => {
     expect(screen.getByTestId('agent-allowed-profiles').textContent).toContain('worker:claude:claude-opus-4-8');
   });
 
-  it('offers "Run agent" only for an agent that has a definition file to be primed with', () => {
-    const onRunAgent = vi.fn();
+  /**
+   * "Run agent" no longer navigates to the Terminal destination — it starts the session on the agent's
+   * own Runs tab, so the operator stays on the page they were reading. The console's own behaviour
+   * (spawn/attach/cap) is covered in `AgentDetailConsole.test.tsx`; this pins the action and the gate.
+   */
+  it('offers "Run agent" only for a declared agent, and lands it on this page', () => {
+    const onSectionChange = vi.fn();
     const { rerender } = render(
-      <AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} onRunAgent={onRunAgent} />,
+      <AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} onSectionChange={onSectionChange} />,
     );
 
     fireEvent.click(screen.getByTestId('agent-run'));
-    expect(onRunAgent).toHaveBeenCalledWith(expect.objectContaining({ id: 'fyt-runner' }));
+    // It shows the Runs tab (where the session lives) and tells any controlling nav stack to follow.
+    expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
+    expect(onSectionChange).toHaveBeenCalledWith('runs');
+    expect(screen.getByLabelText('Live session for this agent')).toBeTruthy();
 
     // No declaration = nothing to prime a session with, so the action is not offered at all.
-    rerender(<AgentDetail agent={agent({ id: 'observed-only', declared: false })} onRunAgent={onRunAgent} />);
+    rerender(<AgentDetail agent={agent({ id: 'observed-only', declared: false })} onSectionChange={onSectionChange} />);
     expect(screen.queryByTestId('agent-run')).toBeNull();
   });
 

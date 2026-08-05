@@ -1,412 +1,40 @@
 /**
- * D3.2 — the PTY terminal pane (client view). A multi-tab embedded xterm.js terminal surface: each tab
- * is an INDEPENDENT shell — its own WebSocket to the governed `/api/pty` endpoint and its own xterm
- * instance. The daemon spawns the shell in-process (node-pty) and streams it; this view never holds a
- * credential and never spawns anything itself. See `server/pty/*` for the server half of the protocol.
+ * D3.2 — the PTY terminal view: a TAB MANAGER over `<ConsolePane>`.
  *
- * This view is session-gated exactly like `Vibe.tsx`/`Control.tsx`'s launch surface: without a
- * session it renders a calm locked line and connects nothing. Each tab's WebSocket carries the SAME
- * bearer session token via a subprotocol (never in the URL, which would land the token in logs); the
- * SERVER runs the same `Origin`/`Host` allowlist check as every other socket on the upgrade, then
- * re-verifies the session before streaming. The server enforces a hard cap of 8 concurrent terminals
- * across the whole daemon — the `+` button is disabled once 8 tabs are open locally, and a server-side
+ * Each tab is an INDEPENDENT shell — its own WebSocket to the governed `/api/pty` endpoint and its own
+ * xterm instance — but none of that lives here any more. The whole pane (xterm lifecycle, socket,
+ * control-frame protocol, fit/resize, close control, connection-state rendering) is
+ * `src/console/ConsolePane.tsx`, so an agent's or workflow's detail can embed the SAME console instead
+ * of forking a second implementation. What remains here is exactly the manager's job: the tab list, the
+ * local mirror of the server's 8-terminal cap, localStorage tab persistence + reconciliation, the
+ * one-shot "Run agent"/"Run workflow" target consumption, the mode toggle, and the page chrome.
+ *
+ * This view is session-gated exactly like `Vibe.tsx`/`Control.tsx`'s launch surface: without a session it
+ * renders a calm locked line and connects nothing. Each pane's WebSocket carries the SAME bearer session
+ * token via a subprotocol (never in the URL, which would land the token in logs); the SERVER runs the same
+ * `Origin`/`Host` allowlist check as every other socket on the upgrade, then re-verifies the session before
+ * streaming. The server enforces a hard cap of 8 concurrent terminals across the whole daemon — the `+`
+ * button is disabled once 8 tabs are open locally, and a server-side
  * `{"type":"error","reason":"too-many-terminals"}` frame is surfaced as an inline notice (never a crash).
- *
- * Protocol (unchanged, do not touch): SERVER→BROWSER is raw PTY output as text frames (write straight to
- * xterm) plus occasional `{"type":"error","reason":"…"}` JSON; BROWSER→SERVER is raw keystrokes as text
- * plus `{"type":"resize","cols":N,"rows":M}` JSON. The old per-open passkey ("Factor C") handshake has
- * been REMOVED from the server and from this view — no `challenge`/`assertion`/`awaiting-touch` remains.
- *
- * xterm.js AND the fit addon are loaded LAZILY (dynamic import inside the mount effect) so the module
- * never instantiates a DOM canvas at import time — the app bundle code-splits them, and unit tests that
- * never mount a tab never touch them. The house palette FULLY overrides xterm's default black/green look:
- * deepest sunken surface, warm off-white text, a NEUTRAL cursor, mono only, and NO accent colour. The
- * fit addon reflows the active tab to fill its panel; after each fit we relay the new cols/rows so the
- * PTY's window size tracks the pane (SIGWINCH), and inactive tabs keep their socket + scrollback alive.
+ * That cap is now SHARED with embedded consoles elsewhere in the app, which is why the pane also renders
+ * the refusal in place.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import '@xterm/xterm/css/xterm.css';
 import '../styles/views/terminal.css';
 import { useSession } from '../lib/sessionContext';
+import { ConsolePane } from '../console/ConsolePane';
+import type { ConsoleControl, ConsoleTarget } from '../console/ConsolePane';
 import {
+  defaultPtySocketFactory,
   defaultTerminalSessionsClient,
   loadStoredTabs,
   reconcileSessions,
   saveStoredTabs,
 } from '../lib/terminalClient';
-import type { TerminalSessionsClient } from '../lib/terminalClient';
-
-/**
- * xterm theme mapped ENTIRELY onto the house near-black palette (app.css tokens, resolved to literals
- * because xterm needs concrete colours, not CSS vars). Every ANSI slot is a warm neutral — there is no
- * terminal-green, no pure black, and no decorative accent. The cursor is a plain warm off-white.
- *
- * Exported (with {@link parseControlFrame} below) so any other surface attaching to `/api/pty` renders
- * the SAME xterm look and speaks the SAME control-frame protocol as this view, instead of forking a
- * second theme/parser for what is the identical attach path against a different session id.
- */
-export const HOUSE_XTERM_THEME = {
-  background: '#1c1b19', // --bg-sunken (deepest)
-  foreground: '#f5f4ef', // --fg-primary
-  cursor: '#b8b5ad', // --fg-dim — a neutral cursor, never a bright accent
-  cursorAccent: '#1c1b19',
-  selectionBackground: 'rgba(245, 244, 239, 0.14)', // neutral wash, not a colour
-  black: '#262624',
-  red: '#e0554a', // --error (semantic, kept)
-  green: '#5cae7e', // --success (semantic — NOT the classic terminal green default)
-  yellow: '#e0a040', // --warning
-  blue: '#b8b5ad', // neutralised — no blue chrome
-  magenta: '#b8b5ad',
-  cyan: '#b8b5ad',
-  white: '#f5f4ef',
-  brightBlack: '#82807a', // --fg-faint
-  brightRed: '#e0554a',
-  brightGreen: '#5cae7e',
-  brightYellow: '#e0a040',
-  brightBlue: '#d8d5cd',
-  brightMagenta: '#d8d5cd',
-  brightCyan: '#d8d5cd',
-  brightWhite: '#ffffff',
-} as const;
+import type { PtySocketFactory, PtySpawnTarget, TerminalSessionsClient } from '../lib/terminalClient';
 
 /** The hard cap the server enforces across the whole daemon; the `+` button mirrors it locally. */
 const MAX_TERMINALS = 8;
-
-/**
- * What a tab RUNS. Absent = the login shell (the historical default, unchanged).
- *   `claude`   — a plain interactive Claude Code session in the repo the daemon serves.
- *   `agent`    — the same session primed with `agentId`'s own declaration file.
- *   `workflow` — the same session primed as the agent that runs `workflowRef`'s definition.
- *
- * `agentId`/`workflowRef` are retained even in `claude` mode so the header toggle can switch back
- * without the operator re-picking anything. The SERVER resolves either reference to a file; the browser
- * only ever names it.
- */
-export interface PtySpawnTarget {
-  mode: 'claude' | 'agent' | 'workflow';
-  agentId?: string;
-  workflowRef?: string;
-}
-
-/** Opens the PTY WebSocket to the governed endpoint, bearer token carried as a subprotocol (never the
- *  URL). An optional `attachSessionId` reattaches to an existing persistent shell via `?session=<id>`
- *  (a non-secret reference; ownership is enforced server-side); an optional `spawn` asks the server to
- *  open something other than the login shell. Injectable so a component test can drive a tab through a
- *  fake socket. */
-export type PtySocketFactory = (
-  sessionToken: string,
-  attachSessionId?: string,
-  spawn?: PtySpawnTarget,
-) => WebSocket;
-
-/** The upgrade query for one tab. An attach and a spawn are mutually exclusive (the server refuses the
- *  combination): reattaching reuses a live shell, so there is nothing left to spawn. */
-export function ptyQuery(attachSessionId?: string, spawn?: PtySpawnTarget): string {
-  if (attachSessionId) return `?${new URLSearchParams({ session: attachSessionId }).toString()}`;
-  if (!spawn) return '';
-  const params =
-    spawn.mode === 'agent' && spawn.agentId
-      ? new URLSearchParams({ spawn: 'agent', agent: spawn.agentId })
-      : spawn.mode === 'workflow' && spawn.workflowRef
-        ? new URLSearchParams({ spawn: 'workflow', workflow: spawn.workflowRef })
-        : new URLSearchParams({ spawn: 'claude' });
-  return `?${params.toString()}`;
-}
-
-export const defaultPtySocketFactory: PtySocketFactory = (sessionToken, attachSessionId, spawn) => {
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // The token rides as a subprotocol value, not a query param — keeps it out of access logs / history.
-  return new WebSocket(
-    `${proto}//${window.location.host}/api/pty${ptyQuery(attachSessionId, spawn)}`,
-    ['kb-pty.v1', sessionToken],
-  );
-};
-
-/** Per-tab connection state. Streaming-only — there is no passkey handshake in this path any more. */
-type ConnState = 'connecting' | 'connected' | 'closed' | 'error';
-
-/** A parsed server control frame, or `null` for ordinary raw PTY output. The server sends `{"type":"error",…}`
- *  and, once per connection, `{"type":"session","sessionId":…}` (the bind frame). */
-type PtyControlFrame = { type: 'error'; reason: string } | { type: 'session'; sessionId: string };
-
-/**
- * Detect a server control frame. Every non-control frame is raw PTY bytes destined for xterm. We only
- * treat a frame as control when it parses AND carries an exact known shape, so ordinary shell output that
- * merely starts with `{` still streams.
- */
-export function parseControlFrame(raw: string): PtyControlFrame | null {
-  if (raw.length === 0 || raw[0] !== '{') return null;
-  try {
-    const parsed = JSON.parse(raw) as { type?: unknown; reason?: unknown; sessionId?: unknown } | null;
-    if (parsed !== null && typeof parsed === 'object') {
-      if (parsed.type === 'error' && typeof parsed.reason === 'string') {
-        return { type: 'error', reason: parsed.reason };
-      }
-      if (parsed.type === 'session' && typeof parsed.sessionId === 'string') {
-        return { type: 'session', sessionId: parsed.sessionId };
-      }
-    }
-  } catch {
-    /* not JSON → raw PTY bytes */
-  }
-  return null;
-}
-
-/**
- * A single shell tab: one lazily-created xterm instance bound to one WebSocket. The component MOUNTS once
- * per tab and stays mounted while its tab exists (inactive tabs are merely hidden with CSS, NOT unmounted)
- * so the socket and the scrollback survive tab switches. Closing the tab unmounts this, which tears down
- * the socket and disposes the terminal.
- */
-/** An imperative handle the manager registers per tab, so the shared close button can ask THIS tab to
- *  tear down its own (persistent) shell — the tab is the only holder of the live socket + confirmed id. */
-interface TabControl {
-  requestClose(): void;
-}
-
-interface TerminalTabProps {
-  /** Stable numeric id (also the React key upstream); passed to callbacks so the manager knows which tab. */
-  id: number;
-  /** When set, reattach to this existing persistent shell instead of opening a new one. */
-  attachSessionId?: string;
-  /** What to open when this is a FRESH tab (see {@link PtySpawnTarget}). Ignored on a reattach. */
-  spawn?: PtySpawnTarget;
-  /** Whether this tab is the visible one. Drives visibility + a re-fit when the tab becomes active. */
-  active: boolean;
-  socketFactory: PtySocketFactory;
-  /** Kill the tab's server shell whose socket is already gone. Best-effort; injected for tests. */
-  removeSession: (sessionId: string, token: string) => Promise<void>;
-  /** Reports a server error frame (e.g. `too-many-terminals`) up to the tab manager. Must be stable. */
-  onError: (id: number, reason: string) => void;
-  /** Reports the server's `{type:'session'}` bind frame so the manager can persist this tab. Stable. */
-  onSession: (id: number, sessionId: string) => void;
-  /** The tab's server shell has ended (shell exit / operator close) → drop the tab locally. Stable. */
-  onClosed: (id: number) => void;
-  /** Publish/withdraw this tab's imperative close control to the manager. Stable. */
-  registerControl: (id: number, control: TabControl | null) => void;
-}
-
-function TerminalTab({
-  id,
-  attachSessionId,
-  spawn,
-  active,
-  socketFactory,
-  removeSession,
-  onError,
-  onSession,
-  onClosed,
-  registerControl,
-}: TerminalTabProps): React.JSX.Element {
-  // The bearer comes from the app's ONE session, not a prop. A tab is only ever rendered by an unlocked
-  // manager, so this is defined in practice; the effect still guards rather than opening a bare socket.
-  const { session } = useSession();
-  const sessionToken = session?.token;
-  const hostRef = useRef<HTMLDivElement>(null);
-  // Live handles kept in refs so the resize/fit effects can reach them without re-running the mount effect.
-  const xtermRef = useRef<{ cols: number; rows: number; write(d: string): void; dispose(): void } | null>(null);
-  const fitRef = useRef<{ fit(): void } | null>(null);
-  const socketRef = useRef<WebSocket | null>(null);
-  // The server-confirmed sessionId for THIS tab (from the bind frame). Kept in a ref so the imperative
-  // close control can reach it without re-running the mount effect.
-  const sessionIdRef = useRef<string | null>(attachSessionId ?? null);
-  const [state, setState] = useState<ConnState>('connecting');
-  const [errorReason, setErrorReason] = useState<string | null>(null);
-
-  /**
-   * Fit the terminal to its panel and relay the resulting geometry to the PTY. No-ops while the tab is
-   * hidden (a `display:none` panel measures 0×0 and would corrupt the grid) — the `active` effect below
-   * re-fits the moment the tab becomes visible again.
-   */
-  const fitAndResize = useCallback(() => {
-    const host = hostRef.current;
-    const fitAddon = fitRef.current;
-    const xterm = xtermRef.current;
-    const ws = socketRef.current;
-    if (!host || !fitAddon || !xterm) return;
-    if (host.offsetParent === null) return; // hidden tab — dimensions are unreliable
-    try {
-      fitAddon.fit();
-    } catch {
-      return; // fit can throw if the element was detached mid-teardown
-    }
-    if (ws && ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'resize', cols: xterm.cols, rows: xterm.rows }));
-    }
-  }, []);
-
-  // Mount: lazily create xterm + fit addon, open the socket, wire the streaming path. Runs ONCE per tab
-  // (deps are all stable) so a tab switch never re-connects. Cleanup closes the socket + disposes xterm.
-  useEffect(() => {
-    // A tab is only rendered by an unlocked manager, but never open a bare socket on a re-lock race.
-    if (!sessionToken) return;
-    let disposed = false;
-    setState('connecting');
-
-    void (async () => {
-      const [{ Terminal: XTerm }, { FitAddon }] = await Promise.all([
-        import('@xterm/xterm'),
-        import('@xterm/addon-fit'),
-      ]);
-      if (disposed || !hostRef.current) return;
-
-      const xterm = new XTerm({
-        theme: HOUSE_XTERM_THEME,
-        fontFamily: "ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace",
-        fontSize: 13,
-        cursorBlink: true,
-        cursorStyle: 'block',
-        convertEol: true,
-      });
-      const fitAddon = new FitAddon();
-      xterm.loadAddon(fitAddon);
-      xterm.open(hostRef.current);
-      xtermRef.current = xterm as unknown as typeof xtermRef.current;
-      fitRef.current = fitAddon as unknown as typeof fitRef.current;
-      fitAndResize(); // initial size (guarded no-op if this tab mounts hidden)
-
-      const ws = socketFactory(sessionToken, attachSessionId, spawn);
-      socketRef.current = ws;
-      ws.onopen = () => {
-        if (disposed) return;
-        setState('connected');
-        fitAndResize(); // send the PTY its first real window size
-      };
-      ws.onmessage = (ev) => {
-        if (disposed) return;
-        const raw = typeof ev.data === 'string' ? ev.data : '';
-        if (raw.length === 0) return;
-        // Control path FIRST: server error/session frames are handled, never written to the grid.
-        // Everything else is raw PTY output.
-        const frame = parseControlFrame(raw);
-        if (frame) {
-          if (frame.type === 'error') {
-            setState('error');
-            setErrorReason(frame.reason);
-            onError(id, frame.reason);
-          } else {
-            // Bind frame: record the confirmed sessionId (drives persistence + REST close).
-            sessionIdRef.current = frame.sessionId;
-            onSession(id, frame.sessionId);
-          }
-          return;
-        }
-        xterm.write(raw);
-      };
-      ws.onclose = (ev?: { reason?: string }) => {
-        if (disposed) return;
-        setState('closed');
-        // A clean server-driven end (shell exited / operator close) drops the tab; an UNEXPECTED
-        // disconnect (e.g. daemon restart, code 1006 / no reason) keeps the tab and its error display —
-        // the next reload reconciles it against the live-session list.
-        const reason = ev?.reason ?? '';
-        if (reason === 'shell exited' || reason === 'closed by operator') onClosed(id);
-      };
-      ws.onerror = () => !disposed && setState('error');
-      // Keystrokes → the PTY stdin (raw text frames).
-      xterm.onData((d: string) => {
-        if (ws.readyState === ws.OPEN) ws.send(d);
-      });
-    })();
-
-    return () => {
-      disposed = true;
-      try {
-        // Closing the socket only DETACHES the persistent shell server-side — it keeps running. A tab that
-        // is truly being closed has already killed its shell via the close frame / REST DELETE.
-        socketRef.current?.close();
-      } catch {
-        /* socket may not have opened */
-      }
-      xtermRef.current?.dispose();
-      socketRef.current = null;
-      xtermRef.current = null;
-      fitRef.current = null;
-    };
-  }, [id, sessionToken, attachSessionId, spawn, socketFactory, onError, onSession, onClosed, fitAndResize]);
-
-  // Publish an imperative close control so the manager's shared close button can tear down THIS tab's
-  // persistent shell: a graceful `{type:'close'}` when the socket is live (the server kills + closes,
-  // and `onclose` drops the tab), else a REST DELETE for a session whose socket is already gone.
-  const requestClose = useCallback(() => {
-    const ws = socketRef.current;
-    const sessionId = sessionIdRef.current;
-    if (ws && ws.readyState === ws.OPEN) {
-      try {
-        ws.send(JSON.stringify({ type: 'close' }));
-      } catch {
-        onClosed(id);
-      }
-      return;
-    }
-    if (sessionId && sessionToken) void removeSession(sessionId, sessionToken);
-    onClosed(id);
-  }, [id, sessionToken, removeSession, onClosed]);
-
-  useEffect(() => {
-    registerControl(id, { requestClose });
-    return () => registerControl(id, null);
-  }, [id, registerControl, requestClose]);
-
-  // Re-fit whenever this tab becomes the active/visible one — a hidden tab could not be measured, so its
-  // grid may be stale after a resize that happened while it was in the background.
-  useEffect(() => {
-    if (!active) return;
-    const raf = requestAnimationFrame(() => fitAndResize());
-    return () => cancelAnimationFrame(raf);
-  }, [active, fitAndResize]);
-
-  // Reflow on container/window resize. The ResizeObserver catches panel/layout changes; the window
-  // listener is belt-and-suspenders. Both funnel through the guarded `fitAndResize`.
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => fitAndResize());
-    observer.observe(host);
-    const onWindowResize = () => fitAndResize();
-    window.addEventListener('resize', onWindowResize);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', onWindowResize);
-    };
-  }, [fitAndResize]);
-
-  // One robustness refit once the web fonts have loaded. The first fit can run against fallback-font
-  // metrics; when the mono face swaps in the cell size changes, which would otherwise leave the bottom row
-  // clipped until the next resize. `document.fonts.ready` fires once; the guarded fit no-ops if hidden.
-  useEffect(() => {
-    if (typeof document === 'undefined' || !document.fonts?.ready) return;
-    let cancelled = false;
-    void document.fonts.ready.then(() => {
-      if (!cancelled) fitAndResize();
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [fitAndResize]);
-
-  return (
-    <div
-      className={`terminal__panel${active ? ' terminal__panel--active' : ''}`}
-      role="tabpanel"
-      aria-hidden={!active}
-      data-state={state}
-      data-testid={`terminal-panel-${id}`}
-    >
-      {errorReason ? (
-        <p className="terminal__panel-error" role="status" data-testid={`terminal-panel-error-${id}`}>
-          Terminal error: {errorReason}
-        </p>
-      ) : null}
-      {/* The `.terminal__surface` is the visual well (border/rounding/overflow/sunken shadow); the
-          inner zero-padding `.terminal__screen` is what `xterm.open()` targets so FitAddon measures a
-          true content box and the fitted row grid is never clipped by the well's padding + overflow. */}
-      <div className="terminal__surface" data-testid={`terminal-surface-${id}`}>
-        <div ref={hostRef} className="terminal__screen" data-testid={`terminal-screen-${id}`} />
-      </div>
-    </div>
-  );
-}
 
 export interface TerminalProps {
   /**
@@ -425,9 +53,10 @@ export interface TerminalProps {
   /** Persistence client (live-session list + REST kill). Injected in tests; defaults to the real fetch. */
   sessionsClient?: TerminalSessionsClient;
   /**
-   * An agent the operator asked to run ("Run agent" on the Agents surface). Consumed ONCE: the view
-   * opens a primed tab for it and calls {@link onAgentTargetConsumed}, so returning to the terminal
-   * later never respawns the same agent behind the operator's back.
+   * An agent the operator asked to run from a surface that has no console of its own. Consumed ONCE: the
+   * view opens a primed tab for it and calls {@link onAgentTargetConsumed}, so returning to the terminal
+   * later never respawns the same agent behind the operator's back. The agent DETAIL no longer uses this
+   * path — it runs its agent in its own embedded console — but the roster's row action still does.
    */
   agentTarget?: string | null;
   onAgentTargetConsumed?: () => void;
@@ -462,8 +91,16 @@ export function tabLabel(tab: TabEntry, index: number): string {
   return `powershell ${index + 1}`;
 }
 
+/** One tab's console target. A RESTORED tab reattaches; every other tab spawns (an absent `spawn` being
+ *  the login shell). The two are mutually exclusive by construction now — the old prop pair let both be
+ *  set at once and silently dropped the spawn. */
+export function tabTarget(tab: TabEntry): ConsoleTarget {
+  if (tab.attachSessionId) return { mode: 'attach', sessionId: tab.attachSessionId };
+  return { mode: 'spawn', ...(tab.spawn ? { spawn: tab.spawn } : {}) };
+}
+
 /**
- * The terminal surface: a tab manager over independent `TerminalTab` shells. Session-gated through the
+ * The terminal surface: a tab manager over independent `<ConsolePane>` shells. Session-gated through the
  * app's ONE unlock — locked it renders a calm line that runs the shared ceremony on click and opens
  * nothing; unlocked it opens one tab and lets the operator add up to `MAX_TERMINALS`.
  */
@@ -484,8 +121,8 @@ export function Terminal({
   const [notice, setNotice] = useState<string | null>(null);
   const nextIdRef = useRef(1);
   const [signingIn, setSigningIn] = useState(false);
-  // Per-tab imperative close controls, published by each TerminalTab (see `registerControl`).
-  const closersRef = useRef(new Map<number, TabControl>());
+  // Per-tab imperative close controls, published by each ConsolePane (see `registerControl`).
+  const closersRef = useRef(new Map<number, ConsoleControl>());
   // Reconcile the persistent-session list against storage exactly ONCE per signed-in visible session.
   const reconciledRef = useRef(false);
   // The last agent target actually spawned. Reset to null whenever the caller clears the target, so the
@@ -533,7 +170,7 @@ export function Terminal({
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, sessionId } : t)));
   }, []);
 
-  const registerControl = useCallback((id: number, control: TabControl | null) => {
+  const registerControl = useCallback((id: number, control: ConsoleControl | null) => {
     if (control) closersRef.current.set(id, control);
     else closersRef.current.delete(id);
   }, []);
@@ -571,7 +208,7 @@ export function Terminal({
 
   // Stable per-manager error sink. `too-many-terminals` becomes an inline notice and drops the offending
   // tab (it never got a shell). A `session-not-found` means a remembered id is dead → drop it (storage is
-  // rewritten by the persistence effect). Any other error stays visible inside its own panel.
+  // rewritten by the persistence effect). Any other error stays visible inside its own pane.
   const handleTabError = useCallback(
     (id: number, reason: string) => {
       if (reason === 'too-many-terminals') {
@@ -632,9 +269,9 @@ export function Terminal({
   }, [sessionToken, visible, sessionsClient]);
 
   /**
-   * "Run agent", one click from the Agents surface: open a tab running claude primed as that agent and
-   * report the target consumed. Guarded by `consumedAgentRef` so a re-render (or the caller's own clear)
-   * cannot spawn a second shell for the same request.
+   * "Run agent" from a surface with no console of its own: open a tab running claude primed as that
+   * agent and report the target consumed. Guarded by `consumedAgentRef` so a re-render (or the caller's
+   * own clear) cannot spawn a second shell for the same request.
    */
   useEffect(() => {
     if (!agentTarget) {
@@ -813,18 +450,18 @@ export function Terminal({
 
           <div className="terminal__panels">
             {tabs.map((tab) => (
-              <TerminalTab
+              <ConsolePane
                 key={tab.id}
-                id={tab.id}
-                attachSessionId={tab.attachSessionId}
-                spawn={tab.spawn}
-                active={visible && tab.id === activeId}
+                target={tabTarget(tab)}
+                visible={visible && tab.id === activeId}
                 socketFactory={socketFactory}
-                removeSession={sessionsClient.remove}
-                onError={handleTabError}
-                onSession={handleTabSession}
-                onClosed={removeTab}
-                registerControl={registerControl}
+                sessionsClient={sessionsClient}
+                onError={(reason) => handleTabError(tab.id, reason)}
+                onSession={(sessionId) => handleTabSession(tab.id, sessionId)}
+                onExit={() => removeTab(tab.id)}
+                registerControl={(control) => registerControl(tab.id, control)}
+                testIdSuffix={`-${tab.id}`}
+                role="tabpanel"
               />
             ))}
           </div>

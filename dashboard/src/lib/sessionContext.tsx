@@ -116,3 +116,16 @@ export function useSession(): SessionContextValue {
   if (!value) throw new Error('useSession must be used inside a <SessionProvider>');
   return value;
 }
+
+/**
+ * The same context, but `null` instead of a throw when there is no provider above.
+ *
+ * For components that are EMBEDDED inside presentational surfaces which are legitimately rendered
+ * standalone (an agent detail rendered from a literal fixture, with no app shell around it). Such a
+ * component must degrade to its locked state, not crash the surface that contains it. Everything that
+ * is only ever mounted inside the app keeps using {@link useSession}, so a genuinely missing provider
+ * there still fails loudly.
+ */
+export function useOptionalSession(): SessionContextValue | null {
+  return useContext(SessionContext);
+}

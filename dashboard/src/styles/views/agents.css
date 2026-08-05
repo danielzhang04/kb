@@ -160,3 +160,64 @@
 .v-agents__system > .mc-empty {
   padding-inline: var(--space-4);
 }
+
+/* ── The agent's embedded console ────────────────────────────────────────────────────────────────
+ * A live shell for THIS agent, inside its own detail (Runs tab). The pane's chrome is `console.css`;
+ * this only gives it a definite height to fit into and dresses the one-line control bar above it.
+ * Neutral chrome throughout, P6 tokens only. */
+.agent-console {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--space-2);
+}
+
+/* The pane sizes itself to whatever box it is given, and an `auto` parent would collapse it to nothing.
+ * A fixed viewport share keeps the console usable without pushing the runs list below the fold. */
+.agent-console > .console-pane--visible {
+  height: 42vh;
+  min-height: 14rem;
+}
+
+.agent-console__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.agent-console__state {
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  letter-spacing: 0.02em;
+  margin-right: auto;
+}
+
+.agent-console__close,
+.agent-console__unlock {
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
+.agent-console__close {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.agent-console__close:hover {
+  color: var(--fg-primary);
+  border-color: var(--border-strong);
+}
+
+/* Cap refusals and other operator-actionable notices, in place — never a navigation away. */
+.agent-console__notice {
+  margin: 0;
+  color: var(--warning);
+  font-size: var(--type-meta-size);
+}

@@ -631,7 +631,9 @@ export function Agents({
           routing={routingControlFor(openAgentRow)}
           detail={detail}
           detailState={detailState === 'idle' ? undefined : detailState}
-          onRunAgent={onRunAgent}
+          // No `onRunAgent` here: the detail runs its agent in its OWN embedded console now, so this
+          // surface never routes that click to the Terminal destination. The ROSTER row action below
+          // still does — a row has no console of its own to land in.
           activeSectionId={activeSectionId}
           onSectionChange={onSectionChange}
           onNavigate={onNavigate}

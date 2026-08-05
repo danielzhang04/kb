@@ -13,11 +13,71 @@
  */
 export type FetchLike = typeof fetch;
 
-/** One live session as the server reports it. */
+/**
+ * What a session RUNS. Absent = the login shell (the historical default, unchanged).
+ *   `claude`   — a plain interactive Claude Code session in the repo the daemon serves.
+ *   `agent`    — the same session primed with `agentId`'s own declaration file.
+ *   `workflow` — the same session primed as the agent that runs `workflowRef`'s definition.
+ *
+ * `agentId`/`workflowRef` are retained even in `claude` mode so a mode toggle can switch back without
+ * the operator re-picking anything. The SERVER resolves either reference to a file; the browser only
+ * ever names it.
+ */
+export interface PtySpawnTarget {
+  mode: 'claude' | 'agent' | 'workflow';
+  agentId?: string;
+  workflowRef?: string;
+}
+
+/** Opens the PTY WebSocket to the governed endpoint, bearer token carried as a subprotocol (never the
+ *  URL). An optional `attachSessionId` reattaches to an existing persistent shell via `?session=<id>`
+ *  (a non-secret reference; ownership is enforced server-side); an optional `spawn` asks the server to
+ *  open something other than the login shell. Injectable so a component test can drive a console
+ *  through a fake socket. */
+export type PtySocketFactory = (
+  sessionToken: string,
+  attachSessionId?: string,
+  spawn?: PtySpawnTarget,
+) => WebSocket;
+
+/** The upgrade query for one console. An attach and a spawn are mutually exclusive (the server refuses
+ *  the combination): reattaching reuses a live shell, so there is nothing left to spawn. Callers express
+ *  that exclusivity in their own types now (see `ConsoleTarget`); this stays defensive. */
+export function ptyQuery(attachSessionId?: string, spawn?: PtySpawnTarget): string {
+  if (attachSessionId) return `?${new URLSearchParams({ session: attachSessionId }).toString()}`;
+  if (!spawn) return '';
+  const params =
+    spawn.mode === 'agent' && spawn.agentId
+      ? new URLSearchParams({ spawn: 'agent', agent: spawn.agentId })
+      : spawn.mode === 'workflow' && spawn.workflowRef
+        ? new URLSearchParams({ spawn: 'workflow', workflow: spawn.workflowRef })
+        : new URLSearchParams({ spawn: 'claude' });
+  return `?${params.toString()}`;
+}
+
+export const defaultPtySocketFactory: PtySocketFactory = (sessionToken, attachSessionId, spawn) => {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  // The token rides as a subprotocol value, not a query param — keeps it out of access logs / history.
+  return new WebSocket(
+    `${proto}//${window.location.host}/api/pty${ptyQuery(attachSessionId, spawn)}`,
+    ['kb-pty.v1', sessionToken],
+  );
+};
+
+/** What a live session was OPENED as, as the server records it at create time. `shell` is the login
+ *  shell (no spawn parameters); the other three mirror {@link PtySpawnTarget.mode}. */
+export type PtySessionKind = 'shell' | 'claude' | 'agent' | 'workflow';
+
+/** One live session as the server reports it. `kind`/`targetRef` are what let a surface find the session
+ *  ALREADY bound to the entity it is showing, instead of opening a second one beside it. */
 export interface PtySessionSummary {
   sessionId: string;
   createdAt: number;
   attached: boolean;
+  /** What this session runs. Older daemons omit it; readers treat a missing value as `shell`. */
+  kind?: PtySessionKind;
+  /** The agent id / workflow ref this session was primed for, or null for a shell or plain claude. */
+  targetRef?: string | null;
 }
 
 /** GET the caller's live sessions. Any non-2xx (e.g. an expired session → 401) yields `[]` so the view

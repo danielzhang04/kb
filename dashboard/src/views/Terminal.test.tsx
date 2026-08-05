@@ -77,9 +77,11 @@ vi.mock('@xterm/addon-fit', () => {
 // The component imports the xterm CSS as a side effect; stub it so jsdom/vitest doesn't parse a real sheet.
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
-import { Terminal, ptyQuery } from './Terminal';
-import type { PtySpawnTarget } from './Terminal';
-import type { PtySessionSummary, TerminalSessionsClient } from '../lib/terminalClient';
+import { Terminal } from './Terminal';
+// `ptyQuery` and the spawn/socket types moved to `lib/terminalClient` with the ConsolePane extraction:
+// the pane and this manager now share ONE URL builder instead of the view owning the pty HTTP surface.
+import { ptyQuery } from '../lib/terminalClient';
+import type { PtySessionSummary, PtySpawnTarget, TerminalSessionsClient } from '../lib/terminalClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
 /** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
@@ -196,7 +198,7 @@ describe('Terminal — session gating + subprotocol token', () => {
     await waitFor(() => expect(sockets.length).toBe(1));
     const firstSocket = sockets[0];
     const firstTab = screen.getByTestId('terminal-tab-1');
-    const screenHost = screen.getByTestId('terminal-screen-1');
+    const screenHost = screen.getByTestId('console-screen-1');
     Object.defineProperty(screenHost, 'offsetParent', { configurable: true, value: document.body });
 
     rerender(unlocked(<Terminal visible={false} socketFactory={factory} sessionsClient={client} />));

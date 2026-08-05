@@ -591,15 +591,27 @@ export async function handlePtyConnection(
   //    the shell's banner/first prompt emitted during the async audit below is captured, never dropped.
   let created: { sessionId: string; createdAt: number };
   try {
-    created = registry.create(owner, ctx.ptyHost, {
-      requestId: '',
-      // Always the repo THIS daemon serves — resolved from the server's own config, never from the
-      // request. An agent-primed claude therefore starts in the same checkout the agent file came from.
-      cwd: ctx.repoRoot,
-      cols: DEFAULT_COLS,
-      rows: DEFAULT_ROWS,
-      ...(command ? { command } : {}),
-    });
+    created = registry.create(
+      owner,
+      ctx.ptyHost,
+      {
+        requestId: '',
+        // Always the repo THIS daemon serves — resolved from the server's own config, never from the
+        // request. An agent-primed claude therefore starts in the same checkout the agent file came from.
+        cwd: ctx.repoRoot,
+        cols: DEFAULT_COLS,
+        rows: DEFAULT_ROWS,
+        ...(command ? { command } : {}),
+      },
+      // What this session IS, recorded alongside it. The same facts the `opened` audit row carries, kept
+      // where a later `GET /api/pty/sessions` can return them: a surface showing one agent has to be able
+      // to find the session already primed for THAT agent and reattach, instead of spawning a second one
+      // every time it is re-rendered. Descriptive only — ownership still gates every operation.
+      {
+        kind: spawnParams.spawn?.mode ?? 'shell',
+        targetRef: spawnParams.spawn?.agentId ?? spawnParams.spawn?.workflowRef ?? null,
+      },
+    );
   } catch (err) {
     await audit('spawn-failed', owner, { error: (err as Error).message });
     if (isOpen(socket)) {
