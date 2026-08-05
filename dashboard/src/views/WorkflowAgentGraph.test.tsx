@@ -7,6 +7,8 @@
  * "Nobody yet" box with zero arrows, which is what "I see nothing in the agent graph" was. A
  * fourteen-step chain with nobody assigned must still draw fourteen boxes and its full chain of arrows.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { WorkflowDefEntry } from './WorkflowDetail';
@@ -366,5 +368,55 @@ describe('the canvas', () => {
   it('explains itself in plain words', () => {
     render(<WorkflowAgentGraph entry={entry()} />);
     expect(screen.getByTestId('reactflow-panel').textContent).toContain('arrows show what runs after what');
+  });
+});
+
+/**
+ * THE REGRESSION PIN for the live "nothing to see, nothing to click on" defect.
+ *
+ * Every test above mocks `reactflow`, so none of them can see layout — and the graph rendered PERFECTLY
+ * in jsdom while being completely invisible in a browser. Measured live: `.v-workflow-network__canvas`
+ * was 758x736, but `.react-flow` inside it computed to height 0px, because reactflow's root is
+ * `height: 100%` and a percentage height resolves against the parent's `height` property, which a bare
+ * `min-height` never sets. `fitView` then framed a zero-height viewport and pushed the nodes outside the
+ * `overflow: hidden` clip.
+ *
+ * jsdom will not compute that for us, so we assert the CSS CONTRACT directly: the canvas must declare a
+ * real `height`. Reverting it to `min-height` alone fails these tests.
+ */
+describe('the canvas height contract (the invisible-graph regression)', () => {
+  // Resolved from the project root, not `import.meta.url`: this suite runs under jsdom, where
+  // `import.meta.url` is an http: URL that `readFileSync` cannot take.
+  const css = readFileSync(resolve(process.cwd(), 'src/styles/views/workflows.css'), 'utf8');
+
+  /** Every declaration block whose selector mentions the canvas class, minus the state-only rules. */
+  const canvasBlocks = (): string[] => {
+    const blocks: string[] = [];
+    const re = /([^{}]*\.v-workflow-network__canvas[^{}]*)\{([^}]*)\}/g;
+    for (let m = re.exec(css); m !== null; m = re.exec(css)) {
+      if (!/:focus-within|:hover/.test(m[1] as string)) blocks.push(m[2] as string);
+    }
+    return blocks;
+  };
+
+  it('declares the canvas rules at all', () => {
+    expect(canvasBlocks().length).toBeGreaterThanOrEqual(2); // base + the narrow-viewport override
+  });
+
+  it('never sizes the canvas with min-height ALONE — that is exactly the bug', () => {
+    for (const block of canvasBlocks()) {
+      if (!/min-height\s*:/.test(block)) continue;
+      expect(block).toMatch(/(^|[;\s])height\s*:/);
+    }
+  });
+
+  it('gives the base rule an explicit height, so reactflow can resolve height:100%', () => {
+    expect(canvasBlocks()[0] as string).toMatch(/(^|[;\s])height\s*:\s*\d/);
+  });
+
+  it('keeps an explicit height in the narrow-viewport override too', () => {
+    const narrow = canvasBlocks().slice(1);
+    expect(narrow.length).toBeGreaterThan(0);
+    for (const block of narrow) expect(block).toMatch(/(^|[;\s])height\s*:\s*\d/);
   });
 });

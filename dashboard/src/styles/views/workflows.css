@@ -154,8 +154,15 @@
   min-width: 0;
 }
 
+/* An EXPLICIT height, not merely a min-height. reactflow's own root element is `height: 100%`, and a
+ * percentage height resolves against the parent's `height` PROPERTY — a `min-height` alone leaves that
+ * indeterminate, so `.react-flow` computed to 0px, `fitView` framed a zero-height box, and every node
+ * landed outside the `overflow: hidden` clip. The graph was fully rendered (15 nodes, 21 edges in the
+ * DOM) and entirely invisible: "nothing to see, nothing to click on". Measured live before/after —
+ * `.react-flow` height 0px -> 734px the moment an explicit height exists.
+ * If you change this, keep a HEIGHT here; min-height alone reintroduces the bug. */
 .v-workflow-network__canvas {
-  min-height: 46rem;
+  height: 46rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -284,7 +291,8 @@
 .v-workflow-step__open:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 
 @media (max-width: 820px) {
-  .v-workflow-network__canvas { min-height: 25rem; }
+  /* Same contract as the base rule: an explicit height, never a bare min-height. */
+  .v-workflow-network__canvas { height: 25rem; }
   .v-workflow-step { width: min(17rem, calc(100vw - 5rem)); }
 }
 

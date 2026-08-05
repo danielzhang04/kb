@@ -57,7 +57,9 @@ import { resolveRepoRoot } from '../http/surface.ts';
 import { declaredAgentFilePath } from '../agents/roster.ts';
 import { declaredWorkflowDefPath, workflowPrimingText } from '../workflows/routes.ts';
 import { resolveDashboardStateRoot } from '../composer/store.ts';
+import { buildChildEnv } from './host.ts';
 import type { PtyCommand, PtyHost } from './host.ts';
+import { CommandNotFoundError, resolveCommandPath } from './resolveCommand.ts';
 import { createPersistentSessionRegistry, SESSION_ID_RE } from './persistentSessions.ts';
 import type { PersistentSessionRegistry, SessionSink } from './persistentSessions.ts';
 
@@ -122,8 +124,24 @@ export type SpawnParamResult =
 /**
  * The claude CLI as an argv[0]. Same command name the governed worker adapter spawns
  * (`server/control/claudeWorkerAdapter.ts`), resolved through the child's allowlisted PATH.
+ *
+ * NEVER passed to node-pty as-is. node-pty's ConPTY agent does not PATHEXT-search a bare, extensionless
+ * name, so spawning this literally failed with an empty `File not found: ` — the live "Run agent" /
+ * "Run workflow" defect. {@link resolveClaudeFile} turns it into an absolute path first.
  */
 export const CLAUDE_COMMAND = 'claude';
+
+/** Resolves {@link CLAUDE_COMMAND} to an absolute executable path. Injected in tests. */
+export type ClaudeFileResolver = () => string;
+
+/**
+ * The real resolver: look `claude` up on the CHILD's allowlisted PATH — the very environment the spawned
+ * process will run with — so what we resolve is exactly what it could itself have found. Throws
+ * {@link CommandNotFoundError} when the CLI is absent, which the handler audits as
+ * `claude-not-found-on-path`.
+ */
+export const resolveClaudeFile: ClaudeFileResolver = () =>
+  resolveCommandPath(CLAUDE_COMMAND, buildChildEnv(process.env));
 
 /**
  * Parse the optional `spawn`/`agent` query parameters off the upgrade URL.
@@ -166,9 +184,20 @@ export function parseSpawnParams(url: string | undefined): SpawnParamResult {
  * path — the agent declaration resolved through the roster allowlist for `agent`, or the priming file
  * this server just generated for `workflow` — never a client string. It lands as its own argv element
  * beside the flag, so a path is a path and can never become extra arguments or a shell fragment.
+ *
+ * `file` is ALWAYS an ABSOLUTE, resolved executable — never the bare `claude`. node-pty's ConPTY agent
+ * does not PATHEXT-search a bare, extensionless name, so the bare form failed every spawn with an empty
+ * `File not found: `. `resolveFile` is the injectable seam; it throws {@link CommandNotFoundError} when
+ * the CLI is absent from the child's PATH, and the caller fails closed on that.
+ *
+ * The argv-purity property is unchanged: we resolve a PATH lookup to a path, we do not wrap in a shell.
  */
-export function buildSpawnCommand(spawn: PtySpawnRequest, primingFile: string | null): PtyCommand {
-  if (spawn.mode === 'claude') return { file: CLAUDE_COMMAND, args: [] };
+export function buildSpawnCommand(
+  spawn: PtySpawnRequest,
+  primingFile: string | null,
+  resolveFile: ClaudeFileResolver = resolveClaudeFile,
+): PtyCommand {
+  if (spawn.mode === 'claude') return { file: resolveFile(), args: [] };
   if (primingFile === null || primingFile === '') {
     throw new Error(
       spawn.mode === 'workflow'
@@ -176,7 +205,7 @@ export function buildSpawnCommand(spawn: PtySpawnRequest, primingFile: string | 
         : 'buildSpawnCommand: an agent-primed spawn needs a server-resolved declaration path',
     );
   }
-  return { file: CLAUDE_COMMAND, args: ['--append-system-prompt-file', primingFile] };
+  return { file: resolveFile(), args: ['--append-system-prompt-file', primingFile] };
 }
 
 /** A workflow ref safe to reuse verbatim as a filename stem (the parser's own definition-id grammar). */
@@ -269,6 +298,12 @@ export interface PtyRouteContext {
    * at a temp directory.
    */
   workflowPrimingRoot: string;
+  /**
+   * Resolves the claude CLI to an ABSOLUTE path against the child's own allowlisted PATH. Defaults to
+   * {@link resolveClaudeFile}; injected in tests so no test depends on this machine having the CLI
+   * installed, and so the not-found branch is exercisable.
+   */
+  resolveClaudeFile: ClaudeFileResolver;
 }
 
 /** Build a full {@link PtyRouteContext}, filling every unset field with its real default. The session
@@ -300,6 +335,7 @@ export function makePtyRouteContext(overrides: Partial<PtyRouteContext> = {}): P
     resolveAgentFile: overrides.resolveAgentFile ?? declaredAgentFilePath,
     resolveWorkflowFile: overrides.resolveWorkflowFile ?? declaredWorkflowDefPath,
     workflowPrimingRoot: overrides.workflowPrimingRoot ?? join(resolveDashboardStateRoot(), 'pty-priming'),
+    resolveClaudeFile: overrides.resolveClaudeFile ?? resolveClaudeFile,
   };
 }
 
@@ -524,7 +560,23 @@ export async function handlePtyConnection(
         return;
       }
     }
-    command = buildSpawnCommand(spawnParams.spawn, primingFile);
+    // Resolving `claude` to an absolute path is the LAST thing before the spawn, and it can fail: the
+    // CLI may not be on the child's PATH at all. Fail CLOSED and NAMED — one `claude-not-found-on-path`
+    // row an operator can act on, never node-pty's empty `File not found: `.
+    try {
+      command = buildSpawnCommand(spawnParams.spawn, primingFile, ctx.resolveClaudeFile);
+    } catch (err) {
+      if (err instanceof CommandNotFoundError) {
+        await audit('claude-not-found-on-path', owner, { command: err.command, searchedDirs: err.searchedDirs });
+        if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'claude-not-found-on-path' }));
+        socket.close(1011, 'claude-not-found-on-path');
+        return;
+      }
+      await audit('spawn-failed', owner, { error: (err as Error).message });
+      if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'spawn-failed' }));
+      socket.close(1011, (err as Error).message);
+      return;
+    }
   }
 
   // 4b. Concurrency cap — count LIVE SESSIONS, refuse over the ceiling BEFORE spawning anything.

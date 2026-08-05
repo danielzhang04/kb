@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
@@ -31,6 +31,11 @@ import {
   workflowPrimingFileName,
 } from './route.ts';
 import type { PtyRouteContext, PtySocketLike } from './route.ts';
+import { CommandNotFoundError } from './resolveCommand.ts';
+
+/** The absolute path the tests' claude resolver returns. Hermetic: no test needs the CLI installed, and
+ *  its ABSOLUTENESS is itself the property under test (node-pty cannot spawn a bare name). */
+const FAKE_CLAUDE = process.platform === 'win32' ? 'C:\\fake\\bin\\claude.exe' : '/fake/bin/claude';
 
 const SECRET = Buffer.from('pty-route-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
@@ -189,6 +194,7 @@ function harness(options: {
   appendAudit?: PtyRouteContext['appendAudit'];
   resolveAgentFile?: PtyRouteContext['resolveAgentFile'];
   resolveWorkflowFile?: PtyRouteContext['resolveWorkflowFile'];
+  resolveClaudeFile?: PtyRouteContext['resolveClaudeFile'];
   repoRoot?: string;
   workflowPrimingRoot?: string;
 } = {}): {
@@ -223,6 +229,9 @@ function harness(options: {
     resolveWorkflowFile: options.resolveWorkflowFile ?? (() => null),
     // Never the repo, never the real daemon state root: a temp directory per test.
     workflowPrimingRoot: options.workflowPrimingRoot ?? scratchDir('kb-pty-priming-'),
+    // Hermetic: a FIXED absolute path, so no test depends on this machine having the claude CLI
+    // installed. Tests that care about the not-found branch inject a thrower.
+    resolveClaudeFile: options.resolveClaudeFile ?? (() => FAKE_CLAUDE),
   });
   return { ctx, audit, host, registry, preambleCalls: () => calls };
 }
@@ -293,15 +302,46 @@ describe('parseSpawnParams / buildSpawnCommand — the "Run agent" admission rul
   });
 
   it('builds an ARGV ARRAY, with the server-resolved priming path as its own element', () => {
-    expect(buildSpawnCommand({ mode: 'claude' }, null)).toEqual({ file: 'claude', args: [] });
-    expect(buildSpawnCommand({ mode: 'agent', agentId: 'fyt-runner' }, '/repo/agents/fyt-runner.md')).toEqual({
-      file: 'claude',
+    const stub = () => FAKE_CLAUDE;
+    expect(buildSpawnCommand({ mode: 'claude' }, null, stub)).toEqual({ file: FAKE_CLAUDE, args: [] });
+    expect(buildSpawnCommand({ mode: 'agent', agentId: 'fyt-runner' }, '/repo/agents/fyt-runner.md', stub)).toEqual({
+      file: FAKE_CLAUDE,
       args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md'],
     });
-    expect(buildSpawnCommand({ mode: 'workflow', workflowRef: 'video-run' }, '/state/pty-priming/workflow-video-run.md')).toEqual({
-      file: 'claude',
+    expect(buildSpawnCommand({ mode: 'workflow', workflowRef: 'video-run' }, '/state/pty-priming/workflow-video-run.md', stub)).toEqual({
+      file: FAKE_CLAUDE,
       args: ['--append-system-prompt-file', '/state/pty-priming/workflow-video-run.md'],
     });
+  });
+
+  /**
+   * THE REGRESSION PIN for the live "Run agent / Run workflow dies instantly" defect.
+   *
+   * The bare name `claude` reached node-pty, whose ConPTY agent does not PATHEXT-search an
+   * extensionless name, and every spawn failed with an empty `File not found: `. Shell tabs were
+   * unaffected because the default shell is `ComSpec`, already absolute. `file` must therefore be an
+   * ABSOLUTE path in every spawn mode — not the bare command name.
+   */
+  it('emits an ABSOLUTE file, never the bare command name, in every spawn mode', () => {
+    const stub = () => FAKE_CLAUDE;
+    for (const command of [
+      buildSpawnCommand({ mode: 'claude' }, null, stub),
+      buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', stub),
+      buildSpawnCommand({ mode: 'workflow', workflowRef: 'w' }, '/state/w.md', stub),
+    ]) {
+      expect(command.file).not.toBe('claude');
+      expect(isAbsolute(command.file)).toBe(true);
+    }
+  });
+
+  it('propagates a not-found resolution instead of falling back to the bare name', () => {
+    const missing = () => {
+      throw new CommandNotFoundError('claude', 3);
+    };
+    expect(() => buildSpawnCommand({ mode: 'claude' }, null, missing)).toThrow(CommandNotFoundError);
+    expect(() => buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', missing)).toThrow(
+      CommandNotFoundError,
+    );
   });
 
   it('refuses to build a primed argv without a resolved path rather than dropping the flag', () => {
@@ -330,7 +370,7 @@ describe('agent-primed spawn (Run agent)', () => {
 
     expect(h.host.opens).toHaveLength(1);
     expect(h.host.opens[0].command).toEqual({
-      file: 'claude',
+      file: FAKE_CLAUDE,
       args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md'],
     });
     expect(h.host.opens[0].cwd).toBe('/repo'); // never a client-supplied cwd
@@ -346,8 +386,34 @@ describe('agent-primed spawn (Run agent)', () => {
     const ws = fakeSocket();
     await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=claude'), h.ctx);
 
-    expect(h.host.opens[0].command).toEqual({ file: 'claude', args: [] });
+    expect(h.host.opens[0].command).toEqual({ file: FAKE_CLAUDE, args: [] });
     expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { spawn: 'claude' } });
+  });
+
+  /**
+   * The live failure wrote `spawn-failed` with `error: "File not found: "` — an EMPTY name that told
+   * nobody anything. A missing CLI must now be refused BEFORE the spawn, under its own name, and must
+   * never reach the pty host.
+   */
+  it('refuses with a NAMED reason when claude is not on the child PATH, and spawns nothing', async () => {
+    const h = harness({
+      resolveAgentFile: ALLOWLIST,
+      resolveClaudeFile: () => {
+        throw new CommandNotFoundError('claude', 7);
+      },
+    });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), h.ctx);
+
+    expect(h.host.opens).toHaveLength(0); // nothing was ever spawned
+    expect(h.audit.rows).toHaveLength(1);
+    expect(h.audit.rows[0].event).toMatchObject({
+      action: 'pty-open',
+      result: 'claude-not-found-on-path',
+      detail: { command: 'claude', searchedDirs: 7 },
+    });
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'claude-not-found-on-path' });
+    expect(ws.closes[0]?.reason).toBe('claude-not-found-on-path');
   });
 
   it('leaves the default shell open byte-identical when no spawn parameter is present', async () => {
@@ -469,7 +535,7 @@ describe('workflow-primed spawn (Run workflow)', () => {
 
     expect(h.host.opens).toHaveLength(1);
     const command = h.host.opens[0].command as { file: string; args: readonly string[] };
-    expect(command.file).toBe('claude');
+    expect(command.file).toBe(FAKE_CLAUDE);
     expect(command.args[0]).toBe('--append-system-prompt-file');
     const primingPath = command.args[1];
     expect(primingPath).toBe(join(primingRoot, 'workflow-email-triage.md'));
