@@ -1728,6 +1728,78 @@ describe('AutomaticExecutionEngine', () => {
     expect(fake.executionOrder).toEqual(['integrate']);
   });
 
+  it('parks a stranded canonical integration once with its accurate cause instead of spinning attempts', async () => {
+    const store = createStore();
+    const plan = proposal([stage('stranded')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const payload = {
+      summary: 'stranded stage complete',
+      artifacts: [{ path: 'dashboard/server/stranded.txt', digest: 'b'.repeat(64) }],
+      changed: [{ path: 'dashboard/server/stranded.txt', digest: 'b'.repeat(64) }],
+      checkpoints: ['stranded-checked'],
+    };
+    const incompleteMessage = 'canonical integration incomplete (state: lineage-local): '
+      + "lineage publication failed: fatal: transport 'file' not allowed";
+    let incomplete = true;
+    const lookups: string[] = [];
+    fake.results.lookup = async (input) => {
+      lookups.push(input.operationKey);
+      if (incomplete) {
+        const error = new Error(incompleteMessage) as Error & { canonicalIntegrationIncomplete?: boolean };
+        error.canonicalIntegrationIncomplete = true;
+        throw error;
+      }
+      return {
+        ...payload,
+        resultHash: canonicalStageResultHash(payload),
+        durability: 'canonical',
+        attemptBaseCommit: 'a'.repeat(40),
+        integrationCommit: 'b'.repeat(40),
+      };
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const first = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(first.state).toBe('waiting-human');
+    const parked = store.getRun('operator', run.runRef);
+    if (!parked.ok) throw new Error(parked.detail);
+    expect(parked.value.humanRequests).toHaveLength(1);
+    const request = parked.value.humanRequests[0];
+    // Stage-stable title (no attemptRef), so a recurrence cannot stack byte-identical parks.
+    expect(request.title).toBe('automatic:execution:stranded:canonical-integration-incomplete');
+    expect(request.prompt).toBe(incompleteMessage);
+    expect(request.prompt).not.toContain('identity differs');
+    expect(parked.value.attempts).toHaveLength(1);
+    // The stranded PRIOR integration is not an attempt failure: no worker, worktree or spend was burned.
+    expect(fake.executionOrder).toEqual([]);
+    expect(fake.worktreePaths).toEqual([]);
+    expect(fake.reservations).toEqual([]);
+
+    const second = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(second.state).toBe('waiting-human');
+    const held = store.getRun('operator', run.runRef);
+    if (!held.ok) throw new Error(held.detail);
+    expect(held.value.humanRequests).toHaveLength(1);
+    expect(held.value.attempts).toHaveLength(1);
+    expect(lookups).toHaveLength(1);
+
+    // Operator repairs the transport and clears the boundary; the NEXT lookup resumes the durable
+    // integration and the stage completes without ever re-running its worker.
+    incomplete = false;
+    expect(store.respondHumanRequest('operator', request.requestRef, {
+      expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'repaired', response: 'Transport fixed.',
+    }).ok).toBe(true);
+
+    const completed = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(completed.state).toBe('succeeded');
+    expect(fake.executionOrder).toEqual([]);
+    expect(fake.integrationOrder).toEqual([]);
+  });
+
   it('enforces one global worker slot across concurrent runs', async () => {
     const store = createStore();
     const firstPlan = proposal([stage('first')]);

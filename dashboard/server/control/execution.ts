@@ -476,6 +476,27 @@ export function stableHumanTitle(kind: 'gate' | 'policy' | 'budget' | 'execution
   return `automatic:${kind}:${stageId}:${detail}`.slice(0, 240);
 }
 
+/**
+ * Stage-stable title for a PRIOR canonical integration that an interrupted step left below its canonical
+ * states. Deliberately carries no attemptRef: the condition belongs to the stranded record, not to any one
+ * attempt, so repeated encounters reuse the one open boundary instead of stacking byte-identical parks.
+ */
+export function strandedIntegrationTitle(stageId: string): string {
+  return stableHumanTitle('execution', stageId, 'canonical-integration-incomplete');
+}
+
+/**
+ * A result integrator raised "the record is mine, but its integration never finished" — a refused lineage
+ * push, a daemon exit mid-publication. Classified by a duck-typed marker rather than an imported class
+ * because the concrete integrator (`canonicalResultIntegrator.ts`) imports THIS module; the reverse import
+ * would be a cycle. This is a stuck PRIOR integration, never an ordinary attempt failure: the attempt has
+ * done no work at that point, so spawning a successor only re-raises the same error and burns a generation.
+ */
+export function isCanonicalIntegrationIncomplete(error: unknown): boolean {
+  return typeof error === 'object' && error !== null
+    && (error as { canonicalIntegrationIncomplete?: unknown }).canonicalIntegrationIncomplete === true;
+}
+
 function profileFor(policy: PolicyEnvironment, role: 'manager' | 'worker', runtime: string, model: string): ExecutionProfile | null {
   return policy.profiles.find((profile) => profile.role === role && profile.runtime === runtime && profile.model === model) ?? null;
 }
@@ -1674,6 +1695,52 @@ export class AutomaticExecutionEngine {
     }
   }
 
+  /**
+   * Contain a stranded prior canonical integration. The stage parks on ONE stage-stable boundary carrying
+   * the integrator's accurate cause — the stranded state and the step that failed — so the human ask is
+   * truthful and actionable, and a recurrence while that boundary is open reuses it rather than stacking a
+   * duplicate. The attempt is interrupted (never `waiting-human`, which no edge can leave) so the durable
+   * graph stays resumable: once the operator clears the boundary, the next reconciliation's lookup resumes
+   * the integration itself, without re-running the worker.
+   */
+  private parkStrandedIntegration(
+    input: ExecuteRunInput,
+    prepared: { stage: Stage; attempt: Attempt; session: ManagedSession },
+    error: unknown,
+  ): { state: 'waiting-human'; stageId: string } {
+    const prompt = error instanceof Error ? error.message : 'canonical integration is incomplete';
+    const detail = this.detail(input);
+    const attempt = detail.attempts.find((item) => item.attemptRef === prepared.attempt.attemptRef);
+    const session = detail.sessions.find((item) => item.sessionRef === prepared.session.sessionRef);
+    if (attempt && (attempt.state === 'starting' || attempt.state === 'running')) {
+      this.transitionAttempt(input, attempt.attemptRef, 'interrupted');
+    }
+    if (session && (session.state === 'starting' || session.state === 'running')) {
+      this.transitionSession(input, session.sessionRef, 'interrupted');
+    }
+    this.options.store.appendEvent(input.subject, input.runRef, {
+      kind: 'lifecycle', source: 'system', stageRef: prepared.stage.stageRef,
+      attemptRef: prepared.attempt.attemptRef, sessionRef: prepared.session.sessionRef,
+      status: 'interrupted', summary: prompt,
+    });
+    const latest = this.detail(input).stages.find((item) => item.stageRef === prepared.stage.stageRef) as Stage;
+    if (!['succeeded', 'failed', 'stopped'].includes(latest.state) && latest.state !== 'waiting-human') {
+      this.transitionStageByRef(input, latest.stageRef, 'interrupted');
+    }
+    const stage = this.detail(input).stages.find((item) => item.stageRef === prepared.stage.stageRef) as Stage;
+    const title = strandedIntegrationTitle(stage.stageId);
+    const open = this.detail(input).humanRequests.some(
+      (request) => request.stageRef === stage.stageRef && request.title === title && request.state === 'open',
+    );
+    if (open) {
+      this.ensureStageWaiting(input, stage.stageRef);
+      this.transitionRun(input, 'waiting-human');
+    } else {
+      this.createBoundary(input, stage, 'intervention', title, prompt);
+    }
+    return { state: 'waiting-human', stageId: stage.stageId };
+  }
+
   private async executeAttemptUnsafe(
     input: ExecuteRunInput,
     prepared: {
@@ -1688,12 +1755,23 @@ export class AutomaticExecutionEngine {
     const resultOperationKey = canonicalResultOperationKey(input.runRef, stage.stageId, resultGeneration);
     const worktreePath = planAttemptWorktreePath(this.options.worktreeRoot, input.runRef, attempt.attemptRef);
     const reviewedGeneration = this.isReviewOwned(this.detail(input), stage);
-    const integrated = await this.options.results.lookup({
-      operationKey: resultOperationKey,
-      subject: input.subject,
-      runRef: input.runRef,
-      stageId: stage.stageId,
-    });
+    let integrated: CanonicalStageResult | null;
+    try {
+      integrated = await this.options.results.lookup({
+        operationKey: resultOperationKey,
+        subject: input.subject,
+        runRef: input.runRef,
+        stageId: stage.stageId,
+      });
+    } catch (error) {
+      // A stuck PRIOR integration, not this attempt failing. The generic containment path below would
+      // interrupt into a successor attempt that repeats this identical lookup, which is how the same
+      // stranded record parked three generations behind byte-identical messages. Park once, accurately,
+      // and leave the retry to the next lookup once the operator has repaired the environment.
+      if (!isCanonicalIntegrationIncomplete(error)) throw error;
+      if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
+      return this.parkStrandedIntegration(input, prepared, error);
+    }
     if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
     if (integrated) {
       if (!canonicalStageResultHashMatches(integrated, integrated.resultHash) || !resultIsSafe(

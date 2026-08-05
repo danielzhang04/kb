@@ -47,6 +47,35 @@ interface IntegrationState {
   records: IntegrationRecord[];
 }
 
+/**
+ * The journal holds a record that IS this operation's own — same subject, runRef and stageId — but an
+ * earlier call left its integration BELOW the canonical states because a step failed mid-flight (a refused
+ * lineage push, a daemon exit, a coordination refusal). `lookup` retries the progression first; this is
+ * raised only when the retry fails again, and it names both the stranded state and the step that failed so
+ * the human ask is truthful. It is NOT an identity mismatch and must never be reported as one: the
+ * 2026-08 incident (`transport 'file' not allowed` after the record was durable at `lineage-local`) parked
+ * three generations behind the byte-identical, false message "canonical result lookup identity differs".
+ */
+export class CanonicalIntegrationIncompleteError extends CanonicalResultIntegrationError {
+  /**
+   * Duck-typed marker so `execution.ts` can classify this without importing this module — the dependency
+   * runs the other way (this module imports execution.ts), and a cycle would be worse than a marker.
+   * `isCanonicalIntegrationIncomplete` in execution.ts is the only reader.
+   */
+  readonly canonicalIntegrationIncomplete = true as const;
+
+  readonly integrationState: IntegrationRecord['state'];
+
+  readonly strandedCause: unknown;
+
+  constructor(integrationState: IntegrationRecord['state'], cause: unknown) {
+    super(`canonical integration incomplete (state: ${integrationState}): `
+      + `${cause instanceof Error ? cause.message : String(cause)}`);
+    this.integrationState = integrationState;
+    this.strandedCause = cause;
+  }
+}
+
 export interface CanonicalGitResultIntegratorOptions {
   repoRoot: string;
   coordinationRoot: string;
@@ -558,6 +587,223 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       throw new CanonicalResultIntegrationError(verified.stderr.trim() || verified.stdout.trim() || 'canonical Result verification failed');
     }
   };
+  /**
+   * THE one progression from a journaled record to a durably published canonical result: attempt commit →
+   * lineage cherry-pick → lineage publication → coordination card → ops publication → verification. Every
+   * phase is resumable and idempotent, so calling this on a record already part-way through re-proves the
+   * completed phases rather than repeating them.
+   *
+   * Two callers share this exact code — never a copy: `integrate` drives it for a fresh worker result, and
+   * `lookup` drives it for a record an earlier call left stranded below canonical. That is what makes a
+   * transient failure (a refused push, a crash) retried on the next lookup instead of parking the stage
+   * forever. The attempt worktree is re-derived from the JOURNALED runRef/attemptRef through the same
+   * server-owned planner `integrate` validates its caller's path against, so a resuming lookup — which has
+   * no worktree input at all — cannot be pointed anywhere else.
+   */
+  const advanceIntegration = async (record: IntegrationRecord, state: IntegrationState): Promise<{
+    status: 'integrated' | 'replayed'; resultHash: string; durability: 'canonical';
+    attemptBaseCommit: string; integrationCommit: string;
+  }> => {
+    // A concurrent writer may have finished this record between the state read and this call.
+    if (record.state === 'canonical-committed') {
+      await verifyCanonical(record);
+      return { status: 'replayed', resultHash: record.result.resultHash,
+        durability: 'canonical', attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
+    }
+    const attemptPath = planAttemptWorktreePath(worktreeRoot, record.runRef, record.attemptRef);
+    if (record.state === 'intent' || record.state === 'attempt-committed') {
+      if (!childOf(worktreeRoot, attemptPath) || !existsSync(attemptPath)) {
+        throw new CanonicalResultIntegrationError('attempt worktree differs from the server-owned layout');
+      }
+      await verifyRepoWorktree(attemptPath, 'attempt worktree');
+      const expectedPaths = record.result.changed.map((item) => item.path);
+      const commitMessage = `chore(run): integrate ${record.stageId}`;
+      const verifyChangedContent = () => {
+        for (const item of record.result.changed) {
+          const content = readRegularFileWithin(attemptPath, item.path);
+          if (createHash('sha256').update(content).digest('hex') !== item.digest) {
+            throw new CanonicalResultIntegrationError(`artifact digest changed for '${item.path}'`);
+          }
+        }
+      };
+
+      if (record.state === 'intent' && expectedPaths.length > 0) {
+        const attemptHead = await gitRun(['rev-parse', 'HEAD'], attemptPath, 'attempt recovery head');
+        if (attemptHead === record.attemptBaseCommit) {
+          verifyChangedContent();
+          const current = await gitRaw(['status', '--porcelain=v1', '-z', '--untracked-files=all'], attemptPath);
+          if (current.exitCode !== 0 || JSON.stringify(statusPaths(current.stdout)) !== JSON.stringify(expectedPaths)) {
+            throw new CanonicalResultIntegrationError('attempt recovery changes differ from the journaled intent');
+          }
+          const staged = nulPaths(await gitRun(['diff', '--cached', '--name-only', '-z'], attemptPath, 'attempt recovery index'));
+          if (staged.length > 0 && JSON.stringify(staged) !== JSON.stringify(expectedPaths)) {
+            throw new CanonicalResultIntegrationError('attempt recovery index differs from the journaled intent');
+          }
+          if (staged.length === 0) await gitRun(['add', '--', ...expectedPaths], attemptPath, 'attempt staging');
+          await gitRun(['commit', '-m', commitMessage], attemptPath, 'attempt commit');
+          record.attemptCommit = await gitRun(['rev-parse', 'HEAD'], attemptPath, 'attempt commit resolution');
+        } else {
+          const dirty = await gitRun(['status', '--porcelain=v1', '-z', '--untracked-files=all'], attemptPath, 'attempt recovery status');
+          if (dirty) throw new CanonicalResultIntegrationError('recovered attempt commit has additional worktree changes');
+          const parent = await gitRun(['rev-parse', 'HEAD^'], attemptPath, 'attempt recovery parent');
+          const message = await gitRun(['show', '-s', '--format=%B', 'HEAD'], attemptPath, 'attempt recovery message');
+          const committedPaths = nulPaths(await gitRun(
+            ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', 'HEAD'], attemptPath, 'attempt recovery paths',
+          ));
+          if (parent !== record.attemptBaseCommit || message !== commitMessage
+            || JSON.stringify(committedPaths) !== JSON.stringify(expectedPaths)) {
+            throw new CanonicalResultIntegrationError('attempt HEAD differs from the journaled integration intent');
+          }
+          verifyChangedContent();
+          record.attemptCommit = attemptHead;
+        }
+        if (!record.attemptCommit || !SHA.test(record.attemptCommit)) {
+          throw new CanonicalResultIntegrationError('attempt commit is not immutable');
+        }
+        record.state = 'attempt-committed';
+        saveState(statePath, state);
+      } else if (record.state === 'intent') {
+        record.integrationCommit = record.integrationBaseCommit;
+        record.state = 'lineage-local';
+        saveState(statePath, state);
+      }
+
+      if (record.state === 'attempt-committed') {
+        if (!record.attemptCommit) throw new CanonicalResultIntegrationError('attempt commit is unavailable');
+        const dirty = await gitRun(['status', '--porcelain=v1', '-z', '--untracked-files=all'], attemptPath, 'attempt committed status');
+        if (dirty) throw new CanonicalResultIntegrationError('attempt committed worktree is dirty');
+        const attemptHead = await gitRun(['rev-parse', 'HEAD'], attemptPath, 'attempt committed head verification');
+        if (attemptHead !== record.attemptCommit) throw new CanonicalResultIntegrationError('attempt committed HEAD differs');
+        const lineage = await ensureLineage(record.runRef);
+        if (lineage.branch !== record.integrationBranch) throw new CanonicalResultIntegrationError('lineage branch identity differs');
+        let lineageHead = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'lineage recovery head');
+        if (lineageHead === record.integrationBaseCommit) {
+          await gitRun(['cherry-pick', record.attemptCommit], lineage.path, 'run lineage integration');
+          lineageHead = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'integration commit resolution');
+        } else {
+          const parent = await gitRun(['rev-parse', 'HEAD^'], lineage.path, 'lineage recovery parent');
+          const message = await gitRun(['show', '-s', '--format=%B', 'HEAD'], lineage.path, 'lineage recovery message');
+          const committedPaths = nulPaths(await gitRun(
+            ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', 'HEAD'], lineage.path, 'lineage recovery paths',
+          ));
+          if (parent !== record.integrationBaseCommit || message !== commitMessage
+            || JSON.stringify(committedPaths) !== JSON.stringify(expectedPaths)) {
+            throw new CanonicalResultIntegrationError('lineage HEAD differs from the journaled integration intent');
+          }
+          for (const item of record.result.changed) {
+            const content = readRegularFileWithin(lineage.path, item.path);
+            if (createHash('sha256').update(content).digest('hex') !== item.digest) {
+              throw new CanonicalResultIntegrationError(`lineage artifact digest changed for '${item.path}'`);
+            }
+          }
+        }
+        if (!SHA.test(lineageHead)) throw new CanonicalResultIntegrationError('integration commit is not immutable');
+        record.integrationCommit = lineageHead;
+        record.state = 'lineage-local';
+        saveState(statePath, state);
+      }
+    }
+
+    if (record.state === 'lineage-local') {
+      const lineage = await ensureLineage(record.runRef);
+      if (lineage.branch !== record.integrationBranch) throw new CanonicalResultIntegrationError('lineage branch identity differs');
+      const localCommit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'local lineage verification');
+      if (!record.integrationCommit || localCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('local lineage commit differs');
+      await gitRun(['push', 'origin', `HEAD:refs/heads/${record.integrationBranch}`], lineage.path, 'lineage publication');
+      await gitRun([
+        'fetch', '--no-tags', 'origin',
+        `refs/heads/${record.integrationBranch}:refs/remotes/origin/${record.integrationBranch}`,
+      ], lineage.path, 'published lineage refresh');
+      const remoteCommit = await gitRun(
+        ['rev-parse', `refs/remotes/origin/${record.integrationBranch}`], lineage.path, 'published lineage verification',
+      );
+      if (remoteCommit !== record.integrationCommit) {
+        throw new CanonicalResultIntegrationError('published lineage does not equal the integrated commit');
+      }
+      record.state = 'lineage-committed';
+      saveState(statePath, state);
+    }
+
+    if (record.state === 'lineage-committed') {
+      if (record.cardRef === null) {
+        record.state = 'canonical-committed';
+        saveState(statePath, state);
+        return { status: 'integrated' as const, resultHash: record.result.resultHash,
+          durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
+      }
+      await prepareCoordination(coordinationRoot, opsGit);
+      const dirty = await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']);
+      if (dirty) throw new CanonicalResultIntegrationError('coordination index is dirty');
+      record.state = 'canonical-intent';
+      saveState(statePath, state);
+    }
+    if (record.state !== 'canonical-intent') {
+      throw new CanonicalResultIntegrationError('canonical integration phase is invalid');
+    }
+    const branch = (await opsGit(coordinationRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+    if (branch !== 'ops') throw new CanonicalResultIntegrationError('canonical coordination checkout differs');
+    if (!record.integrationCommit) throw new CanonicalResultIntegrationError('integration commit is unavailable');
+    const wire = canonicalWire(record);
+    const encoded = JSON.stringify({ runRef: record.runRef, cardRef: record.cardRef, result: wire });
+    if (Buffer.byteLength(encoded) > MAX_RESULT_BYTES) throw new CanonicalResultIntegrationError('canonical card result exceeds its bound');
+    const card = runPy(coordinationRoot, CANONICAL_RESULT_CARD_SCRIPT, encoded);
+    if (card.exitCode !== 0) throw new CanonicalResultIntegrationError(card.stderr.trim() || card.stdout.trim() || 'canonical card mutation failed');
+    const parsed = JSON.parse(card.stdout.trim()) as { oldPath: string; resultPath: string; changed: boolean };
+    const resultPath = `queue/done/${record.cardRef}.md`;
+    if (parsed.resultPath.replace(/\\/g, '/') !== resultPath || typeof parsed.changed !== 'boolean') {
+      throw new CanonicalResultIntegrationError('canonical card mutation returned a mismatched result');
+    }
+    const oldPath = parsed.oldPath.replace(/\\/g, '/');
+    const allowed = new Set([
+      `queue/inbox/${record.cardRef}.md`, `queue/working/${record.cardRef}.md`,
+      `queue/approvals/${record.cardRef}.md`, resultPath,
+    ]);
+    const stagedPaths = nulPaths(await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']));
+    const trackedPaths = nulPaths(await opsGit(coordinationRoot, ['diff', '--name-only', '-z']));
+    const untrackedPaths = nulPaths(await opsGit(coordinationRoot, ['ls-files', '--others', '--exclude-standard', '-z']));
+    const changedPaths = [...new Set([...stagedPaths, ...trackedPaths, ...untrackedPaths])].sort();
+    if (changedPaths.some((path) => !allowed.has(path)) || (parsed.changed && !changedPaths.includes(resultPath))
+      || (!allowed.has(oldPath) && oldPath !== resultPath)) {
+      throw new CanonicalResultIntegrationError('canonical recovery contains unrelated coordination changes');
+    }
+    if (changedPaths.length > 0) {
+      await opsGit(coordinationRoot, ['add', '--', ...changedPaths]);
+      await opsGit(coordinationRoot, [
+        'commit', '-m', `chore(queue): integrate managed result ${record.cardRef}`, '--only', '--', ...changedPaths,
+      ]);
+    }
+    try {
+      await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
+    } catch (pushError) {
+      try {
+        await opsGit(coordinationRoot, ['pull', '--rebase', 'origin', 'ops']);
+      } catch (reconcileError) {
+        try { await opsGit(coordinationRoot, ['rebase', '--abort']); } catch { /* no rebase was active */ }
+        throw new CanonicalResultIntegrationError(
+          `canonical publication reconciliation failed: ${reconcileError instanceof Error ? reconcileError.message : String(reconcileError)}`,
+        );
+      }
+      const reconciled = runPy(coordinationRoot, CANONICAL_RESULT_VERIFY_SCRIPT, JSON.stringify({
+        cardRef: record.cardRef, runRef: record.runRef, result: wire,
+      }));
+      if (reconciled.exitCode !== 0) {
+        throw new CanonicalResultIntegrationError(
+          reconciled.stderr.trim() || reconciled.stdout.trim() || 'reconciled canonical Result differs',
+        );
+      }
+      try {
+        await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
+      } catch {
+        throw pushError;
+      }
+    }
+    await verifyCanonical(record);
+    record.state = 'canonical-committed';
+    saveState(statePath, state);
+    return { status: 'integrated' as const, resultHash: record.result.resultHash,
+      durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit };
+  };
+
   const serialize = <T>(operation: () => Promise<T>): Promise<T> =>
     withOpsTransaction(() => {
       const next = tail.then(operation, operation);
@@ -571,10 +817,36 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         const state = readState(statePath);
         const record = state.records.find((item) => item.operationKey === input.operationKey);
         if (!record) return null;
-        if (record.operationKey !== input.operationKey || record.subject !== input.subject || record.runRef !== input.runRef
-          || record.stageId !== input.stageId
-          || (record.state !== 'canonical-intent' && record.state !== 'canonical-committed')) {
-          throw new CanonicalResultIntegrationError('canonical result lookup identity differs');
+        // TRUE identity mismatch — a different subject, run or stage journaled under this operation key.
+        // Nothing can reconcile that, so it stays a hard refusal.
+        if (record.subject !== input.subject || record.runRef !== input.runRef || record.stageId !== input.stageId) {
+          throw new CanonicalResultIntegrationError(
+            `canonical result lookup identity differs: operation '${input.operationKey}' is journaled for `
+            + `subject/run/stage '${record.subject}'/'${record.runRef}'/'${record.stageId}'`,
+          );
+        }
+        // Identity MATCHES but an earlier integration was interrupted below canonical. This is not an
+        // identity problem and must not be reported as one: resume the record through the same progression
+        // `integrate` drives, so a transient failure is retried here instead of parking the stage forever.
+        if (record.state !== 'canonical-intent' && record.state !== 'canonical-committed') {
+          const stranded = record.state;
+          try {
+            await advanceIntegration(record, state);
+          } catch (error) {
+            throw new CanonicalIntegrationIncompleteError(stranded, error);
+          }
+          // Re-verify after the resume against the DURABLE journal, not the in-memory record: a racing
+          // writer that completed the same operation is then the state we return, and a resume that
+          // stopped short can never be reported as a canonical result.
+          const settled = readState(statePath).records.find((item) => item.operationKey === input.operationKey);
+          if (!settled || settled.state !== 'canonical-committed') {
+            throw new CanonicalIntegrationIncompleteError(
+              settled?.state ?? stranded,
+              new CanonicalResultIntegrationError('resumed integration did not reach canonical-committed'),
+            );
+          }
+          await verifyCanonical(settled);
+          return publicResult(settled);
         }
         // The coordination push can succeed before its acknowledgement/final verification returns.
         // Re-prove the exact journaled card from one immutable fetched ops commit; only that remotely
@@ -696,199 +968,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           saveState(statePath, state);
         }
 
-        if (record.state === 'intent' || record.state === 'attempt-committed') {
-          const attemptPath = absolute(input.worktreePath, 'worktreePath');
-          const expectedAttemptPath = planAttemptWorktreePath(worktreeRoot, input.runRef, input.attemptRef);
-          if (attemptPath !== expectedAttemptPath || !childOf(worktreeRoot, attemptPath) || !existsSync(attemptPath)) {
-            throw new CanonicalResultIntegrationError('attempt worktree differs from the server-owned layout');
-          }
-          await verifyRepoWorktree(attemptPath, 'attempt worktree');
-          const expectedPaths = record.result.changed.map((item) => item.path);
-          const commitMessage = `chore(run): integrate ${record.stageId}`;
-          const verifyChangedContent = () => {
-            for (const item of record.result.changed) {
-              const content = readRegularFileWithin(attemptPath, item.path);
-              if (createHash('sha256').update(content).digest('hex') !== item.digest) {
-                throw new CanonicalResultIntegrationError(`artifact digest changed for '${item.path}'`);
-              }
-            }
-          };
-
-          if (record.state === 'intent' && expectedPaths.length > 0) {
-            const attemptHead = await gitRun(['rev-parse', 'HEAD'], attemptPath, 'attempt recovery head');
-            if (attemptHead === record.attemptBaseCommit) {
-              verifyChangedContent();
-              const current = await gitRaw(['status', '--porcelain=v1', '-z', '--untracked-files=all'], attemptPath);
-              if (current.exitCode !== 0 || JSON.stringify(statusPaths(current.stdout)) !== JSON.stringify(expectedPaths)) {
-                throw new CanonicalResultIntegrationError('attempt recovery changes differ from the journaled intent');
-              }
-              const staged = nulPaths(await gitRun(['diff', '--cached', '--name-only', '-z'], attemptPath, 'attempt recovery index'));
-              if (staged.length > 0 && JSON.stringify(staged) !== JSON.stringify(expectedPaths)) {
-                throw new CanonicalResultIntegrationError('attempt recovery index differs from the journaled intent');
-              }
-              if (staged.length === 0) await gitRun(['add', '--', ...expectedPaths], attemptPath, 'attempt staging');
-              await gitRun(['commit', '-m', commitMessage], attemptPath, 'attempt commit');
-              record.attemptCommit = await gitRun(['rev-parse', 'HEAD'], attemptPath, 'attempt commit resolution');
-            } else {
-              const dirty = await gitRun(['status', '--porcelain=v1', '-z', '--untracked-files=all'], attemptPath, 'attempt recovery status');
-              if (dirty) throw new CanonicalResultIntegrationError('recovered attempt commit has additional worktree changes');
-              const parent = await gitRun(['rev-parse', 'HEAD^'], attemptPath, 'attempt recovery parent');
-              const message = await gitRun(['show', '-s', '--format=%B', 'HEAD'], attemptPath, 'attempt recovery message');
-              const committedPaths = nulPaths(await gitRun(
-                ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', 'HEAD'], attemptPath, 'attempt recovery paths',
-              ));
-              if (parent !== record.attemptBaseCommit || message !== commitMessage
-                || JSON.stringify(committedPaths) !== JSON.stringify(expectedPaths)) {
-                throw new CanonicalResultIntegrationError('attempt HEAD differs from the journaled integration intent');
-              }
-              verifyChangedContent();
-              record.attemptCommit = attemptHead;
-            }
-            if (!record.attemptCommit || !SHA.test(record.attemptCommit)) {
-              throw new CanonicalResultIntegrationError('attempt commit is not immutable');
-            }
-            record.state = 'attempt-committed';
-            saveState(statePath, state);
-          } else if (record.state === 'intent') {
-            record.integrationCommit = record.integrationBaseCommit;
-            record.state = 'lineage-local';
-            saveState(statePath, state);
-          }
-
-          if (record.state === 'attempt-committed') {
-            if (!record.attemptCommit) throw new CanonicalResultIntegrationError('attempt commit is unavailable');
-            const dirty = await gitRun(['status', '--porcelain=v1', '-z', '--untracked-files=all'], attemptPath, 'attempt committed status');
-            if (dirty) throw new CanonicalResultIntegrationError('attempt committed worktree is dirty');
-            const attemptHead = await gitRun(['rev-parse', 'HEAD'], attemptPath, 'attempt committed head verification');
-            if (attemptHead !== record.attemptCommit) throw new CanonicalResultIntegrationError('attempt committed HEAD differs');
-            const lineage = await ensureLineage(input.runRef);
-            if (lineage.branch !== record.integrationBranch) throw new CanonicalResultIntegrationError('lineage branch identity differs');
-            let lineageHead = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'lineage recovery head');
-            if (lineageHead === record.integrationBaseCommit) {
-              await gitRun(['cherry-pick', record.attemptCommit], lineage.path, 'run lineage integration');
-              lineageHead = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'integration commit resolution');
-            } else {
-              const parent = await gitRun(['rev-parse', 'HEAD^'], lineage.path, 'lineage recovery parent');
-              const message = await gitRun(['show', '-s', '--format=%B', 'HEAD'], lineage.path, 'lineage recovery message');
-              const committedPaths = nulPaths(await gitRun(
-                ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', 'HEAD'], lineage.path, 'lineage recovery paths',
-              ));
-              if (parent !== record.integrationBaseCommit || message !== commitMessage
-                || JSON.stringify(committedPaths) !== JSON.stringify(expectedPaths)) {
-                throw new CanonicalResultIntegrationError('lineage HEAD differs from the journaled integration intent');
-              }
-              for (const item of record.result.changed) {
-                const content = readRegularFileWithin(lineage.path, item.path);
-                if (createHash('sha256').update(content).digest('hex') !== item.digest) {
-                  throw new CanonicalResultIntegrationError(`lineage artifact digest changed for '${item.path}'`);
-                }
-              }
-            }
-            if (!SHA.test(lineageHead)) throw new CanonicalResultIntegrationError('integration commit is not immutable');
-            record.integrationCommit = lineageHead;
-            record.state = 'lineage-local';
-            saveState(statePath, state);
-          }
-        }
-
-        if (record.state === 'lineage-local') {
-          const lineage = await ensureLineage(input.runRef);
-          if (lineage.branch !== record.integrationBranch) throw new CanonicalResultIntegrationError('lineage branch identity differs');
-          const localCommit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'local lineage verification');
-          if (!record.integrationCommit || localCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('local lineage commit differs');
-          await gitRun(['push', 'origin', `HEAD:refs/heads/${record.integrationBranch}`], lineage.path, 'lineage publication');
-          await gitRun([
-            'fetch', '--no-tags', 'origin',
-            `refs/heads/${record.integrationBranch}:refs/remotes/origin/${record.integrationBranch}`,
-          ], lineage.path, 'published lineage refresh');
-          const remoteCommit = await gitRun(
-            ['rev-parse', `refs/remotes/origin/${record.integrationBranch}`], lineage.path, 'published lineage verification',
-          );
-          if (remoteCommit !== record.integrationCommit) {
-            throw new CanonicalResultIntegrationError('published lineage does not equal the integrated commit');
-          }
-          record.state = 'lineage-committed';
-          saveState(statePath, state);
-        }
-
-        if (record.state === 'lineage-committed') {
-          if (record.cardRef === null) {
-            record.state = 'canonical-committed';
-            saveState(statePath, state);
-            return { status: 'integrated' as const, resultHash: record.result.resultHash,
-              durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
-          }
-          await prepareCoordination(coordinationRoot, opsGit);
-          const dirty = await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']);
-          if (dirty) throw new CanonicalResultIntegrationError('coordination index is dirty');
-          record.state = 'canonical-intent';
-          saveState(statePath, state);
-        }
-        if (record.state !== 'canonical-intent') {
-          throw new CanonicalResultIntegrationError('canonical integration phase is invalid');
-        }
-        const branch = (await opsGit(coordinationRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
-        if (branch !== 'ops') throw new CanonicalResultIntegrationError('canonical coordination checkout differs');
-        if (!record.integrationCommit) throw new CanonicalResultIntegrationError('integration commit is unavailable');
-        const wire = canonicalWire(record);
-        const encoded = JSON.stringify({ runRef: record.runRef, cardRef: record.cardRef, result: wire });
-        if (Buffer.byteLength(encoded) > MAX_RESULT_BYTES) throw new CanonicalResultIntegrationError('canonical card result exceeds its bound');
-        const card = runPy(coordinationRoot, CANONICAL_RESULT_CARD_SCRIPT, encoded);
-        if (card.exitCode !== 0) throw new CanonicalResultIntegrationError(card.stderr.trim() || card.stdout.trim() || 'canonical card mutation failed');
-        const parsed = JSON.parse(card.stdout.trim()) as { oldPath: string; resultPath: string; changed: boolean };
-        const resultPath = `queue/done/${record.cardRef}.md`;
-        if (parsed.resultPath.replace(/\\/g, '/') !== resultPath || typeof parsed.changed !== 'boolean') {
-          throw new CanonicalResultIntegrationError('canonical card mutation returned a mismatched result');
-        }
-        const oldPath = parsed.oldPath.replace(/\\/g, '/');
-        const allowed = new Set([
-          `queue/inbox/${record.cardRef}.md`, `queue/working/${record.cardRef}.md`,
-          `queue/approvals/${record.cardRef}.md`, resultPath,
-        ]);
-        const stagedPaths = nulPaths(await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']));
-        const trackedPaths = nulPaths(await opsGit(coordinationRoot, ['diff', '--name-only', '-z']));
-        const untrackedPaths = nulPaths(await opsGit(coordinationRoot, ['ls-files', '--others', '--exclude-standard', '-z']));
-        const changedPaths = [...new Set([...stagedPaths, ...trackedPaths, ...untrackedPaths])].sort();
-        if (changedPaths.some((path) => !allowed.has(path)) || (parsed.changed && !changedPaths.includes(resultPath))
-          || (!allowed.has(oldPath) && oldPath !== resultPath)) {
-          throw new CanonicalResultIntegrationError('canonical recovery contains unrelated coordination changes');
-        }
-        if (changedPaths.length > 0) {
-          await opsGit(coordinationRoot, ['add', '--', ...changedPaths]);
-          await opsGit(coordinationRoot, [
-            'commit', '-m', `chore(queue): integrate managed result ${input.canonicalCardRef}`, '--only', '--', ...changedPaths,
-          ]);
-        }
-        try {
-          await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
-        } catch (pushError) {
-          try {
-            await opsGit(coordinationRoot, ['pull', '--rebase', 'origin', 'ops']);
-          } catch (reconcileError) {
-            try { await opsGit(coordinationRoot, ['rebase', '--abort']); } catch { /* no rebase was active */ }
-            throw new CanonicalResultIntegrationError(
-              `canonical publication reconciliation failed: ${reconcileError instanceof Error ? reconcileError.message : String(reconcileError)}`,
-            );
-          }
-          const reconciled = runPy(coordinationRoot, CANONICAL_RESULT_VERIFY_SCRIPT, JSON.stringify({
-            cardRef: record.cardRef, runRef: record.runRef, result: wire,
-          }));
-          if (reconciled.exitCode !== 0) {
-            throw new CanonicalResultIntegrationError(
-              reconciled.stderr.trim() || reconciled.stdout.trim() || 'reconciled canonical Result differs',
-            );
-          }
-          try {
-            await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
-          } catch {
-            throw pushError;
-          }
-        }
-        await verifyCanonical(record);
-        record.state = 'canonical-committed';
-        saveState(statePath, state);
-        return { status: 'integrated' as const, resultHash: record.result.resultHash,
-          durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit };
+        return advanceIntegration(record, state);
       });
     },
   };
