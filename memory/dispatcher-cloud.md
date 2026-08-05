@@ -335,3 +335,19 @@
   resolved by the boss (PR #103 codex resume defect) — record-only, wants a desk sweep to done.
   Left it (archival outside the nightly carve-out).
 - Push path: recorded in the run summary.
+
+## 2026-08-05 nightly run (dispatcher-cloud, opus-4-8)
+- Clean run: preamble PASS, pyyaml importable, sync_skills --check clean (exit 0), dashboards
+  regenerated, $0 cost. Today's cost/activity ledgers empty at run time; yesterday (08-04) had 49
+  cost rows, all subscription gpt-5.6-terra at usd 0.0.
+- step 2b drift UNCHANGED from 08-04: sync_daemon_dirs --check (origin/main copy, refs-fallback) =
+  same 10 files (5 main-only inc. thin-slice-run.md, 5 content-differs). Byte-identical to the set
+  card 6a718533 already records → applied the dedupe rule from the 08-04 lesson: did NOT file a new
+  wake-me card; surfaced the persistent drift in dashboard Anomalies + run summary instead. The
+  three standing cards (6a718533 drift, 6a6c3d8e earlier fyt drift, 6a605ebb missing script on ops)
+  fully cover the current state.
+- dispatch.py emitted the nightly-review card (6a72d607-c1b57318); self-executed it (owner
+  dispatcher-cloud): transition->working, ran the work order, wrote Result, transition->done.
+- Halted card 6a6bc3dd STILL in working/ (now 5 days). Record-only, resolved by boss (PR #103);
+  wants a desk sweep to done — left it (archival is outside the nightly carve-out).
+- Push path: recorded in the run summary.
