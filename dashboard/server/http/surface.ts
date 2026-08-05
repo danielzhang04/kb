@@ -5,7 +5,7 @@
  *   1. `security/origin.ts#originPlugin`   — Origin/Host guard (fail-closed: empty allowlist 403s all).
  *   2. `http/middleware.ts#writeRateLimitHook` — sliding-window rate-limit + lockout.
  *
- * then registers the auth / write / vibe / approvals routes onto that scope (each mutating route adds
+ * then registers the auth / write / composer / approvals routes onto that scope (each mutating route adds
  * its own `requireSession` preHandler, so the full chain is origin -> rate-limit -> session -> gate ->
  * audit). `/healthz` and the read-only hub/registry/planeA routes stay OUTSIDE this scope — untouched.
  *
@@ -24,7 +24,6 @@ import { makeDefaultWriteRateGuard, writeRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
-import { registerVibeRoutes } from '../vibe/routes.ts';
 import { registerComposerRoutes } from '../composer/routes.ts';
 import { createResumeRegistry } from '../composer/resumeRegistry.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
@@ -208,7 +207,7 @@ export function makeSurfaceContext(
   return ctx;
 }
 
-/** Register the governed write surface (auth + write + vibe + approvals) as one guarded child scope. */
+/** Register the governed write surface (auth + write + composer + approvals) as one guarded child scope. */
 export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext = makeSurfaceContext()): void {
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
   // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
@@ -226,7 +225,6 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
 
     registerAuthRoutes(scope, ctx);
     registerWriteRoutes(scope, ctx);
-    registerVibeRoutes(scope, ctx);
     registerComposerRoutes(scope, ctx);
     registerControlRoutes(scope, ctx);
     registerApprovalsRoutes(scope, ctx);

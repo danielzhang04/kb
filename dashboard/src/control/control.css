@@ -44,30 +44,6 @@
   font-size: var(--text-sm);
 }
 
-.control-panel__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.control-panel__head h2,
-.control-panel__head h3,
-.control-inbox-requests h3 {
-  margin: 0;
-}
-
-.control-panel__head p {
-  margin: var(--space-1) 0 0;
-  color: var(--fg-dim);
-  font-size: var(--text-sm);
-}
-
-.control-inbox-requests {
-  margin: var(--space-4);
-  padding: var(--space-4);
-}
-
 .control-proposal {
   padding: var(--space-4);
 }

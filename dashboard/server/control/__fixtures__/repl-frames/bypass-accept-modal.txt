@@ -1,3 +1,0 @@
-[>0q
-
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────WARNING:ClaudeCoderunninginBypassPermissionsmodeInBypassPermissionsmode,ClaudeCodewillnotaskforyourapprovalbeforerunningpotentiallydangerouscommands.Thismodeshouldonlybeusedinasandboxedcontainer/VMthathasrestrictedinternetaccessandcaneasilyberestoredifdamaged.Byproceeding,youacceptallresponsibilityforactionstakenwhilerunninginBypassPermissionsmode.https://code.claude.com/docs/en/security❯1.No,exit2.Yes,IacceptEntertoconfirm·Esctocancel

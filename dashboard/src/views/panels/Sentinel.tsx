@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from 'react';
 import type { HealthPanel, LivenessStatus } from '../../../server/panels/health';
-import { StopControls } from '../Control';
+import { StopControls } from '../stopControls';
 import '../../styles/views/panels.css';
 
 const EMPTY: HealthPanel = {

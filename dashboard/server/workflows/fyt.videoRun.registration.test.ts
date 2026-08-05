@@ -7,8 +7,11 @@
  * one of them carrying the run's spend authorization.
  */
 import Fastify from 'fastify';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
 import { createInMemoryComposerStore } from '../composer/store.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
@@ -88,11 +91,30 @@ const GOVERNANCE = {
   },
 } as const;
 
+/**
+ * State roots minted by {@link makeApp}, torn down after each test.
+ *
+ * `stateRoot` must NEVER be `REPO_ROOT`: `namingFor` (`http/context.ts`) hands any state root that is
+ * not the production one its own `new NamingRegistry(join(stateRoot, 'naming.json'))`, so pointing it
+ * at the repo made this read-only acceptance test mint real workflow ordinals into an untracked
+ * `naming.json` at the worktree root. A temp dir is the documented isolation seam. `repoRoot` stays
+ * REPO_ROOT — scanning the real checked-out definitions is the whole point of this test.
+ */
+const stateRoots: string[] = [];
+
+afterEach(() => {
+  while (stateRoots.length > 0) {
+    rmSync(stateRoots.pop()!, { recursive: true, force: true });
+  }
+});
+
 function makeApp() {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'fyt-videorun-'));
+  stateRoots.push(stateRoot);
   const app = Fastify();
   registerWorkflows(app, makeSurfaceContext({
     repoRoot: REPO_ROOT,
-    stateRoot: REPO_ROOT,
+    stateRoot,
     sessionConfig: { secret: SESSION_SECRET, ttlMs: 60_000 },
     allowedOrigins: [],
     credentials: () => [],
