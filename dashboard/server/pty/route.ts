@@ -62,6 +62,8 @@ import type { PtyCommand, PtyHost } from './host.ts';
 import { CommandNotFoundError, resolveCommandPath } from './resolveCommand.ts';
 import { createPersistentSessionRegistry, SESSION_ID_RE } from './persistentSessions.ts';
 import type { PersistentSessionRegistry, SessionSink } from './persistentSessions.ts';
+import type { SessionRunKind, SessionRunStore } from './sessionRuns.ts';
+import type { TranscriptRecorder, TranscriptSummary } from './transcripts.ts';
 
 /** The negotiated subprotocol that carries `['kb-pty.v1', sessionToken]` from the browser. */
 export const PTY_SUBPROTOCOL = 'kb-pty.v1';
@@ -304,6 +306,18 @@ export interface PtyRouteContext {
    * installed, and so the not-found branch is exercisable.
    */
   resolveClaudeFile: ClaudeFileResolver;
+  /**
+   * The durable SESSION RUN record store (`sessionRuns.ts`). Optional: when absent this route behaves
+   * exactly as it did before — sessions still spawn, attach and die, they are simply not recorded. It is
+   * wired in `server/http/surface.ts` for the daemon; tests inject a store over a temp state root.
+   *
+   * A session run is written for an `agent`- or `workflow`-primed spawn ONLY. A login shell and a plain
+   * `claude` belong to no entity, so there is no detail surface a record for them could honestly appear
+   * on, and inventing one would put un-entity-bound shells in a list titled "this workflow's runs".
+   */
+  sessionRuns?: SessionRunStore;
+  /** The transcript recorder (`transcripts.ts`). Optional for the same reason as {@link sessionRuns}. */
+  transcripts?: TranscriptRecorder;
 }
 
 /** Build a full {@link PtyRouteContext}, filling every unset field with its real default. The session
@@ -336,6 +350,11 @@ export function makePtyRouteContext(overrides: Partial<PtyRouteContext> = {}): P
     resolveWorkflowFile: overrides.resolveWorkflowFile ?? declaredWorkflowDefPath,
     workflowPrimingRoot: overrides.workflowPrimingRoot ?? join(resolveDashboardStateRoot(), 'pty-priming'),
     resolveClaudeFile: overrides.resolveClaudeFile ?? resolveClaudeFile,
+    // No defaults are fabricated for these two. Constructing a file-backed store here would make every
+    // context construction (tests included) touch the daemon's real state root; the composition root
+    // owns them instead, exactly as it owns the fleet-gated host.
+    ...(overrides.sessionRuns ? { sessionRuns: overrides.sessionRuns } : {}),
+    ...(overrides.transcripts ? { transcripts: overrides.transcripts } : {}),
   };
 }
 
@@ -439,6 +458,13 @@ export async function handlePtyConnection(
   }
   const owner = session.claims.sub;
 
+  /**
+   * The SESSION RUN this connection opens, once it exists. Declared here because the sink below closes
+   * over it: the shell's exit code is only ever seen by an ATTACHED sink, and it is the one lifecycle
+   * fact the registry's gone-notification cannot carry.
+   */
+  let sessionRunRef: string | null = null;
+
   // 3b. Spawn-mode gate. Parsed AFTER authentication and BEFORE anything touches a path, an argv, or the
   //     concurrency cap, so an unknown mode or an unknown agent id costs a refusal and nothing else. The
   //     route's `preValidation` hook already 400s these on the upgrade; this is the fail-closed backstop
@@ -458,7 +484,12 @@ export async function handlePtyConnection(
       if (isOpen(socket)) socket.send(chunk);
     },
     closed: () => !isOpen(socket),
-    onExit: () => {
+    onExit: (info) => {
+      // Best-effort exit code. `observe()`'s gone-notification (which ends the record) carries no exit
+      // info, so this fills an UNKNOWN when — and only when — a socket was still attached to see it.
+      if (sessionRunRef && ctx.sessionRuns) {
+        void Promise.resolve(ctx.sessionRuns.stampExitCode(owner, sessionRunRef, info.exitCode)).catch(() => {});
+      }
       if (isOpen(socket)) socket.close(1000, 'shell exited');
     },
     onEvicted: () => {
@@ -531,8 +562,10 @@ export async function handlePtyConnection(
   //     An id or ref that is not on its allowlist is refused here (fail-closed backstop for the route's
   //     `preValidation` 400) and never reaches a path join, an argv, or a process.
   let command: PtyCommand | undefined;
+  // Hoisted out of the spawn block: the session-run record keeps the priming file this session was
+  // actually started with, which is the only durable answer to "what was this shell told to be?".
+  let primingFile: string | null = null;
   if (spawnParams.spawn) {
-    let primingFile: string | null = null;
     if (spawnParams.spawn.mode === 'agent') {
       primingFile = ctx.resolveAgentFile(ctx.repoRoot, spawnParams.spawn.agentId as string);
       if (primingFile === null) {
@@ -622,6 +655,76 @@ export async function handlePtyConnection(
   }
   const sessionId = created.sessionId;
 
+  // ── SESSION RUN + TRANSCRIPT ───────────────────────────────────────────────────────────────────────
+  // Recorded for an entity-primed spawn only (see PtyRouteContext.sessionRuns). Two orderings matter:
+  //
+  //  1. The transcript tap goes on FIRST, before any await. Observers get no replay of the ring, so a
+  //     banner emitted while the record write or the audit is in flight would otherwise be lost from the
+  //     transcript forever.
+  //  2. The record is written BEFORE the `opened` audit — i.e. before any byte reaches the operator —
+  //     and a failure to write it fails the spawn CLOSED (kill the shell, refuse the socket), exactly as
+  //     an unwritable audit row does. A session the daemon could not record is a session nothing can
+  //     later account for.
+  //
+  // The id is already minted by `registry.create` above, so the record is born complete rather than
+  // stamped in a second write: there is no window in which a record exists without its `ptySessionId`.
+  const runKind: SessionRunKind | null =
+    spawnParams.spawn?.mode === 'agent' ? 'agent' : spawnParams.spawn?.mode === 'workflow' ? 'workflow' : null;
+  const runTargetRef = spawnParams.spawn?.agentId ?? spawnParams.spawn?.workflowRef ?? null;
+  const recordable = Boolean(ctx.sessionRuns && runKind && runTargetRef);
+  // Mutable state read across the async boundary below. A plain `let` would be narrowed by the compiler
+  // to its initializer; a container is honest about being written from a callback.
+  const goneState: { fired: boolean; summary: TranscriptSummary | null } = { fired: false, summary: null };
+
+  const endSessionRun = (summary: TranscriptSummary | null): void => {
+    if (!ctx.sessionRuns || !sessionRunRef) return;
+    // Record-keeping never breaks teardown: a store failure here leaves the record `live`, and the boot
+    // sweep corrects it to `abandoned` on the next daemon start.
+    void Promise.resolve(ctx.sessionRuns.end(owner, sessionRunRef, { transcript: summary })).catch(() => {});
+  };
+
+  // The registry's gone-notification fires EXACTLY ONCE — on shell exit or on an explicit close — which
+  // is precisely the "this session ended" edge. Closing the browser tab is NOT that edge: it detaches a
+  // socket, the shell keeps running, and the record stays `live` because it still is.
+  const onSessionGone = (summary: TranscriptSummary | null): void => {
+    goneState.fired = true;
+    goneState.summary = summary;
+    endSessionRun(summary);
+  };
+  if (recordable) {
+    if (ctx.transcripts) {
+      ctx.transcripts.record(registry, owner, sessionId, onSessionGone);
+    } else {
+      registry.observe(owner, sessionId, () => {}, () => onSessionGone(null));
+    }
+  }
+
+  if (recordable && ctx.sessionRuns) {
+    try {
+      const record = await ctx.sessionRuns.create({
+        owner,
+        kind: runKind as SessionRunKind,
+        targetRef: runTargetRef as string,
+        ptySessionId: sessionId,
+        primingPath: primingFile,
+      });
+      sessionRunRef = record.sessionRunRef;
+    } catch {
+      registry.close(owner, sessionId);
+      // Still exactly ONE audit row for this connection: the spawn was rolled back, so it is reported as
+      // the spawn failure it now is rather than as an `opened` that did not happen.
+      await audit('spawn-failed', owner, { error: 'session-run-record-failed' });
+      if (isOpen(socket)) {
+        socket.send(JSON.stringify({ type: 'error', reason: 'session-run-record-failed' }));
+        socket.close(1011, 'session-run-record-failed');
+      }
+      return;
+    }
+    // A shell can die inside that await (a bad priming file, an instant exit). The gone-notification
+    // then fired before the ref existed, so settle the record now instead of leaving it `live` forever.
+    if (goneState.fired) endSessionRun(goneState.summary);
+  }
+
   // Opening the shell is the consequential action. If its audit cannot be recorded, fail closed: kill the
   // just-created session, close the WS, and contain the exception here.
   try {
@@ -632,6 +735,9 @@ export async function handlePtyConnection(
       spawn: spawnParams.spawn?.mode ?? 'shell',
       ...(spawnParams.spawn?.agentId ? { agentId: spawnParams.spawn.agentId } : {}),
       ...(spawnParams.spawn?.workflowRef ? { workflowRef: spawnParams.spawn.workflowRef } : {}),
+      // Ties this row to the durable record it opened, so the audit log and the session-run list can be
+      // read against each other without guessing from timestamps.
+      ...(sessionRunRef ? { sessionRunRef } : {}),
     });
   } catch {
     registry.close(owner, sessionId);
@@ -653,8 +759,9 @@ export async function handlePtyConnection(
 }
 
 /** Verify the bearer on a REST request the same way the WS verifies its subprotocol token. Returns the
- *  owner `sub` on success, or replies 401 and returns undefined. */
-function requireBearerOwner(
+ *  owner `sub` on success, or replies 401 and returns undefined. Exported so the session-run routes
+ *  registered beside this one authenticate through the exact same check, not a second copy of it. */
+export function requireBearerOwner(
   req: FastifyRequest,
   reply: FastifyReply,
   sessionConfig: SessionConfig,
@@ -730,6 +837,8 @@ export async function registerPtyRoute(
   });
 
   // Daemon shutdown drain: kill every live PTY and forget every registry entry so no shell is orphaned.
+  // `clear()` fires each session's gone-notification, so transcripts flush and their records settle on
+  // the way out; whatever does not complete before the process exits is corrected by the boot sweep.
   app.addHook('onClose', async () => {
     try {
       ctx.ptyHost.stopAll();
@@ -737,5 +846,10 @@ export async function registerPtyRoute(
       /* best-effort */
     }
     ctx.registry.clear();
+    try {
+      ctx.transcripts?.dispose();
+    } catch {
+      /* best-effort */
+    }
   });
 }

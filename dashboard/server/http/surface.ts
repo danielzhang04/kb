@@ -38,6 +38,8 @@ import { buildActivatedExecution, createExecutionLatch } from '../control/activa
 import { createPtyHost } from '../pty/host.ts';
 import type { PtyHost } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
+import { createSessionRunStore } from '../pty/sessionRuns.ts';
+import { createTranscriptRecorder } from '../pty/transcripts.ts';
 import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
@@ -126,6 +128,12 @@ export function makeSurfaceContext(
     overrides.runPreamble ?? defaultPreambleRunner,
   );
   const ptySessions = overrides.ptySessions ?? createPersistentSessionRegistry();
+  // Session runs + transcripts (leg 2). Construction is INERT: the store's JSON document is created
+  // lazily and the recorder only touches disk once a session is actually taped, so building a context
+  // — which every server test does — writes nothing. The `live` → `abandoned` boot sweep runs at ROUTE
+  // REGISTRATION instead, the one moment that happens exactly once per daemon boot.
+  const ptySessionRuns = overrides.ptySessionRuns ?? createSessionRunStore(stateRoot);
+  const ptyTranscripts = overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot });
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   const ctx: SurfaceContext = {
     repoRoot,
@@ -162,6 +170,8 @@ export function makeSurfaceContext(
     controlStore,
     ptyHost,
     ptySessions,
+    ptySessionRuns,
+    ptyTranscripts,
     // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
     // every control route observes exactly the pre-activation refusals. The latch below rebinds them in
     // place on unlock and clears them on lock.

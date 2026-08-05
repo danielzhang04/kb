@@ -30,11 +30,12 @@ import { entityRowProps } from '../components/entityRow';
 import { ConsolePane } from '../console/ConsolePane';
 import type { ConsoleControl } from '../console/ConsolePane';
 import { useAttachableSession } from '../console/useAttachableSession';
+import { SessionRunRow, useSessionRuns } from '../console/sessionRuns';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import type { AgentDetailDto } from '../lib/agentClient';
 import { renderMarkdown } from '../lib/markdown';
 import { useOptionalSession } from '../lib/sessionContext';
-import type { PtySocketFactory, TerminalSessionsClient } from '../lib/terminalClient';
+import type { PtySocketFactory, SessionRunsClient, TerminalSessionsClient } from '../lib/terminalClient';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/entity.css';
 import '../styles/views/agents.css';
@@ -89,6 +90,8 @@ export interface AgentDetailProps {
   socketFactory?: PtySocketFactory;
   /** Injected in tests so no component test hits the network. Defaults to the real session REST client. */
   sessionsClient?: TerminalSessionsClient;
+  /** Injected in tests; defaults to the real `/api/pty/session-runs` client. */
+  sessionRunsClient?: SessionRunsClient;
   activeSectionId?: string;
   onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
@@ -314,6 +317,7 @@ export function AgentDetail({
   detailState,
   socketFactory,
   sessionsClient,
+  sessionRunsClient,
   activeSectionId,
   onSectionChange,
   onNavigate,
@@ -324,6 +328,13 @@ export function AgentDetail({
   // because the body unmounts on every tab switch — and the request must survive that, exactly as the
   // shell it started does.
   const [consoleStarted, setConsoleStarted] = useState(false);
+  const [expandedSessionRef, setExpandedSessionRef] = useState<string | null>(null);
+  // This agent's own session runs — the record of every terminal session primed as it. A DIFFERENT kind
+  // of record from the governed runs below, and labelled as one on every row.
+  const sessionRuns = useSessionRuns(
+    { kind: 'agent', ref: agent.id },
+    { ...(sessionRunsClient ? { client: sessionRunsClient } : {}) },
+  );
   // The section is mirrored here so "Run agent" can SHOW the tab it just started a session on. When the
   // nav stack supplies `activeSectionId` it still wins (back-navigation must restore the operator's tab);
   // the local copy only carries the uncontrolled case, which is otherwise a button that does nothing
@@ -661,7 +672,11 @@ export function AgentDetail({
         agentId={agent.id}
         declared={agent.declared}
         started={consoleStarted}
-        onStop={() => setConsoleStarted(false)}
+        onStop={() => {
+          setConsoleStarted(false);
+          // The session just became a PAST session; re-read so the list below stops calling it live.
+          sessionRuns.refresh();
+        }}
         {...(socketFactory ? { socketFactory } : {})}
         {...(sessionsClient ? { sessionsClient } : {})}
       />
@@ -701,6 +716,44 @@ export function AgentDetail({
           <> Scanned the {runScanLimit} most recent runs only for that older inference.</>
         ) : null}
       </p>
+      </section>
+
+      {/*
+        * Past CHAT SESSIONS. Kept as its own list rather than merged into the governed runs above,
+        * because on an agent the two answer different questions — "what governed work is this agent
+        * doing" and "what have I talked to it about" — and the console for the live one is right at the
+        * top of this tab. Every row still says which kind of record it is.
+        */}
+      <section className="entity-block" aria-label="Past sessions with this agent">
+        <h3 className="entity-block__title">Past sessions</h3>
+        {sessionRuns.error ? (
+          <p className="entity-note" role="status" data-testid="agent-session-runs-error">{sessionRuns.error}</p>
+        ) : null}
+        {sessionRuns.runs === undefined ? (
+          <p className="entity-note" data-testid="agent-session-runs-unloaded">
+            Not loaded — reading past sessions needs an unlocked session.
+          </p>
+        ) : sessionRuns.runs.length === 0 ? (
+          <p className="entity-note" data-testid="agent-session-runs-empty">
+            Nobody has opened a session with this agent yet.
+          </p>
+        ) : (
+          <ol className="entity-list" data-testid="agent-session-runs">
+            {sessionRuns.runs.map((run) => (
+              <li key={run.sessionRunRef}>
+                <SessionRunRow
+                  run={run}
+                  expanded={expandedSessionRef === run.sessionRunRef}
+                  onToggle={() => setExpandedSessionRef((current) =>
+                    current === run.sessionRunRef ? null : run.sessionRunRef)}
+                  onArchive={() => void sessionRuns.archive(run.sessionRunRef)}
+                  archiving={sessionRuns.archivingRef === run.sessionRunRef}
+                  {...(sessionRunsClient ? { client: sessionRunsClient } : {})}
+                />
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
     </>
   );

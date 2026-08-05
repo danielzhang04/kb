@@ -1,14 +1,28 @@
 /**
- * The workflow detail — one graph, one Launch, one list of runs.
+ * The workflow detail — one graph, one Launch, one history of everything this workflow has done.
  *
  * A workflow is a reusable definition; a run is one execution of it. Both live in this destination, so
  * this view answers exactly three questions and pushes everything else behind a fold:
- *   - what does this workflow do, and who runs each step (the graph — and where you change it);
+ *   - what does this workflow do, and who runs each step (the Flow tab — and where you change it);
  *   - can I run it right now (one button, with any inputs it declares beside it);
- *   - what has it done (its runs, live and past).
+ *   - what has it done (the Runs tab, live and past).
  *
- * The five-tab layout it replaces (Agents / Overview / Stages / Runs / Compiled) split those three
- * answers across five clicks and spoke in engine vocabulary — "compiled proposal", "proposal revision",
+ * ── Two provenances in ONE list, never blurred (leg 2) ──
+ *
+ * The Runs tab merges two genuinely different records in start order:
+ *
+ *   a GOVERNED RUN — launched from the compiled, hash-pinned plan and driven by the executor. It opens
+ *                    the run detail, exactly as before. That detail has no terminal in it, deliberately.
+ *   a CHAT SESSION — one primed `claude` in a terminal, driven by an operator's keystrokes. No plan, no
+ *                    stages, no governance. It opens IN THIS PAGE: live in the console above, past as a
+ *                    transcript.
+ *
+ * Every row says which it is, in plain words. A workflow's history is genuinely both things, and showing
+ * them in two disconnected places would hide half of what happened — but letting a chat session render
+ * with a governed run's chrome would be worse, so the vocabularies stay strictly separate.
+ *
+ * The five-tab layout this replaced (Agents / Overview / Stages / Runs / Compiled) split those answers
+ * across five clicks and spoke in engine vocabulary — "compiled proposal", "proposal revision",
  * "pre-launch assignment amendments", a workflow-governor dropdown with its own submit button. The
  * governor plan was compile-neutral bookkeeping: it never decided who ran anything. It is gone, and the
  * only editing surface left is the per-agent picker on the graph, which posts the SAME governed
@@ -19,7 +33,13 @@ import type { ProposalRoutingDto, ProposalStageDto, ResolvedAgentAssignmentDto, 
 import { relativeAge, runDot, runStateLabel } from '../control/runEvents';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
+import { ConsolePane } from '../console/ConsolePane';
+import type { ConsoleControl } from '../console/ConsolePane';
+import { useAttachableSession } from '../console/useAttachableSession';
+import { SessionRunRow, useSessionRuns } from '../console/sessionRuns';
 import { EntityDetail, type DetailSection } from '../entity/EntityDetail';
+import { useOptionalSession } from '../lib/sessionContext';
+import type { PtySocketFactory, SessionRunDto, SessionRunsClient, TerminalSessionsClient } from '../lib/terminalClient';
 import type { NavTarget } from '../nav/stack';
 import {
   WorkflowAgentGraph,
@@ -29,6 +49,7 @@ import {
   type WorkflowAssignmentOptions,
 } from './WorkflowAgentGraph';
 import '../styles/views/entity.css';
+import '../styles/views/agents.css';
 
 /** One definition entry from `GET /api/workflows` (mirrors `server/workflows/routes.ts`). */
 export interface WorkflowDefEntry {
@@ -101,11 +122,15 @@ export interface WorkflowDetailProps {
   onNavigate?: (target: NavTarget) => void;
   onBack?: () => void;
   backLabel?: string;
-  /**
-   * The ONE primary action: hand this workflow to a terminal session primed as the agent that runs it.
-   * The operator picks nothing and assigns nothing first — the definition already says who runs what.
-   */
-  onRunWorkflow?: (workflow: { ref: string }) => void;
+  /** Injected in tests so no component test opens a real WebSocket. Defaults to the real `/api/pty`. */
+  socketFactory?: PtySocketFactory;
+  /** Injected in tests so no component test hits the network. Defaults to the real session REST client. */
+  sessionsClient?: TerminalSessionsClient;
+  /** Injected in tests; defaults to the real `/api/pty/session-runs` client. */
+  sessionRunsClient?: SessionRunsClient;
+  /** Controlled by the nav stack so back-navigation restores the operator's tab. */
+  activeSectionId?: string;
+  onSectionChange?: (id: string) => void;
   /** Inputs the definition declares. Values live in the owner view so opening detail never changes intent. */
   parameterValues?: Record<string, string>;
   onParameterChange?: (name: string, value: string) => void;
@@ -135,10 +160,14 @@ export function RunRow({
   run,
   now,
   onOpen,
+  kindLabel,
 }: {
   run: RunMetadataDto;
   now?: number;
   onOpen?: (runRef: string) => void;
+  /** Set in a MERGED list, where a row must say which kind of record it is. Omitted where the list is
+   *  homogeneous and the label would be noise. */
+  kindLabel?: string;
 }): React.JSX.Element {
   return (
     <div
@@ -147,6 +176,9 @@ export function RunRow({
       aria-disabled={!onOpen || undefined}
       {...entityRowProps(() => onOpen?.(run.runRef))}
     >
+      {kindLabel ? (
+        <span className="session-run__kind mc-mono" data-testid={`workflow-run-kind-${run.runRef}`}>{kindLabel}</span>
+      ) : null}
       <span className="entity-row__main">
         <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} />
       </span>
@@ -164,6 +196,177 @@ export function RunRow({
   );
 }
 
+/**
+ * ONE time-ordered history from the two records a workflow actually produces. Ordered by when each
+ * STARTED, newest first, so the list reads as "what happened here, most recent first" regardless of
+ * which mechanism produced it. A governed run's `updatedAt` is the closest thing it publishes to a
+ * position on that timeline; a session run carries its own `startedAt`.
+ *
+ * Exported for its own test: the merge is the rendering rule, and a rule worth stating is worth pinning.
+ */
+export type MergedRunRow =
+  | { key: string; at: number; row: 'governed'; run: RunMetadataDto }
+  | { key: string; at: number; row: 'session'; run: SessionRunDto };
+
+export function mergeRunRows(
+  governed: RunMetadataDto[] | undefined,
+  sessions: SessionRunDto[] | undefined,
+): MergedRunRow[] {
+  const rows: MergedRunRow[] = [
+    ...(governed ?? []).map((run): MergedRunRow => ({
+      key: `governed:${run.runRef}`,
+      at: Date.parse(run.updatedAt) || 0,
+      row: 'governed',
+      run,
+    })),
+    ...(sessions ?? []).map((run): MergedRunRow => ({
+      key: `session:${run.sessionRunRef}`,
+      at: Date.parse(run.startedAt) || 0,
+      row: 'session',
+      run,
+    })),
+  ];
+  return rows.sort((a, b) => b.at - a.at);
+}
+
+/**
+ * The workflow's OWN console — a live shell primed as the agent that governs this workflow, inside its
+ * detail. Mirrors `AgentConsole` (leg 1) exactly, including the ordering that keeps a remount from
+ * becoming a respawn: while the live-session lookup is in flight NO console is rendered, because
+ * rendering the spawn target early is precisely how a tab switch leaks a second shell into the daemon's
+ * shared terminal cap.
+ */
+export function WorkflowConsole({
+  workflowRef,
+  runnable,
+  started,
+  onStop,
+  socketFactory,
+  sessionsClient,
+}: {
+  workflowRef: string;
+  /** A workflow that cannot run has nothing to prime a governing session with. */
+  runnable: boolean;
+  started: boolean;
+  onStop: () => void;
+  socketFactory?: PtySocketFactory;
+  sessionsClient?: TerminalSessionsClient;
+}): React.JSX.Element {
+  const sessionContext = useOptionalSession();
+  const [signingIn, setSigningIn] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [control, setControl] = useState<ConsoleControl | null>(null);
+  const attachable = useAttachableSession(runnable ? { kind: 'workflow', ref: workflowRef } : null, {
+    ...(sessionsClient ? { sessionsClient } : {}),
+  });
+
+  // An already-running shell WINS over a fresh spawn request: if this workflow has a live session, that
+  // is the session the operator means, whatever they just clicked.
+  const target = attachable.attach ?? (started ? attachable.spawn : null);
+
+  async function handleUnlock(): Promise<void> {
+    if (signingIn || !sessionContext) return;
+    setSigningIn(true);
+    try {
+      await sessionContext.requireSession();
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  const stop = (): void => {
+    setNotice(null);
+    attachable.release();
+    onStop();
+  };
+
+  let body: React.ReactNode;
+  if (!runnable) {
+    body = (
+      <p className="entity-note" data-testid="workflow-console-unrunnable">
+        This workflow cannot run as written, so there is nothing to start a session for.
+      </p>
+    );
+  } else if (!attachable.unlocked) {
+    body = sessionContext ? (
+      <button
+        type="button"
+        className="mc-btn agent-console__unlock"
+        onClick={() => void handleUnlock()}
+        disabled={signingIn}
+        data-testid="workflow-console-locked"
+      >
+        {signingIn ? 'Unlocking…' : 'Locked — unlock to open a session'}
+      </button>
+    ) : (
+      <p className="entity-note" data-testid="workflow-console-locked">
+        Locked — opening a session needs an unlocked passkey session.
+      </p>
+    );
+  } else if (attachable.status === 'loading') {
+    body = (
+      <p className="entity-note" data-testid="workflow-console-loading">
+        Checking whether this workflow already has a live session…
+      </p>
+    );
+  } else if (!target) {
+    body = (
+      <p className="entity-note" data-testid="workflow-console-idle">
+        No live session. Use <strong>Run workflow</strong> above to start one you can type into.
+      </p>
+    );
+  } else {
+    body = (
+      <>
+        <div className="agent-console__bar">
+          <span className="agent-console__state mc-mono" data-testid="workflow-console-mode">
+            {target.mode === 'attach' ? 'attached' : 'starting'}
+          </span>
+          <button
+            type="button"
+            className="agent-console__close"
+            onClick={() => (control ? control.requestClose() : stop())}
+            data-testid="workflow-console-close"
+          >
+            End session
+          </button>
+        </div>
+        <ConsolePane
+          target={target}
+          visible
+          {...(socketFactory ? { socketFactory } : {})}
+          {...(sessionsClient ? { sessionsClient } : {})}
+          onError={(reason) =>
+            setNotice(
+              reason === 'too-many-terminals'
+                ? 'The fleet already has the maximum number of terminals open. Close one — here or in the Terminal — and try again.'
+                : null,
+            )
+          }
+          onExit={stop}
+          registerControl={setControl}
+          testIdSuffix="-workflow"
+          ariaLabel={`Live session governing ${workflowRef}`}
+        />
+      </>
+    );
+  }
+
+  return (
+    <section className="entity-block agent-console" aria-label="Live session for this workflow">
+      <h3 className="entity-block__title">Chat session</h3>
+      <p className="entity-note">
+        A session is a conversation with the agent that governs this workflow — not a governed run of it.
+      </p>
+      {/* The cap refusal renders HERE, in the console the operator opened, never as a navigation away. */}
+      {notice ? (
+        <p className="agent-console__notice" role="status" data-testid="workflow-console-notice">{notice}</p>
+      ) : null}
+      {body}
+    </section>
+  );
+}
+
 export function WorkflowDetail({
   entry,
   compiled: injectedCompiled,
@@ -173,7 +376,11 @@ export function WorkflowDetail({
   onNavigate,
   onBack,
   backLabel,
-  onRunWorkflow,
+  socketFactory,
+  sessionsClient,
+  sessionRunsClient,
+  activeSectionId,
+  onSectionChange,
   parameterValues = {},
   onParameterChange,
   onLaunch,
@@ -186,6 +393,19 @@ export function WorkflowDetail({
   assignStatus,
 }: WorkflowDetailProps): React.JSX.Element {
   const [fetched, setFetched] = useState<WorkflowCompiled | null>(injectedCompiled ?? null);
+  // Whether the operator has asked for a session on THIS workflow. It lives here, not in the section
+  // body, because the body unmounts on every tab switch — and the request must survive that, exactly as
+  // the shell it started does.
+  const [consoleStarted, setConsoleStarted] = useState(false);
+  const [expandedSessionRef, setExpandedSessionRef] = useState<string | null>(null);
+  // Mirrors leg 1's AgentDetail: a controlled `activeSectionId` from the nav stack still wins, and the
+  // local copy only carries the uncontrolled case so "Run workflow" can SHOW the tab it just started on.
+  const [localSection, setLocalSection] = useState<string | undefined>(undefined);
+  const selectedSection = activeSectionId ?? localSection;
+  const selectSection = (id: string): void => {
+    setLocalSection(id);
+    onSectionChange?.(id);
+  };
 
   /**
    * The compiled preview is DECORATION over the list entry: the detail is fully readable without it, so
@@ -209,6 +429,13 @@ export function WorkflowDetail({
   const parametersMissing = parameters.some((name) => (parameterValues[name] ?? '').trim() === '');
   const canLaunch = Boolean(onLaunch) && entry.valid && entry.launchable !== false
     && !blockedReason && !parametersMissing && !launching;
+  const runnable = entry.valid && entry.launchable !== false;
+
+  const sessionRuns = useSessionRuns(
+    { kind: 'workflow', ref: entry.ref },
+    { ...(sessionRunsClient ? { client: sessionRunsClient } : {}) },
+  );
+  const merged = mergeRunRows(runs, sessionRuns.runs);
 
   const body = (
     <>
@@ -250,25 +477,6 @@ export function WorkflowDetail({
         {assignStatus ? (
           <p className="entity-note" role="status" data-testid="workflow-assign-status">{assignStatus}</p>
         ) : null}
-      </section>
-
-      <section className="entity-block" aria-label="Runs">
-        <h3 className="entity-block__title">Runs</h3>
-        {runs === undefined ? (
-          <p className="entity-note" data-testid="workflow-runs-unloaded">
-            Not loaded — unlock the dashboard to see this workflow&rsquo;s runs.
-          </p>
-        ) : runs.length === 0 ? (
-          <p className="entity-note" data-testid="workflow-runs-empty">This workflow has not run yet.</p>
-        ) : (
-          <ol className="entity-list" data-testid="workflow-runs">
-            {runs.map((run) => (
-              <li key={run.runRef}>
-                <RunRow run={run} now={now} onOpen={onOpenRun} />
-              </li>
-            ))}
-          </ol>
-        )}
       </section>
 
       <details className="entity-fold" data-testid="workflow-technical">
@@ -394,22 +602,96 @@ export function WorkflowDetail({
   );
 
   /**
-   * ONE button. It opens a terminal session primed as the agent that runs this workflow — no channel to
-   * type, no slug to fill in, no assignment to make first. The definition already says who runs what,
-   * and the direct governed launch (with its declared inputs) lives behind the technical fold.
+   * The Runs tab: the live console this workflow's sessions land in, then ONE history that merges the
+   * two kinds of record. `undefined` and `[]` stay different claims — "we did not look" is not "we
+   * looked and there is nothing", and conflating them is how a dashboard starts lying quietly.
    */
-  const actions = onRunWorkflow ? (
-    <button
-      type="button"
-      className="mc-btn mc-btn--primary"
-      data-testid="workflow-run"
-      onClick={() => onRunWorkflow({ ref: entry.ref })}
-    >
-      Run workflow
-    </button>
-  ) : null;
+  const runsBody = (
+    <>
+      <WorkflowConsole
+        workflowRef={entry.ref}
+        runnable={runnable}
+        started={consoleStarted}
+        onStop={() => {
+          setConsoleStarted(false);
+          // A session that just ended becomes a PAST session; re-read so it appears in the history below
+          // instead of the list still claiming it is running.
+          sessionRuns.refresh();
+        }}
+        {...(socketFactory ? { socketFactory } : {})}
+        {...(sessionsClient ? { sessionsClient } : {})}
+      />
 
-  const sections: DetailSection[] = [{ id: 'workflow', label: 'Workflow', render: () => body }];
+      <section className="entity-block" aria-label="Runs and sessions">
+        <h3 className="entity-block__title">History</h3>
+        <p className="entity-note">
+          Governed runs execute the compiled plan. Chat sessions are conversations with the agent that
+          governs this workflow. Both are listed here, newest first.
+        </p>
+        {sessionRuns.error ? (
+          <p className="entity-note" role="status" data-testid="workflow-session-runs-error">{sessionRuns.error}</p>
+        ) : null}
+        {runs === undefined && sessionRuns.runs === undefined ? (
+          <p className="entity-note" data-testid="workflow-runs-unloaded">
+            Not loaded — unlock the dashboard to see this workflow&rsquo;s runs.
+          </p>
+        ) : merged.length === 0 ? (
+          <p className="entity-note" data-testid="workflow-runs-empty">
+            This workflow has not run yet, and nobody has opened a session with it.
+          </p>
+        ) : (
+          <ol className="entity-list" data-testid="workflow-runs">
+            {merged.map((entryRow) => (
+              <li key={entryRow.key}>
+                {entryRow.row === 'governed' ? (
+                  <RunRow run={entryRow.run} now={now} onOpen={onOpenRun} kindLabel="governed run" />
+                ) : (
+                  <SessionRunRow
+                    run={entryRow.run}
+                    now={now}
+                    expanded={expandedSessionRef === entryRow.run.sessionRunRef}
+                    onToggle={() => setExpandedSessionRef((current) =>
+                      current === entryRow.run.sessionRunRef ? null : entryRow.run.sessionRunRef)}
+                    onArchive={() => void sessionRuns.archive(entryRow.run.sessionRunRef)}
+                    archiving={sessionRuns.archivingRef === entryRow.run.sessionRunRef}
+                    {...(sessionRunsClient ? { client: sessionRunsClient } : {})}
+                  />
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </>
+  );
+
+  /**
+   * ONE button. It opens a terminal session primed as the agent that runs this workflow — no channel to
+   * type, no slug to fill in, no assignment to make first — and it lands the operator IN THIS PAGE, on
+   * the Runs tab, instead of throwing them at the Terminal destination and leaving the workflow they
+   * were reading. The direct governed launch (with its declared inputs) lives behind the technical fold.
+   */
+  const actions = (
+    <div>
+      <button
+        type="button"
+        className="mc-btn mc-btn--primary"
+        data-testid="workflow-run"
+        onClick={() => {
+          setConsoleStarted(true);
+          selectSection('runs');
+        }}
+      >
+        Run workflow
+      </button>
+      <p className="entity-note">Opens a session you can type into, as the agent that runs this workflow, under Runs.</p>
+    </div>
+  );
+
+  const sections: DetailSection[] = [
+    { id: 'flow', label: 'Flow', render: () => body },
+    { id: 'runs', label: 'Runs', count: merged.length, render: () => runsBody },
+  ];
 
   return (
     <EntityDetail
@@ -424,6 +706,8 @@ export function WorkflowDetail({
         { label: 'Runs', value: runs === undefined ? '—' : runs.length, mono: true },
       ]}
       sections={sections}
+      activeSectionId={selectedSection}
+      onSectionChange={selectSection}
       onNavigate={onNavigate}
       onBack={onBack}
       backLabel={backLabel}

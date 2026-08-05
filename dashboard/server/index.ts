@@ -13,6 +13,7 @@ import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
+import { registerSessionRunRoutes } from './pty/sessionRunRoutes.ts';
 import { originPlugin } from './security/origin.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
@@ -126,9 +127,24 @@ export function buildApp(): FastifyInstance {
       sessionConfig: surfaceCtx.sessionConfig,
       ptyHost: surfaceCtx.ptyHost,
       ...(surfaceCtx.ptySessions ? { registry: surfaceCtx.ptySessions } : {}),
+      // Leg 2: the daemon records the entity-primed sessions it spawns (agent / workflow), and tapes
+      // their output. Both are owned by the surface context so there is exactly one of each per process.
+      ...(surfaceCtx.ptySessionRuns ? { sessionRuns: surfaceCtx.ptySessionRuns } : {}),
+      ...(surfaceCtx.ptyTranscripts ? { transcripts: surfaceCtx.ptyTranscripts } : {}),
     });
     app.register(async (scope) => {
       await registerPtyRoute(scope, ptyCtx);
+      // The session-run REST surface sits BESIDE /api/pty inside the same origin-guarded scope, and is
+      // registered here rather than from the pty route so neither module has to import the other. Its
+      // registration also runs the boot sweep that corrects any `live` record left by the last process.
+      if (surfaceCtx.ptySessionRuns) {
+        await registerSessionRunRoutes(scope, {
+          repoRoot: ptyCtx.repoRoot,
+          sessionConfig: ptyCtx.sessionConfig,
+          sessionRuns: surfaceCtx.ptySessionRuns,
+          ...(surfaceCtx.ptyTranscripts ? { transcripts: surfaceCtx.ptyTranscripts } : {}),
+        });
+      }
       originPlugin(scope, { allowedOrigins: ptyCtx.allowedOrigins ?? [] });
     });
   }

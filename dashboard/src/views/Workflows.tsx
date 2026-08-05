@@ -75,7 +75,8 @@ export function Workflows({
   onOpenRun,
   onBack,
   onNavigate,
-  onRunWorkflow,
+  activeSectionId,
+  onSectionChange,
   runs: injectedRuns,
   now,
 }: {
@@ -90,9 +91,13 @@ export function Workflows({
   onOpenRun?: (runRef: string) => void;
   onBack?: () => void;
   onNavigate?: (target: NavTarget) => void;
-  /** "Run workflow" on a workflow's detail — handed up to the app, which primes a terminal session.
-   *  The roster rows are unchanged: a row still just opens the workflow. */
-  onRunWorkflow?: (workflow: { ref: string }) => void;
+  /**
+   * The open detail's active tab, driven by the nav stack so back-navigation restores it (leg 2 gave the
+   * workflow detail a second section). "Run workflow" no longer travels up to the app at all: the detail
+   * runs its workflow in its OWN embedded console, on its own Runs tab.
+   */
+  activeSectionId?: string;
+  onSectionChange?: (id: string) => void;
   /** Injected by tests; otherwise loaded from the control plane. */
   runs?: RunMetadataDto[];
   now?: number;
@@ -329,7 +334,8 @@ export function Workflows({
           onNavigate={onNavigate}
           onBack={back}
           backLabel="All workflows"
-          onRunWorkflow={onRunWorkflow}
+          activeSectionId={activeSectionId}
+          onSectionChange={onSectionChange}
           parameterValues={parameterValues[openDef.ref] ?? {}}
           onParameterChange={(name, value) => setParameterValues((current) => ({
             ...current, [openDef.ref]: { ...current[openDef.ref], [name]: value },
