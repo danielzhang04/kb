@@ -55,6 +55,12 @@
       "costume": "PINNED canonical outfit: crisp navy pinstripe three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a plain dark tie, ONE plain white pocket square folded at the breast pocket (its single identity tag), polished dark shoes; close-cropped grey hair, broad heavy mass on the squat base proportion. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png"
     },
+    "rifenburgh-ceo": {
+      "role": "Richard Rifenburgh — the post-collapse MiniScribe CEO who fronts the press arc. Appears L177, L185.",
+      "head_tone": "#caa07a",
+      "costume": "PINNED canonical outfit: plain unpatterned charcoal TWO-piece suit (no waistcoat) over a white shirt with a plain muted-blue tie, dark shoes; short side-parted dark-brown hair (the cast's only dark-haired executive). Carries NO badge, pin, logo, pocket square, tie clip, watch chain or jewellery. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/rifenburgh-ceo/rifenburgh-ceo.png"
+    },
     "terry-johnson": {
       "role": "Terry Johnson \u2014 MiniScribe's founder; depicted at work and at his late-1984 departure. Appears L28, L42.",
       "head_tone": "#f5ead6",
