@@ -43,15 +43,25 @@
   outline-offset: 1px;
 }
 
-/* ---- Head ---- */
+/* ---- Head ----
+ * The head is a two-item row that must survive an actions cluster of ANY width (a workflow's Launch
+ * carries its declared inputs beside it). It wraps rather than compresses: when identity and actions
+ * cannot both sit on one line at a readable size, actions drops to its own line. Without the wrap the
+ * unshrinkable actions cluster took the whole row and squeezed identity to 0, which rendered the title
+ * one character per line. */
 .entity-detail__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-4);
 }
 
+/* The basis is the title's readable floor: identity never shares a line with actions unless it keeps
+ * at least this much width, and it grows into whatever is left over. `min-width: 0` still lets it fall
+ * below the basis when it is ALONE on the line (narrow viewports) instead of overflowing. */
 .entity-detail__identity {
+  flex: 1 1 16rem;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -91,8 +101,11 @@
   font-size: var(--type-meta-size);
 }
 
+/* Sized by its content, but SHRINKABLE: when the cluster is wider than its line it must compress and
+ * wrap internally, never overflow the row and clip the button at the right edge. */
 .entity-detail__actions {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -102,6 +115,8 @@
 /* An input the action itself needs (a workflow's declared parameters), sitting beside the button that
  * consumes it rather than in a separate tab the operator has to visit first. */
 .entity-detail__param {
+  flex: 0 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -109,8 +124,11 @@
   font-size: var(--type-meta-size);
 }
 
+/* 12rem is the preferred width, not a fixed one: an input's own min-width would otherwise resolve to
+ * its default size and refuse to shrink, so three params plus the button overflowed the head row. */
 .entity-detail__param input {
-  width: 12rem;
+  flex: 0 1 12rem;
+  min-width: 0;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
