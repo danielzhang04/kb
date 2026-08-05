@@ -5,7 +5,8 @@
  * hexes. The active tab uses the app's single active/selected language learned in .mc-nav-item--active:
  * a 2px LEFT-BORDER marker plus --accent-quiet, the sanctioned "selected wash — subtle raised, not a
  * colour". No decorative accent hue, no glow, no gradient.
- * Spacing is 4px-atomic; radii are the 6/8/12 tokens. Motion is 150ms ease-out on opacity/transform.
+ * Spacing is 4px-atomic; radii are the 6/8/12 tokens; type sizes are the --type-* roles; every hover
+ * and state change uses the ONE --transition token.
  */
 
 .entity-detail {
@@ -27,9 +28,9 @@
   background: transparent;
   color: var(--fg-dim);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   cursor: pointer;
-  transition: color 150ms ease-out, border-color 150ms ease-out;
+  transition: color var(--transition), background-color var(--transition), border-color var(--transition);
 }
 
 .entity-detail__back:hover {
@@ -38,7 +39,7 @@
 }
 
 .entity-detail__back:focus-visible {
-  outline: 2px solid var(--accent-strong);
+  outline: 2px solid var(--mc-accent);
   outline-offset: 1px;
 }
 
@@ -60,8 +61,8 @@
 .entity-detail__eyebrow {
   margin: 0;
   color: var(--fg-faint);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
+  font-size: var(--type-section-size);
+  letter-spacing: var(--tracking-eyebrow);
   /* Refs are long; wrap rather than clip — the operator must be able to read the whole id. */
   overflow-wrap: anywhere;
 }
@@ -76,8 +77,8 @@
 /* The title WRAPS and is never truncated: no ellipsis, no nowrap, no fixed height. */
 .entity-detail__title {
   margin: 0;
-  font-size: var(--text-xl);
-  font-weight: 600;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -87,7 +88,7 @@
   align-items: center;
   gap: var(--space-2);
   color: var(--fg-dim);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
 }
 
 .entity-detail__actions {
@@ -105,7 +106,7 @@
   align-items: center;
   gap: var(--space-2);
   color: var(--fg-dim);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
 }
 
 .entity-detail__param input {
@@ -116,7 +117,7 @@
   background: var(--bg-sunken);
   color: var(--fg-primary);
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--type-body-size);
 }
 
 /* ---- Technical fold ----
@@ -131,8 +132,8 @@
 .entity-fold > summary {
   padding: var(--space-2) var(--space-3);
   color: var(--fg-dim);
-  font-size: var(--text-sm);
-  font-weight: 600;
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-section-weight);
   cursor: pointer;
 }
 
@@ -143,8 +144,12 @@
   padding: 0 var(--space-3) var(--space-3);
 }
 
-/* ---- Fact strip ---- */
-.entity-detail__facts {
+/* ---- Fact strip / key-value grid ----
+ * ONE implementation. `entity-detail__facts` (the shell's own fact strip) and `entity-kv` (the section
+ * primitive) were byte-identical triplets under two names; they share the rules now, so a change to the
+ * fact grid can no longer move one detail view and not the other. */
+.entity-detail__facts,
+.entity-kv {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: var(--space-3);
@@ -155,22 +160,26 @@
   background: var(--bg-panel);
 }
 
-.entity-detail__fact {
+.entity-detail__fact,
+.entity-kv__row {
   min-width: 0;
 }
 
-.entity-detail__fact dt {
+.entity-detail__fact dt,
+.entity-kv__row dt {
   margin-bottom: var(--space-1);
   color: var(--fg-faint);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+  letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
 }
 
-.entity-detail__fact dd {
+.entity-detail__fact dd,
+.entity-kv__row dd {
   margin: 0;
   color: var(--fg-dim);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   /* Hashes and refs wrap in full rather than being sliced. */
   overflow-wrap: anywhere;
 }
@@ -192,9 +201,9 @@
   background: var(--bg-panel);
   color: var(--fg-dim);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   cursor: pointer;
-  transition: color 150ms ease-out, border-color 150ms ease-out;
+  transition: color var(--transition), background-color var(--transition), border-color var(--transition);
 }
 
 .entity-detail__link:hover {
@@ -204,7 +213,7 @@
 
 .entity-detail__link-ref {
   color: var(--fg-faint);
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
 }
 
 /* ---- Tabs: the LEFT-BORDER marker is the active language ---- */
@@ -228,9 +237,9 @@
   background: transparent;
   color: var(--fg-dim);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   cursor: pointer;
-  transition: color 150ms ease-out, background-color 150ms ease-out;
+  transition: color var(--transition), background-color var(--transition), border-color var(--transition);
 }
 
 .entity-detail__tab:hover {
@@ -239,28 +248,27 @@
 }
 
 .entity-detail__tab:focus-visible {
-  outline: 2px solid var(--accent-strong);
+  outline: 2px solid var(--mc-accent);
   outline-offset: -1px;
 }
 
 .entity-detail__tab--active {
-  border-left-color: var(--accent-strong);
+  border-left-color: var(--mc-accent);
   background: var(--accent-quiet);
   color: var(--fg-primary);
   font-weight: 500;
 }
 
 .entity-detail__tab-count {
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
   color: var(--fg-faint);
 }
 
-/* The ONLY new dot: amber = this section needs the operator. A data-encoding hue, not decoration. */
+/* "This section needs the operator" — the shared .mc-status-dot--waiting geometry and tone, not a
+ * second dot implementation. The markup carries .mc-status-dot .mc-status-dot--waiting; this only
+ * positions it. */
 .entity-detail__tab-attention {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--warning);
+  align-self: center;
 }
 
 /* ---- Body ---- */
@@ -311,16 +319,16 @@
 .entity-block__title {
   margin: 0;
   color: var(--fg-dim);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+  letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
 }
 
 .entity-block__count {
   margin-left: var(--space-2);
   color: var(--fg-faint);
-  font-weight: 400;
+  font-weight: var(--type-body-weight);
   text-transform: none;
 }
 
@@ -328,7 +336,7 @@
 .entity-prose {
   margin: 0;
   color: var(--fg-primary);
-  font-size: var(--text-sm);
+  font-size: var(--type-body-size);
   line-height: 1.5;
 }
 
@@ -336,43 +344,12 @@
 .entity-note {
   margin: 0;
   color: var(--fg-faint);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   line-height: 1.5;
 }
 
 .entity-empty-value {
   color: var(--fg-faint);
-}
-
-/* ---- Key/value grid ---- */
-.entity-kv {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--space-3);
-  margin: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-}
-
-.entity-kv__row {
-  min-width: 0;
-}
-
-.entity-kv__row dt {
-  margin-bottom: var(--space-1);
-  color: var(--fg-faint);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.entity-kv__row dd {
-  margin: 0;
-  color: var(--fg-dim);
-  font-size: var(--text-sm);
-  overflow-wrap: anywhere;
 }
 
 /* ---- Chips: label-and-mono differentiated, never hue-differentiated ---- */
@@ -388,7 +365,7 @@
   border-radius: var(--radius-sm);
   background: var(--bg-panel);
   color: var(--fg-dim);
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
 }
 
 /* ---- Lists of linkable entities ---- */
@@ -415,17 +392,17 @@
   background: var(--bg-panel);
   color: var(--fg-dim);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   text-align: left;
 }
 
 .entity-row--link {
   cursor: pointer;
-  transition: color 150ms ease-out, border-color 150ms ease-out;
+  transition: color var(--transition), background-color var(--transition), border-color var(--transition);
 }
 
 .entity-row--link:hover:not(:disabled) {
-  border-left-color: var(--accent-strong);
+  border-left-color: var(--mc-accent);
   color: var(--fg-primary);
 }
 
@@ -434,7 +411,7 @@
 }
 
 .entity-row--link:focus-visible {
-  outline: 2px solid var(--accent-strong);
+  outline: 2px solid var(--mc-accent);
   outline-offset: -1px;
 }
 
@@ -449,7 +426,7 @@
 .entity-row__ref,
 .entity-row__meta {
   color: var(--fg-faint);
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
 }
 
 /* ---- Risk tier chip ----
@@ -460,8 +437,8 @@
   padding: 0 var(--space-2);
   border: 1px solid currentColor;
   border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
+  font-size: var(--type-section-size);
+  letter-spacing: var(--tracking-eyebrow);
 }
 
 .entity-tier--t1 { color: var(--tier-t1); }
@@ -492,7 +469,7 @@
   gap: var(--space-2);
   margin: 0;
   color: var(--fg-primary);
-  font-size: var(--text-sm);
+  font-size: var(--type-body-size);
 }
 
 .entity-undeclared__tag {
@@ -500,14 +477,14 @@
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   color: var(--fg-dim);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
+  font-size: var(--type-section-size);
+  letter-spacing: var(--tracking-eyebrow);
 }
 
 .entity-undeclared__body {
   margin: 0;
   color: var(--fg-dim);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   line-height: 1.6;
 }
 
@@ -528,13 +505,13 @@
 
 .entity-missing h3 {
   margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 600;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
 }
 
 .entity-missing__ref {
   margin: 0;
   color: var(--fg-faint);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   overflow-wrap: anywhere;
 }

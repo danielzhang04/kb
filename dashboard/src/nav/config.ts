@@ -15,8 +15,10 @@
  *   ── (divider) ──
  *   Workflows · Agents · Tasks · Projects · Files
  *   ── (divider) ──
- *   Connectors · Ledgers
- *   ── pinned floor ──  Session · STOP  (a shell region in App.tsx, not a nav destination)
+ *   Connectors · Ledgers · Sentinel
+ *
+ * The sidebar ENDS there. Session state is the top-bar lock chip, and the emergency-stop controls live
+ * on the Sentinel view next to the fleet-health readout they act on — neither is a pinned shell region.
  *
  * Live day-one views: Home, Approvals, Activity, Workflows, Files, Connectors. Agents/Tasks/Projects/
  * Ledgers are reachable nav items that land on a U3 placeholder (the nav skeleton is real; the view
@@ -111,10 +113,3 @@ export const NAV_SECTIONS: NavSection[] = [
 
 /** The default landing destination (Home). */
 export const DEFAULT_DESTINATION: DestinationId = 'home';
-
-/** The [+ New ▾] menu entries (C5 — idea-first, Composer live). The FIRST entry is a freeform "Idea…" —
- *  the menu's shape says "bring an idea, iterate", not "pick an entity type". `idea` opens the Composer
- *  convergence surface in idea mode; `workflow`/`skill`/`project` open the SAME surface pre-seeded to that
- *  type (secondary entry points into the one flow); `task` keeps its day-one route to the governed launch
- *  surface (Home). `agent` opens the first-class declaration form. Outcome hints state what each choice
- *  does without implying that registered artifacts execute automatically. */

@@ -363,7 +363,7 @@ export function Workflows({
           </p>
         </div>
       ) : (
-        <table className="v-workflows__table" data-testid="workflow-defs">
+        <table className="mc-table mc-table--boxed" data-testid="workflow-defs">
           <thead>
             <tr>
               <th>Workflow</th>
@@ -382,7 +382,7 @@ export function Workflows({
                 <tr key={d.ref} className="v-workflows__row" data-testid={`workflow-def-${d.ref}`}>
                   <td className="v-workflows__cell-id">
                     <div
-                      className="v-workflows__open"
+                      className="mc-row-link v-workflows__open"
                       data-testid={`workflow-open-${d.ref}`}
                       aria-label={`Open ${d.displayName}`}
                       /* The file path is technical detail, not this workflow's identity: it stays in the

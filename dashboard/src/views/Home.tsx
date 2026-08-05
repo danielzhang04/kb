@@ -222,7 +222,7 @@ function ResumeGroup({
         <span className="v-home__eyebrow">{title}</span>
         <span className="v-home__count mc-mono">{count}</span>
       </div>
-      {count === 0 ? <p className="v-home__empty">{emptyLabel}</p> : <div className="v-home__rows">{children}</div>}
+      {count === 0 ? <p className="mc-empty">{emptyLabel}</p> : <div className="v-home__rows">{children}</div>}
     </div>
   );
 }
@@ -317,7 +317,7 @@ function RunningResume({
           <span className="v-home__count mc-mono">{index.orgStates.length}</span>
         </div>
         {index.orgStates.length === 0 ? (
-          <p className="v-home__empty">No org STATE files found.</p>
+          <p className="mc-empty">No org STATE files found.</p>
         ) : (
           <ul className="v-home__projects">
             {index.orgStates.map((s) => {
@@ -375,7 +375,7 @@ function UsagePanel({ index }: { index: PlaneAIndex }): React.JSX.Element {
         <span className="v-home__eyebrow">steps run</span>
       </div>
       {rows.length === 0 ? (
-        <p className="v-home__empty">No usage recorded yet.</p>
+        <p className="mc-empty">No usage recorded yet.</p>
       ) : (
         <table className="mc-table v-home__usage-table">
           <thead>

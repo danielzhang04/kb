@@ -1,5 +1,7 @@
 /*
- * Agents view (U3) — fleet roster. Dense .mc-table of agents derived from card ownership.
+ * Agents view (U3) — fleet roster. Dense .mc-table of agents derived from card ownership. The table
+ * shell, header style, row height and cell padding are the SHARED .mc-table geometry in app.css; the
+ * clickable agent cell is the shared .mc-row-link. Only agent-specific cells are styled here.
  * Signature adherence: hairline borders (inherited from .mc-table), mono tabular-nums for ids/counts,
  * status dots reuse the shared --status-* tokens, no new hue taxonomy, no glow/gradient. The single
  * terracotta accent is spent only on the active-nav elsewhere — this view stays quiet/neutral.
@@ -8,8 +10,8 @@
 
 .v-agents__title {
   margin: 0 0 var(--space-4);
-  font-size: var(--text-lg);
-  font-weight: 600;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
   line-height: 1.2;
 }
 
@@ -21,24 +23,22 @@
 /* Two different truth classes: authoritative definitions lead; observed runtime ids remain visible
  * below them without being presented as agents somebody declared. */
 .v-agents__group {
-  margin: 0 0 var(--space-5);
+  margin: 0 0 var(--space-6);
 }
 
 .v-agents__group-title {
   margin: 0 0 var(--space-1);
-  font-size: var(--text-base);
-  font-weight: 600;
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--fg-dim);
 }
 
 .v-agents__group-note {
   margin: 0 0 var(--space-3);
   color: var(--fg-dim);
-  font-size: var(--text-sm);
-}
-
-.v-agents__empty {
-  color: var(--fg-dim);
-  font-size: var(--text-base);
+  font-size: var(--type-meta-size);
 }
 
 /* Table scrolls inside its own well rather than spilling the page — dense-data pattern. */
@@ -53,13 +53,6 @@
   min-width: 40rem;
 }
 
-/* Vertical rhythm a touch airier than the default dense table — a roster, not a log. */
-.v-agents__table th,
-.v-agents__table td {
-  padding: var(--space-2) var(--space-3);
-  vertical-align: middle;
-}
-
 /* Agent cell: status dot + mono id + a small state word. */
 .v-agents__agent {
   display: inline-flex;
@@ -70,34 +63,10 @@
 /* The agent id opens its detail. Styled as a row affordance rather than a button so it does not
  * compete with the governed routing control sharing the same row. Hover reveals the 2px left rail —
  * the same active/selected language used everywhere else in the app. */
-.v-agents__agent--link {
-  padding: var(--space-1) var(--space-2);
-  margin-left: calc(-1 * var(--space-2));
-  border: 1px solid transparent;
-  border-left: 2px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: color 150ms ease-out, border-color 150ms ease-out;
-}
-
-.v-agents__agent--link:hover {
-  border-left-color: var(--accent-strong);
-  color: var(--fg-primary);
-}
-
-.v-agents__agent--link:focus-visible {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: -1px;
-}
-
 .v-agents__state {
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-faint);
 }
 
@@ -114,7 +83,7 @@
 }
 
 .v-agents__card-id {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
 }
 
@@ -124,7 +93,7 @@
 
 /* Role chip — mono, neutral (identity, not action). */
 .v-agents__role {
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
 }
 
@@ -156,7 +125,7 @@
 
 /* Last-active age — identifier-shaped → mono tabular. */
 .v-agents__last-active {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -164,13 +133,13 @@
 
 .v-agents__note {
   margin: var(--space-3) 0 0;
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   color: var(--fg-faint);
   line-height: 1.5;
 }
 
 .v-agents__system {
-  margin-top: 1.25rem;
+  margin-top: var(--space-6);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-panel);
@@ -178,8 +147,9 @@
 
 .v-agents__system > summary {
   cursor: pointer;
-  padding: 0.8rem 1rem;
-  font-weight: 650;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
 }
 
 .v-agents__system[open] > summary {
@@ -187,6 +157,6 @@
 }
 
 .v-agents__system > .v-agents__group-note,
-.v-agents__system > .v-agents__empty {
-  padding-inline: 1rem;
+.v-agents__system > .mc-empty {
+  padding-inline: var(--space-4);
 }

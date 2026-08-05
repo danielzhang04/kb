@@ -171,9 +171,11 @@ describe('Control view — D2.6 launch/rerun controls', () => {
   });
 });
 
-// U1: StopControls was relocated out of the Board's right column into the shell's pinned
-// Session/Stop floor (App.tsx). It is exported from ./Control and exercised directly here.
-describe('Stop-floor controls (D2.8, relocated to the shell in U1)', () => {
+// StopControls is the app's ONE stop implementation, moved twice and forked never: out of the Board's
+// right column into the shell's pinned floor (U1), and out of that floor onto the Sentinel view
+// (spec §6). It is exported from ./Control and exercised directly here; `panels/Sentinel.test.tsx`
+// proves it works from the surface that mounts it now.
+describe('Emergency-stop controls (D2.8; mounted on Sentinel since spec §6)', () => {
   it('the nuclear STOP button stays disabled until the confirm checkbox is checked, even with a session', () => {
     render(withSession(<StopControls />, { stored: 'fake-session-token' }));
 

@@ -4,7 +4,8 @@
  * `src/nav/config.ts`. The groups are UNLABELLED (hairline dividers only — no uppercase group headers,
  * no per-section collapse); a [+ New ▾] menu sits above the first divider with truthful outcome hints.
  * a live item swaps the main content; greyed ("soon") items never become active; a sidebar-wide toggle
- * collapses to an icon rail; the Session/Stop floor is present regardless of the active view.
+ * collapses to an icon rail. The sidebar ENDS at the nav: spec §6 removed the pinned Session/Stop floor,
+ * and the stop controls now live on the Sentinel view.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
@@ -70,18 +71,26 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
   });
 
-  it('pins the Stop floor in the shell, present regardless of the active view', () => {
+  it('carries NO stop floor: the sidebar ends at the nav and the stop controls live on Sentinel', () => {
     render(<App />);
-    expect(screen.getByTestId('stop-floor')).toBeTruthy();
-    // Session state left the floor: the top-bar chip is the app's ONE unlock affordance.
+    // spec §6 — the pinned floor region is gone from the shell entirely: no region, no controls.
+    expect(screen.queryByTestId('stop-floor')).toBeNull();
+    expect(screen.queryByLabelText('Stop floor')).toBeNull();
+    expect(screen.queryByLabelText('Emergency stop')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'STOP everything' })).toBeNull();
+    // Session state left the shell too: the top-bar chip is the app's ONE unlock affordance.
     expect(screen.queryByTestId('session-state')).toBeNull();
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
-    expect(screen.getByLabelText('Stop floor')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
 
+    // Still absent after navigating — it was a shell region, so this proves the region, not a view.
     fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(screen.getByLabelText('Stop floor')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'STOP everything' })).toBeNull();
+
+    // …and reachable in exactly ONE place: the Sentinel view, beside the health readout.
+    fireEvent.click(screen.getByRole('button', { name: 'Sentinel' }));
+    expect(screen.getByLabelText('Emergency stop')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
   });
 
   it('carries exactly ONE unlock affordance: the top-bar lock chip', () => {
@@ -125,15 +134,14 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
   });
 
-  it('lays the sidebar out as a full-height column: [+ New] header, scrollable nav, pinned floor last', () => {
-    // U5.1 item 7 — the sidebar is a three-zone flex column pinned to the viewport height. jsdom can't
-    // compute the 100dvh/zoom layout, so this pins the STRUCTURE the CSS relies on: the middle nav zone
-    // exists (it carries overflow-y:auto), and the Session·STOP floor is the LAST child of the sidebar
-    // so margin-top:auto pins it to the bottom rather than letting it be pushed off-screen mid-column.
+  it('lays the sidebar out as a two-zone column: [+ New] header, then the scrollable nav — and ends there', () => {
+    // U5.1 item 7 — the sidebar is a flex column pinned to the viewport height. jsdom can't compute the
+    // 100dvh/zoom layout, so this pins the STRUCTURE the CSS relies on: the nav zone exists (it carries
+    // overflow-y:auto) and is now the LAST child, because the pinned floor below it was removed (§6).
     render(<App />);
     const sidebar = screen.getByLabelText('Primary navigation');
     expect(sidebar.querySelector('.mc-nav')).toBeTruthy();
-    expect(sidebar.lastElementChild?.getAttribute('data-testid')).toBe('stop-floor');
+    expect(sidebar.lastElementChild?.className).toBe('mc-nav');
     // The [+ New] header zone sits inside the sidebar, above the nav list.
     expect(within(sidebar).getByRole('button', { name: 'New' })).toBeTruthy();
   });

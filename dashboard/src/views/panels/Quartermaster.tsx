@@ -60,7 +60,7 @@ export function Quartermaster({ panel }: { panel?: UsagePanel } = {}): React.JSX
       </div>
 
       {isEmpty ? (
-        <p className="v-panel__empty">No usage recorded yet.</p>
+        <p className="mc-empty">No usage recorded yet.</p>
       ) : (
         <>
           <div className="v-panel__tiles">

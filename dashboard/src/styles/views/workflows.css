@@ -2,10 +2,11 @@
  * ============================================================================
  * WORKFLOWS view (U3) — registered reusable definition artifacts
  * ============================================================================
- * The designed EMPTY state is the centrepiece (the live repo may have no
- * workflows/ registry yet), so it reads calm and explanatory — never an error.
- * A dense table renders when workflows exist, keyed on the workflow name and
- * what its runs are doing — never on a file path.
+ * The EMPTY state is a quiet sentence (the live repo may have no workflows/
+ * registry yet) — calm and explanatory, never an error and never a big
+ * placeholder card. A dense table renders when workflows exist, keyed on the
+ * workflow name and what its runs are doing — never on a file path. The table
+ * shell/header/row rhythm is the shared .mc-table geometry in app.css.
  *
  * Tokens only (docs/design-brief.md §A–F); dark default, light remap carries
  * via var(). Signature: hairline borders, mono tabular-nums for ids/paths, one
@@ -31,85 +32,44 @@
 
 .v-workflows__title {
   margin: 0;
-  font-size: var(--text-xl);
-  font-weight: 600;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
   line-height: 1.2;
 }
 
-/* ---- Designed empty state (calm, explanatory — never an error) --------- */
+/* ---- Empty state — a quiet sentence, not a placeholder card. It used to be a 32px-padded bordered
+ * panel; nothing-here is not an event, so it now reads as calm prose in the page's own rhythm. ---- */
 .v-workflows__empty {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-8);
   max-width: 46rem;
 }
 
 .v-workflows__empty-title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--fg-primary);
-}
-
-.v-workflows__empty-body {
-  margin: 0 0 var(--space-3);
-  font-size: var(--text-base);
-  line-height: 1.6;
+  margin: 0 0 var(--space-1);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
   color: var(--fg-dim);
 }
 
+.v-workflows__empty-body {
+  margin: 0 0 var(--space-2);
+  font-size: var(--type-meta-size);
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
 .v-workflows__empty-body code {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.05em 0.35em;
-  color: var(--fg-primary);
+  color: var(--fg-dim);
 }
 
-/* ---- Populated: dense table ------------------------------------------- */
-.v-workflows__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-base);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.v-workflows__table thead th {
-  padding: var(--space-1) var(--space-2);
-  text-align: left;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 600;
-  color: var(--fg-faint);
-  border-bottom: 1px solid var(--border);
-}
-
-.v-workflows__row {
-  transition: background 160ms ease-out;
-}
-
-.v-workflows__row td {
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-
-.v-workflows__row:last-child td {
-  border-bottom: none;
-}
-
-.v-workflows__row:hover {
-  background: var(--bg-elevated);
-}
-
+/* ---- Populated: the shared .mc-table / .mc-table--boxed geometry (app.css) carries the shell, the
+ * header style, the row height and the cell padding. Only the workflow-specific cells live here. ---- */
 .v-workflows__cell-id {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-primary);
   white-space: nowrap;
 }
@@ -125,30 +85,10 @@
   display: inline-flex;
   align-items: baseline;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  margin-left: calc(-1 * var(--space-2));
-  border: 1px solid transparent;
-  border-left: 2px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: color 150ms ease-out, border-color 150ms ease-out;
-}
-
-.v-workflows__open:hover {
-  border-left-color: var(--accent-strong);
-}
-
-.v-workflows__open:focus-visible {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: -1px;
 }
 
 .v-workflows__status-label {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
 }
 
@@ -159,20 +99,20 @@
   align-items: center;
   gap: var(--space-2);
   white-space: nowrap;
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
 }
 
-.v-workflows__muted { color: var(--fg-faint); font-size: var(--text-xs); }
+.v-workflows__muted { color: var(--fg-faint); font-size: var(--type-meta-size); }
 
 /* Amber = the operator is what these runs are waiting for. Data-encoding, not decoration. */
-.v-workflows__needs-you { color: var(--warning); font-size: var(--text-xs); }
+.v-workflows__needs-you { color: var(--warning); font-size: var(--type-meta-size); }
 
 .v-workflows__live {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   margin-left: var(--space-2);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
 }
 
@@ -181,13 +121,13 @@
   border: 1px solid var(--error);
   border-radius: var(--radius-sm);
   color: var(--error);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
 }
 
 /* The launch outcome line, under the Launch button in the workflow header. */
 .v-workflows__run-status {
   color: var(--fg-faint);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
 }
 
 /* ---- Runs no workflow owns -------------------------------------------- */
@@ -220,7 +160,7 @@
   padding: 0.3rem 0.5rem;
   color: var(--fg-dim);
   background: var(--bg-panel);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   line-height: 1.35;
 }
 
@@ -232,7 +172,7 @@
 .v-workflow-handoff .react-flow__edge-text {
   fill: var(--fg-primary);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
 }
 
 .v-workflow-handoff .react-flow__edge-textbg {
@@ -265,7 +205,7 @@
   color: var(--fg-dim);
   background: transparent;
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   cursor: pointer;
 }
 .v-workflow-agent__open:hover { color: var(--fg-primary); }
@@ -282,12 +222,12 @@
   border-radius: var(--radius-sm);
   color: var(--fg-primary);
   background: var(--bg-elevated);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
 }
 
 .v-workflow-agent__stage-name { min-width: 0; overflow-wrap: anywhere; }
-.v-workflow-agent__stage select { max-width: 12rem; font: inherit; font-size: var(--text-xs); }
-.v-workflow-agent__unavailable { color: var(--fg-faint); font-size: var(--text-xs); }
+.v-workflow-agent__stage select { max-width: 12rem; font: inherit; font-size: var(--type-meta-size); }
+.v-workflow-agent__unavailable { color: var(--fg-faint); font-size: var(--type-meta-size); }
 .v-workflow-agent__open:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 
 @media (max-width: 820px) {
@@ -296,5 +236,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .v-workflows__row { transition: none; }
+  .v-workflows__open { transition: none; }
 }

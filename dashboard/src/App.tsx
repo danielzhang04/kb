@@ -1,8 +1,9 @@
 /**
  * SPA shell (U2.5 — entity-first IA). Desktop-first "Mission Control" shell: a fixed left sidebar owns
  * primary navigation, a slim topbar carries the app title, a fleet-status glance and the app's ONE
- * unlock affordance (the lock chip), and the main region renders whichever view is active. A
- * pinned-bottom Stop floor lives in the sidebar so the fleet-stop controls are always reachable.
+ * unlock affordance (the lock chip), and the main region renders whichever view is active. The sidebar
+ * ENDS at the nav sections: the emergency-stop controls live on the Sentinel view (see
+ * `views/panels/Sentinel.tsx`), where fleet health is already being read.
  *
  * The WebAuthn session lives in exactly one place — {@link SessionProvider} — and every surface below
  * reads it with `useSession()` at point of action. No view owns an unlock button, and no view is handed
@@ -44,7 +45,6 @@ import type { PaletteCommand } from './palette/paletteModel';
 import { Flyout } from './flyout/Flyout';
 import { useFleetData } from './flyout/useFleetData';
 import { FLYOUT_DESTINATIONS, summaryFor, type FlyoutSummary } from './flyout/flyoutModel';
-import { StopControls } from './views/Control';
 import { Home } from './views/Home';
 import { ApprovalsLive } from './views/ApprovalsLive';
 import { Browser } from './views/Browser';
@@ -215,23 +215,6 @@ function SessionChip(): React.JSX.Element {
   );
 }
 
-/**
- * The Stop floor — pinned to the bottom of the sidebar, hairline-separated, always visible. Session
- * state left this floor with the single-unlock consolidation: it now lives in the top-bar
- * {@link SessionChip}, and `StopControls` mints at point-of-action through the session context. In rail
- * mode the detail collapses to a single stop glyph.
- */
-function SessionStopFloor(): React.JSX.Element {
-  return (
-    <div className="mc-sidebar__floor" data-testid="stop-floor">
-      <span className="mc-sidebar__floor-rail" aria-hidden="true" title="Stop floor">
-        ⏻
-      </span>
-      <StopControls />
-    </div>
-  );
-}
-
 function Sidebar({
   active,
   onSelect,
@@ -297,7 +280,6 @@ function Sidebar({
           </Fragment>
         ))}
       </div>
-      <SessionStopFloor />
     </nav>
   );
 }
@@ -629,20 +611,15 @@ function AppShell(): React.JSX.Element {
     push(target);
   };
 
-  // Run a palette command. The palette is a SHORTCUT, never a bypass: this only changes the active view
-  // (navigate) and/or focuses the pinned Session/Stop floor — it never calls a governed endpoint.
+  // Run a palette command. The palette is a SHORTCUT, never a bypass: it only changes the active view —
+  // it never calls a governed endpoint. Every act command now names a destination (the emergency-stop
+  // shortcut lands on Sentinel, which hosts the controls), so this is one line.
   const handlePaletteRun = (cmd: PaletteCommand): void => {
-    if (cmd.focusFloor) {
-      const btn = document.querySelector<HTMLElement>('[data-testid="stop-floor"] button');
-      if (typeof btn?.scrollIntoView === 'function') btn.scrollIntoView({ block: 'nearest' });
-      btn?.focus();
-    }
     if (cmd.target) goTo(cmd.target);
   };
 
-  // [+ New ▾] routing (C5): "Idea…" opens the Composer surface in idea mode; the "Workflow"/"Skill"/
-  // "Project"/"Agent" entity pickers open the SAME surface pre-seeded to that type; "Task" keeps its
-  // quick-launch route to the governed launch surface (Home). "Agent" opens Composer's declaration form.
+  // [+ New] opens the ONE Composer surface; artifact choices are made inside the workspace, after
+  // exploration (there is no entity dropdown, and no create entry routes to a view of its own).
   const upsertComposerSession = (next: ComposerSession): void => {
     setComposerSessions((current) => ({ ...current, [next.composerRef]: next }));
   };

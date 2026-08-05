@@ -203,7 +203,7 @@ export function EntityDetail({
             ) : null}
             {section.attention ? (
               <span
-                className="entity-detail__tab-attention"
+                className="mc-status-dot mc-status-dot--waiting entity-detail__tab-attention"
                 data-testid={`entity-tab-${section.id}-attention`}
                 aria-label="needs you"
               />

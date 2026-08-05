@@ -110,16 +110,17 @@ describe('command palette — act is a shortcut, never a bypass', () => {
     expect(fetchCalls().filter((c) => GOVERNED.test(String(c[0])))).toHaveLength(0);
   });
 
-  it('Approve opens Approvals; Stop focuses the floor — neither hits a governed endpoint', () => {
+  it('Approve opens the Inbox; Stop opens Sentinel — neither hits a governed endpoint', () => {
     render(<App />);
 
     runByQuery('corroborate'); // unique keyword of the Approve shortcut
     expect(screen.getByLabelText('Human Inbox')).toBeTruthy();
 
-    runByQuery('passkey'); // unique keyword of the Stop / Session shortcut
-    // Focus moved into the pinned floor, not a network call.
-    const floor = screen.getByTestId('stop-floor');
-    expect(floor.contains(document.activeElement)).toBe(true);
+    runByQuery('nuclear'); // unique keyword of the Emergency-stop shortcut
+    // The pinned floor is gone (spec §6): the shortcut NAVIGATES to the view that owns the controls.
+    expect(screen.getByLabelText('Sentinel view')).toBeTruthy();
+    expect(screen.getByLabelText('Emergency stop')).toBeTruthy();
+    expect(screen.queryByTestId('stop-floor')).toBeNull();
 
     expect(fetchCalls().filter((c) => GOVERNED.test(String(c[0])))).toHaveLength(0);
   });

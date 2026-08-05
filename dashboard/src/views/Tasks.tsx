@@ -181,9 +181,9 @@ function StateGroup({
         <span className="v-tasks__group-count mc-num">{cards.length}</span>
       </header>
       {cards.length === 0 ? (
-        <p className="v-tasks__group-empty">Nothing in {meta.label.toLowerCase()}.</p>
+        <p className="mc-empty">Nothing in {meta.label.toLowerCase()}.</p>
       ) : (
-        <table className="v-tasks__table">
+        <table className="mc-table mc-table--boxed">
           <thead>
             <tr>
               {/* The card's NAME now leads this column; its id lives in the EntityName tooltip. */}
@@ -405,7 +405,7 @@ function DetailPane({
           dangerouslySetInnerHTML={{ __html: renderMarkdown(card.body) }}
         />
       ) : (
-        <p className="v-tasks__body-empty">This card has no body.</p>
+        <p className="mc-empty">This card has no body.</p>
       )}
     </aside>
   );

@@ -267,7 +267,7 @@ function AgentRosterTable({
           {rows.map((agent) => (
             <tr key={agent.id} data-testid={`agent-row-${agent.id}`}>
               <td>
-                <div className="v-agents__agent v-agents__agent--link" data-testid={`agent-open-${agent.id}`}
+                <div className="mc-row-link v-agents__agent" data-testid={`agent-open-${agent.id}`}
                   aria-label={`Open ${agent.display?.displayName ?? agent.id} detail`} {...entityRowProps(() => onOpenAgent(agent.id))}>
                   <span className={`mc-status-dot ${agent.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`} aria-hidden="true" />
                   {agent.display
@@ -649,7 +649,7 @@ export function Agents({
       </h2>
 
       {declaredRows.length === 0 ? (
-        <p className="v-agents__empty">No user-created agents are registered.</p>
+        <p className="mc-empty">No user-created agents are registered.</p>
       ) : (
         <>
           <section className="v-agents__group" aria-labelledby="declared-agents-title">
@@ -664,7 +664,7 @@ export function Agents({
                 renderRouting={routingControlFor}
                 now={now}
               />
-            ) : <p className="v-agents__empty">No agents are registered.</p>}
+            ) : <p className="mc-empty">No agents are registered.</p>}
           </section>
         </>
       )}
@@ -676,7 +676,7 @@ export function Agents({
           control plane can start the worker directly; queue-addressable workers pick up routed work through
           their existing runner boundary.
         </p>
-        {systemWorkers.length ? <SystemWorkerTable workers={systemWorkers} /> : <p className="v-agents__empty">No separate system workers are registered.</p>}
+        {systemWorkers.length ? <SystemWorkerTable workers={systemWorkers} /> : <p className="mc-empty">No separate system workers are registered.</p>}
       </details>
 
       <p className="v-agents__note">

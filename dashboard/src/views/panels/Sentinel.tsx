@@ -4,10 +4,15 @@
  * recency + working-card state, the declared HEARTBEAT cadences, and per-org STATE blocked flags. Status
  * is encoded with the semantic status dot (green/idle/red vocabulary), never a decorative hue.
  *
- * Accepts a `panel` prop directly (tests / an already-loaded parent) or self-fetches. Read-only, empty-safe.
+ * Accepts a `panel` prop directly (tests / an already-loaded parent) or self-fetches. The liveness
+ * readout is read-only and empty-safe; the one thing on this view that WRITES is the emergency-stop
+ * section at the bottom — {@link StopControls}, the app's single stop implementation, relocated here
+ * from the sidebar floor (spec §6) so the halt controls sit beside the health readout that motivates
+ * reaching for them. It is visually separated and mints its own session at point of action.
  */
 import { useEffect, useState } from 'react';
 import type { HealthPanel, LivenessStatus } from '../../../server/panels/health';
+import { StopControls } from '../Control';
 import '../../styles/views/panels.css';
 
 const EMPTY: HealthPanel = {
@@ -88,7 +93,7 @@ export function Sentinel({ panel }: { panel?: HealthPanel } = {}): React.JSX.Ele
       </div>
 
       {data.agents.length === 0 ? (
-        <p className="v-panel__empty">No agents observed yet.</p>
+        <p className="mc-empty">No agents observed yet.</p>
       ) : (
         <section className="v-panel__section" aria-label="Agent liveness">
           <h3 className="v-panel__section-title">Agent liveness</h3>
@@ -152,6 +157,11 @@ export function Sentinel({ panel }: { panel?: HealthPanel } = {}): React.JSX.Ele
           </table>
         </section>
       ) : null}
+
+      {/* The only writing control on this view — hairline-separated from the read-only readout above. */}
+      <div className="v-panel__stop">
+        <StopControls />
+      </div>
     </div>
   );
 }
