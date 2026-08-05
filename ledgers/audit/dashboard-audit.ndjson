@@ -120,3 +120,4 @@
 {"ts":"2026-08-05T21:15:47.053Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-08-05T21:16:11.284Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-08-05T21:16:15.733Z","action":"control-execution-unlock-authorize","owner":"operator","target":"execution","riskTier":"T3","result":"authorized:unlock","detail":{"method":"session-bearer"}}
+{"ts":"2026-08-05T21:16:45.393Z","action":"pty-open","owner":"operator","result":"spawn-failed","detail":{"error":"File not found: "}}
