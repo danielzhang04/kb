@@ -56,7 +56,13 @@ vi.mock('@xterm/addon-fit', () => {
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
 import { AgentDetail, type AgentDetailRow } from './AgentDetail';
-import type { PtySessionSummary, PtySpawnTarget, TerminalSessionsClient } from '../lib/terminalClient';
+import type {
+  PtySessionSummary,
+  PtySpawnTarget,
+  SessionRunDto,
+  SessionRunsClient,
+  TerminalSessionsClient,
+} from '../lib/terminalClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
 
@@ -423,5 +429,105 @@ describe('AgentDetail — the embedded console', () => {
       fireEvent.click(screen.getByTestId('entity-tab-runs'));
     });
     expect(screen.getByTestId('agent-console-locked')).toBeTruthy();
+  });
+});
+
+/**
+ * Leg 2 — PAST sessions beside the live console.
+ *
+ * The agent's Runs tab now answers two questions that are genuinely different: what governed work is
+ * this agent doing (the runs list, unchanged), and what have I talked to it about (this list). Every row
+ * says it is a chat session, so neither can be mistaken for the other.
+ */
+describe('AgentDetail — past chat sessions', () => {
+  const sessionRun = (over: Partial<SessionRunDto> & { sessionRunRef: string }): SessionRunDto => ({
+    kind: 'agent',
+    targetRef: 'fyt-runner',
+    ptySessionId: 'pty-9',
+    startedAt: new Date(1_700_000_000_000).toISOString(),
+    endedAt: new Date(1_700_000_100_000).toISOString(),
+    outcome: 'ended',
+    exitCode: 0,
+    transcript: { bytes: 10, truncated: false },
+    version: 2,
+    ...over,
+  });
+
+  const client = (runs: SessionRunDto[]): SessionRunsClient => ({
+    list: vi.fn(async () => runs),
+    get: vi.fn(async (ref: string) => ({
+      sessionRun: runs.find((run) => run.sessionRunRef === ref) as SessionRunDto,
+      transcript: { text: 'operator: hi', bytes: 12, truncated: false },
+    })),
+    archive: vi.fn(async (ref: string) => ({
+      ok: true as const,
+      sessionRun: { ...(runs.find((run) => run.sessionRunRef === ref) as SessionRunDto), outcome: 'archived' as const },
+      replayed: false,
+    })),
+  });
+
+  it('lists this agent\'s past sessions beside the governed runs, each labelled a chat session', async () => {
+    const daemon = fakeDaemon();
+    const sessionRuns = client([
+      sessionRun({ sessionRunRef: 'srun-a' }),
+      sessionRun({ sessionRunRef: 'srun-elsewhere', targetRef: 'other-agent' }),
+    ]);
+    render(
+      unlocked(
+        <AgentDetail
+          agent={agent({ id: 'fyt-runner', declared: true })}
+          activeSectionId="runs"
+          socketFactory={daemon.socketFactory}
+          sessionsClient={daemon.sessionsClient}
+          sessionRunsClient={sessionRuns}
+        />,
+      ),
+    );
+
+    await waitFor(() => expect(screen.getByTestId('session-run-srun-a')).toBeTruthy());
+    expect(screen.getByTestId('session-run-kind-srun-a').textContent).toBe('chat session');
+    // Another agent's sessions are not this agent's history.
+    expect(screen.queryByTestId('session-run-srun-elsewhere')).toBeNull();
+    // The governed runs list is untouched beside it.
+    expect(screen.getByTestId('agent-runs-unloaded')).toBeTruthy();
+  });
+
+  it('opens a past session\'s transcript in the page, and dismisses it', async () => {
+    const daemon = fakeDaemon();
+    const sessionRuns = client([sessionRun({ sessionRunRef: 'srun-a' })]);
+    render(
+      unlocked(
+        <AgentDetail
+          agent={agent({ id: 'fyt-runner', declared: true })}
+          activeSectionId="runs"
+          socketFactory={daemon.socketFactory}
+          sessionsClient={daemon.sessionsClient}
+          sessionRunsClient={sessionRuns}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByTestId('session-run-srun-a')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('session-run-toggle-srun-a'));
+    await waitFor(() => expect(screen.getByTestId('session-run-transcript-srun-a').textContent).toContain('operator: hi'));
+
+    await act(async () => { fireEvent.click(screen.getByTestId('session-run-archive-srun-a')); });
+    await waitFor(() => expect(screen.queryByTestId('session-run-srun-a')).toBeNull());
+  });
+
+  it('says "not loaded" while locked rather than claiming there are none', async () => {
+    const sessionRuns = client([sessionRun({ sessionRunRef: 'srun-a' })]);
+    render(
+      <SessionProvider>
+        <AgentDetail
+          agent={agent({ id: 'fyt-runner', declared: true })}
+          activeSectionId="runs"
+          sessionRunsClient={sessionRuns}
+        />
+      </SessionProvider>,
+    );
+    await act(async () => Promise.resolve());
+    expect(screen.getByTestId('agent-session-runs-unloaded')).toBeTruthy();
+    expect(sessionRuns.list).not.toHaveBeenCalled();
   });
 });

@@ -125,19 +125,21 @@ describe('reaching a workflow detail and coming back', () => {
  * the definition declares — is still fully wired, one fold down, for the governing agent and power use.
  */
 describe('one Run workflow button', () => {
-  it('offers exactly one primary action and hands the workflow up by reference', () => {
-    const onRunWorkflow = vi.fn();
+  it('offers exactly one primary action, and it lands IN THIS PAGE on the Runs tab', () => {
     render(<WorkflowDetail
       entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
       compiled={null}
-      onRunWorkflow={onRunWorkflow}
       onLaunch={vi.fn()}
     />);
 
     const actions = screen.getByTestId('entity-detail-workflow').querySelector('.entity-detail__actions');
-    expect(actions?.textContent).toBe('Run workflow');
+    const buttons = actions?.querySelectorAll('button') ?? [];
+    expect([...buttons].map((button) => button.textContent)).toEqual(['Run workflow']);
+
+    // Leg 2: no navigation away. The click selects this detail's own Runs tab, where the session opens.
     fireEvent.click(screen.getByRole('button', { name: 'Run workflow' }));
-    expect(onRunWorkflow).toHaveBeenCalledWith({ ref: 'kb~video.md' });
+    expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('Live session for this workflow')).toBeTruthy();
   });
 
   it('moves the inputs and the direct Launch into the technical fold, still working', () => {
@@ -146,7 +148,6 @@ describe('one Run workflow button', () => {
     render(<WorkflowDetail
       entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
       compiled={null}
-      onRunWorkflow={vi.fn()}
       onLaunch={onLaunch}
       parameterValues={{ channel: 'the-second-take', slug: '2026-07-19-wells-fargo' }}
       onParameterChange={onParameterChange}
@@ -163,9 +164,11 @@ describe('one Run workflow button', () => {
     expect(onLaunch).toHaveBeenCalled();
   });
 
-  it('leaves the primary surface empty when nothing can run a workflow from here', () => {
+  it('keeps the Flow tab as the landing section, so a visit never auto-opens a console', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} />);
-    expect(screen.queryByRole('button', { name: 'Run workflow' })).toBeNull();
+    expect(screen.getByTestId('entity-tab-flow').getAttribute('aria-selected')).toBe('true');
+    // The console section only exists once the operator asks for the Runs tab.
+    expect(screen.queryByLabelText('Live session for this workflow')).toBeNull();
   });
 });
 
@@ -247,6 +250,7 @@ describe('workflow -> its runs', () => {
       </SessionProvider>,
     );
 
+    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-run-run-7')).toBeTruthy();
     expect(screen.queryByTestId('workflow-run-run-8')).toBeNull();
 
@@ -256,6 +260,7 @@ describe('workflow -> its runs', () => {
 
   it('renders the full run title without truncating it', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[run({ runRef: 'run-7' })]} />);
+    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-run-run-7').textContent).toContain(
       'Rebuild the faceless video pipeline and republish the audio stage',
     );
@@ -263,18 +268,20 @@ describe('workflow -> its runs', () => {
 
   it('says "not loaded" rather than "never run" when the tab is locked', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} />);
+    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-runs-unloaded').textContent).toMatch(/unlock the dashboard/i);
     expect(screen.queryByTestId('workflow-runs-empty')).toBeNull();
   });
 
   it('says "has not run yet" when there genuinely are none', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[]} />);
+    fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-runs-empty').textContent).toMatch(/has not run yet/i);
   });
 });
 
 describe('the graph is the surface, and the engine detail is behind one fold', () => {
-  it('renders the agent graph in the primary body, not behind a tab', () => {
+  it('renders the agent graph in the LANDING body, behind no tab of its own', () => {
     render(<WorkflowDetail
       entry={def({
         ref: 'kb~video.md',
@@ -282,8 +289,9 @@ describe('the graph is the surface, and the engine detail is behind one fold', (
       })}
       compiled={null}
     />);
-    // ONE body: no tab bar to hunt through.
-    expect(screen.queryByRole('tab')).toBeNull();
+    // Leg 2 adds exactly ONE more section (the merged run/session history) — not the five engine tabs
+    // this surface used to have, and the graph is still what an operator lands on.
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Flow', 'Runs0']);
     expect(screen.getByTestId('workflow-agent-network')).toBeTruthy();
   });
 

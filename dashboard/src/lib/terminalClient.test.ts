@@ -6,8 +6,11 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  archiveSessionRun,
   deletePtySession,
+  fetchSessionRun,
   listPtySessions,
+  listSessionRuns,
   loadStoredTabs,
   reconcileSessions,
   saveStoredTabs,
@@ -78,5 +81,58 @@ describe('reconcileSessions', () => {
 
   it('is [] when nothing is live', () => {
     expect(reconcileSessions([{ sessionId: 'pty-x' }], [])).toEqual([]);
+  });
+});
+
+/**
+ * Session runs (leg 2). The bearer wiring is the same as the session endpoints'; what is new is the
+ * refusal handling: a dismissal that the server refused must come back as WORDS the surface can show,
+ * because a Dismiss button that silently did nothing would read as success.
+ */
+describe('session-run client', () => {
+  it('lists with the bearer, and asks for archived records only when told to', async () => {
+    const sessionRuns = [{ sessionRunRef: 'srun-1', kind: 'agent', targetRef: 'a' }];
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ sessionRuns }), { status: 200 }));
+    const out = await listSessionRuns('tok', {}, fetchImpl as unknown as typeof fetch);
+    expect(out).toEqual(sessionRuns);
+    expect(fetchImpl).toHaveBeenCalledWith('/api/pty/session-runs', {
+      headers: { authorization: 'Bearer tok', accept: 'application/json' },
+    });
+
+    await listSessionRuns('tok', { includeArchived: true }, fetchImpl as unknown as typeof fetch);
+    expect(fetchImpl).toHaveBeenLastCalledWith('/api/pty/session-runs?includeArchived=1', expect.anything());
+  });
+
+  it('degrades to an empty list on a refusal or a network failure', async () => {
+    const unauthorized = vi.fn(async () => new Response('{}', { status: 401 }));
+    expect(await listSessionRuns('tok', {}, unauthorized as unknown as typeof fetch)).toEqual([]);
+    const broken = vi.fn(async () => { throw new Error('offline'); });
+    expect(await listSessionRuns('tok', {}, broken as unknown as typeof fetch)).toEqual([]);
+  });
+
+  it('fetches one session run with its transcript, and null on any failure', async () => {
+    const body = { sessionRun: { sessionRunRef: 'srun-1' }, transcript: { text: 'hi', bytes: 2, truncated: false } };
+    const ok = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
+    expect(await fetchSessionRun('srun-1', 'tok', ok as unknown as typeof fetch)).toMatchObject(body);
+    expect(ok).toHaveBeenCalledWith('/api/pty/session-runs/srun-1', {
+      headers: { authorization: 'Bearer tok', accept: 'application/json' },
+    });
+    const missing = vi.fn(async () => new Response('{}', { status: 404 }));
+    expect(await fetchSessionRun('srun-1', 'tok', missing as unknown as typeof fetch)).toBeNull();
+  });
+
+  it('archives with an idempotency key and reports a live-session refusal in plain words', async () => {
+    const archived = { sessionRunRef: 'srun-1', outcome: 'archived' };
+    const ok = vi.fn(async () => new Response(JSON.stringify({ ok: true, sessionRun: archived, replayed: false }), { status: 200 }));
+    const result = await archiveSessionRun('srun-1', 'tok', { idempotencyKey: 'key-1', reason: 'done' }, ok as unknown as typeof fetch);
+    expect(result).toMatchObject({ ok: true, replayed: false });
+    expect(ok).toHaveBeenCalledWith('/api/pty/session-runs/srun-1/archive', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ idempotencyKey: 'key-1', reason: 'done' }),
+    }));
+
+    const live = vi.fn(async () => new Response(JSON.stringify({ error: 'session-run-live' }), { status: 409 }));
+    const refused = await archiveSessionRun('srun-1', 'tok', { idempotencyKey: 'key-1' }, live as unknown as typeof fetch);
+    expect(refused).toEqual({ ok: false, reason: 'This session is still running. End it first, then dismiss it.' });
   });
 });

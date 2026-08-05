@@ -32,6 +32,8 @@ import {
 } from './route.ts';
 import type { PtyRouteContext, PtySocketLike } from './route.ts';
 import { CommandNotFoundError } from './resolveCommand.ts';
+import { createSessionRunStore } from './sessionRuns.ts';
+import { createTranscriptRecorder } from './transcripts.ts';
 
 /** The absolute path the tests' claude resolver returns. Hermetic: no test needs the CLI installed, and
  *  its ABSOLUTENESS is itself the property under test (node-pty cannot spawn a bare name). */
@@ -197,6 +199,8 @@ function harness(options: {
   resolveClaudeFile?: PtyRouteContext['resolveClaudeFile'];
   repoRoot?: string;
   workflowPrimingRoot?: string;
+  sessionRuns?: PtyRouteContext['sessionRuns'];
+  transcripts?: PtyRouteContext['transcripts'];
 } = {}): {
   ctx: PtyRouteContext;
   audit: ReturnType<typeof recordingAppendAudit>;
@@ -232,6 +236,10 @@ function harness(options: {
     // Hermetic: a FIXED absolute path, so no test depends on this machine having the claude CLI
     // installed. Tests that care about the not-found branch inject a thrower.
     resolveClaudeFile: options.resolveClaudeFile ?? (() => FAKE_CLAUDE),
+    // Session-run recording is OFF unless a test wires it: the pre-leg-2 behaviour is the default, so
+    // every existing spawn/attach/cap test still exercises exactly the path it was written for.
+    ...(options.sessionRuns ? { sessionRuns: options.sessionRuns } : {}),
+    ...(options.transcripts ? { transcripts: options.transcripts } : {}),
   });
   return { ctx, audit, host, registry, preambleCalls: () => calls };
 }
@@ -1071,5 +1079,133 @@ describe('registerPtyRoute REST session endpoints', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+/**
+ * Leg 2 — the SESSION RUN lifecycle, driven by the daemon and nothing else.
+ *
+ * A session run is a separate record from a governed control-plane run; none of these tests touch
+ * `server/control/`. What they pin is the ordering that makes the record trustworthy: it exists before
+ * any byte reaches the operator, it ends only when the daemon OBSERVES the shell die, and closing a
+ * browser tab is not that observation.
+ */
+describe('session runs — the daemon-driven record of an entity-primed terminal', () => {
+  function recordingHarness(options: Parameters<typeof harness>[0] = {}) {
+    const root = scratchDir('kb-pty-session-runs-');
+    const sessionRuns = createSessionRunStore(root);
+    const transcripts = createTranscriptRecorder({ root });
+    return { ...harness({ ...options, sessionRuns, transcripts }), sessionRuns, transcripts, root };
+  }
+
+  const agentAllowlist = (repoRoot: string, id: string): string | null =>
+    id === 'fyt-runner' ? `${repoRoot}/agents/fyt-runner.md` : null;
+
+  it('writes a LIVE record — with its pty session id and priming file — before the opened audit', async () => {
+    const { ctx, audit, sessionRuns, transcripts } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+
+    const runs = sessionRuns.list('operator-1');
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      kind: 'agent',
+      targetRef: 'fyt-runner',
+      outcome: 'live',
+      ptySessionId: 'pty-test-1',
+      endedAt: null,
+    });
+    expect(runs[0]?.primingPath).toContain('fyt-runner.md');
+    // Still EXACTLY one audit row per connection, and it names the record it opened.
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.event.result).toBe('opened');
+    expect((audit.rows[0]?.event.detail as { sessionRunRef?: string }).sessionRunRef).toBe(runs[0]?.sessionRunRef);
+    transcripts.dispose();
+  });
+
+  it('records NOTHING for a login shell or a plain claude — they belong to no entity', async () => {
+    const { ctx, sessionRuns, transcripts } = recordingHarness();
+    const shell = fakeSocket();
+    await handlePtyConnection(shell.sock, req(GOOD_HEADERS(validToken()), '/api/pty'), ctx);
+    const claude = fakeSocket();
+    await handlePtyConnection(claude.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=claude'), ctx);
+    expect(sessionRuns.list('operator-1')).toEqual([]);
+    transcripts.dispose();
+  });
+
+  it('ends the record and attaches the flushed transcript when the shell exits', async () => {
+    const { ctx, host, sessionRuns, transcripts, root } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+    const ref = sessionRuns.list('operator-1')[0]?.sessionRunRef as string;
+
+    host.emitData('agent said hello\n');
+    host.emitExit(0);
+    await vi.waitFor(() => expect(sessionRuns.get('operator-1', ref)?.outcome).toBe('ended'));
+
+    const ended = sessionRuns.get('operator-1', ref);
+    expect(ended?.endedAt).not.toBeNull();
+    expect(ended?.transcript).toMatchObject({ truncated: false });
+    // The exit code came from the still-attached sink; the gone-notification cannot carry one.
+    await vi.waitFor(() => expect(sessionRuns.get('operator-1', ref)?.exitCode).toBe(0));
+    expect(readFileSync(join(root, 'pty', 'transcripts', 'pty-test-1.log'), 'utf8')).toContain('agent said hello');
+    transcripts.dispose();
+  });
+
+  it('ends the record on an operator close frame', async () => {
+    const { ctx, sessionRuns, transcripts } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+    const ref = sessionRuns.list('operator-1')[0]?.sessionRunRef as string;
+
+    socket.emit('message', JSON.stringify({ type: 'close' }));
+    await vi.waitFor(() => expect(sessionRuns.get('operator-1', ref)?.outcome).toBe('ended'));
+    transcripts.dispose();
+  });
+
+  it('leaves the record LIVE when the browser tab closes — a detach is not an ending', async () => {
+    const { ctx, sessionRuns, transcripts } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+    const ref = sessionRuns.list('operator-1')[0]?.sessionRunRef as string;
+
+    socket.emit('close');
+    await new Promise((resolve) => setImmediate(resolve));
+    // The shell is still running and still buffering, so `live` is the only truthful outcome.
+    expect(sessionRuns.get('operator-1', ref)?.outcome).toBe('live');
+    transcripts.dispose();
+  });
+
+  it('does NOT open a second record when the operator reattaches to the same shell', async () => {
+    const { ctx, sessionRuns, transcripts } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const first = fakeSocket();
+    await handlePtyConnection(first.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+    first.emit('close');
+    const again = fakeSocket();
+    await handlePtyConnection(again.sock, req(GOOD_HEADERS(validToken()), '/api/pty?session=pty-test-1'), ctx);
+    expect(sessionRuns.list('operator-1')).toHaveLength(1);
+    transcripts.dispose();
+  });
+
+  it('fails the spawn CLOSED when the record cannot be written: the shell is killed and nothing is left running', async () => {
+    const failing = {
+      create: () => Promise.reject(new Error('state root unavailable')),
+      end: () => Promise.resolve(null),
+      stampExitCode: () => Promise.resolve(),
+      sweepAbandoned: () => Promise.resolve(0),
+      archive: () => Promise.resolve({ ok: false as const, error: 'not-found' as const }),
+      list: () => [],
+      get: () => null,
+    };
+    const { ctx, audit, host, registry } = harness({ resolveAgentFile: agentAllowlist, sessionRuns: failing });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+
+    expect(registry.liveCount()).toBe(0);
+    expect(host.stops).toContain('pty-test-1');
+    expect(socket.controls()).toContainEqual({ type: 'error', reason: 'session-run-record-failed' });
+    // Still exactly ONE audit row, reported as the spawn failure it became.
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.event.result).toBe('spawn-failed');
   });
 });
