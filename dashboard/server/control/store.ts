@@ -89,34 +89,42 @@ const EVENT_STATUSES = new Set(['pending', 'running', 'success', 'failure', 'sto
 const EVENT_FIELDS = new Set([
   'kind', 'source', 'stageRef', 'attemptRef', 'sessionRef', 'status', 'summary', 'command', 'toolName', 'path', 'diff', 'checkpoint',
 ]);
-const RUN_STATES = new Set<RunState>(['planned', 'recovering', 'running', 'waiting-human', 'stopping', 'succeeded', 'failed', 'stopped', 'interrupted']);
+const RUN_STATES = new Set<RunState>(['planned', 'recovering', 'running', 'waiting-human', 'stopping', 'succeeded', 'failed', 'stopped', 'interrupted', 'archived']);
 const STAGE_STATES = new Set<StageState>(['blocked', 'ready', 'running', 'waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']);
 const ATTEMPT_STATES = new Set<AttemptState>(['queued', 'starting', 'running', 'waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']);
 const SESSION_STATES = new Set<ManagedSessionState>(['pending', 'starting', 'running', 'waiting', 'completed', 'failed', 'stopped', 'interrupted']);
-const TERMINAL_RUN = new Set<RunState>(['succeeded', 'failed', 'stopped']);
+const TERMINAL_RUN = new Set<RunState>(['succeeded', 'failed', 'stopped', 'archived']);
 const TERMINAL_STAGE = new Set<StageState>(['succeeded', 'failed', 'stopped']);
 const TERMINAL_ATTEMPT = new Set<AttemptState>(['succeeded', 'failed', 'stopped']);
 const TERMINAL_SESSION = new Set<ManagedSessionState>(['completed', 'failed', 'stopped']);
 const RETRY_SETTLED_STAGE = new Set<StageState>([...TERMINAL_STAGE, 'interrupted']);
 const RETRY_SETTLED_ATTEMPT = new Set<AttemptState>([...TERMINAL_ATTEMPT, 'interrupted']);
 const RETRY_SETTLED_SESSION = new Set<ManagedSessionState>([...TERMINAL_SESSION, 'interrupted']);
-const QUARANTINE_ELIGIBLE = new Set<RunState>(['succeeded', 'failed', 'stopped', 'interrupted']);
+const QUARANTINE_ELIGIBLE = new Set<RunState>(['succeeded', 'failed', 'stopped', 'interrupted', 'archived']);
 const QUARANTINE_SETTLED_STAGE = new Set<StageState>([...TERMINAL_STAGE, 'interrupted']);
 const QUARANTINE_SETTLED_ATTEMPT = new Set<AttemptState>([...TERMINAL_ATTEMPT, 'interrupted']);
 const QUARANTINE_SETTLED_SESSION = new Set<ManagedSessionState>([...TERMINAL_SESSION, 'interrupted']);
 const PUBLICATION_STATES = new Set<Run['publicationState']>(['pending', 'waiting-human', 'publishing', 'published', 'reconcile-required']);
 const ACTIVATION_PHASES = new Set<RunActivationPhase>(['claimed', 'roots-activated', 'dispatched', 'failed']);
 
+/**
+ * `archived` is an absorbing state with NO outgoing edge, and is reachable only from a run that is
+ * already settled or parked — never from `planned`/`recovering`/`running`/`stopping`. Live work must be
+ * stopped on its own governed path first; dismissing a run must never be a way to abandon a running
+ * Manager. `transitionRun` refuses it outright (see below): archiving also has to resolve the run's open
+ * requests atomically, so `archiveRun` is the ONLY writer of this edge.
+ */
 const RUN_EDGES: Readonly<Record<RunState, ReadonlySet<RunState>>> = {
   planned: new Set(['recovering', 'running', 'waiting-human', 'stopping', 'failed', 'stopped', 'interrupted']),
   recovering: new Set(['running', 'waiting-human', 'stopping', 'failed', 'stopped', 'interrupted']),
   running: new Set(['waiting-human', 'stopping', 'succeeded', 'failed', 'stopped', 'interrupted']),
-  'waiting-human': new Set(['planned', 'recovering', 'running', 'stopping', 'failed', 'stopped', 'interrupted']),
+  'waiting-human': new Set(['planned', 'recovering', 'running', 'stopping', 'failed', 'stopped', 'interrupted', 'archived']),
   stopping: new Set(['stopped', 'failed', 'interrupted']),
-  succeeded: new Set(),
-  failed: new Set(),
-  stopped: new Set(),
-  interrupted: new Set(['recovering', 'running', 'waiting-human', 'stopping', 'failed', 'stopped']),
+  succeeded: new Set(['archived']),
+  failed: new Set(['archived']),
+  stopped: new Set(['archived']),
+  interrupted: new Set(['recovering', 'running', 'waiting-human', 'stopping', 'failed', 'stopped', 'archived']),
+  archived: new Set(),
 };
 const PUBLICATION_EDGES: Readonly<Record<Run['publicationState'], ReadonlySet<Run['publicationState']>>> = {
   pending: new Set(['waiting-human', 'publishing', 'reconcile-required']),
@@ -164,6 +172,8 @@ interface StoredRun extends Run {
   subject: string;
   launchOperationKey?: string | null;
   launchOperationFingerprint?: string | null;
+  archiveOperationKey?: string | null;
+  archiveOperationFingerprint?: string | null;
   activationReceipts?: StoredRunActivationReceipt[];
   authorizedFailedRunReconciliation?: StoredAuthorizedFailedRunReconciliation | null;
 }
@@ -532,6 +542,25 @@ export interface RespondHumanRequestInput {
   response?: string | null;
 }
 
+export interface ArchiveRunInput {
+  idempotencyKey: string;
+  /** Why the operator dismissed this run. Recorded on the resolved requests and in the audit row. */
+  reason?: string | null;
+}
+
+export interface ArchiveRunResult {
+  run: Run;
+  /** Requests this archive resolved, in the same commit that moved the run to `archived`. */
+  resolvedRequests: HumanRequest[];
+  /**
+   * Open requests the archive could NOT resolve: a review completion gate / review intervention is
+   * pinned open by the review lineage invariants (only the review gate resolver may move one), so they
+   * are reported rather than silently corrupted. The archived run leaves every default projection, so
+   * these stop reaching the operator either way.
+   */
+  pinnedRequestRefs: string[];
+}
+
 export interface RecoverAuthorized20260731ExecutionLockInput {
   expectedRunVersion: number;
   expectedManagerGeneration: number;
@@ -689,6 +718,8 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   /** Fail a claimed activation and return an undispatched run to waiting-human. */
   failRunActivation(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt>;
   transitionRun(subject: string, runRef: string, expectedVersion: number, state: RunState): ControlResult<Run>;
+  /** Terminal operator dismissal: `archived` run + its answerable open requests resolved, one commit. */
+  archiveRun(subject: string, runRef: string, input: ArchiveRunInput): ControlResult<ArchiveRunResult>;
   transitionPublication(
     subject: string,
     runRef: string,
@@ -1082,6 +1113,8 @@ function publicRun(value: StoredRun): Run {
     subject: _subject,
     launchOperationKey: _launchOperationKey,
     launchOperationFingerprint: _launchOperationFingerprint,
+    archiveOperationKey: _archiveOperationKey,
+    archiveOperationFingerprint: _archiveOperationFingerprint,
     activationReceipts: _activationReceipts,
     authorizedFailedRunReconciliation: _authorizedFailedRunReconciliation,
     ...run
@@ -1126,6 +1159,50 @@ function publicRequest(value: StoredHumanRequest): HumanRequest {
     ...request
   } = value;
   return clone(request);
+}
+
+/**
+ * A request whose resolution is RESERVED to the review gate resolver.
+ *
+ * The review lineage validated on every load pins these: a completion gate's resolution is
+ * fingerprint-bound to its receipt/loop/stage CAS tuple, and a review intervention must stay `open`.
+ * Resolving either through a generic path would make the document fail its own invariants on reload,
+ * so both the generic responder and the archive path ask this question first.
+ */
+function isReviewLinkedRequest(document: StoreDocument, requestRef: string): boolean {
+  return document.reviewReceipts.some((receipt) =>
+    receipt.completionRequestRef === requestRef || receipt.interventionRequestRef === requestRef);
+}
+
+/**
+ * Write one operator resolution onto an OPEN request, in place.
+ *
+ * `respondHumanRequest` (one request, one explicit decision) and `archiveRun` (every answerable request
+ * on a dismissed run) are the two writers of a Human Response, and the record they leave has to be
+ * identical — `acceptsHumanRequest`, the resume path and the store's own replay checks all read these
+ * exact fields. One writer, so the two can never drift.
+ */
+/** The per-request response key an archive writes; derived so a replay recognizes its own resolutions. */
+function archiveResponseKey(archiveKey: string, requestRef: string): string {
+  return `archive:${archiveKey}:${requestRef}`.slice(0, MAX_SHORT_TEXT);
+}
+
+function recordHumanResponse(
+  request: StoredHumanRequest,
+  subject: string,
+  input: { decision: HumanRequestDecision; idempotencyKey: string; response: string | null },
+  at: string,
+): void {
+  request.response = {
+    requestRevision: request.revision,
+    decision: input.decision,
+    respondedBy: subject,
+    idempotencyKey: input.idempotencyKey,
+    response: input.response,
+    respondedAt: at,
+  };
+  request.state = 'resolved';
+  request.updatedAt = at;
 }
 
 function publicEvent(value: StoredEvent): OperationalEvent {
@@ -3320,6 +3397,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const run = findRun(document, subject, runRef);
       if (!run) return fail('not-found', 'run was not found');
       if (!RUN_STATES.has(state)) return fail('invalid', 'run state is invalid');
+      // Archiving resolves the run's open requests in the SAME commit, so a bare transition to it would
+      // leave a dismissed run still holding open asks. `archiveRun` owns that edge exclusively.
+      if (state === 'archived') return fail('invalid', 'archiving a run goes through archiveRun, not a bare transition');
       if (run.version !== expectedVersion) return fail('conflict', 'run version changed');
       if (run.state === state) return ok(publicRun(run), true);
       if (!RUN_EDGES[run.state].has(state)) return fail('invalid', `run transition ${run.state}->${state} is not allowed`);
@@ -4822,7 +4902,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const document = load();
       const request = document.humanRequests.find((item) => item.subject === subject && item.requestRef === requestRef);
       if (!request) return fail('not-found', 'Human Request was not found');
-      if (document.reviewReceipts.some((receipt) => receipt.completionRequestRef === requestRef || receipt.interventionRequestRef === requestRef)) {
+      if (isReviewLinkedRequest(document, requestRef)) {
         return fail('invalid', 'review-linked Human Requests are resolved only by the review gate resolver');
       }
       if (request.legacyRecoveryOperationKey != null) {
@@ -4985,7 +5065,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const document = load();
       const request = document.humanRequests.find((item) => item.subject === subject && item.requestRef === requestRef);
       if (!request) return fail('not-found', 'Human Request was not found');
-      if (document.reviewReceipts.some((receipt) => receipt.completionRequestRef === requestRef || receipt.interventionRequestRef === requestRef)) {
+      if (isReviewLinkedRequest(document, requestRef)) {
         return fail('invalid', 'review-linked Human Requests are resolved only by the review gate resolver');
       }
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)) return fail('invalid', 'idempotencyKey is required');
@@ -4999,19 +5079,64 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         return ok(publicRequest(request), true);
       }
       if (request.revision !== input.expectedRevision || request.state !== 'open') return fail('conflict', 'Human Request revision changed');
-      const respondedAt = stamp();
-      request.response = {
-        requestRevision: input.expectedRevision,
-        decision: input.decision,
-        respondedBy: subject,
-        idempotencyKey: input.idempotencyKey,
-        response,
-        respondedAt,
-      };
-      request.state = 'resolved';
-      request.updatedAt = respondedAt;
+      recordHumanResponse(request, subject, {
+        decision: input.decision, idempotencyKey: input.idempotencyKey, response,
+      }, stamp());
       commit(document);
       return ok(publicRequest(request));
+    },
+
+    /**
+     * Dismiss a dead run: move it to the terminal `archived` state and resolve its open requests in the
+     * SAME commit, so a parked run can never survive as a haunting ask in the operator's inbox.
+     *
+     * Idempotent on `idempotencyKey` exactly like every other governed write here — a replay with the
+     * same key and the same reason returns the archived run; a reused key with different content is an
+     * `idempotency-conflict`, and a second, different archive of an already-archived run is a `conflict`.
+     */
+    archiveRun(subject, runRef, input) {
+      const document = load();
+      const run = findRun(document, subject, runRef);
+      if (!run) return fail('not-found', 'run was not found');
+      if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)) return fail('invalid', 'idempotencyKey is required');
+      const reason = input.reason == null ? null : cleanText(input.reason, MAX_LONG_TEXT);
+      const fingerprint = sha256(`${runRef}\0${reason ?? ''}`);
+      const resolvedRequests = (): HumanRequest[] => document.humanRequests
+        .filter((item) => item.subject === subject && item.runRef === runRef
+          && item.response?.idempotencyKey === archiveResponseKey(input.idempotencyKey, item.requestRef))
+        .map(publicRequest);
+      const pinned = (): string[] => document.humanRequests
+        .filter((item) => item.subject === subject && item.runRef === runRef && item.state === 'open')
+        .map((item) => item.requestRef);
+      if (run.archiveOperationKey) {
+        if (run.archiveOperationKey !== input.idempotencyKey) return fail('conflict', 'run is already archived');
+        if (run.archiveOperationFingerprint !== fingerprint) {
+          return fail('idempotency-conflict', 'archive idempotencyKey was reused with a different reason');
+        }
+        return ok({ run: publicRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() }, true);
+      }
+      if (!RUN_EDGES[run.state].has('archived')) {
+        return fail('invalid', 'only a finished, stopped, interrupted, or waiting-human run can be archived');
+      }
+      const archivedAt = stamp();
+      for (const request of document.humanRequests) {
+        if (request.subject !== subject || request.runRef !== runRef || request.state !== 'open') continue;
+        // A review-linked request is pinned open by the review lineage invariants; touching it here would
+        // make the document fail its own validation on the next load. Reported, never forced.
+        if (isReviewLinkedRequest(document, request.requestRef)) continue;
+        recordHumanResponse(request, subject, {
+          decision: 'responded',
+          idempotencyKey: archiveResponseKey(input.idempotencyKey, request.requestRef),
+          response: reason,
+        }, archivedAt);
+      }
+      run.state = 'archived';
+      run.version += 1;
+      run.updatedAt = archivedAt;
+      run.archiveOperationKey = input.idempotencyKey;
+      run.archiveOperationFingerprint = fingerprint;
+      commit(document);
+      return ok({ run: publicRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() });
     },
 
     appendEvent(subject, runRef, input) {

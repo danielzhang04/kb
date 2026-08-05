@@ -35,6 +35,7 @@ import type { Dag, DagNodeData } from '../../server/dag/graph';
 import { useSession } from '../lib/sessionContext';
 import {
   activateRun,
+  archiveRun,
   createManagerSuccessor,
   dryRunQuarantine,
   getProposalRevision,
@@ -721,6 +722,8 @@ export function RunDetail({
   const [instruction, setInstruction] = useState('');
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [routingDrafts, setRoutingDrafts] = useState<Record<string, { runtime: string; model: string }>>({});
+  /** The operator's own words for WHY a dead run is being dismissed; carried into the T3 audit row. */
+  const [archiveReason, setArchiveReason] = useState('');
   const [quarantinePlan, setQuarantinePlan] = useState<QuarantinePlanDto | null>(null);
   const [quarantineNotice, setQuarantineNotice] = useState<string | null>(null);
   const live = injectedDetail === undefined;
@@ -891,6 +894,11 @@ export function RunDetail({
   const retryRefusal = isAuthorizedFailedRunSettled(detail, events)
     ? 'Settled by the authorized 2026-08-01 reconciliation; this run can never have a successor.'
     : undefined;
+  // Archiving is for runs that are already over or parked: a live run is stopped first, on its own path.
+  const archivable = ['waiting-human', 'failed', 'interrupted', 'succeeded', 'stopped'].includes(detail.run.state);
+  const archiveRefusal = detail.run.state === 'archived'
+    ? 'Already archived.'
+    : archivable ? undefined : 'Stop this run before archiving it.';
   const cardOwners = index ? cardOwnerIndex(index) : undefined;
   const scopedDag = scopeDagToRun(dag ?? { nodes: [], edges: [] }, runCardIds(detail));
 
@@ -964,6 +972,14 @@ export function RunDetail({
 
   const resume = (): void => void govern('resuming this run', (active) =>
     activateRun(detail.run, active, fetchImpl).then(() => undefined));
+
+  /**
+   * Dismiss this run for good (spec §3b). Only offered once the run is settled or parked — live work is
+   * stopped on its own path first — and the point-of-action unlock is `govern`'s, the same one every
+   * other governed button here uses. One click: the reason beside it is optional.
+   */
+  const archive = (): void => void govern('archiving this run', (active) =>
+    archiveRun(detail.run, archiveReason.trim() || null, active, fetchImpl).then(() => setArchiveReason('')));
 
   const retry = (): void => void govern('the retry', async (active) => {
     const successor = await launchProposalRevision(detail.run.proposalRef, detail.run.proposalRevision, {
@@ -1052,8 +1068,17 @@ export function RunDetail({
           <h3 className="entity-block__title">Waiting on you</h3>
           {openRequests.map((request) => (
             <article key={request.requestRef} className="control-request" data-testid={`run-gate-${request.requestRef}`}>
-              <h4>{completionRequestRefs.has(request.requestRef) ? `Sign off: ${request.title}` : request.title}</h4>
-              <p>{request.prompt}</p>
+              {/* spec §3b — the ASK leads: what happened and what you can do, in the server's one plain
+                * sentence. The machine's own words (traceback, refusal code) are a fold below it, never
+                * the thing the operator is asked to answer. */}
+              <h4>{request.ask}</h4>
+              {completionRequestRefs.has(request.requestRef) ? <p>{request.prompt}</p> : null}
+              {request.technicalDetail ? (
+                <details className="entity-fold" data-testid={`run-gate-technical-${request.requestRef}`}>
+                  <summary>Technical details</summary>
+                  <pre className="entity-fold__body run-gate__technical">{request.technicalDetail}</pre>
+                </details>
+              ) : null}
               <label htmlFor={`response-${request.requestRef}`}>Your answer</label>
               <textarea
                 id={`response-${request.requestRef}`}
@@ -1262,6 +1287,33 @@ export function RunDetail({
       {reconciliationAvailable ? (
         <button type="button" className="mc-btn" disabled={busy} onClick={reconcile}>Settle this historical run</button>
       ) : null}
+      {/*
+        * Archive — the end of a dead run. Same rendered-disabled rule as Retry above: the action never
+        * vanishes, it explains itself. The reason field only appears when the action is actually
+        * available, so a live run's header does not carry a box that can do nothing.
+        */}
+      {archivable ? (
+        <input
+          className="run-archive__reason"
+          data-testid="run-archive-reason"
+          value={archiveReason}
+          disabled={busy}
+          maxLength={500}
+          placeholder="why (optional)"
+          aria-label="Why this run is being archived"
+          onChange={(event) => setArchiveReason(event.target.value)}
+        />
+      ) : null}
+      <button
+        type="button"
+        className="mc-btn"
+        data-testid="run-archive"
+        disabled={busy || !archivable}
+        title={archiveRefusal}
+        onClick={archive}
+      >
+        Archive
+      </button>
     </>
   );
 

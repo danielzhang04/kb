@@ -7,12 +7,13 @@
  * cards and halted runs alike, never merely `state: approvals`), where each project stands, and how
  * much work has run.
  *
- * It stays a rollup — every row links CONCEPTUALLY to its entity view via the optional `onNavigate`
- * prop (the integrator wires it to the shell's nav switch); depth lives in the dedicated views, never
- * bolted on here. Home also hosts the governed launch surface ([+ New ▾] → Task lands here), a lean
- * re-implementation of Control's Launch/Rerun forms — `LaunchControls` is not exported from Control and
- * this agent must not edit that file, so the forms are duplicated faithfully (same endpoints, same
- * fail-closed-without-a-session behaviour) rather than imported.
+ * It stays a rollup — a row links to the DESTINATION that owns it via `onNavigate`, and a waiting-on-you
+ * row links to the exact entity via `onNavigateTarget` (spec §5: a gate is addressed on the surface
+ * holding its context, never from the rollup). Depth lives in the dedicated views, never bolted on here.
+ *
+ * Home no longer hosts a launch form. Work is launched from the workflow it belongs to (ONE Launch
+ * button on the workflow surface); a second, form-shaped launch path on the landing page was a parallel
+ * way to do the same governed thing, with its own owner picker and its own failure modes.
  *
  * USAGE, never spend: KPIs surface step counts + model mix and DELIBERATELY suppress the USD figure —
  * it exists in the ledger (`cost.usdPresent`) but is never rendered here (matches Control's suppression).
@@ -25,14 +26,12 @@ import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
 import { projectHumanInbox } from '../../server/approvals/humanInbox';
 import type { DestinationId } from '../nav/config';
-import { useSession } from '../lib/sessionContext';
 import { useSse } from '../lib/sseClient';
-import { useAssignableOwners } from '../lib/assignableOwners';
-import { LaunchControls } from './launchControls';
 import { ExecutionUnlock, type ExecutionUnlockClient } from '../control/ExecutionUnlock';
-import { parseExecutionPosture, type ExecutionPostureDto } from '../control/controlClient';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
+import { cardLink } from '../control/entityLinks';
+import type { NavTarget } from '../nav/stack';
 import '../styles/views/home.css';
 
 const EMPTY_INDEX: PlaneAIndex = {
@@ -67,10 +66,15 @@ function tierClass(tier: unknown): string {
   return t === 't1' || t === 't2' || t === 't3' ? ` mc-badge--${t}` : '';
 }
 
-function cardMain(card: ParsedCard): string {
-  const action = String(card.meta.action ?? '');
-  const target = String(card.meta.target ?? '');
-  return [action, target].filter(Boolean).join(' · ') || '—';
+/**
+ * What a card ACTS ON — its target, and nothing else.
+ *
+ * This used to be `action · target`, which printed the card's name a second time in the row: a card's
+ * `action` IS its `displayName` (planeA/cards.ts#cardTitle), already rendered by `EntityName` in the
+ * column beside it. The name appears once now, and this column adds the thing it operates on.
+ */
+function cardTarget(card: ParsedCard): string {
+  return String(card.meta.target ?? '') || '—';
 }
 
 /* ── KPI tiles ─────────────────────────────────────────────────────────────────────────────────
@@ -126,6 +130,9 @@ function KpiTiles({
   // promotion step into `queue/approvals/` is not what makes something the operator's problem. This is
   // the same projection the Approvals view lists, so the tile and that view can never disagree.
   const waiting = projectHumanInbox(index).counts.total;
+  // FOUR tiles, not six: agents / running / waiting / blocked. `queued` and `steps` went — a queued
+  // count is not a state anyone acts on from here, and the step count is already the first number in
+  // the Usage panel below, where it belongs.
   return (
     <section className="v-home__kpis" aria-label="Fleet KPIs">
       <KpiTile testId="kpi-agents" label="agents" value={agentCount(index)} to="agents" onNavigate={onNavigate} />
@@ -139,8 +146,6 @@ function KpiTiles({
         onNavigate={onNavigate}
       />
       <KpiTile testId="kpi-blocked" label="blocked" value={stateCount(index, 'blocked')} />
-      <KpiTile testId="kpi-queued" label="queued" value={stateCount(index, 'inbox')} to="tasks" onNavigate={onNavigate} />
-      <KpiTile testId="kpi-steps" label="steps" value={index.ledgers.cost.stepCount} to="ledgers" onNavigate={onNavigate} />
     </section>
   );
 }
@@ -159,7 +164,9 @@ function ResumeRow({
   tier,
   dot,
   to,
+  target,
   onNavigate,
+  onNavigateTarget,
 }: {
   id: string;
   /** The card/entity identity this row is about. Absent for rows that name no entity (ledger beats). */
@@ -169,13 +176,18 @@ function ResumeRow({
   tier?: unknown;
   dot?: 'running' | 'blocked' | 'idle';
   to: DestinationId;
+  /** The exact entity to open. Preferred over `to` when present — a gate needs its own context. */
+  target?: NavTarget;
   onNavigate?: (id: DestinationId) => void;
+  onNavigateTarget?: (target: NavTarget) => void;
 }): React.JSX.Element {
+  // A row with a deep link opens the ENTITY (spec §5); without one it falls back to the destination.
+  const open = target && onNavigateTarget ? () => onNavigateTarget(target) : () => onNavigate?.(to);
   return (
     <div
       className="v-home__row"
-      aria-label={`Open ${entity?.displayName ?? id} in ${to}`}
-      {...entityRowProps(() => onNavigate?.(to))}
+      aria-label={`Open ${entity?.displayName ?? id}`}
+      {...entityRowProps(open)}
     >
       {dot ? <span className={`mc-status-dot mc-status-dot--${dot}`} aria-hidden="true" /> : null}
       {/* Inverted: the human name leads, the id lives in EntityName's tooltip + copy button. */}
@@ -218,9 +230,11 @@ function ResumeGroup({
 function RunningResume({
   index,
   onNavigate,
+  onNavigateTarget,
 }: {
   index: PlaneAIndex;
   onNavigate?: (id: DestinationId) => void;
+  onNavigateTarget?: (target: NavTarget) => void;
 }): React.JSX.Element {
   const working = index.cards.working ?? [];
   // Same projection as the KPI tile and the Approvals view — NOT `index.cards.approvals`, which is the
@@ -239,12 +253,14 @@ function RunningResume({
             key={String(c.meta.id)}
             id={String(c.meta.id)}
             entity={{ kind: 'card', displayName: c.displayName, shortRef: c.shortRef }}
-            main={cardMain(c)}
+            main={cardTarget(c)}
             meta={typeof c.meta.owner === 'string' ? c.meta.owner : undefined}
             tier={c.meta['risk-tier']}
             dot="running"
             to="tasks"
+            target={cardLink(String(c.meta.id))}
             onNavigate={onNavigate}
+            onNavigateTarget={onNavigateTarget}
           />
         ))}
       </ResumeGroup>
@@ -262,12 +278,16 @@ function RunningResume({
             key={String(item.card.meta.id)}
             id={String(item.card.meta.id)}
             entity={{ kind: 'card', displayName: item.card.displayName, shortRef: item.card.shortRef }}
-            main={cardMain(item.card)}
+            main={cardTarget(item.card)}
             meta={item.categoryLabel}
             tier={item.card.meta['risk-tier']}
             dot="idle"
             to="approvals"
+            /* spec §5 — a waiting row opens the CARD, where the gate is answered with its work order
+             * in front of the operator, not the Inbox list that shows none of it. */
+            target={cardLink(String(item.card.meta.id))}
             onNavigate={onNavigate}
+            onNavigateTarget={onNavigateTarget}
           />
         ))}
       </ResumeGroup>
@@ -279,11 +299,13 @@ function RunningResume({
               key={String(c.meta.id)}
               id={String(c.meta.id)}
               entity={{ kind: 'card', displayName: c.displayName, shortRef: c.shortRef }}
-              main={cardMain(c)}
+              main={cardTarget(c)}
               tier={c.meta['risk-tier']}
               dot="blocked"
               to="tasks"
+              target={cardLink(String(c.meta.id))}
               onNavigate={onNavigate}
+              onNavigateTarget={onNavigateTarget}
             />
           ))}
         </ResumeGroup>
@@ -386,17 +408,17 @@ function UsagePanel({ index }: { index: PlaneAIndex }): React.JSX.Element {
 export function Home({
   snapshot,
   onNavigate,
+  onNavigateTarget,
   executionClient,
 }: {
   snapshot?: PlaneAIndex;
   onNavigate?: (id: DestinationId) => void;
+  /** Open one exact entity. Wired by the shell to its nav stack; rows fall back to `onNavigate`. */
+  onNavigateTarget?: (target: NavTarget) => void;
   /** Hermetic seam for the purpose-bound execution ceremony; production uses the real control client. */
   executionClient?: ExecutionUnlockClient;
 } = {}): React.JSX.Element {
-  const { session } = useSession();
-  const sessionToken = session?.token;
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
-  const [execution, setExecution] = useState<{ sessionToken: string; posture: ExecutionPostureDto } | null>(null);
   // A Plane-A delta on the hub bumps `count`; we refetch the snapshot on each tick (skipped when a
   // snapshot is supplied directly, and a no-op under jsdom where EventSource is absent).
   const { count } = useSse('/events');
@@ -418,33 +440,18 @@ export function Home({
   }, [snapshot, count]);
 
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
-  // C7.8 — populate the owner picker from the live roster ∪ registered default_workers. Every tab can
-  // mint at point of action now, so the picker is always populated.
-  const owners = useAssignableOwners(true);
-  const parsedExecution = parseExecutionPosture(execution?.posture);
-  const executionReady = Boolean(
-    sessionToken
-    && execution?.sessionToken === sessionToken
-    && parsedExecution?.state === 'unlocked'
-    && parsedExecution.source === 'passkey',
-  );
 
   return (
     <div className="v-home" aria-label="Home view">
       <KpiTiles index={index} onNavigate={onNavigate} />
       <div className="v-home__grid">
         <div className="v-home__col v-home__col--wide">
-          <RunningResume index={index} onNavigate={onNavigate} />
+          <RunningResume index={index} onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />
         </div>
         <div className="v-home__col">
           <UsagePanel index={index} />
-          <ExecutionUnlock
-            client={executionClient}
-            onPostureChange={(posture) => {
-              setExecution(sessionToken && posture ? { sessionToken, posture } : null);
-            }}
-          />
-          <LaunchControls variant="home" executionReady={executionReady} owners={owners} />
+          {/* Arming PAID execution is a deliberate, separate act from launching anything — it stays. */}
+          <ExecutionUnlock client={executionClient} />
         </div>
       </div>
     </div>

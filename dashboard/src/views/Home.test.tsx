@@ -1,20 +1,22 @@
 // @vitest-environment jsdom
 /**
- * U3 — Home, the default landing rollup. Covers the definition-of-done: KPI tiles render from an index
+ * Home, the default landing rollup. Covers the definition-of-done: four KPI tiles render from an index
  * snapshot; the running/resume hero lists working cards + pending approvals; NO dollar figure appears
- * anywhere (usage, not spend); `onNavigate` fires on row/tile activation; and the governed
- * LaunchControls surface is present + enabled only once EXECUTION is unlocked by its own passkey check.
+ * anywhere (usage, not spend); a row opens its ENTITY through `onNavigateTarget` and falls back to the
+ * destination through `onNavigate`; and the ExecutionUnlock panel (arming PAID execution) stays.
+ *
+ * The launch-form suite is GONE with the form (spec §5): work is launched from its workflow now, and
+ * `LaunchControls` itself is still covered by launchControls.test.tsx + Control.test.tsx.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { Home } from './Home';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { CardProjection } from '../../server/planeA/cards';
-import type { AgentRosterEntry } from '../../server/agents/roster';
 import type { ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import type { ExecutionPostureDto } from '../control/controlClient';
 import { SessionProvider } from '../lib/sessionContext';
-import { clearStoredSession, persistSession, SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
+import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
 
 /** Render a locked Home (no stored bearer) — the default for every read-only rollup assertion. */
 function render0(ui: React.ReactElement): ReturnType<typeof render> {
@@ -26,46 +28,6 @@ function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: (
   if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
   return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
 }
-
-/** Build a full roster entry with sane defaults, overriding only the fields a test cares about. */
-function rosterEntry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEntry {
-  return {
-    displayName: over.id,
-    shortRef: 1,
-    role: null,
-    working: false,
-    current: null,
-    projects: [],
-    cardCount: 0,
-    ledger: { dispatches: 0, steps: 0, days: 0, lastActive: null },
-    sources: [],
-    effective: { runtime: 'claude', model: 'claude-opus-4-8', sourceRuntime: 'policy', sourceModel: 'policy' },
-    declared: false,
-    runnerBound: false,
-    declaredRuntime: null,
-    declaredModel: null,
-    defaultProfile: null,
-    allowedProfiles: null,
-    description: null,
-    ...over,
-  };
-}
-
-const ROUTING = {
-  policy: {
-    version: 1,
-    runtimes: {
-      claude: { default_worker: 'worker-desktop', aliases: {}, known_models: ['claude-opus-4-8'] },
-      codex: { default_worker: 'codex-worker', aliases: {}, known_models: ['gpt-5-codex'] },
-    },
-    matrix: {},
-    role_default: null,
-  },
-  agents: [],
-  cards: {},
-  audit: { mismatches: [], overrides: [] },
-  overrides: [],
-};
 
 const LOCKED_EXECUTION: ExecutionPostureDto = {
   state: 'locked',
@@ -144,10 +106,11 @@ describe('Home view — KPI tiles', () => {
     expect(screen.getByTestId('kpi-running').textContent).toContain('2');
     // One card in `approvals` → waiting 1.
     expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
-    // One blocked, one queued (inbox), three ledger steps.
     expect(screen.getByTestId('kpi-blocked').textContent).toContain('1');
-    expect(screen.getByTestId('kpi-queued').textContent).toContain('1');
-    expect(screen.getByTestId('kpi-steps').textContent).toContain('3');
+    // FOUR tiles only: `queued` and `steps` are gone — a queued count is not something acted on here,
+    // and the step count is the Usage panel's first number.
+    expect(screen.queryByTestId('kpi-queued')).toBeNull();
+    expect(screen.queryByTestId('kpi-steps')).toBeNull();
   });
 });
 
@@ -259,8 +222,27 @@ describe('Home view — navigation', () => {
     const onNavigate = vi.fn();
     render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Open demo:id-work-1 in tasks/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Open demo:id-work-1/i }));
     expect(onNavigate).toHaveBeenCalledWith('tasks');
+  });
+
+  it('opens the exact CARD when a deep-link handler is wired, not just its destination', () => {
+    const onNavigate = vi.fn();
+    const onNavigateTarget = vi.fn();
+    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />);
+
+    // spec §5 — a waiting-on-you row lands on the card that needs the operator, with its work order.
+    fireEvent.click(screen.getByRole('button', { name: /Open demo:id-appr-1/i }));
+    expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: 'id-appr-1' } });
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it('renders a row name exactly once — the name column and the detail column are not the same text', () => {
+    render0(<Home snapshot={SNAPSHOT} />);
+    const row = screen.getByRole('button', { name: /Open demo:id-work-1/i });
+    expect(row.textContent?.match(/demo:id-work-1/g)).toHaveLength(1);
+    // The second column carries what the card ACTS ON, which is a different fact.
+    expect(row.textContent).toContain('docs/x.md');
   });
 
   it('fires onNavigate to approvals from the Waiting KPI tile', () => {
@@ -272,127 +254,17 @@ describe('Home view — navigation', () => {
   });
 });
 
-describe('Home view — launch surface', () => {
-  it('renders the LaunchControls surface, disabled until execution is unlocked', () => {
-    render0(<Home snapshot={SNAPSHOT} />);
-
-    expect(screen.getByTestId('home-launch')).toBeTruthy();
-    // Fail-closed while execution is locked: the Launch button is present but disabled.
-    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByLabelText('Launch card')).toBeTruthy();
-  });
-
-  it('keeps Launch disabled until execution is explicitly unlocked with a passkey', async () => {
-    const client = executionClient(LOCKED_EXECUTION);
-    render(withSession(<Home snapshot={SNAPSHOT} executionClient={client} />, {
-      stored: 'fake-session-token',
-      signIn: async () => ({ token: 'replacement-token', expiresAt: Date.now() + 60_000 }),
-    }));
-
-    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
-    const unlock = await screen.findByRole('button', { name: 'Unlock execution' });
-    expect(launch.disabled).toBe(true);
-
-    fireEvent.submit(screen.getByLabelText('Launch card'));
-    expect(screen.getByTestId('launch-status').textContent).toMatch(/execution is locked/i);
-    expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => url === '/api/write/launch')).toBe(false);
-
-    fireEvent.click(unlock);
-    await waitFor(() => expect(launch.disabled).toBe(false));
-    expect(client.unlock).toHaveBeenCalledWith('fake-session-token');
-
-    // An unlock belongs to the bearer that completed it. A governed 401 re-locks the tab and the next
-    // ceremony mints a DIFFERENT bearer, which must fail closed rather than inherit the ready state.
-    fireEvent(window, new Event(SESSION_INVALIDATED_EVENT));
-    await waitFor(() => expect(launch.disabled).toBe(true));
-    fireEvent.click(screen.getByRole('button', { name: 'Unlock execution' }));
-    await waitFor(() => expect(client.getPosture).toHaveBeenCalledWith('replacement-token'));
-    expect(launch.disabled).toBe(true);
-  });
-
-  it('never releases the launch token for a malformed passkey posture', async () => {
-    const malformed = {
-      ...PASSKEY_EXECUTION,
-      unlockedAt: '1',
-    } as ExecutionPostureDto;
+describe('Home view — execution unlock stays', () => {
+  it('keeps the ExecutionUnlock panel and has no launch form beside it', async () => {
     render(withSession(
-      <Home snapshot={SNAPSHOT} executionClient={executionClient(malformed)} />,
+      <Home snapshot={SNAPSHOT} executionClient={executionClient(LOCKED_EXECUTION)} />,
       { stored: 'fake-session-token' },
     ));
 
-    expect(await screen.findByRole('alert')).toHaveProperty(
-      'textContent',
-      'Execution state could not be loaded. Execution remains unavailable.',
-    );
-    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it('never POSTs a launch while execution is locked', () => {
-    // Execution locked: submitting must NOT reach `/api/write/launch` — it just states why.
-    const fetchMock = vi.fn((_url: string) => new Promise(() => {}));
-    vi.stubGlobal('fetch', fetchMock);
-    render0(<Home snapshot={SNAPSHOT} />);
-
-    fireEvent.submit(screen.getByLabelText('Launch card'));
-    expect(screen.getByTestId('launch-status').textContent).toMatch(/execution is locked/i);
-    expect(fetchMock.mock.calls.some(([url]) => url === '/api/write/launch')).toBe(false);
-  });
-
-  // C7.8 — the host wires the LIVE roster into the owner picker: it fetches /api/agents + /api/routing,
-  // maps them to the assignable set (declared agents ∪ registered default_workers), and passes them in.
-  // Selecting an owner threads it into the governed launch POST body.
-  it('populates the owner picker from the live roster and threads a chosen owner into the launch POST', async () => {
-    const roster: AgentRosterEntry[] = [
-      // Declared + runner-bound → a plain assignable option.
-      rosterEntry({ id: 'claude-m1', declared: true, runnerBound: true }),
-      // Declared but no runner yet → still assignable, shown with the "(no runner)" warning affordance.
-      rosterEntry({ id: 'atlas-writer', declared: true, runnerBound: false }),
-      // Owns cards but NOT declared and not a default_worker → NOT assignable (excluded).
-      rosterEntry({ id: 'codex-a', declared: false, runnerBound: false }),
-    ];
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string, init?: RequestInit) => {
-        calls.push({ url, init });
-        if (url === '/api/agents') {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve(roster) } as Response);
-        }
-        if (url === '/api/routing') {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve(ROUTING) } as Response);
-        }
-        if (url === '/api/write/launch') {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve({ cardId: 'c-owned' }) } as Response);
-        }
-        return new Promise(() => {});
-      }),
-    );
-
-    render(withSession(
-      <Home snapshot={SNAPSHOT} executionClient={executionClient(PASSKEY_EXECUTION)} />,
-      { stored: 'fake-session-token' },
-    ));
-
-    const ownerSelect = screen.getByLabelText('Owner') as HTMLSelectElement;
-    // The live roster populates the closed set: declared agents ∪ registered default_workers.
-    await waitFor(() => expect(within(ownerSelect).getByRole('option', { name: 'claude-m1' })).toBeTruthy());
-    expect(within(ownerSelect).getByRole('option', { name: 'atlas-writer (no runner)' })).toBeTruthy();
-    // Registered default_workers surface even without a declaration…
-    expect(within(ownerSelect).getByRole('option', { name: 'worker-desktop' })).toBeTruthy();
-    expect(within(ownerSelect).getByRole('option', { name: 'codex-worker' })).toBeTruthy();
-    // …but a non-declared, non-default_worker card owner does NOT.
-    expect(within(ownerSelect).queryByRole('option', { name: 'codex-a' })).toBeNull();
-
-    await waitFor(() => {
-      expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
-    });
-
-    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'kb' } });
-    fireEvent.change(ownerSelect, { target: { value: 'claude-m1' } });
-    fireEvent.submit(screen.getByLabelText('Launch card'));
-
-    await waitFor(() => expect(screen.getByTestId('launch-status').textContent).toContain('c-owned'));
-    const launchCall = calls.find((c) => c.url === '/api/write/launch');
-    expect(JSON.parse(launchCall?.init?.body as string)).toMatchObject({ project: 'kb', owner: 'claude-m1' });
+    // Arming PAID execution is a deliberate act of its own and deliberately survives the sweep.
+    expect(await screen.findByRole('button', { name: 'Unlock execution' })).toBeTruthy();
+    // The launch/rerun form does not: work is launched from the workflow that owns it.
+    expect(screen.queryByTestId('home-launch')).toBeNull();
+    expect(screen.queryByLabelText('Launch card')).toBeNull();
   });
 });

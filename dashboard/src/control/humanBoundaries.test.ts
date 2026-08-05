@@ -19,6 +19,9 @@ function request(
     state,
     title: 'Human boundary',
     prompt: 'May this run continue?',
+    // Server-built plain language; the machine's own words above are the technical detail.
+    ask: 'Owning run needs your sign-off before it can go any further.',
+    technicalDetail: 'Human boundary\n\nMay this run continue?',
     response: state === 'resolved'
       ? {
           requestRevision: 1,

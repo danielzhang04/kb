@@ -398,8 +398,8 @@ function LayerPanels(): React.JSX.Element {
 /** Route a destination to its view. A destination with a dedicated view gets one case here; only the
  *  greyed soon/future stubs fall through to the shared placeholder. Views that write take their bearer
  *  from the session context themselves; this switch only carries navigation. Home is the default rollup
- *  landing and hosts the governed Launch/Rerun surface (the [+ New ▾] → Task action navigates here), with
- *  `onNavigate` to jump from a rollup row/tile into its entity view. */
+ *  landing; its tiles jump to a DESTINATION via `onNavigate`, while a row that names one thing opens
+ *  that ENTITY via `onNavigateTarget` — the same handler every other detail-linking view already uses. */
 function ViewBody({
   view,
   onNavigate,
@@ -425,10 +425,12 @@ function ViewBody({
 }): React.JSX.Element {
   switch (view) {
     case 'home':
-      return <Home onNavigate={onNavigate} />;
+      return <Home onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />;
     case 'approvals':
-      // Live unified Inbox feed (refreshed on SSE); decision verification remains an explicit POST.
-      return <ApprovalsLive />;
+      // The unified Inbox (SSE-refreshed): ONE list of card + run asks that LINKS OUT. No gate is
+      // answered from a row, so this needs no bearer here — only the navigation that lands the operator
+      // on the run or card that holds the gate's context.
+      return <ApprovalsLive onNavigate={onNavigateTarget} />;
     case 'activity':
       // Standalone full-view live feed (same replay the Home board embeds). Self-fetches.
       return (

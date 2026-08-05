@@ -36,7 +36,8 @@ describe('paletteModel — command set', () => {
       expect('method' in cmd).toBe(false);
     }
     expect(ACT_COMMANDS.find((c) => c.id === 'act:approve')?.target).toBe('approvals');
-    expect(ACT_COMMANDS.find((c) => c.id === 'act:launch')?.target).toBe('home');
+    // The launch shortcut follows the ONE Launch button, which lives on the workflow surface now.
+    expect(ACT_COMMANDS.find((c) => c.id === 'act:launch')?.target).toBe('workflows');
     expect(ACT_COMMANDS.find((c) => c.id === 'act:stop')?.focusFloor).toBe(true);
   });
 });

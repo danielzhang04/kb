@@ -45,6 +45,7 @@ import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
 import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf } from './launch.ts';
 import { registerPaidActionRoute } from './paidActionRoute.ts';
 import type { EntityDisplay } from '../naming.ts';
+import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -111,9 +112,18 @@ function runDisplay<T extends { runRef: string; title: string; proposalRef: stri
  * RUN needs you", and every surface that lists one renders the owning run beside the request's own
  * `title`. So the two display fields on a request describe its OWNING RUN (kind `'run'`, keyed by
  * `request.runRef`) — never the request.
+ *
+ * The same build attaches the plain-language `ask` (see `humanRequestAsk.ts`) and demotes the machine's
+ * own words to `technicalDetail`. Both are derived HERE, at the one DTO-build site, so no surface can
+ * put a traceback in front of the operator as the thing they are being asked.
  */
-function humanRequestDisplay(ctx: SurfaceContext, request: HumanRequest, runTitle: string): HumanRequest & EntityDisplay {
-  return { ...request, ...namingFor(ctx).displayFor('run', request.runRef, runTitle) };
+function humanRequestDisplay(
+  ctx: SurfaceContext,
+  request: HumanRequest,
+  runTitle: string,
+): HumanRequest & EntityDisplay & HumanRequestAsk {
+  const display = namingFor(ctx).displayFor('run', request.runRef, runTitle);
+  return { ...request, ...display, ...askForHumanRequest(request, display.displayName) };
 }
 
 /** The `/api/control/runs/:runRef` DTO: the run and each of its requests carry the run's display identity. */
@@ -621,7 +631,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     // One revision walk for the whole list, not one per run.
     const workflows = workflowRefIndex(ctx, sub);
-    return reply.send({ runs: ctx.controlStore.listRuns(sub).map((run) => runDisplay(ctx, run, workflows)) });
+    // An archived run is one the operator explicitly dismissed. It stays fully readable by ref and is
+    // still listable on request, but it is out of the DEFAULT projection every surface renders —
+    // otherwise "archive" would mean nothing and dead runs would keep haunting every list.
+    const includeArchived = string((req.query as { includeArchived?: unknown }).includeArchived) === '1';
+    const runs = ctx.controlStore.listRuns(sub).filter((run) => includeArchived || run.state !== 'archived');
+    return reply.send({ runs: runs.map((run) => runDisplay(ctx, run, workflows)) });
   });
 
   scope.get('/api/control/runs/:runRef', { preHandler }, async (req, reply) => {
@@ -1068,6 +1083,62 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         detail: error instanceof Error ? error.message : 'the executor could not confirm Manager and Worker cancellation',
       });
     }
+    });
+  });
+
+  /**
+   * spec §3b — dismiss a dead run.
+   *
+   * Session-gated and T3-audited like every other governed run write: the audit row lands BEFORE the
+   * mutation and a failure to write it refuses the request, so no run is ever dismissed off the record.
+   * `reason` is the operator's own words and is carried into that row — it is what makes a bulk
+   * clean-up (the stale thin-slice validation runs) auditable one run at a time, which is also why
+   * there is deliberately no bulk endpoint.
+   *
+   * Idempotency is the store's: the same `idempotencyKey` replays, a reused key with a different reason
+   * is a conflict. A replay re-audits nothing.
+   */
+  scope.post('/api/control/runs/:runRef/archive', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const runRef = (req.params as { runRef: string }).runRef;
+    const body = record(req.body);
+    const idempotencyKey = string(body.idempotencyKey);
+    const reason = body.reason == null ? null : string(body.reason);
+    if (!idempotencyKey || idempotencyKey.length > 512 || (body.reason != null && typeof body.reason !== 'string')) {
+      return reply.code(400).send({ error: 'invalid-archive', detail: 'idempotencyKey is required and reason must be text' });
+    }
+    return ctx.runControlTransactions.run(sub, runRef, async () => {
+      const detail = ctx.controlStore.getRun(sub, runRef);
+      if (!detail.ok) return sendResult(reply, detail);
+      if (detail.value.run.state !== 'archived') {
+        try {
+          await auditFn(ctx)(ctx.repoRoot, {
+            action: 'control-run-archive-authorize', owner: sub, target: runRef, riskTier: 'T3',
+            result: `authorized:${idempotencyKey}`,
+            detail: {
+              runRef,
+              runVersion: detail.value.run.version,
+              runState: detail.value.run.state,
+              openHumanRequestCount: detail.value.humanRequests.filter((request) => request.state === 'open').length,
+              reason,
+            },
+          }, { runGit: ctx.opsGit, now: ctx.now });
+        } catch {
+          return reply.code(500).send({ error: 'run-archive-audit-required' });
+        }
+      }
+      const archived = ctx.controlStore.archiveRun(sub, runRef, { idempotencyKey, reason });
+      if (!archived.ok) return sendResult(reply, archived);
+      if (!archived.replayed) {
+        ctx.controlStore.appendEvent(sub, runRef, {
+          kind: 'governance', source: 'human', status: 'stopped',
+          summary: reason
+            ? `Run archived by the operator: ${reason}`
+            : 'Run archived by the operator',
+        });
+      }
+      return sendResult(reply, archived);
     });
   });
 

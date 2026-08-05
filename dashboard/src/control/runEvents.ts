@@ -133,6 +133,8 @@ export function runTone(state: RunState): StatusTone {
     case 'stopping':
     case 'stopped':
       return 'warn';
+    // A dismissed run is inert, not something to look at again: idle, never warn or error.
+    case 'archived':
     default:
       return 'idle';
   }
@@ -169,6 +171,7 @@ export function runStateLabel(state: string): string {
     case 'stopping': return 'stopping';
     case 'interrupted': return 'interrupted';
     case 'planned': return 'not started yet';
+    case 'archived': return 'archived';
     default: return state;
   }
 }

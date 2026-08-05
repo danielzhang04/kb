@@ -247,6 +247,8 @@ describe('the run surface', () => {
       humanRequests: [{
         requestRef: 'req-1', runRef: 'run-1', stageRef: 'ref-idea', kind: 'approval', revision: 1, state: 'open',
         title: 'Approve the script', prompt: 'Read the draft and approve it.', response: null,
+        ask: 'headless run needs your sign-off before it can go any further.',
+        technicalDetail: 'Approve the script\n\nRead the draft and approve it.',
         displayName: 'headless run', shortRef: 1,
         createdAt: '2026-08-04T00:00:00.000Z', updatedAt: '2026-08-04T00:00:00.000Z',
       }] as unknown as RunDetailDto['humanRequests'],
@@ -256,7 +258,11 @@ describe('the run surface', () => {
     // ONE body — the four-tab cockpit is gone.
     expect(screen.queryByRole('tab')).toBeNull();
     expect(screen.getByTestId('run-strip').textContent).toContain('idea');
-    expect(screen.getByTestId('run-gate-req-1').textContent).toContain('Read the draft and approve it.');
+    // spec §3b — the gate leads with the plain ask; the machine's own words are one fold below it.
+    const gate = screen.getByTestId('run-gate-req-1');
+    expect(gate.textContent).toContain('needs your sign-off');
+    expect(gate.querySelector('h4')?.textContent).not.toContain('Read the draft and approve it.');
+    expect(screen.getByTestId('run-gate-technical-req-1').textContent).toContain('Read the draft and approve it.');
     expect(screen.getByTestId('run-tile-fyt-story-transcript')).toBeTruthy();
     // Ids and hashes are real and reachable, just not what the surface leads with.
     expect(screen.getByTestId('run-technical').textContent).toContain('a'.repeat(64));
@@ -393,5 +399,113 @@ describe('headless-only import boundary', () => {
     const source = readFileSync('src/views/RunDetail.tsx', 'utf8');
     expect(source).not.toMatch(/from ['"]\.\/Terminal['"]/);
     expect(source).not.toMatch(/@xterm/);
+  });
+});
+
+/**
+ * spec §3b — dismissing a dead run from its own surface.
+ *
+ * The action is offered only once the run is over or parked (a live run is stopped on its own path
+ * first), it carries the operator's reason into the governed write, and it is idempotent by
+ * construction: the key is built from the run's identity + version, so a double-click cannot archive
+ * twice or diverge.
+ */
+describe('the archive action', () => {
+  /**
+   * Route-aware, like every other fetch mock in this suite.
+   *
+   * `govern` RELOADS the run after any governed write, so a mock that answered every URL with the
+   * archive body would feed the archive result back in as the run detail — a shape with no
+   * stages/sessions/humanRequests. The component is right to assume those arrays (the server always
+   * sends them); the mock has to answer each route with what that route actually returns.
+   */
+  function archiveFetch(detail: RunDetailDto) {
+    const archived: RunDetailDto = { ...detail, run: { ...detail.run, state: 'archived' } };
+    return vi.fn(async (url: string, _init?: RequestInit) => {
+      if (String(url).endsWith('/archive')) {
+        return new Response(
+          JSON.stringify({ ok: true, value: { run: archived.run, resolvedRequests: [], pinnedRequestRefs: [] } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (String(url).includes('/events?')) {
+        return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true, value: archived }), { status: 200 });
+    });
+  }
+
+  it('archives a parked run with the typed reason and an identity-bound idempotency key', async () => {
+    const detail = makeDetail({ run: { state: 'waiting-human', version: 4 } as RunDetailDto['run'] });
+    const fetchImpl = archiveFetch(detail);
+    render(unlocked(
+      <RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as unknown as typeof fetch} />,
+    ));
+
+    fireEvent.change(screen.getByTestId('run-archive-reason'), { target: { value: '  obsolete validation run  ' } });
+    fireEvent.click(screen.getByTestId('run-archive'));
+
+    await waitFor(() => {
+      const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/archive'));
+      expect(call).toBeTruthy();
+      expect(String(call![0])).toBe('/api/control/runs/run-1/archive');
+      expect(JSON.parse(String(call![1]!.body))).toEqual({
+        idempotencyKey: 'archive:run-1:4', reason: 'obsolete validation run',
+      });
+    });
+  });
+
+  it('archives with no reason at all — one click, nothing to fill in first', async () => {
+    const detail = makeDetail({ run: { state: 'failed', version: 9 } as RunDetailDto['run'] });
+    const fetchImpl = archiveFetch(detail);
+    render(unlocked(
+      <RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as unknown as typeof fetch} />,
+    ));
+
+    fireEvent.click(screen.getByTestId('run-archive'));
+    await waitFor(() => {
+      const call = fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/archive'));
+      expect(JSON.parse(String(call![1]!.body)).reason).toBeNull();
+    });
+  });
+
+  it('is offered for every settled or parked state and refused, in words, for a live run', () => {
+    for (const state of ['waiting-human', 'failed', 'interrupted', 'succeeded', 'stopped'] as const) {
+      const detail = makeDetail({ run: { state } as RunDetailDto['run'] });
+      const view = render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
+      expect((screen.getByTestId('run-archive') as HTMLButtonElement).disabled).toBe(false);
+      view.unmount();
+    }
+
+    // Rendered-disabled, never hidden: the standing refusal is stated rather than discovered.
+    render(unlocked(<RunDetail runRef="run-1" detail={makeDetail()} events={[]} dag={{ nodes: [], edges: [] }} />));
+    const button = screen.getByTestId('run-archive') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toMatch(/Stop this run before archiving it/i);
+    expect(screen.queryByTestId('run-archive-reason')).toBeNull();
+  });
+
+  it('says an already-archived run is archived instead of offering the action again', () => {
+    const detail = makeDetail({ run: { state: 'archived' } as RunDetailDto['run'] });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
+    const button = screen.getByTestId('run-archive') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toBe('Already archived.');
+    expect(screen.getByTestId('entity-detail-status').textContent).toContain('archived');
+  });
+
+  it('does not send the archive from a locked tab', async () => {
+    clearStoredSession();
+    const detail = makeDetail({ run: { state: 'failed' } as RunDetailDto['run'] });
+    const fetchImpl = archiveFetch(detail);
+    render(
+      <SessionProvider deps={{ signIn: async () => { throw new Error('refused'); } }}>
+        <RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as unknown as typeof fetch} />
+      </SessionProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('run-archive'));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(fetchImpl.mock.calls.some(([url]) => String(url).endsWith('/archive'))).toBe(false);
   });
 });

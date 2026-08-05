@@ -101,10 +101,12 @@ describe('command palette — act is a shortcut, never a bypass', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
   };
 
-  it('Launch task opens the Home launch surface without any governed call', () => {
+  it('Launch opens the Workflows surface — which owns the one Launch button — with no governed call', () => {
     render(<App />);
     runByQuery('dispatch'); // unique keyword of the Launch shortcut
-    expect(screen.getByLabelText('Launch card')).toBeTruthy();
+    // Home's launch form is gone (spec §5); the shortcut lands where the button actually is.
+    expect(screen.getByLabelText('Workflows view')).toBeTruthy();
+    expect(screen.queryByLabelText('Launch card')).toBeNull();
     expect(fetchCalls().filter((c) => GOVERNED.test(String(c[0])))).toHaveLength(0);
   });
 

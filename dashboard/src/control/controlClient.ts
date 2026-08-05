@@ -124,7 +124,9 @@ export interface LaunchProposalResultDto {
 
 export type RunState =
   | 'planned' | 'recovering' | 'running' | 'waiting-human' | 'stopping'
-  | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
+  | 'succeeded' | 'failed' | 'stopped' | 'interrupted'
+  /** Operator-dismissed and terminal. Out of the default run list; still readable by ref forever. */
+  | 'archived';
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';
@@ -227,6 +229,14 @@ export interface HumanRequestDto {
   state: 'open' | 'resolved';
   title: string;
   prompt: string;
+  /**
+   * The plain-language rendering of this request: what happened and what the operator can do, in one
+   * sentence, built server-side in `server/control/humanRequestAsk.ts`. This is the ONLY text a surface
+   * may use as the primary "what needs you" line — `title`/`prompt` are the machine's own words.
+   */
+  ask: string;
+  /** The machine's words (traceback, refusal code) — a detail fold, never the ask. Null when empty. */
+  technicalDetail: string | null;
   response: {
     requestRevision: number;
     decision: HumanRequestDecision;
@@ -807,6 +817,27 @@ export async function getRun(runRef: string, token: string, fetchImpl?: FetchLik
     `/api/control/runs/${segment(runRef)}`, token, fetchImpl,
   );
   return body.value;
+}
+
+/**
+ * Dismiss a dead run (spec §3b). Terminal, T3-audited server-side, and idempotent on the key built
+ * here from the run's identity + version, so a double-click can never archive twice or diverge.
+ *
+ * `reason` is the operator's own words and is what makes a clean-up of several stale runs auditable
+ * one run at a time — there is deliberately no bulk endpoint.
+ */
+export function archiveRun(
+  run: Pick<RunDto, 'runRef' | 'version'>,
+  reason: string | null,
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<{ run: RunDto; resolvedRequests: HumanRequestDto[]; pinnedRequestRefs: string[] }> {
+  return write<{ ok: true; value: { run: RunDto; resolvedRequests: HumanRequestDto[]; pinnedRequestRefs: string[] } }>(
+    `/api/control/runs/${segment(run.runRef)}/archive`,
+    { idempotencyKey: `archive:${run.runRef}:${run.version}`, reason },
+    token,
+    fetchImpl,
+  ).then((body) => body.value);
 }
 
 export async function listRunEvents(

@@ -402,3 +402,82 @@ describe('App shell — Composer workspaces', () => {
     );
   });
 });
+
+/**
+ * spec §5 — the Inbox links OUT, and the shell is what makes that true.
+ *
+ * The list itself answers no gate; a row is only useful if the shell carries it to the surface that
+ * owns the gate. This drives the REAL wiring — App → ViewBody → ApprovalsLive → the nav stack — because
+ * the props are optional and a missing one fails silently as a dead click, which no view-level test can
+ * see.
+ */
+describe('App shell — the Inbox deep-links to the surface that owns each gate', () => {
+  const waitingCard = {
+    meta: {
+      id: 'card-77', project: 'kb', action: 'approve:oauth-gate', target: 'infra/oauth.yaml',
+      'risk-tier': 'T3', owner: 'human-operator', state: 'inbox',
+    },
+    body: '## Work order\n\nCreate the OAuth client.\n',
+    displayName: 'approve:oauth-gate',
+    shortRef: 1,
+  };
+
+  /** Serve only the two feeds this path reads; everything else stays on the never-resolving default. */
+  function serveInbox(): void {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === '/api/human-inbox') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({
+          items: [{
+            card: waitingCard, category: 'gate', categoryLabel: 'Gate', urgency: 'high',
+            status: 'Waiting on the human operator', reason: 'Assigned to the human operator.',
+            nextAction: 'Carry out the work order, then move the card.', context: 'Create the OAuth client.',
+          }],
+          counts: { total: 1, decision: 0, gate: 1, input: 0, intervention: 0, stranded: 0 },
+        }) } as Response);
+      }
+      if (url === '/api/index') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({
+          cards: { inbox: [waitingCard] },
+          ledgers: {
+            dispatch: { count: 0, cards: 0, byProject: {} },
+            cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
+            grades: { count: 0, rows: [] },
+            activity: { count: 0, rows: [] },
+          },
+          orgStates: [],
+        }) } as Response);
+      }
+      return new Promise(() => {});
+    }));
+  }
+
+  it('carries an inbox row through to the card surface that holds its work order', async () => {
+    serveInbox();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    const row = await screen.findByTestId('inbox-row-card:card-77');
+    // The row is the plain line + where it lives; it answers nothing itself.
+    expect(row.textContent).toContain('approve:oauth-gate');
+    expect(screen.queryByTestId('respond-form')).toBeNull();
+
+    fireEvent.click(row);
+
+    // The shell landed on Tasks with THAT card open — the work order the decision needs is now in view.
+    // (The empty placeholder shares the `Card detail` label, so this waits for real content, not a node.)
+    expect(screen.getByLabelText('Tasks view')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('Card detail').textContent).toContain('Create the OAuth client.'));
+  });
+
+  it('carries a Home waiting-on-you row to the same card surface', async () => {
+    serveInbox();
+    render(<App />);
+
+    // Home is the landing view; its waiting rows deep-link exactly like the Inbox rows do.
+    const row = await screen.findByRole('button', { name: /Open approve:oauth-gate/i });
+    fireEvent.click(row);
+
+    expect(screen.getByLabelText('Tasks view')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('Card detail').textContent).toContain('Create the OAuth client.'));
+  });
+});

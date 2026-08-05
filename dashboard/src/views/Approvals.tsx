@@ -1,108 +1,126 @@
 /**
- * Human Inbox presentational view.
+ * The Human Inbox — spec §5. ONE list, and nothing else.
  *
- * It combines approval decisions with explicit requests for input/intervention. Selecting an item is
- * always read-only. Approval buttons verify an approval record only; the UI explicitly avoids claiming
- * that verification starts or resumes execution.
+ * What this view used to be: five summary tiles over three items, a row list, a pick-something-first
+ * placeholder pane, a detail panel that answered gates inline with no context around them, and a
+ * SECOND panel wall underneath for run requests. Four surfaces for one question.
+ *
+ * What it is now: the list IS the view. Each row says, in one plain line, what needs the operator; the
+ * row is a link into the surface that OWNS that gate — the run (stream tiles, transcript, the gate
+ * strip with the run in front of you) or the card (frontmatter, body, its verify/respond block). Gates
+ * are answered THERE, with context, never from a row that shows none. So this file holds no write path
+ * at all: it takes rows and renders them.
+ *
+ * The list is a pure projection of live state. Nothing here records that an item was "handled" — when
+ * any writer (a kb agent, a terminal, another tab) moves the card or run out of a needs-human state,
+ * the item stops being produced and the row disappears on the next SSE tick. Dashboard-side resolution
+ * bookkeeping is exactly how this surface used to disagree with queue truth, so there is none.
  */
-import { useEffect, useState } from 'react';
-import type { CardProjection, ParsedCard } from '../../server/planeA/cards';
-import { EntityName } from '../components/EntityName';
+import type { HumanInboxCategory, HumanInboxItem, HumanInboxUrgency } from '../../server/approvals/humanInbox';
+import { EntityName, type EntityKind } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
-import { buttonsFor } from '../../server/approvals/assurance';
-import type { HumanInboxItem } from '../../server/approvals/humanInbox';
-import { STOP_FILE_ITEM_ID } from '../../server/approvals/humanInbox';
-import { workOrderOf } from '../../server/auth/workOrder';
+import { cardLink, runLink } from '../control/entityLinks';
+import type { NavTarget } from '../nav/stack';
 import '../styles/views/approvals.css';
 
-export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
-export type RespondAction = 'reply' | 'resolve';
-
-export interface ApprovalsProps {
-  /** Unified feed. When supplied, this is the authoritative list. */
-  items?: HumanInboxItem[];
-  /** Backward-compatible approval-only feed while the connected container migrates. */
-  pending?: CardProjection[];
-  /** Fires ONLY on an explicit verify-evidence click, never on selection/render. */
-  onVerify?: (cardId: string, channel: ApprovalChannel) => void;
-  /** Fires ONLY on an explicit send-reply / resolve click for an item carrying the `respond` capability. */
-  onRespond?: (cardId: string, action: RespondAction, message: string) => void;
-  /** True while a respond request is in flight — disables the send button (never on selection/render). */
-  pendingRespond?: boolean;
+/** One thing waiting on the operator, wherever it came from. Cards and run asks are the same shape. */
+export interface InboxRow {
+  /** React key. Card id or Human Request ref — never rendered. */
+  key: string;
+  /** The plain-language line: what needs you. Card action, or the server-built run `ask`. */
+  ask: string;
+  /** Risk tier chip text (`T1`/`T2`/`T3`), or null when the source carries no tier. */
+  tier: string | null;
+  category: HumanInboxCategory;
+  categoryLabel: string;
+  urgency: HumanInboxUrgency;
+  /** The entity the row names, rendered through EntityName — never a raw id in primary text. */
+  entity: { kind: EntityKind; id: string; displayName: string; shortRef: number };
+  /** Where the gate is actually addressed, with context. */
+  target: NavTarget;
 }
 
-function valueOf(value: unknown): string {
-  return typeof value === 'string' ? value : String(value ?? '');
+/** A run that needs the operator: one open request, or a run parked with no request at all. */
+export interface RunAskRow {
+  requestRef: string;
+  runRef: string;
+  displayName: string;
+  shortRef: number;
+  ask: string;
+  tier: 'T2' | 'T3';
+  category: HumanInboxCategory;
+  categoryLabel: 'Gate' | 'Input' | 'Intervention';
+  urgency: HumanInboxUrgency;
 }
 
-function riskLabel(card: ParsedCard): string {
-  return valueOf(card.meta['risk-tier']);
-}
-
-function tierRank(card: ParsedCard): number {
-  const match = /t\s*([0-9]+)/i.exec(riskLabel(card));
+function tierRank(tier: string | null): number {
+  const match = /t\s*([0-9]+)/i.exec(tier ?? '');
   return match ? Number(match[1]) : 0;
 }
 
-function safeWorkOrder(body: string): string | null {
-  try {
-    return workOrderOf(body);
-  } catch {
-    return null;
-  }
+function urgencyRank(urgency: HumanInboxUrgency): number {
+  return urgency === 'critical' ? 0 : urgency === 'high' ? 1 : urgency === 'normal' ? 2 : 3;
 }
 
-function legacyDecision(card: CardProjection): HumanInboxItem {
-  return {
-    card,
-    category: 'decision',
-    categoryLabel: 'Decision',
-    urgency: tierRank(card) >= 3 ? 'high' : 'normal',
-    status: 'Awaiting evidence verification',
-    reason: 'This card is at an approval boundary.',
-    nextAction: 'Review the signed scope, then verify an available approval record. Verification alone does not run or resume this card.',
-    context: safeWorkOrder(card.body),
-    buttons: buttonsFor(card),
-  };
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : String(value ?? '');
 }
 
-const CATEGORY_ORDER: HumanInboxItem['category'][] = ['decision', 'gate', 'input', 'intervention', 'stranded'];
-
-function categoryRank(item: HumanInboxItem): number {
-  return CATEGORY_ORDER.indexOf(item.category);
-}
-
-export function Approvals({ items, pending = [], onVerify, onRespond, pendingRespond = false }: ApprovalsProps): React.JSX.Element {
-  const inbox = items ?? pending.map(legacyDecision);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const selected = inbox.find((item) => item.card.meta.id === selectedId) ?? null;
-
-  // A fresh selection clears any half-typed response — the box is always scoped to the visible item.
-  useEffect(() => setDraft(''), [selectedId]);
-
-  const urgencyRank = (item: HumanInboxItem): number =>
-    item.urgency === 'critical' ? 0 : item.urgency === 'high' ? 1 : item.urgency === 'normal' ? 2 : 3;
-  const ranked = [...inbox].sort((a, b) => {
-    if (a.urgency !== b.urgency) return urgencyRank(a) - urgencyRank(b);
-    const tier = tierRank(b.card) - tierRank(a.card);
+/**
+ * Merge the two feeds into the one ordered list.
+ *
+ * Card items keep their action as the line (`deploy:prod` IS what needs deciding); run asks carry the
+ * server's plain-language sentence. Ordering is the pre-existing law — urgency, then tier, then
+ * category — applied across BOTH sources so a T3 run gate cannot hide under a T1 card.
+ */
+export function inboxRows(cards: HumanInboxItem[], runAsks: RunAskRow[] = []): InboxRow[] {
+  const fromCards: InboxRow[] = cards.map((item) => ({
+    key: `card:${text(item.card.meta.id)}`,
+    ask: [text(item.card.meta.action), text(item.card.meta.target)].filter(Boolean).join(' · ')
+      || item.card.displayName,
+    tier: text(item.card.meta['risk-tier']) || null,
+    category: item.category,
+    categoryLabel: item.categoryLabel,
+    urgency: item.urgency,
+    entity: {
+      kind: 'card',
+      id: text(item.card.meta.id),
+      displayName: item.card.displayName,
+      shortRef: item.card.shortRef,
+    },
+    target: cardLink(text(item.card.meta.id)),
+  }));
+  const fromRuns: InboxRow[] = runAsks.map((ask) => ({
+    key: `run:${ask.requestRef}`,
+    ask: ask.ask,
+    tier: ask.tier,
+    category: ask.category,
+    categoryLabel: ask.categoryLabel,
+    urgency: ask.urgency,
+    entity: { kind: 'run', id: ask.runRef, displayName: ask.displayName, shortRef: ask.shortRef },
+    target: runLink(ask.runRef),
+  }));
+  return [...fromCards, ...fromRuns].sort((a, b) => {
+    if (a.urgency !== b.urgency) return urgencyRank(a.urgency) - urgencyRank(b.urgency);
+    const tier = tierRank(b.tier) - tierRank(a.tier);
     if (tier !== 0) return tier;
-    return categoryRank(a) - categoryRank(b);
+    return a.categoryLabel.localeCompare(b.categoryLabel);
   });
+}
 
-  const counts = inbox.reduce(
-    // `stranded` seeded so the T3 HumanInboxCategory addition keeps this indexed reduce type-safe; full
-    // stranded/STOP rendering + summary spans land in T6.
-    (result, item) => ({ ...result, [item.category]: result[item.category] + 1 }),
-    { decision: 0, gate: 0, input: 0, intervention: 0, stranded: 0 },
-  );
+export interface ApprovalsProps {
+  rows: InboxRow[];
+  /** Open the surface that owns a gate. Absent in a bare render; then rows are inert text. */
+  onNavigate?: (target: NavTarget) => void;
+}
 
-  if (inbox.length === 0) {
+export function Approvals({ rows, onNavigate }: ApprovalsProps): React.JSX.Element {
+  if (rows.length === 0) {
     return (
       <div className="v-approvals" aria-label="Human Inbox">
         <div className="v-approvals__empty" data-testid="approvals-empty">
           <p className="v-approvals__empty-title">No human attention waiting</p>
-          <p className="v-approvals__empty-sub">Decisions, operator gates, questions, wake-me cards, and halted work will appear here.</p>
+          <p className="v-approvals__empty-sub">Decisions, operator gates, questions, wake-me cards, and halted runs will appear here.</p>
         </div>
       </div>
     );
@@ -110,174 +128,49 @@ export function Approvals({ items, pending = [], onVerify, onRespond, pendingRes
 
   return (
     <div className="v-approvals" aria-label="Human Inbox">
-      <div>
-        <div className="v-approvals__summary" aria-label="Inbox category counts">
-          <span><strong>{counts.decision}</strong> Decisions</span>
-          <span data-testid="summary-gate"><strong>{counts.gate}</strong> Gates</span>
-          <span><strong>{counts.input}</strong> Input</span>
-          <span><strong>{counts.intervention}</strong> Interventions</span>
-          <span data-testid="summary-stranded"><strong>{counts.stranded}</strong> Stranded</span>
-        </div>
-        <p className="v-approvals__list-head">Needs you · {inbox.length}</p>
-        <ul className="v-approvals__list">
-          {ranked.map((item) => {
-            const { card } = item;
-            const tier = tierRank(card);
-            const isSelected = card.meta.id === selectedId;
-            const rowClass = [
-              'v-approvals__row',
-              tier >= 3 ? 'v-approvals__row--t3' : '',
-              item.urgency === 'high' ? 'v-approvals__row--urgent' : '',
-              isSelected ? 'v-approvals__row--selected' : '',
-            ].filter(Boolean).join(' ');
-            return (
-              <li key={card.meta.id}>
-                <div
-                  className={rowClass}
-                  aria-current={isSelected ? 'true' : undefined}
-                  {...entityRowProps(() => setSelectedId(card.meta.id))}
-                >
-                  {/* Inverted: the card's name is the primary line; its id is behind the tooltip/copy. */}
-                  <span className="v-approvals__row-copy">
-                    <span className="v-approvals__row-id">
-                      <EntityName kind="card" id={card.meta.id} displayName={card.displayName} shortRef={card.shortRef} />
-                    </span>
-                    <span className="v-approvals__row-action">{valueOf(card.meta.action)}</span>
+      <p className="v-approvals__list-head">Needs you · {rows.length}</p>
+      <ul className="v-approvals__list">
+        {rows.map((row) => {
+          const tier = tierRank(row.tier);
+          const rowClass = [
+            'v-approvals__row',
+            tier >= 3 ? 'v-approvals__row--t3' : '',
+            row.urgency === 'high' || row.urgency === 'critical' ? 'v-approvals__row--urgent' : '',
+          ].filter(Boolean).join(' ');
+          return (
+            <li key={row.key}>
+              <div
+                className={rowClass}
+                data-testid={`inbox-row-${row.key}`}
+                aria-label={`Open ${row.entity.displayName}`}
+                {...entityRowProps(() => onNavigate?.(row.target))}
+              >
+                <span className="v-approvals__row-copy">
+                  {/* The plain line leads; the entity names WHERE it lives; the id is behind the tooltip. */}
+                  <span className="v-approvals__row-action">{row.ask}</span>
+                  <span className="v-approvals__row-id">
+                    <EntityName
+                      kind={row.entity.kind}
+                      id={row.entity.id}
+                      displayName={row.entity.displayName}
+                      shortRef={row.entity.shortRef}
+                      muted
+                    />
                   </span>
-                  <span className="v-approvals__row-meta">
-                    <span className={`v-approvals__category v-approvals__category--${item.category}`}>
-                      {item.categoryLabel}
-                    </span>
-                    <span className={`v-approvals__row-badge mc-badge mc-badge--t${tier || 1}`}>
-                      {riskLabel(card)}
-                    </span>
+                </span>
+                <span className="v-approvals__row-meta">
+                  <span className={`v-approvals__category v-approvals__category--${row.category}`}>
+                    {row.categoryLabel}
                   </span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-
-      {selected ? (
-        <section
-          className={`v-approvals__panel${tierRank(selected.card) >= 3 ? ' v-approvals__panel--t3' : ''}`}
-          aria-label="Inbox item details"
-          data-testid={selected.category === 'decision' ? 'corroboration-panel' : 'inbox-detail-panel'}
-        >
-          <p className={`v-approvals__eyebrow v-approvals__eyebrow--${selected.category}`}>
-            {selected.categoryLabel}
-          </p>
-          <h2 className="v-approvals__panel-head">
-            {selected.category === 'decision' ? 'Corroborate before you approve' : selected.status}
-          </h2>
-          <p className="v-approvals__caption">
-            {selected.category === 'decision' ? 'This is what your signature covers.' : selected.reason}
-          </p>
-          {selected.card.meta.id === STOP_FILE_ITEM_ID ? (
-            <p className="v-approvals__stop-banner" role="alert" data-testid="stop-file-caption">
-              Fleet frozen — the repo-root STOP file is present. Every fleet agent halts at its preamble
-              until it is removed.
-            </p>
-          ) : null}
-
-          <div className="v-approvals__fields">
-            <div className="v-approvals__field" data-testid="corrob-card-id">
-              <span className="v-approvals__field-label">Card</span>
-              <span className="v-approvals__field-value v-approvals__field-value--mono">{selected.card.meta.id}</span>
-            </div>
-            <div className="v-approvals__field" data-testid="corrob-action">
-              <span className="v-approvals__field-label">Action</span>
-              <span className="v-approvals__field-value v-approvals__field-value--mono">{valueOf(selected.card.meta.action)}</span>
-            </div>
-            <div className="v-approvals__field-row">
-              <div className="v-approvals__field" data-testid="corrob-risk-tier">
-                <span className="v-approvals__field-label">Risk tier</span>
-                <span className="v-approvals__field-value v-approvals__field-value--mono">{riskLabel(selected.card)}</span>
+                  {row.tier ? (
+                    <span className={`v-approvals__row-badge mc-badge mc-badge--t${tier || 1}`}>{row.tier}</span>
+                  ) : null}
+                </span>
               </div>
-              <div className="v-approvals__field">
-                <span className="v-approvals__field-label">State</span>
-                <span className="v-approvals__field-value v-approvals__field-value--mono">{valueOf(selected.card.meta.state)}</span>
-              </div>
-              <div className="v-approvals__field">
-                <span className="v-approvals__field-label">Owner</span>
-                <span className="v-approvals__field-value v-approvals__field-value--mono">{valueOf(selected.card.meta.owner) || 'unassigned'}</span>
-              </div>
-            </div>
-            {selected.context !== null ? (
-              <div className="v-approvals__field">
-                <span className="v-approvals__field-label">Work order</span>
-                <pre className="v-approvals__work-order" data-testid="corrob-work-order">{selected.context}</pre>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="v-approvals__next-action">
-            <strong>Next action</strong>
-            <span>{selected.nextAction}</span>
-          </div>
-
-          {selected.respond ? (
-            <div className="v-approvals__respond" data-testid="respond-form">
-              <label className="v-approvals__field-label" htmlFor="respond-message">
-                {selected.respond === 'reply' ? 'Reply to the owning agent' : 'Resolution note'}
-              </label>
-              <textarea
-                id="respond-message"
-                className="v-approvals__respond-input"
-                data-testid="respond-message"
-                rows={4}
-                maxLength={16000}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder={selected.respond === 'reply'
-                  ? 'Your note is appended to the card and it stays queued for pickup.'
-                  : 'Recorded on the card as an operator resolution.'}
-              />
-              <div className="v-approvals__buttons">
-                <button
-                  type="button"
-                  className="mc-btn mc-btn--primary"
-                  data-testid="respond-submit"
-                  disabled={draft.trim().length === 0 || pendingRespond}
-                  onClick={() => onRespond?.(selected.card.meta.id, selected.respond as RespondAction, draft.trim())}
-                >
-                  {selected.respond === 'reply' ? 'Send reply' : 'Resolve'}
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {selected.category === 'decision' && selected.buttons ? (
-            <>
-              <p className="v-approvals__truth-note" role="note">
-                Evidence verification records/checks an approval. It does not itself start, resume, or complete this workflow.
-              </p>
-              <div className="v-approvals__buttons">
-                {selected.buttons.signed ? (
-                  <button type="button" className="mc-btn mc-btn--primary" onClick={() => onVerify?.(selected.card.meta.id, 'signed')}>
-                    Verify evidence (signed)
-                  </button>
-                ) : null}
-                {selected.buttons.possession ? (
-                  <button type="button" className="mc-btn" onClick={() => onVerify?.(selected.card.meta.id, 'possession')}>
-                    Verify evidence (possession)
-                  </button>
-                ) : null}
-                {selected.buttons.webauthn ? (
-                  <button type="button" className="mc-btn mc-btn--primary" onClick={() => onVerify?.(selected.card.meta.id, 'webauthn')}>
-                    Verify evidence (WebAuthn)
-                  </button>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-        </section>
-      ) : (
-        <div className="v-approvals__placeholder" data-testid="approvals-placeholder">
-          Select an item to see why it needs you and what action is actually available.
-        </div>
-      )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

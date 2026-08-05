@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   activateRun,
+  archiveRun,
   createProposalRevision,
   createManagerSuccessor,
   decideProposalRevision,
@@ -536,5 +537,33 @@ describe('control client run and retention writes', () => {
     expect(requestBody(quarantineFetch as unknown as ReturnType<typeof vi.fn>)).toEqual({
       runRefs: ['run-1'], expectedPlanHash: 'c'.repeat(64),
     });
+  });
+});
+
+describe('archiveRun', () => {
+  it('POSTs to the run archive route with an identity-bound idempotency key and the reason', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      ok: true, value: { run: { runRef: 'run-1', state: 'archived' }, resolvedRequests: [], pinnedRequestRefs: [] },
+    })) as unknown as FetchLike;
+
+    const result = await archiveRun({ runRef: 'run-1', version: 7 }, 'obsolete validation run', 'tok', fetchImpl);
+
+    expect(result.run.state).toBe('archived');
+    const [url, init] = vi.mocked(fetchImpl).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/control/runs/run-1/archive');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Headers).get('authorization')).toBe('Bearer tok');
+    // Keyed on the run's identity AND version: a double-click replays instead of archiving twice.
+    expect(JSON.parse(String(init.body))).toEqual({
+      idempotencyKey: 'archive:run-1:7', reason: 'obsolete validation run',
+    });
+  });
+
+  it('sends a null reason rather than an empty string when the operator typed nothing', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      ok: true, value: { run: { runRef: 'run-1', state: 'archived' }, resolvedRequests: [], pinnedRequestRefs: [] },
+    })) as unknown as FetchLike;
+    await archiveRun({ runRef: 'run-1', version: 1 }, null, 'tok', fetchImpl);
+    expect(JSON.parse(String((vi.mocked(fetchImpl).mock.calls[0] as [string, RequestInit])[1].body)).reason).toBeNull();
   });
 });

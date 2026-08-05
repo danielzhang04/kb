@@ -1892,71 +1892,72 @@ describe('control proposal routes', () => {
  * enough for the UI to raise an unlock prompt, unlock must require a fresh purpose-bound passkey
  * assertion (a session bearer alone is never enough), and Lock must be reachable with the session only.
  */
-describe('control execution latch routes', () => {
-  const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
+const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
 
-  function fakeLatch(initial: 'locked' | 'unlocked') {
-    let state = initial === 'locked'
-      ? { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }
-      : { state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
-    const unlock = vi.fn(() => ({ ok: true as const, state }));
-    const lock = vi.fn(() => {
-      state = { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null };
-      return state;
-    });
-    return {
-      latch: {
-        snapshot: () => state,
-        current: () => null,
-        unlock,
-        lock,
-      },
+function fakeLatch(initial: 'locked' | 'unlocked') {
+  let state = initial === 'locked'
+    ? { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }
+    : { state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
+  const unlock = vi.fn(() => ({ ok: true as const, state }));
+  const lock = vi.fn(() => {
+    state = { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null };
+    return state;
+  });
+  return {
+    latch: {
+      snapshot: () => state,
+      current: () => null,
       unlock,
       lock,
-    };
-  }
+    },
+    unlock,
+    lock,
+  };
+}
 
-  function buildApp(overrides: Record<string, unknown> = {}) {
-    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `latch-${++n}`; })() });
-    const audit: Array<Record<string, unknown>> = [];
-    const app = Fastify();
-    const ctx = makeSurfaceContext({
-      repoRoot: fileURLToPath(new URL('../../../', import.meta.url)),
-      sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN],
-      controlStore: store,
-      webAuthnConfig: TEST_WEBAUTHN,
-      credentials: () => [],
-      appendAudit: (_root: string, event: Record<string, unknown>) => {
-        audit.push(event);
-        return { ts: '2026-07-30T00:00:00.000Z', action: String(event.action) } as never;
-      },
-      opsGit: () => ({ stdout: '', stderr: '', exitCode: 0 }),
-      ...overrides,
-    } as never);
-    registerWriteSurface(app, ctx);
-    return { app, ctx, store, audit, token: mintSession('operator', SESSION).token };
-  }
+function buildApp(overrides: Record<string, unknown> = {}) {
+  const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `latch-${++n}`; })() });
+  const audit: Array<Record<string, unknown>> = [];
+  const app = Fastify();
+  const ctx = makeSurfaceContext({
+    repoRoot: fileURLToPath(new URL('../../../', import.meta.url)),
+    sessionConfig: SESSION,
+    allowedOrigins: [ORIGIN],
+    controlStore: store,
+    webAuthnConfig: TEST_WEBAUTHN,
+    credentials: () => [],
+    appendAudit: (_root: string, event: Record<string, unknown>) => {
+      audit.push(event);
+      return { ts: '2026-07-30T00:00:00.000Z', action: String(event.action) } as never;
+    },
+    opsGit: () => ({ stdout: '', stderr: '', exitCode: 0 }),
+    ...overrides,
+  } as never);
+  registerWriteSurface(app, ctx);
+  return { app, ctx, store, audit, token: mintSession('operator', SESSION).token };
+}
 
-  /** Seed one approved run in the store so a route reaches its execution-posture check. */
-  function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string): string {
-    const created = store.createProposalRevision('operator', {
-      sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: `Run ${key}`,
-      snapshot: proposal as unknown as JsonObject,
-    });
-    if (!created.ok) throw new Error(created.detail);
-    if (!store.decideProposal('operator', created.value.proposalRef, 1, {
-      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
-    }).ok) throw new Error('approval failed');
-    const run = store.createRun('operator', {
-      title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
-      expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
-      idempotencyKey: `${key}-launch`,
-      stages: proposal.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
-    });
-    if (!run.ok) throw new Error(run.detail);
-    return run.value.run.runRef;
-  }
+/** Seed one approved run in the store so a route reaches its execution-posture check. */
+function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string): string {
+  const created = store.createProposalRevision('operator', {
+    sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: `Run ${key}`,
+    snapshot: proposal as unknown as JsonObject,
+  });
+  if (!created.ok) throw new Error(created.detail);
+  if (!store.decideProposal('operator', created.value.proposalRef, 1, {
+    expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+  }).ok) throw new Error('approval failed');
+  const run = store.createRun('operator', {
+    title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
+    expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
+    idempotencyKey: `${key}-launch`,
+    stages: proposal.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+  });
+  if (!run.ok) throw new Error(run.detail);
+  return run.value.run.runRef;
+}
+
+describe('control execution latch routes', () => {
 
   it('requires a session, rejects unknown agents, and returns the activated worker delivery result', async () => {
     const delivery = vi.fn(async () => 'queued' as const);
@@ -2326,5 +2327,176 @@ describe('control execution latch routes', () => {
       expect(ineligibleRecover).not.toHaveBeenCalled();
       expect(ineligible.audit.filter((row) => row.action === 'control-legacy-execution-lock-reclassify-authorize')).toHaveLength(0);
     } finally { await ineligible.app.close(); }
+  });
+});
+
+/**
+ * spec §3b — the governed dismissal of a dead run.
+ *
+ * What has to hold: the write is session-gated, the T3 audit row lands BEFORE the store mutation (and a
+ * failed audit refuses), the operator reason reaches that row, the whole thing replays on the same key,
+ * and an archived run leaves the default run list while staying readable by ref.
+ */
+describe('control run archive route', () => {
+  /** Publish `runRef` and park it at waiting-human with one open ask — an archivable dead run. */
+  function parkRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, runRef: string, key: string): string {
+    const run = store.getRun('operator', runRef);
+    if (!run.ok) throw new Error(run.detail);
+    const publishing = store.transitionPublication('operator', runRef, run.value.run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const published = store.transitionPublication('operator', runRef, publishing.value.version, 'published');
+    if (!published.ok) throw new Error(published.detail);
+    const parked = store.transitionRun('operator', runRef, published.value.version, 'waiting-human');
+    if (!parked.ok) throw new Error(parked.detail);
+    const request = store.createHumanRequest('operator', runRef, {
+      kind: 'intervention', title: `Manager boot failed (${key})`, prompt: 'Error: spawn claude ENOENT',
+    });
+    if (!request.ok) throw new Error(request.detail);
+    return request.value.requestRef;
+  }
+
+  it('audits at T3 with the operator reason, archives, resolves the open ask, and replays', async () => {
+    const { app, token, store, audit } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive');
+      const requestRef = parkRun(store, runRef, 'archive');
+      const payload = { idempotencyKey: `archive:${runRef}:1`, reason: 'obsolete thin-slice validation run' };
+
+      const archived = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload,
+      });
+      expect(archived.statusCode).toBe(200);
+      expect(archived.json()).toMatchObject({ ok: true, value: { run: { runRef, state: 'archived' } } });
+
+      const row = audit.find((event) => event.action === 'control-run-archive-authorize');
+      expect(row).toMatchObject({
+        owner: 'operator', target: runRef, riskTier: 'T3',
+        detail: { runRef, runState: 'waiting-human', openHumanRequestCount: 1, reason: payload.reason },
+      });
+
+      // The ask is resolved by the same commit — nothing is left waiting on a dismissed run.
+      const detail = store.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      expect(detail.value.humanRequests.find((item) => item.requestRef === requestRef)).toMatchObject({
+        state: 'resolved', response: { decision: 'responded', response: payload.reason },
+      });
+
+      // A replay is idempotent AND does not write a second audit row.
+      const replay = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload,
+      });
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json()).toMatchObject({ replayed: true });
+      expect(audit.filter((event) => event.action === 'control-run-archive-authorize')).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses without a session and refuses a body with no idempotency key', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive-guard');
+      parkRun(store, runRef, 'archive-guard');
+
+      const anonymous = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`,
+        headers: { origin: ORIGIN, host: 'localhost:5317', 'content-type': 'application/json' },
+        payload: { idempotencyKey: 'k' },
+      });
+      expect(anonymous.statusCode).toBe(401);
+
+      const invalid = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload: { reason: 'why' },
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(store.getRun('operator', runRef)).toMatchObject({ ok: true, value: { run: { state: 'waiting-human' } } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not archive when the T3 audit cannot be written', async () => {
+    const { app, token, store } = buildApp({
+      appendAudit: () => { throw new Error('audit unavailable'); },
+    });
+    try {
+      const runRef = seedRun(store, 'archive-audit');
+      parkRun(store, runRef, 'archive-audit');
+
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+        payload: { idempotencyKey: 'archive-audit-1', reason: 'dead' },
+      });
+      expect(refused.statusCode).toBe(500);
+      expect(refused.json()).toEqual({ error: 'run-archive-audit-required' });
+      expect(store.getRun('operator', runRef)).toMatchObject({ ok: true, value: { run: { state: 'waiting-human' } } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses to archive a live run', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive-live');
+      const run = store.getRun('operator', runRef);
+      if (!run.ok) throw new Error(run.detail);
+      if (!store.transitionRun('operator', runRef, run.value.run.version, 'running').ok) throw new Error('transition failed');
+
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+        payload: { idempotencyKey: 'archive-live-1' },
+      });
+      expect(refused.statusCode).toBe(400);
+      expect(refused.json().error).toBe('invalid');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('drops archived runs from the default list and returns them only with includeArchived=1', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const archivedRef = seedRun(store, 'archive-list-a');
+      const liveRef = seedRun(store, 'archive-list-b');
+      parkRun(store, archivedRef, 'archive-list-a');
+      const done = await app.inject({
+        method: 'POST', url: `/api/control/runs/${archivedRef}/archive`, headers: headers(token),
+        payload: { idempotencyKey: 'archive-list-1', reason: 'stale' },
+      });
+      expect(done.statusCode).toBe(200);
+
+      const listed = await app.inject({ method: 'GET', url: '/api/control/runs', headers: headers(token) });
+      expect(listed.json().runs.map((run: { runRef: string }) => run.runRef)).toEqual([liveRef]);
+
+      const all = await app.inject({ method: 'GET', url: '/api/control/runs?includeArchived=1', headers: headers(token) });
+      expect(all.json().runs.map((run: { runRef: string }) => run.runRef).sort()).toEqual([archivedRef, liveRef].sort());
+
+      // Archiving hides a run from lists; it never makes it unreadable.
+      const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${archivedRef}`, headers: headers(token) });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json()).toMatchObject({ value: { run: { state: 'archived' } } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('gives every human request a plain-language ask and demotes the raw text to technicalDetail', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive-ask');
+      parkRun(store, runRef, 'archive-ask');
+
+      const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token) });
+      const request = detail.json().value.humanRequests[0];
+      expect(request.ask).toMatch(/never got started/i);
+      // The ask names the run the operator recognizes, and no traceback reaches it.
+      expect(request.ask).toContain(detail.json().value.run.displayName);
+      expect(request.ask).not.toMatch(/ENOENT/);
+      expect(request.technicalDetail).toMatch(/ENOENT/);
+    } finally {
+      await app.close();
+    }
   });
 });
