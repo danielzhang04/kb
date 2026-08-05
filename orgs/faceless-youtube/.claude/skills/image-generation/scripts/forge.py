@@ -384,6 +384,23 @@ FIGURE_PREFIX = "fig-"          # STEP 1's output: one portable frame per (char,
 _PRIMITIVE_KINDS = ("pose", "action", "interaction", "expression")
 _BACKTICK_RE = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._-]*)`")
 
+# style-bible.md §5 (LOCKED): `refs/env/lettering-marker-italic.png` "seeds every text-bearing
+# gen". The registry vocabulary key, copied not imported — the bible is prose with no parseable
+# list, and the name is also the registry `assets[]` row this routes through.
+LETTERING_EXEMPLAR = "lettering-marker-italic"
+
+# A prompt DRAWS in-world text when it supplies a quoted literal. Deliberately the same notion
+# `lint_shots.py`'s `_QUOTED` uses (copied, one regex per side, same precedent as the shot-class
+# enum) so the two halves of the lettering law cannot disagree about what "text-bearing" means:
+# the opening quote may not follow a letter, or a possessive apostrophe opens a phantom literal.
+_QUOTED_LITERAL = re.compile("(?<![A-Za-z])['\"‘“][^'\"‘’“”]{1,60}"
+                             "['\"’”]")
+
+
+def text_bearing(prompt):
+    """True when a prompt authors an in-world literal, i.e. the frame draws lettering."""
+    return bool(_QUOTED_LITERAL.search(prompt or ""))
+
 
 def merge_vocabulary(reg, video_dir):
     """THE ONE cast/primitive resolution: the channel registry UNION this video's own
@@ -454,12 +471,38 @@ def _split_primitives(reg, prims, omitted=()):
     """`(pose, expression)` from the primitives a shot authored for one figure — ONE of each is what
     the recipe seeds. A primitive in the shot's `assets_omitted` is honoured as omitted (that key is
     where a deliberate exclusion is recorded, e.g. a pose frame that would bleed a human torso onto
-    a personified object), never silently re-added."""
+    a personified object), never silently re-added.
+
+    An `interaction` slug is NOT a pose and never appears here. It is a TWO-FIGURE geometry
+    reference — "two blank base mannequins carrying clasp geometry + eye-line" (image-generation
+    SKILL, Pass-1 build recipe) — so it belongs to the SCENE, not to one figure. Treating it as a
+    pose is what produced the 2026-08-04 fresh fifth's L29: `handshake` bound to the most recently
+    named character and minted `fig-terry-johnson--handshake--expr-delighted`, a SOLO reference
+    sheet whose own payload says "the character alone, fully resolved" while its third seed was a
+    two-person handshake. Outcome space: a hand extended into empty air, an amputated forearm, or a
+    second figure fused into the identity card that then bleeds into every scene seeding it. See
+    `_interaction_primitives` for where they go instead."""
     assets = {a["name"]: a for a in reg.get("assets", [])}
     kind = lambda p: assets.get(p, {}).get("kind")
     live = [p for p in prims if p not in omitted]
-    return (next((p for p in live if kind(p) in ("pose", "action", "interaction")), None),
+    return (next((p for p in live if kind(p) in ("pose", "action")), None),
             next((p for p in live if kind(p) == "expression"), None))
+
+
+def _interaction_primitives(reg, cast, omitted=()):
+    """The `interaction` templates a shot authors, SCENE-LEVEL, in authoring order.
+
+    Collected across the whole cast recipe rather than per figure: the template resolves the
+    contact BETWEEN two bodies and binds to neither alone, so which character `shot_cast`
+    happened to bind it to carries no meaning. It seeds the scene alongside both figures' STEP-1
+    cards — 2 figures + template + place = 4 seeds, exactly at `SEED_CAP`."""
+    assets = {a["name"]: a for a in reg.get("assets", [])}
+    out = []
+    for _c, prims in cast:
+        for p in prims:
+            if p not in omitted and assets.get(p, {}).get("kind") == "interaction" and p not in out:
+                out.append(p)
+    return out
 
 
 def _stem(path):
@@ -486,7 +529,7 @@ def _is_canonical(reg, path, character):
 
 
 _SEED_ROLES = {"place", "figure", "canonical", "parent", "pose", "expression", "crowd",
-               "prop", "environment", "reference"}
+               "interaction", "prop", "environment", "reference"}
 
 
 def seed_role_violations(k, r):
@@ -530,6 +573,10 @@ def seed_role_violations(k, r):
             truthful = bool(character) and asset_kinds.get(_stem(path)) in expected
         elif role == "crowd":
             truthful = _stem(path).startswith("crowd-exemplar")
+        elif role == "interaction":
+            # Scene-level, so it carries NO character: a role naming one would be the very
+            # single-figure binding this role exists to remove.
+            truthful = character is None and asset_kinds.get(_stem(path)) == "interaction"
         elif role in ("prop", "environment"):
             truthful = asset_kinds.get(_stem(path)) == role
         if not truthful:
@@ -539,6 +586,43 @@ def seed_role_violations(k, r):
         bad.append(f"{name}: a role-bearing request must keep its canonical authored `payload`.")
     elif r.get("delta") != placement_delta(payload, roles):
         bad.append(f"{name}: seed role prose does not match the final ordered role metadata.")
+    return bad
+
+
+def interaction_violations(k, r, cast, seeds):
+    """Every way ONE request breaks the interaction-template law, named with its shot.
+
+    The law, stated once: an `interaction` slug is a two-figure CONTACT GEOMETRY reference and
+    seeds the SCENE, never a figure. Three refusals, one per way of breaking it — a solo shot
+    (no second body for the clasp), a STEP-1 card (the reference sheet says "the character
+    alone"), and a delta (parent + both canonicals + one proved primitive already fills the
+    slate, and the grammar's cast-cap table stages a fresh two-cast shot as the stage BASE).
+    The fourth condition — the template is actually in the seeds — is the assertion that the
+    builder routed it rather than dropping it."""
+    name = r["name"]
+    templates = _interaction_primitives(k.reg, cast, r.get("assets_omitted") or ())
+    if not templates:
+        return []
+    named = ", ".join(f"`{t}`" for t in templates)
+    bad = []
+    if name.startswith(FIGURE_PREFIX):
+        return [f"{name}: STEP-1 figure frame names the interaction template(s) {named}. A STEP-1 "
+                f"card is a reference sheet of the character ALONE; a two-figure clasp geometry "
+                f"copied onto it renders a hand into empty air or fuses a second body into the "
+                f"identity card. The template seeds the SCENE, alongside both STEP-1 cards."]
+    if len(cast) < 2:
+        bad.append(f"{name}: interaction template(s) {named} with {len(cast)} named cast — the "
+                   f"template resolves the contact BETWEEN two bodies and binds to neither alone. "
+                   f"Name both figures, or stage the gesture in prose and drop the slug.")
+    if str(r.get("stage_role", "")).lower() == "delta":
+        bad.append(f"{name}: interaction template(s) {named} on a delta beat — a two-cast delta "
+                   f"seeds parent + both canonicals + one proved primitive and has no slot left. "
+                   f"Author the contact geometry on the stage BASE; later two-cast beats in that "
+                   f"place are deltas on it.")
+    for t in templates:
+        if not any(_stem(s) == t for s in seeds):
+            bad.append(f"{name}: names the interaction template `{t}` but does not seed it — a "
+                       f"clasp geometry re-synthesized from words reverts to the engine's prior.")
     return bad
 
 
@@ -568,6 +652,7 @@ def seeding_law_violations(k, r, seeds):
     chars = k.reg.get("characters", {})
     cast = [(c, [p for p in prims if p not in omitted])
             for c, prims in shot_cast(k.reg, delta)]
+    bad.extend(interaction_violations(k, r, cast, seeds))
     if name.startswith(FIGURE_PREFIX):
         # STEP 1 itself — the recipe, unchanged: canonical + the named primitives, in ONE gen.
         for c, prims in cast:
@@ -1011,6 +1096,11 @@ def seed_roles_text(seed_roles):
                       "eye/brow/mouth shape; ignore identity, head tone and hairline")
         elif role == "crowd":
             detail = "the crowd exemplar â€” use only its anonymous crowd proportion and face tier"
+        elif role == "interaction":
+            detail = (f"the `{_stem(path)}` interaction template â€” two blank mannequins holding "
+                      "the contact geometry for BOTH figures; copy only the clasp/limb geometry, "
+                      "relative placement and eye-line, and give it to neither figure's identity, "
+                      "costume or expression")
         elif role == "prop":
             detail = f"the `{character}` prop canonical â€” preserve that object's design"
         elif role == "environment":
@@ -1026,9 +1116,17 @@ def placement_delta(prompt, seed_roles):
     return "\n\n".join(p for p in (seed_roles_text(seed_roles), prompt) if p)
 
 
-def figure_card_payload():
-    return ("The whole figure is in frame head to feet, standing or seated exactly as the pose "
-            "reference shows, on a thin visible ground line with one soft contact shadow directly "
+def figure_card_payload(pose=None):
+    """STEP 1's payload. The stance sentence follows the SEEDS: a card with a pose primitive is
+    told to copy it, a POSE-LESS card is told to stand neutral rather than pointed at a reference
+    image that is not in the request. That second shape is now the norm, not an edge case — an
+    interaction shot's two cards are both pose-less because the contact geometry lives in the
+    scene-level template (`_interaction_primitives`), so a card claiming "exactly as the pose
+    reference shows" would be prose against nothing."""
+    stance = ("standing or seated exactly as the pose reference shows" if pose
+              else "standing squarely at rest, arms relaxed at the sides, facing the viewer")
+    return (f"The whole figure is in frame head to feet, {stance}, on a thin visible ground line "
+            "with one soft contact shadow directly "
             "beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. "
             "This is a reference sheet: the character alone, fully resolved, ready to be placed "
             "into a separate scene.")
@@ -1332,6 +1430,9 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         fig_roles, canon_roles, prim_roles = [], [], []
         expression_change = {}
         cast_recipe = shot_cast(k.reg, prompt)
+        # Routed SCENE-level below, so they are not this figure's to carry — and not surplus
+        # either: reporting them as "not seeded" would name a drop that never happened.
+        scene_level = set(_interaction_primitives(k.reg, cast_recipe, omitted))
         for c, prims in cast_recipe:
             pose, expr = _split_primitives(k.reg, prims, omitted)
             # A delta re-stating the expression its chain already holds is the DEFAULT authoring
@@ -1342,7 +1443,8 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                 expression_change[c] = expr
             if expr:
                 held_expression[(chain, c)] = expr
-            surplus = [p for p in prims if p not in (pose, expr) and p not in omitted]
+            surplus = [p for p in prims
+                       if p not in (pose, expr) and p not in omitted and p not in scene_level]
             if surplus:
                 # Either a second pose/expression authored for this figure (only ONE can be seeded
                 # — restage), or a primitive that belongs to an anonymous figure. Recorded, never
@@ -1393,7 +1495,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                         raise SystemExit(refusal)
                     made[fn] = reused; why.append(f"`{c}` STEP-1 {fn} REUSED")
                 else:
-                    step1_payload = figure_card_payload()
+                    step1_payload = figure_card_payload(pose)
                     spec.append({"name": fn, "mode": "environment", "aspect": "2:3",
                                  "image_size": "1K", "stage_role": "base",
                                  "seed": [role["path"] for role in step1_roles],
@@ -1414,19 +1516,37 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                                         on_disk(os.path.join(scenes, (parent or "") + ".png")))
                                        if parent else None)
         crowd = _fig_declared(shot.get("figures"))[1]
-        # Pass 1's explicit tags are the contract: route only non-figure assets here. Cast,
-        # primitives and the crowd exemplar already have higher-priority structural routes above.
-        tagged_names = [n for n in (shot.get("assets") or {})
-                        if (reg_assets.get(n) or {}).get("kind") in ("prop", "environment")]
-        tagged_roles = [_seed_role(vfile(n), (reg_assets.get(n) or {}).get("kind"), n)
-                        for n in tagged_names]
+        # Non-figure seeds are DERIVED from what the frame contains, then unioned with Pass 1's
+        # explicit tags — the same content-first move as `depicts_figures`, and for the same
+        # reason. Reading the `assets` block alone made two LOCKED routes depend on an author
+        # remembering a field image-generation owns: the 2026-08-04 fresh fifth carried no
+        # `assets` block on any of its 41 shots, so `lettering-marker-italic` seeded 0 of its 14
+        # text-bearing frames (style-bible §5: it "seeds every text-bearing gen") and L10's
+        # backticked `prop-drive` shipped as an unresolved control token in the prompt text.
+        # Cast, primitives, interaction templates and the crowd exemplar keep their
+        # higher-priority structural routes above; only prop/environment assets route here.
+        def _kind(n):
+            return (reg_assets.get(n) or {}).get("kind")
+        tagged_names = _dedupe([n for n in (shot.get("assets") or {}) if _kind(n) in ("prop", "environment")]
+                               + [n for n in backticked(prompt) if _kind(n) in ("prop", "environment")])
+        if (text_bearing(prompt) and LETTERING_EXEMPLAR not in tagged_names
+                and LETTERING_EXEMPLAR not in omitted and reg_assets.get(LETTERING_EXEMPLAR)):
+            tagged_names.append(LETTERING_EXEMPLAR)
+            why.append(f"LETTERING — text-bearing prompt; §5 exemplar `{LETTERING_EXEMPLAR}` derived")
+        tagged_roles = [_seed_role(vfile(n), _kind(n), n) for n in tagged_names if n not in omitted]
+        interaction_roles = [_seed_role(vfile(n), "interaction")
+                             for n in _interaction_primitives(k.reg, cast_recipe, omitted)]
         place_role = _seed_role(place_frame, "parent" if delta_beat else "place") if place_frame else None
         crowd_role = _seed_role(crowd_ex, "crowd") if crowd else None
         if delta_beat:
             seed_roles = _dedupe_seed_roles([place_role] + canon_roles + prim_roles
-                                            + [crowd_role] + tagged_roles)
+                                            + interaction_roles + [crowd_role] + tagged_roles)
         else:
-            seed_roles = _dedupe_seed_roles(fig_roles + canon_roles + [place_role] + prim_roles
+            # The template sits with the figures whose contact it resolves, ahead of the place:
+            # ordinal prose reads in seed order, and "both figures, then how they touch" is the
+            # order the recipe is actually authored in.
+            seed_roles = _dedupe_seed_roles(fig_roles + canon_roles + interaction_roles
+                                            + [place_role] + prim_roles
                                             + [crowd_role] + tagged_roles)
         displaced = []
         if len(seed_roles) > SEED_CAP and place_role and crowd_role in seed_roles:
@@ -1768,7 +1888,7 @@ def _retry_step1(entry, source, k, label):
     instruction = entry.get("instruction")
     if instruction is not None and (not isinstance(instruction, str) or not instruction.strip()):
         raise SystemExit(f"{label}: STEP-1 `instruction` must be a non-empty string when present.")
-    payload = figure_card_payload()
+    payload = figure_card_payload(pose)
     if instruction:
         payload += "\n\n" + instruction.strip()
     delta = placement_delta(payload, seed_roles)

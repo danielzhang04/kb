@@ -62,10 +62,16 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   decidable from the authored file alone (`lint_shots.py`'s `place_groups`). A stock/chart/screencap/archival
   shot is skipped, mirroring `forge.py cmd_batch`'s own skip of non-generated shots before it ever picks a
   plate; a place with no generated shot has no plate at all. **Conditional plate law (lint-enforced, HARD):**
-  a place QUALIFIES when ≥2 shots declare it, or its plate declares `place_owner`; a qualifying place's plate
+  a place QUALIFIES when it RECURS, or its plate declares `place_owner`; a qualifying place's plate
   must declare **zero named cast and no `stage_role: delta`**, because every other shot in the place seeds it
-  and whatever it contains bleeds into all of them. A place used by exactly ONE shot, with no `place_owner`,
-  needs no plate — that single shot is its own place-first frame and runs seedless, same as today. `forge.py
+  and whatever it contains bleeds into all of them. **A place RECURS when the file REVISITS it after
+  leaving** — its shots form two or more NON-CONTIGUOUS runs. An unbroken single visit, however many shots
+  long, is a STAGE: its chain base already IS the frame every later shot of the run seeds, so declaring a
+  place there buys nothing and demanding a dedicated cast-free plate for a set the video never returns to is
+  pure generation cost. (That is the decidable reading of "recurring set". The old "≥2 shots declare it"
+  test was circular — whether a set qualified depended on whether the author had declared it — and it read
+  two adjacent shots as a recurrence.) A single-visit, unbranded place needs no plate: its first generated
+  shot is its own place-first frame and runs seedless, same as today. `forge.py
   cmd_batch` derives the same frame MECHANICALLY (the slate that ended up with zero seeds is the one it
   marks `plate`; VPW never authors `plate` itself), so lint asserts on the authoring side, at $0, the
   coincidence forge assumes at gen time.
@@ -76,7 +82,10 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   `number-glued-to-object`, `map-plan-view`, `physicalized-imbalance`, `register-shift-infographic`
   (`visual-grammar.md §1`'s table: each depicts a floating object or abstraction, never a set) — plus a
   short's `first_frame` and the thumbnail block; these run as seedless roots under the hardened descriptor
-  regardless of place.
+  regardless of place. A beat that genuinely wants BOTH an exempt class and its set may be authored in a
+  non-exempt class instead (`literal`, `ironic-counterpoint`, `staged-interaction`) to keep it on the set —
+  a class is a depiction decision, and losing the setting to a schema rule is the worse trade. Record the
+  swap in `notes` so the critic reads it as a choice.
 - **Place-owner law (lint-enforced, HARD = a FORCED CHOICE).** Every place's plate declares **exactly one**
   of `place_owner: "<LITERAL>"` or `owner_ambiguity: true` — neither is a hard failure, both is a hard
   failure, and neither field may be declared on any other shot of the place. Silence is not an option
@@ -86,7 +95,14 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   already applies to it unchanged (the 1–4-word/25-glyph caps, the 3-literals-per-prompt cap, script-vocab
   sourcing, and L-1 carry — `carried_literal_check` treats it as established for the whole PLACE, across
   stage runs, so any later in-place shot that redraws the sign must re-quote it verbatim). The literal is
-  per-video DATA sourced from the shot's `place` + `script_vocab`, never a skill constant. **This narrows
+  per-video DATA sourced from the shot's `place` + `script_vocab`, never a skill constant.
+  **`owner_ambiguity: true` is a FIRST-CLASS answer, not the weak branch.** It is the HONEST default
+  wherever the script does not establish visible branding — a rented warehouse, a period shopfront, a
+  stockroom, a market stall. Reaching for `place_owner` because ambiguity "looks like the lesser answer"
+  produces INVENTED SIGNAGE, which is exactly the fabrication the text laws exist to stop; and unmarked
+  ownership is often the authored read (a warehouse that is anonymous, off-site and rented, where the
+  anonymity is the point). The forced choice exists so an ownership DECISION is on the record, never to
+  push a place toward a drawn name. **This narrows
   the supplied-text law's "omit" escape (§4 resolution 3):** blanking an owner-branded surface with no cue
   is legal ONLY paired with `owner_ambiguity: true` — a silent blank no longer satisfies the place-owner law
   the way it satisfies an ordinary unsupported-glyph field.
@@ -107,6 +123,41 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   the scene's architecture) stays a delta frame; a DISCRETE one (a character enters, a stamp slams onto a
   page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint enforces exactly one
   `base`, first, per stage · **≤3 deltas** per chain · contiguity.
+- **Delta character-entrance law (lint-enforced, HARD).** A named figure's FIRST appearance on a set is
+  never a `delta`. The delta seeding path supplies [in-chain parent + canonical] and nothing else, so a
+  figure absent from the parent FRAME has no pixels to inherit: its pose and expression become prose
+  against an image that does not contain it, and prose loses to the strongest image input. Declaring the
+  primitives does not rescue it — a delta may prove exactly ONE, so an entrance can carry pose *or*
+  expression, never both, and dropping the expression to clear the gate silently loses register on the
+  beats that carry the emotion. Author an entrance as a stage `base` (the figure's step-1 card is seeded,
+  carrying pose AND expression) or open a new stage on that shot. The parent is forge's own binding: the
+  previous shot in file order sharing this shot's `place or stage or id`, not simply the previous line.
+- **Interaction-template law (lint-enforced, HARD; forge refuses in parallel).** An `interaction`-kind
+  registry slug (`handshake`, `handoff`, `fistbump`, `action-tugofwar`) is a TWO-FIGURE geometry
+  reference — two blank mannequins carrying clasp geometry and eye-line — and seeds the SCENE alongside
+  both figures' step-1 cards, never one figure's pose slot. Legal only on a shot naming exactly 2 named
+  cast, and never on a `stage_role: delta` (that slate is parent + both canonicals + one proved
+  primitive, with no slot left). Solo, or on a delta: stage the gesture in prose and drop the slug, or
+  move the contact to the stage base. `visual-grammar.md §2` carries the cast-cap slate.
+- **Payload-last law (lint-enforced, HARD).** A NON-delta shot carrying a quoted literal must END on that
+  literal's clause (`visual-grammar.md §2` ordering law). Deltas are exempt — their final clause is the
+  one change plus the sanctioned closing formula. A literal the shot merely carries under L-1 (a place's
+  owner sign, redrawn) is not that shot's payload and is exempt too, so the carry rule can never push a
+  sign into the payload slot. The commonest break is a trailing "Framing: … Palette: …": author those
+  facts BEFORE the lettered element.
+- **Lettering route (forge-DERIVED; lint-enforced, HARD, after Pass 1).** `style-bible.md §5` is LOCKED —
+  `lettering-marker-italic` seeds every text-bearing gen. `forge.py` DERIVES that seed from the prompt
+  (any supplied quoted literal), the same way it derives the crowd rig from `figures.crowd`, so a LOCKED
+  style law never depends on an author remembering a field. VPW authors nothing for it. Once
+  image-generation's Pass 1 has written an `assets` block, lint HARD-fails a text-bearing shot whose block
+  omits the exemplar or lists it in `assets_omitted`. Backticked registry `prop`/`environment` slugs are
+  derived the same way, so a named prop can no longer ship as an unresolved control token.
+- **Real-cadence heads-up (lint, HEADS-UP).** When `assets/voiceover.manifest.json` exists, lint computes
+  each shot's REAL hold from the forced-alignment word timings `render-builder` cuts on, and flags any
+  hold outside the §5 band (1.5–3s, 4s earned). `duration_s` is an ESTIMATE and the real hold is the
+  truth: on the reset's first fifth the two diverged by up to +2.36s and 11 of 41 real holds fell outside
+  the band while the declared average read "in band". Heads-up rather than HARD because the author sizes
+  before any VO exists and the fix is a re-author (split an anchor, merge two), not a field edit.
 - **`place_anchor` — an approved in-video place seed, legal on any non-delta shot with an established
   `place`.** Optional; write the human-picked frame as a non-empty normalized direct `assets/scenes/<id>.png`
   path (no absolute, traversal, backslash, nested, or cross-video path), never on a `stage_role: delta` (a
@@ -147,8 +198,10 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   singularized on both sides, so a plural role justifies a singular slug ("the bankers" ⇒ `hq-banker`). Whether a *cast*
   choice is dramatically right beyond that narrow test is the critic's call.
 - **`assets` (image-gen-owned, added in Pass 1).** `image-generation` writes a per-shot `assets` map
-  (`{"<vocab name>": "<library path>"}`) back into this file after its gate passes and Pass 2 reads only
-  those tags; VPW never authors it, and `lint_shots.py` + `render-builder` ignore it.
+  (`{"<vocab name>": "<library path>"}`) back into this file after its gate passes; VPW never authors it and
+  `render-builder` ignores it. Pass 2 reads those tags UNIONED with what it derives from the prompt (the
+  lettering route, above), so a missing tag no longer silently drops a seed. `lint_shots.py` reads the block
+  for one thing only: the post-Pass-1 lettering assertion.
 - **Transitions are HARD CUTS only** — no transition field exists; continuity comes from held stages.
 - **`global_prompt_suffix` is copied verbatim** from `visual-grammar.md`'s header — never re-derived per
   video — and appended to every `still_prompt`, `first_frame`, and thumbnail `gen_prompt`. **One-voice law

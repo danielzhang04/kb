@@ -60,11 +60,20 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
 1. **Classify → pick a class** from the grammar's narration→shot-class table; record it as `shot_class`.
 2. **INVENT the shot** against the example-shots bar — **non-literal by default**, literal only for a
    concrete physical action or object. A shot that merely draws its line's words fails → reclassify.
+   **Figure bias:** a beat about people — a person, a party, a decision, an act — is staged WITH the
+   bodies doing it; that is the default, not a preference. A symbolic or prop-only frame on such a beat
+   must EARN its absence (the subject genuinely is a thing/place/mechanism, or the emptiness is itself
+   the argument) and say so in `notes`. Non-literal changes the DEPICTION, never the scene's occupancy:
+   "the people selling picks and shovels" staged as an unattended stall has deleted the line's subject.
+   Full law + the >~10s self-audit flag: `visual-grammar.md §1`.
 3. **Reference figures, poses, and expressions by registry vocabulary NAME, backticked, inline** in the
    prompt prose ("MacGregor, `expr-smug`, `action-salute`, stage-left, facing right"). Never describe
    body pose, finger mechanics, or facial expression in words — naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
    human's pre-gen approval, and a veto comes back to you as a restage.
+   **An `interaction` slug is two-figure geometry, not a pose:** author it only on a fresh two-cast stage
+   BASE, never on a solo shot and never on a delta (`visual-grammar.md §2` cast-cap table; lint and forge
+   both HARD-refuse the other shapes).
    **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** A crowd needs a positive rear
    zone in the PRIMARY scene clause — the far side of a table/shelving, behind glass or a divider, through a
    doorway — never a co-planar gathering later called "background-scale". An anonymous person with an individual
@@ -98,7 +107,9 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    header block).
 5. **Group into stages/chains per the grammar's chain logic** — consecutive shots on one set share a
    `stage`, one `base` first, each `delta` changing exactly ONE physically feasible semantic transformation in
-   `changed_elements`, ≤3 deltas, then a re-base or a hard cut. A place anchor is figure-free or already compatible
+   `changed_elements`, ≤3 deltas, then a re-base or a hard cut. **A figure's ENTRANCE is never a delta**
+   (a delta seeds parent + canonical only, so a figure the parent frame does not contain has nothing to
+   inherit): stage it as a `base`, or open a new stage on that shot. A place anchor is figure-free or already compatible
    with the later count/scale demand. Completion states quantify the end state (`all`, `entirely`, or what
    `nothing remains`); a parent that has no room for the change is not repaired with a re-roll.
 6. **Route the technique before writing precision prose:** an exact percentage scale, pixel-clear gap,
@@ -124,20 +135,35 @@ at the first act's level.
 - **Places, stages + environments:** decide now which sets recur and carry held `stage` chains and which
   are one-frame standalones. A **`place`** is a recurring diegetic set identity (kebab-case, e.g.
   `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +
-  ≤3 deltas). Declare `place` on every shot in a recurring set; symbolic/abstract/standalone
-  object-insert `shot_class`es, a short's `first_frame`, and the thumbnail block declare no `place` and
-  run as seedless roots. The **plate is the first-in-file generated shot declaring the place**
+  ≤3 deltas). **A set is a PLACE when the file REVISITS it after leaving** — two or more non-contiguous
+  runs; an unbroken single visit is a `stage`, whose base already anchors every shot of the run. Declare
+  `place` on every shot of a revisited set. Symbolic/abstract/standalone object-insert `shot_class`es, a
+  short's `first_frame`, and the thumbnail block declare no `place` and run as seedless roots. The
+  **plate is the first-in-file generated shot declaring the place**
   (`source: ai-gen | hybrid`, absent defaults to `ai-gen`; a stock/chart/screencap/archival shot is
   skipped, mirroring forge's own skip); for a QUALIFYING
-  place (≥2 shots declare it, or its plate declares `place_owner`) the plate must carry zero named cast
-  and no `stage_role: delta` — a single-use, unbranded place is its own place-first frame and stays
+  place (it recurs, or its plate declares `place_owner`) the plate must carry zero named cast
+  and no `stage_role: delta` — a single-visit, unbranded place is its own place-first frame and stays
   seedless (a dedicated plate for it is pure waste). Every declared `place` must map to a span in
   `script.md` (`script_vocab`) — an invented place fails lint like invented lettering. Every plate makes
   the **owner forced choice**: declare exactly one of `place_owner: '<LITERAL>'` (the quoted cue must
   appear in the plate's own `still_prompt`, carried under L-1 by any delta that redraws it) or
-  `owner_ambiguity: true`; the literal is per-video data sourced from the script — **never a skill
-  constant**. A set invented twice mid-pass gets described twice
+  `owner_ambiguity: true`. **Ambiguity is a first-class answer, not the weak one** — it is the honest
+  call whenever the script establishes no visible branding, and reaching for `place_owner` to look
+  decisive invents signage, which is fabrication. The literal is per-video data sourced from the
+  script — **never a skill constant**. A set invented twice mid-pass gets described twice
   differently and renders twice.
+- **The plate / reveal seam — decide it once, per branded place.** A qualifying place's plate is
+  cast-free; a character reveal lands on the line that NAMES them; on a branded set those two laws want
+  the same beat. Resolution: **the plate is the place's first CAST-FREE frame and the reveal is its
+  first CAST-BEARING frame**, and DISCLOSURE ORDER (never the plate law) decides which comes first — a
+  brand cannot appear before the VO says it, and neither can a person. When the naming line carries
+  both, author it as two cuts rather than one long hold; the cadence band wants that anyway.
+  *Worked example — "The company was MiniScribe, a hard drive manufacturer."* The plate takes the naming
+  clause: the cast-free assembly floor with `'MINISCRIBE'` on the board over the entrance, ~2s. The very
+  next cut, still inside the same sentence's tail, is the reveal: `miniscribe-rep` planted in that
+  doorway, seeded off the plate. The brand and the personification both land on their own line, the
+  plate stays clean for everything that seeds it, and the entrance does not slip two shots downstream.
 - **The three peaks:** reserve the most striking staging for the opening, the mid-video re-arm (55–65%),
   and the withheld peak in the final 20%. A character enters on the line that NAMES them.
 - **Density budget, written down per act:** read the runtime AND the rate off the script header ("N words
@@ -168,9 +194,11 @@ Then write yourself ONE paragraph on the act just closed: **non-literal share** 
 its line's words?), **class variety** (which `shot_class` values repeated, and has one become a reflex?),
 **red-ink count** (red is the one semantic accent — alarm / prohibition / ownership / the punch element —
 so a rising count means it is turning into decoration), **human use** (flag story-bearing people, decisions, or relationships hidden behind objects, or
-habitual people staged where object, place, document, or mechanism is the subject; no target share), and
+habitual people staged where object, place, document, or mechanism is the subject; no target share —
+but **name every figureless run longer than ~10s** and say for each what earned the absence), and
 **cadence vs the 3a budget** (shot count and Σ
-`duration_s` against this act's target). A drifting act is re-authored here, not left for the critic:
+`duration_s` against this act's target; if a VO manifest already exists, the lint's REAL-hold heads-ups
+are the truer number and a run of them means densify here, not later). A drifting act is re-authored here, not left for the critic:
 Step 8 is whole-file and one cycle only.
 
 ## Step 4 — Thumbnails (primary + 2 challengers, derived from script + dna)

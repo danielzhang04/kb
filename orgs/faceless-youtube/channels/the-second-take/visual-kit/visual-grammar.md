@@ -20,7 +20,9 @@ style are stated ONCE, in `style-bible.md` §2b (the single style source), and r
 layout, orientation, the action, the committed scene palette, light, era, and depth. Never write art-style,
 texture, line-weight, or lettering words into a prompt (no "flat cel", "clean vector", "even outline",
 "hand-lettered marker style") — the suffix and the bible descriptor already inject them, and repeating them
-spends the prompt's weight on the look instead of on the scene.
+spends the prompt's weight on the look instead of on the scene. **The suffix states the lettering register
+so your prompt never has to** — it is not an exemption from the rule it sits above, it is the reason the
+rule can exist: one voice, one home.
 
 **Author absence as a positive STATE of the surface, never as a "no X" list.** "Every surface blank and
 unlettered", "an empty street", "a bare desk" — not "no signs, no words, no labels". Our generator reads a
@@ -61,7 +63,17 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
 - A shot that merely draws its line's words is a failure → reclassify it.
 - **Choose the beat's subject, not a population:** use people for person, decision, relationship,
   action, or reaction beats; use an object, place, document, or mechanism when that is the subject.
-  Neither is globally preferred; never add or remove people to satisfy a population target.
+  Never add or remove people to satisfy a population target.
+- **Figure bias — concrete presence is the DEFAULT on beats about people, and a figureless frame
+  EARNS its absence.** A beat naming a person, a party, a decision, or an act ("they were raking it
+  in", "the people selling picks and shovels") is staged with the bodies doing it. A symbolic or
+  prop-only frame on such a beat is legal only when the absence is itself the argument, or the
+  subject genuinely is a thing/place/mechanism — and then say so in `notes`. The failure this
+  corrects is measured, not theoretical: the reset's first fifth ran 29 of 41 frames with no figure
+  of any kind and deleted the sellers from "the people selling picks and shovels", on a channel
+  whose identity is "no on-screen narrator — the SCREEN is a CAST" (`style-bible.md §1`). **A
+  figureless run past ~10s is a self-audit flag** (SKILL step 3c), never a lint failure: taste is
+  the human's call and no rule will ever make it.
 
 **Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
 it, each `delta` changes exactly ONE physically feasible semantic transformation, **≤3 deltas**, then a re-base or a hard cut. A world,
@@ -72,6 +84,11 @@ on the one change plus "only this changes; everything else exactly as establishe
 the whole image, so whatever goes unstated gets re-invented, and the change stated last is read as the
 edit rather than as one more scene fact (§2 ordering law). **Disclosure order:** an image never shows
 what the VO has not yet said — a withheld entity is absent entirely from every earlier shot.
+**A figure's ENTRANCE is never a delta (lint-enforced, HARD).** A delta seeds [parent frame +
+canonical] only, so a figure absent from the parent has no pixels to inherit and its pose and
+expression are prose against an image that does not contain it — the strongest image input wins,
+every time. An entrance is a stage `base` (the figure's step-1 card is seeded, carrying pose AND
+expression) or it opens a new stage. Deltas are for a set that already holds the figure.
 
 **Feasibility gate:** the parent must actually reserve the space and state needed by its one delta; a place
 anchor is figure-free or already occupancy-compatible with later count/scale demands. Completion states say
@@ -118,6 +135,11 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
 - **A character reveal lands on the naming moment** — the entrance anchors to the VO line that names
   them, staged sized to the beat (a big reveal: spotlight / low angle / arrival; a minor one: a clean
   introduction), in its canonical expression unless the beat authors otherwise.
+  **Where the naming line is also a branded place's establishing beat**, the plate law and this one
+  want the same frame. The resolution: the plate is the place's first CAST-FREE frame, the reveal is
+  the place's first CAST-BEARING frame, and disclosure order decides which comes first. Both can land
+  on the naming beat if it is authored as two cuts — plate, then reveal — rather than one long hold.
+  Worked example: SKILL step 3a.
 - **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance. A group
   member acting alone is staged as an individual.
 - **Every human in frame is either NAMED CAST or CROWD — no third tier, no promotion path.** NAMED CAST
@@ -149,18 +171,32 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   | 1 cast, fresh | step-1 figure · **plate** | nothing — 2 slots free |
   | 1 cast + crowd, fresh | step-1 figure · plate · crowd exemplar | nothing |
   | **2 cast, fresh** | step-1 figure A · step-1 figure B · **plate** | nothing — 1 slot still free |
+  | **2 cast + interaction, fresh** | step-1 figure A · step-1 figure B · **interaction template** · plate | nothing — the free slot buys the contact geometry |
   | 2 cast + crowd, fresh | step-1 figure A · step-1 figure B · plate · crowd exemplar | nothing |
   | 2 cast, delta beat | parent frame · canonical A · canonical B · one changed pose *or* expression | nothing — unchanged, single-step, exactly as today |
 
   Stated positively: **a fresh two-cast shot is the BASE of a stage; every later two-cast beat in that
   place is a delta on it.** Crowd-rig figures are a mass, not identities, and don't count against the
   cap.
+- **An `interaction` slug is a TWO-FIGURE geometry reference, never one figure's pose.** The asset is
+  two blank mannequins carrying the clasp geometry and eye-line; it resolves the contact BETWEEN two
+  bodies and binds to neither alone. So `handshake` / `handoff` / `fistbump` / `action-tugofwar` are
+  authored ONLY on a fresh two-cast **stage base**, where forge seeds the template scene-level
+  alongside both figures' step-1 cards (row above). On a solo shot or a delta beat there is no legal
+  slate for one: stage the gesture in prose and drop the slug, or move the contact to the base. Bound
+  to a single character it mints a solo reference card that says "the character alone" while carrying
+  a two-person clasp — a hand extended into empty air, an amputated forearm, or a second body fused
+  into the identity card. Lint and forge both refuse it.
 - **Prompt ordering — three zones, in this order.** (1) **Identity first:** the named cast, their
   backticked registry names, and any pinned trait the shot depends on. (2) **Scene second:** setting,
   staging, framing, palette, light, depth. (3) **Payload LAST, as the final clause:** the quoted lettering,
   or on a delta the one change (§1 chain logic). The generator weights earliest mentions heaviest for
   identity and reads the closing instruction most literally, so leading with boilerplate costs identity
   and burying the payload mid-prompt costs the payload.
+  **Lint-enforced, HARD, on the lettering half:** a non-delta shot carrying a quoted literal ends on
+  that literal's clause. A trailing "Framing: … Palette: …" after the payload is the commonest way to
+  break it — put those facts BEFORE the lettered element, not after. A literal the shot merely carries
+  under L-1 (a place's owner sign, redrawn) is not that shot's payload and is exempt.
 
 ## 3. Composition — a decision, driven by the payload
 

@@ -213,6 +213,12 @@ def lint_piece(label, shots, md_path, hard, soft, word_timings=None):
                         f"(< 1 cut / {CADENCE_TARGET_S:.0f}s) — too few cuts; densify to the "
                         f"1.5–3s cadence.")
 
+    # The REAL cadence, off the same stream and matcher the HARD check just ran. Only the
+    # word-timing stream carries seconds; script.md offsets are characters, so a fallback
+    # match has no hold to measure.
+    if word_timings:
+        real_cadence_check(label, shots, word_timings, hard_matches, soft)
+
     if any(m["start"] is None for m in hard_matches):
         return None
 
@@ -961,12 +967,39 @@ def control_leak_check(label, prompts, suffix, hard):
                 f"rather than as a noun phrase naming the production rule.")
 
 
+def blank_backticked(body):
+    """`body` with every backticked VOCABULARY span blanked to spaces of equal length.
+
+    Offset-preserving on purpose: `carried_literal_check` scans and reports by index into
+    this same string, so deleting the spans instead would shift every later match.
+
+    WHY THIS EXISTS. A backticked slug is a CONTROL TOKEN naming a registry asset — it is
+    resolved to a file by `forge.py` and never reaches the artwork. Scanning it as prose
+    made a place's own owner literal collide with its own cast slug: `place_owner:
+    "MINISCRIBE"` is word-boundary-matched inside `` `miniscribe-rep` ``, so naming the
+    company's personified rep inside the company's branded place HARD-failed unless the
+    prompt re-quoted 'MINISCRIBE' within the 60-char supply window. Measured consequences on
+    the 2026-08-04 fresh fifth: it forced the payload into the identity zone on L28 (the
+    ordering law's worst case in the file) and it bent a CASTING decision on L29 — a lint
+    rule steering casting, and pushing an author to draw signage into frames that do not
+    contain the sign, which is the fabrication class the text laws exist to prevent."""
+    out = list(body or "")
+    for m in _BACKTICK.finditer(body or ""):
+        for i in range(m.start(), m.end()):
+            out[i] = " "
+    return "".join(out)
+
+
 def carried_literal_check(label, shots, suffix, hard):
     """HARD. Within a stage, a literal established on an earlier frame must be
     RE-QUOTED verbatim on any later frame that mentions it — never restated as a
     lowercase description. This is the CHECKIG defect, and it is the reason Class B
     is an authoring fault: L12 alone in its chain wrote 'the checking passbook'
     where L11/L13/L14 wrote labelled 'CHECKING' / 'SAVINGS' / 'ONLINE'.
+
+    The scan runs over the prompt with backticked vocabulary BLANKED (`blank_backticked`):
+    a control token is resolved to a seed file and never drawn, so a literal fragment
+    inside one is not a mention of that literal.
 
     A mention is excused when it carries its OWN quoted value nearby (reusing the
     Class-A supply test, so 'a marker card labelled "ONLINE"' does not flag the
@@ -999,7 +1032,7 @@ def carried_literal_check(label, shots, suffix, hard):
             owner = owner_of.get(sh.get("place"))
             if owner and owner.strip() not in established:
                 established.append(owner.strip())   # the place's own sign, established by its plate
-            body = strip_suffix(sh.get("still_prompt") or "", suffix)
+            body = blank_backticked(strip_suffix(sh.get("still_prompt") or "", suffix))
             spans = _value_spans(body)
             own = quoted_literals(sh.get("still_prompt") or "", suffix)
             for lit in established:
@@ -1544,9 +1577,18 @@ def place_groups(shots):
     stock/chart/screencap/archival) has no plate at all - forge builds nothing for it either,
     so no plate law applies.
 
-    A place QUALIFIES for the plate law when >=2 shots declare it, or when its plate
-    declares `place_owner` (C-4's conditional plate law: a single-use, unbranded place is
-    its own place-first frame, runs seedless, and needs no plate demanded of it).
+    **A place RECURS when the file REVISITS it after leaving** — its shots form two or more
+    non-contiguous runs. That is the qualification test (or a plate declaring `place_owner`;
+    a branded set records its ownership whatever its visit count).
+
+    The old test was "counts >=2 shots declared", which read an unbroken single visit of two
+    adjacent shots as a recurrence and demanded a dedicated cast-free plate frame for a set
+    the video never comes back to — pure generation cost. An unbroken single visit is a
+    STAGE: its chain base already IS the place-first frame every later shot of the run seeds,
+    so nothing is unanchored. The circularity the old wording carried (SKILL.md said "declare
+    `place` on every shot in a recurring set" while the plate law defined recurrence as
+    "declared by >=2 shots") is gone: recurrence is a property of the SET's visits, decidable
+    from file order alone, never of the author's own declaration count.
 
     Forge's plate is the MECHANICAL mirror of this one: `forge.py cmd_batch` marks the
     slate that ended up with zero seeds (`plate = not seeds`), after skipping non-generated
@@ -1557,17 +1599,21 @@ def place_groups(shots):
     re-checks the authoring.
 
     Returns [(place, plate, group, qualifying)] in first-declaration order."""
-    groups = {}
+    groups, runs, prev = {}, {}, None
     for sh in shots:
         place = sh.get("place")
-        if isinstance(place, str) and place.strip():
+        place = place if isinstance(place, str) and place.strip() else None
+        if place:
             groups.setdefault(place, []).append(sh)
+            if place != prev:
+                runs[place] = runs.get(place, 0) + 1       # a fresh VISIT to this set
+        prev = place
     out = []
     for place, grp in groups.items():
         plate = next((sh for sh in grp if _plate_eligible(sh)), None)
         if plate is None:
             continue          # nothing generated for this place - forge builds no plate either
-        qualifying = len(grp) >= 2 or "place_owner" in plate
+        qualifying = runs[place] >= 2 or "place_owner" in plate
         out.append((place, plate, grp, qualifying))
     return out
 
@@ -1582,8 +1628,8 @@ def place_plate_check(label, shots, chars, hard):
     content-bleed path the doctrine limits to plates by design - and a delta plate would
     make the place's root frame a shot that itself inherits a chain parent.
 
-    A non-qualifying place (exactly one shot, no `place_owner`) is exempt: that shot is
-    its own place-first frame and runs seedless, same as before the reset.
+    A non-qualifying place (one unbroken visit, no `place_owner`) is exempt: its first
+    generated shot is its own place-first frame and runs seedless, same as before the reset.
 
     With no cast vocabulary resolvable (`chars` empty - no registry, no Pass-1 manifest)
     the cast half degrades silently, the same way seat_support_check and
@@ -1594,9 +1640,10 @@ def place_plate_check(label, shots, chars, hard):
         named = _named_chars(plate.get("still_prompt") or "", chars) if chars else []
         if named:
             hard.append(
-                f"[{label}] place {place!r}: its plate {plate.get('id', '?')!r} (the first shot "
-                f"declaring this place, and this place qualifies for the plate law - "
-                f"{len(grp)} shot(s), place_owner {'declared' if 'place_owner' in plate else 'absent'}) "
+                f"[{label}] place {place!r}: its plate {plate.get('id', '?')!r} (the first "
+                f"generated shot declaring this place, and this place qualifies for the plate "
+                f"law - the file revisits it, or its plate declares place_owner "
+                f"({'declared' if 'place_owner' in plate else 'absent'}), {len(grp)} shot(s)) "
                 f"names cast {', '.join('`' + c + '`' for c in named)}. A plate declares ZERO named "
                 f"cast (C-4): every other shot in the place seeds it, so cast on the plate bleeds "
                 f"into all of them. Author a cast-free establishing frame first, or move this shot "
@@ -1695,6 +1742,297 @@ def place_anchor_same_place_check(label, shots, hard):
                 f"(place {src_place!r}) into a shot declared place {dst_place!r} - cross-place "
                 f"image seeding is the probe-refuted style-anchor failure (decisions.md "
                 f"2026-08-04); a plate may only seed shots in its own place.")
+
+
+# --- the 2026-08-04 round-2 guards (fresh-fifth adversarial findings) --------
+# forge's own seeding key, restated ONCE here so lint and forge agree about which earlier
+# shot a delta actually inherits from. `forge.py cmd_batch`: `place = declared_place or
+# shot.get("stage") or name`, and a delta's parent is `place_last[place]` - the previous
+# shot IN FILE ORDER carrying the same key, not "any earlier shot in the place".
+def _seed_key(sh):
+    return sh.get("place") or sh.get("stage") or sh.get("id")
+
+
+def delta_parent_of(shots):
+    """`{shot id -> the shot whose frame a `stage_role: delta` inherits}`, forge's binding.
+
+    Only deltas appear; a delta whose key has no earlier shot is absent (forge does not
+    treat it as a delta beat at all)."""
+    out, last = {}, {}
+    for sh in shots:
+        key = _seed_key(sh)
+        if str(sh.get("stage_role") or "").lower() == "delta" and key in last:
+            out[sh.get("id")] = last[key]
+        last[key] = sh
+    return out
+
+
+def delta_entrance_check(label, shots, chars, hard):
+    """HARD. A named figure's FIRST appearance on a set is never a `stage_role: delta`.
+
+    The mechanism, from the 2026-08-04 fresh fifth's L41 (which refused the whole batch at
+    forge's pre-flight): the delta seeding path supplies [in-chain parent + canonical] and
+    nothing else, so a figure ABSENT from the parent frame has no pixels to inherit. Its
+    pose and expression are then prose-only against an image that does not contain it, and
+    prose loses to the strongest image input every time - audit failure #3's mechanism.
+    Declaring the primitives does not rescue it either: the delta law admits exactly ONE
+    proved primitive per character, so an entrance can carry pose OR expression, never both,
+    and the author's likely response (drop the expression to clear the gate) silently loses
+    register on precisely the beats that carry the emotion.
+
+    So the legal shapes are stated on the AUTHORING side, where they cost $0: an entrance is
+    a stage BASE (the figure's STEP-1 frame is seeded, carrying pose AND expression), or it
+    opens a NEW stage. forge's refusal stays as the backstop; this is the rule that stops an
+    author walking into it.
+
+    Presence only, and decidable: the parent is forge's own `place_last` binding
+    (`delta_parent_of`), and "present" means the parent's prompt names that character.
+    Degrades silently with no cast vocabulary, like every other cast-reading check here."""
+    if not chars:
+        return
+    parents = delta_parent_of(shots)
+    for sh in shots:
+        parent = parents.get(sh.get("id"))
+        if parent is None:
+            continue
+        held = _named_chars(parent.get("still_prompt") or "", chars)
+        entering = [c for c in _named_chars(sh.get("still_prompt") or "", chars) if c not in held]
+        if entering:
+            hard.append(
+                f"[{label}] {sh.get('id', '?')}: stage `delta` introducing "
+                f"{', '.join('`' + c + '`' for c in entering)}, absent from its parent frame "
+                f"{parent.get('id', '?')!r}. A figure's FIRST appearance on a set is never a "
+                f"delta: the delta path seeds [parent + canonical] only, so an entering "
+                f"figure's pose and expression are prose against a frame that does not "
+                f"contain it, and a delta may prove at most ONE primitive. Author the "
+                f"entrance as a stage `base` (its STEP-1 frame is seeded, carrying pose AND "
+                f"expression), or open a new stage on this shot.")
+
+
+# The payload-last law (`visual-grammar.md` §2 ordering law): identity -> scene -> PAYLOAD
+# as the FINAL clause. "Clause" here is the prompt's last SENTENCE - the unit the generator
+# reads most literally, and the unit the discipline is actually authored in.
+def payload_last_check(label, shots, suffix, hard):
+    """HARD. A non-delta shot carrying a quoted literal ENDS on that literal's clause.
+
+    "Burying the payload mid-prompt costs the payload" is the grammar's own wording, and the
+    2026-08-04 fresh fifth broke it on 9 of its 9 non-delta text-bearing shots - every one
+    closing on "Framing: ... Palette: ..." with the literal two or three sentences upstream.
+    The same span of the problem-era file was 7/7 payload-last, so this is a discipline
+    authors demonstrably hit, not an aspiration.
+
+    TWO exemptions, both load-bearing, and together they are why this is HARD rather than a
+    heads-up - measured, they leave zero false positives on both files:
+
+      * DELTAS are exempt. A delta's final clause is its ONE change plus the sanctioned
+        closing formula ("everything else exactly as established"); §1's chain logic owns
+        that ordering, and it already puts the change last. Both files close every delta that
+        way, correctly.
+      * A place's OWNER literal on a NON-plate shot is exempt. That literal is L-1 carry -
+        the shot redraws a sign the plate established - not this shot's payload. Demanding it
+        in the final clause would push a carried sign into the payload slot, which is the
+        same rule-manufactures-content failure the carry-scan collision produced.
+
+    A shot passes if ANY of its payload literals sits in the final sentence: a prompt with
+    two literals is not asked to end on both."""
+    owner_of = {}
+    for place, plate, _grp, _q in place_groups(shots):
+        owner = plate.get("place_owner")
+        if isinstance(owner, str) and owner.strip():
+            owner_of[place] = (owner.strip(), plate.get("id"))
+    for sh in shots:
+        if str(sh.get("stage_role") or "").lower() == "delta":
+            continue
+        prompt = sh.get("still_prompt") or ""
+        owner, plate_id = owner_of.get(sh.get("place"), (None, None))
+        carried = {owner} if owner and sh.get("id") != plate_id else set()
+        payload = [lit for lit, _s, _e in quoted_literals(prompt, suffix) if lit not in carried]
+        if not payload:
+            continue
+        body = strip_suffix(prompt, suffix).strip()
+        sentences = [s for s in _SENTENCE_SPLIT.split(body) if s.strip()]
+        last = sentences[-1] if sentences else body
+        if any(lit in last for lit in payload):
+            continue
+        hard.append(
+            f"[{label}] {sh.get('id', '?')}: the payload literal(s) "
+            f"{', '.join(repr(l) for l in payload)} do not sit in the prompt's FINAL clause "
+            f"({last.strip()[:70]!r}...). Ordering law (`visual-grammar.md` §2): identity -> "
+            f"scene -> payload LAST. The generator reads the closing instruction most "
+            f"literally, so a literal buried behind a trailing framing/palette clause is a "
+            f"literal it renders least carefully. Move the lettered element's clause to the "
+            f"end.")
+
+
+# Real cadence, measured off the forced-alignment word timings the render actually cuts on.
+# The band is `shots-schema.md` §5's: 1.5-3s, up to 4s where the beat earns it.
+CADENCE_FLOOR_S = 1.5
+CADENCE_BAND_S = 3.0
+CADENCE_CEILING_S = 4.0
+
+
+def real_cadence_check(label, shots, word_timings, matches, soft):
+    """HEADS-UP. Each shot's REAL hold, from the VO word timings, against the 1.5-3s band.
+
+    `duration_s` is an author's ESTIMATE and the schema says so; the real hold is
+    `next anchor's word time - this anchor's word time`, which is exactly what
+    `render-builder` cuts on. On the 2026-08-04 fresh fifth those two diverged by up to
+    +2.36s: the file declared an average 2.45s "inside the band" while 11 of 41 real holds
+    fell outside it and three passed the 4s ceiling (L31 at 4.96s on a static carton stack).
+    An average over declared numbers is not the cadence the render produces.
+
+    HEADS-UP, not HARD, deliberately. The author sizes to an estimate before any VO exists,
+    the numbers move whenever the VO is re-cut, and the fix is a re-author (split an anchor,
+    merge two) rather than a field edit - so this is a densify signal for the author and the
+    critic, not a gate. Silent with no timings (the pre-voiceover case, where there is
+    nothing truer than the estimate to compare against).
+
+    The FINAL shot is skipped: it has no next anchor, so its span runs to the end of the VO -
+    a partial file's last shot absorbs every unwritten fifth, and `LONG_SPAN_WORDS` already
+    reports that."""
+    if not word_timings or not matches:
+        return
+    starts = [m["start"] for m in matches]
+    for k, sh in enumerate(shots[:-1]):
+        a, b = starts[k], starts[k + 1]
+        if a is None or b is None:
+            continue
+        hold = word_timings[b][1] - word_timings[a][1]
+        if CADENCE_FLOOR_S <= hold <= CADENCE_BAND_S:
+            continue
+        if hold > CADENCE_CEILING_S:
+            verdict = f"over the {CADENCE_CEILING_S:.0f}s earned ceiling"
+        elif hold > CADENCE_BAND_S:
+            verdict = f"over the {CADENCE_BAND_S:.0f}s band"
+        else:
+            verdict = f"below the {CADENCE_FLOOR_S}s floor"
+        soft.append(
+            f"[{label}] {sh.get('id', '?')}: REAL hold {hold:.2f}s (declared "
+            f"{_dur(sh)}s) is {verdict}. Measured off the VO word timings render cuts on, "
+            f"not the header's rate - `duration_s` is an estimate and this is the truth. "
+            f"Densify (split the anchor) or merge, never lengthen a hold to close a gap.")
+
+
+# style-bible.md §5 (LOCKED): `refs/env/lettering-marker-italic.png` "seeds every text-bearing
+# gen". The name is the registry vocabulary key, copied not imported - same precedent as
+# SHOT_CLASSES.
+LETTERING_EXEMPLAR = "lettering-marker-italic"
+
+
+def lettering_route_check(label, objs, suffix, hard):
+    """HARD. A text-bearing shot whose `assets` block routes no lettering exemplar.
+
+    §5 is LOCKED: the marker-capitals exemplar seeds every gen that draws in-world text, and
+    without it a literal renders in whatever register the engine reaches for - the clean
+    digital font the bible forbids. The 2026-08-04 fresh fifth seeded it on 0 of its 14
+    text-bearing frames (the problem-era file managed 12/12) purely because the file carried
+    no `assets` blocks at all.
+
+    WHERE THE LAW IS ENFORCED, AND WHY THIS CHECK IS THE SECOND HALF, NOT THE FIRST.
+    A LOCKED style law must not depend on an author remembering a field, so the guarantee is
+    a DERIVATION: `forge.py cmd_batch` appends the exemplar to any scene whose prompt carries
+    a quoted literal, exactly the way it already derives the crowd rig from `figures.crowd`.
+    That is the one refusal-free route, and it covers the whole authoring window - `assets`
+    is written by image-generation's Pass 1, so a freshly authored file has none and this
+    check is correctly silent on it.
+
+    What this check owns is the window AFTER Pass 1, where an `assets` block exists and can
+    disagree with the derivation: a hand-edited or partial tag map that drops the exemplar
+    from a text-bearing shot, or an `assets_omitted` entry that deliberately suppresses it.
+    Both are decidable here, at $0, and neither is visible to forge as an error."""
+    for pid, sh in objs:
+        if not isinstance(sh, dict):
+            continue
+        assets = sh.get("assets")
+        omitted = sh.get("assets_omitted") or ()
+        if not isinstance(assets, dict) or not assets:
+            continue          # pre-Pass-1: forge's derivation is the route
+        if not quoted_literals(sh.get("still_prompt") or "", suffix):
+            continue
+        if LETTERING_EXEMPLAR in assets and LETTERING_EXEMPLAR not in omitted:
+            continue
+        hard.append(
+            f"[{label}] {pid}: draws in-world text but its `assets` block routes no "
+            f"{LETTERING_EXEMPLAR!r} seed"
+            + (" (it is listed in `assets_omitted`)" if LETTERING_EXEMPLAR in omitted else "")
+            + f". style-bible.md §5 is LOCKED - that exemplar seeds every text-bearing gen, "
+            f"and without it the literal renders in a clean digital font instead of the "
+            f"marker capitals the register requires. Add it to `assets`, or delete the "
+            f"partial block and let `forge.py` derive the route.")
+
+
+def interaction_cast_check(label, objs, chars, interactions, hard):
+    """HARD. An `interaction` primitive is a TWO-FIGURE geometry reference, never a pose.
+
+    What the asset IS (`image-generation/SKILL.md`): "an interaction template is two blank
+    base mannequins carrying clasp geometry + eye-line". It resolves the contact between two
+    bodies; it has no meaning bound to one.
+
+    The 2026-08-04 fresh fifth's L29 is the whole case. `handshake` bound to the
+    most-recently-named character, so the slate minted a SOLO reference sheet
+    (`fig-terry-johnson--handshake--expr-delighted`) whose payload said "the character
+    ALONE, fully resolved" while its third seed was a two-person handshake - a hand extended
+    into empty air, an amputated forearm, or a second figure fused into the identity card
+    that then bleeds into the scene. The prose was exemplary (plane, eye line and relative
+    head scale all stated), so the two-cast presence law passed cleanly. Lint could not see
+    it; forge now routes the template scene-level, and this is the authoring-side rule.
+
+    TWO refusals, one per way of breaking it:
+      * fewer than 2 named cast - a solo shot has no second body for the clasp geometry;
+      * on a `stage_role: delta` - a two-cast delta seeds [parent + canonical A + canonical
+        B + one proved primitive] and has no slot left, and the grammar's own cast-cap table
+        says a fresh two-cast shot is the BASE of a stage and every later two-cast beat in
+        that place is a delta on it. Author the contact geometry on the base.
+
+    Degrades silently with no cast or no interaction vocabulary, like every other
+    registry-reading check here."""
+    if not chars or not interactions:
+        return
+    for pid, sh in objs:
+        prompt = sh.get("still_prompt") or ""
+        named = [n for n in (m.group(1) for m in _BACKTICK.finditer(prompt)) if n in interactions]
+        if not named:
+            continue
+        slugs = sorted(set(named))
+        cast = _named_chars(prompt, chars)
+        if len(cast) < 2:
+            hard.append(
+                f"[{label}] {pid}: authors the interaction template "
+                f"{', '.join('`' + s + '`' for s in slugs)} with "
+                f"{len(cast)} named cast ({', '.join('`' + c + '`' for c in cast) or 'none'}). "
+                f"An interaction template is two blank mannequins carrying clasp geometry and "
+                f"eye-line - it resolves the contact BETWEEN two bodies and binds to neither "
+                f"alone. Name both figures, or stage the gesture in prose and drop the slug.")
+        if str(sh.get("stage_role") or "").lower() == "delta":
+            hard.append(
+                f"[{label}] {pid}: authors the interaction template "
+                f"{', '.join('`' + s + '`' for s in slugs)} on a stage `delta`. A two-cast "
+                f"delta seeds parent + both canonicals + one proved primitive, with no slot "
+                f"for the template; the cast-cap table stages a fresh two-cast shot as the "
+                f"stage BASE and every later two-cast beat as a delta on it. Author the "
+                f"contact geometry on the base.")
+
+
+def video_interactions(data, vdir):
+    """The `interaction`-kind vocabulary for THIS video: channel registry UNION the video's
+    own Pass-1 library, mirroring `video_chars` (and `forge.py`'s `merge_vocabulary`).
+    Best-effort - either source missing degrades the interaction check silently."""
+    names = set()
+    if data.get("channel"):
+        try:
+            reg = json.loads((vdir.parent.parent / "visual-kit" / "registry"
+                              / "registry.json").read_text(encoding="utf-8"))
+            names |= {a["name"] for a in reg.get("assets", [])
+                      if a.get("kind") == "interaction" and a.get("name")}
+        except (OSError, ValueError, KeyError):
+            pass
+    try:
+        mani = json.loads((vdir / "assets" / "library" / "manifest.json").read_text(encoding="utf-8"))
+        names |= {e["name"] for e in mani.get("assets", [])
+                  if e.get("kind") == "interaction" and e.get("name")}
+    except (OSError, ValueError, KeyError):
+        pass
+    return names
 
 
 def bool_field_check(label, objs, field, hard):
@@ -2060,6 +2398,7 @@ def main(argv):
     vdir = Path(path).parent
     script_md = vdir / "script.md"
     chars = video_chars(data, vdir)          # C-7/C-8: this video's working cast vocabulary
+    interactions = video_interactions(data, vdir)   # the two-figure template vocabulary
 
     # S3: the VO word-timings render actually matches against (empty if not yet voiced).
     vo_manifest_path = vdir / "assets" / "voiceover.manifest.json"
@@ -2122,6 +2461,10 @@ def main(argv):
     place_plate_check("long-form", lf_shots, chars, hard)
     place_owner_check("long-form", lf_shots, suffix, hard)
     place_anchor_same_place_check("long-form", lf_shots, hard)
+    delta_entrance_check("long-form", lf_shots, chars, hard)
+    payload_last_check("long-form", lf_shots, suffix, hard)
+    lettering_route_check("long-form", lf_objs, suffix, hard)
+    interaction_cast_check("long-form", lf_objs, chars, interactions, hard)
     bool_field_check("long-form", lf_objs, "hard_cut", hard)
     bool_field_check("long-form", lf_objs, "owner_ambiguity", hard)
     action_chain_check("long-form", lf_shots, lf_text, hard)
@@ -2196,6 +2539,11 @@ def main(argv):
         place_plate_check(slabel, sshots, chars, hard)
         place_owner_check(slabel, sshots, suffix, hard)
         place_anchor_same_place_check(slabel, sshots, hard)
+        delta_entrance_check(slabel, sshots, chars, hard)
+        payload_last_check(slabel, sshots, suffix, hard)
+        lettering_route_check(slabel, sshot_objs + ([("first_frame", ff_obj)] if ff_obj else []),
+                              suffix, hard)
+        interaction_cast_check(slabel, sshot_objs, chars, interactions, hard)
         place_context_exempt_check(slabel, [("first_frame", ff_obj)] if ff_obj else [], hard)
         bool_field_check(slabel, sshot_objs, "hard_cut", hard)
         bool_field_check(slabel, sshot_objs, "owner_ambiguity", hard)

@@ -50,8 +50,15 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 > 3. **Prompt construction.** Does every backticked name exist in `registry.json`? Flag each one that does
 >    not — not automatically an error (image-gen's Pass-1 gate can approve a new asset), but an unflagged
 >    typo or a silently invented slug is. Then: is body pose, finger mechanics, or facial expression
->    written as PROSE where a registry name is the authoring act? Do the three zones hold — identity, then
->    scene then payload final? Is absence positive? Is crowd-rig text left in the prompt?
+>    written as PROSE where a registry name is the authoring act? Is absence positive? Is crowd-rig text
+>    left in the prompt?
+>    **FORCED ROW — payload ordering, on every shot, stated even when clean.** Lint proves only the
+>    lettering half (a non-delta shot with a quoted literal ends on that literal's clause). Name THIS
+>    shot's payload — the one thing the viewer must take away, lettered or not — and say whether the
+>    prompt's FINAL clause is it. A trailing "Framing: … Palette: …" after the payload is the shape to
+>    look for; so is a shot whose real payload is a staged relation or an object, where lint is silent by
+>    construction. (Mechanism: the 2026-08-04 fresh fifth broke the ordering law on 9 of its 9 non-delta
+>    text shots, every one closing on palette, while the same span of the prior file was 7/7 correct.)
 > 4. **Renderability and generator risk.** Does the shot's *meaning* depend on animation the pipeline
 >    cannot render (element motion inside a frame — walking, peeling, pouring)? The renderable set is the
 >    still + word-anchored cutout layers + changes arriving AT cuts + baked diegetic text; a beat that
@@ -92,7 +99,11 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    for a beat the script only ever calls "the managers.")
 >
 > Plan-level: **Balanced human use** — flag story-bearing people, decisions, or relationships hidden behind objects, or
-> habitual people staged where object, place, document, or mechanism is the subject; impose no share target. **Cadence taste** — flag a slow static hold with no earned progressive
+> habitual people staged where object, place, document, or mechanism is the subject; impose no share target.
+> Concrete presence is the DEFAULT on beats about people (`visual-grammar.md §1`), so a figureless frame on
+> such a beat is a finding unless the plan says what earned the absence. Report the LONGEST figureless run
+> in the plan, in seconds, whether or not you flag it — on a channel whose screen IS the cast, a 20s
+> still-life stretch is a plan-level fact the human should see, not a per-shot quibble. **Cadence taste** — flag a slow static hold with no earned progressive
 > reveal, legibility, or gravity reason, a run of conspicuously equal-duration holds, or cuts so rapid the
 > payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 4 floor). **Stage
 > grouping** — the **SEMANTIC call only**: *are these really one held set?* A long-form plan revisiting a setting

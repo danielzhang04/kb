@@ -258,10 +258,42 @@ def test_c4_the_plate_is_the_first_in_file_shot_of_the_place():
         {"id": "L60", "place": "miniscribe-boardroom", "still_prompt": "`qt-wiles` at the table."},
         {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The empty boardroom."},
         {"id": "L62", "place": "brick-co-yard", "still_prompt": "The yard at dusk."},
+        {"id": "L63", "place": "miniscribe-boardroom", "still_prompt": "The boardroom, revisited."},
     ]
     groups = {p: (plate["id"], [s["id"] for s in grp], q) for p, plate, grp, q in L.place_groups(shots)}
-    assert groups["miniscribe-boardroom"] == ("L60", ["L60", "L61"], True)
-    assert groups["brick-co-yard"] == ("L62", ["L62"], False)   # single-use, unbranded
+    assert groups["miniscribe-boardroom"] == ("L60", ["L60", "L61", "L63"], True)
+    assert groups["brick-co-yard"] == ("L62", ["L62"], False)   # single visit, unbranded
+
+
+def test_c4_a_place_qualifies_on_REVISIT_not_on_shot_count():
+    """The 2026-08-04 round-2 definition: a place RECURS when the file revisits it after
+    leaving. An unbroken single visit is a STAGE — its chain base already IS the frame every
+    later shot of the run seeds, so demanding a dedicated cast-free plate for a set the video
+    never returns to is pure generation cost (the fresh fifth's author read it this way and
+    was right). Same shot COUNT, opposite verdict, decided only by the visit pattern."""
+    one_visit = [
+        {"id": "L60", "place": "pc-store-1983", "still_prompt": "The shop counter."},
+        {"id": "L61", "place": "pc-store-1983", "still_prompt": "The shop counter, a box added."},
+    ]
+    revisited = [
+        {"id": "L60", "place": "pc-store-1983", "still_prompt": "The shop counter."},
+        {"id": "L61", "place": "brick-co-yard", "still_prompt": "The yard at dusk."},
+        {"id": "L62", "place": "pc-store-1983", "still_prompt": "The shop counter again."},
+    ]
+    assert [q for _p, _pl, _g, q in L.place_groups(one_visit)] == [False]
+    assert [q for _p, _pl, _g, q in L.place_groups(revisited)] == [True, False]
+
+
+def test_c4_place_owner_qualifies_a_single_visit_place():
+    """The one exception the revisit rule keeps: a BRANDED set records its ownership decision
+    on a cast-free plate whatever its visit count, because the sign bleeds into everything
+    that seeds the plate."""
+    shots = [
+        {"id": "L60", "place": "miniscribe-plant", "place_owner": "MINISCRIBE",
+         "still_prompt": "The floor, a board lettered 'MINISCRIBE'."},
+        {"id": "L61", "place": "miniscribe-plant", "still_prompt": "The floor, one bench bare."},
+    ]
+    assert [q for _p, _pl, _g, q in L.place_groups(shots)] == [True]
 
 
 def test_c4_new_seam_the_plate_skips_a_non_generated_first_shot():
@@ -273,10 +305,11 @@ def test_c4_new_seam_the_plate_skips_a_non_generated_first_shot():
         {"id": "L59", "place": "miniscribe-boardroom", "source": "stock",
          "still_prompt": "Stock photo of a generic boardroom."},
         {"id": "L60", "place": "miniscribe-boardroom", "still_prompt": "The empty boardroom."},
-        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The boardroom again."},
+        {"id": "L61", "place": "brick-co-yard", "still_prompt": "The yard at dusk."},
+        {"id": "L62", "place": "miniscribe-boardroom", "still_prompt": "The boardroom again."},
     ]
     groups = {p: (plate["id"], [s["id"] for s in grp], q) for p, plate, grp, q in L.place_groups(shots)}
-    assert groups["miniscribe-boardroom"] == ("L60", ["L59", "L60", "L61"], True)
+    assert groups["miniscribe-boardroom"] == ("L60", ["L59", "L60", "L62"], True)
 
 
 def test_c4_new_seam_a_place_with_no_generated_shot_has_no_plate():
@@ -296,7 +329,8 @@ def test_c4_new_seam_a_stock_first_shot_still_lets_the_generated_plate_require_n
          "still_prompt": "Stock photo, no cast."},
         {"id": "L60", "place": "miniscribe-boardroom",
          "still_prompt": "`qt-wiles` (`expr-smug`) sits at the head of the long table."},
-        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The same table, now empty."},
+        {"id": "L61", "place": "brick-co-yard", "still_prompt": "The yard at dusk."},
+        {"id": "L62", "place": "miniscribe-boardroom", "still_prompt": "The same table, now empty."},
     ]
     hard = []
     L.place_plate_check("lf", shots, CHARS, hard)
@@ -309,7 +343,8 @@ def test_c4_plant_a_qualifying_plate_carrying_named_cast():
     shots = [
         {"id": "L60", "place": "miniscribe-boardroom",
          "still_prompt": "`qt-wiles` (`expr-smug`) sits at the head of the long table."},
-        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The same table, now empty."},
+        {"id": "L61", "place": "brick-co-yard", "still_prompt": "The yard at dusk."},
+        {"id": "L62", "place": "miniscribe-boardroom", "still_prompt": "The same table, now empty."},
     ]
     hard = []
     L.place_plate_check("lf", shots, CHARS, hard)
@@ -338,7 +373,8 @@ def test_c4_a_plate_may_not_be_a_stage_delta():
     shots = [
         {"id": "L60", "place": "miniscribe-boardroom", "stage": "fear-beat", "stage_role": "Delta",
          "still_prompt": "The empty boardroom, one chair moved."},
-        {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The boardroom again."},
+        {"id": "L61", "place": "brick-co-yard", "still_prompt": "The yard at dusk."},
+        {"id": "L62", "place": "miniscribe-boardroom", "still_prompt": "The boardroom again."},
     ]
     hard = []
     L.place_plate_check("lf", shots, CHARS, hard)
