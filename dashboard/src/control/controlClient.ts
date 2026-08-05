@@ -137,6 +137,10 @@ export interface RunDto {
    *  `runRef` stays canonical and stays on the wire; it just never reaches primary UI text again. */
   displayName: string;
   shortRef: number;
+  /** The workflow definition this run was launched from, or null for an ad-hoc (Composer) run.
+   *  Joined server-side at the DTO-build site (`server/control/routes.ts#workflowRefIndex`): it is the
+   *  grouping key that files every run under its workflow, so no client surface re-derives it. */
+  workflowRef: string | null;
   proposalRef: string;
   proposalRevision: number;
   proposalHash: string;

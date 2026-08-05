@@ -13,7 +13,7 @@
  *   ── (divider, below the [+ New] menu) ──
  *   Home · Approvals(n) · Activity · Atlas(live — Atlas V1) · Terminal(live — D3.2)
  *   ── (divider) ──
- *   Workflows · Runs · Agents · Tasks · Projects · Files
+ *   Workflows · Agents · Tasks · Projects · Files
  *   ── (divider) ──
  *   Connectors · Ledgers
  *   ── pinned floor ──  Session · STOP  (a shell region in App.tsx, not a nav destination)
@@ -23,6 +23,11 @@
  * lands next wave). Terminal is LIVE as of D3.2 (the PTY pane); Atlas is LIVE as of Atlas V1 (the voice
  * worker mirror — big orb + live transcript + activity history), amending the locked entity-first IA
  * per Daniel's 2026-07-20 call (the old greyed "soon" stub is promoted, not moved).
+ *
+ * The former `pipeline` ("Runs") and `runCanvas` ("Run Canvas") destinations are GONE: a run is an
+ * execution of a workflow, not a sibling entity of one, so runs live inside `workflows` as a deep
+ * target (`{ view: 'workflows', focus: { kind: 'run' } }` — see `nav/stack.ts#focusTarget`). There is
+ * deliberately no redirect stub for either id.
  */
 
 /** A destination's build state. `live` is reachable now; `soon`/`future` render greyed + disabled. */
@@ -36,8 +41,6 @@ export type DestinationId =
   | 'atlas'
   | 'terminal'
   | 'workflows'
-  | 'pipeline'
-  | 'runCanvas'
   | 'agents'
   | 'tasks'
   | 'projects'
@@ -85,12 +88,9 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: 'entities',
     items: [
+      // Definitions AND their executions. Runs are reached by drilling into the workflow that produced
+      // them (or the "Ad-hoc" group for runs no definition owns) — never from a nav entry of their own.
       { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
-      { id: 'pipeline', label: 'Runs', icon: '⋔', status: 'live' },
-      // FYT gated-pipeline Task 5 — the live roster canvas for one selected run (mini-terminal tiles on
-      // artifact-flow lanes). Sits right after Runs: it is a monitoring/engagement view OVER a run, not
-      // a distinct entity type of its own.
-      { id: 'runCanvas', label: 'Run Canvas', icon: '⊞', status: 'live' },
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
       { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },

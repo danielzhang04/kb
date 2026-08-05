@@ -1,50 +1,63 @@
 /**
- * Workflows view — the one canonical roster of org workflow definitions.
+ * Workflows — the one surface for definitions AND their executions.
  *
- * A workflow is a reusable staged DAG stored under `orgs/<project>/workflows/`. Its detail shows the
- * compiled proposal; Launch compiles that definition into a governed run. Historic root-registry
- * entries are deliberately absent: they are not a second workflow system and must not create a second,
- * misleading "Run now" path.
+ * A workflow is a reusable staged DAG stored under `orgs/<project>/workflows/`; a run is one execution
+ * of it. They used to be three nav destinations (Workflows, Runs, Run Canvas) presenting two parallel
+ * vocabularies for the same thing. They are one destination now: this roster, a workflow's detail, and a
+ * run's detail, reached by drilling in.
+ *
+ * The roster answers what an operator scanning it actually asks — is this thing running, when did it
+ * last run, did it work. It used to key its rows on file paths and spend a whole column on governance
+ * chips while showing nothing at all about runs.
+ *
+ * Runs that no definition owns (launched from a Composer proposal) collect under one "Ad-hoc" group
+ * rather than being unreachable.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useSse } from '../lib/sseClient';
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 import { useSession } from '../lib/sessionContext';
-import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
+import { WorkflowDetail, RunRow, type WorkflowDefEntry } from './WorkflowDetail';
+import { RunDetail } from './RunDetail';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
-import { listProposalRevisions, listRuns, type ProposalRevisionMetadataDto, type RunMetadataDto } from '../control/controlClient';
-import { runsForWorkflow, WORKFLOW_COMPOSER_REF } from '../control/entityLinks';
+import { listRuns, type RunMetadataDto } from '../control/controlClient';
+import { relativeAge, runDot, runStateLabel } from '../control/runEvents';
+import { runsForWorkflow } from '../control/entityLinks';
 import type { NavTarget } from '../nav/stack';
-import { initialGovernance, UNASSIGNED_GOVERNOR, type GovernanceAgentOption, type GovernanceDraft } from './WorkflowAgentGraph';
+import type { Assignment, AssignTarget, WorkflowAssignmentOptions } from './WorkflowAgentGraph';
 import '../styles/views/workflows.css';
 import '../styles/views/entity.css';
 
-/**
- * One org workflow-definition entry from GET /api/workflows. The shape now lives with the detail view
- * that renders it in full, so the two cannot drift.
- */
+/** One org workflow-definition entry from GET /api/workflows. */
 export interface WorkflowDefsIndex {
   items: WorkflowDefEntry[];
 }
 const EMPTY_DEFS: WorkflowDefsIndex = { items: [] };
 
-/** Compact, accountable summary for the roster; the handoff network holds the stage-level detail. */
-export function governanceSummary(entry: WorkflowDefEntry): Array<{ id: string; count: number }> {
-  const counts = new Map<string, number>();
-  for (const stage of entry.stages) {
-    const id = stage.governedBy ?? UNASSIGNED_GOVERNOR;
-    counts.set(id, (counts.get(id) ?? 0) + 1);
-  }
-  return [...counts].map(([id, count]) => ({ id, count })).sort((a, b) => a.id.localeCompare(b.id));
+/** A run counts as live while something is still moving it forward. */
+export function isLiveRun(run: RunMetadataDto): boolean {
+  return run.state === 'running' || run.state === 'recovering' || run.state === 'stopping';
 }
 
-function pendingPhaseTruth(phase: string): string {
-  if (phase === 'pending-human-merge') return 'Pending human merge.';
-  if (phase === 'audit-pending') return 'Durable amendment exists; its required audit is still pending.';
-  if (phase === 'audit-failed') return 'Required audit failed; launch remains blocked.';
-  if (phase === 'prepared' || phase === 'committed' || phase === 'pushed') return 'Durable amendment recovery is required; launch remains blocked.';
-  return 'Assignment amendment state is unresolved; launch remains blocked.';
+/**
+ * Why this workflow cannot be launched right now, in plain words, or null when it can.
+ *
+ * A pending edit is a real block — the launch route refuses while one exists — so it is stated, once,
+ * without naming the amendment machinery that produces it.
+ */
+export function launchBlockReason(entry: WorkflowDefEntry): string | null {
+  if (entry.pendingAmendmentError) {
+    return 'A change to this workflow is in an unreadable state, so it cannot run until that is sorted out.';
+  }
+  const phase = entry.pendingAmendment?.phase;
+  if (!phase) return null;
+  const what = phase === 'pending-human-merge' ? 'is waiting for a human to review it'
+    : phase === 'audit-pending' ? 'is saved and its safety check is still running'
+    : phase === 'audit-failed' ? 'failed its safety check'
+    : ['prepared', 'committed', 'pushed'].includes(phase) ? 'stopped part-way and needs a human to finish it'
+    : 'is in an unclear state';
+  return `A change to this workflow ${what}, so it cannot run yet. What you see below is what it still does today.`;
 }
 
 /** One operator click gets one stable key; retries of that request cannot mint a duplicate governed run. */
@@ -57,52 +70,48 @@ function launchIdempotencyKey(ref: string, sourceHash: string, parameters: Recor
 export function Workflows({
   definitions,
   focusWorkflowId,
+  focusRunRef,
   onOpenWorkflow,
+  onOpenRun,
   onBack,
-  activeSectionId,
-  onSectionChange,
   onNavigate,
   runs: injectedRuns,
-  revisions: injectedRevisions,
+  now,
 }: {
   definitions?: WorkflowDefsIndex;
   /**
-   * arc-3 step 4 — the open definition, driven by the nav stack. Controlled-or-uncontrolled, mirroring
-   * ManagedRuns and Agents: without a controller the view keeps its own state so it stays usable and
-   * testable standalone rather than rendering an inert detail.
+   * The open entity, driven by the nav stack. Controlled-or-uncontrolled, mirroring Agents: without a
+   * controller the view keeps its own state so it stays usable and testable standalone.
    */
   focusWorkflowId?: string | null;
+  focusRunRef?: string | null;
   onOpenWorkflow?: (ref: string) => void;
+  onOpenRun?: (runRef: string) => void;
   onBack?: () => void;
-  activeSectionId?: string;
-  onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
-  /** Injected by tests; otherwise loaded from the control plane to power the workflow → runs join. */
+  /** Injected by tests; otherwise loaded from the control plane. */
   runs?: RunMetadataDto[];
-  revisions?: ProposalRevisionMetadataDto[];
+  now?: number;
 } = {}): React.JSX.Element {
   const { session, requireSession } = useSession();
   const sessionToken = session?.token;
   const [fetchedDefs, setFetchedDefs] = useState<WorkflowDefsIndex | null>(null);
+  const [runs, setRuns] = useState<RunMetadataDto[] | undefined>(injectedRuns);
   const [launchStatus, setLaunchStatus] = useState<Record<string, string>>({});
   const [launchingRefs, setLaunchingRefs] = useState<Set<string>>(() => new Set());
-  const [amendingRef, setAmendingRef] = useState<string | null>(null);
-  const [assignmentOptions, setAssignmentOptions] = useState<Record<string, NonNullable<React.ComponentProps<typeof WorkflowDetail>['assignmentOptions']>>>( {});
-  const [governanceOptions, setGovernanceOptions] = useState<Record<string, GovernanceAgentOption[]>>({});
-  const [governanceDrafts, setGovernanceDrafts] = useState<Record<string, GovernanceDraft>>({});
-  const [governanceStatus, setGovernanceStatus] = useState<Record<string, string>>({});
-  const [amendmentStatus, setAmendmentStatus] = useState<Record<string, string>>({});
-  const [pendingAmendments, setPendingAmendments] = useState<Record<string, { baseSourceHash: string; proposedSourceHash: string; branch?: string; pr?: { url?: string; number?: number }; phase: string }>>({});
   const [parameterValues, setParameterValues] = useState<Record<string, Record<string, string>>>({});
+  const [assignmentOptions, setAssignmentOptions] = useState<Record<string, WorkflowAssignmentOptions>>({});
+  const [assigningRef, setAssigningRef] = useState<string | null>(null);
+  const [assignStatus, setAssignStatus] = useState<Record<string, string>>({});
   // State rendering is asynchronous; this ref is the synchronous double-click guard and retains the
   // same idempotency key for the full lifetime of one launch intent.
   const pendingLaunches = useRef(new Map<string, string>());
-  // Uncontrolled fallback for the open definition when no nav stack is wired above this view.
-  const [localOpenRef, setLocalOpenRef] = useState<string | null>(null);
-  const [runs, setRuns] = useState<RunMetadataDto[] | undefined>(injectedRuns);
-  const [revisions, setRevisions] = useState<ProposalRevisionMetadataDto[] | undefined>(injectedRevisions);
+  // Uncontrolled fallbacks for the open entity when no nav stack is wired above this view.
+  const [localOpenWorkflow, setLocalOpenWorkflow] = useState<string | null>(null);
+  const [localOpenRun, setLocalOpenRun] = useState<string | null>(null);
   const { count: planeATick } = useSse('/events');
-  const openDefRef = onOpenWorkflow ? focusWorkflowId ?? null : localOpenRef;
+  const openDefRef = onOpenWorkflow ? focusWorkflowId ?? null : localOpenWorkflow;
+  const openRunRef = onOpenRun ? focusRunRef ?? null : localOpenRun;
 
   useEffect(() => {
     if (definitions) return;
@@ -122,71 +131,33 @@ export function Workflows({
   }, [definitions, planeATick]);
 
   /**
-   * The workflow → runs join sources. Loaded ONLY while a definition detail is open — the roster itself
-   * needs neither, and these are governed reads that would otherwise fire on every visit to this view.
+   * The runs, for the whole roster.
    *
-   * Both stay `undefined` without a session, which the detail reports as "not loaded" rather than
-   * claiming the definition has never been launched. That distinction is the whole point of the join.
+   * A governed read, so it stays `undefined` while the tab is locked — which the roster reports as "not
+   * loaded" rather than claiming a workflow has never run. That distinction is the point. Reading the
+   * list does NOT prompt for a passkey: the lock chip is the standing unlock, and only actions mint.
    */
   useEffect(() => {
-    if (!openDefRef || !sessionToken) return;
-    if (injectedRuns && injectedRevisions) return;
+    if (injectedRuns || !sessionToken) return;
     let cancelled = false;
-    Promise.all([listRuns(sessionToken), listProposalRevisions(WORKFLOW_COMPOSER_REF, sessionToken)])
-      .then(([nextRuns, nextRevisions]) => {
-        if (cancelled) return;
-        if (!injectedRuns) setRuns(nextRuns);
-        if (!injectedRevisions) setRevisions(nextRevisions);
-      })
+    listRuns(sessionToken)
+      .then((next) => { if (!cancelled) setRuns(next); })
       .catch(() => {
-        /* the Runs section keeps saying "not loaded" — never a false "never launched" */
+        /* the roster keeps saying "not loaded" — never a false "never run" */
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [openDefRef, sessionToken, injectedRuns, injectedRevisions]);
+    return () => { cancelled = true; };
+  }, [injectedRuns, sessionToken, planeATick]);
 
   const defs = definitions ?? fetchedDefs ?? EMPTY_DEFS;
-  const isPendingAmendment = (entry: WorkflowDefEntry): boolean => {
-    const pending = pendingAmendments[entry.ref];
-    return Boolean(entry.pendingAmendment || entry.pendingAmendmentError || (pending && entry.sourceHash !== pending.proposedSourceHash));
-  };
-  const pendingTruthFor = (entry: WorkflowDefEntry): string => {
-    if (entry.pendingAmendmentError) return 'Workflow amendment state is invalid; launch remains blocked.';
-    if (entry.pendingAmendment) return pendingPhaseTruth(entry.pendingAmendment.phase);
-    const pending = pendingAmendments[entry.ref];
-    return pending ? pendingPhaseTruth(pending.phase) : 'Workflow amendment state is unresolved; launch remains blocked.';
-  };
-  const launchParameters = (entry: WorkflowDefEntry): Record<string, string> => Object.fromEntries((entry.parameters ?? []).map((name) => [name, parameterValues[entry.ref]?.[name] ?? '']));
-  const parametersComplete = (entry: WorkflowDefEntry): boolean => (entry.parameters ?? []).every((name) => launchParameters(entry)[name].trim().length > 0);
-  const canLaunch = (entry: WorkflowDefEntry): boolean => entry.valid && entry.launchable !== false && !isPendingAmendment(entry) && parametersComplete(entry);
+  const defsLoaded = Boolean(definitions ?? fetchedDefs);
 
-  useEffect(() => {
-    setPendingAmendments((current) => {
-      let changed = false;
-      const next = { ...current };
-      for (const [ref, pending] of Object.entries(current)) {
-        const active = (definitions ?? fetchedDefs ?? EMPTY_DEFS).items.find((entry) => entry.ref === ref);
-        // A transient list failure/removal does not prove the PR merged.  Only a present, changed
-        // active hash can release the pending guard.
-        if (active && active.sourceHash === pending.proposedSourceHash) { delete next[ref]; changed = true; }
-      }
-      return changed ? next : current;
-    });
-  }, [definitions, fetchedDefs]);
+  const launchParameters = (entry: WorkflowDefEntry): Record<string, string> =>
+    Object.fromEntries((entry.parameters ?? []).map((name) => [name, parameterValues[entry.ref]?.[name] ?? '']));
 
   async function launchDefinition(ref: string): Promise<void> {
     const entry = defs.items.find((candidate) => candidate.ref === ref);
     if (!entry?.sourceHash) {
-      setLaunchStatus((current) => ({ ...current, [ref]: 'Refused: definition source revision is unavailable.' }));
-      return;
-    }
-    if (isPendingAmendment(entry)) {
-      setLaunchStatus((current) => ({ ...current, [ref]: `Refused: ${pendingTruthFor(entry)} The active definition remains unchanged.` }));
-      return;
-    }
-    if (!parametersComplete(entry)) {
-      setLaunchStatus((current) => ({ ...current, [ref]: 'Refused: enter every required workflow parameter.' }));
+      setLaunchStatus((current) => ({ ...current, [ref]: 'Refused: this workflow’s source revision could not be read.' }));
       return;
     }
     const parameters = launchParameters(entry);
@@ -199,7 +170,7 @@ export function Workflows({
     try {
       const token = (await requireSession())?.token;
       if (!token) {
-        setLaunchStatus((current) => ({ ...current, [ref]: 'Unlock refused.' }));
+        setLaunchStatus((current) => ({ ...current, [ref]: 'The dashboard is locked — nothing was launched.' }));
         return;
       }
       const response = await fetch(`/api/workflows/${encodeURIComponent(ref)}/launch`, {
@@ -210,7 +181,7 @@ export function Workflows({
       await invalidateSessionOnGovernedAuthFailure(response);
       const body = (await response.json()) as { runRef?: string; activationGated?: boolean; error?: string; detail?: unknown };
       const message = response.ok && body.runRef
-        ? `Run created ${body.runRef}${body.activationGated ? '; execution awaits activation' : ''}`
+        ? `Run created ${body.runRef}${body.activationGated ? '; it starts once execution is unlocked' : ''}`
         : `Refused: ${typeof body.detail === 'string' ? body.detail : body.error ?? response.status}`;
       setLaunchStatus((current) => ({ ...current, [ref]: message }));
     } catch (error) {
@@ -229,291 +200,249 @@ export function Workflows({
     if (!openDefRef || assignmentOptions[openDefRef] || typeof fetch !== 'function') return;
     let alive = true;
     fetch(`/api/workflows/${encodeURIComponent(openDefRef)}`)
-      .then((response) => response.json() as Promise<{ assignmentOptions?: NonNullable<React.ComponentProps<typeof WorkflowDetail>['assignmentOptions']>; governanceOptions?: GovernanceAgentOption[] }>)
+      .then((response) => response.json() as Promise<{ assignmentOptions?: WorkflowAssignmentOptions }>)
       .then((body) => {
-        if (!alive) return;
-        if (body.assignmentOptions) setAssignmentOptions((current) => ({ ...current, [openDefRef]: body.assignmentOptions! }));
-        if (body.governanceOptions) setGovernanceOptions((current) => ({ ...current, [openDefRef]: body.governanceOptions! }));
+        if (alive && body.assignmentOptions) {
+          setAssignmentOptions((current) => ({ ...current, [openDefRef]: body.assignmentOptions! }));
+        }
       })
-      .catch(() => { /* detail remains inspectable if choices cannot be read */ });
+      .catch(() => { /* the graph still reads; its pickers are simply not offered */ });
     return () => { alive = false; };
   }, [openDefRef, assignmentOptions]);
 
-  useEffect(() => {
-    if (!openDefRef) return;
-    const entry = defs.items.find((candidate) => candidate.ref === openDefRef);
-    if (!entry) return;
-    setGovernanceDrafts((current) => current[openDefRef] ? current : { ...current, [openDefRef]: initialGovernance(entry) });
-  }, [defs.items, openDefRef]);
-
-  async function submitGovernance(ref: string): Promise<void> {
+  /**
+   * The ONE governed write behind every picker on the graph. Its outcome is a change request that a
+   * human merges, so the wording says exactly that: nothing about the workflow moved yet.
+   */
+  async function assign(ref: string, target: AssignTarget, assignment: Assignment | null): Promise<void> {
     const entry = defs.items.find((candidate) => candidate.ref === ref);
-    const governance = governanceDrafts[ref];
-    if (!entry?.sourceHash || !governance || amendingRef) return;
+    if (!entry?.sourceHash || assigningRef) return;
     const token = (await requireSession())?.token;
-    if (!token) { setGovernanceStatus((current) => ({ ...current, [ref]: 'Unlock refused.' })); return; }
-    setAmendingRef(ref);
-    setGovernanceStatus((current) => ({ ...current, [ref]: 'Submitting ownership plan for human merge…' }));
-    try {
-      const response = await fetch(`/api/workflows/${encodeURIComponent(ref)}/governance-amendments`, {
-        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ expectedSourceHash: entry.sourceHash, governance }),
-      });
-      await invalidateSessionOnGovernedAuthFailure(response);
-      const body = await response.json() as { status?: string; baseSourceHash?: string; proposedSourceHash?: string; branch?: string; pr?: { url?: string; number?: number }; error?: string; detail?: string };
-      if (body.status === 'pending-human-merge' && body.baseSourceHash === entry.sourceHash && body.proposedSourceHash) {
-        setPendingAmendments((current) => ({ ...current, [ref]: { baseSourceHash: body.baseSourceHash!, proposedSourceHash: body.proposedSourceHash!, branch: body.branch, pr: body.pr, phase: 'pending-human-merge' } }));
-        setGovernanceStatus((current) => ({ ...current, [ref]: 'Pending human merge. The active workflow and execution routing have not changed.' }));
-      } else setGovernanceStatus((current) => ({ ...current, [ref]: `Refused: ${body.detail ?? body.error ?? response.status}` }));
-    } catch (error) {
-      setGovernanceStatus((current) => ({ ...current, [ref]: `Failed: ${error instanceof Error ? error.message : String(error)}` }));
-    } finally { setAmendingRef(null); }
-  }
-
-  async function amendAssignment(ref: string, target: { kind: 'manager' } | { kind: 'stage'; stageId: string }, assignment: { agentId: string; profileId: string } | null): Promise<void> {
-    const entry = (definitions ?? fetchedDefs ?? EMPTY_DEFS).items.find((candidate) => candidate.ref === ref);
-    if (!entry?.sourceHash || amendingRef) return;
-    const token = (await requireSession())?.token;
-    if (!token) { setAmendmentStatus((current) => ({ ...current, [ref]: 'Unlock refused.' })); return; }
-    setAmendingRef(ref);
-    setAmendmentStatus((current) => ({ ...current, [ref]: 'Submitting amendment for human merge…' }));
+    if (!token) {
+      setAssignStatus((current) => ({ ...current, [ref]: 'The dashboard is locked — nothing was changed.' }));
+      return;
+    }
+    setAssigningRef(ref);
+    setAssignStatus((current) => ({ ...current, [ref]: 'Sending the change…' }));
     try {
       const response = await fetch(`/api/workflows/${encodeURIComponent(ref)}/assignment-amendments`, {
-        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ expectedSourceHash: entry.sourceHash, target, assignment }),
       });
       await invalidateSessionOnGovernedAuthFailure(response);
-      const body = await response.json() as { ok?: boolean; status?: string; stateStatus?: string; auditStatus?: string; branch?: string; baseSourceHash?: string; proposedSourceHash?: string; pr?: { url?: string; number?: number }; error?: string; detail?: string };
+      const body = await response.json() as {
+        status?: string; stateStatus?: string; auditStatus?: string; branch?: string;
+        baseSourceHash?: string; proposedSourceHash?: string; pr?: { url?: string }; error?: string; detail?: string;
+      };
       if (body.status === 'pending-human-merge' && body.baseSourceHash === entry.sourceHash && body.proposedSourceHash) {
-        setPendingAmendments((current) => ({ ...current, [ref]: { baseSourceHash: body.baseSourceHash!, proposedSourceHash: body.proposedSourceHash!, branch: body.branch, pr: body.pr, phase: 'pending-human-merge' } }));
-        setAmendmentStatus((current) => ({ ...current, [ref]: 'Pending human merge. The active definition has not changed.' }));
-      } else setAmendmentStatus((current) => ({ ...current, [ref]: body.status === 'recovery-required' ? `Durable amendment recovery is required (${body.stateStatus ?? 'unknown state'}); launch remains blocked.` : body.auditStatus === 'failed' ? 'Required amendment audit failed; launch remains blocked.' : `Refused: ${body.detail ?? body.error ?? response.status}` }));
-    } catch (error) { setAmendmentStatus((current) => ({ ...current, [ref]: `Failed: ${error instanceof Error ? error.message : String(error)}` })); }
-    finally { setAmendingRef(null); }
+        setAssignStatus((current) => ({
+          ...current,
+          [ref]: 'Sent for review. This workflow still runs exactly as shown until a human approves the change.',
+        }));
+      } else {
+        setAssignStatus((current) => ({
+          ...current,
+          [ref]: body.status === 'recovery-required'
+            ? `The change stopped part-way (${body.stateStatus ?? 'unknown state'}) and needs a human to finish it.`
+            : body.auditStatus === 'failed'
+              ? 'The change failed its safety check and was not applied.'
+              : `Refused: ${body.detail ?? body.error ?? response.status}`,
+        }));
+      }
+    } catch (error) {
+      setAssignStatus((current) => ({ ...current, [ref]: `Failed: ${error instanceof Error ? error.message : String(error)}` }));
+    } finally {
+      setAssigningRef(null);
+    }
   }
 
   const openWorkflow = (ref: string): void => {
     if (onOpenWorkflow) onOpenWorkflow(ref);
-    else setLocalOpenRef(ref);
+    else setLocalOpenWorkflow(ref);
+  };
+  const openRun = (ref: string): void => {
+    if (onOpenRun) onOpenRun(ref);
+    else setLocalOpenRun(ref);
+  };
+  const back = (): void => {
+    if (onBack) onBack();
+    else if (localOpenRun) setLocalOpenRun(null);
+    else setLocalOpenWorkflow(null);
   };
 
-  const backToWorkflows = (): void => {
-    if (onBack) onBack();
-    else setLocalOpenRef(null);
-  };
+  // A run's own surface. It self-fetches, so this destination carries no run state of its own.
+  if (openRunRef) {
+    return (
+      <section className="v-workflows" aria-label="Workflows view">
+        <RunDetail
+          runRef={openRunRef}
+          onBack={back}
+          backLabel={openDefRef ? 'Back to the workflow' : 'All workflows'}
+          onNavigate={onNavigate}
+          now={now}
+        />
+      </section>
+    );
+  }
 
   /**
-   * The definition detail REPLACES the tables in place — same pattern as runs and agents, no new nav
-   * destination.
+   * A focused ref that is NOT in the index (a definition deleted from `workflows/`, a stale link, a
+   * back-forward into a since-removed entry) gets an EXPLICIT dead-link state naming the ref. It used to
+   * fall through to the roster: the operator clicked a link, landed on a list with no message, and an
+   * invisible extra entry sat on the nav stack with no back affordance rendered to pop it.
    *
-   * A focused ref that is NOT in the index (a definition deleted from `workflows/`, a stale `sourceTurnId`
-   * on an older run, a back-forward into a since-removed entry) gets an EXPLICIT dead-link state naming
-   * the ref, matching how a missing run is handled in `ManagedRuns`. It used to fall through to the
-   * roster: the operator clicked a link, landed on a list with no message, and an invisible extra entry
-   * sat on the nav stack with no back affordance rendered to pop it.
-   *
-   * Gated on the index having actually LOADED, not on it being non-empty — `fetchedDefs` is null until
-   * the fetch lands, and calling a definition "not registered" because the request is still in flight
-   * would be its own dishonesty.
+   * Gated on the index having actually LOADED, not on it being non-empty — calling a workflow "not
+   * registered" because the request is still in flight would be its own dishonesty.
    */
-  const defsLoaded = Boolean(definitions ?? fetchedDefs);
   const openDef = openDefRef ? defs.items.find((d) => d.ref === openDefRef) : undefined;
   if (openDefRef && !openDef && defsLoaded) {
     return (
       <section className="v-workflows" aria-label="Workflows view">
         <div className="entity-missing" data-testid="workflow-not-found">
-          <button
-            type="button"
-            className="entity-detail__back"
-            data-testid="workflow-not-found-back"
-            onClick={backToWorkflows}
-          >
+          <button type="button" className="entity-detail__back" data-testid="workflow-not-found-back" onClick={back}>
             <span aria-hidden="true">←</span> All workflows
           </button>
           <h3>This workflow is no longer registered</h3>
           <p className="mc-mono entity-missing__ref" data-testid="workflow-not-found-ref">{openDefRef}</p>
           <p className="control-help">
-            No definition with this ref is in the registry — it was most likely removed from
+            No workflow with this reference exists any more — it was most likely removed from
             <code className="mc-mono"> workflows/</code>, while runs launched from it kept the reference.
           </p>
         </div>
       </section>
     );
   }
+
   if (openDef) {
     return (
       <section className="v-workflows" aria-label="Workflows view">
         <WorkflowDetail
           entry={openDef}
-          runs={runs && revisions ? runsForWorkflow(openDef.ref, revisions, runs) : undefined}
-          activeSectionId={activeSectionId}
-          onSectionChange={onSectionChange}
+          runs={runs === undefined ? undefined : runsForWorkflow(openDef.ref, runs)}
+          now={now}
+          onOpenRun={openRun}
           onNavigate={onNavigate}
-          onBack={backToWorkflows}
+          onBack={back}
           backLabel="All workflows"
-          actions={
-            openDef.valid ? (
-              <>
-                <button
-                  type="button"
-                  className="mc-btn mc-btn--primary"
-                  disabled={!canLaunch(openDef) || launchingRefs.has(openDef.ref) || amendingRef === openDef.ref}
-                  onClick={() => void launchDefinition(openDef.ref)}
-                >
-                  Launch
-                </button>
-                {isPendingAmendment(openDef) ? (
-                  <span className="v-workflows__run-status" data-testid={`workflow-def-pending-amendment-${openDef.ref}`}>{pendingTruthFor(openDef)} The active definition remains unchanged.</span>
-                ) : !parametersComplete(openDef) ? (
-                  <span className="v-workflows__run-status">Enter all required parameters before launching.</span>
-                ) : !canLaunch(openDef) ? (
-                  <span className="v-workflows__run-status" data-testid={`workflow-def-unavailable-${openDef.ref}`}>
-                    Unavailable: {openDef.compileDetail ?? openDef.compileError ?? 'compiler refused this definition'}
-                  </span>
-                ) : null}
-                {launchStatus[openDef.ref] ? (
-                  <span className="v-workflows__run-status" data-testid={`workflow-def-status-${openDef.ref}`}>
-                    {launchStatus[openDef.ref]}
-                  </span>
-                ) : null}
-              </>
-            ) : null
-          }
-          assignmentOptions={assignmentOptions[openDef.ref]}
-          onAssignmentAmend={(target, assignment) => void amendAssignment(openDef.ref, target, assignment)}
-          amendmentStatus={openDef.pendingAmendment || openDef.pendingAmendmentError ? <span>{openDef.pendingAmendmentError ? `Required amendment state is unreadable: ${openDef.pendingAmendmentError}. Launch remains blocked.` : <>{pendingPhaseTruth(openDef.pendingAmendment!.phase)} Branch <span className="mc-mono">{openDef.pendingAmendment!.branch}</span>; proposed source hash <span className="mc-mono">{openDef.pendingAmendment!.proposedSourceHash}</span>. {openDef.pendingAmendment!.pr.url ? <a href={openDef.pendingAmendment!.pr.url}>Open pull request</a> : null} The active definition has not changed.</>}</span> : pendingAmendments[openDef.ref] ? <span>{pendingPhaseTruth(pendingAmendments[openDef.ref].phase)} Branch <span className="mc-mono">{pendingAmendments[openDef.ref].branch ?? 'workflow amendment branch'}</span>; proposed source hash <span className="mc-mono">{pendingAmendments[openDef.ref].proposedSourceHash}</span>. {pendingAmendments[openDef.ref].pr?.url ? <a href={pendingAmendments[openDef.ref].pr!.url}>Open pull request</a> : null} The active definition has not changed.</span> : amendmentStatus[openDef.ref] ?? null}
           parameterValues={parameterValues[openDef.ref] ?? {}}
-          onParameterChange={(name, value) => setParameterValues((current) => ({ ...current, [openDef.ref]: { ...current[openDef.ref], [name]: value } }))}
-          governanceOptions={governanceOptions[openDef.ref] ?? []}
-          governanceDraft={governanceDrafts[openDef.ref] ?? initialGovernance(openDef)}
-          onGovernanceDraftChange={(draft) => setGovernanceDrafts((current) => ({ ...current, [openDef.ref]: draft }))}
-          onGovernanceSubmit={() => void submitGovernance(openDef.ref)}
-          governanceDirty={JSON.stringify(governanceDrafts[openDef.ref] ?? initialGovernance(openDef)) !== JSON.stringify(initialGovernance(openDef))}
-          governanceReadOnly={isPendingAmendment(openDef) || amendingRef === openDef.ref}
-          governanceStatus={governanceStatus[openDef.ref] ?? null}
+          onParameterChange={(name, value) => setParameterValues((current) => ({
+            ...current, [openDef.ref]: { ...current[openDef.ref], [name]: value },
+          }))}
+          onLaunch={() => void launchDefinition(openDef.ref)}
+          launching={launchingRefs.has(openDef.ref)}
+          launchStatus={launchStatus[openDef.ref] ?? null}
+          blockedReason={launchBlockReason(openDef)}
+          assignmentOptions={assignmentOptions[openDef.ref] ?? null}
+          onAssign={(target, assignment) => void assign(openDef.ref, target, assignment)}
+          assignBusy={assigningRef === openDef.ref}
+          assignStatus={assignStatus[openDef.ref] ?? null}
         />
       </section>
     );
   }
 
+  const runsByWorkflow = (ref: string): RunMetadataDto[] => runs === undefined ? [] : runsForWorkflow(ref, runs);
+  const knownRefs = new Set(defs.items.map((entry) => entry.ref));
+  const adHocRuns = (runs ?? [])
+    .filter((run) => run.workflowRef === null || !knownRefs.has(run.workflowRef))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
   return (
     <section className="v-workflows" aria-label="Workflows view">
       <header className="v-workflows__head">
         <h2 className="v-workflows__title">Workflows</h2>
-        <p className="v-workflows__lede">
-          Reusable staged DAG definitions that compile to governed runs. Live instances appear in Runs.
-        </p>
       </header>
 
       {defs.items.length === 0 ? (
         <div className="v-workflows__empty" data-testid="workflows-empty">
-          <h3 className="v-workflows__empty-title">No org workflow definitions found</h3>
+          <h3 className="v-workflows__empty-title">No workflows yet</h3>
           <p className="v-workflows__empty-body">
-            A workflow is a reusable staged DAG declared under
-            <code className="mc-mono"> orgs/&lt;project&gt;/workflows/</code>. Add a definition there and it
-            appears here with its validation state and compiled stage preview.
-          </p>
-          <p className="v-workflows__empty-sub">
-            Launch compiles a valid definition into a governed run; its live stage graph appears in Runs.
+            A workflow is declared under <code className="mc-mono">orgs/&lt;project&gt;/workflows/</code>.
+            Add one there and it appears here, ready to run.
           </p>
         </div>
       ) : (
-        <div className="v-workflows__defs" data-testid="workflow-defs">
-          <p className="v-workflows__defs-lede">
-            Definitions under <code className="mc-mono">orgs/&lt;project&gt;/workflows/</code> compile to governed proposals.
-            Launch publishes canonical cards through the control plane; execution awaits runtime activation.
-          </p>
-          <table className="v-workflows__table">
-            <thead>
-              <tr>
-                <th>Definition</th>
-                <th>Profile</th>
-                <th>Governance</th>
-                <th>Valid</th>
-                <th>Launch</th>
-              </tr>
-            </thead>
-            <tbody>
-              {defs.items.map((d) => (
+        <table className="v-workflows__table" data-testid="workflow-defs">
+          <thead>
+            <tr>
+              <th>Workflow</th>
+              <th>Project</th>
+              <th>Last run</th>
+              <th>Runs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {defs.items.map((d) => {
+              const workflowRuns = runsByWorkflow(d.ref);
+              const latest = workflowRuns[0];
+              const liveCount = workflowRuns.filter(isLiveRun).length;
+              const needsYou = workflowRuns.reduce((total, run) => total + run.openHumanRequestCount, 0);
+              return (
                 <tr key={d.ref} className="v-workflows__row" data-testid={`workflow-def-${d.ref}`}>
                   <td className="v-workflows__cell-id">
-                    {/* The definition name opens its detail. A button, not a row handler: the Launch
-                     *  control in this same row is a governed write and must keep its own click. */}
                     <div
                       className="v-workflows__open"
                       data-testid={`workflow-open-${d.ref}`}
-                      aria-label={`Open ${d.displayName} detail`}
-                      /* The definition's file path is technical detail, not its identity: it moves to
-                       * the row tooltip so the workflow's own name is the only primary text here. */
+                      aria-label={`Open ${d.displayName}`}
+                      /* The file path is technical detail, not this workflow's identity: it stays in the
+                       * row tooltip so the workflow's own name is the only primary text here. */
                       title={d.path}
                       {...entityRowProps(() => openWorkflow(d.ref))}
                     >
                       <span className="v-workflows__wf-name">
                         <EntityName kind="workflow" id={d.ref} displayName={d.displayName} shortRef={d.shortRef} />
                       </span>
+                      {d.valid && d.launchable !== false ? null : (
+                        <span className="v-workflows__flag" data-testid={`workflow-flag-${d.ref}`}>needs a fix</span>
+                      )}
                     </div>
                   </td>
-                  <td className="v-workflows__cell-profile mc-mono">{d.profile ?? '—'}</td>
-                  <td className="v-workflows__cell-stages">
-                    {d.valid ? (
-                      <div className="v-workflows__governance-summary" data-testid={`workflow-governance-summary-${d.ref}`}>
-                        {d.governedBy ? <span className="entity-chip mc-mono">governor: {d.governedBy}</span> : <span className="entity-chip">no workflow governor</span>}
-                        {governanceSummary(d).map(({ id, count }) => (
-                          <span key={id} className="entity-chip mc-mono">{id === UNASSIGNED_GOVERNOR ? 'unassigned' : id}: {count}</span>
-                        ))}
-                      </div>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="v-workflows__cell-valid">
-                    <span
-                      className={`mc-status-dot mc-status-dot--${d.valid ? 'running' : 'error'}`}
-                      aria-hidden="true"
-                    />
-                    <span className="v-workflows__status-label">{d.valid ? 'valid' : 'invalid'}</span>
-                  </td>
-                  <td className="v-workflows__cell-run">
-                    {d.valid ? (
+                  <td className="v-workflows__cell-profile mc-mono">{d.project}</td>
+                  <td className="v-workflows__cell-latest" data-testid={`workflow-latest-${d.ref}`}>
+                    {runs === undefined ? (
+                      <span className="v-workflows__muted">not loaded</span>
+                    ) : latest ? (
                       <>
-                        <button
-                          type="button"
-                          className="mc-btn mc-btn--quiet"
-                          disabled={!canLaunch(d) || launchingRefs.has(d.ref) || amendingRef === d.ref}
-                          onClick={() => void launchDefinition(d.ref)}
-                        >
-                          Launch
-                        </button>
-                        {(d.parameters ?? []).length > 0 ? (
-                          <span className="v-workflows__not-runnable">Open detail to enter parameters</span>
-                        ) : isPendingAmendment(d) ? (
-                          <span className="v-workflows__not-runnable">{pendingTruthFor(d)}</span>
-                        ) : !canLaunch(d) ? (
-                          <span className="v-workflows__not-runnable" data-testid={`workflow-def-unavailable-${d.ref}`}>
-                            {d.compileDetail ?? d.compileError ?? 'Compiler refused'}
-                          </span>
-                        ) : null}
-                        {launchStatus[d.ref] ? (
-                          <span className="v-workflows__run-status" data-testid={`workflow-def-status-${d.ref}`}>
-                            {launchStatus[d.ref]}
-                          </span>
-                        ) : null}
+                        <span className={`mc-status-dot mc-status-dot--${runDot(latest.state)}`} aria-hidden="true" />
+                        <span className="v-workflows__status-label">{runStateLabel(latest.state)}</span>
+                        <span className="mc-mono v-workflows__muted">{relativeAge(latest.updatedAt, now)}</span>
                       </>
                     ) : (
-                      <span className="v-workflows__not-runnable" title={d.detail ?? undefined}>Invalid</span>
+                      <span className="v-workflows__muted">never run</span>
+                    )}
+                  </td>
+                  <td className="v-workflows__cell-counts mc-mono" data-testid={`workflow-counts-${d.ref}`}>
+                    {runs === undefined ? '—' : (
+                      <>
+                        {workflowRuns.length}
+                        {liveCount ? <span className="v-workflows__live" data-testid={`workflow-live-${d.ref}`}>
+                          <span className="mc-status-dot mc-status-dot--running" aria-hidden="true" /> {liveCount} live
+                        </span> : null}
+                        {needsYou ? <span className="v-workflows__needs-you"> · {needsYou} need you</span> : null}
+                      </>
                     )}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
       )}
 
-      <p className="v-workflows__runs-note" data-testid="workflows-runs-note">
-        Saving a definition does not launch it. Launch compiles a valid staged DAG into a governed run;
-        Runs shows its live stage graph.
-      </p>
+      {adHocRuns.length ? (
+        <section className="v-workflows__adhoc" aria-label="Ad-hoc runs" data-testid="workflows-adhoc">
+          <h3 className="entity-block__title">Ad-hoc</h3>
+          <p className="entity-note">Runs that no workflow owns — started straight from a plan.</p>
+          <ol className="entity-list">
+            {adHocRuns.map((run) => (
+              <li key={run.runRef}>
+                <RunRow run={run} now={now} onOpen={openRun} />
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
     </section>
   );
 }

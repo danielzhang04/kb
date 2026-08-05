@@ -2,10 +2,10 @@
  * ============================================================================
  * WORKFLOWS view (U3) — registered reusable definition artifacts
  * ============================================================================
- * The designed EMPTY state is the centrepiece (the live repo has no workflows/
- * registry yet), so it reads calm and explanatory — never an error. A dense
- * table renders when workflows exist; a small note points launched queue-card
- * dependency graphs to the separate Runs view.
+ * The designed EMPTY state is the centrepiece (the live repo may have no
+ * workflows/ registry yet), so it reads calm and explanatory — never an error.
+ * A dense table renders when workflows exist, keyed on the workflow name and
+ * what its runs are doing — never on a file path.
  *
  * Tokens only (docs/design-brief.md §A–F); dark default, light remap carries
  * via var(). Signature: hairline borders, mono tabular-nums for ids/paths, one
@@ -34,12 +34,6 @@
   font-size: var(--text-xl);
   font-weight: 600;
   line-height: 1.2;
-}
-
-.v-workflows__lede {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
 }
 
 /* ---- Designed empty state (calm, explanatory — never an error) --------- */
@@ -72,12 +66,6 @@
   border-radius: var(--radius-sm);
   padding: 0.05em 0.35em;
   color: var(--fg-primary);
-}
-
-.v-workflows__empty-sub {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--fg-faint);
 }
 
 /* ---- Populated: dense table ------------------------------------------- */
@@ -126,12 +114,6 @@
   white-space: nowrap;
 }
 
-.v-workflows__cell-path {
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
-  word-break: break-all;
-}
-
 /* Workflow name (primary) + its mono id (secondary, only shown when it differs from the name). */
 .v-workflows__wf-name {
   color: var(--fg-primary);
@@ -165,49 +147,61 @@
   outline-offset: -1px;
 }
 
-.v-workflows__wf-id {
-  margin-left: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-}
-
-.v-workflows__cell-status {
-  white-space: nowrap;
-}
-
 .v-workflows__status-label {
-  margin-left: var(--space-2);
   font-size: var(--text-sm);
   color: var(--fg-dim);
 }
 
-/* ---- Relationship to launched runs ------------------------------------ */
-.v-workflows__runs-note {
-  margin: 0;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+/* ---- Run columns ------------------------------------------------------- */
+.v-workflows__cell-latest,
+.v-workflows__cell-counts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
   font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--fg-faint);
 }
 
-.v-workflows__cell-run {
-  min-width: 180px;
+.v-workflows__muted { color: var(--fg-faint); font-size: var(--text-xs); }
+
+/* Amber = the operator is what these runs are waiting for. Data-encoding, not decoration. */
+.v-workflows__needs-you { color: var(--warning); font-size: var(--text-xs); }
+
+.v-workflows__live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--fg-dim);
 }
 
-.v-workflows__run-status,
-.v-workflows__not-runnable {
-  display: block;
-  margin-top: 4px;
+.v-workflows__flag {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  color: var(--error);
+  font-size: var(--text-xs);
+}
+
+/* The launch outcome line, under the Launch button in the workflow header. */
+.v-workflows__run-status {
   color: var(--fg-faint);
   font-size: var(--text-xs);
 }
 
-/* ---- Agent handoff network ------------------------------------------- */
+/* ---- Runs no workflow owns -------------------------------------------- */
+.v-workflows__adhoc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ---- The workflow graph ------------------------------------------------
+ * The graph IS the surface now, so it gets the full width. The inspector column
+ * it used to sit beside is gone: a node carries its own steps and their pickers,
+ * so nothing is left to inspect elsewhere. */
 .v-workflow-network {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
-  gap: var(--space-4);
   min-width: 0;
 }
 
@@ -247,18 +241,9 @@
   stroke-width: 1;
 }
 
-.v-workflow-network__canvas:focus-within,
-.v-workflow-network__inspector:focus-within {
+.v-workflow-network__canvas:focus-within {
   outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
-}
-
-.v-workflow-network__inspector {
-  min-width: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
 }
 
 .v-workflow-agent {
@@ -268,15 +253,13 @@
   border-left: 2px solid transparent;
   border-radius: var(--radius-md);
   background: var(--bg-panel);
-  cursor: pointer;
 }
 
-.v-workflow-agent--selected { border-left-color: var(--accent-strong); background: var(--accent-quiet); }
 .v-workflow-agent--unassigned { border-style: dashed; }
 .v-workflow-agent__handle { opacity: 0; pointer-events: none; }
-.v-workflow-agent__head, .v-workflow-agent__stages, .v-workflows__governance-summary { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
-.v-workflow-agent__head { justify-content: space-between; margin-bottom: var(--space-2); }
-.v-workflow-agent__inspect {
+.v-workflow-agent__head { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); }
+.v-workflow-agent__stages { display: flex; flex-direction: column; gap: var(--space-1); }
+.v-workflow-agent__open {
   border: 0;
   padding: 0.15rem 0.3rem;
   color: var(--fg-dim);
@@ -285,35 +268,33 @@
   font-size: var(--text-xs);
   cursor: pointer;
 }
-.v-workflow-agent__inspect:hover { color: var(--fg-primary); }
+.v-workflow-agent__open:hover { color: var(--fg-primary); }
+
+/* One step and the picker that decides who runs it. The picker IS the governed write. */
 .v-workflow-agent__stage {
-  display: inline-flex;
-  gap: var(--space-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
   max-width: 100%;
+  padding: 0.2rem 0.35rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 0.2rem 0.35rem;
   color: var(--fg-primary);
   background: var(--bg-elevated);
-  cursor: grab;
+  font-size: var(--text-xs);
 }
-.v-workflow-agent__stage:focus-visible, .v-workflow-agent__inspect:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
-.v-workflow-agent__stage:active { cursor: grabbing; }
-.v-workflow-network__handoffs { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
-.v-workflow-network__handoffs h5, .v-workflow-network__handoffs p { margin: 0 0 var(--space-1); }
-.v-workflow-network__handoffs .mc-mono { overflow-wrap: anywhere; }
-.v-workflow-network__stage-detail { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
-.v-workflow-network__stage-detail h5, .v-workflow-network__stage-detail p { margin: 0 0 var(--space-1); }
-.v-workflow-network__actions { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; margin-top: var(--space-3); }
-.v-workflows__governance-summary { font-size: var(--text-xs); }
-.v-workflows__governance-summary .entity-chip { white-space: nowrap; }
+
+.v-workflow-agent__stage-name { min-width: 0; overflow-wrap: anywhere; }
+.v-workflow-agent__stage select { max-width: 12rem; font: inherit; font-size: var(--text-xs); }
+.v-workflow-agent__unavailable { color: var(--fg-faint); font-size: var(--text-xs); }
+.v-workflow-agent__open:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 
 @media (max-width: 820px) {
-  .v-workflow-network { grid-template-columns: 1fr; }
   .v-workflow-network__canvas { min-height: 25rem; }
   .v-workflow-agent { width: min(19rem, calc(100vw - 5rem)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .v-workflows__row, .v-workflow-agent, .v-workflow-agent__stage { transition: none; }
+  .v-workflows__row { transition: none; }
 }

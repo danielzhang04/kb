@@ -1,26 +1,32 @@
 /**
- * arc-3 step 4 — the workflow-definition detail, on the shared {@link EntityDetail} shell.
+ * The workflow detail — one graph, one Launch, one list of runs.
  *
- * A workflow is a reusable DEFINITION; a run is one execution instance. They are distinct entities with
- * distinct nav destinations, but they render the same `kb.plan-proposal/v1` structure — one as a plan,
- * one as a realized state machine — which is exactly why they share this shell.
+ * A workflow is a reusable definition; a run is one execution of it. Both live in this destination, so
+ * this view answers exactly three questions and pushes everything else behind a fold:
+ *   - what does this workflow do, and who runs each step (the graph — and where you change it);
+ *   - can I run it right now (one button, with any inputs it declares beside it);
+ *   - what has it done (its runs, live and past).
  *
- * What this view makes visible that the two dense tables did not:
- *   - `detail`, the validation failure reason, which existed only as an invisible `title=` tooltip on
- *     the word "Invalid". A definition could be broken and the operator had no way to read why.
- *   - definition-level `riskTier`, in the DTO and never rendered.
- *   - the compiled `proposalId` / `contentHash`, and the FULL compiled stages (`dependsOn`, `workOrder`,
- *     `scope`) which the list endpoint's four-field stage preview omits.
- *   - **Runs launched from this definition** — the join that makes Launch's `runRef` stop being an
- *     inert string, via the un-dropped `sourceTurnId` (see `control/entityLinks.ts`).
+ * The five-tab layout it replaces (Agents / Overview / Stages / Runs / Compiled) split those three
+ * answers across five clicks and spoke in engine vocabulary — "compiled proposal", "proposal revision",
+ * "pre-launch assignment amendments", a workflow-governor dropdown with its own submit button. The
+ * governor plan was compile-neutral bookkeeping: it never decided who ran anything. It is gone, and the
+ * only editing surface left is the per-agent picker on the graph, which posts the SAME governed
+ * assignment write the old form did.
  */
 import { useEffect, useState } from 'react';
 import type { ProposalRoutingDto, ProposalStageDto, ResolvedAgentAssignmentDto, RunMetadataDto } from '../control/controlClient';
+import { relativeAge, runDot, runStateLabel } from '../control/runEvents';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
 import { EntityDetail, type DetailSection } from '../entity/EntityDetail';
 import type { NavTarget } from '../nav/stack';
-import { WorkflowAgentGraph, type GovernanceAgentOption, type GovernanceDraft } from './WorkflowAgentGraph';
+import {
+  WorkflowAgentGraph,
+  type AssignTarget,
+  type Assignment,
+  type WorkflowAssignmentOptions,
+} from './WorkflowAgentGraph';
 import '../styles/views/entity.css';
 
 /** One definition entry from `GET /api/workflows` (mirrors `server/workflows/routes.ts`). */
@@ -43,13 +49,13 @@ export interface WorkflowDefEntry {
   governanceProblems?: string[];
   /** Required string parameters declared by the immutable workflow definition. */
   parameters?: string[];
-  manager?: { agentId: string; profileId: string } | null;
+  manager?: Assignment | null;
   stageCount: number;
   riskTier: string | null;
   stages: Array<{
     id: string; title?: string; action: string; target: string; riskTier: string; dependsOn?: string[];
     governedBy?: string | null;
-    declaredAssignment?: { agentId: string; profileId: string } | null;
+    declaredAssignment?: Assignment | null;
     review?: { subjectStageId: string; maxCreatorReworks: number } | null;
     completionGate?: { id: string; kind: 'approval'; requiresReview: 'pass' } | null;
   }>;
@@ -76,34 +82,31 @@ export interface WorkflowDetailProps {
   /** Injected by tests; otherwise self-fetched from the per-definition route. */
   compiled?: WorkflowCompiled | null;
   /**
-   * Runs launched from this definition, joined by the caller through `sourceTurnId`. `undefined` means
-   * not loaded (no cockpit session), which reads differently from `[]` and is worded differently.
+   * This workflow's runs, newest first. `undefined` means not loaded (the tab is locked), which reads
+   * differently from `[]` and is worded differently.
    */
   runs?: RunMetadataDto[];
-  activeSectionId?: string;
-  onSectionChange?: (id: string) => void;
+  /** Injectable clock so run ages are deterministic under test. */
+  now?: number;
+  onOpenRun?: (runRef: string) => void;
   onNavigate?: (target: NavTarget) => void;
   onBack?: () => void;
   backLabel?: string;
-  /** The governed Launch control, passed in so this view stays presentational. */
-  actions?: React.ReactNode;
-  /** Server-derived assignment choices only; this view never infers routing from declarations. */
-  assignmentOptions?: { manager: AssignmentChoices; stages: Record<string, AssignmentChoices> } | null;
-  onAssignmentAmend?: (target: { kind: 'manager' } | { kind: 'stage'; stageId: string }, assignment: { agentId: string; profileId: string } | null) => void;
-  amendmentStatus?: React.ReactNode;
-  /** Values stay in the owner view so opening detail never changes launch intent. */
+  /** Inputs the definition declares. Values live in the owner view so opening detail never changes intent. */
   parameterValues?: Record<string, string>;
   onParameterChange?: (name: string, value: string) => void;
-  governanceOptions?: GovernanceAgentOption[];
-  governanceDraft?: GovernanceDraft;
-  onGovernanceDraftChange?: (draft: GovernanceDraft) => void;
-  onGovernanceSubmit?: () => void;
-  governanceDirty?: boolean;
-  governanceReadOnly?: boolean;
-  governanceStatus?: React.ReactNode;
+  onLaunch?: () => void;
+  launching?: boolean;
+  /** Outcome of the last launch attempt, already in plain words. */
+  launchStatus?: string | null;
+  /** Why Launch is refused right now, in plain words, or null when it can run. */
+  blockedReason?: string | null;
+  /** Server-derived assignment choices only; this view never infers routing from declarations. */
+  assignmentOptions?: WorkflowAssignmentOptions | null;
+  onAssign?: (target: AssignTarget, assignment: Assignment | null) => void;
+  assignBusy?: boolean;
+  assignStatus?: React.ReactNode;
 }
-
-interface AssignmentChoices { options: Array<{ agentId: string; profileId: string }>; unavailable: string | null; }
 
 /**
  * Risk tier as a mono chip. Tier colours are a sanctioned data-encoding taxonomy, but tier is ALSO
@@ -113,32 +116,36 @@ function TierChip({ tier }: { tier: string }): React.JSX.Element {
   return <span className={`entity-tier entity-tier--${tier.toLowerCase()} mc-mono`}>{tier}</span>;
 }
 
-function AssignmentRouting({
-  declared,
-  effective,
-  unavailableDetail,
-  testId,
+/** One run row, shared by this view's Runs list and the Workflows roster's Ad-hoc group. */
+export function RunRow({
+  run,
+  now,
+  onOpen,
 }: {
-  declared: { agentId: string; profileId: string } | null | undefined;
-  effective: (ProposalRoutingDto & { assignment?: ResolvedAgentAssignmentDto }) | undefined;
-  unavailableDetail?: string | null;
-  testId: string;
+  run: RunMetadataDto;
+  now?: number;
+  onOpen?: (runRef: string) => void;
 }): React.JSX.Element {
   return (
-    <div className="entity-note" data-testid={testId}>
-      <p>
-        Declared assignment: <span className="mc-mono">{declared ? `${declared.agentId} · ${declared.profileId}` : 'unassigned'}</span>
-      </p>
-      {effective ? (
-        <p>
-          Effective immutable routing: <span className="mc-mono">{effective.runtime}/{effective.model}</span>
-          {effective.assignment ? <> · declaration <span className="mc-mono">{effective.assignment.declarationHash}</span></> : null}
-        </p>
-      ) : unavailableDetail ? (
-        <p>Effective routing unavailable: {unavailableDetail}</p>
-      ) : (
-        <p>Effective routing has not been compiled.</p>
-      )}
+    <div
+      className="entity-row entity-row--link"
+      data-testid={`workflow-run-${run.runRef}`}
+      aria-disabled={!onOpen || undefined}
+      {...entityRowProps(() => onOpen?.(run.runRef))}
+    >
+      <span className="entity-row__main">
+        <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} />
+      </span>
+      <span className="entity-row__meta">
+        <span className={`mc-status-dot mc-status-dot--${runDot(run.state)}`} aria-hidden="true" />
+        {runStateLabel(run.state)}
+      </span>
+      {run.openHumanRequestCount > 0 ? (
+        <span className="entity-row__meta" data-testid={`workflow-run-${run.runRef}-needs-you`}>
+          {run.openHumanRequestCount} waiting on you
+        </span>
+      ) : null}
+      <span className="mc-mono entity-row__meta">{relativeAge(run.updatedAt, now)}</span>
     </div>
   );
 }
@@ -147,30 +154,27 @@ export function WorkflowDetail({
   entry,
   compiled: injectedCompiled,
   runs,
-  activeSectionId,
-  onSectionChange,
+  now,
+  onOpenRun,
   onNavigate,
   onBack,
   backLabel,
-  actions,
-  assignmentOptions,
-  onAssignmentAmend,
-  amendmentStatus,
   parameterValues = {},
   onParameterChange,
-  governanceOptions = [],
-  governanceDraft,
-  onGovernanceDraftChange,
-  onGovernanceSubmit,
-  governanceDirty = false,
-  governanceReadOnly = false,
-  governanceStatus,
+  onLaunch,
+  launching = false,
+  launchStatus,
+  blockedReason,
+  assignmentOptions,
+  onAssign,
+  assignBusy = false,
+  assignStatus,
 }: WorkflowDetailProps): React.JSX.Element {
   const [fetched, setFetched] = useState<WorkflowCompiled | null>(injectedCompiled ?? null);
 
   /**
    * The compiled preview is DECORATION over the list entry: the detail is fully readable without it, so
-   * a failure here degrades the Compiled and Stages sections rather than blocking the view.
+   * a failure here degrades the technical fold rather than blocking the view.
    */
   useEffect(() => {
     if (injectedCompiled !== undefined || typeof fetch !== 'function') return;
@@ -178,24 +182,26 @@ export function WorkflowDetail({
     fetch(`/api/workflows/${encodeURIComponent(entry.ref)}`)
       .then((r) => r.json() as Promise<{ compiled: WorkflowCompiled | null }>)
       .then((d) => { if (alive) setFetched(d?.compiled ?? null); })
-      .catch(() => { /* compiled sections degrade; the definition still reads */ });
+      .catch(() => { /* the technical fold degrades; the workflow still reads */ });
     return () => { alive = false; };
   }, [entry.ref, injectedCompiled]);
 
   const compiled = injectedCompiled !== undefined ? injectedCompiled : fetched;
-  // Prefer the compiled stages (dependsOn, workOrder, scope); fall back to the list's four-field preview.
   const compiledStages = compiled?.ok ? compiled.stages ?? [] : [];
-  const compilerFailure = !entry.valid ? null : (entry.launchable === false ? entry.compileDetail : compiled?.ok === false ? compiled.detail : null);
+  const compilerFailure = !entry.valid ? null
+    : (entry.launchable === false ? entry.compileDetail : compiled?.ok === false ? compiled.detail : null);
+  const parameters = entry.parameters ?? [];
+  const parametersMissing = parameters.some((name) => (parameterValues[name] ?? '').trim() === '');
+  const canLaunch = Boolean(onLaunch) && entry.valid && entry.launchable !== false
+    && !blockedReason && !parametersMissing && !launching;
 
-  const overview = (
+  const body = (
     <>
-      {/* The reason a definition is invalid was previously reachable only by hovering the word
-       *  "Invalid" — a tooltip is not a way to deliver a validation failure. */}
       {entry.valid ? null : (
-        <section className="entity-undeclared" data-testid="workflow-invalid" aria-label="Definition is invalid">
+        <section className="entity-undeclared" data-testid="workflow-invalid" aria-label="This workflow cannot run">
           <p className="entity-undeclared__head">
-            <span className="entity-undeclared__tag mc-mono">invalid</span>
-            This definition does not compile and cannot be launched.
+            <span className="entity-undeclared__tag mc-mono">needs a fix</span>
+            This workflow does not read correctly, so it cannot run.
           </p>
           <p className="entity-undeclared__body" data-testid="workflow-invalid-detail">
             {entry.detail ?? 'No reason was reported by the validator.'}
@@ -204,304 +210,193 @@ export function WorkflowDetail({
       )}
 
       {compilerFailure ? (
-        <section className="entity-undeclared" data-testid="workflow-compile-unavailable" aria-label="Workflow cannot launch">
+        <section className="entity-undeclared" data-testid="workflow-compile-unavailable" aria-label="This workflow cannot run">
           <p className="entity-undeclared__head">
-            <span className="entity-undeclared__tag mc-mono">unavailable</span>
-            This syntactically valid definition cannot be launched.
+            <span className="entity-undeclared__tag mc-mono">cannot run</span>
+            This workflow reads correctly but cannot be started.
           </p>
           <p className="entity-undeclared__body">{compilerFailure}</p>
         </section>
       ) : null}
 
-      <section className="entity-block" aria-label="Definition">
-        <h3 className="entity-block__title">Definition</h3>
-        <dl className="entity-kv" data-testid="workflow-facts">
-          <div className="entity-kv__row">
-            <dt>Project</dt>
-            <dd className="mc-mono">{entry.project}</dd>
-          </div>
-          <div className="entity-kv__row">
-            <dt>Path</dt>
-            <dd className="mc-mono">{entry.path}</dd>
-          </div>
-          <div className="entity-kv__row">
-            <dt>Workflow tool profile</dt>
-            <dd className="mc-mono">{entry.profile ?? <span className="entity-empty-value">—</span>}</dd>
-          </div>
-          <div className="entity-kv__row">
-            {/* Definition-level risk tier: in the DTO since D15 and rendered nowhere until now. */}
-            <dt>Highest tier</dt>
-            <dd>{entry.riskTier ? <TierChip tier={entry.riskTier} /> : <span className="entity-empty-value">—</span>}</dd>
-          </div>
-          <div className="entity-kv__row">
-            <dt>Stages</dt>
-            <dd className="mc-mono">{entry.stageCount}</dd>
-          </div>
-        </dl>
-      </section>
+      {blockedReason ? (
+        <p className="entity-note" role="status" data-testid="workflow-blocked">{blockedReason}</p>
+      ) : null}
 
-      <section className="entity-block" aria-label="Manager assignment">
-        <h3 className="entity-block__title">Manager assignment</h3>
-        <AssignmentRouting
-          testId="workflow-manager-routing"
-          declared={entry.manager}
-          effective={compiled?.ok ? compiled.manager : undefined}
-          unavailableDetail={compilerFailure}
+      <section className="entity-block" aria-label="Who runs what">
+        <h3 className="entity-block__title">Who runs what</h3>
+        <WorkflowAgentGraph
+          entry={entry}
+          assignmentOptions={assignmentOptions}
+          onAssign={onAssign}
+          onOpenAgent={(agentId) => onNavigate?.({ view: 'agents', focus: { kind: 'agent', id: agentId } })}
+          readOnly={assignBusy || Boolean(blockedReason)}
         />
+        {assignStatus ? (
+          <p className="entity-note" role="status" data-testid="workflow-assign-status">{assignStatus}</p>
+        ) : null}
       </section>
 
-      <section className="entity-block" aria-label="Assignment amendments">
-        <h3 className="entity-block__title">Pre-launch assignment amendments</h3>
-        <p className="entity-note">Active source hash: <span className="mc-mono" data-testid="workflow-source-hash">{entry.sourceHash ?? 'unavailable'}</span></p>
-        <AssignmentAmendmentRow label="Manager" target={{ kind: 'manager' }} declared={entry.manager} choices={assignmentOptions?.manager} onAmend={onAssignmentAmend} readOnly={governanceReadOnly} />
-        {entry.stages.map((stage) => <AssignmentAmendmentRow key={stage.id} label={`Stage ${stage.id}`} target={{ kind: 'stage', stageId: stage.id }} declared={stage.declaredAssignment} choices={assignmentOptions?.stages[stage.id]} onAmend={onAssignmentAmend} readOnly={governanceReadOnly} />)}
-        {amendmentStatus ? <p className="entity-note" data-testid="workflow-amendment-status">{amendmentStatus}</p> : null}
-      </section>
-
-      {(entry.parameters ?? []).length > 0 ? <section className="entity-block" aria-label="Launch parameters">
-        <h3 className="entity-block__title">Launch parameters</h3>
-        <p className="entity-note">These values are sent only in the governed launch request.</p>
-        {(entry.parameters ?? []).map((name) => <label key={name} className="entity-note">{name}<input aria-label={`Workflow parameter ${name}`} value={parameterValues[name] ?? ''} onChange={(event) => onParameterChange?.(name, event.target.value)} /></label>)}
-      </section> : null}
-
-      <p className="entity-note">
-        Registering a definition does not launch it. Launching compiles it to a governed proposal, which
-        is approved and then executed as a run.
-      </p>
-    </>
-  );
-
-  const stages = (
-    <section className="entity-block" aria-label="Compiled stages">
-      <h3 className="entity-block__title">Stages</h3>
-      {compiledStages.length ? (
-        <ol className="entity-list" data-testid="workflow-stages">
-          {compiledStages.map((stage) => (
-            <li key={stage.id}>
-              <div className="entity-row" data-testid={`workflow-stage-${stage.id}`}>
-                <span className="entity-row__main">
-                  <span className="mc-mono">{stage.action}</span> → <span className="mc-mono">{stage.target}</span>
-                </span>
-                <TierChip tier={stage.riskTier} />
-                <span className="mc-mono entity-row__meta">
-                  {/* dependsOn is the definition's DAG and was never rendered anywhere. */}
-                  {stage.dependsOn.length ? `depends on ${stage.dependsOn.join(', ')}` : 'no dependencies'}
-                </span>
-              </div>
-              <p className="entity-note entity-stage__order">{stage.workOrder}</p>
-              <p className="entity-note">
-                <span className="mc-mono">read</span> {stage.scope.read.join(', ') || '—'} ·{' '}
-                <span className="mc-mono">write</span> {stage.scope.write.join(', ') || '—'}
-              </p>
-              <AssignmentRouting
-                testId={`workflow-stage-routing-${stage.id}`}
-                declared={entry.stages.find((preview) => preview.id === stage.id)?.declaredAssignment}
-                effective={{ ...stage.worker, ...(stage.assignment ? { assignment: stage.assignment } : {}) }}
-                unavailableDetail={compilerFailure}
-              />
-            </li>
-          ))}
-        </ol>
-      ) : entry.stages.length ? (
-        // Compiled preview unavailable: show the list endpoint's four-field stages and SAY that this is
-        // the reduced view, rather than silently presenting it as the whole picture.
-        <>
-          <ol className="entity-list" data-testid="workflow-stages-preview">
-            {entry.stages.map((stage) => (
-              <li key={stage.id}>
-                <div className="entity-row" data-testid={`workflow-stage-${stage.id}`}>
-                  <span className="entity-row__main">
-                    <span className="mc-mono">{stage.action}</span> → <span className="mc-mono">{stage.target}</span>
-                  </span>
-                  <TierChip tier={stage.riskTier} />
-                </div>
-                <AssignmentRouting
-                  testId={`workflow-stage-routing-${stage.id}`}
-                  declared={stage.declaredAssignment}
-                  effective={undefined}
-                  unavailableDetail={compilerFailure}
-                />
+      <section className="entity-block" aria-label="Runs">
+        <h3 className="entity-block__title">Runs</h3>
+        {runs === undefined ? (
+          <p className="entity-note" data-testid="workflow-runs-unloaded">
+            Not loaded — unlock the dashboard to see this workflow&rsquo;s runs.
+          </p>
+        ) : runs.length === 0 ? (
+          <p className="entity-note" data-testid="workflow-runs-empty">This workflow has not run yet.</p>
+        ) : (
+          <ol className="entity-list" data-testid="workflow-runs">
+            {runs.map((run) => (
+              <li key={run.runRef}>
+                <RunRow run={run} now={now} onOpen={onOpenRun} />
               </li>
             ))}
           </ol>
-          <p className="entity-note">
-            Preview only — scope and dependencies come from the compiled proposal, which could not be read.
-          </p>
-        </>
-      ) : (
-        <p className="entity-note">This definition declares no stages.</p>
-      )}
-    </section>
+        )}
+      </section>
+
+      <details className="entity-fold" data-testid="workflow-technical">
+        <summary>Technical details</summary>
+        <div className="entity-fold__body">
+          <dl className="entity-kv" data-testid="workflow-facts">
+            <div className="entity-kv__row"><dt>File</dt><dd className="mc-mono">{entry.path}</dd></div>
+            <div className="entity-kv__row">
+              <dt>Source revision</dt>
+              <dd className="mc-mono" data-testid="workflow-source-hash">{entry.sourceHash ?? 'unavailable'}</dd>
+            </div>
+            <div className="entity-kv__row">
+              <dt>Tool profile</dt>
+              <dd className="mc-mono">{entry.profile ?? <span className="entity-empty-value">—</span>}</dd>
+            </div>
+            <div className="entity-kv__row">
+              <dt>Plan id</dt>
+              <dd className="mc-mono">{compiled?.ok ? compiled.proposalId : '—'}</dd>
+            </div>
+            <div className="entity-kv__row">
+              {/* In FULL. A sliced hash cannot be compared against anything, which is its only use. */}
+              <dt>Plan hash</dt>
+              <dd className="mc-mono">{compiled?.ok ? compiled.contentHash : '—'}</dd>
+            </div>
+          </dl>
+
+          {entry.pendingAmendment ? (
+            <p className="entity-note" data-testid="workflow-pending-change">
+              Waiting on branch <span className="mc-mono">{entry.pendingAmendment.branch}</span>, new source revision{' '}
+              <span className="mc-mono">{entry.pendingAmendment.proposedSourceHash}</span>.{' '}
+              {entry.pendingAmendment.pr.url ? <a href={entry.pendingAmendment.pr.url}>Open pull request</a> : null}
+            </p>
+          ) : null}
+          {entry.pendingAmendmentError ? (
+            <p className="entity-note" data-testid="workflow-pending-change-error">{entry.pendingAmendmentError}</p>
+          ) : null}
+
+          {entry.governanceProblems?.length ? (
+            <ul className="entity-note" data-testid="workflow-governance-problems">
+              {entry.governanceProblems.map((problem) => <li key={problem}>{problem}</li>)}
+            </ul>
+          ) : null}
+
+          <h4 className="entity-block__title">Steps</h4>
+          {compiledStages.length ? (
+            <ol className="entity-list" data-testid="workflow-stages">
+              {compiledStages.map((stage) => (
+                <li key={stage.id}>
+                  <div className="entity-row" data-testid={`workflow-stage-${stage.id}`}>
+                    <span className="entity-row__main">
+                      <span className="mc-mono">{stage.action}</span> → <span className="mc-mono">{stage.target}</span>
+                    </span>
+                    <TierChip tier={stage.riskTier} />
+                    <span className="mc-mono entity-row__meta">
+                      {stage.dependsOn.length ? `after ${stage.dependsOn.join(', ')}` : 'starts the workflow'}
+                    </span>
+                  </div>
+                  <p className="entity-note entity-stage__order">{stage.workOrder}</p>
+                  <p className="entity-note">
+                    <span className="mc-mono">read</span> {stage.scope.read.join(', ') || '—'} ·{' '}
+                    <span className="mc-mono">write</span> {stage.scope.write.join(', ') || '—'}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          ) : entry.stages.length ? (
+            // Compiled preview unavailable: show the list endpoint's four-field steps and SAY that this
+            // is the reduced view, rather than silently presenting it as the whole picture.
+            <>
+              <ol className="entity-list" data-testid="workflow-stages-preview">
+                {entry.stages.map((stage) => (
+                  <li key={stage.id}>
+                    <div className="entity-row" data-testid={`workflow-stage-${stage.id}`}>
+                      <span className="entity-row__main">
+                        <span className="mc-mono">{stage.action}</span> → <span className="mc-mono">{stage.target}</span>
+                      </span>
+                      <TierChip tier={stage.riskTier} />
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <p className="entity-note">
+                Reduced view — scope and ordering come from the compiled plan, which could not be read.
+              </p>
+            </>
+          ) : (
+            <p className="entity-note">This workflow declares no steps.</p>
+          )}
+        </div>
+      </details>
+    </>
   );
 
   /**
-   * THE step-2 payoff. Before the `sourceTurnId` un-drop there was no way to get from a definition to
-   * anything it had ever launched; Launch printed a runRef into a status string and that was the end of it.
+   * ONE Launch, with the workflow's declared inputs beside it. The old surface put the inputs in a tab,
+   * disabled the button, and explained the disablement in a sentence the operator had to hunt for.
    */
-  const runsSection = (
-    <section className="entity-block" aria-label="Runs launched from this definition">
-      <h3 className="entity-block__title">Runs</h3>
-      {runs === undefined ? (
-        <p className="entity-note" data-testid="workflow-runs-unloaded">
-          Not loaded. Reading managed runs needs an unlocked cockpit session.
-        </p>
-      ) : runs.length === 0 ? (
-        <p className="entity-note" data-testid="workflow-runs-empty">
-          This definition has not been launched yet.
-        </p>
-      ) : (
-        <ol className="entity-list" data-testid="workflow-runs">
-          {runs.map((run) => (
-            <li key={run.runRef}>
-              <div
-                className="entity-row entity-row--link"
-                data-testid={`workflow-run-${run.runRef}`}
-                aria-disabled={!onNavigate || undefined}
-                {...entityRowProps(() => onNavigate?.({ view: 'pipeline', focus: { kind: 'run', id: run.runRef } }))}
-              >
-                <span className="entity-row__main">
-                  <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} />
-                </span>
-                <span className="mc-mono entity-row__meta">{run.state}</span>
-                <span className="mc-mono entity-row__meta">{run.stageCount} stages</span>
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-      <p className="entity-note">
-        Joined on the proposal revisions this definition stamped with its own id.
-      </p>
-    </section>
-  );
-
-  const compiledSection = (
-    <section className="entity-block" aria-label="Compiled proposal">
-      <h3 className="entity-block__title">Compiled proposal</h3>
-      {compiled?.ok ? (
-        <dl className="entity-kv" data-testid="workflow-compiled">
-          <div className="entity-kv__row">
-            <dt>Proposal id</dt>
-            <dd className="mc-mono">{compiled.proposalId}</dd>
-          </div>
-          <div className="entity-kv__row">
-            <dt>Content hash</dt>
-            {/* In FULL. A sliced hash cannot be compared against anything, which is its only use. */}
-            <dd className="mc-mono">{compiled.contentHash}</dd>
-          </div>
-        </dl>
-      ) : compiled ? (
-        <p className="entity-note" data-testid="workflow-compile-error">
-          Compilation failed: {compiled.detail ?? compiled.error ?? 'no reason reported'}
-        </p>
-      ) : (
-        <p className="entity-note" data-testid="workflow-compiled-unloaded">
-          The compiled preview could not be read.
-        </p>
-      )}
-      <p className="entity-note">
-        A definition is content-addressed: identical content always compiles to the same proposal
-        identity, so relaunching unchanged content reuses the approved revision instead of minting a
-        second one.
-      </p>
-    </section>
-  );
-
-  const agentsSection = (
-    <section className="entity-block" aria-label="Agent handoff network">
-      <h3 className="entity-block__title">Agent handoff network</h3>
-      <p className="entity-note">
-        Stages remain the dependency and retry units. This view groups them by accountable agent and
-        derives cross-agent handoffs from the underlying stage dependencies.
-      </p>
-      {entry.governanceProblems?.length ? (
-        <section className="entity-undeclared" data-testid="workflow-governance-problems" aria-label="Workflow governance needs correction">
-          <p className="entity-undeclared__head">
-            <span className="entity-undeclared__tag mc-mono">governance</span>
-            Authored ownership does not match the declared project roster.
-          </p>
-          <ul className="entity-undeclared__body">
-            {entry.governanceProblems.map((problem) => <li key={problem}>{problem}</li>)}
-          </ul>
-          <p className="entity-undeclared__body">
-            Ownership remains compile-neutral: executable assignments and the compiled proposal are unchanged.
-          </p>
-        </section>
-      ) : null}
-      {governanceDraft && onGovernanceDraftChange ? (
-        <>
-          <label className="entity-note">Workflow governor{' '}
-            <select aria-label="Workflow governor" value={governanceDraft.workflow ?? ''} disabled={governanceReadOnly} onChange={(event) => onGovernanceDraftChange({ ...governanceDraft, workflow: event.target.value || null })}>
-              <option value="">Unassigned</option>
-              {governanceOptions.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}
-            </select>
-          </label>
-          <WorkflowAgentGraph
-            entry={entry}
-            agents={governanceOptions}
-            draft={governanceDraft}
-            onDraftChange={onGovernanceDraftChange}
-            onOpenAgent={(agentId) => onNavigate?.({ view: 'agents', focus: { kind: 'agent', id: agentId } })}
-            readOnly={governanceReadOnly}
+  const actions = (
+    <>
+      {parameters.map((name) => (
+        <label key={name} className="entity-detail__param">
+          <span>{name}</span>
+          <input
+            aria-label={`Workflow parameter ${name}`}
+            value={parameterValues[name] ?? ''}
+            onChange={(event) => onParameterChange?.(name, event.target.value)}
           />
-          <div className="v-workflow-network__actions">
-            <button type="button" className="mc-btn mc-btn--primary" disabled={!governanceDirty || governanceReadOnly || !onGovernanceSubmit} onClick={onGovernanceSubmit}>
-              Submit ownership plan
-            </button>
-            <span className="entity-note">One source-addressed batch amendment and one human-reviewed PR.</span>
-          </div>
-          {governanceStatus ? <p className="entity-note" role="status" data-testid="workflow-governance-status">{governanceStatus}</p> : null}
-        </>
-      ) : <p className="entity-note">Governance data could not be loaded.</p>}
-    </section>
+        </label>
+      ))}
+      <button
+        type="button"
+        className="mc-btn mc-btn--primary"
+        disabled={!canLaunch}
+        title={blockedReason ?? (parametersMissing ? 'Fill in every input first.' : undefined)}
+        onClick={() => onLaunch?.()}
+      >
+        {launching ? 'Launching…' : 'Launch'}
+      </button>
+      {launchStatus ? (
+        <span className="v-workflows__run-status" data-testid={`workflow-def-status-${entry.ref}`}>{launchStatus}</span>
+      ) : null}
+    </>
   );
 
-  const sections: DetailSection[] = [
-    { id: 'agents', label: 'Agents', count: new Set([entry.governedBy, ...entry.stages.map((stage) => stage.governedBy)].filter(Boolean)).size, render: () => agentsSection },
-    { id: 'overview', label: 'Overview', attention: !entry.valid, render: () => overview },
-    { id: 'stages', label: 'Stages', count: entry.stageCount, render: () => stages },
-    { id: 'runs', label: 'Runs', count: runs?.length, render: () => runsSection },
-    { id: 'compiled', label: 'Compiled', render: () => compiledSection },
-  ];
+  const sections: DetailSection[] = [{ id: 'workflow', label: 'Workflow', render: () => body }];
 
   return (
     <EntityDetail
       entity={{ kind: 'workflow', id: entry.ref }}
-      eyebrow={<>Workflow definition · <EntityName kind="workflow" id={entry.ref} displayName={entry.displayName} shortRef={entry.shortRef} muted /></>}
+      eyebrow={<>Workflow · <EntityName kind="workflow" id={entry.ref} displayName={entry.displayName} shortRef={entry.shortRef} muted /></>}
       title={entry.displayName}
-      status={{ label: entry.valid ? 'valid' : 'invalid', tone: entry.valid ? 'ok' : 'error' }}
+      status={{ label: entry.valid ? 'ready' : 'needs a fix', tone: entry.valid ? 'ok' : 'error' }}
       facts={[
         { label: 'Project', value: entry.project, mono: true },
-        { label: 'Workflow tool profile', value: entry.profile ?? '—', mono: true },
-        { label: 'Stages', value: entry.stageCount, mono: true },
+        { label: 'Steps', value: entry.stageCount, mono: true },
         { label: 'Highest tier', value: entry.riskTier ?? '—', mono: true },
+        { label: 'Runs', value: runs === undefined ? '—' : runs.length, mono: true },
       ]}
       sections={sections}
-      activeSectionId={activeSectionId}
-      onSectionChange={onSectionChange}
       onNavigate={onNavigate}
       onBack={onBack}
       backLabel={backLabel}
       actions={actions}
     />
   );
-}
-
-function AssignmentAmendmentRow({ label, target, declared, choices, onAmend, readOnly = false }: {
-  label: string;
-  target: { kind: 'manager' } | { kind: 'stage'; stageId: string };
-  declared: { agentId: string; profileId: string } | null | undefined;
-  choices: AssignmentChoices | undefined;
-  onAmend?: WorkflowDetailProps['onAssignmentAmend'];
-  readOnly?: boolean;
-}): React.JSX.Element {
-  const [choice, setChoice] = useState('');
-  const assignmentKey = (option: { agentId: string; profileId: string }): string => JSON.stringify([option.agentId, option.profileId]);
-  const selected = choices?.options.find((option) => assignmentKey(option) === choice);
-  return <div className="entity-note" data-testid={`workflow-amendment-${target.kind === 'manager' ? 'manager' : target.stageId}`}>
-    <p><span className="mc-mono">{label}</span> · {declared ? `${declared.agentId} · ${declared.profileId}` : 'unassigned'}</p>
-    {choices?.unavailable ? <p>{choices.unavailable}</p> : null}
-    {choices?.options.length ? <><select aria-label={`${label} assignment`} value={choice} disabled={readOnly} onChange={(event) => setChoice(event.target.value)}><option value="">Select eligible assignment</option>{choices.options.map((option) => <option key={assignmentKey(option)} value={assignmentKey(option)}>{option.agentId} · {option.profileId}</option>)}</select><button type="button" className="mc-btn mc-btn--quiet" disabled={!selected || readOnly} onClick={() => selected && onAmend?.(target, selected)}>Amend</button></> : null}
-    {declared ? <button type="button" className="mc-btn mc-btn--quiet" disabled={readOnly} onClick={() => onAmend?.(target, null)}>Clear assignment</button> : null}
-  </div>;
 }

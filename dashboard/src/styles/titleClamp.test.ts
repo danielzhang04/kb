@@ -1,12 +1,11 @@
 /**
  * Guard: A RUN TITLE IS SHOWN IN FULL.
  *
- * This is the single most-emphasised requirement on this surface, and until now it was untested — not
- * under-tested, UNTESTED. `RunGrid.test.tsx` and `ManagedRuns.test.tsx` assert `element.textContent`,
- * and `textContent` is completely invariant under a CSS ellipsis: jsdom applies no stylesheets, so
- * adding `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` to `.run-card__title` keeps
- * every one of those assertions green while the operator sees "Rebuild the faceless video pipe…".
- * A reviewer confirmed that by mutation.
+ * This is the single most-emphasised requirement on this surface, and every behavioural test asserts
+ * `element.textContent`, which is completely invariant under a CSS ellipsis: jsdom applies no
+ * stylesheets, so adding `white-space: nowrap; overflow: hidden; text-overflow: ellipsis` to a title
+ * rule keeps every one of those assertions green while the operator sees "Rebuild the faceless video
+ * pipe…". A reviewer confirmed that by mutation.
  *
  * The only place the truth lives is the CSS itself, so that is what this asserts. It reads the stylesheet
  * SOURCE and fails if any rule matching a title selector carries a clamping declaration — including a
@@ -22,9 +21,10 @@ import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** The title elements the operator reads a run by: the grid card and the detail header. */
+/** The title elements the operator reads a run by: the list row and the detail header. The old grid
+ *  card (`.run-card__title`) went with the run grid; runs are listed as entity rows now. */
 const GUARDED = [
-  { selector: '.run-card__title', file: resolve(here, '../control/control.css') },
+  { selector: '.entity-row__main', file: resolve(here, 'views/entity.css') },
   { selector: '.entity-detail__title', file: resolve(here, 'views/entity.css') },
 ];
 
@@ -74,12 +74,12 @@ describe('run and entity titles are never clamped', () => {
     });
   }
 
-  it('the grid wraps rather than scrolling horizontally, which is what lets titles be full', () => {
-    const css = readFileSync(resolve(here, '../control/control.css'), 'utf8');
-    const [grid] = rulesFor(css, '.run-grid');
-    // `auto-fill` + `minmax` reflows to one column on narrow viewports with no media query. An
-    // `overflow-x: auto` strip here would reintroduce exactly the truncating scroller this replaced.
-    expect(grid).toMatch(/grid-template-columns\s*:\s*repeat\(\s*auto-fill/);
-    expect(grid).not.toMatch(/overflow-x\s*:\s*(auto|scroll)/);
+  it('a run row wraps rather than scrolling horizontally, which is what lets titles be full', () => {
+    const css = readFileSync(resolve(here, 'views/entity.css'), 'utf8');
+    const [row] = rulesFor(css, '.entity-row');
+    // Wrapping is precisely what lets every row show its title in full at any width. An
+    // `overflow-x: auto` here would reintroduce exactly the truncating scroller this replaced.
+    expect(row).toMatch(/flex-wrap\s*:\s*wrap/);
+    expect(row).not.toMatch(/overflow-x\s*:\s*(auto|scroll)/);
   });
 });

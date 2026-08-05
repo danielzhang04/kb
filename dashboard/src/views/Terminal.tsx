@@ -41,9 +41,9 @@ import type { TerminalSessionsClient } from '../lib/terminalClient';
  * because xterm needs concrete colours, not CSS vars). Every ANSI slot is a warm neutral — there is no
  * terminal-green, no pure black, and no decorative accent. The cursor is a plain warm off-white.
  *
- * Exported (with {@link parseControlFrame} below) so `RunCanvas.tsx`'s roster tiles render the SAME
- * xterm look and speak the SAME `/api/pty` control-frame protocol as this view, instead of forking a
- * second theme/parser for what is the identical attach path against a different (roster) session id.
+ * Exported (with {@link parseControlFrame} below) so any other surface attaching to `/api/pty` renders
+ * the SAME xterm look and speaks the SAME control-frame protocol as this view, instead of forking a
+ * second theme/parser for what is the identical attach path against a different session id.
  */
 export const HOUSE_XTERM_THEME = {
   background: '#1c1b19', // --bg-sunken (deepest)

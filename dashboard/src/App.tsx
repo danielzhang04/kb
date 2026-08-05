@@ -30,6 +30,7 @@ import {
 } from './nav/config';
 import {
   backStack,
+  focusTarget,
   goToStack,
   pushStack,
   rootStack,
@@ -51,8 +52,6 @@ import { Timeline } from './views/Timeline';
 import { Workflows } from './views/Workflows';
 import { Connectors } from './views/Connectors';
 import { Tasks } from './views/Tasks';
-import { Pipeline } from './views/Pipeline';
-import { RunCanvas } from './views/RunCanvas';
 import { Agents } from './views/Agents';
 import { Projects } from './views/Projects';
 import { Ledgers } from './views/Ledgers';
@@ -404,7 +403,6 @@ function LayerPanels(): React.JSX.Element {
 function ViewBody({
   view,
   onNavigate,
-  onOpenCard,
   taskSelectedId,
   entry,
   onPush,
@@ -415,9 +413,7 @@ function ViewBody({
 }: {
   view: DestinationId;
   onNavigate: (id: DestinationId) => void;
-  /** Pipeline canvas click-through: open a card in the Tasks detail pane. */
-  onOpenCard: (cardId: string) => void;
-  /** The card the Tasks view should open on mount (set by a pipeline click-through). */
+  /** The card the Tasks view should open on mount (set by a card click-through elsewhere). */
   taskSelectedId?: string;
   /** The top nav-stack entry — carries the focused entity and the active detail section. */
   entry: NavEntry;
@@ -445,16 +441,16 @@ function ViewBody({
       // cards). Reads the shared useAtlasState poller; renders its own aria-labelled section.
       return <Atlas />;
     case 'workflows':
-      // arc-3: a definition row pushes its detail onto the nav stack within this destination, and its
-      // Runs section links onward to the runs it launched — the join the un-dropped `sourceTurnId` made
-      // possible. Still no new NAV_SECTIONS entry.
+      // The ONE surface for definitions and their executions: a workflow row pushes its detail, and a
+      // run row pushes that RUN's detail — both within this destination, both on the nav stack. Runs
+      // used to have two destinations of their own; they have none.
       return (
         <Workflows
           focusWorkflowId={entry.focus?.kind === 'workflow' ? entry.focus.id : null}
-          onOpenWorkflow={(ref) => onPush({ view: 'workflows', focus: { kind: 'workflow', id: ref } })}
+          focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null}
+          onOpenWorkflow={(ref) => onPush(focusTarget({ kind: 'workflow', id: ref }))}
+          onOpenRun={(runRef) => onPush(focusTarget({ kind: 'run', id: runRef }))}
           onBack={onBack}
-          activeSectionId={entry.section}
-          onSectionChange={onSectionChange}
           onNavigate={onNavigateTarget}
         />
       );
@@ -475,29 +471,6 @@ function ViewBody({
       );
     case 'tasks':
       return <Tasks initialSelectedId={taskSelectedId} />;
-    case 'pipeline':
-      // D3.4 — React Flow canvas over the queue's depends-on DAG. Its governed node toggle reuses the
-      // card-routing write; a node click-through opens that card in the Tasks detail surface. Pipeline
-      // renders its own aria-labelled section.
-      // arc-3: a run card pushes that run's detail onto the nav stack WITHIN this destination — no new
-      // NAV_SECTIONS entry, no new case here. The locked entity-first IA is untouched.
-      return (
-        <Pipeline
-          onOpenCard={onOpenCard}
-          focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null}
-          onOpenRun={(runRef) => onPush({ view: 'pipeline', focus: { kind: 'run', id: runRef } })}
-          onBackToRuns={onBack}
-          activeSectionId={entry.section}
-          onSectionChange={onSectionChange}
-          onNavigate={onNavigateTarget}
-        />
-      );
-    case 'runCanvas':
-      // FYT gated-pipeline Task 5 — the live roster canvas: mini-terminal tiles on artifact-flow lanes
-      // for one selected run, click-to-expand into a full interactive terminal. Self-fetches the run
-      // list + polls the selected run's detail (which carries the roster projection); no new nav-stack
-      // focus kind is introduced, so a run opened elsewhere does not deep-link in here yet.
-      return <RunCanvas onNavigate={onNavigateTarget} />;
     case 'projects':
       return (
         <section aria-label="Projects view">
@@ -575,7 +548,7 @@ function AppShell(): React.JSX.Element {
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [runningComposerRefs, setRunningComposerRefs] = useState<Set<string>>(() => new Set());
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
-  // Card id a Pipeline node click-through wants opened in the Tasks detail pane.
+  // Card id a card click-through (a run's card graph, a step's canonical card) wants opened in Tasks.
   const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
   const approvalsCount = useApprovalsCount();
   // Unlike ordinary destination bodies, Terminal is a long-lived workspace: navigating away hides it but
@@ -650,12 +623,6 @@ function AppShell(): React.JSX.Element {
       return;
     }
     push(target);
-  };
-
-  // Pipeline canvas click-through: open the card in the Tasks detail pane and jump there.
-  const openCardInTasks = (cardId: string): void => {
-    setOpenCardId(cardId);
-    goTo('tasks');
   };
 
   // Run a palette command. The palette is a SHORTCUT, never a bypass: this only changes the active view
@@ -830,7 +797,7 @@ function AppShell(): React.JSX.Element {
               composerSession={workspace}
               onComposerSessionChange={upsertComposerSession}
               onRunningChange={(running) => setComposerRunning(workspace.composerRef, running)}
-              onOpenRun={(runRef) => push({ view: 'pipeline', focus: { kind: 'run', id: runRef } })}
+              onOpenRun={(runRef) => push(focusTarget({ kind: 'run', id: runRef }))}
               onBack={workspace.agent ? () => setActiveComposerRef(null) : undefined}
             />
           </div>
@@ -839,7 +806,6 @@ function AppShell(): React.JSX.Element {
           <ViewBody
             view={view}
             onNavigate={goTo}
-            onOpenCard={openCardInTasks}
             taskSelectedId={openCardId}
             entry={current}
             onPush={push}

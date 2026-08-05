@@ -79,6 +79,7 @@ const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto
   title: 'Rebuild the faceless video pipeline',
   displayName: 'Rebuild the faceless video pipeline',
   shortRef: 1,
+  workflowRef: null,
   proposalRef: 'wf-aaa',
   proposalRevision: 1,
   proposalHash: 'hash-a',
@@ -339,7 +340,7 @@ describe('agent work and runs', () => {
     fireEvent.click(screen.getByTestId('entity-tab-runs'));
     fireEvent.click(screen.getByTestId('agent-run-run-7'));
 
-    expect(onNavigate).toHaveBeenCalledWith({ view: 'pipeline', focus: { kind: 'run', id: 'run-7' } });
+    expect(onNavigate).toHaveBeenCalledWith({ view: 'workflows', focus: { kind: 'run', id: 'run-7' } });
   });
 
   /**

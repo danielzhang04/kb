@@ -98,6 +98,51 @@
   gap: var(--space-2);
 }
 
+/* An input the action itself needs (a workflow's declared parameters), sitting beside the button that
+ * consumes it rather than in a separate tab the operator has to visit first. */
+.entity-detail__param {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+}
+
+.entity-detail__param input {
+  width: 12rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+/* ---- Technical fold ----
+ * Ids, hashes, attempts and raw traces are real and stay reachable — they are simply not the first
+ * thing a surface says. Each detail view collapses them into exactly one of these. */
+.entity-fold {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.entity-fold > summary {
+  padding: var(--space-2) var(--space-3);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.entity-fold__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
 /* ---- Fact strip ---- */
 .entity-detail__facts {
   display: grid;

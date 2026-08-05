@@ -178,7 +178,15 @@ export function EntityDetail({
         </nav>
       ) : null}
 
-      <div className="entity-detail__tabs" role="tablist" aria-label={`${entity.kind} sections`}>
+      {/* A one-section detail renders NO tab bar. A tablist with a single, permanently-selected tab is
+       *  pure ceremony — the surfaces that collapsed to one body (workflow, run) would otherwise carry a
+       *  control that can never do anything. */}
+      <div
+        className="entity-detail__tabs"
+        role="tablist"
+        aria-label={`${entity.kind} sections`}
+        hidden={sections.length < 2}
+      >
         {sections.map((section) => (
           <button
             key={section.id}

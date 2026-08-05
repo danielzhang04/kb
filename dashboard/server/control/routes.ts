@@ -68,12 +68,42 @@ function subject(req: FastifyRequest): string | null {
 }
 
 /**
- * Display-identity embedding for the run DTOs. The canonical `runRef` is untouched and still on the
- * wire — these two fields exist so the cockpit, run grid, and Inbox never have to print it as the
- * primary text an operator reads.
+ * The `sourceComposerRef` that `server/workflows/routes.ts` stamps on every revision it creates from a
+ * workflow definition; such a revision carries that definition's id in `sourceTurnId`.
  */
-function runDisplay<T extends { runRef: string; title: string }>(ctx: SurfaceContext, run: T): T & EntityDisplay {
-  return { ...run, ...namingFor(ctx).displayFor('run', run.runRef, run.title) };
+const WORKFLOW_COMPOSER_REF = 'workflow-registry';
+
+/**
+ * `proposalRef -> workflow-definition id`, for runs born from the workflow registry.
+ *
+ * This join used to be re-derived in the BROWSER, which forced every surface listing runs to also fetch
+ * the whole revision list just to answer "which workflow does this run belong to". The revisions are
+ * already in the store here, so the grouping key is stamped at the DTO-build site instead.
+ */
+function workflowRefIndex(ctx: SurfaceContext, sub: string): Map<string, string> {
+  const byProposal = new Map<string, string>();
+  for (const revision of ctx.controlStore.listProposalRevisionsForComposer(sub, WORKFLOW_COMPOSER_REF)) {
+    if (revision.sourceTurnId) byProposal.set(revision.proposalRef, revision.sourceTurnId);
+  }
+  return byProposal;
+}
+
+/**
+ * Display-identity embedding for the run DTOs. The canonical `runRef` is untouched and still on the
+ * wire — these fields exist so the run list, run detail, and Inbox never have to print it as the
+ * primary text an operator reads. `workflowRef` is the grouping key that files a run under its
+ * definition; null means the run is ad-hoc (launched from a Composer proposal, not the registry).
+ */
+function runDisplay<T extends { runRef: string; title: string; proposalRef: string }>(
+  ctx: SurfaceContext,
+  run: T,
+  workflows: Map<string, string>,
+): T & EntityDisplay & { workflowRef: string | null } {
+  return {
+    ...run,
+    ...namingFor(ctx).displayFor('run', run.runRef, run.title),
+    workflowRef: workflows.get(run.proposalRef) ?? null,
+  };
 }
 
 /**
@@ -87,10 +117,10 @@ function humanRequestDisplay(ctx: SurfaceContext, request: HumanRequest, runTitl
 }
 
 /** The `/api/control/runs/:runRef` DTO: the run and each of its requests carry the run's display identity. */
-function runDetailDto(ctx: SurfaceContext, detail: RunDetail): RunDetail {
+function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail): RunDetail {
   return {
     ...detail,
-    run: runDisplay(ctx, detail.run),
+    run: runDisplay(ctx, detail.run, workflowRefIndex(ctx, sub)),
     humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
   };
 }
@@ -588,9 +618,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
 
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
     const sub = subject(req);
-    return sub
-      ? reply.send({ runs: ctx.controlStore.listRuns(sub).map((run) => runDisplay(ctx, run)) })
-      : reply.code(401).send({ error: 'unauthenticated' });
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    // One revision walk for the whole list, not one per run.
+    const workflows = workflowRefIndex(ctx, sub);
+    return reply.send({ runs: ctx.controlStore.listRuns(sub).map((run) => runDisplay(ctx, run, workflows)) });
   });
 
   scope.get('/api/control/runs/:runRef', { preHandler }, async (req, reply) => {
@@ -601,7 +632,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!detail.ok) return sendResult(reply, detail);
     return reply.send({
       ok: true,
-      value: runDetailDto(ctx, detail.value),
+      value: runDetailDto(ctx, sub, detail.value),
       replayed: detail.replayed ?? false,
       execution: executionPosture(ctx),
     });

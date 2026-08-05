@@ -43,7 +43,6 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Atlas',
       'Terminal',
       'Workflows',
-      'Runs',
       'Agents',
       'Tasks',
       'Projects',
@@ -58,10 +57,9 @@ describe('App shell — entity-first sidebar navigation', () => {
 
   it('does not render any dropped verb-IA destination', () => {
     render(<App />);
-    // D3.4 makes `Runs` (stable route id: `pipeline`) and D3.5 makes `Sentinel` real destinations again,
-    // so neither is in the
-    // dropped set any more.
-    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry']) {
+    // D3.5 makes `Sentinel` a real destination again, so it is not in the dropped set. `Runs` and
+    // `Run Canvas` joined that set when runs collapsed into Workflows.
+    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Runs', 'Run Canvas']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
     }
   });
@@ -253,7 +251,7 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(surface.hidden).toBe(false);
 
     // Destination navigation hides the same mounted node; returning reveals it rather than remounting it.
-    fireEvent.click(screen.getByRole('button', { name: 'Runs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(surface.hidden).toBe(true);
     expect(screen.getByLabelText('Terminal view')).toBe(terminal);
     fireEvent.click(terminalButton);
@@ -348,7 +346,7 @@ describe('App shell — Composer workspaces', () => {
     expect(firstPane.hidden).toBe(false);
     expect(secondPane.hidden).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Runs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(screen.getByTestId('composer-workspace-cw-1')).toBe(firstPane);
     expect(screen.getByTestId('composer-workspace-cw-2')).toBe(secondPane);
     expect(firstPane.hidden).toBe(true);

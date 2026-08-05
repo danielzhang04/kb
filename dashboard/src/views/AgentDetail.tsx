@@ -20,7 +20,7 @@
  */
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { RunMetadataDto } from '../control/controlClient';
-import { cardsForAgent } from '../control/entityLinks';
+import { cardsForAgent, runLink } from '../control/entityLinks';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
@@ -463,7 +463,7 @@ export function AgentDetail({
                 className="entity-row entity-row--link"
                 data-testid={`agent-run-${run.runRef}`}
                 aria-disabled={!onNavigate || undefined}
-                {...entityRowProps(() => onNavigate?.({ view: 'pipeline', focus: { kind: 'run', id: run.runRef } }))}
+                {...entityRowProps(() => onNavigate?.(runLink(run.runRef)))}
               >
                 <span className="entity-row__main">
                   <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} />

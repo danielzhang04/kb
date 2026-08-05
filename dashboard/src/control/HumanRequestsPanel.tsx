@@ -160,7 +160,7 @@ export function HumanRequestsPanel({ fetchImpl }: { fetchImpl?: FetchLike }): Re
 
   return (
     <section className="control-inbox-requests mc-panel" aria-label="Managed Human Requests">
-      <header className="control-managed-runs__head">
+      <header className="control-panel__head">
         <div><h2>Run requests</h2><p>Durable, revision-bound requests from managed runs.</p></div>
         <button type="button" className="mc-btn" disabled={busy} onClick={refreshNow}>Refresh</button>
       </header>

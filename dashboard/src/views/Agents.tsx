@@ -338,7 +338,7 @@ export function Agents({
   roster?: AgentRosterEntry[];
   routing?: RoutingSnapshot;
   /**
-   * arc-3 step 3 — the open agent, driven by the nav stack. Mirrors ManagedRuns: when `onOpenAgent` is
+   * arc-3 step 3 — the open agent, driven by the nav stack. Mirrors Workflows: when `onOpenAgent` is
    * omitted the view keeps its own state so it stays usable (and testable) standalone. A detail surface
    * whose every click is inert when rendered without a controller is a defect, not a simplification.
    */

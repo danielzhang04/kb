@@ -318,8 +318,8 @@ export function Tasks({
 }: {
   data?: CardsByState;
   routing?: RoutingSnapshot;
-  /** Card id to open in the detail pane on mount — used by the Pipeline canvas click-through so a node
-   *  jump lands directly on that card's full frontmatter/body/routing surface. */
+  /** Card id to open in the detail pane on mount — used by a card click-through (a run's card graph,
+   *  a step's canonical card) so a jump lands on that card's full frontmatter/body/routing surface. */
   initialSelectedId?: string;
 } = {}): React.JSX.Element {
   const { requireSession } = useSession();
