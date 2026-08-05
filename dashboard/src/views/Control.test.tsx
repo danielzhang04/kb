@@ -11,6 +11,14 @@ import { LaunchControls } from './launchControls';
 import { App } from '../App';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
+
+/** The one unlock: a stored fresh bearer (already unlocked) or an injected ceremony for the locked path. */
+function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}): React.ReactElement {
+  if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
+}
 
 function card(owner: string | null, state: string): ParsedCard {
   return {
@@ -56,12 +64,13 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  clearStoredSession();
   vi.unstubAllGlobals();
 });
 
 describe('Control view', () => {
   it('renders the fleet strip from an index snapshot', () => {
-    render(<Control snapshot={SNAPSHOT} />);
+    render(<SessionProvider><Control snapshot={SNAPSHOT} /></SessionProvider>);
 
     // Two distinct card owners → 2 agents.
     expect(screen.getByTestId('fleet-agents').textContent).toContain('2');
@@ -102,19 +111,6 @@ describe('Control view', () => {
 });
 
 describe('Control view — D2.6 launch/rerun controls', () => {
-  it('disables Launch and Rerun submit without a sessionToken, and never calls fetch on submit', () => {
-    render(<Control snapshot={SNAPSHOT} />);
-
-    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Rerun' }) as HTMLButtonElement).disabled).toBe(true);
-
-    fireEvent.submit(screen.getByLabelText('Launch card'));
-    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
-
-    fireEvent.submit(screen.getByLabelText('Rerun card'));
-    expect(screen.getByTestId('rerun-status').textContent).toMatch(/sign in with your passkey/i);
-  });
-
   it('POSTs a launch request to /api/write/launch with a bearer session token when provided', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
@@ -131,7 +127,7 @@ describe('Control view — D2.6 launch/rerun controls', () => {
       }),
     );
 
-    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(withSession(<Control snapshot={SNAPSHOT} />, { stored: 'fake-session-token' }));
 
     fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'kb' } });
     fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'demo' } });
@@ -163,7 +159,7 @@ describe('Control view — D2.6 launch/rerun controls', () => {
       }),
     );
 
-    render(<Control snapshot={SNAPSHOT} sessionToken="fake-session-token" />);
+    render(withSession(<Control snapshot={SNAPSHOT} />, { stored: 'fake-session-token' }));
 
     fireEvent.change(screen.getByLabelText('Card id to rerun'), { target: { value: 'orig-1' } });
     fireEvent.change(screen.getByLabelText('Rerun feedback'), { target: { value: 'try smaller batch' } });
@@ -176,22 +172,8 @@ describe('Control view — D2.6 launch/rerun controls', () => {
 // U1: StopControls was relocated out of the Board's right column into the shell's pinned
 // Session/Stop floor (App.tsx). It is exported from ./Control and exercised directly here.
 describe('Stop-floor controls (D2.8, relocated to the shell in U1)', () => {
-  it('disables every stop control without a sessionToken, and never calls fetch on submit', () => {
-    render(<StopControls />);
-
-    expect((screen.getByRole('button', { name: 'Request stop' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Pause cadence' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'STOP everything' }) as HTMLButtonElement).disabled).toBe(true);
-
-    fireEvent.submit(screen.getByLabelText('Request card stop'));
-    expect(screen.getByTestId('stop-card-status').textContent).toMatch(/sign in with your passkey/i);
-
-    fireEvent.submit(screen.getByLabelText('Pause cadence'));
-    expect(screen.getByTestId('pause-cadence-status').textContent).toMatch(/sign in with your passkey/i);
-  });
-
   it('the nuclear STOP button stays disabled until the confirm checkbox is checked, even with a session', () => {
-    render(<StopControls sessionToken="fake-session-token" />);
+    render(withSession(<StopControls />, { stored: 'fake-session-token' }));
 
     const nukeButton = screen.getByRole('button', { name: 'STOP everything' }) as HTMLButtonElement;
     expect(nukeButton.disabled).toBe(true);
@@ -213,7 +195,7 @@ describe('Stop-floor controls (D2.8, relocated to the shell in U1)', () => {
       }),
     );
 
-    render(<StopControls sessionToken="fake-session-token" />);
+    render(withSession(<StopControls />, { stored: 'fake-session-token' }));
     fireEvent.change(screen.getByLabelText('Card id to stop'), { target: { value: 'card-1' } });
     fireEvent.submit(screen.getByLabelText('Request card stop'));
 
@@ -235,7 +217,7 @@ describe('Stop-floor controls (D2.8, relocated to the shell in U1)', () => {
       }),
     );
 
-    render(<StopControls sessionToken="fake-session-token" />);
+    render(withSession(<StopControls />, { stored: 'fake-session-token' }));
     fireEvent.click(screen.getByLabelText('Confirm nuclear STOP'));
     fireEvent.submit(screen.getByLabelText('Nuclear STOP'));
 
@@ -243,11 +225,11 @@ describe('Stop-floor controls (D2.8, relocated to the shell in U1)', () => {
   });
 });
 
-// U5.1 — point-of-action passkey mint. With `onRequestSession` wired (the shell floor / Home do this),
-// the governed controls are enabled WITHOUT a standing session and a submit runs the ceremony inline,
-// then POSTs with the freshly-minted bearer. This replaces the retired floor "Sign in" chrome.
-describe('point-of-action session mint (U5.1)', () => {
-  it('StopControls: enabled via onRequestSession, mints on submit, POSTs the minted bearer', async () => {
+// Point-of-action passkey mint through the app's ONE session context: the governed controls are
+// actionable on a LOCKED tab and a submit runs the shared ceremony inline, then POSTs with the freshly
+// minted bearer. There is no per-surface unlock button anywhere below the top-bar chip.
+describe('point-of-action session mint', () => {
+  it('StopControls: mints on submit from a locked tab and POSTs the minted bearer', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
       'fetch',
@@ -259,23 +241,23 @@ describe('point-of-action session mint (U5.1)', () => {
         return new Promise(() => {});
       }),
     );
-    const onRequestSession = vi.fn(async () => ({ token: 'minted-tok', expiresAt: Date.now() + 60_000 }));
+    const signIn = vi.fn(async () => ({ token: 'minted-tok', expiresAt: Date.now() + 60_000 }));
 
-    render(<StopControls onRequestSession={onRequestSession} />);
+    render(withSession(<StopControls />, { signIn }));
 
-    // No standing session, but the ceremony is wired → the control is actionable, not walled.
+    // Locked, but every governed control is actionable — the ceremony runs at point of action.
     expect((screen.getByRole('button', { name: 'Request stop' }) as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.change(screen.getByLabelText('Card id to stop'), { target: { value: 'card-9' } });
     fireEvent.submit(screen.getByLabelText('Request card stop'));
 
     await waitFor(() => expect(screen.getByTestId('stop-card-status').textContent).toContain('halting'));
-    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    expect(signIn).toHaveBeenCalledTimes(1);
     const call = calls.find((c) => c.url === '/api/write/stop-card');
     expect((call?.init?.headers as Record<string, string>)?.authorization).toBe('Bearer minted-tok');
   });
 
-  it('LaunchControls: enabled via onRequestSession, mints on submit, POSTs the minted bearer', async () => {
+  it('LaunchControls: mints on submit from a locked tab and POSTs the minted bearer', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
       'fetch',
@@ -287,29 +269,29 @@ describe('point-of-action session mint (U5.1)', () => {
         return new Promise(() => {});
       }),
     );
-    const onRequestSession = vi.fn(async () => ({ token: 'minted-tok', expiresAt: Date.now() + 60_000 }));
+    const signIn = vi.fn(async () => ({ token: 'minted-tok', expiresAt: Date.now() + 60_000 }));
 
-    render(<LaunchControls onRequestSession={onRequestSession} />);
+    render(withSession(<LaunchControls />, { signIn }));
 
     expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
     fireEvent.submit(screen.getByLabelText('Launch card'));
 
     await waitFor(() => expect(screen.getByTestId('launch-status').textContent).toContain('c-1'));
-    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    expect(signIn).toHaveBeenCalledTimes(1);
     const call = calls.find((c) => c.url === '/api/write/launch');
     expect((call?.init?.headers as Record<string, string>)?.authorization).toBe('Bearer minted-tok');
   });
 
-  it('a refused/absent passkey (onRequestSession → null) stays a no-op with a quiet nudge', async () => {
+  it('a refused passkey stays a no-op with a quiet locked status', async () => {
     const fetchMock = vi.fn(() => new Promise(() => {}));
     vi.stubGlobal('fetch', fetchMock);
-    const onRequestSession = vi.fn(async () => null);
+    const signIn = vi.fn(async () => { throw new Error('assert/verify refused: 401'); });
 
-    render(<LaunchControls onRequestSession={onRequestSession} />);
+    render(withSession(<LaunchControls />, { signIn }));
     fireEvent.submit(screen.getByLabelText('Launch card'));
 
-    await waitFor(() => expect(onRequestSession).toHaveBeenCalled());
-    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
+    await waitFor(() => expect(signIn).toHaveBeenCalled());
+    expect(screen.getByTestId('launch-status').textContent).toMatch(/dashboard is locked/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, within, fireEvent } from '@testing-library/react';
 import { Agents, deriveRoster } from './Agents';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { AgentRosterEntry } from '../../server/agents/roster';
@@ -79,6 +86,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
 });
 afterEach(() => {
+  clearStoredSession();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -102,7 +110,7 @@ describe('deriveRoster', () => {
 
 describe('Agents view', () => {
   it('renders the roster from a snapshot: working agent shows its current card + working dot', () => {
-    render(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} />);
+    render(<SessionProvider><Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} /></SessionProvider>);
 
     expect(screen.getByLabelText('Agents view')).toBeTruthy();
     const row = screen.getByTestId('agent-row-claude-m1');
@@ -137,7 +145,7 @@ describe('Agents view', () => {
   } as const;
 
   it('renders a live effective-model chip per agent with its provenance tag (R2.2)', () => {
-    render(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+    render(unlocked(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} routing={ROUTING as never} />));
     const row = screen.getByTestId('agent-row-claude-m1');
     expect(within(row).getByText('claude-opus-4-8')).toBeTruthy();
     expect(within(row).getByText('policy')).toBeTruthy();
@@ -147,19 +155,12 @@ describe('Agents view', () => {
   });
 
   it('shows a Clear-override affordance only when the agent has an override, after opening the popover', () => {
-    render(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+    render(unlocked(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} routing={ROUTING as never} />));
     fireEvent.click(screen.getByTestId('agent-codex-a-routing-chip'));
     expect(screen.getByTestId('agent-codex-a-routing-clear')).toBeTruthy();
     // The policy-sourced agent has no clear affordance.
     fireEvent.click(screen.getByTestId('agent-claude-m1-routing-chip'));
     expect(screen.queryByTestId('agent-claude-m1-routing-clear')).toBeNull();
-  });
-
-  it('is fail-closed without a session: the chip is disabled and a sign-in nudge shows', () => {
-    render(<Agents snapshot={SNAPSHOT} roster={PRIMARY_ROSTER} routing={ROUTING as never} />);
-    const chip = screen.getByTestId('agent-claude-m1-routing-chip');
-    expect((chip as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getAllByTestId('agent-claude-m1-routing-nudge').length).toBeGreaterThan(0);
   });
 
   describe('C7.4 — declared / runner-bound status', () => {
@@ -181,7 +182,7 @@ describe('Agents view', () => {
     ];
 
     it('surfaces a declared-but-idle agent with a "declared — no runner" status', () => {
-      render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+      render(unlocked(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} />));
       const row = screen.getByTestId('agent-row-composer-scribe');
       // The declared identity surfaces even with zero cards + zero ledger activity.
       expect(within(row).getByText('composer-scribe')).toBeTruthy();
@@ -194,7 +195,7 @@ describe('Agents view', () => {
     });
 
     it('keeps declared runner binding distinct from an observed runtime default', () => {
-      render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+      render(unlocked(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} />));
       // Declared + human-bound → runner-bound.
       const bound = within(screen.getByTestId('agent-row-codex-a')).getByTestId('agent-binding-codex-a');
       expect(within(bound).getByText('runner-bound')).toBeTruthy();
@@ -206,14 +207,14 @@ describe('Agents view', () => {
     });
 
     it('keeps the existing per-agent routing control rendering for declared agents', () => {
-      render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+      render(unlocked(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} />));
       // The governed routing chip is still present + enabled for a declared agent.
       const chip = screen.getByTestId('agent-composer-scribe-routing-chip');
       expect((chip as HTMLButtonElement).disabled).toBe(false);
     });
 
     it('keeps observed identities out of the primary roster and puts system workers behind the disclosure', () => {
-      render(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} sessionToken="tok" />);
+      render(unlocked(<Agents roster={DECLARED_ROSTER} routing={ROUTING as never} />));
 
       const declared = screen.getByRole('region', { name: /Your agents/ });
       expect(within(declared).getByTestId('agent-row-composer-scribe')).toBeTruthy();
@@ -223,7 +224,7 @@ describe('Agents view', () => {
   });
 
   it('degrades to a calm empty state when no agents are on the board', () => {
-    render(<Agents snapshot={{ cards: {}, ledgers: EMPTY_LEDGERS, orgStates: [] }} />);
+    render(<SessionProvider><Agents snapshot={{ cards: {}, ledgers: EMPTY_LEDGERS, orgStates: [] }} /></SessionProvider>);
     expect(screen.getByText('No user-created agents are registered.')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
   });

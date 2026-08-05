@@ -7,6 +7,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { ApprovalsLive } from './ApprovalsLive';
 import type { ParsedCard } from '../../server/planeA/cards';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
+
+/** The app's ONE unlock, driven from a test: a stored bearer and/or an injected ceremony. */
+function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}): React.ReactElement {
+  if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
+}
 
 function card(): ParsedCard {
   return {
@@ -19,7 +27,10 @@ function card(): ParsedCard {
 }
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
-  return { ok, status, json: async () => body } as unknown as Response;
+  // `clone` is part of the contract the governed auth-failure check reads (it inspects a 401 refusal
+  // body without consuming it), so the fake carries it too — otherwise the invalidation never fires.
+  const res = { ok, status, json: async () => body, clone: () => res } as unknown as Response;
+  return res;
 }
 
 function inboxResponse(): Response {
@@ -39,12 +50,15 @@ function inboxResponse(): Response {
   });
 }
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  clearStoredSession();
+});
 
 describe('ApprovalsLive', () => {
   it('renders the unified live feed from GET /api/human-inbox', async () => {
     const fetchImpl = vi.fn(async () => inboxResponse());
-    render(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(<SessionProvider><ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} /></SessionProvider>);
     // The card button appears once the feed resolves.
     expect(await screen.findByRole('button', { name: /card-77/ })).toBeTruthy();
     expect(fetchImpl).toHaveBeenCalledWith('/api/human-inbox', { headers: { accept: 'application/json' } });
@@ -55,7 +69,7 @@ describe('ApprovalsLive', () => {
       if (url === '/api/human-inbox') return inboxResponse();
       return jsonResponse({ ok: true, reason: 'verified' });
     });
-    render(<ApprovalsLive sessionToken="sess-tok" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(withSession(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />, { stored: 'sess-tok' }));
 
     // Select the card -> corroboration panel renders BEFORE any verify button is clicked.
     fireEvent.click(await screen.findByRole('button', { name: /card-77/ }));
@@ -78,31 +92,23 @@ describe('ApprovalsLive', () => {
       if (url === '/api/human-inbox') return inboxResponse();
       return jsonResponse({ ok: true, reason: 'verified' });
     });
-    const onRequestSession = vi.fn(async () => ({ token: 'new-session' }));
-    render(
-      <ApprovalsLive
-        onRequestSession={onRequestSession}
-        fetchImpl={fetchImpl as unknown as typeof fetch}
-      />,
-    );
+    const signIn = vi.fn(async () => ({ token: 'new-session', expiresAt: Date.now() + 60_000 }));
+    render(withSession(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />, { signIn }));
 
     fireEvent.click(await screen.findByRole('button', { name: /card-77/ }));
     fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
 
     expect((await screen.findByRole('status')).textContent).toMatch(/card-77: verified/i);
-    expect(onRequestSession).toHaveBeenCalledTimes(1);
+    expect(signIn).toHaveBeenCalledTimes(1);
     const verifyCall = fetchImpl.mock.calls.find((c) => c[0] === '/api/approvals/verify');
     expect((verifyCall?.[1]?.headers as Record<string, string>).authorization).toBe('Bearer new-session');
   });
 
   it('shows a refusal instead of silently doing nothing when unlock is cancelled', async () => {
     const fetchImpl = vi.fn(async (_url: string) => inboxResponse());
-    render(
-      <ApprovalsLive
-        onRequestSession={async () => null}
-        fetchImpl={fetchImpl as unknown as typeof fetch}
-      />,
-    );
+    render(withSession(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />, {
+      signIn: async () => { throw new Error('assert/verify refused: 401'); },
+    }));
 
     fireEvent.click(await screen.findByRole('button', { name: /card-77/ }));
     fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
@@ -128,7 +134,7 @@ describe('ApprovalsLive', () => {
       if (url === '/api/human-inbox') return inputInboxResponse();
       return jsonResponse({ ok: true, state: 'inbox' });
     });
-    render(<ApprovalsLive sessionToken="sess-tok" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(withSession(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />, { stored: 'sess-tok' }));
 
     fireEvent.click(await screen.findByRole('button', { name: /question-1/ }));
     fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'Use source A.' } });
@@ -162,7 +168,7 @@ describe('ApprovalsLive', () => {
       if (url === '/api/human-inbox') return ownedInputInboxResponse();
       return jsonResponse({ ok: true, state: 'inbox', liveness: { consumer: 'none', online: false, detail: 'no runner is registered for worker-desktop' } });
     });
-    render(<ApprovalsLive sessionToken="sess-tok" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(withSession(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />, { stored: 'sess-tok' }));
 
     fireEvent.click(await screen.findByRole('button', { name: /question-2/ }));
     fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'Use source A.' } });
@@ -179,7 +185,7 @@ describe('ApprovalsLive', () => {
       if (url === '/api/human-inbox') return ownedInputInboxResponse();
       return jsonResponse({ ok: true, state: 'inbox', liveness: { consumer: 'scheduled-task', online: true, detail: 'scheduled task kb-codex-runner is Ready' } });
     });
-    render(<ApprovalsLive sessionToken="sess-tok" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(withSession(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />, { stored: 'sess-tok' }));
 
     fireEvent.click(await screen.findByRole('button', { name: /question-2/ }));
     fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'Use source A.' } });
@@ -198,15 +204,16 @@ describe('ApprovalsLive', () => {
       respondCalls += 1;
       return respondCalls === 1 ? jsonResponse({ error: 'unauthenticated' }, false, 401) : jsonResponse({ ok: true, state: 'inbox' });
     });
-    const onRequestSession = vi.fn(async () => ({ token: 'fresh' }));
-    render(<ApprovalsLive sessionToken="stale" onRequestSession={onRequestSession} fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    const signIn = vi.fn(async () => ({ token: 'fresh', expiresAt: Date.now() + 60_000 }));
+    render(withSession(<ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} />, { stored: 'stale', signIn }));
 
     fireEvent.click(await screen.findByRole('button', { name: /question-1/ }));
     fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'retry me' } });
     fireEvent.click(screen.getByTestId('respond-submit'));
 
     expect((await screen.findByRole('status')).textContent).toMatch(/reply recorded/i);
-    expect(onRequestSession).toHaveBeenCalledWith(true);
+    // The governed 401 re-locked the tab, so the replacement is a genuinely fresh ceremony.
+    expect(signIn).toHaveBeenCalledTimes(1);
     const respondReqs = fetchImpl.mock.calls.filter((c) => c[0] === '/api/write/card-respond');
     expect(respondReqs).toHaveLength(2);
     expect((respondReqs[1]![1]!.headers as Record<string, string>).authorization).toBe('Bearer fresh');

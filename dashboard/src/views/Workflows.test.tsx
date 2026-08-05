@@ -2,8 +2,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Workflows } from './Workflows';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); clearStoredSession(); vi.unstubAllGlobals(); });
 
 const definition = (over: Partial<{
   ref: string; project: string; path: string; sourceHash: string | null; valid: boolean; title: string | null; profile: string | null;
@@ -22,7 +29,7 @@ const definition = (over: Partial<{
 
 describe('Workflows view', () => {
   it('renders an honest canonical empty state when no org definitions exist', () => {
-    render(<Workflows definitions={{ items: [] }} />);
+    render(<SessionProvider><Workflows definitions={{ items: [] }} /></SessionProvider>);
 
     expect(screen.getByLabelText('Workflows view')).toBeTruthy();
     const empty = screen.getByTestId('workflows-empty');
@@ -33,7 +40,7 @@ describe('Workflows view', () => {
   });
 
   it('uses only the canonical org-definition list and exposes compact governor, per-agent, and unassigned counts', () => {
-    render(<Workflows definitions={{ items: [definition()] }} />);
+    render(<SessionProvider><Workflows definitions={{ items: [definition()] }} /></SessionProvider>);
 
     const section = screen.getByTestId('workflow-defs');
     expect(within(section).getByText('Research brief (cited)')).toBeTruthy();
@@ -50,13 +57,14 @@ describe('Workflows view', () => {
     let resolveResponse: ((response: Response) => void) | undefined;
     const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; }));
     vi.stubGlobal('fetch', fetchMock);
-    render(<Workflows sessionToken="tok" definitions={{ items: [definition()] }} />);
+    render(unlocked(<Workflows definitions={{ items: [definition()] }} />));
 
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     fireEvent.click(launch);
     fireEvent.click(launch);
     expect(launch.disabled).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The bearer is resolved through the shared session context, so the POST lands a microtask later.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     resolveResponse?.({
       ok: true, status: 202,
@@ -78,7 +86,7 @@ describe('Workflows view', () => {
   it('collects declared video-run parameters and sends the exact closed source-addressed launch body', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 202, json: async () => ({ runRef: 'video-1', activationGated: true }) } as Response));
     vi.stubGlobal('fetch', fetchMock);
-    render(<Workflows activeSectionId="overview" sessionToken="tok" definitions={{ items: [definition({ ref: 'video-run', title: 'Video run', parameters: ['channel', 'slug'] })] }} />);
+    render(unlocked(<Workflows activeSectionId="overview" definitions={{ items: [definition({ ref: 'video-run', title: 'Video run', parameters: ['channel', 'slug'] })] }} />));
     fireEvent.click(screen.getByRole('button', { name: /open video run detail/i }));
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     expect(launch.disabled).toBe(true);
@@ -101,7 +109,7 @@ describe('Workflows view', () => {
       throw new Error(`unexpected ${url} ${init?.method}`);
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(<Workflows activeSectionId="overview" sessionToken="tok" definitions={{ items: [definition()] }} />);
+    render(unlocked(<Workflows activeSectionId="overview" definitions={{ items: [definition()] }} />));
     fireEvent.click(screen.getByRole('button', { name: /open research brief/i }));
     const assignment = await screen.findByRole('combobox', { name: 'Manager assignment' });
     fireEvent.change(assignment, { target: { value: '["bound-manager","manager:claude:claude-opus-4-8"]' } });
@@ -114,10 +122,10 @@ describe('Workflows view', () => {
   });
 
   it('renders persisted amendment phases truthfully rather than calling every state pending human merge', () => {
-    render(<Workflows activeSectionId="overview" definitions={{ items: [
+    render(<SessionProvider><Workflows activeSectionId="overview" definitions={{ items: [
       definition({ pendingAmendment: { workflowPath: 'orgs/kb-ops/workflows/research-brief.md', baseSourceHash: 'a'.repeat(64), proposedSourceHash: 'b'.repeat(64), branch: 'claude/m1-dashboard', pr: {}, phase: 'audit-pending' } }),
       definition({ ref: 'prepared', title: 'Prepared', path: 'orgs/kb-ops/workflows/prepared.md', pendingAmendment: { workflowPath: 'orgs/kb-ops/workflows/prepared.md', baseSourceHash: 'a'.repeat(64), proposedSourceHash: 'c'.repeat(64), branch: 'claude/m1-dashboard', pr: {}, phase: 'prepared' } }),
-    ] }} />);
+    ] }} /></SessionProvider>);
     expect(screen.getByTestId('workflow-def-research-brief').textContent).toMatch(/audit is still pending/i);
     expect(screen.getByTestId('workflow-def-prepared').textContent).toMatch(/recovery is required/i);
     fireEvent.click(screen.getByRole('button', { name: /open research brief/i }));
@@ -132,7 +140,7 @@ describe('Workflows view', () => {
     ] as Response[];
     const fetchMock = vi.fn(async () => responses.shift()!);
     vi.stubGlobal('fetch', fetchMock);
-    render(<Workflows sessionToken="tok" definitions={{ items: [definition()] }} />);
+    render(unlocked(<Workflows definitions={{ items: [definition()] }} />));
 
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     fireEvent.click(launch);
@@ -165,13 +173,14 @@ describe('Workflows view', () => {
       throw new Error(`unexpected ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(<Workflows sessionToken="tok" definitions={{ items: [definition({ stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }] })] }} />);
+    render(unlocked(<Workflows definitions={{ items: [definition({ stages: [{ id: 'brief', action: 'research:web-brief', target: 'orgs/kb-ops/output', riskTier: 'T2' }] })] }} />));
     fireEvent.click(screen.getByRole('button', { name: /open research brief/i }));
     const governor = await screen.findByLabelText('Workflow governor');
     fireEvent.change(governor, { target: { value: 'writer' } });
     const submit = screen.getByRole('button', { name: 'Submit ownership plan' }) as HTMLButtonElement;
     fireEvent.click(submit);
-    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/governance-amendments'))).toHaveLength(1);
+    // The bearer is resolved through the shared session context, so the POST lands a microtask later.
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/governance-amendments'))).toHaveLength(1));
     expect(submit.disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/assignment-amendments'))).toBe(false);

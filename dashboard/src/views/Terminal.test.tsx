@@ -79,6 +79,13 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
 
 import { Terminal } from './Terminal';
 import type { PtySessionSummary, TerminalSessionsClient } from '../lib/terminalClient';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'tok-abc'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
 
 /** A fake browser WebSocket: the component assigns onopen/onmessage/onclose/onerror + calls send/close. */
 class FakeWS {
@@ -114,6 +121,7 @@ class FakeWS {
 }
 
 afterEach(() => {
+  clearStoredSession();
   cleanup();
   xtermReg.instances.length = 0;
   fitReg.instances.length = 0;
@@ -148,16 +156,20 @@ function makeSessionsClient(live: PtySessionSummary[] = []): TerminalSessionsCli
 const STORAGE_KEY = 'kb-terminal-tabs-v1';
 
 describe('Terminal — session gating + subprotocol token', () => {
-  it('without a session it renders the passkey prompt and never opens a socket', () => {
+  it('locked, it renders one calm unlock line and never opens a socket', () => {
     const factory = vi.fn();
-    render(<Terminal socketFactory={factory as unknown as (t: string) => WebSocket} sessionsClient={makeSessionsClient()} />);
+    render(
+      <SessionProvider>
+        <Terminal socketFactory={factory as unknown as (t: string) => WebSocket} sessionsClient={makeSessionsClient()} />
+      </SessionProvider>,
+    );
     expect(factory).not.toHaveBeenCalled();
-    expect(screen.getByText(/sign in with your passkey/i)).toBeTruthy();
+    expect(screen.getByTestId('terminal-locked').textContent).toMatch(/^Locked — unlock/);
   });
 
   it('opens one tab automatically once signed in with no live shells, carrying the bearer in the subprotocol', async () => {
     const { factory, sockets } = makeFactory();
-    render(<Terminal sessionToken="tok-abc" socketFactory={factory} sessionsClient={makeSessionsClient()} />);
+    render(unlocked(<Terminal socketFactory={factory} sessionsClient={makeSessionsClient()} />));
     await waitFor(() => expect(sockets.length).toBe(1));
     expect(factory).toHaveBeenCalledWith('tok-abc', undefined); // a fresh tab has no attach id
     expect(sockets[0].protocols).toEqual(['kb-pty.v1', 'tok-abc']);
@@ -170,24 +182,24 @@ describe('Terminal — session gating + subprotocol token', () => {
     const { factory, sockets } = makeFactory();
     const client = makeSessionsClient();
     const { rerender } = render(
-      <Terminal visible={false} sessionToken="tok-abc" socketFactory={factory} sessionsClient={client} />,
+      unlocked(<Terminal visible={false} socketFactory={factory} sessionsClient={client} />),
     );
 
     await act(async () => Promise.resolve());
     expect(factory).not.toHaveBeenCalled();
 
-    rerender(<Terminal visible sessionToken="tok-abc" socketFactory={factory} sessionsClient={client} />);
+    rerender(unlocked(<Terminal visible socketFactory={factory} sessionsClient={client} />));
     await waitFor(() => expect(sockets.length).toBe(1));
     const firstSocket = sockets[0];
     const firstTab = screen.getByTestId('terminal-tab-1');
     const screenHost = screen.getByTestId('terminal-screen-1');
     Object.defineProperty(screenHost, 'offsetParent', { configurable: true, value: document.body });
 
-    rerender(<Terminal visible={false} sessionToken="tok-abc" socketFactory={factory} sessionsClient={client} />);
+    rerender(unlocked(<Terminal visible={false} socketFactory={factory} sessionsClient={client} />));
     expect(firstSocket.closed).toBe(false);
     expect(screen.getByTestId('terminal-tab-1')).toBe(firstTab);
 
-    rerender(<Terminal visible sessionToken="tok-abc" socketFactory={factory} sessionsClient={client} />);
+    rerender(unlocked(<Terminal visible socketFactory={factory} sessionsClient={client} />));
     await act(async () => Promise.resolve());
     expect(sockets).toHaveLength(1); // returning reuses the live shell; it never opens a duplicate socket
     expect(firstSocket.closed).toBe(false);
@@ -204,7 +216,7 @@ describe('Terminal — persistence + reconciliation', () => {
       { sessionId: 'pty-live', createdAt: 1, attached: false },
       { sessionId: 'pty-new', createdAt: 2, attached: false },
     ]);
-    render(<Terminal sessionToken="tok-abc" socketFactory={factory} sessionsClient={client} />);
+    render(unlocked(<Terminal socketFactory={factory} sessionsClient={client} />));
 
     await waitFor(() => expect(sockets.length).toBe(2));
     const attachIds = sockets.map((s) => s.attachSessionId);
@@ -218,7 +230,7 @@ describe('Terminal — persistence + reconciliation', () => {
 
   it('persists a tab once it receives its {type:session} bind frame', async () => {
     const { factory, sockets } = makeFactory();
-    render(<Terminal sessionToken="tok-abc" socketFactory={factory} sessionsClient={makeSessionsClient()} />);
+    render(unlocked(<Terminal socketFactory={factory} sessionsClient={makeSessionsClient()} />));
     await waitFor(() => expect(sockets[0]?.onmessage).toBeTruthy());
 
     // A fresh tab is not persisted until its sessionId is confirmed.
@@ -234,7 +246,7 @@ describe('Terminal — persistence + reconciliation', () => {
 
   it('the close button sends a {type:close} frame on a live socket, then clears the tab + storage on close', async () => {
     const { factory, sockets } = makeFactory();
-    render(<Terminal sessionToken="tok-abc" socketFactory={factory} sessionsClient={makeSessionsClient()} />);
+    render(unlocked(<Terminal socketFactory={factory} sessionsClient={makeSessionsClient()} />));
     await waitFor(() => expect(sockets[0]?.onmessage).toBeTruthy());
     const ws = sockets[0];
     await act(async () => {
@@ -263,7 +275,7 @@ describe('Terminal — persistence + reconciliation', () => {
 describe('Terminal — streaming', () => {
   it('streams raw PTY bytes into xterm and keystrokes back to the socket', async () => {
     const { factory, sockets } = makeFactory();
-    render(<Terminal sessionToken="tok-abc" socketFactory={factory} sessionsClient={makeSessionsClient()} />);
+    render(unlocked(<Terminal socketFactory={factory} sessionsClient={makeSessionsClient()} />));
     await waitFor(() => expect(sockets[0]?.onmessage).toBeTruthy());
     const ws = sockets[0];
 
@@ -287,7 +299,7 @@ describe('Terminal — streaming', () => {
 describe('Terminal — tabs', () => {
   it('opens an independent shell per tab up to the cap of 8, then disables +', async () => {
     const { factory, sockets } = makeFactory();
-    render(<Terminal sessionToken="tok-abc" socketFactory={factory} sessionsClient={makeSessionsClient()} />);
+    render(unlocked(<Terminal socketFactory={factory} sessionsClient={makeSessionsClient()} />));
     await waitFor(() => expect(sockets.length).toBe(1));
 
     const add = screen.getByTestId('terminal-tab-add');
@@ -302,7 +314,7 @@ describe('Terminal — tabs', () => {
 
   it('surfaces a too-many-terminals server error frame as an inline notice and drops that tab', async () => {
     const { factory, sockets } = makeFactory();
-    render(<Terminal sessionToken="tok-abc" socketFactory={factory} sessionsClient={makeSessionsClient()} />);
+    render(unlocked(<Terminal socketFactory={factory} sessionsClient={makeSessionsClient()} />));
     await waitFor(() => expect(sockets[0]?.onmessage).toBeTruthy());
 
     await act(async () => {

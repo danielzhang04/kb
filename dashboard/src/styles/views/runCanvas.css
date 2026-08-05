@@ -10,7 +10,8 @@
 .v-run-canvas__head { display: flex; flex-direction: column; gap: var(--space-1); }
 .v-run-canvas__head h2 { margin: 0; font-size: var(--text-xl); font-weight: 600; }
 .v-run-canvas__lede { max-width: 64rem; margin: 0; color: var(--fg-dim); font-size: var(--text-sm); line-height: 1.5; }
-.v-run-canvas__session-warning { margin: 0; color: var(--warning); font-size: var(--text-sm); }
+.v-run-canvas__locked { align-self: flex-start; padding: 0; border: none; background: none; color: var(--fg-dim); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.v-run-canvas__locked:hover:not(:disabled) { color: var(--fg-primary); }
 .v-run-canvas__error { margin: 0; color: var(--error); font-size: var(--text-sm); }
 .v-run-canvas__rate-limit { margin: 0; color: var(--warning); font-size: var(--text-sm); }
 

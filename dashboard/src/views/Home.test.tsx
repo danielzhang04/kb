@@ -3,7 +3,7 @@
  * U3 — Home, the default landing rollup. Covers the definition-of-done: KPI tiles render from an index
  * snapshot; the running/resume hero lists working cards + pending approvals; NO dollar figure appears
  * anywhere (usage, not spend); `onNavigate` fires on row/tile activation; and the governed
- * LaunchControls surface is present + enabled only when a `sessionToken` is supplied.
+ * LaunchControls surface is present + enabled only once EXECUTION is unlocked by its own passkey check.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
@@ -13,6 +13,19 @@ import type { ParsedCard } from '../../server/planeA/cards';
 import type { AgentRosterEntry } from '../../server/agents/roster';
 import type { ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import type { ExecutionPostureDto } from '../control/controlClient';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession, SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
+
+/** Render a locked Home (no stored bearer) — the default for every read-only rollup assertion. */
+function render0(ui: React.ReactElement): ReturnType<typeof render> {
+  return render(<SessionProvider>{ui}</SessionProvider>);
+}
+
+/** The app's ONE unlock, driven from a test: a stored bearer (already unlocked) and an injected ceremony. */
+function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}): React.ReactElement {
+  if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
+}
 
 /** Build a full roster entry with sane defaults, overriding only the fields a test cares about. */
 function rosterEntry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEntry {
@@ -110,12 +123,13 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  clearStoredSession();
   vi.unstubAllGlobals();
 });
 
 describe('Home view — KPI tiles', () => {
   it('renders KPI tiles from an index snapshot', () => {
-    render(<Home snapshot={SNAPSHOT} />);
+    render0(<Home snapshot={SNAPSHOT} />);
 
     // Two distinct card owners across all buckets → 2 agents.
     expect(screen.getByTestId('kpi-agents').textContent).toContain('2');
@@ -132,7 +146,7 @@ describe('Home view — KPI tiles', () => {
 
 describe('Home view — running / resume hero', () => {
   it('lists working cards and the pending-approval in the resume panel', () => {
-    render(<Home snapshot={SNAPSHOT} />);
+    render0(<Home snapshot={SNAPSHOT} />);
     const resume = screen.getByTestId('home-resume');
 
     expect(resume.textContent).toContain('id-work-1');
@@ -145,7 +159,7 @@ describe('Home view — running / resume hero', () => {
   });
 
   it('shows calm empty states when nothing is running or pending', () => {
-    render(<Home snapshot={{ ...SNAPSHOT, cards: {} }} />);
+    render0(<Home snapshot={{ ...SNAPSHOT, cards: {} }} />);
     const resume = screen.getByTestId('home-resume');
     expect(resume.textContent).toMatch(/Nothing running/i);
     // Legitimately empty: `cards: {}` means there is genuinely nothing for the operator anywhere.
@@ -177,7 +191,7 @@ function snapshotOf(cards: ParsedCard[]): PlaneAIndex {
 
 describe('Home view — counts who must act, not card state', () => {
   it('counts human-operator inbox gates in the waiting KPI even with an empty approvals bucket', () => {
-    render(<Home snapshot={snapshotOf([
+    render0(<Home snapshot={snapshotOf([
       gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
       gate('6a5d6b23-05204b15', 'approve:oauth-gate-g2'),
       gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
@@ -188,17 +202,17 @@ describe('Home view — counts who must act, not card state', () => {
 
   it('counts a gate on the owner limb alone', () => {
     // `decide:*` matches no other predicate — only `owner: human-operator` can surface it.
-    render(<Home snapshot={snapshotOf([gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing')])} />);
+    render0(<Home snapshot={snapshotOf([gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing')])} />);
     expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
   });
 
   it('counts a gate on the approve:* limb alone, with an agent owner', () => {
-    render(<Home snapshot={snapshotOf([gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1', 'codex-worker')])} />);
+    render0(<Home snapshot={snapshotOf([gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1', 'codex-worker')])} />);
     expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
   });
 
   it('lists the gates in the resume hero and never claims nothing is waiting', () => {
-    render(<Home snapshot={snapshotOf([
+    render0(<Home snapshot={snapshotOf([
       gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
       gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
     ])} />);
@@ -215,7 +229,7 @@ describe('Home view — counts who must act, not card state', () => {
 
 describe('Home view — usage, never spend', () => {
   it('surfaces model mix but never renders a dollar figure anywhere', () => {
-    const { container } = render(<Home snapshot={SNAPSHOT} />);
+    const { container } = render0(<Home snapshot={SNAPSHOT} />);
 
     const usage = screen.getByTestId('home-usage');
     expect(usage.textContent).toContain('claude-sonnet-5');
@@ -230,7 +244,7 @@ describe('Home view — usage, never spend', () => {
 describe('Home view — navigation', () => {
   it('fires onNavigate with the entity id when a running row is activated', () => {
     const onNavigate = vi.fn();
-    render(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
+    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Open id-work-1 in tasks/i }));
     expect(onNavigate).toHaveBeenCalledWith('tasks');
@@ -238,7 +252,7 @@ describe('Home view — navigation', () => {
 
   it('fires onNavigate to approvals from the Waiting KPI tile', () => {
     const onNavigate = vi.fn();
-    render(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
+    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
 
     fireEvent.click(screen.getByTestId('kpi-approvals'));
     expect(onNavigate).toHaveBeenCalledWith('approvals');
@@ -246,34 +260,40 @@ describe('Home view — navigation', () => {
 });
 
 describe('Home view — launch surface', () => {
-  it('renders the LaunchControls surface, disabled until a sessionToken is provided', () => {
-    render(<Home snapshot={SNAPSHOT} />);
+  it('renders the LaunchControls surface, disabled until execution is unlocked', () => {
+    render0(<Home snapshot={SNAPSHOT} />);
 
     expect(screen.getByTestId('home-launch')).toBeTruthy();
-    // Fail-closed pre-session: the Launch button is present but disabled.
+    // Fail-closed while execution is locked: the Launch button is present but disabled.
     expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByLabelText('Launch card')).toBeTruthy();
   });
 
   it('keeps Launch disabled until execution is explicitly unlocked with a passkey', async () => {
     const client = executionClient(LOCKED_EXECUTION);
-    const view = render(<Home snapshot={SNAPSHOT} sessionToken="fake-session-token" executionClient={client} />);
+    render(withSession(<Home snapshot={SNAPSHOT} executionClient={client} />, {
+      stored: 'fake-session-token',
+      signIn: async () => ({ token: 'replacement-token', expiresAt: Date.now() + 60_000 }),
+    }));
 
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     const unlock = await screen.findByRole('button', { name: 'Unlock execution' });
     expect(launch.disabled).toBe(true);
 
     fireEvent.submit(screen.getByLabelText('Launch card'));
-    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
+    expect(screen.getByTestId('launch-status').textContent).toMatch(/execution is locked/i);
     expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => url === '/api/write/launch')).toBe(false);
 
     fireEvent.click(unlock);
     await waitFor(() => expect(launch.disabled).toBe(false));
     expect(client.unlock).toHaveBeenCalledWith('fake-session-token');
 
-    // An unlock belongs to the bearer that completed it. A replacement session must fail closed while
-    // its own posture is loading; it cannot inherit the prior session's local ready state.
-    view.rerender(<Home snapshot={SNAPSHOT} sessionToken="replacement-token" executionClient={client} />);
+    // An unlock belongs to the bearer that completed it. A governed 401 re-locks the tab and the next
+    // ceremony mints a DIFFERENT bearer, which must fail closed rather than inherit the ready state.
+    fireEvent(window, new Event(SESSION_INVALIDATED_EVENT));
+    await waitFor(() => expect(launch.disabled).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock execution' }));
+    await waitFor(() => expect(client.getPosture).toHaveBeenCalledWith('replacement-token'));
     expect(launch.disabled).toBe(true);
   });
 
@@ -282,13 +302,10 @@ describe('Home view — launch surface', () => {
       ...PASSKEY_EXECUTION,
       unlockedAt: '1',
     } as ExecutionPostureDto;
-    render(
-      <Home
-        snapshot={SNAPSHOT}
-        sessionToken="fake-session-token"
-        executionClient={executionClient(malformed)}
-      />,
-    );
+    render(withSession(
+      <Home snapshot={SNAPSHOT} executionClient={executionClient(malformed)} />,
+      { stored: 'fake-session-token' },
+    ));
 
     expect(await screen.findByRole('alert')).toHaveProperty(
       'textContent',
@@ -297,16 +314,15 @@ describe('Home view — launch surface', () => {
     expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('POSTs a launch request with a bearer token, and never calls fetch on a signed-out submit', () => {
-    // Signed out with no mint capability: submitting must NOT fetch a launch — it just surfaces the
-    // sign-in nudge. (No session + no onRequestSession → the owner picker also issues no roster fetch.)
-    const fetchMock = vi.fn(() => new Promise(() => {}));
+  it('never POSTs a launch while execution is locked', () => {
+    // Execution locked: submitting must NOT reach `/api/write/launch` — it just states why.
+    const fetchMock = vi.fn((_url: string) => new Promise(() => {}));
     vi.stubGlobal('fetch', fetchMock);
-    render(<Home snapshot={SNAPSHOT} />);
+    render0(<Home snapshot={SNAPSHOT} />);
 
     fireEvent.submit(screen.getByLabelText('Launch card'));
-    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('launch-status').textContent).toMatch(/execution is locked/i);
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/write/launch')).toBe(false);
   });
 
   // C7.8 — the host wires the LIVE roster into the owner picker: it fetches /api/agents + /api/routing,
@@ -339,13 +355,10 @@ describe('Home view — launch surface', () => {
       }),
     );
 
-    render(
-      <Home
-        snapshot={SNAPSHOT}
-        sessionToken="fake-session-token"
-        executionClient={executionClient(PASSKEY_EXECUTION)}
-      />,
-    );
+    render(withSession(
+      <Home snapshot={SNAPSHOT} executionClient={executionClient(PASSKEY_EXECUTION)} />,
+      { stored: 'fake-session-token' },
+    ));
 
     const ownerSelect = screen.getByLabelText('Owner') as HTMLSelectElement;
     // The live roster populates the closed set: declared agents ∪ registered default_workers.

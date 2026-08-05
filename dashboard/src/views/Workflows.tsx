@@ -8,7 +8,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useSse } from '../lib/sseClient';
-import { invalidateSessionOnGovernedAuthFailure, type Session } from '../lib/authClient';
+import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
 import { listProposalRevisions, listRuns, type ProposalRevisionMetadataDto, type RunMetadataDto } from '../control/controlClient';
 import { runsForWorkflow, WORKFLOW_COMPOSER_REF } from '../control/entityLinks';
@@ -53,8 +54,6 @@ function launchIdempotencyKey(ref: string, sourceHash: string, parameters: Recor
 /** Accepts canonical org definition data directly (tests) or self-fetches `/api/workflows`. */
 export function Workflows({
   definitions,
-  sessionToken,
-  onRequestSession,
   focusWorkflowId,
   onOpenWorkflow,
   onBack,
@@ -65,8 +64,6 @@ export function Workflows({
   revisions: injectedRevisions,
 }: {
   definitions?: WorkflowDefsIndex;
-  sessionToken?: string;
-  onRequestSession?: () => Promise<Session | null>;
   /**
    * arc-3 step 4 — the open definition, driven by the nav stack. Controlled-or-uncontrolled, mirroring
    * ManagedRuns and Agents: without a controller the view keeps its own state so it stays usable and
@@ -82,6 +79,8 @@ export function Workflows({
   runs?: RunMetadataDto[];
   revisions?: ProposalRevisionMetadataDto[];
 } = {}): React.JSX.Element {
+  const { session, requireSession } = useSession();
+  const sessionToken = session?.token;
   const [fetchedDefs, setFetchedDefs] = useState<WorkflowDefsIndex | null>(null);
   const [launchStatus, setLaunchStatus] = useState<Record<string, string>>({});
   const [launchingRefs, setLaunchingRefs] = useState<Set<string>>(() => new Set());
@@ -196,7 +195,7 @@ export function Workflows({
     setLaunchingRefs((current) => new Set(current).add(ref));
     setLaunchStatus((current) => ({ ...current, [ref]: 'Launching…' }));
     try {
-      const token = sessionToken ?? (await onRequestSession?.())?.token;
+      const token = (await requireSession())?.token;
       if (!token) {
         setLaunchStatus((current) => ({ ...current, [ref]: 'Unlock refused.' }));
         return;
@@ -249,7 +248,7 @@ export function Workflows({
     const entry = defs.items.find((candidate) => candidate.ref === ref);
     const governance = governanceDrafts[ref];
     if (!entry?.sourceHash || !governance || amendingRef) return;
-    const token = sessionToken ?? (await onRequestSession?.())?.token;
+    const token = (await requireSession())?.token;
     if (!token) { setGovernanceStatus((current) => ({ ...current, [ref]: 'Unlock refused.' })); return; }
     setAmendingRef(ref);
     setGovernanceStatus((current) => ({ ...current, [ref]: 'Submitting ownership plan for human merge…' }));
@@ -272,7 +271,7 @@ export function Workflows({
   async function amendAssignment(ref: string, target: { kind: 'manager' } | { kind: 'stage'; stageId: string }, assignment: { agentId: string; profileId: string } | null): Promise<void> {
     const entry = (definitions ?? fetchedDefs ?? EMPTY_DEFS).items.find((candidate) => candidate.ref === ref);
     if (!entry?.sourceHash || amendingRef) return;
-    const token = sessionToken ?? (await onRequestSession?.())?.token;
+    const token = (await requireSession())?.token;
     if (!token) { setAmendmentStatus((current) => ({ ...current, [ref]: 'Unlock refused.' })); return; }
     setAmendingRef(ref);
     setAmendmentStatus((current) => ({ ...current, [ref]: 'Submitting amendment for human merge…' }));

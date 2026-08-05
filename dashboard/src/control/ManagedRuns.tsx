@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { SESSION_INVALIDATED_EVENT } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import {
   activateRun,
   ControlApiError,
@@ -51,8 +51,6 @@ function operationKey(prefix: string): string {
 }
 
 export interface ManagedRunsProps {
-  sessionToken?: string;
-  onRequestSession?: () => Promise<{ token: string } | null>;
   /** Runs supplied directly (tests) instead of self-fetching. */
   runs?: RunMetadataDto[];
   /**
@@ -88,8 +86,6 @@ export interface ManagedRunsProps {
  * rather than appending a panel below it, so the operator is looking at exactly one thing.
  */
 export function ManagedRuns({
-  sessionToken,
-  onRequestSession,
   runs: injectedRuns,
   focusRunRef,
   onOpenRun,
@@ -101,7 +97,8 @@ export function ManagedRuns({
   cardIndex,
   revisions: injectedRevisions,
 }: ManagedRunsProps): React.JSX.Element {
-  const [localToken, setLocalToken] = useState(sessionToken);
+  const { session, requireSession } = useSession();
+  const token = session?.token;
   const [index, setIndex] = useState<PlaneAIndex | null>(cardIndex ?? null);
   const [revisions, setRevisions] = useState<ProposalRevisionMetadataDto[]>(injectedRevisions ?? []);
   const [runs, setRuns] = useState<RunMetadataDto[]>(injectedRuns ?? []);
@@ -122,14 +119,7 @@ export function ManagedRuns({
 
   const openRunRef = onOpenRun ? focusRunRef ?? null : localOpenRef;
 
-  useEffect(() => { if (sessionToken) setLocalToken(sessionToken); }, [sessionToken]);
   useEffect(() => { if (injectedRuns) setRuns(injectedRuns); }, [injectedRuns]);
-  useEffect(() => {
-    const invalidate = (): void => setLocalToken(undefined);
-    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-  }, []);
-  const token = sessionToken ?? localToken;
 
   /**
    * Load a run's detail, its events, and the compiled checkpoint names.
@@ -229,10 +219,20 @@ export function ManagedRuns({
 
   const cardOwners = index ? cardOwnerIndex(index) : undefined;
 
-  const unlock = (): void => {
+  /** The cockpit's own Refresh runs the ONE ceremony when the tab is locked — there is no unlock wall. */
+  const refreshNow = (): void => {
     void (async () => {
-      const session = await onRequestSession?.();
-      if (session) setLocalToken(session.token);
+      const active = (await requireSession())?.token;
+      if (!active) {
+        setError('The dashboard is locked — runs could not be refreshed.');
+        return;
+      }
+      try {
+        await refresh(active);
+        setError(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Could not load managed runs.');
+      }
     })();
   };
 
@@ -497,9 +497,7 @@ export function ManagedRuns({
               <h3>Managed run cockpit</h3>
               <p>Durable manager, stage, attempt, worker, event, and Human Request state.</p>
             </div>
-            {token ? <button type="button" className="mc-btn" disabled={busy} onClick={() => void refresh(token)}>Refresh</button> : (
-              <button type="button" className="mc-btn mc-btn--primary" onClick={unlock}>Unlock cockpit</button>
-            )}
+            <button type="button" className="mc-btn" disabled={busy} onClick={refreshNow}>Refresh</button>
           </header>
           {error ? <p role="alert" className="control-managed-runs__error">{error}</p> : null}
           {token ? <RetentionPanel token={token} onChanged={() => refresh(token)} /> : null}

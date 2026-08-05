@@ -5,7 +5,7 @@
  * credential and never spawns anything itself. See `server/pty/*` for the server half of the protocol.
  *
  * This view is session-gated exactly like `Vibe.tsx`/`Control.tsx`'s launch surface: without a
- * `sessionToken` it renders a passkey prompt and connects nothing. Each tab's WebSocket carries the SAME
+ * session it renders a calm locked line and connects nothing. Each tab's WebSocket carries the SAME
  * bearer session token via a subprotocol (never in the URL, which would land the token in logs); the
  * SERVER runs the same `Origin`/`Host` allowlist check as every other socket on the upgrade, then
  * re-verifies the session before streaming. The server enforces a hard cap of 8 concurrent terminals
@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import '../styles/views/terminal.css';
-import type { Session } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import {
   defaultTerminalSessionsClient,
   loadStoredTabs,
@@ -130,7 +130,6 @@ interface TabControl {
 interface TerminalTabProps {
   /** Stable numeric id (also the React key upstream); passed to callbacks so the manager knows which tab. */
   id: number;
-  sessionToken: string;
   /** When set, reattach to this existing persistent shell instead of opening a new one. */
   attachSessionId?: string;
   /** Whether this tab is the visible one. Drives visibility + a re-fit when the tab becomes active. */
@@ -150,7 +149,6 @@ interface TerminalTabProps {
 
 function TerminalTab({
   id,
-  sessionToken,
   attachSessionId,
   active,
   socketFactory,
@@ -160,6 +158,10 @@ function TerminalTab({
   onClosed,
   registerControl,
 }: TerminalTabProps): React.JSX.Element {
+  // The bearer comes from the app's ONE session, not a prop. A tab is only ever rendered by an unlocked
+  // manager, so this is defined in practice; the effect still guards rather than opening a bare socket.
+  const { session } = useSession();
+  const sessionToken = session?.token;
   const hostRef = useRef<HTMLDivElement>(null);
   // Live handles kept in refs so the resize/fit effects can reach them without re-running the mount effect.
   const xtermRef = useRef<{ cols: number; rows: number; write(d: string): void; dispose(): void } | null>(null);
@@ -196,6 +198,8 @@ function TerminalTab({
   // Mount: lazily create xterm + fit addon, open the socket, wire the streaming path. Runs ONCE per tab
   // (deps are all stable) so a tab switch never re-connects. Cleanup closes the socket + disposes xterm.
   useEffect(() => {
+    // A tab is only rendered by an unlocked manager, but never open a bare socket on a re-lock race.
+    if (!sessionToken) return;
     let disposed = false;
     setState('connecting');
 
@@ -295,7 +299,7 @@ function TerminalTab({
       }
       return;
     }
-    if (sessionId) void removeSession(sessionId, sessionToken);
+    if (sessionId && sessionToken) void removeSession(sessionId, sessionToken);
     onClosed(id);
   }, [id, sessionToken, removeSession, onClosed]);
 
@@ -365,7 +369,6 @@ function TerminalTab({
 }
 
 export interface TerminalProps {
-  sessionToken?: string;
   /**
    * Whether the App-level terminal surface is currently visible. The App deliberately keeps this
    * component mounted while another destination (or Composer) is in front of it so live shells and
@@ -379,13 +382,6 @@ export interface TerminalProps {
    */
   fleetIdentity?: string;
   socketFactory?: PtySocketFactory;
-  /**
-   * Point-of-action passkey sign-in (App-wired), mirroring the other governed views. Without a
-   * `sessionToken` the empty state becomes an actionable "Sign in with your passkey" button that runs the
-   * WebAuthn ceremony and mints the ~5-min dashboard session; the view then opens its first tab. Absent
-   * (direct component tests) → passive text only.
-   */
-  onRequestSession?: () => Promise<Session | null>;
   /** Persistence client (live-session list + REST kill). Injected in tests; defaults to the real fetch. */
   sessionsClient?: TerminalSessionsClient;
 }
@@ -400,18 +396,18 @@ interface TabEntry {
 }
 
 /**
- * The terminal surface: a tab manager over independent `TerminalTab` shells. Session-gated — without a
- * `sessionToken` it renders the passkey sign-in and opens nothing; once signed in it opens one tab and
- * lets the operator add up to `MAX_TERMINALS`.
+ * The terminal surface: a tab manager over independent `TerminalTab` shells. Session-gated through the
+ * app's ONE unlock — locked it renders a calm line that runs the shared ceremony on click and opens
+ * nothing; unlocked it opens one tab and lets the operator add up to `MAX_TERMINALS`.
  */
 export function Terminal({
-  sessionToken,
   visible = true,
   fleetIdentity = 'dashboard daemon user',
   socketFactory = defaultPtySocketFactory,
-  onRequestSession,
   sessionsClient = defaultTerminalSessionsClient,
 }: TerminalProps): React.JSX.Element {
+  const { session, requireSession } = useSession();
+  const sessionToken = session?.token;
   const [tabs, setTabs] = useState<TabEntry[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -533,11 +529,11 @@ export function Terminal({
     saveStoredTabs(tabs.filter((t) => t.sessionId).map((t) => ({ sessionId: t.sessionId as string })));
   }, [tabs, sessionToken]);
 
-  async function handleSignIn(): Promise<void> {
-    if (!onRequestSession || signingIn) return;
+  async function handleUnlock(): Promise<void> {
+    if (signingIn) return;
     setSigningIn(true);
     try {
-      await onRequestSession();
+      await requireSession();
     } finally {
       setSigningIn(false);
     }
@@ -566,19 +562,15 @@ export function Terminal({
       </p>
 
       {!sessionToken ? (
-        onRequestSession ? (
-          <button
-            type="button"
-            className="terminal__signin mc-btn mc-btn--primary"
-            onClick={() => void handleSignIn()}
-            disabled={signingIn}
-            data-testid="terminal-signin"
-          >
-            {signingIn ? 'Signing in…' : 'Sign in with your passkey to open a terminal'}
-          </button>
-        ) : (
-          <p className="terminal__session-warning">Sign in with your passkey to open a terminal.</p>
-        )
+        <button
+          type="button"
+          className="terminal__signin mc-btn"
+          onClick={() => void handleUnlock()}
+          disabled={signingIn}
+          data-testid="terminal-locked"
+        >
+          {signingIn ? 'Unlocking…' : 'Locked — unlock to open a terminal'}
+        </button>
       ) : (
         <>
           <div className="terminal__tabbar" role="tablist" aria-label="Open terminals">
@@ -636,7 +628,6 @@ export function Terminal({
               <TerminalTab
                 key={tab.id}
                 id={tab.id}
-                sessionToken={sessionToken}
                 attachSessionId={tab.attachSessionId}
                 active={visible && tab.id === activeId}
                 socketFactory={socketFactory}

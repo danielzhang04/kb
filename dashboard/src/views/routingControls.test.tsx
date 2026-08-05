@@ -13,28 +13,6 @@ const REGISTRY: Record<string, RuntimeRegistryEntry> = {
 
 const POLICY_EFFECTIVE = { runtime: 'claude', model: 'claude-sonnet-5', sourceRuntime: 'policy', sourceModel: 'policy' } as const;
 
-describe('RoutingControl — fail-closed (no session)', () => {
-  it('disables the chip and shows a nudge, and never opens the popover (zero direct writes without a session)', () => {
-    const onApply = vi.fn();
-    render(
-      <RoutingControl
-        label="agent-x"
-        testIdPrefix="agent-x"
-        registry={REGISTRY}
-        effective={POLICY_EFFECTIVE}
-        canAct={false}
-        onApply={onApply}
-      />,
-    );
-    const chip = screen.getByTestId('agent-x-routing-chip') as HTMLButtonElement;
-    expect(chip.disabled).toBe(true);
-    expect(screen.getByTestId('agent-x-routing-nudge')).toBeTruthy();
-    fireEvent.click(chip); // no-op: disabled
-    expect(screen.queryByTestId('agent-x-routing-pop')).toBeNull();
-    expect(onApply).not.toHaveBeenCalled();
-  });
-});
-
 describe('RoutingControl — governed submit (with session)', () => {
   it('opens the popover, picks a runtime+model, and calls onApply with the concrete selection', async () => {
     const onApply = vi.fn(async (_runtime: string, _model: string, _expires: string | null) => ({ ok: true }));
@@ -44,7 +22,6 @@ describe('RoutingControl — governed submit (with session)', () => {
         testIdPrefix="agent-x"
         registry={REGISTRY}
         effective={POLICY_EFFECTIVE}
-        canAct
         ttl
         onApply={onApply}
       />,
@@ -65,7 +42,7 @@ describe('RoutingControl — governed submit (with session)', () => {
 
   it('changing runtime resets the model to that runtime first known model', () => {
     render(
-      <RoutingControl label="a" testIdPrefix="a" registry={REGISTRY} effective={POLICY_EFFECTIVE} canAct onApply={vi.fn()} />,
+      <RoutingControl label="a" testIdPrefix="a" registry={REGISTRY} effective={POLICY_EFFECTIVE} onApply={vi.fn()} />,
     );
     fireEvent.click(screen.getByTestId('a-routing-chip'));
     fireEvent.change(screen.getByLabelText('Runtime'), { target: { value: 'codex' } });
@@ -80,7 +57,6 @@ describe('RoutingControl — governed submit (with session)', () => {
         testIdPrefix="a"
         registry={REGISTRY}
         effective={{ ...POLICY_EFFECTIVE, sourceModel: 'override' }}
-        canAct
         canClear
         onApply={vi.fn()}
         onClear={onClear}
@@ -99,7 +75,6 @@ describe('RoutingControl — governed submit (with session)', () => {
         testIdPrefix="card-300"
         registry={REGISTRY}
         effective={POLICY_EFFECTIVE}
-        canAct
         lockedReason="under approval — routing frozen"
         onApply={onApply}
       />,
@@ -119,7 +94,7 @@ describe('RoutingControl — governed submit (with session)', () => {
       reason: 'card is under an active approval; routing is frozen until it executes or the approval is rescinded',
     }));
     render(
-      <RoutingControl label="a" testIdPrefix="a" registry={REGISTRY} effective={POLICY_EFFECTIVE} canAct onApply={onApply} />,
+      <RoutingControl label="a" testIdPrefix="a" registry={REGISTRY} effective={POLICY_EFFECTIVE} onApply={onApply} />,
     );
     fireEvent.click(screen.getByTestId('a-routing-chip'));
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -135,7 +110,6 @@ describe('RoutingControl — governed submit (with session)', () => {
         testIdPrefix="c"
         registry={REGISTRY}
         effective={{ unroutable: true, reason: 'model x not known' }}
-        canAct
         onApply={vi.fn()}
       />,
     );

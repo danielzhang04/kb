@@ -2,7 +2,7 @@
 /**
  * D2.7 — vibe-code chat box view. `stream` is injected (mirrors `Editor.test.tsx`'s `SaveFn` DI) so
  * these tests never touch a real network, a real WebAuthn session, or a real `claude` process — they
- * only assert the component wires the prompt/session token through to `stream`, renders live deltas
+ * only assert the component wires the prompt/point-of-action bearer through to `stream`, renders live deltas
  * through the shared `Timeline`, and surfaces a refusal instead of silently proceeding.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -10,29 +10,43 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { Vibe, defaultVibeStream } from './Vibe';
 import type { VibeStreamFn } from './Vibe';
 import type { TimelineModel } from '../lib/timelineModel';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  clearStoredSession();
+});
+
+/** The one unlock: a stored fresh bearer the provider reads on mount. */
+function renderUnlocked(ui: React.ReactElement, token = 'tok-abc'): void {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  render(<SessionProvider>{ui}</SessionProvider>);
+}
 
 const ASSISTANT_TEXT = (text: string): TimelineModel => ({
   turns: [{ index: 0, model: 'claude-sonnet-5', timestamp: null, usage: null, steps: [{ kind: 'text', text }] }],
 });
 
 describe('Vibe', () => {
-  it('disables Send without a sessionToken and never calls stream on submit', () => {
+  it('never calls stream when the point-of-action ceremony is refused', async () => {
     const stream: VibeStreamFn = vi.fn();
-    render(<Vibe stream={stream} />);
+    render(
+      <SessionProvider deps={{ signIn: async () => { throw new Error('refused'); } }}>
+        <Vibe stream={stream} />
+      </SessionProvider>,
+    );
 
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'do a thing' } });
-    expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
-
     fireEvent.submit(screen.getByLabelText('Vibe prompt'));
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/dashboard is locked/i));
     expect(stream).not.toHaveBeenCalled();
-    expect(screen.getByText(/sign in with your passkey/i)).toBeTruthy();
   });
 
   it('disables Send for an empty/whitespace-only prompt even with a session', () => {
     const stream: VibeStreamFn = vi.fn();
-    render(<Vibe sessionToken="tok-123" stream={stream} />);
+    renderUnlocked(<Vibe stream={stream} />, 'tok-123');
     expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: '   ' } });
@@ -47,7 +61,7 @@ describe('Vibe', () => {
       return { ok: true };
     });
 
-    render(<Vibe sessionToken="tok-abc" stream={stream} />);
+    renderUnlocked(<Vibe stream={stream} />);
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'summarize the repo' } });
     fireEvent.submit(screen.getByLabelText('Vibe prompt'));
 
@@ -60,7 +74,7 @@ describe('Vibe', () => {
 
   it('surfaces a refused spawn (e.g. fleet-frozen / rate-limited) instead of silently proceeding', async () => {
     const stream: VibeStreamFn = vi.fn(async () => ({ ok: false, status: 429, reason: 'locked-out' }));
-    render(<Vibe sessionToken="tok-abc" stream={stream} />);
+    renderUnlocked(<Vibe stream={stream} />);
 
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'x' } });
     fireEvent.submit(screen.getByLabelText('Vibe prompt'));
@@ -79,7 +93,7 @@ describe('Vibe', () => {
         }),
     );
 
-    render(<Vibe sessionToken="tok-abc" stream={stream} />);
+    renderUnlocked(<Vibe stream={stream} />);
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'long running thing' } });
     fireEvent.submit(screen.getByLabelText('Vibe prompt'));
 

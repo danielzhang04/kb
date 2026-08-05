@@ -2,8 +2,8 @@
  * LaunchControls — the single governed Launch/Rerun write surface (D2.6), extracted at U3 so it lives
  * in EXACTLY one place. Both actions are governed (preamble + WebAuthn session gated server-side by
  * `server/write/launch.ts`); this component is a thin POSTing form and NEVER writes `queue/` itself.
- * Fail-closed: without a `sessionToken` the buttons are disabled end-to-end and a submit surfaces the
- * sign-in nudge WITHOUT calling fetch.
+ * Unlock is point-of-action through the shared session context: a submit on a locked tab runs the ONE
+ * passkey ceremony first and fails closed (no fetch, a plain no-session status) if it is refused.
  *
  * Two hosts render it with different chrome — Control's dense board pane and Home's rollup panel — so a
  * `variant` selects the class/testid set while the endpoints, aria-labels, field set, and fail-closed
@@ -11,7 +11,8 @@
  */
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { invalidateSessionOnGovernedAuthFailure, type Session } from '../lib/authClient';
+import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 
 type Variant = 'control' | 'home';
 
@@ -64,31 +65,22 @@ export interface OwnerOption {
 }
 
 export function LaunchControls({
-  sessionToken,
   variant = 'control',
-  onRequestSession,
   owners = [],
+  executionReady = true,
 }: {
-  sessionToken?: string;
   variant?: Variant;
-  /** U5.1 — point-of-action passkey mint. When supplied (App-wired), the buttons are enabled without a
-   *  standing session and a submit runs the WebAuthn ceremony inline instead of gating behind a wall.
-   *  Absent (direct component tests / dormant Control) → the fail-closed disabled+nudge behaviour. */
-  onRequestSession?: () => Promise<Session | null>;
+  /** Home only — Launch/Rerun stay disabled until EXECUTION is unlocked by its OWN purpose-bound
+   *  passkey check (see `control/ExecutionUnlock`). Unrelated to the dashboard session, which every
+   *  tab can now mint at point of action. */
+  executionReady?: boolean;
   /** C7.7 — the closed set of assignable owners (declared agents ∪ registered default_workers), for the
    *  optional owner `<select>`. HONEST PREVIEW ONLY — the server re-validates against the filesystem-
    *  enumerated set and is the authoritative boundary. Empty (default) → blank/unowned is the only choice. */
   owners?: OwnerOption[];
 }): React.JSX.Element {
   const c = CHROME[variant];
-
-  // Resolve a usable bearer: the standing session, else the inline ceremony (if wired), else none.
-  async function resolveToken(): Promise<string | undefined> {
-    if (sessionToken) return sessionToken;
-    if (onRequestSession) return (await onRequestSession())?.token;
-    return undefined;
-  }
-  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
+  const { requireSession } = useSession();
 
   const [project, setProject] = useState('');
   const [action, setAction] = useState('');
@@ -110,14 +102,14 @@ export function LaunchControls({
 
   async function submitLaunch(e: FormEvent): Promise<void> {
     e.preventDefault();
-    // Fail-closed with no way to mint (no token, no wired ceremony): a synchronous nudge, no fetch.
-    if (!canAct) {
-      setLaunchStatus('no session — sign in with your passkey first');
+    if (!executionReady) {
+      setLaunchStatus('execution is locked — unlock execution first');
       return;
     }
-    const token = await resolveToken();
+    // Fail-closed: a refused ceremony leaves the form untouched and calls no endpoint.
+    const token = (await requireSession())?.token;
     if (!token) {
-      setLaunchStatus('no session — sign in with your passkey first');
+      setLaunchStatus('no session — the dashboard is locked');
       return;
     }
     try {
@@ -148,13 +140,13 @@ export function LaunchControls({
 
   async function submitRerun(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!canAct) {
-      setRerunStatus('no session — sign in with your passkey first');
+    if (!executionReady) {
+      setRerunStatus('execution is locked — unlock execution first');
       return;
     }
-    const token = await resolveToken();
+    const token = (await requireSession())?.token;
     if (!token) {
-      setRerunStatus('no session — sign in with your passkey first');
+      setRerunStatus('no session — the dashboard is locked');
       return;
     }
     try {
@@ -176,8 +168,8 @@ export function LaunchControls({
   return (
     <section className={cls(c.section)} aria-label="Launch and rerun" data-testid={c.sectionTestId}>
       <h2 className={cls(c.title)}>Launch / rerun</h2>
-      {!canAct ? (
-        <p className={cls(c.warning)}>Sign in with your passkey to launch or rerun cards.</p>
+      {!executionReady ? (
+        <p className={cls(c.warning)}>Unlock execution before launching or rerunning cards.</p>
       ) : null}
       <form className={cls(c.form)} aria-label="Launch card" onSubmit={(e) => void submitLaunch(e)}>
         <input
@@ -236,7 +228,7 @@ export function LaunchControls({
           value={body}
           onChange={(e) => setBody(e.target.value)}
         />
-        <button className={cls(c.launchButton)} type="submit" disabled={!canAct}>
+        <button className={cls(c.launchButton)} type="submit" disabled={!executionReady}>
           Launch
         </button>
       </form>
@@ -261,7 +253,7 @@ export function LaunchControls({
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
         />
-        <button className={cls(c.rerunButton)} type="submit" disabled={!canAct}>
+        <button className={cls(c.rerunButton)} type="submit" disabled={!executionReady}>
           Rerun
         </button>
       </form>

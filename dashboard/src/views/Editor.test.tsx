@@ -2,14 +2,19 @@
 /**
  * D2.5 — CodeMirror 6 editor + governed save. `save` is injected so these tests never touch a real
  * server, WebAuthn session, or git checkout — they only assert the component wires the doc content
- * and session token through to `save` and renders the outcome.
+ * and the point-of-action bearer through to `save` and renders the outcome.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { Editor } from './Editor';
 import type { SaveFn } from './Editor';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  clearStoredSession();
+});
 
 describe('Editor', () => {
   it('mounts CodeMirror with the initial content and saves the edited doc through the injected save fn', async () => {
@@ -19,13 +24,15 @@ describe('Editor', () => {
       return { ok: true, target: 'durable' as const };
     });
 
+    persistSession({ token: 'tok-123', expiresAt: Date.now() + 60_000 });
     render(
-      <Editor
-        relpath="skills/curated/alpha-skill/SKILL.md"
-        initialContent="# alpha skill"
-        sessionToken="tok-123"
-        save={save}
-      />,
+      <SessionProvider>
+        <Editor
+          relpath="skills/curated/alpha-skill/SKILL.md"
+          initialContent="# alpha skill"
+          save={save}
+        />
+      </SessionProvider>,
     );
 
     // CodeMirror rendered the seeded doc into the surface.
@@ -45,7 +52,12 @@ describe('Editor', () => {
   it('surfaces a failed save (e.g. 401 without a session) instead of silently succeeding', async () => {
     const save: SaveFn = vi.fn(async () => ({ ok: false, status: 401, reason: 'invalid session: expired' }));
 
-    render(<Editor relpath="docs/notes.md" initialContent="notes" save={save} />);
+    persistSession({ token: 'tok-123', expiresAt: Date.now() + 60_000 });
+    render(
+      <SessionProvider>
+        <Editor relpath="docs/notes.md" initialContent="notes" save={save} />
+      </SessionProvider>,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 

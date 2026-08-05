@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { SESSION_INVALIDATED_EVENT } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import {
   activateRun,
   getRun,
@@ -30,16 +30,14 @@ type OpenRequest = { request: HumanRequestDto; completionGate: boolean; legacyRe
 type ResumeBinding = Pick<RunDetailDto['run'], 'runRef' | 'version' | 'managerGeneration' | 'proposalHash'>;
 type StrandedRun = { run: RunMetadataDto; resumeBinding: ResumeBinding | null };
 
-export function HumanRequestsPanel({
-  sessionToken,
-  onRequestSession,
-  fetchImpl,
-}: {
-  sessionToken?: string;
-  onRequestSession?: () => Promise<{ token: string } | null>;
-  fetchImpl?: FetchLike;
-}): React.JSX.Element {
-  const [localToken, setLocalToken] = useState(sessionToken);
+/**
+ * Run requests, loaded and answered through the app's ONE unlock: a locked tab renders the panel shell
+ * with no rows, and the first governed click (Refresh / a decision / Resume) runs the shared passkey
+ * ceremony. There is no unlock button here.
+ */
+export function HumanRequestsPanel({ fetchImpl }: { fetchImpl?: FetchLike }): React.JSX.Element {
+  const { session, requireSession } = useSession();
+  const token = session?.token;
   const [requests, setRequests] = useState<OpenRequest[]>([]);
   // Runs stuck `waiting-human` with NO open request — otherwise unreachable from the UI, so surface them.
   // Only exact accepted-boundary details receive an activate-only recovery action.
@@ -47,13 +45,6 @@ export function HumanRequestsPanel({
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (sessionToken) setLocalToken(sessionToken); }, [sessionToken]);
-  useEffect(() => {
-    const invalidate = (): void => setLocalToken(undefined);
-    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-  }, []);
-  const token = sessionToken ?? localToken;
 
   const refresh = useCallback(async (activeToken: string): Promise<void> => {
     const runs = await listRuns(activeToken, fetchImpl);
@@ -101,12 +92,30 @@ export function HumanRequestsPanel({
     return () => { alive = false; };
   }, [refresh, token]);
 
-  const unlock = (): void => {
-    void onRequestSession?.().then((session) => { if (session) setLocalToken(session.token); });
+  /** Every governed click resolves a bearer the same way: reuse the live one, else run the ONE ceremony. */
+  const withSession = async (run: (activeToken: string) => Promise<void>): Promise<void> => {
+    if (busy) return;
+    const active = (await requireSession())?.token;
+    if (!active) {
+      setError('The dashboard is locked — nothing was sent.');
+      return;
+    }
+    await run(active);
   };
 
-  const respond = ({ request, completionGate }: OpenRequest, decision: HumanRequestDecision): void => {
-    if (!token || busy) return;
+  const refreshNow = (): void => {
+    void withSession(async (activeToken) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await refresh(activeToken);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Could not load Human Requests.');
+      } finally { setBusy(false); }
+    });
+  };
+
+  const respond = ({ request, completionGate }: OpenRequest, decision: HumanRequestDecision, token: string): void => {
     setBusy(true);
     setError(null);
     const mutation = completionGate
@@ -130,8 +139,7 @@ export function HumanRequestsPanel({
       .finally(() => setBusy(false));
   };
 
-  const resume = (binding: ResumeBinding): void => {
-    if (!token || busy) return;
+  const resume = (binding: ResumeBinding, token: string): void => {
     setBusy(true);
     setError(null);
     void activateRun(binding, token, fetchImpl)
@@ -140,8 +148,7 @@ export function HumanRequestsPanel({
       .finally(() => setBusy(false));
   };
 
-  const recoverLegacyBoundary = (binding: LegacyRecoveryBinding): void => {
-    if (!token || busy) return;
+  const recoverLegacyBoundary = (binding: LegacyRecoveryBinding, token: string): void => {
     setBusy(true);
     setError(null);
     void recoverAuthorized20260731ExecutionLock(binding, token, fetchImpl)
@@ -154,9 +161,7 @@ export function HumanRequestsPanel({
     <section className="control-inbox-requests mc-panel" aria-label="Managed Human Requests">
       <header className="control-managed-runs__head">
         <div><h2>Run requests</h2><p>Durable, revision-bound requests from managed runs.</p></div>
-        {token ? <button type="button" className="mc-btn" disabled={busy} onClick={() => void refresh(token)}>Refresh</button> : (
-          <button type="button" className="mc-btn mc-btn--primary" onClick={unlock}>Unlock run requests</button>
-        )}
+        <button type="button" className="mc-btn" disabled={busy} onClick={refreshNow}>Refresh</button>
       </header>
       {error ? <p role="alert">{error}</p> : null}
       {token && requests.length === 0 && strandedRuns.length === 0 ? <p className="control-help">No managed run requests need attention.</p> : null}
@@ -168,7 +173,7 @@ export function HumanRequestsPanel({
             ? 'The request is resolved. Resume this existing run when execution is active.'
             : 'This run is waiting on a human with NO open request — inspect the run to see why it is parked.'}</p>
           {resumeBinding ? (
-            <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => resume(resumeBinding)}>
+            <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => void withSession(async (activeToken) => resume(resumeBinding, activeToken))}>
               Resume run
             </button>
           ) : null}
@@ -182,7 +187,7 @@ export function HumanRequestsPanel({
           <p>{request.prompt}</p>
           {legacyRecovery ? (
             <div className="control-actions">
-              <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => recoverLegacyBoundary(legacyRecovery)}>
+              <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => void withSession(async (activeToken) => recoverLegacyBoundary(legacyRecovery, activeToken))}>
                 Repair execution-lock boundary
               </button>
             </div>
@@ -197,7 +202,7 @@ export function HumanRequestsPanel({
               />
               <div className="control-actions">
                 {decisionsForHumanRequest(request.kind).map((decision) => (
-                  <button key={decision} type="button" className={decision === 'approved' ? 'mc-btn mc-btn--primary' : 'mc-btn'} disabled={busy} onClick={() => respond({ request, completionGate, legacyRecovery: null }, decision)}>
+                  <button key={decision} type="button" className={decision === 'approved' ? 'mc-btn mc-btn--primary' : 'mc-btn'} disabled={busy} onClick={() => void withSession(async (activeToken) => respond({ request, completionGate, legacyRecovery: null }, decision, activeToken))}>
                     {decision === 'changes-requested' ? 'Request changes' : decision[0].toUpperCase() + decision.slice(1)}
                   </button>
                 ))}

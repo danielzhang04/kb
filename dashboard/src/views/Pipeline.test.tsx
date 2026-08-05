@@ -11,6 +11,7 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-li
 import { Pipeline, PipelineNodeBody } from './Pipeline';
 import type { DagNodeData } from '../../server/dag/graph';
 import { EMPTY_ROUTING, postCardRouting, type RuntimeRegistryEntry, type WriteResult } from '../lib/routingClient';
+import { SessionProvider } from '../lib/sessionContext';
 
 afterEach(cleanup);
 
@@ -45,7 +46,7 @@ const noopWrite = async (): Promise<WriteResult> => ({ ok: true });
 
 describe('Runs view', () => {
   it('explains that execution happens in background runners, not Terminal tabs', () => {
-    render(<Pipeline dag={{ nodes: [], edges: [] }} routing={EMPTY_ROUTING} />);
+    render(<SessionProvider><Pipeline dag={{ nodes: [], edges: [] }} routing={EMPTY_ROUTING} /></SessionProvider>);
 
     expect(screen.getByLabelText('Runs view')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Runs' })).toBeTruthy();
@@ -54,7 +55,7 @@ describe('Runs view', () => {
   });
 
   it('uses a truthful empty state without promising a workflow compiler', () => {
-    render(<Pipeline dag={{ nodes: [], edges: [] }} routing={EMPTY_ROUTING} />);
+    render(<SessionProvider><Pipeline dag={{ nodes: [], edges: [] }} routing={EMPTY_ROUTING} /></SessionProvider>);
 
     const empty = screen.getByTestId('runs-empty');
     expect(within(empty).getByText('No launched queue cards to graph yet')).toBeTruthy();
@@ -69,16 +70,18 @@ describe('Runs view', () => {
       disconnect(): void {}
     });
     render(
-      <Pipeline
-        dag={{
-          nodes: [
-            { id: 'a', data: nodeData({ id: 'a', workflow: 'run-alpha', state: 'done' }) },
-            { id: 'b', data: nodeData({ id: 'b', workflow: 'run-beta', state: 'working' }) },
-          ],
-          edges: [],
-        }}
-        routing={EMPTY_ROUTING}
-      />,
+      <SessionProvider>
+        <Pipeline
+          dag={{
+            nodes: [
+              { id: 'a', data: nodeData({ id: 'a', workflow: 'run-alpha', state: 'done' }) },
+              { id: 'b', data: nodeData({ id: 'b', workflow: 'run-beta', state: 'working' }) },
+            ],
+            edges: [],
+          }}
+          routing={EMPTY_ROUTING}
+        />
+      </SessionProvider>,
     );
 
     const groups = screen.getByTestId('run-groups');
@@ -97,7 +100,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-42' })}
         registry={REGISTRY}
-        canAct={false}
         onApplyRouting={noopWrite}
         onClearRouting={noopWrite}
         onOpenCard={() => {}}
@@ -117,7 +119,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-9' })}
         registry={REGISTRY}
-        canAct={false}
         onApplyRouting={noopWrite}
         onClearRouting={noopWrite}
         onOpenCard={onOpenCard}
@@ -141,7 +142,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-lock', state: 'blocked', blocked: true })}
         registry={REGISTRY}
-        canAct
         onApplyRouting={onApplyRouting}
         onClearRouting={noopWrite}
         onOpenCard={() => {}}
@@ -178,7 +178,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-conflict', state: 'blocked', blocked: true })}
         registry={REGISTRY}
-        canAct
         onApplyRouting={onApplyRouting}
         onClearRouting={noopWrite}
         onOpenCard={() => {}}
@@ -198,7 +197,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-appr', state: 'approvals' })}
         registry={REGISTRY}
-        canAct
         onApplyRouting={onApplyRouting}
         onClearRouting={noopWrite}
         onOpenCard={() => {}}
@@ -216,7 +214,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-queued', state: 'inbox', owner: 'codex-worker' })}
         registry={REGISTRY}
-        canAct
         onApplyRouting={onApplyRouting}
         onClearRouting={noopWrite}
         onOpenCard={() => {}}
@@ -229,7 +226,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-active', state: 'working', owner: 'codex-worker' })}
         registry={REGISTRY}
-        canAct
         onApplyRouting={onApplyRouting}
         onClearRouting={noopWrite}
         onOpenCard={() => {}}
@@ -245,7 +241,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-future', state: 'blocked', blocked: true, owner: 'codex-worker' })}
         registry={REGISTRY}
-        canAct
         onApplyRouting={noopWrite}
         onClearRouting={noopWrite}
         onOpenCard={() => {}}
@@ -257,7 +252,6 @@ describe('PipelineNodeBody', () => {
       <PipelineNodeBody
         data={nodeData({ id: 'card-done', state: 'done', owner: 'codex-worker' })}
         registry={REGISTRY}
-        canAct
         onApplyRouting={noopWrite}
         onClearRouting={noopWrite}
         onOpenCard={() => {}}

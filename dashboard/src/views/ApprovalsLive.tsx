@@ -13,23 +13,18 @@ import type { HumanInboxItem } from '../../server/approvals/humanInbox';
 import { Approvals } from './Approvals';
 import type { ApprovalChannel, RespondAction } from './Approvals';
 import { useSse } from '../lib/sseClient';
+import { useSession } from '../lib/sessionContext';
 import { fetchHumanInbox, respondToCard, verifyApproval, type FetchLike } from '../lib/approvalsClient';
 import { HumanRequestsPanel } from '../control/HumanRequestsPanel';
 
 export interface ApprovalsLiveProps {
-  /** The WebAuthn-minted session bearer (from `authClient.signIn`), if the dashboard is unlocked. */
-  sessionToken?: string;
-  /** Point-of-action dashboard unlock. `force` replaces a bearer invalidated by a daemon restart. */
-  onRequestSession?: (force?: boolean) => Promise<{ token: string } | null>;
   /** Injected for tests; production uses the real `fetch`/`EventSource`. */
   fetchImpl?: FetchLike;
 }
 
-export function ApprovalsLive({
-  sessionToken,
-  onRequestSession,
-  fetchImpl,
-}: ApprovalsLiveProps): React.JSX.Element {
+export function ApprovalsLive({ fetchImpl }: ApprovalsLiveProps): React.JSX.Element {
+  const { session, requireSession } = useSession();
+  const sessionToken = session?.token;
   const [items, setItems] = useState<HumanInboxItem[]>([]);
   const [outcome, setOutcome] = useState<{ kind: 'progress' | 'success' | 'error'; message: string } | null>(null);
   // Refetch on every SSE arrival; `count` starts at 0, so the effect also runs once on mount.
@@ -57,8 +52,7 @@ export function ApprovalsLive({
         kind: 'progress',
         message: sessionToken ? `Preparing verification for ${cardId}…` : 'Unlocking dashboard…',
       });
-      let token = sessionToken;
-      if (!token) token = (await onRequestSession?.())?.token;
+      let token = (await requireSession())?.token;
       if (!token) {
         setOutcome({ kind: 'error', message: 'Approval was not sent because the dashboard is still locked.' });
         return;
@@ -66,11 +60,12 @@ export function ApprovalsLive({
 
       setOutcome({ kind: 'progress', message: `Verifying ${cardId}…` });
       let result = await verifyApproval(cardId, channel, { token, fetchImpl });
-      if (result.status === 401 && onRequestSession) {
-        // A daemon restart invalidates an otherwise unexpired stateless bearer. Replace it once, then
-        // retry the exact operator-selected card/channel; never loop or silently downgrade.
-        const replacement = await onRequestSession(true);
-        if (replacement) {
+      if (result.status === 401) {
+        // A daemon restart invalidates an otherwise unexpired stateless bearer; the governed 401 clears
+        // it, so this mints a REPLACEMENT and retries the exact operator-selected card/channel once.
+        // A ceremony that hands back the same bearer is not a replacement — never loop, never downgrade.
+        const replacement = await requireSession();
+        if (replacement && replacement.token !== token) {
           token = replacement.token;
           result = await verifyApproval(cardId, channel, { token, fetchImpl });
         }
@@ -106,8 +101,7 @@ export function ApprovalsLive({
         kind: 'progress',
         message: sessionToken ? `Sending ${verb} for ${cardId}…` : 'Unlocking dashboard…',
       });
-      let token = sessionToken;
-      if (!token) token = (await onRequestSession?.())?.token;
+      let token = (await requireSession())?.token;
       if (!token) {
         setOutcome({ kind: 'error', message: `The ${verb} was not sent because the dashboard is still locked.` });
         return;
@@ -115,9 +109,9 @@ export function ApprovalsLive({
 
       setOutcome({ kind: 'progress', message: `Sending ${verb} for ${cardId}…` });
       let result = await respondToCard(cardId, action, message, { token, fetchImpl });
-      if (result.status === 401 && onRequestSession) {
-        const replacement = await onRequestSession(true);
-        if (replacement) {
+      if (result.status === 401) {
+        const replacement = await requireSession();
+        if (replacement && replacement.token !== token) {
           token = replacement.token;
           result = await respondToCard(cardId, action, message, { token, fetchImpl });
         }
@@ -163,7 +157,7 @@ export function ApprovalsLive({
         </p>
       ) : null}
       <Approvals items={items} onVerify={onVerify} onRespond={onRespond} pendingRespond={outcome?.kind === 'progress'} />
-      <HumanRequestsPanel sessionToken={sessionToken} onRequestSession={onRequestSession} fetchImpl={fetchImpl} />
+      <HumanRequestsPanel fetchImpl={fetchImpl} />
     </section>
   );
 }

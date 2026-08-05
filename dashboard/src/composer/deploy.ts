@@ -56,7 +56,7 @@ export interface DeployRefusal {
 export type DeployResult = DeploySuccess | DeployRefusal;
 
 /** The fail-closed nudge text — mirrors LaunchControls' no-session copy so the UX reads the same. */
-const NO_SESSION_NUDGE = 'no session — sign in with your passkey first';
+const NO_SESSION_NUDGE = 'no session — the dashboard is locked';
 
 /** Compose a sensible durable commit message from the plan (the server would otherwise default it). Kept
  *  legible and kind-aware so the eventual PR/commit says what Composer deployed. */

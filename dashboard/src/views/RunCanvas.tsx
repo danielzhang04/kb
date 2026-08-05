@@ -5,10 +5,9 @@
  * shells remain exclusively in `Terminal.tsx`; this lets the roster stay headless while retaining an
  * operator-visible two-way stream for each assigned agent.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../styles/views/runCanvas.css';
-import type { Session } from '../lib/authClient';
-import { SESSION_INVALIDATED_EVENT } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import {
   getRun,
   listRunEvents,
@@ -147,13 +146,13 @@ async function postAgentMessage(
 export interface AgentTileProps {
   agentId: string;
   runRef: string;
-  sessionToken: string;
   events: OperationalEventDto[];
   fetchImpl?: FetchLike;
   onNavigate?: (target: NavTarget) => void;
 }
 
-export function AgentTile({ agentId, runRef, sessionToken, events, fetchImpl, onNavigate }: AgentTileProps): React.JSX.Element {
+export function AgentTile({ agentId, runRef, events, fetchImpl, onNavigate }: AgentTileProps): React.JSX.Element {
+  const { requireSession } = useSession();
   const badge = runCanvasBadge(events);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -166,7 +165,13 @@ export function AgentTile({ agentId, runRef, sessionToken, events, fetchImpl, on
     setSending(true);
     setDeliveryNotice(null);
     try {
-      const result = await postAgentMessage(runRef, agentId, text, sessionToken, fetchImpl);
+      // Point-of-action unlock: the operator's send IS the governed act, so it mints if this tab is locked.
+      const token = (await requireSession())?.token;
+      if (!token) {
+        setDeliveryNotice('The dashboard is locked — your message was not delivered.');
+        return;
+      }
+      const result = await postAgentMessage(runRef, agentId, text, token, fetchImpl);
       if ('offline' in result) {
         setDeliveryNotice('Worker delivery offline — your message was not delivered.');
       } else {
@@ -211,13 +216,12 @@ export function AgentTile({ agentId, runRef, sessionToken, events, fetchImpl, on
 
 export interface RunCanvasBoardProps {
   detail: RunDetailDto;
-  sessionToken: string;
   events: OperationalEventDto[];
   fetchImpl?: FetchLike;
   onNavigate?: (target: NavTarget) => void;
 }
 
-export function RunCanvasBoard({ detail, sessionToken, events, fetchImpl, onNavigate }: RunCanvasBoardProps): React.JSX.Element {
+export function RunCanvasBoard({ detail, events, fetchImpl, onNavigate }: RunCanvasBoardProps): React.JSX.Element {
   const { agentIds, edges } = useMemo(() => deriveAgentGraph(detail), [detail]);
   const lanes = useMemo(() => deriveAgentLanes(agentIds, edges), [agentIds, edges]);
   return (
@@ -225,7 +229,7 @@ export function RunCanvasBoard({ detail, sessionToken, events, fetchImpl, onNavi
       <div className="run-canvas-board__lanes">
         {lanes.map((lane, laneIndex) => <div key={laneIndex} className="run-canvas-board__lane" data-testid={`run-canvas-lane-${laneIndex}`}>
           {lane.map((agentId) => <AgentTile key={agentId} agentId={agentId} runRef={detail.run.runRef}
-            sessionToken={sessionToken} events={events.filter((event) => eventBelongsToAgent(event, detail, agentId))}
+            events={events.filter((event) => eventBelongsToAgent(event, detail, agentId))}
             fetchImpl={fetchImpl} onNavigate={onNavigate} />)}
         </div>)}
       </div>
@@ -235,15 +239,19 @@ export function RunCanvasBoard({ detail, sessionToken, events, fetchImpl, onNavi
 }
 
 export interface RunCanvasProps {
-  sessionToken?: string;
-  onRequestSession?: () => Promise<Session | null>;
   onNavigate?: (target: NavTarget) => void;
   fetchImpl?: FetchLike;
   focusRunRef?: string | null;
 }
 
-export function RunCanvas({ sessionToken, onRequestSession, onNavigate, fetchImpl, focusRunRef }: RunCanvasProps): React.JSX.Element {
-  const [localToken, setLocalToken] = useState(sessionToken);
+/**
+ * A governed view: it needs a bearer to show anything, so it asks for one ON MOUNT through the shared
+ * session context rather than parking a sign-in wall in front of the operator. A refused ceremony
+ * leaves one calm line that retries on click.
+ */
+export function RunCanvas({ onNavigate, fetchImpl, focusRunRef }: RunCanvasProps): React.JSX.Element {
+  const { session, requireSession } = useSession();
+  const token = session?.token;
   const [runs, setRuns] = useState<RunMetadataDto[]>([]);
   const [selectedRunRef, setSelectedRunRef] = useState<string | null>(focusRunRef ?? null);
   const [detail, setDetail] = useState<RunDetailDto | null>(null);
@@ -252,14 +260,15 @@ export function RunCanvas({ sessionToken, onRequestSession, onNavigate, fetchImp
   const [pollError, setPollError] = useState<string | null>(null);
   const [rateLimitBackoffMs, setRateLimitBackoffMs] = useState<number | null>(null);
   const [signingIn, setSigningIn] = useState(false);
-  const token = sessionToken ?? localToken;
+  // The mount prompt runs at most once; a refusal must not re-prompt on every render.
+  const promptedRef = useRef(false);
 
-  useEffect(() => { if (sessionToken) setLocalToken(sessionToken); }, [sessionToken]);
   useEffect(() => {
-    const invalidate = (): void => setLocalToken(undefined);
-    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-  }, []);
+    if (token || promptedRef.current) return;
+    promptedRef.current = true;
+    setSigningIn(true);
+    void requireSession().finally(() => setSigningIn(false));
+  }, [token, requireSession]);
   useEffect(() => { if (focusRunRef) setSelectedRunRef(focusRunRef); }, [focusRunRef]);
   useEffect(() => {
     if (!token) return;
@@ -336,20 +345,19 @@ export function RunCanvas({ sessionToken, onRequestSession, onNavigate, fetchImp
   }, [fetchImpl, selectedRunRef, token]);
 
   const unlock = (): void => {
-    if (!onRequestSession || signingIn) return;
+    if (signingIn) return;
     setSigningIn(true);
-    void onRequestSession().then((session) => { if (session) setLocalToken(session.token); }).finally(() => setSigningIn(false));
+    void requireSession().finally(() => setSigningIn(false));
   };
 
   return <section className="v-run-canvas" aria-label="Run canvas">
     <header className="v-run-canvas__head"><h2>Run canvas</h2><p className="v-run-canvas__lede">Watch each agent&rsquo;s redacted public stream and send an operator message without opening a terminal.</p></header>
-    {!token ? (onRequestSession ? <button type="button" className="mc-btn mc-btn--primary" onClick={unlock} disabled={signingIn} data-testid="run-canvas-signin">{signingIn ? 'Signing in…' : 'Sign in with your passkey to open the run canvas'}</button>
-      : <p className="v-run-canvas__session-warning">Sign in with your passkey to open the run canvas.</p>) : <>
+    {!token ? <button type="button" className="v-run-canvas__locked" onClick={unlock} disabled={signingIn} data-testid="run-canvas-locked">{signingIn ? 'Unlocking…' : 'Locked — unlock to view live streams'}</button> : <>
       {error ? <p role="alert" className="v-run-canvas__error">{error}</p> : null}
       {pollError ? <p role="alert" className="v-run-canvas__error">{pollError}</p> : null}
       {rateLimitBackoffMs ? <p role="status" className="v-run-canvas__rate-limit" data-testid="run-canvas-rate-limit">Rate-limited, backing off. Retrying in {rateLimitBackoffMs / 1_000}s.</p> : null}
       <RunGrid runs={runs} selectedRunRef={selectedRunRef} onSelect={setSelectedRunRef} />
-      {selectedRunRef && detail ? <RunCanvasBoard detail={detail} sessionToken={token} events={events} fetchImpl={fetchImpl} onNavigate={onNavigate} />
+      {selectedRunRef && detail ? <RunCanvasBoard detail={detail} events={events} fetchImpl={fetchImpl} onNavigate={onNavigate} />
         : selectedRunRef ? <p className="control-help">Loading the run canvas…</p> : <p className="control-help">Select a run above to open its canvas.</p>}
     </>}
   </section>;

@@ -2,7 +2,7 @@
  * D2.7 — the vibe-code chat box's client view. A chat box that streams a REAL
  * `claude --print --output-format stream-json` session back live — a **live prompt with fleet reach
  * (RCE-equivalent)**, so this view is gated end-to-end exactly like `Control.tsx`'s `LaunchControls`
- * (D2.6): disabled without a `sessionToken`, and it NEVER spawns anything itself — it only POSTs the
+ * (D2.6): governed at point of action through the app's ONE unlock, and it NEVER spawns anything itself — it only POSTs the
  * prompt (bearer session token attached) to the governed server endpoint that wraps
  * `server/vibe/session.ts#spawnVibe` (preamble-gated, WebAuthn-session-gated, rate-limited, audited;
  * see that module for the full gate chain). No route is wired by this file — mounting the endpoint
@@ -23,6 +23,7 @@ import type { TimelineModel } from '../lib/timelineModel';
 import { parseRecord } from '../../server/planeB/record';
 import type { TranscriptRecord } from '../../server/planeB/record';
 import { Timeline } from './Timeline';
+import { useSession } from '../lib/sessionContext';
 
 export interface VibeStreamOutcome {
   ok: boolean;
@@ -98,7 +99,6 @@ export const defaultVibeStream: VibeStreamFn = async (prompt, sessionToken, onDe
 };
 
 export interface VibeProps {
-  sessionToken?: string;
   stream?: VibeStreamFn;
 }
 
@@ -106,8 +106,10 @@ type Status = 'idle' | 'running' | 'stopped' | 'error';
 
 const EMPTY: TimelineModel = { turns: [] };
 
-/** The vibe-code chat box: session-gated prompt in, live folded timeline out. */
-export function Vibe({ sessionToken, stream = defaultVibeStream }: VibeProps): React.JSX.Element {
+/** The vibe-code chat box: prompt in, live folded timeline out. Governed at point of action — a send
+ *  on a locked tab runs the app's ONE passkey ceremony first and fails closed if it is refused. */
+export function Vibe({ stream = defaultVibeStream }: VibeProps): React.JSX.Element {
+  const { requireSession } = useSession();
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState<TimelineModel>(EMPTY);
   const [status, setStatus] = useState<Status>('idle');
@@ -117,7 +119,13 @@ export function Vibe({ sessionToken, stream = defaultVibeStream }: VibeProps): R
   const onSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (!sessionToken || status === 'running' || prompt.trim() === '') return;
+      if (status === 'running' || prompt.trim() === '') return;
+      const sessionToken = (await requireSession())?.token;
+      if (!sessionToken) {
+        setStatus('error');
+        setError('the dashboard is locked — nothing was sent');
+        return;
+      }
       setStatus('running');
       setError(null);
       setModel(EMPTY);
@@ -136,7 +144,7 @@ export function Vibe({ sessionToken, stream = defaultVibeStream }: VibeProps): R
         setError(outcome.reason ?? `refused${outcome.status ? ` (${outcome.status})` : ''}`);
       }
     },
-    [prompt, sessionToken, status, stream],
+    [prompt, requireSession, status, stream],
   );
 
   const onStop = useCallback(() => {
@@ -152,9 +160,6 @@ export function Vibe({ sessionToken, stream = defaultVibeStream }: VibeProps): R
         the kb (RCE-equivalent power). Session-gated, preamble/STOP-gated, rate-limited, and
         independently audited.
       </p>
-      {!sessionToken ? (
-        <p className="vibe__session-warning">Sign in with your passkey to use the vibe-code chat.</p>
-      ) : null}
       <form aria-label="Vibe prompt" onSubmit={(e) => void onSubmit(e)}>
         <textarea
           aria-label="Prompt"
@@ -162,7 +167,7 @@ export function Vibe({ sessionToken, stream = defaultVibeStream }: VibeProps): R
           onChange={(e) => setPrompt(e.target.value)}
           disabled={status === 'running'}
         />
-        <button type="submit" disabled={!sessionToken || status === 'running' || prompt.trim() === ''}>
+        <button type="submit" disabled={status === 'running' || prompt.trim() === ''}>
           {status === 'running' ? 'Running…' : 'Send'}
         </button>
         <button type="button" onClick={onStop} disabled={status !== 'running'}>

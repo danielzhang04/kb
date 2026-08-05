@@ -618,70 +618,6 @@ button {
   gap: var(--space-3);
 }
 
-/* Passive session indicator — a dot + quiet label, informational only (NOT a button). */
-.mc-session {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-faint);
-}
-
-.mc-session__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.mc-session__label {
-  font-weight: 500;
-}
-
-.mc-session__unlock {
-  width: 100%;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  color: var(--fg-primary);
-  padding: var(--space-1) var(--space-2);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  cursor: pointer;
-}
-
-.mc-session__unlock:hover:not(:disabled) {
-  border-color: var(--accent-strong);
-}
-
-.mc-session__unlock:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.mc-session__help,
-.mc-session__error {
-  margin: 0;
-  font-size: var(--text-xs);
-  line-height: 1.4;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.mc-session__help {
-  color: var(--fg-faint);
-}
-
-.mc-session__error {
-  color: var(--error);
-}
-
 /* De-chrome the relocated StopControls inside the narrow floor — it drops its panel frame and
  * reads as part of the shell, not a card. (View-body internals are untouched otherwise.) */
 .mc-sidebar__floor .control__stop {
@@ -798,16 +734,8 @@ button {
   display: none;
 }
 
-.app-shell--rail .mc-sidebar__floor .control__stop,
-.app-shell--rail .mc-session__label,
-.app-shell--rail .mc-session__unlock,
-.app-shell--rail .mc-session__help,
-.app-shell--rail .mc-session__error {
+.app-shell--rail .mc-sidebar__floor .control__stop {
   display: none;
-}
-
-.app-shell--rail .mc-session {
-  align-items: center;
 }
 
 .app-shell--rail .mc-sidebar__floor-rail {
@@ -845,6 +773,40 @@ button {
   font-size: var(--text-xs);
   color: var(--fg-dim);
   white-space: nowrap;
+}
+
+/* The app's ONE unlock affordance — a quiet chip in the topbar, same visual weight as the glance.
+ * Locked it is a button (click = the single passkey ceremony); unlocked it is an inert readout. */
+.mc-session-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mc-session-chip:disabled {
+  cursor: default;
+  color: var(--fg-faint);
+}
+
+.mc-session-chip:hover:not(:disabled) {
+  color: var(--fg-primary);
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.mc-session-chip:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
 }
 
 /* Quiet theme toggle — a subtle icon button (dark default, light on demand; choice persisted). */

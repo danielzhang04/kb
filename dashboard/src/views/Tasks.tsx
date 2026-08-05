@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import type { ParsedCard, CardFieldValue } from '../../server/planeA/cards';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { Session } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import {
   EMPTY_ROUTING,
   fetchRouting,
@@ -205,7 +205,6 @@ function CardRoutingBar({
   cardOwner,
   view,
   registry,
-  canAct,
   onApply,
   onClear,
 }: {
@@ -214,7 +213,6 @@ function CardRoutingBar({
   cardOwner: unknown;
   view: CardRoutingView | undefined;
   registry: RoutingSnapshot['policy']['runtimes'];
-  canAct: boolean;
   onApply: (runtime: string, model: string) => Promise<{ ok: boolean; reason?: string }>;
   onClear: () => Promise<{ ok: boolean; reason?: string }>;
 }): React.JSX.Element {
@@ -237,7 +235,6 @@ function CardRoutingBar({
         testIdPrefix={`card-${cardId}`}
         registry={registry}
         effective={view?.effective ?? null}
-        canAct={canAct}
         canClear={Boolean(routed)}
         lockedReason={lockedReason}
         onApply={(runtime, model) => onApply(runtime, model)}
@@ -251,14 +248,12 @@ function DetailPane({
   card,
   routingView,
   registry,
-  canAct,
   onApplyRouting,
   onClearRouting,
 }: {
   card: ParsedCard;
   routingView: CardRoutingView | undefined;
   registry: RoutingSnapshot['policy']['runtimes'];
-  canAct: boolean;
   onApplyRouting: (cardId: string, runtime: string, model: string) => Promise<{ ok: boolean; reason?: string }>;
   onClearRouting: (cardId: string) => Promise<{ ok: boolean; reason?: string }>;
 }): React.JSX.Element {
@@ -276,7 +271,6 @@ function DetailPane({
         cardOwner={card.meta.owner}
         view={routingView}
         registry={registry}
-        canAct={canAct}
         onApply={(runtime, model) => onApplyRouting(cardId, runtime, model)}
         onClear={() => onClearRouting(cardId)}
       />
@@ -309,18 +303,15 @@ function DetailPane({
 export function Tasks({
   data,
   routing,
-  sessionToken,
-  onRequestSession,
   initialSelectedId,
 }: {
   data?: CardsByState;
   routing?: RoutingSnapshot;
-  sessionToken?: string;
-  onRequestSession?: () => Promise<Session | null>;
   /** Card id to open in the detail pane on mount — used by the Pipeline canvas click-through so a node
    *  jump lands directly on that card's full frontmatter/body/routing surface. */
   initialSelectedId?: string;
 } = {}): React.JSX.Element {
+  const { requireSession } = useSession();
   const [fetched, setFetched] = useState<CardsByState | null>(null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null);
@@ -356,12 +347,10 @@ export function Tasks({
 
   const cards = data ?? fetched ?? EMPTY;
   const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
-  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
 
+  /** Point-of-action unlock: a routing write on a locked tab runs the ONE ceremony first. */
   async function resolveToken(): Promise<string | undefined> {
-    if (sessionToken) return sessionToken;
-    if (onRequestSession) return (await onRequestSession())?.token ?? undefined;
-    return undefined;
+    return (await requireSession())?.token;
   }
 
   async function applyCardRouting(cardId: string, runtime: string, model: string): Promise<{ ok: boolean; reason?: string }> {
@@ -415,7 +404,6 @@ export function Tasks({
           card={selected}
           routingView={routingSnap.cards[String(selected.meta.id)]}
           registry={routingSnap.policy.runtimes}
-          canAct={canAct}
           onApplyRouting={applyCardRouting}
           onClearRouting={clearCardRouting}
         />

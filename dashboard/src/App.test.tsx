@@ -72,13 +72,11 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
   });
 
-  it('pins the Session/Stop floor in the shell, present regardless of the active view', () => {
+  it('pins the Stop floor in the shell, present regardless of the active view', () => {
     render(<App />);
     expect(screen.getByTestId('stop-floor')).toBeTruthy();
-    // U5.1 — the floor carries a passive session indicator, NOT sign-in/out chrome.
-    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard locked/i);
-    expect(screen.getByRole('button', { name: 'Unlock dashboard' })).toBeTruthy();
-    expect(screen.getByTestId('session-state').textContent).toMatch(/no private key leaves your device/i);
+    // Session state left the floor: the top-bar chip is the app's ONE unlock affordance.
+    expect(screen.queryByTestId('session-state')).toBeNull();
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
@@ -88,6 +86,17 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByLabelText('Stop floor')).toBeTruthy();
   });
 
+  it('carries exactly ONE unlock affordance: the top-bar lock chip', () => {
+    render(<App />);
+    const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
+    expect(chip.textContent).toBe('Locked');
+    expect(chip.disabled).toBe(false);
+    // No other surface offers a SESSION unlock — every governed action mints at point of action.
+    // ("Unlock execution" is a different, purpose-bound ceremony on its own posture, not this session.)
+    expect(screen.queryAllByRole('button', { name: /unlock/i }).map((b) => b.textContent))
+      .toEqual(['Unlock execution']);
+  });
+
   it('restores an unexpired tab session after a refresh-sized remount', () => {
     window.sessionStorage.setItem(
       'kb-dashboard-session-v1',
@@ -95,8 +104,10 @@ describe('App shell — entity-first sidebar navigation', () => {
     );
     render(<App />);
 
-    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
-    expect(screen.queryByRole('button', { name: 'Unlock dashboard' })).toBeNull();
+    const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
+    expect(chip.textContent).toMatch(/^Unlocked · expires in \d+m$/);
+    // Unlocked, the chip is an inert readout rather than a second unlock button.
+    expect(chip.disabled).toBe(true);
   });
 
   it('drops an in-memory saved session after a governed bad-signature response', async () => {
@@ -105,16 +116,15 @@ describe('App shell — entity-first sidebar navigation', () => {
       JSON.stringify({ token: 'rotated-secret-token', expiresAt: Date.now() + 60_000 }),
     );
     render(<App />);
-    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
+    expect(screen.getByTestId('session-chip').textContent).toMatch(/^Unlocked/);
 
     await invalidateSessionOnGovernedAuthFailure(new Response(JSON.stringify({
       error: 'unauthenticated',
       reason: 'bad-signature',
     }), { status: 401, headers: { 'content-type': 'application/json' } }));
 
-    await waitFor(() => expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard locked/i));
+    await waitFor(() => expect(screen.getByTestId('session-chip').textContent).toBe('Locked'));
     expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Unlock dashboard' })).toBeTruthy();
   });
 
   it('lays the sidebar out as a full-height column: [+ New] header, scrollable nav, pinned floor last', () => {
@@ -227,10 +237,10 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
     expect(btn.getAttribute('aria-current')).toBe('page');
-    // The real Terminal view mounts (session-gated: it shows the passkey prompt, not the U3 placeholder).
+    // The real Terminal view mounts (session-gated: it shows the calm locked line, not the U3 placeholder).
     const view = screen.getByLabelText('Terminal view');
     expect(view.textContent ?? '').not.toMatch(/built in U3/i);
-    expect(view.textContent ?? '').toMatch(/passkey/i);
+    expect(within(view).getByTestId('terminal-locked')).toBeTruthy();
   });
 
   it('keeps the Terminal workspace mounted across navigation', () => {

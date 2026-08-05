@@ -13,8 +13,16 @@ import { Composer } from './Composer';
 import { toDeploy } from './artifactTypes';
 import type { ComposerStreamFn } from './chatClient';
 import type { TimelineModel } from '../lib/timelineModel';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
 
 afterEach(() => {
+  clearStoredSession();
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -98,7 +106,7 @@ function fillWorkflowDraft(): void {
 describe('Composer', () => {
   it('starts_in_idea_mode_with_disambiguation_seed', async () => {
     const { calls, stream } = recordingStream();
-    render(<Composer sessionToken="tok" onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />);
+    render(unlocked(<Composer onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />));
 
     expect(screen.getByTestId('composer-type').textContent).toContain('idea');
 
@@ -112,7 +120,7 @@ describe('Composer', () => {
 
   it('setting_type_swaps_the_seed_on_next_turn', async () => {
     const { calls, stream } = recordingStream();
-    render(<Composer sessionToken="tok" onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />);
+    render(unlocked(<Composer onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />));
 
     // Turn 1 in idea mode — establishes a resume session (sess-1).
     sendTurn('some idea');
@@ -132,7 +140,7 @@ describe('Composer', () => {
   it('initialKind_preseeds_the_type', async () => {
     const { calls, stream } = recordingStream();
     render(
-      <Composer initialKind="skill" sessionToken="tok" onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />,
+      unlocked(<Composer initialKind="skill" onDeploy={vi.fn()} onBack={vi.fn()} stream={stream} />),
     );
 
     expect(screen.getByTestId('composer-type').textContent).toContain('skill');
@@ -147,7 +155,7 @@ describe('Composer', () => {
   });
 
   it('preview_shows_target_path_and_branch_class', () => {
-    render(<Composer initialKind="skill" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="skill" onDeploy={vi.fn()} onBack={vi.fn()} /></SessionProvider>);
     fireEvent.change(screen.getByLabelText('Skill name'), { target: { value: 'My Helper' } });
     fireEvent.change(screen.getByLabelText('Skill description'), { target: { value: 'does a thing' } });
     fireEvent.change(screen.getByLabelText('Skill body'), { target: { value: 'the steps' } });
@@ -157,7 +165,7 @@ describe('Composer', () => {
 
     // A Task resolves to the coordination class (queue → ops).
     cleanup();
-    render(<Composer initialKind="task" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="task" onDeploy={vi.fn()} onBack={vi.fn()} /></SessionProvider>);
     fireEvent.change(screen.getByLabelText('Task project'), { target: { value: 'kb' } });
     fireEvent.change(screen.getByLabelText('Task action'), { target: { value: 'audit' } });
     fireEvent.change(screen.getByLabelText('Task target'), { target: { value: 'queue/' } });
@@ -166,7 +174,7 @@ describe('Composer', () => {
   });
 
   it('deploy_disabled_until_draft_validates', () => {
-    render(<Composer initialKind="skill" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="skill" onDeploy={vi.fn()} onBack={vi.fn()} /></SessionProvider>);
     const deploy = () => screen.getByRole('button', { name: 'Deploy' }) as HTMLButtonElement;
     expect(deploy().disabled).toBe(true);
 
@@ -181,7 +189,7 @@ describe('Composer', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-22T12:00:00Z'));
     const onDeploy = vi.fn();
-    render(<Composer initialKind="skill" onDeploy={onDeploy} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="skill" onDeploy={onDeploy} onBack={vi.fn()} /></SessionProvider>);
     fireEvent.change(screen.getByLabelText('Skill name'), { target: { value: 'My Helper' } });
     fireEvent.change(screen.getByLabelText('Skill description'), { target: { value: 'does a thing' } });
     fireEvent.change(screen.getByLabelText('Skill body'), { target: { value: 'the steps' } });
@@ -200,7 +208,7 @@ describe('Composer', () => {
 
   it('back_returns_to_underlying_view', () => {
     const onBack = vi.fn();
-    render(<Composer onDeploy={vi.fn()} onBack={onBack} />);
+    render(<SessionProvider><Composer onDeploy={vi.fn()} onBack={onBack} /></SessionProvider>);
     expect(screen.getByLabelText('Composer')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(onBack).toHaveBeenCalledTimes(1);
@@ -208,7 +216,7 @@ describe('Composer', () => {
 
   it('agent_is_offered_with_a_complete_deployable_form', () => {
     const onDeploy = vi.fn();
-    render(<Composer initialKind="agent" onDeploy={onDeploy} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="agent" onDeploy={onDeploy} onBack={vi.fn()} /></SessionProvider>);
     for (const label of ['Idea', 'Task', 'Workflow', 'Skill', 'Project', 'Agent']) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
@@ -242,16 +250,15 @@ describe('Composer', () => {
 
   it('seeds the first turn of a persisted empty workspace', async () => {
     const { calls, stream } = recordingStream();
-    render(<Composer
+    render(unlocked(<Composer
       composerSession={{
         composerRef: 'cw-persisted', title: 'New idea', state: 'open', sourceComposerRef: null, agent: null,
         createdAt: '2026-07-18T00:00:00.000Z', updatedAt: '2026-07-18T00:00:00.000Z', turns: [],
       }}
-      sessionToken="tok"
       onDeploy={vi.fn()}
       onBack={vi.fn()}
       stream={stream}
-    />);
+    />));
 
     sendTurn('research a governed workflow');
     await waitFor(() => expect(calls).toHaveLength(1));
@@ -260,14 +267,14 @@ describe('Composer', () => {
   });
 
   it('shows the durable agent identity and declaration revision for an agent workspace', () => {
-    render(<Composer
+    render(<SessionProvider><Composer
       composerSession={{
         composerRef: 'cw-agent', title: 'Agent · fyt-runner', state: 'open', sourceComposerRef: null,
         agent: { id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'abcdef0123456789fedcba' },
         createdAt: '2026-07-18T00:00:00.000Z', updatedAt: '2026-07-18T00:00:00.000Z', turns: [],
       }}
       onDeploy={vi.fn()}
-    />);
+    /></SessionProvider>);
 
     expect(screen.getByTestId('composer-agent-target').textContent).toContain('fyt-runner');
     expect(screen.getByTestId('composer-agent-target').textContent).toContain('agents/fyt-runner.md');
@@ -275,7 +282,7 @@ describe('Composer', () => {
   });
 
   it('states honestly what each deploy creates', () => {
-    render(<Composer initialKind="task" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="task" onDeploy={vi.fn()} onBack={vi.fn()} /></SessionProvider>);
     expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/files a queue card/i);
     fireEvent.click(screen.getByRole('button', { name: 'Workflow' }));
     expect(screen.getByTestId('composer-deploy-note').textContent).toMatch(/does not run the workflow/i);
@@ -291,7 +298,7 @@ describe('Composer', () => {
       }
       throw new Error(`unexpected fetch: ${String(input)}`);
     }));
-    render(<Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} /></SessionProvider>);
 
     fireEvent.change(screen.getByLabelText('Workflow filename'), { target: { value: 'brief.md' } });
     fireEvent.change(screen.getByLabelText('Workflow project'), { target: { value: 'kb' } });
@@ -314,7 +321,7 @@ describe('Composer', () => {
 
   it('filters declared manager and worker selectors by project/profile role and states runner binding', async () => {
     stubWorkflowRegistries();
-    render(<Composer initialKind="workflow" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="workflow" onDeploy={vi.fn()} onBack={vi.fn()} /></SessionProvider>);
     fillWorkflowDraft();
 
     const manager = screen.getByLabelText('Workflow manager agent') as HTMLSelectElement;
@@ -353,7 +360,7 @@ describe('Composer', () => {
 
   it('selecting agents chooses the role default/first profile, allows overrides, and resets on switch', async () => {
     stubWorkflowRegistries();
-    render(<Composer initialKind="workflow" onDeploy={vi.fn()} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="workflow" onDeploy={vi.fn()} onBack={vi.fn()} /></SessionProvider>);
     fillWorkflowDraft();
     const manager = screen.getByLabelText('Workflow manager agent') as HTMLSelectElement;
     await waitFor(() => expect(manager.options).toHaveLength(2));
@@ -389,7 +396,7 @@ describe('Composer', () => {
   it('serializes selected logical manager and stage assignments without raw executor routing fields', async () => {
     const onDeploy = vi.fn();
     stubWorkflowRegistries();
-    render(<Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} /></SessionProvider>);
     fillWorkflowDraft();
     const manager = screen.getByLabelText('Workflow manager agent') as HTMLSelectElement;
     await waitFor(() => expect(manager.options).toHaveLength(2));
@@ -412,7 +419,7 @@ describe('Composer', () => {
   it('selects declared project governance independently without creating execution assignments', async () => {
     const onDeploy = vi.fn();
     stubWorkflowRegistries();
-    render(<Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} /></SessionProvider>);
     fillWorkflowDraft();
 
     const governor = screen.getByLabelText('Workflow governor') as HTMLSelectElement;
@@ -448,7 +455,7 @@ describe('Composer', () => {
       throw new Error(`unexpected fetch: ${String(input)}`);
     }));
     const onDeploy = vi.fn();
-    render(<Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} />);
+    render(<SessionProvider><Composer initialKind="workflow" onDeploy={onDeploy} onBack={vi.fn()} /></SessionProvider>);
     fillWorkflowDraft();
     const profile = screen.getByLabelText('Execution profile') as HTMLSelectElement;
     await waitFor(() => expect(profile.disabled).toBe(false));

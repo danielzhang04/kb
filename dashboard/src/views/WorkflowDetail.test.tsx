@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Workflows } from './Workflows';
+import { SessionProvider } from '../lib/sessionContext';
 import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
 import type { ProposalRevisionMetadataDto, RunMetadataDto } from '../control/controlClient';
 
@@ -87,9 +88,11 @@ describe('reaching a workflow detail and coming back', () => {
 
   it('opens the detail on a definition click and returns to the list on back', () => {
     render(
-      <Workflows
-        definitions={{ items: [def({ ref: 'kb~video.md' }), def({ ref: 'kb~audio.md', title: 'Audio pipeline' })] }}
-      />,
+      <SessionProvider>
+        <Workflows
+          definitions={{ items: [def({ ref: 'kb~video.md' }), def({ ref: 'kb~audio.md', title: 'Audio pipeline' })] }}
+        />
+      </SessionProvider>,
     );
 
     fireEvent.click(screen.getByTestId('workflow-open-kb~video.md'));
@@ -112,12 +115,14 @@ describe('reaching a workflow detail and coming back', () => {
   it('says a focused definition is no longer registered instead of silently showing the roster', () => {
     const onBack = vi.fn();
     render(
-      <Workflows
-        definitions={{ items: [def({ ref: 'kb~video.md' })] }}
-        focusWorkflowId="kb~deleted.md"
-        onOpenWorkflow={vi.fn()}
-        onBack={onBack}
-      />,
+      <SessionProvider>
+        <Workflows
+          definitions={{ items: [def({ ref: 'kb~video.md' })] }}
+          focusWorkflowId="kb~deleted.md"
+          onOpenWorkflow={vi.fn()}
+          onBack={onBack}
+        />
+      </SessionProvider>,
     );
 
     expect(screen.queryByTestId('entity-detail-workflow')).toBeNull();
@@ -132,18 +137,20 @@ describe('reaching a workflow detail and coming back', () => {
 
   it('does not call a definition unregistered while the index is still loading', () => {
     // No `definitions` prop and no fetch result yet: the ref is UNKNOWN, not missing.
-    render(<Workflows focusWorkflowId="kb~video.md" onOpenWorkflow={vi.fn()} />);
+    render(<SessionProvider><Workflows focusWorkflowId="kb~video.md" onOpenWorkflow={vi.fn()} /></SessionProvider>);
     expect(screen.queryByTestId('workflow-not-found')).toBeNull();
   });
 
   it('visibly disables Launch for a parser-valid definition the compiler refuses', () => {
     render(
-      <Workflows
-        definitions={{ items: [def({
-          ref: 'kb~unavailable.md', launchable: false, compileError: 'assigned-agent-not-runner-bound',
-          compileDetail: "assigned agent 'worker-a' is not runner-bound",
-        })] }}
-      />,
+      <SessionProvider>
+        <Workflows
+          definitions={{ items: [def({
+            ref: 'kb~unavailable.md', launchable: false, compileError: 'assigned-agent-not-runner-bound',
+            compileDetail: "assigned agent 'worker-a' is not runner-bound",
+          })] }}
+        />
+      </SessionProvider>,
     );
     const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
     expect(launch.disabled).toBe(true);
@@ -156,17 +163,19 @@ describe('workflow -> its launched runs', () => {
   it('reaches the runs launched from this definition, via sourceTurnId', () => {
     const onNavigate = vi.fn();
     render(
-      <Workflows
-        definitions={{ items: [def({ ref: 'kb~video.md' })] }}
-        focusWorkflowId="kb~video.md"
-        onOpenWorkflow={vi.fn()}
-        onNavigate={onNavigate}
-        revisions={[revision(), revision({ proposalRef: 'wf-other', sourceTurnId: 'kb~audio.md' })]}
-        runs={[
-          run({ runRef: 'run-7', proposalRef: 'wf-aaa' }),
-          run({ runRef: 'run-8', proposalRef: 'wf-other' }),
-        ]}
-      />,
+      <SessionProvider>
+        <Workflows
+          definitions={{ items: [def({ ref: 'kb~video.md' })] }}
+          focusWorkflowId="kb~video.md"
+          onOpenWorkflow={vi.fn()}
+          onNavigate={onNavigate}
+          revisions={[revision(), revision({ proposalRef: 'wf-other', sourceTurnId: 'kb~audio.md' })]}
+          runs={[
+            run({ runRef: 'run-7', proposalRef: 'wf-aaa' }),
+            run({ runRef: 'run-8', proposalRef: 'wf-other' }),
+          ]}
+        />
+      </SessionProvider>,
     );
 
     fireEvent.click(screen.getByTestId('entity-tab-runs'));

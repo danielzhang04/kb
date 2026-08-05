@@ -9,6 +9,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { LaunchControls } from './launchControls';
 import type { OwnerOption } from './launchControls';
+import { SessionProvider } from '../lib/sessionContext';
+import { persistSession } from '../lib/authClient';
+
+/** The one unlock: a stored fresh bearer, read by the provider on mount. */
+function renderUnlocked(ui: React.ReactElement, token = 't'): void {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  render(<SessionProvider>{ui}</SessionProvider>);
+}
 
 const OWNERS: OwnerOption[] = [
   { id: 'worker-desktop', runnerBound: true },
@@ -36,7 +44,7 @@ afterEach(() => {
 
 describe('LaunchControls — C7.7 owner picker', () => {
   it('renders an owner <select> defaulting to unowned, with one option per assignable owner', () => {
-    render(<LaunchControls sessionToken="t" owners={OWNERS} />);
+    renderUnlocked(<LaunchControls owners={OWNERS} />);
     const select = screen.getByLabelText('Owner') as HTMLSelectElement;
     expect(select.value).toBe('');
     expect(screen.getByRole('option', { name: 'unowned' })).toBeTruthy();
@@ -46,7 +54,7 @@ describe('LaunchControls — C7.7 owner picker', () => {
   });
 
   it('with no owners prop the select still renders with only the unowned choice', () => {
-    render(<LaunchControls sessionToken="t" />);
+    renderUnlocked(<LaunchControls />);
     const select = screen.getByLabelText('Owner') as HTMLSelectElement;
     expect(select.value).toBe('');
     // Scope the count to THIS select's own options (the Risk tier select has its own T1/T2/T3).
@@ -54,7 +62,7 @@ describe('LaunchControls — C7.7 owner picker', () => {
   });
 
   it('selecting a runner-bound:false owner shows the inline warning but still allows the selection', () => {
-    render(<LaunchControls sessionToken="t" owners={OWNERS} />);
+    renderUnlocked(<LaunchControls owners={OWNERS} />);
     expect(screen.queryByTestId('owner-unbound-warning')).toBeNull();
     fireEvent.change(screen.getByLabelText('Owner'), { target: { value: 'fresh-agent' } });
     expect((screen.getByLabelText('Owner') as HTMLSelectElement).value).toBe('fresh-agent');
@@ -63,14 +71,14 @@ describe('LaunchControls — C7.7 owner picker', () => {
   });
 
   it('selecting a runner-bound:true owner shows NO warning', () => {
-    render(<LaunchControls sessionToken="t" owners={OWNERS} />);
+    renderUnlocked(<LaunchControls owners={OWNERS} />);
     fireEvent.change(screen.getByLabelText('Owner'), { target: { value: 'worker-desktop' } });
     expect(screen.queryByTestId('owner-unbound-warning')).toBeNull();
   });
 
   it('includes owner in the POST body only when chosen (blank owner omits it entirely)', async () => {
     const { bodies } = stubOkFetch();
-    render(<LaunchControls sessionToken="t" owners={OWNERS} />);
+    renderUnlocked(<LaunchControls owners={OWNERS} />);
 
     // First submit with no owner selected → no `owner` key.
     fireEvent.submit(screen.getByLabelText('Launch card'));
@@ -94,7 +102,7 @@ describe('LaunchControls — C7.7 owner picker', () => {
       error: 'unauthenticated',
       reason: 'bad-signature',
     }), { status: 401, headers: { 'content-type': 'application/json' } })));
-    render(<LaunchControls sessionToken="stale-token" />);
+    render(<SessionProvider><LaunchControls /></SessionProvider>);
 
     fireEvent.submit(screen.getByLabelText('Launch card'));
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSession } from '../lib/sessionContext';
 import {
   executionUnlockErrorMessage,
   getExecutionPosture,
@@ -38,15 +39,21 @@ function emptyView(sessionToken: string | undefined, client: ExecutionUnlockClie
   return { sessionToken, client, posture: null, loading: Boolean(sessionToken), unlocking: false, error: null };
 }
 
+/**
+ * The execution posture panel. Execution has its OWN purpose-bound passkey check, distinct from the
+ * dashboard session; both are reached from the single "Unlock execution" button — a locked tab mints
+ * the shared session first (one ceremony, via the session context), and the execution ceremony is the
+ * next click once the posture is known.
+ */
 export function ExecutionUnlock({
-  sessionToken,
   client = defaultClient,
   onPostureChange,
 }: {
-  sessionToken?: string;
   client?: ExecutionUnlockClient;
   onPostureChange?: (posture: ExecutionPostureDto | null) => void;
 }): React.JSX.Element {
+  const { session, requireSession } = useSession();
+  const sessionToken = session?.token;
   const committedScopeRef = useRef<Scope | null>(null);
   const requestRef = useRef<UnlockRequest | null>(null);
   const [view, setView] = useState<ViewState>(() => emptyView(sessionToken, client));
@@ -128,6 +135,16 @@ export function ExecutionUnlock({
     }
   };
 
+  const handleUnlock = async (): Promise<void> => {
+    // A locked tab needs the shared session before the posture can even be read; the execution
+    // ceremony itself runs on the next click, once the loaded posture says it is still locked.
+    if (!sessionToken) {
+      await requireSession();
+      return;
+    }
+    await requestUnlock();
+  };
+
   const label = currentView.loading
     ? 'Checking execution…'
     : currentView.posture?.state === 'unlocked'
@@ -141,10 +158,10 @@ export function ExecutionUnlock({
       <div className="v-home__execution-head">
         <div>
           <span className="v-home__eyebrow">Execution</span>
-          <p className="v-home__execution-state">{sessionToken ? label : 'Sign in to inspect execution state'}</p>
+          <p className="v-home__execution-state">{label}</p>
         </div>
-        {sessionToken && !currentView.loading && currentView.posture?.state === 'locked' ? (
-          <button type="button" className="mc-btn mc-btn--primary" disabled={currentView.unlocking} onClick={() => void requestUnlock()}>
+        {!currentView.loading && (!sessionToken || currentView.posture?.state === 'locked') ? (
+          <button type="button" className="mc-btn mc-btn--primary" disabled={currentView.unlocking} onClick={() => void handleUnlock()}>
             {currentView.unlocking ? 'Unlocking execution…' : 'Unlock execution'}
           </button>
         ) : null}

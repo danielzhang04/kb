@@ -10,6 +10,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Agents } from './Agents';
+import { SessionProvider } from '../lib/sessionContext';
 import { AgentDetail, type AgentDetailRow } from './AgentDetail';
 import type { AgentRosterEntry } from '../../server/agents/roster';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
@@ -94,7 +95,7 @@ const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto
 
 describe('reaching an agent detail and coming back', () => {
   it('opens the detail on a row click and returns to the full list on back', () => {
-    render(<Agents snapshot={EMPTY_INDEX} roster={[entry({ id: 'claude-worker' }), entry({ id: 'codex-worker' })]} />);
+    render(<SessionProvider><Agents snapshot={EMPTY_INDEX} roster={[entry({ id: 'claude-worker' }), entry({ id: 'codex-worker' })]} /></SessionProvider>);
 
     // The roster is a list of every agent...
     expect(screen.getByTestId('agent-row-claude-worker')).toBeTruthy();
@@ -117,12 +118,14 @@ describe('reaching an agent detail and coming back', () => {
   it('drives the open agent through the nav stack when one is wired', () => {
     const onOpenAgent = vi.fn();
     render(
-      <Agents
-        snapshot={EMPTY_INDEX}
-        roster={[entry({ id: 'claude-worker' })]}
-        focusAgentId={null}
-        onOpenAgent={onOpenAgent}
-      />,
+      <SessionProvider>
+        <Agents
+          snapshot={EMPTY_INDEX}
+          roster={[entry({ id: 'claude-worker' })]}
+          focusAgentId={null}
+          onOpenAgent={onOpenAgent}
+        />
+      </SessionProvider>,
     );
     fireEvent.click(screen.getByTestId('agent-open-claude-worker'));
     expect(onOpenAgent).toHaveBeenCalledWith('claude-worker');
@@ -138,13 +141,15 @@ describe('reaching an agent detail and coming back', () => {
   it('says so explicitly when the focused agent is not on the roster, and offers a way back', () => {
     const onBack = vi.fn();
     render(
-      <Agents
-        snapshot={EMPTY_INDEX}
-        roster={[entry({ id: 'claude-worker' })]}
-        focusAgentId="deleted-agent"
-        onOpenAgent={vi.fn()}
-        onBack={onBack}
-      />,
+      <SessionProvider>
+        <Agents
+          snapshot={EMPTY_INDEX}
+          roster={[entry({ id: 'claude-worker' })]}
+          focusAgentId="deleted-agent"
+          onOpenAgent={vi.fn()}
+          onBack={onBack}
+        />
+      </SessionProvider>,
     );
 
     expect(screen.queryByTestId('entity-detail-agent')).toBeNull();
@@ -159,7 +164,7 @@ describe('reaching an agent detail and coming back', () => {
 
   it('does not cry "not found" while the roster is still loading', () => {
     // No snapshot and no roster: nothing has loaded, so a focused id is UNKNOWN, not missing.
-    render(<Agents focusAgentId="claude-worker" onOpenAgent={vi.fn()} />);
+    render(<SessionProvider><Agents focusAgentId="claude-worker" onOpenAgent={vi.fn()} /></SessionProvider>);
     expect(screen.queryByTestId('agent-not-found')).toBeNull();
   });
 });

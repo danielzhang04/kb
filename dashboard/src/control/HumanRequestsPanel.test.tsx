@@ -2,8 +2,19 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HumanRequestsPanel } from './HumanRequestsPanel';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
 
-afterEach(cleanup);
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'token'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
+
+afterEach(() => {
+  cleanup();
+  clearStoredSession();
+});
 
 function response(body: unknown, status = 200): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
@@ -29,7 +40,7 @@ describe('HumanRequestsPanel', () => {
       throw new Error(`unexpected ${url}`);
     });
 
-    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(unlocked(<HumanRequestsPanel fetchImpl={fetchImpl as unknown as typeof fetch} />));
     expect(await screen.findByRole('heading', { name: 'Review scope' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Response'), { target: { value: 'Narrow the write path.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Request changes' }));
@@ -65,7 +76,7 @@ describe('HumanRequestsPanel', () => {
       }
       throw new Error(`unexpected ${url}`);
     });
-    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(unlocked(<HumanRequestsPanel fetchImpl={fetchImpl as unknown as typeof fetch} />));
     expect(await screen.findByRole('heading', { name: /Review completion gate/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Approved' }));
     await waitFor(() => expect(calls).toContain('/api/control/review-completion-gates/gate-1/resolve'));
@@ -114,7 +125,7 @@ describe('HumanRequestsPanel', () => {
       throw new Error(`unexpected ${url}`);
     });
 
-    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(unlocked(<HumanRequestsPanel fetchImpl={fetchImpl as unknown as typeof fetch} />));
     fireEvent.click(await screen.findByRole('button', { name: 'Responded' }));
 
     expect(await screen.findByRole('button', { name: 'Resume run' })).toBeTruthy();
@@ -134,7 +145,7 @@ describe('HumanRequestsPanel', () => {
       throw new Error(`unexpected ${url}`);
     });
 
-    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(unlocked(<HumanRequestsPanel fetchImpl={fetchImpl as unknown as typeof fetch} />));
 
     const row = await screen.findByTestId('waiting-no-request-run-parked');
     expect(row.textContent).toMatch(/NO open request/i);
@@ -200,7 +211,7 @@ describe('HumanRequestsPanel', () => {
       throw new Error(`unexpected ${url}`);
     });
 
-    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(unlocked(<HumanRequestsPanel fetchImpl={fetchImpl as unknown as typeof fetch} />));
     fireEvent.click(await screen.findByRole('button', { name: 'Resume run' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('automatic-runtime-not-activated');
@@ -229,7 +240,7 @@ describe('HumanRequestsPanel', () => {
       throw new Error(`unexpected ${url}`);
     });
 
-    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(unlocked(<HumanRequestsPanel fetchImpl={fetchImpl as unknown as typeof fetch} />));
     expect(await screen.findByRole('heading', { name: 'Approve me' })).toBeTruthy();
     expect(screen.queryByTestId('waiting-no-request-run-y')).toBeNull();
   });
@@ -264,7 +275,7 @@ describe('HumanRequestsPanel', () => {
       }
       throw new Error(`unexpected ${url}`);
     });
-    render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    render(unlocked(<HumanRequestsPanel fetchImpl={fetchImpl as unknown as typeof fetch} />));
     expect(screen.queryByLabelText('Response')).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: 'Repair execution-lock boundary' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Responded' })).toBeTruthy());
@@ -298,7 +309,7 @@ describe('HumanRequestsPanel', () => {
         } });
         throw new Error(`unexpected ${url}`);
       });
-      render(<HumanRequestsPanel sessionToken="token" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+      render(unlocked(<HumanRequestsPanel fetchImpl={fetchImpl as unknown as typeof fetch} />));
       await screen.findByRole('heading', { name: request.title });
       expect(screen.queryByRole('button', { name: 'Repair execution-lock boundary' })).toBeNull();
       cleanup();

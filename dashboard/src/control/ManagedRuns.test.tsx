@@ -10,8 +10,17 @@ import {
   type RunMetadataDto,
 } from './controlClient';
 import { backStack, pushStack, rootStack, setSectionOnStack, type NavEntry } from '../nav/stack';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'token-1'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
 
 afterEach(() => {
+  clearStoredSession();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -150,7 +159,6 @@ function Harness(): React.JSX.Element {
   const entry = stack[stack.length - 1];
   return (
     <ManagedRuns
-      sessionToken="token-1"
       runs={runs}
       focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null}
       onOpenRun={(runRef) => setStack((s) => pushStack(s, { view: 'pipeline', focus: { kind: 'run', id: runRef } }))}
@@ -181,7 +189,7 @@ describe('ManagedRuns', () => {
       } }) } as Response;
       return { ok: true, status: 200, json: async () => ({ runs }) } as Response;
     }));
-    render(<ManagedRuns sessionToken="token-1" runs={runs} focusRunRef="run-1" onOpenRun={vi.fn()} />);
+    render(unlocked(<ManagedRuns runs={runs} focusRunRef="run-1" onOpenRun={vi.fn()} />));
     await screen.findByTestId('entity-detail-run');
     fireEvent.click(screen.getByRole('button', { name: 'Approved' }));
     await waitFor(() => expect(calls).toContain('/api/control/review-completion-gates/gate-1/resolve'));
@@ -262,7 +270,7 @@ describe('ManagedRuns', () => {
       return { ok: true, status: 200, json: async () => ({ runs: [waitingRun, runs[1]] }) } as Response;
     }));
 
-    render(<ManagedRuns sessionToken="token-1" runs={[waitingRun, runs[1]]} focusRunRef="run-1" onOpenRun={vi.fn()} />);
+    render(unlocked(<ManagedRuns runs={[waitingRun, runs[1]]} focusRunRef="run-1" onOpenRun={vi.fn()} />));
     await screen.findByRole('button', { name: 'Resume run' });
     expect(screen.queryByRole('button', { name: 'Start successor Manager' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Resume run' }));
@@ -305,7 +313,7 @@ describe('ManagedRuns', () => {
       return { ok: false, status: 500, json: async () => ({ error: 'unexpected' }) } as Response;
     }));
 
-    render(<ManagedRuns sessionToken="token-1" runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />);
+    render(unlocked(<ManagedRuns runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />));
     const action = await screen.findByRole('button', { name: 'Reconcile historical failed run' });
     expect(screen.getByRole('button', { name: 'Retry as successor' })).toHaveProperty('disabled', true);
     fireEvent.click(action);
@@ -343,7 +351,7 @@ describe('ManagedRuns', () => {
       return { ok: true, status: 200, json: async () => ({ ok: true, value: historicalDetail() }) } as Response;
     }));
 
-    render(<ManagedRuns sessionToken="token-1" runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />);
+    render(unlocked(<ManagedRuns runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />));
     fireEvent.click(await screen.findByRole('button', { name: 'Reconcile historical failed run' }));
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('published on ops');
@@ -358,7 +366,7 @@ describe('ManagedRuns', () => {
       if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: { proposalRef: almost.proposalRef, revision: 1, hash: almost.proposalHash, previousHash: null, title: 'historical', createdAt: almost.createdAt, approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } }) } as Response;
       return { ok: true, status: 200, json: async () => ({ ok: true, value: { ...historicalDetail(), run: almost } }) } as Response;
     }));
-    render(<ManagedRuns sessionToken="token-1" runs={[almost]} focusRunRef={almost.runRef} onOpenRun={vi.fn()} />);
+    render(unlocked(<ManagedRuns runs={[almost]} focusRunRef={almost.runRef} onOpenRun={vi.fn()} />));
     await screen.findByTestId('entity-detail-run');
     expect(screen.queryByRole('button', { name: 'Reconcile historical failed run' })).toBeNull();
   });
@@ -374,7 +382,7 @@ describe('ManagedRuns', () => {
       if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: { proposalRef: HISTORICAL_RUN.proposalRef, revision: 1, hash: HISTORICAL_RUN.proposalHash, previousHash: null, title: 'historical', createdAt: HISTORICAL_RUN.createdAt, approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } }) } as Response;
       return { ok: true, status: 200, json: async () => ({ ok: true, value: drifted }) } as Response;
     }));
-    render(<ManagedRuns sessionToken="token-1" runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />);
+    render(unlocked(<ManagedRuns runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />));
     await screen.findByTestId('entity-detail-run');
     expect(screen.queryByRole('button', { name: 'Reconcile historical failed run' })).toBeNull();
   });
@@ -388,7 +396,7 @@ describe('ManagedRuns', () => {
       if (url.includes('/revisions/')) return { ok: true, status: 200, json: async () => ({ ok: true, value: { proposalRef: HISTORICAL_RUN.proposalRef, revision: 1, hash: HISTORICAL_RUN.proposalHash, previousHash: null, title: 'historical', createdAt: HISTORICAL_RUN.createdAt, approval: null, sourceComposerRef: 'c', sourceTurnId: 't', snapshot: { stages: [] } } }) } as Response;
       return { ok: true, status: 200, json: async () => ({ ok: true, value: drifted }) } as Response;
     }));
-    render(<ManagedRuns sessionToken="token-1" runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />);
+    render(unlocked(<ManagedRuns runs={[HISTORICAL_RUN]} focusRunRef={HISTORICAL_RUN.runRef} onOpenRun={vi.fn()} />));
     await screen.findByTestId('entity-detail-run');
     expect(screen.queryByRole('button', { name: 'Reconcile historical failed run' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry as successor' })).toBeTruthy();
@@ -396,7 +404,7 @@ describe('ManagedRuns', () => {
 
   it('lands on the grid and shows every run title in full', () => {
     stubFetch();
-    render(<Harness />);
+    render(unlocked(<Harness />));
 
     expect(screen.getByTestId('run-grid')).toBeTruthy();
     expect(screen.getByTestId('run-card-run-1-title').textContent).toBe(LONG_TITLE);
@@ -407,7 +415,7 @@ describe('ManagedRuns', () => {
 
   it('opens a run detail on click and BACK RETURNS TO THE LIST', async () => {
     stubFetch();
-    render(<Harness />);
+    render(unlocked(<Harness />));
 
     fireEvent.click(screen.getByTestId('run-card-run-1'));
 
@@ -432,7 +440,7 @@ describe('ManagedRuns', () => {
     // point is that the SELECTION IS DRIVEN BY THE STACK: the harness feeds `activeSectionId` back in,
     // so if the write path were broken the tab would snap back to Overview.
     stubFetch();
-    render(<Harness />);
+    render(unlocked(<Harness />));
 
     fireEvent.click(screen.getByTestId('run-card-run-1'));
     await screen.findByTestId('entity-detail-run');
@@ -454,7 +462,7 @@ describe('ManagedRuns', () => {
 
   it('marks the open run in the grid after returning to it', async () => {
     stubFetch();
-    render(<Harness />);
+    render(unlocked(<Harness />));
 
     fireEvent.click(screen.getByTestId('run-card-run-2'));
     await screen.findByTestId('entity-detail-run');
@@ -464,10 +472,15 @@ describe('ManagedRuns', () => {
     await waitFor(() => expect(screen.getByTestId('run-grid')).toBeTruthy());
   });
 
-  it('offers an unlock affordance instead of an empty grid when locked', () => {
+  it('has no unlock wall when locked — Refresh runs the one ceremony at point of action', async () => {
     stubFetch();
-    render(<ManagedRuns onRequestSession={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Unlock cockpit' })).toBeTruthy();
+    const signIn = vi.fn(async () => ({ token: 'minted', expiresAt: Date.now() + 60_000 }));
+    render(<SessionProvider deps={{ signIn }}><ManagedRuns /></SessionProvider>);
+
+    expect(screen.queryByRole('button', { name: /unlock/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
   });
 });
 
@@ -519,7 +532,6 @@ function DeadLinkHarness(): React.JSX.Element {
         follow dead link
       </button>
       <ManagedRuns
-        sessionToken="token-1"
         runs={runs}
         focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null}
         onOpenRun={(runRef) => setStack((s) => pushStack(s, { view: 'pipeline', focus: { kind: 'run', id: runRef } }))}
@@ -544,7 +556,7 @@ describe('ManagedRuns — a focused run that does not exist', () => {
 
   it('NEVER renders another run’s detail or governed actions when the focused run 404s', async () => {
     stubFetchWithGhost();
-    render(<DeadLinkHarness />);
+    render(unlocked(<DeadLinkHarness />));
 
     // Establish the precondition the bug needed: run-1 IS loaded, with a governed action live.
     await screen.findByTestId('entity-detail-run');
@@ -562,7 +574,7 @@ describe('ManagedRuns — a focused run that does not exist', () => {
 
   it('names the missing run rather than showing a blank panel or the grid', async () => {
     stubFetchWithGhost();
-    render(<DeadLinkHarness />);
+    render(unlocked(<DeadLinkHarness />));
     await screen.findByTestId('entity-detail-run');
     fireEvent.click(screen.getByTestId('follow-dead-link'));
 
@@ -585,7 +597,7 @@ describe('ManagedRuns — a focused run that does not exist', () => {
       return { ok: true, status: 200, json: async () => okJsonFor(url) } as Response;
     }));
 
-    render(<DeadLinkHarness />);
+    render(unlocked(<DeadLinkHarness />));
     await screen.findByTestId('entity-detail-run');
     expect(screen.getByRole('button', { name: 'Stop run' })).toBeTruthy();
 

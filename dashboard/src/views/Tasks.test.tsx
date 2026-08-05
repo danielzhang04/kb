@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { Tasks, type CardsByState } from './Tasks';
+import { SessionProvider } from '../lib/sessionContext';
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { RoutingSnapshot } from '../lib/routingClient';
 
@@ -43,7 +44,7 @@ const fixture: CardsByState = {
 
 describe('Tasks view', () => {
   it('renders a group per state from fixture data with its cards', () => {
-    render(<Tasks data={fixture} />);
+    render(<SessionProvider><Tasks data={fixture} /></SessionProvider>);
     // Primary buckets present as labelled groups.
     expect(screen.getByLabelText('Inbox cards')).toBeTruthy();
     expect(screen.getByLabelText('Working cards')).toBeTruthy();
@@ -55,13 +56,13 @@ describe('Tasks view', () => {
   });
 
   it('always renders the four primary buckets, empty ones calm (Done here has no cards)', () => {
-    render(<Tasks data={fixture} />);
+    render(<SessionProvider><Tasks data={fixture} /></SessionProvider>);
     const done = screen.getByLabelText('Done cards');
     expect(within(done).getByText('Nothing in done.')).toBeTruthy();
   });
 
   it('opens the detail pane on selection: frontmatter key/value + rendered body', () => {
-    render(<Tasks data={fixture} />);
+    render(<SessionProvider><Tasks data={fixture} /></SessionProvider>);
     // Nothing selected -> placeholder prompt.
     expect(screen.getByText('Select a card to see its frontmatter and body.')).toBeTruthy();
 
@@ -81,7 +82,7 @@ describe('Tasks view', () => {
     const data: CardsByState = {
       inbox: [card({ id: 'card-x', state: 'inbox' }, '## Evidence\n\n<img src=x onerror=alert(1)>\n')],
     };
-    render(<Tasks data={data} />);
+    render(<SessionProvider><Tasks data={data} /></SessionProvider>);
     fireEvent.click(screen.getByTestId('task-row-card-x'));
     const detail = screen.getByLabelText('Card detail');
     // The raw HTML survives as escaped text, and no <img> element is ever created.
@@ -102,7 +103,7 @@ describe('Tasks view', () => {
       audit: { mismatches: [], overrides: [] },
       overrides: [],
     };
-    render(<Tasks data={fixture} routing={routing} sessionToken="tok" />);
+    render(<SessionProvider><Tasks data={fixture} routing={routing} /></SessionProvider>);
     // card-300 is in `approvals` — selecting it must present a disabled, locked routing chip.
     fireEvent.click(screen.getByTestId('task-row-card-300'));
     const chip = screen.getByTestId('card-card-300-routing-chip') as HTMLButtonElement;
@@ -123,7 +124,7 @@ describe('Tasks view', () => {
       audit: { mismatches: [], overrides: [] },
       overrides: [],
     };
-    render(<Tasks data={fixture} routing={routing} sessionToken="tok" />);
+    render(<SessionProvider><Tasks data={fixture} routing={routing} /></SessionProvider>);
     fireEvent.click(screen.getByTestId('task-row-card-200')); // working
     const chip = screen.getByTestId('card-card-200-routing-chip') as HTMLButtonElement;
     expect(chip.disabled).toBe(true);
@@ -143,7 +144,7 @@ describe('Tasks view', () => {
       audit: { mismatches: [], overrides: [] },
       overrides: [],
     };
-    render(<Tasks data={fixture} routing={routing} sessionToken="tok" />);
+    render(<SessionProvider><Tasks data={fixture} routing={routing} /></SessionProvider>);
     fireEvent.click(screen.getByTestId('task-row-card-150'));
     const chip = screen.getByTestId('card-card-150-routing-chip') as HTMLButtonElement;
     expect(chip.disabled).toBe(false);
@@ -164,14 +165,14 @@ describe('Tasks view', () => {
       audit: { mismatches: [], overrides: [] },
       overrides: [],
     };
-    render(<Tasks data={data} routing={routing} sessionToken="tok" />);
+    render(<SessionProvider><Tasks data={data} routing={routing} /></SessionProvider>);
     fireEvent.click(screen.getByTestId('task-row-card-owned'));
     expect((screen.getByTestId('card-card-owned-routing-chip') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('card-card-owned-routing-locked').textContent).toMatch(/runner may already be active/i);
   });
 
   it('renders calm empty groups when there are no cards at all', () => {
-    render(<Tasks data={{}} />);
+    render(<SessionProvider><Tasks data={{}} /></SessionProvider>);
     expect(screen.getByLabelText('Tasks view')).toBeTruthy();
     expect(screen.getByText('Nothing in inbox.')).toBeTruthy();
     expect(screen.getByText('Nothing in working.')).toBeTruthy();

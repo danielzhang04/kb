@@ -14,6 +14,7 @@ import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { basicSetup, EditorView } from 'codemirror';
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 
 export interface SaveOutcome {
   ok: boolean;
@@ -57,7 +58,6 @@ export interface EditorProps {
   /** Repo-relative path of the file being edited (as returned by the read-only KB browser). */
   relpath: string;
   initialContent?: string;
-  sessionToken?: string;
   save?: SaveFn;
 }
 
@@ -67,9 +67,9 @@ type Status = 'idle' | 'saving' | 'saved' | 'error';
 export function Editor({
   relpath,
   initialContent = '',
-  sessionToken,
   save = defaultSave,
 }: EditorProps): React.JSX.Element {
+  const { requireSession } = useSession();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -97,6 +97,13 @@ export function Editor({
   const onSave = useCallback(async () => {
     const view = viewRef.current;
     if (!view) return;
+    // Point-of-action unlock: a save on a locked tab runs the app's ONE ceremony first.
+    const sessionToken = (await requireSession())?.token;
+    if (!sessionToken) {
+      setStatus('error');
+      setError('the dashboard is locked — nothing was saved');
+      return;
+    }
     setStatus('saving');
     setError(null);
     const content = view.state.doc.toString();
@@ -107,7 +114,7 @@ export function Editor({
       setStatus('error');
       setError(outcome.reason ?? `save failed${outcome.status ? ` (${outcome.status})` : ''}`);
     }
-  }, [relpath, save, sessionToken]);
+  }, [relpath, requireSession, save]);
 
   return (
     <section className="editor" aria-label="Editor">

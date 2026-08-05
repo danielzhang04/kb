@@ -25,7 +25,7 @@ import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
 import { projectHumanInbox } from '../../server/approvals/humanInbox';
 import type { DestinationId } from '../nav/config';
-import type { Session } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import { useSse } from '../lib/sseClient';
 import { useAssignableOwners } from '../lib/assignableOwners';
 import { LaunchControls } from './launchControls';
@@ -371,19 +371,16 @@ function UsagePanel({ index }: { index: PlaneAIndex }): React.JSX.Element {
  */
 export function Home({
   snapshot,
-  sessionToken,
   onNavigate,
-  onRequestSession,
   executionClient,
 }: {
   snapshot?: PlaneAIndex;
-  sessionToken?: string;
   onNavigate?: (id: DestinationId) => void;
-  /** U5.1 — forwarded to LaunchControls for point-of-action passkey minting (App-wired). */
-  onRequestSession?: () => Promise<Session | null>;
   /** Hermetic seam for the purpose-bound execution ceremony; production uses the real control client. */
   executionClient?: ExecutionUnlockClient;
 } = {}): React.JSX.Element {
+  const { session } = useSession();
+  const sessionToken = session?.token;
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
   const [execution, setExecution] = useState<{ sessionToken: string; posture: ExecutionPostureDto } | null>(null);
   // A Plane-A delta on the hub bumps `count`; we refetch the snapshot on each tick (skipped when a
@@ -407,10 +404,9 @@ export function Home({
   }, [snapshot, count]);
 
   const index = snapshot ?? fetched ?? EMPTY_INDEX;
-  // C7.8 — populate the owner picker from the live roster ∪ registered default_workers. Gated on the
-  // can-act state so a signed-out board with no mint capability issues no roster fetch.
-  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
-  const owners = useAssignableOwners(canAct);
+  // C7.8 — populate the owner picker from the live roster ∪ registered default_workers. Every tab can
+  // mint at point of action now, so the picker is always populated.
+  const owners = useAssignableOwners(true);
   const parsedExecution = parseExecutionPosture(execution?.posture);
   const executionReady = Boolean(
     sessionToken
@@ -429,18 +425,12 @@ export function Home({
         <div className="v-home__col">
           <UsagePanel index={index} />
           <ExecutionUnlock
-            sessionToken={sessionToken}
             client={executionClient}
             onPostureChange={(posture) => {
               setExecution(sessionToken && posture ? { sessionToken, posture } : null);
             }}
           />
-          <LaunchControls
-            sessionToken={executionReady ? sessionToken : undefined}
-            variant="home"
-            onRequestSession={executionReady ? onRequestSession : undefined}
-            owners={owners}
-          />
+          <LaunchControls variant="home" executionReady={executionReady} owners={owners} />
         </div>
       </div>
     </div>

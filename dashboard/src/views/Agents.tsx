@@ -9,7 +9,7 @@
  * governed control: it shows the effective model (mono) + provenance tag, and — with a WebAuthn session —
  * opens a popover to write an agent-scope override (audited, ops pull-rebase-push) or clear it. Fail-closed
  * like launchControls: without a session the control is disabled with a nudge; a point-of-action mint runs
- * inline when `onRequestSession` is wired.
+ * inline through the shared session context.
  *
  * A routing-audit strip (R2.4) surfaces routed-vs-ran mismatches + expiring/expired overrides, read-only.
  * Read-only for the roster; every routing mutation is a governed, audited server write.
@@ -18,7 +18,7 @@ import { useEffect, useState, useCallback } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { ParsedCard } from '../../server/planeA/cards';
 import type { AgentRosterEntry } from '../../server/agents/roster';
-import type { Session } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import {
   EMPTY_ROUTING,
   fetchRouting,
@@ -303,8 +303,6 @@ export function Agents({
   snapshot,
   roster,
   routing,
-  sessionToken,
-  onRequestSession,
   focusAgentId,
   onOpenAgent,
   onBack,
@@ -317,8 +315,6 @@ export function Agents({
   snapshot?: PlaneAIndex;
   roster?: AgentRosterEntry[];
   routing?: RoutingSnapshot;
-  sessionToken?: string;
-  onRequestSession?: () => Promise<Session | null>;
   /**
    * arc-3 step 3 — the open agent, driven by the nav stack. Mirrors ManagedRuns: when `onOpenAgent` is
    * omitted the view keeps its own state so it stays usable (and testable) standalone. A detail surface
@@ -335,6 +331,8 @@ export function Agents({
   /** Runs joined to this agent by the caller. `undefined` = not loaded, which the detail says out loud. */
   agentRuns?: RunMetadataDto[];
 } = {}): React.JSX.Element {
+  const { session, requireSession } = useSession();
+  const sessionToken = session?.token;
   const [fetched, setFetched] = useState<PlaneAIndex | null>(null);
   const [rosterState, setRosterState] = useState<AgentRosterEntry[] | null>(roster ?? null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
@@ -493,12 +491,10 @@ export function Agents({
     dashboardTriggerable: false,
     registrationSource: 'runtime-default' as const,
   }] : [])).filter((worker) => !declaredIds.has(worker.id));
-  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
 
+  /** Point-of-action unlock: a routing write on a locked tab runs the ONE ceremony first. */
   async function resolveToken(): Promise<string | undefined> {
-    if (sessionToken) return sessionToken;
-    if (onRequestSession) return (await onRequestSession())?.token ?? undefined;
-    return undefined;
+    return (await requireSession())?.token;
   }
 
   /**
@@ -513,7 +509,6 @@ export function Agents({
         testIdPrefix={`agent-${a.id}`}
         registry={registry}
         effective={effectiveById.get(a.id) ?? null}
-        canAct={canAct}
         ttl
         canClear={hasOverride(effectiveById.get(a.id))}
         onApply={async (runtime, model, expires) => {

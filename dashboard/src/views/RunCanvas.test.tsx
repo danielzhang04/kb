@@ -20,6 +20,14 @@ import {
   type AgentGraphEdge,
 } from './RunCanvas';
 import type { OperationalEventDto, RunDetailDto, RunMetadataDto } from '../control/controlClient';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
 
 beforeAll(() => {
   if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
@@ -31,6 +39,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  clearStoredSession();
   cleanup();
   vi.clearAllMocks();
   vi.useRealTimers();
@@ -121,27 +130,27 @@ describe('event ownership', () => {
 
 describe('AgentTile', () => {
   it('renders only the redacted events supplied for its agent', () => {
-    render(
-      <AgentTile agentId="fyt-story" runRef="run-1" sessionToken="tok"
+    render(unlocked(
+      <AgentTile agentId="fyt-story" runRef="run-1"
         events={[event({ summary: 'Story-only public event' })]} />,
-    );
+    ));
     expect(screen.getByTestId('run-canvas-tile-fyt-story-transcript').textContent).toContain('Story-only public event');
     expect(screen.queryByText('Visual-only public event')).toBeNull();
   });
 
   it('links a blocked tile to the Inbox', () => {
     const onNavigate = vi.fn();
-    render(
-      <AgentTile agentId="fyt-story" runRef="run-1" sessionToken="tok"
+    render(unlocked(
+      <AgentTile agentId="fyt-story" runRef="run-1"
         events={[event({ status: 'failure', summary: 'G1 refused' })]} onNavigate={onNavigate} />,
-    );
+    ));
     fireEvent.click(screen.getByTestId('run-canvas-tile-fyt-story-inbox-link'));
     expect(onNavigate).toHaveBeenCalledWith({ view: 'approvals' });
   });
 
   it('posts an operator message and states that a codex delivery is queued', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ delivery: 'queued' }), { status: 202 }));
-    render(<AgentTile agentId="fyt-story" runRef="run-1" sessionToken="tok" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
+    render(unlocked(<AgentTile agentId="fyt-story" runRef="run-1" events={[]} fetchImpl={fetchImpl as typeof fetch} />));
     fireEvent.change(screen.getByLabelText('Message fyt-story'), { target: { value: 'Please verify the draft.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(screen.getByTestId('run-canvas-tile-fyt-story-delivery').textContent).toMatch(/queued for next turn/i));
@@ -152,7 +161,7 @@ describe('AgentTile', () => {
 
   it('renders the delivery-offline refusal instead of silently dropping a message', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: 'agent-message-delivery-unavailable' }), { status: 409 }));
-    render(<AgentTile agentId="fyt-story" runRef="run-1" sessionToken="tok" events={[]} fetchImpl={fetchImpl as typeof fetch} />);
+    render(unlocked(<AgentTile agentId="fyt-story" runRef="run-1" events={[]} fetchImpl={fetchImpl as typeof fetch} />));
     fireEvent.change(screen.getByLabelText('Message fyt-story'), { target: { value: 'Please verify the draft.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(screen.getByTestId('run-canvas-tile-fyt-story-delivery').textContent).toMatch(/worker delivery offline/i));
@@ -162,9 +171,9 @@ describe('AgentTile', () => {
 describe('RunCanvasBoard', () => {
   it('projects each public event into only its owning agent transcript', () => {
     const detail = makeDetail();
-    render(<RunCanvasBoard detail={detail} sessionToken="tok" events={[
+    render(unlocked(<RunCanvasBoard detail={detail} events={[
       event({ summary: 'Story-only public event' }), event({ cursor: 2, stageRef: 'ref-visual-plan', summary: 'Visual-only public event' }),
-    ]} />);
+    ]} />));
     expect(screen.getByTestId('run-canvas-tile-fyt-story-transcript').textContent).toContain('Story-only public event');
     expect(screen.getByTestId('run-canvas-tile-fyt-story-transcript').textContent).not.toContain('Visual-only public event');
     expect(screen.getByTestId('run-canvas-tile-fyt-visuals-transcript').textContent).toContain('Visual-only public event');
@@ -172,11 +181,20 @@ describe('RunCanvasBoard', () => {
 });
 
 describe('RunCanvas', () => {
-  it('without a session renders the passkey prompt and fetches nothing', () => {
+  it('asks for the session on mount and, when refused, leaves one calm line that retries', async () => {
     const fetchImpl = vi.fn();
-    render(<RunCanvas fetchImpl={fetchImpl as typeof fetch} />);
-    expect(screen.getByText(/sign in with your passkey to open the run canvas/i)).toBeTruthy();
+    const signIn = vi.fn(async () => { throw new Error('assert/verify refused: 401'); });
+    render(<SessionProvider deps={{ signIn }}><RunCanvas fetchImpl={fetchImpl as typeof fetch} /></SessionProvider>);
+
+    // Governed view: it prompts itself rather than parking a sign-in wall in front of the operator.
+    await waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
+    const locked = await screen.findByTestId('run-canvas-locked');
+    expect(locked.textContent).toBe('Locked — unlock to view live streams');
     expect(fetchImpl).not.toHaveBeenCalled();
+
+    // The line is the retry: it never re-prompts on its own after a refusal.
+    fireEvent.click(locked);
+    await waitFor(() => expect(signIn).toHaveBeenCalledTimes(2));
   });
 
   it('loads public events beside the selected run detail', async () => {
@@ -193,7 +211,7 @@ describe('RunCanvas', () => {
       if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [event({ summary: 'Fetched public event' })] }), { status: 200 });
       return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
     });
-    render(<RunCanvas sessionToken="tok" fetchImpl={fetchImpl as typeof fetch} />);
+    render(unlocked(<RunCanvas fetchImpl={fetchImpl as typeof fetch} />));
     await waitFor(() => expect(screen.getByTestId('run-card-run-1')).toBeTruthy());
     fireEvent.click(screen.getByTestId('run-card-run-1'));
     await waitFor(() => expect(screen.getByTestId('run-canvas-tile-fyt-story-transcript').textContent).toContain('Fetched public event'));
@@ -220,7 +238,7 @@ describe('RunCanvas', () => {
       typeof url === 'string' && url.includes('/events?'),
     ).length;
 
-    render(<RunCanvas sessionToken="tok" focusRunRef="run-1" fetchImpl={fetchImpl as typeof fetch} />);
+    render(unlocked(<RunCanvas focusRunRef="run-1" fetchImpl={fetchImpl as typeof fetch} />));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
 
     expect(eventRequestCount()).toBe(1);
@@ -247,7 +265,7 @@ describe('RunCanvas', () => {
       return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
     });
 
-    render(<RunCanvas sessionToken="tok" focusRunRef="run-1" fetchImpl={fetchImpl as typeof fetch} />);
+    render(unlocked(<RunCanvas focusRunRef="run-1" fetchImpl={fetchImpl as typeof fetch} />));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
 
     expect(eventRequests).toBe(1);

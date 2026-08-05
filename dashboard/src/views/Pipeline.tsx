@@ -34,7 +34,7 @@ import {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { Dag, DagNodeData } from '../../server/dag/graph';
-import type { Session } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import {
   EMPTY_ROUTING,
   fetchRouting,
@@ -95,7 +95,6 @@ export interface PipelineNodeBodyProps {
   /** Effective routing for the display chip inside the toggle (or an unroutable marker). */
   effective?: EffectiveOrUnroutable | null;
   registry: Record<string, RuntimeRegistryEntry>;
-  canAct: boolean;
   onApplyRouting: (cardId: string, runtime: string, model: string) => Promise<WriteResult>;
   onClearRouting: (cardId: string) => Promise<WriteResult>;
   onOpenCard: (cardId: string) => void;
@@ -110,7 +109,6 @@ export function PipelineNodeBody({
   data,
   effective,
   registry,
-  canAct,
   onApplyRouting,
   onClearRouting,
   onOpenCard,
@@ -172,7 +170,6 @@ export function PipelineNodeBody({
           testIdPrefix={`pipeline-${data.id}`}
           registry={registry}
           effective={effective ?? null}
-          canAct={canAct}
           canClear={routed}
           lockedReason={lockedReason}
           onApply={(runtime, model) => apply(runtime, model)}
@@ -290,8 +287,6 @@ function layout(dag: Dag): Map<string, { x: number; y: number }> {
 export function Pipeline({
   dag,
   routing,
-  sessionToken,
-  onRequestSession,
   onOpenCard,
   focusRunRef,
   onOpenRun,
@@ -302,8 +297,6 @@ export function Pipeline({
 }: {
   dag?: Dag;
   routing?: RoutingSnapshot;
-  sessionToken?: string;
-  onRequestSession?: () => Promise<Session | null>;
   onOpenCard?: (cardId: string) => void;
   /** arc-3 nav stack: which run's detail is open, and how to push/pop/retab it. */
   focusRunRef?: string | null;
@@ -313,6 +306,7 @@ export function Pipeline({
   onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
 } = {}): React.JSX.Element {
+  const { requireSession } = useSession();
   const [fetchedDag, setFetchedDag] = useState<Dag | null>(dag ?? null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
@@ -352,38 +346,29 @@ export function Pipeline({
   const activeRun = selectedRun && groups.some((g) => g.id === selectedRun) ? selectedRun : groups[0]?.id ?? null;
   const graph = useMemo(() => (activeRun ? graphForRun(allGraph, activeRun) : allGraph), [allGraph, activeRun]);
   const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
-  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
   const openCard = onOpenCard ?? (() => {});
-
-  async function resolveToken(): Promise<string | undefined> {
-    if (sessionToken) return sessionToken;
-    if (onRequestSession) return (await onRequestSession())?.token ?? undefined;
-    return undefined;
-  }
 
   const applyRouting = useCallback(
     async (cardId: string, runtime: string, model: string): Promise<WriteResult> => {
-      const token = await resolveToken();
+      // Point-of-action unlock: a routing write on a locked tab runs the ONE ceremony first.
+      const token = (await requireSession())?.token;
       if (!token) return { ok: false, reason: 'no session' };
       const res = await postCardRouting({ op: 'set', cardId, runtime, model }, token);
       if (res.ok) await refreshRouting();
       return res;
     },
-    // resolveToken closes over props; refreshRouting is stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionToken, onRequestSession, refreshRouting],
+    [requireSession, refreshRouting],
   );
 
   const clearRouting = useCallback(
     async (cardId: string): Promise<WriteResult> => {
-      const token = await resolveToken();
+      const token = (await requireSession())?.token;
       if (!token) return { ok: false, reason: 'no session' };
       const res = await postCardRouting({ op: 'clear', cardId }, token);
       if (res.ok) await refreshRouting();
       return res;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionToken, onRequestSession, refreshRouting],
+    [requireSession, refreshRouting],
   );
 
   const positions = useMemo(() => layout(graph), [graph]);
@@ -398,13 +383,12 @@ export function Pipeline({
           data: n.data,
           effective: routingSnap.cards[n.id]?.effective ?? null,
           registry: routingSnap.policy.runtimes,
-          canAct,
           onApplyRouting: applyRouting,
           onClearRouting: clearRouting,
           onOpenCard: openCard,
         },
       })),
-    [graph, positions, routingSnap, canAct, applyRouting, clearRouting, openCard],
+    [graph, positions, routingSnap, applyRouting, clearRouting, openCard],
   );
 
   const rfEdges: Edge[] = useMemo(
@@ -422,8 +406,6 @@ export function Pipeline({
         </p>
       </header>
       <ManagedRuns
-        sessionToken={sessionToken}
-        onRequestSession={onRequestSession}
         focusRunRef={focusRunRef}
         onOpenRun={onOpenRun}
         onBackToRuns={onBackToRuns}
