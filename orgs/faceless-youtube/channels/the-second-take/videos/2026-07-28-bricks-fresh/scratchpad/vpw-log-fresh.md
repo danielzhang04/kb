@@ -240,3 +240,148 @@ spokes, L39's stack banding, L43's torn calendar edge, and the draft's L11 red.
 9. **Act 2 authoring is seed-cap-constrained before it starts** — see the arithmetic in `fix-G2-report.md`.
    A two-cast + crowd + branded-place beat that letters anything is at 5 seeds and survives only on the
    crowd-displacement rule; add an interaction template or a tagged prop and forge refuses.
+
+---
+
+# ROUND 3 — VPW SCOPED-REPAIR over the R14 critic's verdict (fix worker G4), 2026-08-05
+
+SCOPED-REPAIR mode, caller-supplied target list: `critic-R14-fresh-fifth.md` (1 BLOCKING, 12 REVISE,
+plus N-1's undeclared figureless run). Inputs read: the critic, the VPW SKILL, `shots-schema.md`,
+`visual-grammar.md`, `example-shots.md`, `registry.json`, `script.md`, the real word timings in
+`assets/voiceover.manifest.json`, `vpw-fresh-skeleton.md`, the CURRENT `shots.json`. No archived or
+quarantined file was read at any point. $0, no provider call, nothing committed.
+
+**47 shots throughout — no shot added or removed.** Sum of `duration_s` 103.2 → 103.3 s. 25 shots
+touched: 20 named by the critic, 5 neighbours forced by a repaired chain (each logged below). Every
+other shot, and the whole `thumbnail` block, is byte-identical.
+
+## The one BLOCKING item — L24's delta unwrapped cartons its parent had sealed
+
+The chain state is restaged across L22–L25 so the three states are physically consecutive:
+
+| shot | state before | state now |
+| --- | --- | --- |
+| L22 (base) | film hard round the rear rows, cut back off **the front carton** only | film hard round the **lower courses**, cut back off **the whole top row** |
+| L23 (delta) | that one carton's flaps open on a brick | the **front carton of that unwrapped row** opens — restatement updated |
+| L24 (delta) | **every carton on the top row** opens — needed film-stripping its parent forbade | **every remaining carton on the unwrapped row** opens — one flap-fold, nothing to strip |
+| L25 (delta) | 'HARD DRIVE' on every open carton | **byte-identical** — its carried restatement was already true |
+
+The feasibility gate L22 installed is now wide enough to cover its own chain, which is what the round-2
+note claimed it did.
+
+## The money block (R-1) — one image four times, re-derived into four worlds
+
+`L35` `L36` `L38` `L39` were all flat brown cartons on grey concrete under a pale sky, three of them
+carrying a literally identical palette line, inside 12.6 s. Each is now re-derived from its OWN VO line,
+keeping its declared class:
+
+| shot | class (unchanged) | world now | figures |
+| --- | --- | --- | --- |
+| L35 "and within four years" | crowd-multiplication | **kept** — four stacks stepping up on the apron, loading crew | crowd |
+| L36 "million dollars a year." | number-glued-to-object | adding machine, tape run out on the floorboards, '125 MILLION' on the tape end | none (earned) |
+| L38 "giants like Compaq" | physicalized-imbalance | the customer's yard, pallet at the mouth of an articulated trailer, 'COMPAQ' on the flank | crowd |
+| L39 "over 600 million a year." | number-glued-to-object | a banking hall, porter's trolley of banded notes, '600 MILLION' on the trolley board | crowd |
+
+L35 keeps the carton vocabulary because it is the one of the four whose staging is an argument (four
+years = four stacks) rather than a backdrop. L39's 125-vs-600 juxtaposition is dropped rather than
+restaged: the VO compares nothing in that line, and the comparison the script DOES make is L40/L41's
+board.
+
+## Cadence — the base/delta hold inversions, closed against the real timings
+
+No duration was invented; each was closed by moving ONE anchor to a verbatim later span of the same
+sentence, and both halves stay inside the 1.5–3 s band.
+
+| chain | anchor moved | before | after |
+| --- | --- | --- | --- |
+| opening peak | L04 to "never heard of." | L03 1.76 / L04 2.24 | **L03 2.37 / L04 1.63** |
+| `drive-vault` | L13 to "things after you switch it off:" | L12 1.52 / L13 2.72 | **L12 2.09 / L13 2.15** |
+| `shopfront-brawl` | L18 to "and Apple fight over the phone market," | L17 2.19 / L18 2.95 | **L17 2.96 / L18 2.18** |
+| `backroom-take` | L20 to "raking it in." | L19 1.61 / L20 2.48 | **L19 2.40 / L20 1.69** |
+
+`drive-vault` keeps 0.06 s of inversion: the next split point ("after you switch it off:") puts L13 at
+1.45 s, under the floor. That is what the VO gives, and it is left visible rather than papered over.
+
+## Per-shot changes (round 3)
+
+- **L03 / L04 (opening peak).** L03 is the skeleton's designated opening peak and had 1.76 s on pallets
+  authored "small in a large dark room", closing on `Palette:`. It now holds 2.37 s, brings the pallets
+  near and high in frame, and closes on them. L04 re-anchored (the source of the 0.61 s) and reordered so
+  it ends on "not one head is turned toward the racks", which is the whole irony of "never heard of".
+- **L07 (R-7).** Re-authored from a `store-1983` delta to the BASE of a new `store-rush` chain. A
+  room-filling crowd was arriving on a parent frame with no people in it — the dominant input contradicted
+  the payload. It now seeds the L05 place-first frame, stages the queue as a positive arrangement in a
+  stated zone, and takes a new vantage (down on the floor at counter height). The window card is behind
+  camera at that vantage, so no literal is carried and the payload slot stays with the crowd.
+- **L08 (R-8).** Re-authored: the delta no longer DELETES the parent's dominant seeded mass (three bays
+  of boxed machines). Its change is now an addition — every buyer carrying a boxed machine — which is also
+  what its own line says ("Anybody with money was buying one"). The shelves running bare lands where the
+  script puts it, on L09's "flying off the shelves", which is a fresh frame rather than a deletion delta.
+- **L12 (R-6).** Scale pinned against two things already in frame (a waist-high plinth, four courses of
+  the drawer wall), because L14 fills the interior with shelved folders and boxed sleeves and a
+  desk-object-sized parent would make both payload nouns unreadable.
+- **L18 (R-12).** The payload clause stated two incompatible contact geometries (faces butted AND edge to
+  edge leaning). One geometry is authored now, the one the cases above already use.
+- **L19 (R-2).** Re-staged out of the retailer's back room. "A plain back stockroom behind that display"
+  anchored the money to L17's shop window, which paid the wrong party and inverted the picks-and-shovels
+  thesis. It is now the drive maker's own back-of-house: its own dock, its own roll-up door, its own truck,
+  its own finished units, no retail adjacency.
+- **L21 (R-11).** Reordered: framing and palette before the payload, so it closes on the anachronistic
+  drive standing on the gold-rush counter — the shot's declared joke, previously buried mid-prompt.
+- **L28 / L29 / L30 (R-10).** Lettering-TECHNIQUE words removed: "Chalked across the end of the nearest
+  crate" to "Across the plank end of the nearest crate" (L30), and "broad painted board" to "broad plank
+  board" on both the plate and the frame that redraws it. The substrate is stated; the suffix owns the
+  register.
+- **L29 / L31 / L32 (R-4).** Three of the act's four figure reveals ran one face and one composition.
+  Split across the dial and across scale: L29 `expr-deadpan`, medium, off-centre in the doorway (a flat
+  identification beat); L31 keeps `expr-delighted` (the founder's warm intro — the beat that warrants it)
+  but pushes in to a medium; L32 goes `expr-greedy` on a low wide angle from floor level (the boom).
+  STEP-1 card count is unchanged at 8.
+- **L42 (R-3).** The carton is no longer empty. Three shots taught that these boxes hold one red clay
+  brick filling the box exactly; an empty one reads as a continuity error, and it is the wrong fraud.
+  The brick is in the box, in the reveal chain's own words, under the same '600 MILLION' lettering.
+- **L16 (note only).** The round-2 claim that L12–L16 was "the act's one earned figureless run" is
+  corrected to what is actually true and checkable: the one run past the ~10 s self-audit flag, with the
+  shorter earned runs named.
+
+## Neighbours touched (and why)
+
+| shot | touch | forced by |
+| --- | --- | --- |
+| L22 | prompt (film state widened to the whole top row) | the L24 BLOCKING chain repair |
+| L23 | prompt (carried restatement of L22's new state) | same chain |
+| L13 | `vo_ref` + `duration_s` only, prose byte-identical | the L12 hold rebalance |
+| L20 | carried restatement rewritten to match L19's re-staged base, plus its anchor | the L19 location repair |
+| L28 | "painted board" to "plank board" | R-10's milder half; the place's sign must read identically wherever redrawn |
+
+## Figure bias after round 3
+
+Figureless runs: **L12–L16 10.6 s (the declared mechanism block)**, L26–L28 6.4 s, L05–L06 4.9 s,
+L40–L41 3.8 s, L36 2.9 s, everything else at or under 2.4 s. The critic's undeclared 9.5 s L38–L41 run is
+gone — L38 and L39 were re-derived into worlds that have people working in them, which is the restage
+half of N-1's declare-or-restage. Figure-bearing frames 26 to 28 of 47 (60%).
+
+## Acceptance
+
+- **Lint: 2 HARD, 4 heads-up** (was 2 HARD, 6). Both HARDs are the partial-coverage artifacts (duration
+  sum and shot floor measured against the whole 9:20 runtime by a file covering 18% of it). Of the 4
+  heads-ups, L47's is the same artifact; L08/L13/L14 are real-timing artifacts of the legacy
+  "delta not longer than its base" rule — each delta is inside the band and each base's line is simply
+  spoken faster. The L15/L18/L20 instances cleared. Zero real-cadence heads-ups; zero payload-last,
+  anchor, place, crowd, delta-feasibility, text-law or technique HARDs.
+- **Forge whole-file dry-run: completes, exit 0, ZERO refusals**, no `SEEDING LAW` block, 47 scenes plus
+  8 STEP-1 figure gens, all `fig-*` **GENERATE**, none REUSED, max 4 seeds on any request (L33).
+  L07/L08 now seed as designed (`L07: [L05, crowd-exemplar]`, `L08: [L07, crowd-exemplar]`).
+
+## Lessons for the remaining fifths
+
+10. **A feasibility gate must be sized to the whole chain, not to the next shot.** L22 reserved exactly
+    one carton because L23 needed exactly one; L24, two shots later, needed the row. Author the gate
+    against the LAST delta of the chain.
+11. **A hold inversion is usually an anchor problem** (all four closed by moving one anchor inside the
+    same sentence). When it is not — when the next split point is under the floor — leave it and say so;
+    the declared number must never disagree with the render.
+12. **A repeated CLASS is not the monotony risk; a repeated WORLD is.** The money block's four shots
+    carried four different `shot_class` values and still rendered as one image, because all four reached
+    for the same nouns (cartons, apron, pale sky). Vary the world and the vantage per shot, not just the
+    class.

@@ -38,26 +38,26 @@
       },
       {
         "id": "L03",
-        "duration_s": 1.8,
+        "duration_s": 2.4,
         "synthetic": false,
         "vo_ref": "and one of the funniest corporate scams",
         "place": "brick-warehouse",
         "owner_ambiguity": true,
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "A rented warehouse interior at night, cast-free, wide static from floor level. Bare grey concrete runs back to a shut roller door at the rear, empty steel shelving lines the right wall, high dusty windows sit black above. One work lamp on a tripod stands stage-left, throwing a hard pool of light over three shrink-wrapped pallets of sealed brown cartons stranded in the middle of the floor. Every wall face, pallet wrap and carton side stands completely blank and unlettered. Framing: wide from floor level, the lit pallets small in a large dark room. Palette: cold concrete grey, warm amber lamp pool, brown board.",
-        "notes": "PLATE of place `brick-warehouse` — cast-free, no chain parent. `owner_ambiguity: true` is the authored decision, not an omission: the script's warehouse is rented and carries nobody's name, and that unmarked-ness IS the hook. Figure bias: absence EARNED — an anonymous off-site shell with nobody in it is the argument this frame makes. Withholds the bricks (disclosure order: the VO has not said them yet). [F-06]"
+        "still_prompt": "A rented warehouse interior at night, cast-free. Bare grey concrete runs back to a shut roller door at the rear, empty steel shelving lines the right wall, high dusty windows sit black above, and one work lamp on a tripod stands stage-left throwing a hard pool of light across the floor. Every wall face, pallet wrap and carton side stands completely blank and unlettered. Framing: wide static from floor level, the lamp pool close to camera and the dark room falling away behind it. Palette: cold concrete grey, warm amber lamp pool, brown board. Standing in that pool, near and high in frame, are three shrink-wrapped pallets of sealed brown cartons, stranded alone in the middle of a large dark room.",
+        "notes": "PLATE of place `brick-warehouse` — cast-free, no chain parent. `owner_ambiguity: true` is the authored decision, not an omission: the script's warehouse is rented and carries nobody's name, and that unmarked-ness IS the hook. ROUND 3 (R-9/R-11): this is the skeleton's designated OPENING PEAK and it was under-held and under-scaled — 1.76s on pallets authored 'small in a large dark room', closing on `Palette:`. The hold is now 2.37s (real, off the VO timings — L04 re-anchored, no duration invented), the pallets are brought near and high in frame so the hook reads at speed, and the prompt closes on the pallets instead of the palette line. Figure bias: absence EARNED — an anonymous off-site shell with nobody in it is the argument this frame makes. Withholds the bricks (disclosure order: the VO has not said them yet). [F-06]"
       },
       {
         "id": "L04",
-        "duration_s": 2.2,
+        "duration_s": 1.6,
         "synthetic": false,
-        "vo_ref": "that you've never heard of.",
+        "vo_ref": "never heard of.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "A pavement newsstand on a busy morning street, wide static eye-level from the far kerb. The stand's racks are packed three tiers deep with folded newspapers and magazines, every cover face and masthead standing blank and unlettered; a green-and-cream awning shades the plank counter and a bundle of unsold papers sits bound with twine at its foot. A crowd of commuters streams past on the far side of the stand in overcoats and scarves, briefcases swinging, not one head turned toward the racks. Framing: wide, the stand foreground-right, the passing stream filling the left two-thirds. Palette: newsprint grey, awning green and cream, cold morning blue.",
-        "notes": "New shot: splits the opening peak's 4.0s hold into plate + counterpoint (real-cadence fix). Ironic counterpoint on 'never heard of' — the story is on every rack and nobody looks. Every cover authored blank and unlettered (supplied-text law: no headline is asserted). Figure bias: the beat is about people NOT hearing, so people carry it; crowd in a positive rear zone on the far side of the stand."
+        "still_prompt": "A pavement newsstand on a busy morning street. The stand's racks are packed three tiers deep with folded newspapers and magazines, every cover face and masthead standing blank and unlettered; a green-and-cream awning shades the plank counter and a bundle of unsold papers sits bound with twine at its foot. Framing: wide static eye-level from the far kerb, the stand foreground-right, the passing stream filling the left two-thirds. Palette: newsprint grey, awning green and cream, cold morning blue. A crowd of commuters streams past on the far side of the stand in overcoats and scarves, briefcases swinging, and not one head is turned toward the racks.",
+        "notes": "Splits the opening peak's 4.0s hold into plate + counterpoint (real-cadence fix). Ironic counterpoint on 'never heard of' — the story is on every rack and nobody looks. ROUND 3: re-anchored from \"that you've never heard of.\" to \"never heard of.\" — a verbatim later span of the same sentence, which hands 0.61s back to the under-held opening peak (L03 1.76s → 2.37s, this frame 2.24s → 1.63s, both inside the band). Payload ordering (R-11): framing and palette now sit BEFORE the closing clause, so the prompt ends on the turned-away heads, which are the whole irony of 'never heard of'. Every cover authored blank and unlettered (supplied-text law: no headline is asserted). Figure bias: the beat is about people NOT hearing, so people carry it; crowd in a positive rear zone on the far side of the stand."
       },
       {
         "id": "L05",
@@ -93,14 +93,13 @@
         "synthetic": false,
         "vo_ref": "They were all the craze.",
         "place": "computer-shop",
-        "stage": "store-1983",
-        "stage_role": "delta",
-        "changed_elements": ["+ a queue of buyers packed on the far side of the counter"],
+        "stage": "store-rush",
+        "stage_role": "base",
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "The same shop interior held exactly: three shelf bays of beige boxed home computers, oak counter foreground-right with the brass till, the opened straw-filled crate at its near end, the window card carrying '1983'. Only this changes: a queue of eager buyers now packs the room on the far side of the counter in wide collars and bulky coats, banknotes held up over each other's shoulders, the head of the queue pressed against the counter edge; everything else exactly as established.",
-        "notes": "Crowd staged in a positive rear zone (far side of the counter); nobody individually counted or faced. L-1: '1983' re-quoted. [F-01 context]"
+        "still_prompt": "The 1983 high-street computer shop from down on the shop floor: the varnished oak counter crosses the foreground with its brass till and the opened straw-filled crate at its near end, the three shelf bays stacked with beige boxed home computers rise behind, cream-and-teal linoleum runs underfoot and daylight washes in from the street door. Framing: medium-wide at counter height, the counter edge across the foreground and the room beyond it filled back to the bays. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, banknotes held up over the shoulders in front of them and the head of the queue pressed to the counter edge.",
+        "notes": "RE-AUTHORED as a fresh stage BASE (round 3, R-7). As a `store-1983` delta this was the file's weakest seeding shape: a room-filling crowd arriving on a parent frame (L06) that contains no people at all, so the dominant input — the parent image forge weights heaviest — actively contradicted the payload. It is now the base of `store-rush`, seeded off the L05 place-first frame, with the queue authored as a POSITIVE arrangement occupying a stated zone (packed along the counter's far side, ranked back between the bays) rather than 'packs the room'. New vantage (down on the floor at counter height) so the cut reads against L05's door-side wide. The window card sits behind camera at this vantage, so no established literal is redrawn here — which also keeps the payload slot for the crowd. Crowd in a positive rear zone; nobody individually counted or faced. [F-01 context]"
       },
       {
         "id": "L08",
@@ -108,14 +107,14 @@
         "synthetic": false,
         "vo_ref": "Anybody with money was buying one,",
         "place": "computer-shop",
-        "stage": "store-1983",
+        "stage": "store-rush",
         "stage_role": "delta",
-        "changed_elements": ["+ all three shelf bays bare to the pegboard"],
+        "changed_elements": ["+ a boxed beige machine carried under one arm by every buyer in the queue"],
         "shot_class": "literal",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "The same shop interior held exactly: oak counter foreground-right with the brass till, the straw-filled crate at its near end, the queue of buyers packed on the far side of the counter, the window card carrying '1983'. Only this changes: all three shelf bays now stand bare to the pegboard, every hook empty and every shelf edge swept down to bare board; everything else exactly as established.",
-        "notes": "Completion state quantified ('all three', 'every hook'). Crowd unchanged from the parent frame. Chain closes here at three deltas. L-1: '1983' re-quoted."
+        "still_prompt": "The same shop held exactly: the oak counter across the foreground with its brass till and the straw-filled crate at its near end, the three shelf bays of beige boxed home computers rising behind, the queue of buyers packed along the counter's far side and ranked back between the bays. Only this changes: every buyer in that queue now carries a boxed beige machine under one arm, held in tight against the coat; everything else exactly as established.",
+        "notes": "RE-AUTHORED (round 3, R-8). The round-2 delta deleted the parent's dominant seeded mass — three bays stacked with boxed machines — which is the one thing a prose delta cannot reliably do against a parent image that shows them full. The change is now an ADDITION, and it is also truer to this shot's own VO line: 'Anybody with money was buying one' is about the buyers, not about the shelving. The shelves running bare now lands where the script puts it, on L09's 'flying off the shelves', which is a fresh frame rather than a deletion delta. Completion state quantified ('every buyer in that queue'). Crowd unchanged from the parent frame. The window card is out of frame at this vantage, so no established literal is redrawn."
       },
       {
         "id": "L09",
@@ -152,28 +151,28 @@
       },
       {
         "id": "L12",
-        "duration_s": 1.5,
+        "duration_s": 2.1,
         "synthetic": false,
         "vo_ref": "A hard drive is the part of your computer",
         "stage": "drive-vault",
         "stage_role": "base",
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
-        "still_prompt": "One beige drive unit stands alone on a dark plinth in a records room, lit hard from stage-left. Its front face carries a small steel vault door with a spoked wheel handle centred on it, shut tight, and the unit's power lamp is dark. Behind the plinth a wall of shallow oak card-index drawers runs the width of the room with brass pulls in even rows; a banker's lamp stands lit on a side table stage-right beside a stack of ledgers, and a worn parquet floor runs back to the skirting. Framing: medium, the drive centred with air above it against the drawer wall. Palette: warm beige casing, cold steel wheel, oak drawer fronts, charcoal shadow.",
-        "notes": "Non-literal stand-in: the drive as a vault, so 'remembers after you switch it off' reads before the sentence lands. The room is FURNISHED (drawer wall, side table, ledgers, parquet) — the earlier draft's 'empty grey room / smooth empty back wall' was the sparse-environment regression the bible's §5 forbids. Red accent dropped here: it was decorative on the wheel spokes, and red is semantic only. Figure bias: absence EARNED — the subject of this beat and the three that follow is genuinely a mechanism, not a person."
+        "still_prompt": "One beige drive unit stands alone on a waist-high dark plinth in a records room, lit hard from stage-left, its case standing as tall and as wide as four courses of the drawer wall behind it. Its front face carries a small steel vault door with a spoked wheel handle centred on it, shut tight, and the unit's power lamp is dark. Behind the plinth a wall of shallow oak card-index drawers runs the width of the room with brass pulls in even rows; a banker's lamp stands lit on a side table stage-right beside a stack of ledgers, and a worn parquet floor runs back to the skirting. Framing: medium, the drive centred against the drawer wall with air above it. Palette: warm beige casing, cold steel wheel, oak drawer fronts, charcoal shadow.",
+        "notes": "Non-literal stand-in: the drive as a vault, so 'remembers after you switch it off' reads before the sentence lands. The room is FURNISHED (drawer wall, side table, ledgers, parquet) — the earlier draft's 'empty grey room / smooth empty back wall' was the sparse-environment regression the bible's §5 forbids. Red accent dropped here: it was decorative on the wheel spokes, and red is semantic only. ROUND 3: (a) R-5 — this BASE carried the chain's shortest hold (1.52s) while its smallest delta held longest; L13 re-anchored a few words later hands it 0.57s back (2.09s real, L13 2.15s), so the frame that pays the whole chain's reading cost is no longer at the cadence floor. (b) R-6 — the unit's SCALE is now pinned against two things already in frame (a waist-high plinth, four courses of the drawer wall). Deltas inherit whatever scale this base renders, and L14 fills the interior with shelved manila folders and boxed sleeves; unpinned, this could return a desk-object and make L14's two payload nouns unreadable at 2.5s. Figure bias: absence EARNED — the subject of this beat and the three that follow is genuinely a mechanism, not a person."
       },
       {
         "id": "L13",
-        "duration_s": 2.7,
+        "duration_s": 2.2,
         "synthetic": false,
-        "vo_ref": "that remembers things after you switch it off:",
+        "vo_ref": "things after you switch it off:",
         "stage": "drive-vault",
         "stage_role": "delta",
         "changed_elements": ["+ the vault door swung open on three empty ruled shelves"],
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
         "still_prompt": "The same beige drive unit on its dark plinth in the records room, the wall of oak card-index drawers behind it and the banker's lamp lit on the side table stage-right, its steel vault door and spoked wheel held exactly, power lamp dark. Only this changes: the vault door now stands swung fully open on its hinge, showing three narrow shelves inside, each ruled with a shallow lip and standing empty and unlettered; everything else exactly as established.",
-        "notes": "Absence authored as a positive property of the shelves (empty and unlettered)."
+        "notes": "Absence authored as a positive property of the shelves (empty and unlettered). ROUND 3: re-anchored from \"that remembers things after you switch it off:\" to the verbatim later span \"things after you switch it off:\" — prose untouched. This is the R-5 hold rebalance: 0.57s moves off this delta onto its base (L12 1.52s → 2.09s, this frame 2.72s → 2.15s). The remaining 0.06s of base-vs-delta inversion is what the real VO timings give; the next split point ('after you switch it off:') would drop this frame to 1.45s, under the floor, and no duration is invented to hide that."
       },
       {
         "id": "L14",
@@ -209,11 +208,11 @@
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
         "still_prompt": "A long plain shelf runs from foreground-left deep into a grey stockroom, ranked the whole length of its run with identical beige computer cases nose-out, each with an identical drive seated in its front bay. The nearest case's bay is lit from inside; the rest recede evenly into shadow. Steel uprights and crossbraces frame the run and flat cardboard sleeves are stacked on the shelf below it. Framing: low wide angle straight down the shelf's length. Palette beige on grey.",
-        "notes": "Multiplication of OBJECTS, not people — the beat's subject is the machine. Completion state ('ranked the whole length of its run') replaces the earlier draft's exact count of twelve, which a stochastic model will not honour. Figure bias: this closes the act's one earned figureless run — L12–L16, 10.6s, the 'what a hard drive is' mechanism block, where the subject genuinely is the thing; every neighbouring beat about people now carries them."
+        "notes": "Multiplication of OBJECTS, not people — the beat's subject is the machine. Completion state ('ranked the whole length of its run') replaces the earlier draft's exact count of twelve, which a stochastic model will not honour. Figure bias: this closes the act's ONE figureless run past the ~10s self-audit flag — L12–L16, 10.6s, the 'what a hard drive is' mechanism block, where the subject genuinely is the thing; every neighbouring beat about people now carries them. (Round 3 correction: the round-2 wording said 'one earned run', which read as a claim that no other figureless run existed. Shorter earned runs do — L05–L06 4.9s, L26–L28 6.4s, L40–L41 3.8s — each named in its own shot's notes. The 9.5s L38–L41 run the R14 critic found undeclared is gone: L38 and L39 were restaged into peopled worlds in round 3, so this is again the only run over the flag.)"
       },
       {
         "id": "L17",
-        "duration_s": 2.2,
+        "duration_s": 3.0,
         "synthetic": false,
         "vo_ref": "So while the computer companies were out front fighting",
         "stage": "shopfront-brawl",
@@ -222,25 +221,25 @@
         "source": "ai-gen",
         "figures": { "crowd": true },
         "still_prompt": "Two oversized beige computer cases stand butted front to front on a lit shop-window display platform, seen from inside the window: shoved hard against each other like wrestlers locked up, corners dented where they meet and the platform's paint scuffed in an arc beneath them. Behind them the plate glass runs the width of the frame, and a crowd of passers-by is packed along the pavement on its far side in coats and headscarves with shopping bags at their knees, faces turned in to watch. One spotlight above throws two hard shadows out to the sides. Framing: wide from inside the display, both cases at the same height dead centre, the watching crowd beyond the glass. Palette beige, black platform, warm spotlight, one red accent on the scuffed arc.",
-        "notes": "Rival firms personified as their products rather than as new cast — no slug minted for a one-line analogy. Figure bias: the market watching the fight is put back in frame, staged in a positive rear zone beyond the plate glass. Red is semantic here: the scuffed arc is the point of contact, the punch element."
+        "notes": "ROUND 3 (R-5): prose untouched; the hold rises 2.19s → 2.96s because L18 re-anchors later. This BASE establishes a whole new set (window platform, plate glass, watching market) and was cut shorter than the delta that only adds two phone slabs to it. Rival firms personified as their products rather than as new cast — no slug minted for a one-line analogy. Figure bias: the market watching the fight is put back in frame, staged in a positive rear zone beyond the plate glass. Red is semantic here: the scuffed arc is the point of contact, the punch element."
       },
       {
         "id": "L18",
-        "duration_s": 3.0,
+        "duration_s": 2.2,
         "synthetic": false,
-        "vo_ref": "like Samsung and Apple fight over the phone market,",
+        "vo_ref": "and Apple fight over the phone market,",
         "stage": "shopfront-brawl",
         "stage_role": "delta",
-        "changed_elements": ["+ two flat black glass slabs butted front to front in a shove of their own at the platform's front edge"],
+        "changed_elements": ["+ two flat black glass slabs butted face to face in a shove of their own at the platform's front edge"],
         "shot_class": "idiom-pun",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "The same lit shop-window display seen from inside: two oversized beige computer cases butted front to front, dented at the corners, the platform scuffed beneath them, the plate glass behind with the crowd of passers-by packed along the pavement on its far side, one spotlight above. Only this changes: two flat black glass slabs now stand butted front to front at the front edge of the platform in a shove of their own, edge pressed to edge and leaning into each other with a matching dent where they meet, mirroring the two cases behind them at their own smaller scale; everything else exactly as established.",
-        "notes": "Restaged: the earlier draft wedged the phones into the CASES' shove and called them 'dwarfed by' them, which read as the phones being crushed by the PCs — the analogy inverted. They now stage their own mirrored fight, which is what the line says. No brand marks authored (evergreen-reference policy)."
+        "still_prompt": "The same lit shop-window display seen from inside: two oversized beige computer cases butted front to front, dented at the corners, the platform scuffed beneath them, the plate glass behind with the crowd of passers-by packed along the pavement on its far side, one spotlight above. Only this changes: two flat black glass slabs now stand upright at the front edge of the platform, butted face to face and shoved hard against each other with a matching dent where they meet and their bottom edges skidded apart under the push, locked up exactly like the two cases behind them at their own smaller scale; everything else exactly as established.",
+        "notes": "Restaged in round 2: the first draft wedged the phones into the CASES' shove and called them 'dwarfed by' them, which read as the phones being crushed by the PCs — the analogy inverted. They now stage their own mirrored fight, which is what the line says. ROUND 3 (R-12): the payload clause stated TWO incompatible contact geometries at once — 'butted front to front' (faces flush) and 'edge pressed to edge and leaning into each other' (a teepee). One geometry is now authored, and it is the one the cases above already use: faces butted, dent at the contact, bottom edges skidded apart so the shove is visible without a second geometry. ROUND 3 (R-5): re-anchored to the verbatim later span \"and Apple fight over the phone market,\" — 0.77s moves off this delta onto its base (L17 2.19s → 2.96s, this frame 2.95s → 2.18s), and the phone slabs now land on the words that name the phone market. No brand marks authored (evergreen-reference policy)."
       },
       {
         "id": "L19",
-        "duration_s": 1.6,
+        "duration_s": 2.4,
         "synthetic": false,
         "vo_ref": "the hard drive manufacturers were",
         "stage": "backroom-take",
@@ -248,22 +247,22 @@
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "A plain back stockroom behind that display: a steel till drawer stands open on a wooden crate stage-right, packed tight with banded banknotes, and a pallet of drive units waits beside it with its dust sheet folded back. On the far side of the racks a crew of packers in overalls works the shelves, banding notes into bundles and stacking them into a strongbox on a trestle. A doorway stage-left throws a hard slab of daylight across the concrete. Framing: wide static, the money low in frame and the lit doorway high. Palette: cool grey concrete, warm doorway amber, green banknote banding.",
-        "notes": "Signature unmasking move: the fight is out front, the money is in the back room. Figure bias: 'the hard drive manufacturers' are a party of people, so the manufacturers' crew is in the room — the earlier draft staged the beat 'quiet and empty of figures'. Crowd on the far side of the racks (positive rear zone). The un-renderable 'racket of the front room' (a sound) is gone."
+        "still_prompt": "A drive maker's own shipping back-of-house, off its loading dock: a steel cash box stands open on a packing bench stage-right, packed tight with banded banknotes, and a pallet of finished drive units waits beside it with its dust sheet folded back. On the far side of the racks a crew of packers in overalls works the shelves, banding notes into bundles and stacking them into a strongbox on a trestle. The dock's roll-up door stands open stage-left on a waiting truck, throwing a hard slab of daylight across the concrete. Framing: wide static, the money low in frame and the lit dock door high. Palette: cool grey concrete, warm doorway amber, green banknote banding.",
+        "notes": "Signature unmasking move: the fight is out front, the money is in the back room. RE-STAGED (round 3, R-2): the round-2 prompt opened 'A plain back stockroom behind that display', anchoring the frame to L17's retail shop window — which made this the RETAILER's till, not the drive maker's, and inverted the picks-and-shovels thesis the whole passage is built on. The retail adjacency is gone; the room is now the manufacturer's own back-of-house, identified by its own dock, its own roll-up door, its own truck and its own pallet of finished units. Figure bias: 'the hard drive manufacturers' are a party of people, so the manufacturers' crew is in the room — the first draft staged the beat 'quiet and empty of figures'. Crowd on the far side of the racks (positive rear zone). ROUND 3 (R-5): the hold rises 1.61s → 2.40s (L20 re-anchored) — this base establishes an entirely new set and was cut to the floor while its rake delta held longest."
       },
       {
         "id": "L20",
-        "duration_s": 2.5,
+        "duration_s": 1.7,
         "synthetic": false,
-        "vo_ref": "quietly raking it in.",
+        "vo_ref": "raking it in.",
         "stage": "backroom-take",
         "stage_role": "delta",
         "changed_elements": ["+ a garden rake laid across a raked heap of loose banknotes"],
         "shot_class": "idiom-pun",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "The same back stockroom: the open till drawer of banded banknotes on its crate stage-right, the pallet of drive units beside it, the crew of packers working the shelves on the far side of the racks, the lit doorway stage-left throwing its slab of light across the concrete. Only this changes: a long garden rake now lies across the floor with its head buried in a raked heap of loose banknotes, drag lines fanning out behind it through the dust; everything else exactly as established.",
-        "notes": "Idiom drawn literally on the held set — one integrative change, so it stays a delta frame, and the rake now belongs to a room that has people in it."
+        "still_prompt": "The same shipping back-of-house: the open cash box of banded banknotes on its packing bench stage-right, the pallet of finished drive units beside it, the crew of packers working the shelves on the far side of the racks, the open dock door stage-left throwing its slab of light across the concrete. Only this changes: a long garden rake now lies across the floor with its head buried in a raked heap of loose banknotes, drag lines fanning out behind it through the dust; everything else exactly as established.",
+        "notes": "Idiom drawn literally on the held set — one integrative change, so it stays a delta frame, and the rake belongs to a room that has people in it. NEIGHBOUR TOUCH (round 3): the carried restatement was rewritten to match L19's re-staged base (cash box on a packing bench, dock door, finished units) — a delta restates its parent's load-bearing facts, so repairing the parent's location logic forces this line. Re-anchored to \"raking it in.\" as the R-5 rebalance: 0.79s moves to the base (L19 1.61s → 2.40s, this frame 2.48s → 1.69s)."
       },
       {
         "id": "L21",
@@ -273,8 +272,8 @@
         "shot_class": "crowd-multiplication",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "A gold-rush supply stall on a muddy riverbank in flat morning light: a plank counter under a canvas awning, the rack behind it hung with pick heads, shovel blades and coils of rope, and one beige drive unit standing among them on the counter, out of place and unremarked. Behind the counter a crew of aproned sellers works the stall, passing tools across it and hauling more from a stack of crates at their backs; the board above the awning is broad, plain and unlettered. Prospectors work the shallows on the far side of the creek, bent over pans in a long line. Framing: wide, the stall foreground-right, the diggings receding stage-left. Palette: mud brown, canvas cream, steel grey.",
-        "notes": "The line's subject is THE PEOPLE SELLING, and the earlier draft's unattended stall deleted them — the clearest instance of the depopulation failure the figure-bias law was written for. Sellers restored behind the counter, prospectors across the creek; both are positive rear zones. The anachronistic drive on the counter is the joke."
+        "still_prompt": "A gold-rush supply stall on a muddy riverbank in flat morning light: a plank counter under a canvas awning, the rack behind it hung with pick heads, shovel blades and coils of rope. Behind the counter a crew of aproned sellers works the stall, passing tools across it and hauling more from a stack of crates at their backs; the board above the awning is broad, plain and unlettered. Prospectors work the shallows on the far side of the creek, bent over pans in a long line. Framing: wide, the stall foreground-right, the diggings receding stage-left. Palette: mud brown, canvas cream, steel grey. On the counter among the pick heads and blades stands one beige drive unit, out of place and unremarked.",
+        "notes": "The line's subject is THE PEOPLE SELLING, and the first draft's unattended stall deleted them — the clearest instance of the depopulation failure the figure-bias law was written for. Sellers restored behind the counter, prospectors across the creek; both are positive rear zones. The anachronistic drive on the counter is the joke. ROUND 3 (R-11): that joke was sitting mid-prompt with the sellers, the prospectors, the framing and the palette after it. Framing and palette now come first and the prompt closes on the drive, so the shot's declared payload gets the closing weight the lettered shots already get."
       },
       {
         "id": "L22",
@@ -287,8 +286,8 @@
         "shot_class": "literal",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "The rented warehouse again, lamp-lit: the roller door shut at the rear, empty steel shelving down the right wall, the work lamp on its tripod stage-left. The three pallets now stand built shoulder-high with sealed brown cartons ranked in tight rows that recede toward the door; the clear film is drawn hard round the rear rows but is cut back and peeled clear of the front carton on the top row, which sits loose and unwrapped on the stack. A crew of packers works the far pallet in the shadow beyond the lamp, lifting cartons up off a hand truck. Framing: wide static from floor level, the lit pallets filling the lower two-thirds. Palette: cold concrete grey, warm lamp amber, brown board. A tally card propped against the front pallet carries '26,000'.",
-        "notes": "Seeds the `brick-warehouse` plate (L03) instead of re-describing the room. FEASIBILITY GATE: the front top carton is authored UNWRAPPED here, because the next shot's one delta folds its flaps open — the earlier draft wrapped every pallet 'hard in clear film' and then opened a carton through it, a change its own parent forbade. Figure bias: the VO narrates PACKING, which people do; crew in a positive rear zone beyond the lamp. Literal '26,000' is the sourced brick count and sits in the final clause. [F-05]"
+        "still_prompt": "The rented warehouse again, lamp-lit: the roller door shut at the rear, empty steel shelving down the right wall, the work lamp on its tripod stage-left. The three pallets now stand built shoulder-high with sealed brown cartons ranked in tight rows that recede toward the door; the clear film is drawn hard round the lower courses but is cut back and peeled clear of the whole top row, which stands loose and unwrapped along the length of each stack. A crew of packers works the far pallet in the shadow beyond the lamp, lifting cartons up off a hand truck. Framing: wide static from floor level, the lit pallets filling the lower two-thirds. Palette: cold concrete grey, warm lamp amber, brown board. A tally card propped against the front pallet carries '26,000'.",
+        "notes": "Seeds the `brick-warehouse` plate (L03) instead of re-describing the room. FEASIBILITY GATE (widened in round 3): the WHOLE TOP ROW is authored unwrapped here, film drawn hard round the lower courses only. L23 then opens the front carton on that row and L24 opens the rest of it — both changes are single flap-folds on cartons this parent already freed, so the chain's three states (reserve, open one, open the row) are physically consecutive. The round-2 wording reserved exactly ONE carton, which made L24's row-wide reveal need two changes (strip film, then open flaps), the first of them forbidden by this very sentence. Figure bias: the VO narrates PACKING, which people do; crew in a positive rear zone beyond the lamp. Literal '26,000' is the sourced brick count and sits in the final clause. [F-05]"
       },
       {
         "id": "L23",
@@ -302,8 +301,8 @@
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "The same lamp-lit warehouse: shoulder-high pallets of sealed brown cartons receding toward the shut roller door, the film cut back and peeled clear of the loose front carton on the top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet. Only this changes: that loose front carton now stands with its flaps folded open, one red clay brick lying inside it on crumpled paper and filling the box exactly; everything else exactly as established.",
-        "notes": "The reveal lands ON the line that gives it away — disclosure order held until here. The change is physical on this parent because L22 unwrapped that carton. L-1: '26,000' re-quoted. [F-05, F-07]"
+        "still_prompt": "The same lamp-lit warehouse: shoulder-high pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet. Only this changes: the front carton on that unwrapped top row now stands with its flaps folded open, one red clay brick lying inside it on crumpled paper and filling the box exactly; everything else exactly as established.",
+        "notes": "The reveal lands ON the line that gives it away — disclosure order held until here. The change is physical on this parent because L22 freed the whole top row of film; this frame folds open the first carton of it. Carried state restated to match L22's widened reservation (round 3). L-1: '26,000' re-quoted. [F-05, F-07]"
       },
       {
         "id": "L24",
@@ -313,12 +312,12 @@
         "place": "brick-warehouse",
         "stage": "brick-tease",
         "stage_role": "delta",
-        "changed_elements": ["+ every carton along the open top row standing open on one red clay brick each"],
+        "changed_elements": ["+ every remaining carton on the unwrapped top row standing open on one red clay brick each"],
         "shot_class": "literal",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "The same lamp-lit warehouse: pallets of sealed brown cartons receding toward the shut roller door, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the front carton open on its red clay brick. Only this changes: every carton along that whole top row now stands with its flaps folded open, one red clay brick lying inside each on crumpled paper and filling its box exactly; everything else exactly as established.",
-        "notes": "New shot: splits the old 3.55s hold so the plural ('bricks', 'boxes') gets its own frame and the lettering gets the next one. Completion state quantified ('every carton along that whole top row'). L-1: '26,000' re-quoted."
+        "still_prompt": "The same lamp-lit warehouse: pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the front carton on that row open on its red clay brick. Only this changes: every remaining carton along that unwrapped top row now stands with its flaps folded open too, one red clay brick lying inside each on crumpled paper and filling its box exactly; everything else exactly as established.",
+        "notes": "RE-AUTHORED (round 3, the R14 BLOCKING). The change is now ONE transformation on cartons the parent already freed — flaps folded open along a row L22 authored unwrapped and L23 opened the head of — instead of the round-2 wording, which asked for film-stripping plus flap-folding on a row its own parent had sealed. Splits the old 3.55s hold so the plural ('bricks', 'boxes') gets its own frame and the lettering gets the next one. Completion state quantified ('every remaining carton along that unwrapped top row'). L-1: '26,000' re-quoted."
       },
       {
         "id": "L25",
@@ -364,8 +363,8 @@
         "place_owner": "MINISCRIBE",
         "shot_class": "literal",
         "source": "ai-gen",
-        "still_prompt": "A disk-drive assembly floor, cast-free, wide static eye-level from the aisle. Two long workbenches recede stage-right laid out with beige drive shells, screwdrivers and trays of small parts; steel shelving lines the left wall stacked with flat cartons; a shut roll-up shipping door closes the rear wall; fluorescent tubes run overhead and the concrete floor is sealed and pale. Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left. Palette: beige, steel grey, cool white tube light. Above the floor entrance stage-left, a broad painted board carries 'MINISCRIBE'.",
-        "notes": "PLATE of place `miniscribe-plant` — cast-free, no chain parent, ownership recorded as a DRAWN cue (`place_owner: MINISCRIBE`, quoted verbatim in the prompt and now in the FINAL clause per the payload-last law). This is the plate half of the plate/reveal seam: it takes the naming clause, and the very next cut inside the same sentence takes the personification's reveal. [F-01, F-25]"
+        "still_prompt": "A disk-drive assembly floor, cast-free, wide static eye-level from the aisle. Two long workbenches recede stage-right laid out with beige drive shells, screwdrivers and trays of small parts; steel shelving lines the left wall stacked with flat cartons; a shut roll-up shipping door closes the rear wall; fluorescent tubes run overhead and the concrete floor is sealed and pale. Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left. Palette: beige, steel grey, cool white tube light. Above the floor entrance stage-left, a broad plank board carries 'MINISCRIBE'.",
+        "notes": "PLATE of place `miniscribe-plant` — cast-free, no chain parent, ownership recorded as a DRAWN cue (`place_owner: MINISCRIBE`, quoted verbatim in the prompt and now in the FINAL clause per the payload-last law). Round 3 (R-10, the milder half): 'painted board' states a lettering TECHNIQUE, which contradicts the locked marker-capitals register the suffix injects; the board is now named by its substrate ('plank board'), and L29 carries the same wording so the place's sign reads identically wherever it is redrawn. This is the plate half of the plate/reveal seam: it takes the naming clause, and the very next cut inside the same sentence takes the personification's reveal. [F-01, F-25]"
       },
       {
         "id": "L29",
@@ -375,8 +374,8 @@
         "place": "miniscribe-plant",
         "shot_class": "personified-character",
         "source": "ai-gen",
-        "still_prompt": "`miniscribe-rep`, `expr-delighted`, `action-powerstance`, stands planted square in the plant's floor entrance stage-left, facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light and the broad painted board carrying 'MINISCRIBE' on the wall directly above him. Behind him the assembly floor runs back down the aisle between the two workbenches to the shut shipping door under the fluorescent tubes. Framing: medium-wide, him in the lit entrance with the floor deep behind. Palette beige, steel grey, cool white tube light.",
-        "notes": "New shot: the REVEAL half of the plate/reveal seam, splitting the old 4.36s hold. The company's personification now enters on its own sentence's tail instead of slipping two shots downstream, and the plate stays cast-free for everything that seeds it. L-1: this frame redraws the place's board, so the owner literal 'MINISCRIBE' is re-quoted verbatim (a carried owner sign is not this shot's payload, so payload-last does not apply). [F-01, F-25]"
+        "still_prompt": "`miniscribe-rep`, `expr-deadpan`, `action-powerstance`, stands planted square in the plant's floor entrance stage-left, facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light and the broad plank board carrying 'MINISCRIBE' on the wall directly above him. Behind him the assembly floor runs back down the aisle between the two workbenches to the shut shipping door under the fluorescent tubes. Framing: medium, him large in the lit entrance and filling the left third, the aisle running back stage-right. Palette beige, steel grey, cool white tube light.",
+        "notes": "ROUND 3 (R-4, the personification reflex): expression moved off `expr-delighted` — the act's four figure reveals were running one face, and this beat is a flat identification ('a hard drive manufacturer'), which the register dial gives to `expr-deadpan`; the irony is ours, not his. Scale and angle also differentiated from L32's boom frame (medium, off-centre, him large in the doorway with the aisle running out stage-right, rather than a third centred medium-wide with the floor deep behind). 'painted board' to 'plank board' per R-10, matching the plate. New shot in round 2: the REVEAL half of the plate/reveal seam, splitting the old 4.36s hold. The company's personification now enters on its own sentence's tail instead of slipping two shots downstream, and the plate stays cast-free for everything that seeds it. L-1: this frame redraws the place's board, so the owner literal 'MINISCRIBE' is re-quoted verbatim (a carried owner sign is not this shot's payload, so payload-last does not apply). [F-01, F-25]"
       },
       {
         "id": "L30",
@@ -386,8 +385,8 @@
         "place": "miniscribe-plant",
         "shot_class": "diegetic-device",
         "source": "ai-gen",
-        "still_prompt": "The same assembly floor at the far end of its run, cast-free and mostly dark: one workbench stands lit at the near end of a long unlit floor, an opened drive shell and a soldering stand on it, the benches beyond it bare under dead tubes and the shipping door shut in shadow at the rear. Stacked crates and a hand truck line the wall behind. Framing: wide, the one lit bench small at the bottom of a large dark room. Palette: warm bench lamp amber, cold grey shadow, beige. Chalked across the end of the nearest crate, a date reads '1980'.",
-        "notes": "New shot: splits the old 3.52s hold, and depicts the founding year the earlier draft only narrated past. One lit bench in an unlit floor is the company at its start. Figure bias: absence EARNED — the subject is the origin date and the smallness of the beginning, and the founder himself lands on the very next cut, the words that name him. Literal '1980' from the script's own line, in the final clause. [F-25]"
+        "still_prompt": "The same assembly floor at the far end of its run, cast-free and mostly dark: one workbench stands lit at the near end of a long unlit floor, an opened drive shell and a soldering stand on it, the benches beyond it bare under dead tubes and the shipping door shut in shadow at the rear. Stacked crates and a hand truck line the wall behind. Framing: wide, the one lit bench small at the bottom of a large dark room. Palette: warm bench lamp amber, cold grey shadow, beige. Across the plank end of the nearest crate, a date reads '1980'.",
+        "notes": "ROUND 3 (R-10): 'Chalked across the end...' named a lettering TECHNIQUE, which the grammar bans in prompts and the locked marker-capitals register contradicts — the same defect caught twice elsewhere in this file ('stencilled' on L36/L39) and missed here. The clause now states the SUBSTRATE (the crate's plank end) and lets the suffix own the register. Splits the old 3.52s hold, and depicts the founding year the first draft only narrated past. One lit bench in an unlit floor is the company at its start. Figure bias: absence EARNED — the subject is the origin date and the smallness of the beginning, and the founder himself lands on the very next cut, the words that name him. Literal '1980' from the script's own line, in the final clause. [F-25]"
       },
       {
         "id": "L31",
@@ -397,8 +396,8 @@
         "place": "miniscribe-plant",
         "shot_class": "personified-character",
         "source": "ai-gen",
-        "still_prompt": "`terry-johnson`, `expr-delighted`, `action-present`, stands stage-left at the near workbench facing right and unobstructed, presenting an opened drive shell with its platter and arm exposed. The bench behind him carries trays of small parts and a soldering stand; the assembly floor recedes past him between the benches to the shut shipping door; tube light falls flat over everything. Framing: medium-wide at bench height, him stage-left and the open shell centre. Palette beige, steel, cool white.",
-        "notes": "Character reveal anchored to the words that name him. Seeds the plate for the room. `expr-delighted` replaces the draft's `expr-thinking`: a founder's introduction is a warm sell beat, not a deliberation one (register dial, `storytelling-grammar.md §1.4`). [F-25]"
+        "still_prompt": "`terry-johnson`, `expr-delighted`, `action-present`, stands stage-left at the near workbench facing right and unobstructed, presenting an opened drive shell with its platter and arm exposed. The bench behind him carries trays of small parts and a soldering stand; the assembly floor recedes past him between the benches to the shut shipping door; tube light falls flat over everything. Framing: medium at bench height, him stage-left and the opened shell filling the centre of the frame. Palette beige, steel, cool white.",
+        "notes": "Character reveal anchored to the words that name him. Seeds the plate for the room. `expr-delighted` replaces the draft's `expr-thinking`: a founder's introduction is a warm sell beat, not a deliberation one (register dial, `storytelling-grammar.md §1.4`), and it is KEPT in round 3 — with L29 moved to deadpan and L32 to greedy, delighted is now carried by this beat alone, which is the beat that warrants it. ROUND 3 (R-4): scale pushed in from medium-wide to medium so the act's three consecutive figure frames stop sharing one composition (L29 medium off-centre in a doorway, this one a medium push-in at the bench, L32 a low wide). [F-25]"
       },
       {
         "id": "L32",
@@ -409,8 +408,8 @@
         "shot_class": "personified-character",
         "source": "ai-gen",
         "figures": { "crowd": true },
-        "still_prompt": "`miniscribe-rep`, `expr-delighted`, `action-celebrate`, stands mid-aisle facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light. Behind him the floor runs at full tilt: a crowd of assemblers works both benches on the far side of the aisle with trays and shells stacked along every station, and the shipping door stands rolled up at the rear on white daylight with a loaded pallet waiting in it. Framing: medium-wide, him centre in the aisle with the busy floor deep behind. Palette beige, steel grey, daylight white.",
-        "notes": "`figures.crowd` now DECLARED: a floor 'at full tilt, every bench crowded' with no declaration invites the model to invent un-rigged humans, which is a rig-drift entry point. Crowd on the far side of the aisle (positive rear zone). The owner board is out of frame here, so no established literal is redrawn. [F-01]"
+        "still_prompt": "`miniscribe-rep`, `expr-greedy`, `action-celebrate`, stands mid-aisle facing the camera and unobstructed, the drive-shaped badge at his lapel catching the light. Behind him the floor runs at full tilt: a crowd of assemblers works both benches on the far side of the aisle with trays and shells stacked along every station, and the shipping door stands rolled up at the rear on white daylight with a loaded pallet waiting in it. Framing: low wide angle from floor level, him large stage-right against the overhead tubes with the busy floor running back deep stage-left. Palette beige, steel grey, daylight white.",
+        "notes": "ROUND 3 (R-4): this is the BOOM beat and it was authored as the third `expr-delighted` medium-wide of the same character in six cuts, near-identical to L29. Scale and angle now go low and wide — floor level, him large and off-centre against the tubes — and the expression moves to `expr-greedy`, which is the money-story register for 'And they were HOT' and appears nowhere else in the fifth. `figures.crowd` DECLARED: a floor 'at full tilt, every bench crowded' with no declaration invites the model to invent un-rigged humans, which is a rig-drift entry point. Crowd on the far side of the aisle (positive rear zone). The owner board is out of frame here, so no established literal is redrawn. [F-01]"
       },
       {
         "id": "L33",
@@ -445,7 +444,7 @@
         "source": "ai-gen",
         "figures": { "crowd": true },
         "still_prompt": "The plant's concrete shipping apron under flat daylight: four pallet stacks of flat drive cartons stand in a row receding stage-right, each one built higher than the last until the furthest runs out of the top of frame. The roll-up shipping door stands open behind them on the aisle, and a crew of loaders works the tallest stack from a ramp on its far side, passing cartons up hand to hand. Framing: wide, the row of stacks stepping up from foreground-left. Palette brown board, grey concrete, beige, pale sky.",
-        "notes": "New shot: splits the old 4.96s hold (the file's worst) so the four-year climb and the revenue figure each get their own frame. Four years staged as four stacks stepping up on the company's own apron. Figure bias: a growth beat is a beat about the people doing it, so the crew is in it; crowd on the far side of the ramp (positive rear zone)."
+        "notes": "ROUND 3 (R-1): prose deliberately UNCHANGED — this is the one frame of the money block that keeps the carton-stack vocabulary, per the critic's own fix direction. It earns it: the four stacks stepping up ARE the four-year climb, it is the only one of the four whose staging is an argument rather than a backdrop, and it already carries a crew. With L36 re-derived to the adding-machine tape, L38 to the customer's yard and L39 to the banking hall, its palette line and its apron are now unique in the block instead of shared three ways. Splits the old 4.96s hold (the file's worst) so the four-year climb and the revenue figure each get their own frame. Four years staged as four stacks stepping up on the company's own apron. Figure bias: a growth beat is a beat about the people doing it, so the crew is in it; crowd on the far side of the ramp (positive rear zone)."
       },
       {
         "id": "L36",
@@ -454,8 +453,8 @@
         "vo_ref": "million dollars a year.",
         "shot_class": "number-glued-to-object",
         "source": "ai-gen",
-        "still_prompt": "A stack of flat drive cartons rises off a plain concrete apron and runs out of the top of frame, each carton square on the one below, seen from a low angle against a pale sky. The cartons above and below stand plain and unmarked. Framing: low wide angle, the stack a little stage-right with open sky filling the rest. Palette brown board, pale blue sky, grey concrete. The fourth carton up carries '125 MILLION' lettered across its face.",
-        "notes": "Number glued to its referent object, never floating text; the figure is the sourced 1984 revenue high, and it now sits in the FINAL clause. 'stencilled' replaced with 'lettered' — a lettering-technique word contradicts the locked marker-capitals register and lint cannot see it. This frame deliberately holds through the sentence's own trailing beat of silence. [F-26, F-28]"
+        "still_prompt": "A hand-cranked adding machine stands square on a bookkeeper's table under a low pendant lamp, its crank arm at rest and its paper tape running up out of the machine, over the table edge and down into a loose coil on the floorboards. A wooden card index and a spike of dockets stand beside it, a stool is pushed in under the table, and a shuttered window closes the wall behind with a hat on a hook next to it. Framing: medium at table height, the machine stage-left and the tape running down through the frame stage-right. Palette black machine enamel, warm pendant amber, buff paper, brown floorboards. The tape's exposed end, face up on the coil, carries '125 MILLION'.",
+        "notes": "RE-DERIVED (round 3, R-1). The money block ran four carton-stack frames inside five cuts — this one was a lone stack against a pale sky, a near-duplicate of L39's two stacks against the same sky with the same palette line. The class is unchanged (`number-glued-to-object`) but the referent moves off the packaging and onto the thing that actually counts the money: the revenue as a tally the machine has printed out and let fall on the floor. Shape as well as world: a medium object study at table height, between two wides (L35's apron, L37's aisle), so the cut reads. The technique word is avoided — the tape 'carries' the figure rather than being printed with it, so the locked marker register still owns the glyphs. The figure is the sourced 1984 revenue high and sits in the FINAL clause. Figure bias: absence EARNED — the subject is the number itself, and the stool pushed in says the man who cranked it has gone home; the run is one frame long, between two peopled frames. [F-26, F-28]"
       },
       {
         "id": "L37",
@@ -476,8 +475,9 @@
         "vo_ref": "they were selling to giants like Compaq",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "On a plain loading apron under flat daylight, one shoulder-high pallet of flat drive cartons stands beside a receiving crate five times its height, the crate's mouth open and its ramp lowered to the pallet's edge. The pallet is dwarfed and its shadow falls inside the crate's mouth. Framing: wide, the pallet foreground-left, the crate filling the right two-thirds and cropped at the top. Palette brown board, grey concrete, pale sky. The crate's broad plank side carries 'COMPAQ' lettered across it.",
-        "notes": "'Giants' physicalized as scale rather than personified into a new cast slug. The customer is now LETTERED: the script speaks 'Compaq' in this very line, so it is legal `script_vocab`, and unlettered the crate had no referent at all. Literal in the final clause. Figure bias: absence EARNED — the beat's subject is the size gap, which is the whole picture. [F-29]"
+        "figures": { "crowd": true },
+        "still_prompt": "The customer's own yard under a low sun: one shoulder-high pallet of flat drive cartons stands at the foot of a loading ramp, dwarfed by the open rear mouth of an articulated trailer that rises three times its height above it, and the line of trailers runs back nose to tail down the yard behind it. A crew of yard hands works the far side of the ramp with a hand truck and a stack of empty skids. Framing: wide, the pallet low and foreground-left, the trailer mouth filling the right two-thirds and cropped at the top. Palette trailer white, asphalt grey, low sun amber, brown board. The near trailer's flank carries 'COMPAQ' lettered across it.",
+        "notes": "RE-DERIVED (round 3, R-1 + N-1). 'Giants' is still physicalized as scale rather than personified into a new cast slug, but the world moves off the concrete apron and its pale sky — the third frame in five cuts to use both — and onto the customer's own yard: vehicles, a low sun, a receding line, and the giant's mouth swallowing the whole delivery. It also carries people. That is the N-1 fix: L38–L41 ran 9.5s figureless and undeclared, and with a crew here and tellers at L39 the only figureless run left in the act above the ~10s flag is the declared L12–L16 block. The customer is LETTERED: the script speaks 'Compaq' in this very line, so it is legal `script_vocab`, and unlettered the trailer has no referent at all. Literal in the final clause; crowd on the far side of the ramp (positive rear zone). [F-29]"
       },
       {
         "id": "L39",
@@ -486,8 +486,9 @@
         "vo_ref": "over 600 million dollars a year.",
         "shot_class": "number-glued-to-object",
         "source": "ai-gen",
-        "still_prompt": "Two stacks of flat drive cartons stand side by side on the same concrete apron, seen straight on. The left stack is knee-high; the right stack rises four times taller and is banded at every course. Bare apron runs to the frame edges behind them. Framing: wide, both stacks centred with the height gap as the whole picture. Palette brown board, grey concrete, pale sky. A card at the left stack's base carries '125 MILLION', and the right stack's top carton carries '600 MILLION' lettered across its face.",
-        "notes": "Both figures supplied verbatim next to their own element, and both now sit in the FINAL clause. Re-anchored one beat later than the draft so the hold lands at 2.85s instead of 3.28s. 'stencilled' replaced with 'lettered'; the decorative red on the banding is dropped (red is semantic only). [F-26, F-28]"
+        "figures": { "crowd": true },
+        "still_prompt": "A bank's public banking hall in daylight: a long marble counter runs the width of the frame with a brass grille above it and tellers working their windows on the far side of the grille, a row of writing desks with inkstands stands against the near wall, and tall windows throw hard shafts across the polished floor. A wheeled porter's trolley stands halted in the middle of that floor, heaped with banded banknote bundles and strapped down over the load. Framing: wide static from the door, the trolley centred and low in frame with the counter running behind it. Palette cream marble, brass, green banknote, cold window light. A board wired to the trolley's handle carries '600 MILLION'.",
+        "notes": "RE-DERIVED (round 3, R-1). This was the second of two near-identical lettered carton stacks on the same apron under the same pale sky, three cuts apart. The class holds (`number-glued-to-object`) and the peak figure still hangs on the money itself, but in a world the fifth has not used: a banking hall — marble, brass, cold window light — where a year's takings arrive on a trolley. The 125-versus-600 juxtaposition is dropped rather than re-staged: the VO makes no comparison in this line, L36 now carries '125 MILLION' in its own frame, and the comparison the script DOES make is the inflation board at L40/L41. Lettering count drops to one literal, in the FINAL clause. Figure bias: tellers behind the grille (positive rear zone) — with L38 this ends the undeclared 9.5s figureless run the critic found at L38–L41. Re-anchored in round 2 so the hold lands at 2.85s instead of 3.28s. [F-26, F-28]"
       },
       {
         "id": "L40",
@@ -521,8 +522,8 @@
         "vo_ref": "Or so they said.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "`miniscribe-rep`, `expr-smug`, `action-present`, stands stage-left behind a plain trestle in a dark room under a single work lamp, facing the camera and unobstructed, presenting one flat drive carton stood upright on the trestle with its lid flaps standing fully open on an interior that is entirely empty, bare board visible inside. The lamp's hard pool falls on him and the carton and the room beyond runs black. Framing: medium, him stage-left and the open carton centre-right at trestle height. Palette brown board, warm lamp amber, black surround. The carton's face carries '600 MILLION' lettered across it.",
-        "notes": "The turn: the reported number and the empty box in one frame — with the party who reported it IN the frame. Figure bias: 'they said' names a speaker, and the earlier draft staged the boast with nobody making it. 'stencilled' replaced with 'lettered'. Literal re-quoted verbatim from L39, in the final clause. [F-28]"
+        "still_prompt": "`miniscribe-rep`, `expr-smug`, `action-present`, stands stage-left behind a plain trestle in a dark room under a single work lamp, facing the camera and unobstructed, presenting one flat drive carton stood upright on the trestle with its lid flaps folded fully open on one red clay brick lying inside it on crumpled paper and filling the box exactly. The lamp's hard pool falls on him and the carton and the room beyond runs black. Framing: medium, him stage-left and the open carton centre-right at trestle height. Palette brown board, red clay, warm lamp amber, black surround. The carton's face carries '600 MILLION' lettered across it.",
+        "notes": "RE-AUTHORED (round 3, R-3). The round-2 frame opened the carton on an interior 'entirely empty, bare board visible inside'. The intended read was 'the number is hollow'; the read the audience has actually been trained for since L23–L25 is 'these boxes have one red clay brick in them filling the box exactly', so an empty one lands as a continuity error rather than a symbol — and it is the wrong fraud besides (the boxes were never empty). The brick is now in the box, staged in the exact words the reveal chain used, so the irony is the one the story earns: the reported figure lettered on the face, the clay inside. The turn: the number and the brick in one frame, with the party who reported it IN the frame. Figure bias: 'they said' names a speaker, and the first draft staged the boast with nobody making it. Literal re-quoted verbatim from L39, in the final clause. [F-05, F-07, F-28]"
       },
       {
         "id": "L43",
