@@ -63,8 +63,8 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   shot is skipped, mirroring `forge.py cmd_batch`'s own skip of non-generated shots before it ever picks a
   plate; a place with no generated shot has no plate at all. **Conditional plate law (lint-enforced, HARD):**
   a place QUALIFIES when it RECURS, or its plate declares `place_owner`; a qualifying place's plate
-  must declare **zero named cast and no `stage_role: delta`**, because every other shot in the place seeds it
-  and whatever it contains bleeds into all of them. **A place RECURS when the file REVISITS it after
+  must declare **zero SEEDED figures (named cast or performer) and no `stage_role: delta`**, because every
+  other shot in the place seeds it and whatever it contains bleeds into all of them. **A place RECURS when the file REVISITS it after
   leaving** — its shots form two or more NON-CONTIGUOUS runs. An unbroken single visit, however many shots
   long, is a STAGE: its chain base already IS the frame every later shot of the run seeds, so declaring a
   place there buys nothing and demanding a dedicated cast-free plate for a set the video never returns to is
@@ -112,7 +112,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   `hard_cut: true`. That is an unlinked continuation — three shots visibly continuing one action (pry the
   box, swap the sheet, get caught) must not run as three independent seedless roots. The test reads the
   NARRATION, never `still_prompt` idioms: "the same X" is routinely intra-frame English ("at the same
-  eye-line" is the clause the two-cast law itself demands), and a lint that cries wolf gets routed around.
+  eye-line" is the clause the two-figure law itself demands), and a lint that cries wolf gets routed around.
   A shot that declares any chain of its own has made a positive continuity statement and stays silent —
   whether that chain reads as coherent CAUSE→EFFECT is the shot critic's judgment (`critics.md`), never
   lint's, and no author is ever pushed into declaring `hard_cut: true` about an action that does continue.
@@ -123,7 +123,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   the scene's architecture) stays a delta frame; a DISCRETE one (a character enters, a stamp slams onto a
   page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint enforces exactly one
   `base`, first, per stage · **≤2 deltas** per chain · contiguity.
-- **Delta character-entrance law (lint-enforced, HARD).** A named figure's FIRST appearance on a set is
+- **Delta character-entrance law (lint-enforced, HARD).** A seeded figure's FIRST appearance on a set is
   never a `delta`. The delta seeding path supplies [in-chain parent + canonical] and nothing else, so a
   figure absent from the parent FRAME has no pixels to inherit: its pose and expression become prose
   against an image that does not contain it, and prose loses to the strongest image input. Declaring the
@@ -135,10 +135,12 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
 - **Interaction-template law (lint-enforced, HARD; forge refuses in parallel).** An `interaction`-kind
   registry slug (`handshake`, `handoff`, `fistbump`, `action-tugofwar`) is a TWO-FIGURE geometry
   reference — two blank mannequins carrying clasp geometry and eye-line — and seeds the SCENE alongside
-  both figures' step-1 cards, never one figure's pose slot. Legal only on a shot naming exactly 2 named
-  cast, and never on a `stage_role: delta` (that slate is parent + both canonicals + one proved
-  primitive, with no slot left). Solo, or on a delta: stage the gesture in prose and drop the slug, or
-  move the contact to the stage base. `visual-grammar.md §2` carries the cast-cap slate.
+  both figures' step-1 cards, never one figure's pose slot. Legal only on a shot naming exactly 2 SEEDED
+  figures (2 named cast, or 1 named cast plus the shot's one seeded performer — never 2 performers), and
+  never on a `stage_role: delta` (that slate is parent +
+  both canonicals + one proved primitive, with no slot left). Solo, or on a delta: stage the gesture in
+  prose and drop the slug, or move the contact to the stage base. `visual-grammar.md §2` carries the
+  figure-cap slate.
 - **Payload-last law (lint-enforced, HARD).** A NON-delta shot carrying a quoted literal must END on that
   literal's clause (`visual-grammar.md §2` ordering law). Deltas are exempt — their final clause is the
   one change plus the sanctioned closing formula. A literal the shot merely carries under L-1 (a place's
@@ -174,20 +176,38 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   a shot has none. **`crowd`**: `true` when the shot stages crowd figures (§2d tier); omit when false.
   `forge.py` expands the declaration into the style-bible §2d clause at gen time, so **no prompt ever
   contains that clause text**: `lint_shots.py` HARD-fails its fingerprint, wrong shape, or unknown key.
-  Named/recurring cast are never declared here (they are inline registry names, next bullet).
+  Seeded figures are never declared here (they are inline registry names, next bullet).
 - **Casting is PROSE, by vocabulary name.** Every recurring figure, pose, expression, and already-built
   prop is named inline in the `still_prompt` by its exact `registry.json` name, backticked — there are no
-  structured cast/pose/expression arrays. A prop making its FIRST appearance has no entry to name and is
-  described in prose instead (`visual-grammar.md` §2 owns that rule). `image-generation` resolves names →
-  files and surfaces any name the registry lacks at its Pass-1 human gate, before a token is spent.
-- **Seat/support law (lint-enforced, HARD).** A named figure carrying the registry `sit` pose primitive
+  structured cast/pose/expression arrays. **A SEEDED PERFORMER is declared the same way and in no other
+  way: the registry character `` `base` `` named inline, plus the `expr-`/`action-` slug(s) the beat needs**
+  — that recipe IS the declaration `forge.py`'s `shot_cast` reads and the STEP-1 card
+  (`fig-base--<pose>--<expr>--<place>-<dress digest>`) it mints, and `lint_shots.py` counts it as a seeded
+  figure wherever a
+  law counts them (plate, entrance, interaction, seat, two-figure presence). A `base` named with NO card is
+  refused by both engines — the template may not render as itself. **At most ONE seeded performer per
+  shot:** the registry character `` `base` `` is named inline at most ONCE — `backticked()` dedupes a
+  repeated name into one cast entry, so a shot naming `` `base` `` twice does not build two performers,
+  and both engines hard-refuse a second `` `base` `` casting. A beat wanting two anonymous performers is
+  restaged — promote one to named cast via the registry, or stage it as crowd. **The performer's ERA DRESS is authored the
+  same way — as prose, in the shot** (there is no costume field and none is coming): `forge.py` reads the
+  opening era sentence plus the sentence naming `` `base` `` into the card's own payload, and keys the card on
+  that dress, so the clothing lives in the card's pixels and one performer's dress never travels to another's.
+  Write the era clothing in the sentence that names the figure; clothing written anywhere else never reaches
+  the card, and the figure is then dressed from the opening era sentence alone — the generator's invention
+  rather than yours. A prop making its FIRST appearance has
+  no entry to name and is described in prose instead (`visual-grammar.md` §2 owns that rule).
+  `image-generation` resolves names → files and surfaces any name the registry lacks at its Pass-1 human
+  gate, before a token is spent.
+- **Seat/support law (lint-enforced, HARD).** A seeded figure carrying the registry `sit` pose primitive
   (the binding is the backtick order — a `sit` token bound to the most-recently-named character, mirroring
   `forge.py`'s `shot_cast` — **never the English verb "sits"**, which this project's own prose uses
   constantly for OBJECTS: "the metal desk sits pushed aside", "a brick sits on its end") must name, in the
   SAME SENTENCE, a support from `chair | stool | bench | seat | crate | step | ledge | desk edge | sill`
   plus a contact phrase. This is presence only; whether the FRAMING actually shows the support is a soft
   heads-up plus a forced review row, never lint-decidable.
-- **Two-cast presence law (lint-enforced, HARD = presence).** A shot naming 2 registry characters must
+- **Two-figure presence law (lint-enforced, HARD = presence).** A shot naming 2 SEEDED figures (named
+  cast or a `base` performer) must
   state a plane clause, an eye-line clause, and a relative-head-scale clause (`"dominant"` legally resolves
   a scale clause via posture/framing). Presence only — whether the stated clauses actually cohere into the
   right topology is the shot critic's judgment (`critics.md`), not lint's.

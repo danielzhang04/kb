@@ -12,7 +12,7 @@ batched review**, not one clever prompt; the single engine (`gemini-3-pro-image`
 review is the guarantee.
 
 **The channel's `style-bible.md` is the LOOK law; this skill is the procedure.** Read it every session: §1 identity +
-cast/crowd tiers, §2–§2d descriptors, **§3 rig checklist**, §4 colour, §5 recipe + lettering/stamp registers, §6
+seeded/crowd tiers, §2–§2d descriptors, **§3 rig checklist**, §4 colour, §5 recipe + lettering/stamp registers, §6
 registry. Its values are human-editable law — **never silently change one mid-run**; surface a proposed edit and keep
 forging non-dependent assets. **Log as you generate — files are the memory:** every round records, while it runs,
 what the file is, its seed(s) + mode + delta, why, the verdict (shipped / flagged / rejected), and any ID needed to
@@ -105,7 +105,7 @@ every seeded composite, including a direct spec, must carry ordered `{path, role
 | **Cap: ≤4 seeds per gen** | canonical + ONE pose primitive + ONE expression frame + one anchor/exemplar. Past four, dilution weakens every prior; a `base.png` added as an Nth "rig anchor" pins nothing. A figure that needs the base rig spends one of the four on it. |
 | **Attribute routing** | Base-derived seeds are bald, cream, neutral-faced and hoodied, so **any attribute not sourced from the CHARACTER seed bleeds a base trait**. CHARACTER seed → identity, head/skin tone, hair + facial hair, costume, face. POSE / interaction-template seed (geometry only) → body pose, hands, clasp geometry, placement, eye-line. EXPRESSION seed (shape only) → eye/brow/mouth shape, never tone, hairline or identity. Every skin patch, **including both hands**, renders in the CHARACTER's head tone. Expression is the SOFTEST seed and can land weak — the review checks register per beat. |
 | **Exposed hands are seeded, never free-drawn** | A salute, wave, open palm or point is the five-finger drift point: seed the matching pose frame AND state the digit fact in the delta. No library pose covers it → that was a Pass-1 gate item, not an ad-hoc scene invention. |
-| **Place/plate seed law; image seeds are continuity only** | Forge states the LOOK in exactly TWO voices per scene request — the bible's §2b descriptor at the HEAD and the file's `global_prompt_suffix` at the TAIL — and generates no third. Zero-seed is legal ONLY for a derived place plate (the first-in-file generated shot of a qualifying place with no named cast — forge skips any shot whose `source` is outside `ai-gen`\|`hybrid` before picking it, same as lint's `place_groups`) or a no-place root — symbolic/abstract/standalone-object-insert shot classes, a short's `first_frame`, and the thumbnail never declare `place`. Every OTHER in-place shot seeds its own place's first approved frame; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. **Cross-place image seeding is a hard refusal**, never an authoring option: a `place_anchor` (or derived place seed) whose source shot's `place` differs from the consuming shot's is the probe-refuted style-anchor failure under another name (2026-08-04, probes F/G). The §5 scene style tile is the ONE registered image style anchor (a content-thin register exemplar, derived by forge onto cast-free gens); no other exists, and a narrative scene from another place is the probe-refuted failure. **"Plate" here is the PLACE plate — a whole shot, the place's first approved frame. The layered-shot plate (`plates/<id>.png`, §Layered shots) is a different object: a subtraction from one scene, not a place's establishing frame.** |
+| **Place/plate seed law; image seeds are continuity only** | Forge states the LOOK in exactly TWO voices per scene request — the bible's §2b descriptor at the HEAD and the file's `global_prompt_suffix` at the TAIL — and generates no third. Zero-seed is legal ONLY for a derived place plate (the first-in-file generated shot of a qualifying place with no seeded figures — forge skips any shot whose `source` is outside `ai-gen`\|`hybrid` before picking it, same as lint's `place_groups`) or a no-place root — symbolic/abstract/standalone-object-insert shot classes, a short's `first_frame`, and the thumbnail never declare `place`. Every OTHER in-place shot seeds its own place's first approved frame; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. **Cross-place image seeding is a hard refusal**, never an authoring option: a `place_anchor` (or derived place seed) whose source shot's `place` differs from the consuming shot's is the probe-refuted style-anchor failure under another name (2026-08-04, probes F/G). The §5 scene style tile is the ONE registered image style anchor (a content-thin register exemplar, derived by forge onto cast-free gens); no other exists, and a narrative scene from another place is the probe-refuted failure. **"Plate" here is the PLACE plate — a whole shot, the place's first approved frame. The layered-shot plate (`plates/<id>.png`, §Layered shots) is a different object: a subtraction from one scene, not a place's establishing frame.** |
 | **Never seed off a downstream derivative** | Trace back to the exact frame the human approved; an "improved" copy can carry silent drift that then propagates as the lock. Exceptions: a delta-chain frame seeding its in-chain parent, and a re-base in the SAME location seeding the prior stage's base frame. |
 | **A rig FIX never seeds the defective frame** | Regen FRESH from canonicals off a re-authored prompt — the defect lives in the strongest seed and rides it back about half the time. The only defective-seed exceptions are an authored delta-chain parent and a human-ordered framing hold, and BOTH are re-ruled by the next fresh-eyes pass at ordinary viewing scale, like every other frame. **`crop_battery.py` is RETIRED** — no review procedure calls it and no verdict depends on it (2026-08-03 ruling: "I don't need a super crazy review process… it just burns time"). The file stays on disk as a historical tool only. |
 | **Match-prop** | A prop in more than one shot seeds its **first approved frame** as the prop canonical; later shots seed that exact frame and never re-describe the design in words. |
@@ -147,10 +147,17 @@ policy] + [the shot's authored identity → scene → payload]**. The payload or
 provider text; no Forge clause follows it. This is an **amplifier fix pending controlled validation**, not an
 established Class-A cure. **Anonymous-figure rig clauses are never written into a prompt.** The shot
 DECLARES crowd presence in `figures` — `{"crowd": true}` — and forge expands the bible's §2d blockquote at gen
-time when it is set. **Two tiers only: named cast (seeded from Pass-1 canonicals) and crowd (the §2d clause);
-there is no third, unseedable foreground tier.** `figures.anon_foreground` is a known-but-abolished key: the
-seeding law refuses it by name — name the figure in the video's cast (seeded) or stage the people at crowd
-scale (crowd exemplar). A declared `figures` field also forces the §2c append; without it Forge adds no
+time when it is set. **Figures are SEEDED (named cast · seeded performer) or CROWD; there is no unseedable
+foreground tier.** Named cast seeds from its Pass-1 canonical; a seeded performer — the anonymous but
+story-bearing individual — mints its own STEP-1 card off the `base` rig in the shot's era costume and the
+beat's `expr-`/`action-` cards, and the scene seeds that card; crowd gets the §2d clause. **At most ONE
+seeded performer per shot** — the engine has exactly one name for the whole tier (`` `base` ``), so a
+shot cannot address two distinct performers; `seeding_law_violations` hard-refuses a second `` `base` ``
+casting, naming the one-seeded-performer law. A beat wanting two anonymous performers is restaged —
+promote one to named cast via the registry, or stage it as crowd.
+`figures.anon_foreground` is a known-but-abolished key: the seeding law refuses it by name — name the figure
+in the video's cast (seeded), author a story-bearing anonymous one as a seeded performer, or stage the people
+at crowd scale (crowd exemplar). A declared `figures` field also forces the §2c append; without it Forge adds no
 anonymous-figure clause. The authored delta
 changes only the variables it names while the style policy remains binding. **Pre-flight a batch with `forge.py
 gen --dry-run`**: it prints every assembled prompt and resolves every seed with zero API calls — read the prompts
@@ -225,11 +232,19 @@ REMOVES a transient element seeds the pre-transient ancestor**, since the immedi
 **LAYER when the change is DISCRETE** (a character enters, a stamp slams onto a page): keep the plate, composite a
 seeded cutout. Art style, proportions and period never switch mid-chain.
 
-- **Two-step figure seeding — how a FRESH named-cast shot runs, and the only way it may.** The two-gen identity
+- **Two-step figure seeding — how a FRESH seeded-figure shot runs, and the only way it may.** The two-gen identity
   ladder (gen A composes the scene, gen B re-composes identity onto it) is **RETIRED**: a step-2 gen never
   re-composes identity from words, so the ladder's reason to exist is gone. **STEP 1** runs the unchanged seeding
   recipe — canonical + pose frame + expression frame — **in isolation**, no scene content, into one portable
-  per-video figure frame (`fig-<character>--<pose>--<expression>`, the video's own asset, never channel `refs/`);
+  per-video figure frame (`fig-<character>--<pose>--<expression>`, the video's own asset, never channel `refs/`).
+  A **seeded performer's** card carries a fourth dimension, its era dress:
+  `fig-base--<pose>--<expr>--<place>-<dress digest>` — the place it reads as, plus a digest of the dress its own
+  prose authored, so a card is shared only where that dress is identical. A named character's costume is pinned
+  in its canonical while `base` owns none, so without the dimension two differently dressed performers on one
+  pose/expression recipe collide on a single card. Its payload authors that
+  costume from the minting shot's own prose (`forge.py::costume_clause` — the opening era sentence plus the
+  sentence naming the figure, control tokens and quoted literals stripped), which is the same source a place
+  plate takes its era from.
   **STEP 2**, the scene gen, seeds `[step-1 figure(s)] > [the video's plate]` and never the raw triple again.
   Splitting the recipe out of the scene gen is the fix: scene complexity competing with rig-hold inside one call is
   what throws a figure off rig. A **delta beat is single-step:** in-chain parent first, then each held figure's
@@ -328,7 +343,7 @@ slice N+1 **only** because that slice's review recorded a verdict for it. The lo
    <figure-verdicts.json> <kit>/_staging`. Same single-writer law as the scene path — `stamp_review.py` is the ONLY
    writer of a verdict anywhere in this pipeline; the board writes only the skeleton, and forge only ever reads.
 
-The record shape the store keeps, per `fig-<character>--<pose>--<expression>`:
+The record shape the store keeps, per `fig-<character>--<pose>--<expression>` (`--<costume>` too on a performer's card):
 `{canonical_sha256, expression_sha256, verdicts: {"<invariant-slug>": "pass"|"fail", …}, reviewer, date}`. A
 re-review of the same id REPLACES the record wholesale; ids absent from an input are untouched (additive merge).
 **A staged figure with no record, with no per-invariant verdicts, with any `fail`, or whose `canonical_sha256` no
@@ -342,7 +357,9 @@ The pass rules three axes together, per shot, at **ordinary viewing scale**:
 
 1. **Identity/rig** — a **FORCED PASS/FAIL verdict on each §3 invariant**, never a silent pass, for **every seeded
    figure**, judged against the tier §3 assigns it (named cast → FULL rig, against that character's approved
-   canonical, not an idealized rig; crowd → CROWD rig). A chain-delta frame adds a **held-set** line (set + identities
+   canonical, not an idealized rig; seeded performer → FULL rig, against its own STEP-1 card and the `base`
+   canonical behind it — never against the template's default outfit, which its era costume replaces;
+   crowd → CROWD rig). A chain-delta frame adds a **held-set** line (set + identities
    consistent with this stage's `base`?).
    On any FAIL name the shot id and quote the offending pixel; a hand PASS is never worded as certified, because the
    human board is the final finger authority. **This FRESH-EYES review is the rig authority — a GENERATING agent's

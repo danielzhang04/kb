@@ -76,17 +76,23 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    channel** — write the beat's simple expression ("grinning", "worried", "deadpan") and the group's
    whole-body attitude, exactly as any other scene fact. An unauthored crowd renders uniformly neutral,
    which is how a comic beat arrives dead.
-   **An `interaction` slug is two-figure geometry, not a pose:** author it only on a fresh two-cast stage
-   BASE, never on a solo shot and never on a delta (`visual-grammar.md §2` cast-cap table; lint and forge
+   **An `interaction` slug is two-figure geometry, not a pose:** author it only on a fresh two-figure stage
+   BASE, never on a solo shot and never on a delta (`visual-grammar.md §2` figure-cap table; lint and forge
    both HARD-refuse the other shapes).
    **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** A crowd needs a positive rear
    zone in the PRIMARY scene clause — the far side of a table/shelving, behind glass or a divider, through a
    doorway — never a co-planar gathering later called "background-scale". **Crowd is for genuine MASSES.**
    An anonymous individual who BEARS the beat — performs the gag, reacts, decides — is staged as a **seeded
-   everyman** (the `base` rig named with the `expr-`/`action-` slugs the beat needs, dressed in the shot's
-   own era in prose), not demoted to the rear zone; a person with a locked identity is CAST; only people
-   with no story-bearing part are staged at crowd scale. Tier law + the current engine gate on the everyman
-   route: `visual-grammar.md §2`.
+   performer** (the `base` rig named with the `expr-`/`action-` slugs the beat needs, in the shot's own era
+   clothing, minted as its own STEP-1 card before the scene seeds it), not demoted to the rear zone; a
+   person with a locked identity is CAST; only people with no story-bearing part are staged at crowd scale.
+   **A shot casts at most ONE seeded performer** — `` `base` `` is named inline at most once; a beat
+   wanting a second anonymous performer is restaged — promote one to named cast via the registry, or
+   stage it as crowd (both engines hard-refuse a second `` `base` `` casting).
+   **Write that era clothing in the SAME SENTENCE that names `` `base` ``** — `forge.py` reads that sentence
+   (plus the prompt's opening era sentence) into the card's own payload, and keys the card on that dress —
+   clothing written anywhere else never reaches the card, and the figure is then dressed from the opening era
+   sentence alone, the generator's invention rather than yours. Tier law: `visual-grammar.md §2`.
    The style-bible §2d rig-clause TEXT never appears in a prompt — you declare, and `forge.py` expands it at
    gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
    high-risk case in `notes`. Field spec: `shots-schema.md §2`.
@@ -99,7 +105,7 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    figures' own STEP-1 cards; (3) a tagged prop, since the prompt already names it by its own backticked
    slug and forge's derived seed is a reinforcement, not its only carrier. **Never displaced, at any step:**
    the place plate/chain parent, the LOCKED §5 lettering exemplar, or any character STEP-1 — a shape that
-   only fits by dropping one of those refuses instead, naming the true bind (cast count against the cap),
+   only fits by dropping one of those refuses instead, naming the true bind (figure count against the cap),
    never a locked seed.
 
    Worked examples, both real act-2 shapes: **(a) crowd + tagged prop** — 2 named cast + crowd + one tagged
@@ -110,7 +116,7 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    displaces (its geometry survives in prose + both figures' STEP-1s) → 4, legal, two drops. The same shape
    with a tagged prop in place of the interaction template resolves identically: crowd, then the prop, two
    drops → 4. A shot still over cap once crowd, interaction, and prop are ALL legally exhausted is restaged
-   — the true bind is cast count against the cap, never a dropped lettering exemplar or place plate.
+   — the true bind is figure count against the cap, never a dropped lettering exemplar or place plate.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
    of South America", not "the continent"), subject scale and stage position (stage-left / centre /
@@ -166,8 +172,8 @@ at the first act's level.
   **plate is the first-in-file generated shot declaring the place**
   (`source: ai-gen | hybrid`, absent defaults to `ai-gen`; a stock/chart/screencap/archival shot is
   skipped, mirroring forge's own skip); for a QUALIFYING
-  place (it recurs, or its plate declares `place_owner`) the plate must carry zero named cast
-  and no `stage_role: delta` — a single-visit, unbranded place is its own place-first frame and stays
+  place (it recurs, or its plate declares `place_owner`) the plate must carry zero SEEDED figures (named
+  cast or performer) and no `stage_role: delta` — a single-visit, unbranded place is its own place-first frame and stays
   seedless (a dedicated plate for it is pure waste). Every declared `place` must map to a span in
   `script.md` (`script_vocab`) — an invented place fails lint like invented lettering. Every plate makes
   the **owner forced choice**: declare exactly one of `place_owner: '<LITERAL>'` (the quoted cue must

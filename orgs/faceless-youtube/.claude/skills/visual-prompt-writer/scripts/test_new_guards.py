@@ -293,11 +293,11 @@ def test_g7_anon_foreground_gets_forges_named_refusal_not_a_generic_unknown_key(
     assert len(hard) == 1, hard
     assert "unknown key" not in hard[0], hard
     assert "abolished" in hard[0] and "crowd exemplar" in hard[0], hard
-    # THREE remedies, not two: the seeded-everyman route (visual-grammar §2) became executable
+    # THREE remedies, not two: the seeded-performer route (visual-grammar §2) became executable
     # 2026-08-06 when forge's `shot_cast` stopped excluding `base`. forge.py states the same
     # three in the same order — a refusal that hides a legal route sends the author to the
-    # wrong tier, which is the demotion-to-crowd defect the everyman exists to end.
-    assert "seeded everyman" in hard[0] and "`base`" in hard[0], hard
+    # wrong tier, which is the demotion-to-crowd defect the performer exists to end.
+    assert "seeded performer" in hard[0] and "`base`" in hard[0], hard
 
 
 def test_g7_crowd_false_is_soft_not_hard():

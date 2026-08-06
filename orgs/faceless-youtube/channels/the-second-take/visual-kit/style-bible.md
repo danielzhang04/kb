@@ -12,7 +12,8 @@ every reference frame was generated against it, so `image-generation` proposes c
   FAMILY on a shared template; each story uses many distinct characters coming and going.
 - **The base is a TEMPLATE, not a character.** `refs/base/base.png` — a bald cream-headed figure in a brown
   hoodie + trousers (its default costume, §4), bold dark warm-brown outline — is the ANCHOR every cast character
-  seeds off for form, and **it never appears in videos**. **Default aspect ratios:** `2:3` character
+  seeds off for form, and **it never appears as ITSELF** — a performer staging always re-dresses it (tier
+  bullet below). **Default aspect ratios:** `2:3` character
   portraits/turnarounds · `1:1` props · `16:9` scenes.
 - **The shared RIG — LOCKED, identical on every character**, which is what lets ONE reaction map onto ANY
   character: the round near-circle head (never an egg or oval), the head-to-body proportion, the facial layout
@@ -22,11 +23,10 @@ every reference frame was generated against it, so `image-generation` proposes c
   mass changes), age/reaction linework — never enough to break the layout; costume always comes from the
   generation delta.
 - **Figures are SEEDED or CROWD — by IDENTITY, per figure per shot.** SEEDED splits on whether the
-  identity is locked: named/recurring cast → seeded from its own canonical · a **seeded everyman** (an
-  anonymous but story-bearing individual) → seeded from this base template through the `expr-`/`action-`
-  cards the beat names, wearing the shot's own era clothing from the prompt and never the template's
-  default hoodie — which is how "the base never appears in videos" and "the everyman is on the rig" hold
-  at once. §2c auto-appends the form to both. CROWD → the **§2d CROWD RIG** (simplified features — dot
+  identity is locked: named/recurring cast → seeded from its own canonical · a **seeded performer** (an
+  anonymous but story-bearing individual) → minted as its own STEP-1 card off this base template,
+  wearing the shot's era clothing and the `expr-`/`action-` cards the beat names, never the template's
+  default hoodie, and the scene seeds that card. §2c auto-appends the form to both. CROWD → the **§2d CROWD RIG** (simplified features — dot
   eyes + one mouth — because fine features drift into noses on tiny faces), reserved for genuine masses.
   Crowd is DECLARED per shot, never described in rig prose (`visual-grammar.md §2`); it is never a locked
   identity, while a recurring identifiable GROUP is cast. Tier routing law: `visual-grammar.md §2`.

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Planted-defect + false-positive tests for the 2026-08-04 doctrine-reset guards:
-C-2 (style one-voice), C-3/C-5 (place), C-7 (seat/support), C-8 (two-cast presence,
+C-2 (style one-voice), C-3/C-5 (place), C-7 (seat/support), C-8 (two-figure presence,
 action-chain, semantic-cast). Every guard gets a plant it MUST catch and at least one
 real-prose near-miss it must stay silent on — the calibration duty the build brief
 requires, lifted from the archived bricks-fresh shots.json the adversarial review
@@ -604,7 +604,7 @@ def test_action_chain_plant_the_real_archived_l88_l89_drift():
 
 def test_action_chain_a_still_prompt_idiom_can_never_fire():
     """R2-B2's measured false-positive class. 'at the same eye-line' is the clause C-8's
-    own two-cast law DEMANDS, and 'the same pallet three times' is one plan view — both
+    own two-figure law DEMANDS, and 'the same pallet three times' is one plan view — both
     live in `still_prompt`, which this check does not read at all. The VO shares no prop
     noun, so nothing fires however the prose is worded."""
     hard = _chain(
@@ -782,7 +782,7 @@ def test_c7_no_registry_chars_means_no_check():
 
 
 # =============================================================================
-# Two-cast presence (C-8, presence only)
+# Two-figure presence (C-8, presence only)
 # =============================================================================
 def test_c8_plant_the_real_l66_miniaturization_root():
     """Real prose (L66) - the audit's own §D finding: the clauses that exist (a long
@@ -957,7 +957,59 @@ def test_video_chars_merges_registry_and_local_manifest():
                                     {"name": "prop-crate", "kind": "prop", "file": "y.png"}]}),
             encoding="utf-8")
         chars = L.video_chars({"channel": "the-second-take"}, vdir)
-    assert chars == {"miniscribe-rep", "qt-wiles"}    # "base" dropped, prop not a character
+    # "base" is KEPT: it is how a SEEDED PERFORMER is declared (visual-grammar §2), so every
+    # figure-reading law must see it. A prop is still not a character.
+    assert chars == {"base", "miniscribe-rep", "qt-wiles"}
+
+
+def test_a_seeded_performer_counts_as_a_figure_everywhere_but_semantic_cast():
+    """The performer tier, on the lint side. `base` + its cards IS the declaration
+    (shots-schema "Casting is PROSE"), so the plate law, the delta-entrance ban and the
+    interaction rule all count it - while `semantic_cast_check`, whose subject is casting a
+    NAMED identity on a generic beat, must stay silent: an anonymous story-bearing figure
+    there is the doctrine's own fix, not the defect."""
+    chars = CHARS | {"base"}
+    performer = "A 1980s clerk, `base`, `expr-deadpan`, `action-armscrossed`, behind the counter."
+    plate = [{"id": "L60", "place": "brick-co-yard", "still_prompt": performer},
+             {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The table, empty."},
+             {"id": "L62", "place": "brick-co-yard", "still_prompt": "The yard again."}]
+    hard = []
+    L.place_plate_check("lf", plate, chars, hard)
+    assert len(hard) == 1 and "`base`" in hard[0] and "L60" in hard[0], hard
+
+    entrance = [{"id": "L10", "place": "brick-co-yard", "stage": "counter",
+                 "stage_role": "base", "still_prompt": "The counter at dusk, unattended."},
+                {"id": "L11", "place": "brick-co-yard", "stage": "counter",
+                 "stage_role": "delta", "still_prompt": performer}]
+    hard = []
+    L.delta_entrance_check("lf", entrance, chars, hard)
+    assert len(hard) == 1 and "`base`" in hard[0], hard
+
+    hard = []
+    L.semantic_cast_check("lf", [{"id": "L45", "still_prompt": performer}],
+                          {"L45": "The clerks were all doing the same thing."}, chars, hard)
+    assert hard == []
+
+
+def test_a_shot_may_name_base_at_most_once_two_castings_hard_refused():
+    """A-3 (2026-08-06): the boss narrowed the law to ONE seeded performer per shot. Before this
+    guard, `_named_chars` (mirroring forge.py's `backticked()`) silently collapsed a second
+    `base` casting into the same one cast entry - the second performer's primitives never
+    surfaced as a lint finding at all. Mirrors forge.py's `seeding_law_violations`, same guard,
+    same remedy text."""
+    two_performers = ("A courtroom. `base`, `expr-deadpan`, `action-armscrossed`, stage-left, "
+                      "arguing. `base`, `expr-deadpan`, stage-right, arguing back.")
+    objs = [("L70", {"still_prompt": two_performers})]
+    hard = []
+    L.seeded_performer_singleton_check("lf", objs, hard)
+    assert len(hard) == 1, hard
+    assert "named 2 times" in hard[0] and "one-seeded-performer law" in hard[0], hard
+    assert "two distinct performer castings" in hard[0] and "`base`" in hard[0], hard
+    # exactly one `base` mention is untouched - the single-performer shot stays silent
+    performer = "A 1980s clerk, `base`, `expr-deadpan`, `action-armscrossed`, behind the counter."
+    hard = []
+    L.seeded_performer_singleton_check("lf", [("L60", {"still_prompt": performer})], hard)
+    assert hard == []
 
 
 def test_video_chars_missing_files_degrade_to_empty_set():

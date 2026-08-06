@@ -236,7 +236,7 @@ def test_a_shot_still_over_cap_after_all_legal_drops_is_restaged_never_truncated
          "still_prompt": "A warm records room with a bare central table."}, crowded))
     assert spec is None, spec
     assert "5 seeds over the cap of 4" in err, err
-    assert "cast count" in err, err
+    assert "figure count" in err, err
     assert "did not fit" not in err, err
     assert "lettering-marker-italic" not in err and "stamp-block-outlined" not in err, err
 
@@ -294,11 +294,11 @@ def test_the_prop_shape_resolves_by_two_ordered_drops():
     assert "tagged prop `prop-drive` dropped" in b2["why"], b2["why"]
 
 
-def test_never_droppable_seeds_refuse_naming_cast_count_not_a_locked_seed():
+def test_never_droppable_seeds_refuse_naming_figure_count_not_a_locked_seed():
     """3 named cast (3 STEP-1s) + place + derived lettering = 5, over the cap by 1, with NOTHING
     displaceable (no crowd, no interaction, no prop). The slate only fits if the LOCKED lettering
     exemplar is dropped — which the law forbids — so the refusal must stand, and it must name the
-    true bind (cast count vs the cap), never call lettering the misfit."""
+    true bind (figure count vs the cap), never call lettering the misfit."""
     spec, err, _ = _run(_doc(dict(_BOARDROOM_PLATE), {
         "id": "B3", "place": "miniscribe-boardroom",
         "still_prompt": ("`ibm-suit`, `expr-deadpan`, `terry-johnson`, `expr-delighted`, and "
@@ -306,8 +306,8 @@ def test_never_droppable_seeds_refuse_naming_cast_count_not_a_locked_seed():
                          "whiteboard reading 'QUOTA 26,000' in marker.")}))
     assert spec is None, spec
     assert "5 seeds over the cap of 4" in err, err
-    assert "cast count" in err, err
-    assert "3 named-cast seed(s)" in err, err
+    assert "figure count" in err, err
+    assert "3 seeded-figure seed(s)" in err, err
     assert "did not fit" not in err, err
     assert "lettering-marker-italic" not in err, err
 

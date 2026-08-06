@@ -171,7 +171,7 @@ def _violations(request, prompt):
 def test_refusal_solo_shot_authoring_an_interaction_template():
     solo = "`terry-johnson`, `expr-delighted`, offers `handshake` to the camera."
     bad = _violations({"name": "L29", "seed": ["handshake.png"]}, solo)
-    assert len(bad) == 1 and "1 named cast" in bad[0] and "BETWEEN two bodies" in bad[0], bad
+    assert len(bad) == 1 and "1 seeded figure(s)" in bad[0] and "BETWEEN two bodies" in bad[0], bad
 
 
 def test_refusal_a_step1_card_may_never_carry_a_template():

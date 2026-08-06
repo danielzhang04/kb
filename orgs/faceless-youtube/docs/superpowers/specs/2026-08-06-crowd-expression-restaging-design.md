@@ -55,7 +55,7 @@ long.
   may flatten authored emotion. Resolved empirically, not by pre-editing doctrine: the **L07 re-mint
   is the canary** ("eager grinning buyers"). Emotion survives → done. Flattens → one-phrase §2d
   clarification ("the scene's beat picks which, identical across the group") as a measured follow-up.
-- Cast rules unchanged: ≤2 named/foreground figures, 2–3 hair/headwear silhouettes, individuated
+- Cast rules unchanged: ≤2 seeded figures per shot, 2–3 hair/headwear silhouettes, individuated
   crowd face = rig FAIL, §2d forge-expanded (never pasted), lint clause-fingerprint guard intact.
 
 ### 3. Crowd exemplar re-pick (merged with mechanism-queue item P5(e))
@@ -85,6 +85,31 @@ One worker pass over the full 248-shot file vs the old 214-shot file, four lense
 4. **Missing crowd emotion** — crowd beats whose energy lives in the VO but not the prompt.
 Output: audit report + a concrete shots.json restage fix-list → **Daniel gates** → apply → then 6c.
 
+### 6. Seeded performer tier (`decisions.md` 2026-08-06 ruling (4); design LOCKED by Daniel same day)
+- The two-tier authoring law (NAMED CAST | CROWD) becomes THREE tiers: **named registry cast** ·
+  **seeded performer** (the anonymous but story-bearing individual) · **background crowd**.
+- A shot wanting a foreground performer MINTS it first: one STEP-1 card off the `base` rig wearing THAT
+  scene's era costume and THAT beat's `expr-`/`action-` cards, rig-checked at card cost; the scene then
+  seeds that card, two-step, exactly as named cast does. **Attribute-routing law:** any attribute not
+  carried by the figure's own seed bleeds a base trait, so costume and expression live IN the card, never
+  as loose prose over a bare `base`. The base template never renders as itself — `forge.py` refuses a
+  bare-`base` slate by name.
+- Cards are recorded in the VIDEO's own Pass-1 library for same-costume reuse; a performer enters
+  `registry.json` only where the character genuinely recurs.
+- The foreground cap's VALUE is unchanged at 2; its SCOPE widens from named cast to any seeded figure
+  (2 named cast, or 1 named cast + the shot's one seeded performer, or the performer alone — capped at
+  ONE seeded performer per shot; a second `` `base` `` casting is hard-refused, not a legal "2 performers"
+  shape). Crowd stays uncapped and background-only.
+- Homes: `visual-grammar.md` §2 (tier law, cap table), `style-bible.md` §1, `image-generation/SKILL.md`,
+  `visual-prompt-writer/SKILL.md`, `shots-schema.md`, `critics.md`, plus `forge.py`/`lint_shots.py`, which
+  both read `` `base` `` as a seeded figure.
+- **Engine work — CLOSED 2026-08-06.** `forge.py` now authors the era costume INTO the card
+  (`costume_clause` reads the opening era sentence plus the sentence naming the figure, control tokens and
+  quoted literals stripped, into `figure_card_payload`) and keys a performer's card on that dress
+  (`fig-base--<pose>--<expr>--<place>-<dress digest>`) — the same source a place plate takes its era from,
+  on a key that shares a card only where the authored dress is identical. Named cast keys are unchanged:
+  their costume is pinned in their canonical. The dated gate in `visual-grammar.md` §2 is deleted.
+
 ## Sequencing
 1 (restore) and 5 (audit) run in parallel now; 2+4 are one doctrine-window task (doc + lint + tests
 green); 3 follows; L07 canary re-mint after 2+3; P1/P3 rulings still owed by Daniel at the standing
@@ -96,7 +121,10 @@ board; P4 likely superseded if the audit restages L22–25 under the new cap.
 - No forge chain-depth enforcement.
 - No re-mint of the restored L19/L20/L21 (restore-as-is was ruled; re-mint only if a later render
   slice shows a visible clash).
-- No change to cast caps, seeding law, or the two-tier authoring law.
+- No change to the foreground cap's VALUE (2) or to the seeding law's mechanism. The two-tier authoring
+  law itself IS changed — see change 6: three tiers, cap scope widened from named cast to any seeded
+  figure. (This non-goal read "no change to cast caps, seeding law, or the two-tier authoring law" until
+  ruling (4) of the same day authorised the performer tier.)
 
 ## Acceptance
 - Restored frames in `assets/scenes/` with honest manifest provenance + stamps; decisions.md entry.

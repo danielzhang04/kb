@@ -167,33 +167,33 @@ def test_the_abolished_tier_and_an_unseeded_crowd_hard_error():
         [PLATE, REFS + "base/crowd-exemplar.png"]) == []
 
 
-# --- THE SEEDED EVERYMAN (visual-grammar §2, executable 2026-08-06) ------------------------------
+# --- THE SEEDED PERFORMER (visual-grammar §2, executable 2026-08-06) ------------------------------
 # `base` is the shared RIG. `shot_cast` used to exclude it outright, so a prompt naming `` `base` ``
 # plus its cards resolved to `[]`: no step-1 card, no seed, no warning — and the shot then measured
 # `cast_free`, so §5's style tile was derived onto a figure-bearing frame. The exclusion's real
 # intent (the bare template must never render as itself) is kept, moved onto two LOUD laws.
 
-EVERYMAN = ("A brick-yard clerk in a 1980s back office, `base`, `expr-deadpan`, "
+PERFORMER = ("A brick-yard clerk in a 1980s back office, `base`, `expr-deadpan`, "
             "`action-armscrossed`, stage-left behind the counter.")
-EVERYMAN_CARD = "fig-base--action-armscrossed--expr-deadpan"
+PERFORMER_CARD = "fig-base--action-armscrossed--expr-deadpan"
 
 
-def test_the_everyman_resolves_base_as_a_figure_with_its_step1_recipe():
-    assert shot_cast(REG, EVERYMAN) == [("base", ["expr-deadpan", "action-armscrossed"])]
-    assert figure_frame_name("base", "action-armscrossed", "expr-deadpan") == EVERYMAN_CARD
+def test_the_performer_resolves_base_as_a_figure_with_its_step1_recipe():
+    assert shot_cast(REG, PERFORMER) == [("base", ["expr-deadpan", "action-armscrossed"])]
+    assert figure_frame_name("base", "action-armscrossed", "expr-deadpan") == PERFORMER_CARD
     # the pre-fix behaviour, pinned OUT: this exact prompt used to resolve to a silent []
-    assert shot_cast(REG, EVERYMAN) != [], "the `base` exclusion is back — the everyman seeds nothing"
+    assert shot_cast(REG, PERFORMER) != [], "the `base` exclusion is back — the performer seeds nothing"
 
 
-def test_an_everyman_shot_owes_its_step1_card_exactly_like_named_cast():
-    fresh = _req(delta=EVERYMAN)
+def test_a_performer_shot_owes_its_step1_card_exactly_like_named_cast():
+    fresh = _req(delta=PERFORMER)
     bad = seeding_law_violations(K, fresh, [PLATE])
     assert len(bad) == 1 and "staged FRESH with no STEP-1 figure frame" in bad[0], bad
-    assert EVERYMAN_CARD in bad[0], bad
-    assert seeding_law_violations(K, fresh, ["_staging/" + EVERYMAN_CARD + ".png", PLATE]) == []
+    assert PERFORMER_CARD in bad[0], bad
+    assert seeding_law_violations(K, fresh, ["_staging/" + PERFORMER_CARD + ".png", PLATE]) == []
 
 
-def test_a_delta_everyman_inherits_from_the_rig_template_plus_its_parent():
+def test_a_delta_performer_inherits_from_the_rig_template_plus_its_parent():
     delta = _req(name="L12", stage_role="delta",
                  delta="The same office, unchanged, except `base`, `expr-deadpan` now sits.")
     canon = REFS + "base/base.png"
@@ -204,7 +204,7 @@ def test_a_delta_everyman_inherits_from_the_rig_template_plus_its_parent():
 def test_a_bare_base_with_no_card_is_refused_as_the_rig_template():
     """The guard the old exclusion enforced in silence, now decidable and named: with no
     `expr-`/`action-` card the step-1 recipe is just the bare canonical, i.e. the template
-    rendering as itself (style-bible §1: 'it never appears in videos')."""
+    rendering as itself (style-bible §1: 'it never appears as ITSELF')."""
     bad = seeding_law_violations(
         K, _req(delta="A clerk, `base`, stands behind the counter."), [PLATE])
     assert len(bad) == 1 and "RIG TEMPLATE" in bad[0], bad
@@ -215,15 +215,36 @@ def test_a_bare_base_with_no_card_is_refused_as_the_rig_template():
         [REFS + "base/base.png", PLATE])), "a bare base slipped through on a delta"
 
 
+def test_two_base_castings_in_one_shot_are_refused_not_silently_collapsed():
+    """A-3 (2026-08-06): the boss narrowed the law to ONE seeded performer per shot. Before this
+    guard, `backticked()`'s own dedupe silently collapsed a second `base` casting into the first
+    cast entry — the second performer's primitives surfaced only as a `why`-logged surplus
+    footnote, never a refusal. Now it is a HARD, named violation, at $0."""
+    two_performers = ("A courtroom. `base`, `expr-deadpan`, `action-armscrossed`, stage-left, "
+                      "arguing. `base`, `expr-deadpan`, stage-right, arguing back.")
+    bad = seeding_law_violations(K, _req(delta=two_performers), [PLATE])
+    assert len(bad) == 1, bad
+    assert "named 2 times" in bad[0] and "one-seeded-performer law" in bad[0], bad
+    assert "two distinct performer castings" in bad[0] and BASE_TEMPLATE in bad[0], bad
+    # and it is refused on a delta beat too — the raw prose is parsed the same way there
+    assert any("named 2 times" in b for b in seeding_law_violations(
+        K, _req(stage_role="delta", delta=two_performers),
+        [REFS + "base/base.png", PLATE])), "a second base casting slipped through on a delta"
+    # exactly one `base` mention is untouched — the single-performer path still works
+    assert shot_cast(REG, PERFORMER) == [("base", ["expr-deadpan", "action-armscrossed"])]
+    assert seeding_law_violations(
+        K, _req(delta=PERFORMER), ["_staging/" + PERFORMER_CARD + ".png", PLATE]) == []
+
+
 def test_the_rig_templates_seed_prose_claims_no_identity_and_no_costume():
     """The other half of the same guard. A base seed grants FORM; a cast canonical's 'identity,
     head tone, hair and the pinned costume come from this image only' would order the provider to
-    keep the template's default hoodie in a shot whose prose dresses the everyman for its era."""
+    keep the template's default hoodie in a shot whose prose dresses the performer for its era."""
     text = seed_roles_text([
-        {"path": "_staging/" + EVERYMAN_CARD + ".png", "role": "figure", "character": "base"},
+        {"path": "_staging/" + PERFORMER_CARD + ".png", "role": "figure", "character": "base"},
         {"path": REFS + "base/base.png", "role": "canonical", "character": "base"}])
     assert "pinned costume" not in text, text
-    assert "seeded EVERYMAN" in text and "ANONYMOUS figure" in text, text
+    assert "seeded PERFORMER" in text and "ANONYMOUS figure" in text, text
     assert "shared BASE RIG template" in text and "NOT an identity" in text, text
     # a named cast member's prose is untouched
     cast_text = seed_roles_text(
@@ -446,7 +467,7 @@ def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
     """T01 declares no `place`, so the crowd exemplar (the ONE displacement step that needs a
     place plate to absorb the mass) can never legally clear here — and both explicit tags are
     `environment`, not `prop`, so step 3 has nothing to take either. With no droppable seed
-    anywhere the refusal must stand, naming cast count rather than either locked tag."""
+    anywhere the refusal must stand, naming figure count rather than either locked tag."""
     _, shots, out = _scope_fixture()
     doc = json.load(open(shots, encoding="utf-8"))
     shot = doc["long_form"]["shots"][0]
@@ -460,7 +481,7 @@ def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
     spec, err = _batch(shots, out, ["T01"])
     assert spec is None, spec
     assert "5 seeds over the cap of 4" in err, err
-    assert "cast count" in err, err
+    assert "figure count" in err, err
     assert "did not fit" not in err, err
     assert "lettering-marker-italic" not in err and "stamp-block-outlined" not in err, err
     assert not os.path.exists(out), err
@@ -483,7 +504,8 @@ def test_character_free_place_plate_carries_only_the_style_tile_and_stays_a_plat
                      "delta": forge_module.placement_delta(payload, roles),
                      "payload": payload, "prompt_suffix": None,
                      "seed": [TILE], "seed_roles": roles,
-                     "figures": None, "stage_role": None, "assets_omitted": None,
+                     "figures": None, "stage_role": None, "costume_key": None,
+                     "assets_omitted": None,
                      "plate": True, "delta_primitives": None, "expression_change": None,
                      "parent_depth": 0, "lineage": 0,
                      "why": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived "
@@ -491,8 +513,8 @@ def test_character_free_place_plate_carries_only_the_style_tile_and_stays_a_plat
                             "descriptor + style suffix, no content anchor"}], spec
 
 
-def test_an_everyman_batch_mints_its_step1_card_and_is_never_cast_free():
-    """End to end over the REAL registry: the everyman's card is generated from
+def test_a_performer_batch_mints_its_step1_card_and_is_never_cast_free():
+    """End to end over the REAL registry: the performer's card is generated from
     [base canonical + expression + action], the scene seeds that card — and the shot no longer
     measures `cast_free`, so §5's scene style tile is NOT derived onto a figure-bearing frame
     (which is what the silent `[]` produced before the fix)."""
@@ -505,8 +527,11 @@ def test_an_everyman_batch_mints_its_step1_card_and_is_never_cast_free():
     json.dump(doc, open(shots, "w", encoding="utf-8"))
     spec, err = _batch(shots, out, ["E01"])
     assert err is None, err
-    card = figure_frame_name("base", "action-slump", "expr-worried")
+    card = spec[0]["name"]
     assert [i["name"] for i in spec] == [card, "E01"], [i["name"] for i in spec]
+    # the key reads as its place, then the digest of the dress that place's prose authored
+    assert card.startswith(
+        figure_frame_name("base", "action-slump", "expr-worried", "back-office") + "-"), card
     step1 = spec[0]
     assert [Path(s).stem for s in step1["seed"]] == ["base", "expr-worried", "action-slump"], \
         step1["seed"]
@@ -516,7 +541,108 @@ def test_an_everyman_batch_mints_its_step1_card_and_is_never_cast_free():
     assert "scene-style-tile" not in [Path(s).stem for s in scene["seed"]], scene["seed"]
     assert "STYLE TILE" not in scene["why"], scene["why"]
     assert scene["seed_roles"][0]["character"] == "base", scene["seed_roles"]
-    assert "never the card's own default outfit" in scene["delta"], scene["delta"]
+    assert "the era costume it wears exactly" in scene["delta"], scene["delta"]
+    # THE CARD IS DRESSED (visual-grammar §2 attribute-routing law): the era clothing is IN the
+    # card's own payload, sourced from the sentence that names the performer, with the control
+    # tokens stripped — never loose prose over a bare `base` in the scene.
+    assert "1980s back office" in step1["payload"], step1["payload"]
+    assert "ONLY the CLOTHING" in step1["payload"], step1["payload"]
+    assert "`" not in step1["payload"], step1["payload"]
+    assert "dressed for `" + scene["costume_key"] + "`" in step1["why"], step1["why"]
+    assert card.endswith("--" + scene["costume_key"]), (card, scene["costume_key"])
+
+
+def _performer_shots(*places):
+    """One performer shot per place, all on the SAME (pose, expression) recipe — the collision
+    shape: identical figure recipe, different era dress."""
+    return [{"id": f"E{i:02d}", "source": "ai-gen", "place": place,
+             "still_prompt": (f"A clerk in the {place}, `base`, `expr-worried`, `action-slump`, "
+                              "stage-left behind a counter of ledgers.")}
+            for i, place in enumerate(places, start=1)]
+
+
+def test_two_eras_on_one_recipe_get_two_cards_and_one_era_reuses_its_own():
+    """The costume dimension, both directions. Two dresses = two performer cards, each minted from
+    its own shot; the SAME dress again = ONE card, shared. Without the dimension the second era
+    silently wore the first era's clothes, which is the collision it exists to stop."""
+    _, shots, out = _scope_fixture()
+    doc = json.load(open(shots, encoding="utf-8"))
+    doc["long_form"]["shots"] = _performer_shots("brick-co-yard", "hq-marble-lobby",
+                                                 "brick-co-yard")
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["E01", "E02", "E03"])
+    assert err is None, err
+    names = [i["name"] for i in spec]
+    yard, lobby = names[0], names[2]
+    assert names == [yard, "E01", lobby, "E02", "E03"], names
+    stem = figure_frame_name("base", "action-slump", "expr-worried")
+    assert yard.startswith(stem + "--brick-co-yard-") and lobby.startswith(
+        stem + "--hq-marble-lobby-"), names
+    # each card is dressed from ITS OWN shot's prose
+    cards = {i["name"]: i["payload"] for i in spec if i["name"].startswith("fig-")}
+    assert "brick-co-yard" in cards[yard] and "hq-marble-lobby" not in cards[yard], cards[yard]
+    assert "hq-marble-lobby" in cards[lobby], cards[lobby]
+    # the third shot re-states the SAME dress in the same place: same card, reused, nothing re-minted
+    e03 = next(i for i in spec if i["name"] == "E03")
+    assert [Path(s).stem for s in e03["seed"] if s.startswith("_staging/fig-")] == [yard], e03
+    assert "STEP-1 " + yard + " shared" in e03["why"], e03["why"]
+
+
+def test_two_dresses_in_ONE_place_never_share_a_card():
+    """The collision a place-only key leaves open, pinned shut: a labourer and a barrister in the
+    same courtroom share a pose and an expression, so a key that stops at the place hands the
+    second the first's clothes — and `seed_roles_text` then tells the scene the card's costume is
+    the authority, so the shot's own prose cannot correct it. The dress is part of the key."""
+    _, shots, out = _scope_fixture()
+    doc = json.load(open(shots, encoding="utf-8"))
+    doc["long_form"]["shots"] = [
+        {"id": "E01", "source": "ai-gen", "place": "jury-courtroom",
+         "still_prompt": ("A 1985 county courtroom. `base`, `expr-worried`, `action-slump`, in a "
+                          "labourer's torn canvas jacket and work boots, sits in the front row.")},
+        {"id": "E02", "source": "ai-gen", "place": "jury-courtroom",
+         "still_prompt": ("A 1985 county courtroom. `base`, `expr-worried`, `action-slump`, in a "
+                          "black barrister's gown and starched collar, sits at counsel table.")}]
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["E01", "E02"])
+    assert err is None, err
+    cards = [i for i in spec if i["name"].startswith("fig-")]
+    assert len(cards) == 2 and cards[0]["name"] != cards[1]["name"], [i["name"] for i in spec]
+    assert "canvas jacket" in cards[0]["payload"] and "gown" not in cards[0]["payload"], cards[0]
+    assert "gown" in cards[1]["payload"] and "canvas jacket" not in cards[1]["payload"], cards[1]
+    # ...and each scene seeds its OWN card, neither one "shared"
+    for shot_id, card in (("E01", cards[0]), ("E02", cards[1])):
+        scene = next(i for i in spec if i["name"] == shot_id)
+        assert [Path(s).stem for s in scene["seed"] if s.startswith("_staging/fig-")] == \
+            [card["name"]], scene["seed"]
+        assert "shared" not in scene["why"], scene["why"]
+
+
+def test_a_named_characters_card_key_carries_no_costume_dimension():
+    """Named cast wear a canonical-pinned costume, so their card is costume-invariant and their
+    key is byte-identical to the pre-2026-08-06 shape — no re-mint of an existing library card."""
+    _, shots, out = _scope_fixture()
+    spec, err = _batch(shots, out, ["T01"])
+    assert err is None, err
+    assert spec[0]["name"] == "fig-miniscribe-rep--action-powerstance--expr-smug", spec[0]["name"]
+    assert "minted for reads" not in spec[0]["payload"], spec[0]["payload"]
+    assert next(i for i in spec if i["name"] == "T01")["costume_key"] is None, spec
+
+
+def test_the_costume_clause_is_the_era_opener_plus_the_figures_own_sentence():
+    """The era source is PROSE — the same source a place plate takes its era from — bound to the
+    sentence that names the figure, plus the opener that dates the scene. Control tokens and
+    quoted literals never reach the card: the seeds already carry the vocabulary, and a card that
+    draws lettering bleeds it into every scene seeding it. A figure the prompt does not name
+    yields nothing, so the opener can never travel alone."""
+    prompt = ("A 1974 sorting hall, rain on the skylights. `base`, `expr-worried`, in a brown "
+              "shop coat and flat cap, leans over a ledger marked 'PAID'. Framing: waist-up.")
+    clause = forge_module.costume_clause(prompt, "base")
+    assert clause == ("A 1974 sorting hall, rain on the skylights. in a brown shop coat and flat "
+                      "cap, leans over a ledger marked."), clause
+    assert forge_module.costume_clause(prompt, "hq-banker") == ""
+    # a card with no era prose is exactly the pre-fix payload — no empty dress clause
+    assert "minted for reads" not in forge_module.figure_card_payload("action-slump")
+    assert "minted for reads" in forge_module.figure_card_payload("action-slump", clause)
 
 
 def _stem_ok(seed, char):

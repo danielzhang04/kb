@@ -75,7 +75,7 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    discloses it before the narration does; the fix is to **re-author** that shot (or its chain) with the
 >    withheld entity **absent entirely**, never merely obscured (a back-to-viewer silhouette dodges it).
 >
-> 6. **Two-cast plane/scale coherence.** Lint proves a 2-named-cast shot STATES a plane, an eye-line, and
+> 6. **Two-figure plane/scale coherence.** Lint proves a 2-seeded-figure shot STATES a plane, an eye-line, and
 >    a relative-head-scale clause; it cannot prove those clauses describe the right TOPOLOGY. Read the
 >    clauses as a director would stage them: do the two figures actually land on one shared ground plane at
 >    a coherent relative size, or does a "rear zone"/"management section" clause pull the SECOND-named
@@ -96,7 +96,9 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    no trace of the shot's named cast nearby; it does not judge the cases lint stays silent on. Where a
 >    shot casts a named character for a beat the VO describes generically, ask: does THIS beat, in THIS
 >    script, actually belong to that named character, or is this a leftover of blanket generic→named
->    substitution rather than a scene-by-scene casting decision? (Mechanism: vpw-log.md Phase B3, the bulk
+>    substitution rather than a scene-by-scene casting decision? The fix direction for the latter is a
+>    seeded performer — an anonymous story-bearing individual — never a demotion of the beat to crowd.
+>    (Mechanism: vpw-log.md Phase B3, the bulk
 >    `anon_foreground`→named-cast conversion pass; audit-drift §E7 — L100/L101 cast two specific named leads
 >    for a beat the script only ever calls "the managers.")
 >
@@ -107,7 +109,10 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 > in the plan, in seconds, whether or not you flag it — on a channel whose screen IS the cast, a 20s
 > still-life stretch is a plan-level fact the human should see, not a per-shot quibble. **Cadence taste** — flag a slow static hold with no earned progressive
 > reveal, legibility, or gravity reason, a run of conspicuously equal-duration holds, or cuts so rapid the
-> payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 4 floor). **Stage
+> payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 4 floor). **Place
+> monotony** — flag a span that keeps re-staging beats in a place it had every reason to leave, where the
+> narration had moved on; departure is the grammar's default and lingering earns its keep (§1 chain logic).
+> Name the span and the beat that should have left; impose no cap or place count. **Stage
 > grouping** — the **SEMANTIC call only**: *are these really one held set?* A long-form plan revisiting a setting
 > with zero stage chains is a finding; never demand an arbitrary number. The mechanical caps (one `base`, ≤2 `delta`s,
 > contiguity, delta timing, order) are `lint_shots.py`'s job; do not re-flag them.

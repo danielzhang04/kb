@@ -355,7 +355,7 @@ def test_plant_a_template_on_a_solo_shot():
                      "`terry-johnson`, `expr-delighted`, offers `handshake` to the camera."})]
     hard = []
     L.interaction_cast_check("lf", objs, {"terry-johnson"}, INTERACTIONS, hard)
-    assert len(hard) == 1 and "1 named cast" in hard[0] and "handshake" in hard[0], hard
+    assert len(hard) == 1 and "1 seeded figure(s)" in hard[0] and "handshake" in hard[0], hard
 
 
 def test_plant_a_template_on_a_delta_beat():

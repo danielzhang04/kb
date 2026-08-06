@@ -78,7 +78,10 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
 
 **Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
 it, each `delta` changes exactly ONE physically feasible semantic transformation, **≤2 deltas**, then a re-base or a hard cut. A world,
-setting, subject, or register change is a **hard cut**, never a delta. **A delta PROMPT is a compact
+setting, subject, or register change is a **hard cut**, never a delta. **Where the beat leaves the
+staging open, DEPARTURE is the default:** prefer the staging that leaves the current place, and let
+lingering there be a choice the beat earns — re-using a place because it is already established is how
+a video collects long single-set runs. **A delta PROMPT is a compact
 restatement of the held scene, then the change as its FINAL clause** — the base's identity and
 load-bearing facts carried over tightened, never re-invented or paraphrased into different nouns, closing
 on the one change plus "only this changes; everything else exactly as established". A delta regenerates
@@ -145,21 +148,35 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   Worked example: SKILL step 3a.
 - **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance. A group
   member acting alone is staged as an individual.
-- **Every human in frame is SEEDED or CROWD, decided by IDENTITY — and there is no promotion path:
-  a figure is authored in its tier from its first frame.** **NAMED CAST** carries a locked identity —
-  a backticked slug, a canonical, a pinned costume — and is seeded from it. **A SEEDED EVERYMAN** is
-  the anonymous but STORY-BEARING individual: the one who performs the gag, the reaction, the decision.
-  It claims no identity and mints no canonical; it is seeded off the shared `base` rig through the
-  `expr-`/`action-` vocabulary the beat needs, backticked inline like any other named asset, and it is
-  **always dressed in the shot's own era and setting in prose** — the base template never renders as
-  itself (style-bible §2c/§2d: a seed contributes head/face/hand FORM, never its own clothing).
+- **Every human in frame is NAMED CAST, a SEEDED PERFORMER, or CROWD, decided by IDENTITY — and there
+  is no promotion path: a figure is authored in its tier from its first frame.** **NAMED CAST** carries
+  a locked identity — a backticked slug, a canonical, a pinned costume — and is seeded from it.
+  **A SEEDED PERFORMER** is the anonymous but STORY-BEARING individual: the one who performs the gag,
+  the reaction, the decision. It claims no identity and mints no canonical, but the shot MINTS it
+  first: one STEP-1 card off the shared `base` rig, wearing THIS scene's era costume and holding THIS
+  beat's `expr-`/`action-` cards (backticked inline like any other named asset), rig-checked at card
+  cost before a scene spends on it — and the scene then seeds that card, two-step, exactly as a named
+  cast member does. **A shot casts at most ONE seeded performer** — the engine has exactly one name for
+  the whole tier (`` `base` ``), so a shot cannot address two distinct performers; a beat wanting two
+  anonymous performers is restaged — promote one to named cast via the registry, or stage it as crowd
+  (`forge.py`/`lint_shots.py` both hard-refuse a second `` `base` `` casting). **Attribute-routing law: any attribute not carried by the figure's OWN seed bleeds
+  a trait off the base template**, so the era costume and the expression live IN the card, never as
+  loose prose over a bare `base` — the base template never renders as itself, and `forge.py` refuses a
+  bare-`base` slate by name (style-bible §2c/§2d: a seed contributes head/face/hand FORM, never its own
+  clothing). A performer's card is recorded in the VIDEO's own Pass-1 library
+  (`assets/library/manifest.json`) for same-costume reuse; it enters `registry.json` only where the
+  character turns out to genuinely recur. Mechanically: the era dress is PROSE, in the shot — write it in
+  the sentence that names `` `base` `` — and `forge.py` reads that sentence (plus the opening era sentence)
+  into the card's own payload and keys the card on that dress
+  (`fig-base--<pose>--<expr>--<place>-<dress digest>`), so one card is shared only where the authored dress
+  is the same and two differently dressed performers can never collide on one.
   **CROWD** is declared `"crowd": true` (`shots-schema.md §2`), seeded from the crowd exemplar, and
   reserved for genuine MASSES.
   **A story-bearing foreground individual must not be replaced with an empty object, nor demoted to
-  rear-zone crowd, to avoid spending a figure** — that demotion is the measured way a joke becomes
-  wallpaper (`videos/2026-07-28-bricks-fresh/scratchpad/authoring-audit.md` §1: 19 of 26 idiom-puns
-  staged their performer as background crowd). Crowd scale is never the fallback for ONE anonymous
-  performer; the seeded everyman is. Both seeded forms spend a foreground slot against the ≤2 cap below.
+  rear-zone crowd, to avoid spending a figure — the seeded performer is that beat's fallback, never
+  crowd scale** — the demotion is the measured way a joke becomes wallpaper
+  (`videos/2026-07-28-bricks-fresh/scratchpad/authoring-audit.md` §1: 19 of 26 idiom-puns staged their
+  performer as background crowd). Both seeded tiers spend a foreground slot against the ≤2 cap below.
   Crowd belongs in a positive rear zone in the
   PRIMARY scene clause — far side of the real table/shelving, behind a divider, through a doorway — never a
   co-planar gathering renamed "background-scale" later. The prose still stages crowd figures — where they
@@ -173,37 +190,42 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   sitting ahead of a named character is what bleeds one figure's attributes onto another.
 
   **Scope law: two-step seeding applies to SEEDED figures on FRESH stage-base gens only** — named cast
-  and the seeded everyman alike, each getting its own step-1 card. Crowd has no
+  and the seeded performer alike, each getting its own step-1 card. Crowd has no
   canonical, so isolating a step-1 gen buys it nothing — crowd, environment, and prop shots stay
   single-step (crowd exemplar + plate + prose), and delta beats stay single-step too, unchanged.
   Combined with this tier law and the ≤2-figure cap below, no other shot shape exists that a step-1
   figure applies to.
-- **The foreground cap — at most 2 SEEDED figures per shot** (named cast or seeded everyman, in any
-  mix; each spends one step-1 card), with the slate stated so the cost is visible rather than argued:
+- **The foreground cap — at most 2 SEEDED figures per shot** (two named cast, or one named cast plus
+  the shot's one seeded performer, or the seeded performer alone — never two performers, capped at ONE
+  per shot; each spends one step-1 card), with the slate stated so the cost is visible rather than
+  argued. *Figure* in the rows below is any seeded figure: a performer occupies a row identically to
+  named cast, within that one-performer ceiling.
 
   | Shot shape | STEP 2's slots (step 1 already ran per figure) | What it gives up |
   | --- | --- | --- |
-  | 1 cast, fresh | step-1 figure · **plate** | nothing — 2 slots free |
-  | 1 cast + crowd, fresh | step-1 figure · plate · crowd exemplar | nothing |
-  | **2 cast, fresh** | step-1 figure A · step-1 figure B · **plate** | nothing — 1 slot still free |
-  | **2 cast + interaction, fresh** | step-1 figure A · step-1 figure B · **interaction template** · plate | nothing — the free slot buys the contact geometry |
-  | 2 cast + crowd, fresh | step-1 figure A · step-1 figure B · plate · crowd exemplar | nothing |
-  | 2 cast, delta beat | parent frame · canonical A · canonical B · one changed pose *or* expression | nothing — unchanged, single-step, exactly as today |
+  | 1 figure, fresh | step-1 figure · **plate** | nothing — 2 slots free |
+  | 1 figure + crowd, fresh | step-1 figure · plate · crowd exemplar | nothing |
+  | **2 figures, fresh** | step-1 figure A · step-1 figure B · **plate** | nothing — 1 slot still free |
+  | **2 figures + interaction, fresh** | step-1 figure A · step-1 figure B · **interaction template** · plate | nothing — the free slot buys the contact geometry |
+  | 2 figures + crowd, fresh | step-1 figure A · step-1 figure B · plate · crowd exemplar | nothing |
+  | 2 figures, delta beat | parent frame · canonical A · canonical B · one changed pose *or* expression | nothing — unchanged, single-step, exactly as today |
 
-  Stated positively: **a fresh two-cast shot is the BASE of a stage; every later two-cast beat in that
-  place is a delta on it.** Crowd-rig figures are a mass, not identities, and don't count against the
-  cap.
+  Stated positively: **a fresh two-figure shot is the BASE of a stage; every later two-figure beat in
+  that place is a delta on it.** Crowd-rig figures are a mass, not identities, and don't count against
+  the cap. **A "2 figures" row is 2 named cast, or 1 named cast + the shot's 1 seeded performer — never
+  2 performers:** a beat wanting two anonymous performers is restaged, promoting one to named cast via
+  the registry, or staging it as crowd.
 - **An `interaction` slug is a TWO-FIGURE geometry reference, never one figure's pose.** The asset is
   two blank mannequins carrying the clasp geometry and eye-line; it resolves the contact BETWEEN two
   bodies and binds to neither alone. So `handshake` / `handoff` / `fistbump` / `action-tugofwar` are
-  authored ONLY on a fresh two-cast **stage base**, where forge seeds the template scene-level
+  authored ONLY on a fresh two-figure **stage base**, where forge seeds the template scene-level
   alongside both figures' step-1 cards (row above). On a solo shot or a delta beat there is no legal
   slate for one: stage the gesture in prose and drop the slug, or move the contact to the base. Bound
   to a single character it mints a solo reference card that says "the character alone" while carrying
   a two-person clasp — a hand extended into empty air, an amputated forearm, or a second body fused
   into the identity card. Lint and forge both refuse it.
-- **Prompt ordering — three zones, in this order.** (1) **Identity first:** the named cast, their
-  backticked registry names, and any pinned trait the shot depends on. (2) **Scene second:** setting,
+- **Prompt ordering — three zones, in this order.** (1) **Identity first:** the shot's seeded figures,
+  their backticked registry names, and any pinned trait the shot depends on. (2) **Scene second:** setting,
   staging, framing, palette, light, depth. (3) **Payload LAST, as the final clause:** the quoted lettering,
   or on a delta the one change (§1 chain logic). The generator weights earliest mentions heaviest for
   identity and reads the closing instruction most literally, so leading with boilerplate costs identity
