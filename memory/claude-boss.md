@@ -163,3 +163,29 @@
   workers to check it.
 - MODEL RECEIPTS: all 7 workers/verifiers model-grepped first line (6 opus, 1 sonnet builder), 452
   tests green at R1, all spend ledgered (remint $0.546, R1 $0.05, p6b $1.872; wave ~$7.0/$40).
+
+## 2026-08-06 late — cloud-migration build session (boss on Fable 5, codex-exclusive workers)
+- ARC: kb→Linux-VM/Tailscale migration specced+planned+built in one evening; branch
+  claude/cloud-migration (8ebc337) holds waves 1a-1d complete; parked at Daniel's Wave-0
+  gates (SSH key, provider, order). Handoff: handoffs/2026-08-06-cloud-migration-wave0-gate.md.
+- LEARNED: codex sandbox blocks git file:// transport — reconciliation/synthetic-acceptance
+  suites FAIL inside workers but pass locally. Grade by LOCAL rerun; tell workers to skip-and-say,
+  not to debug their sandbox.
+- LEARNED: a KILLED dispatch may have FINISHED its work — the 1d3 repair orphan died in its
+  verify phase with all 40 tests already green in the tree. Test the partial state before
+  re-dispatching; saved a full re-run. (Marker+log mtime tell the story: files stopped changing
+  1 min before death.)
+- LEARNED: subsystem-retirement over-deletion pattern — surfaces that MERGE the retired thing
+  with kept features (WorkflowDetail Runs tab merged PTY session-runs + governed runs) get
+  wholesale-cut by workers. Brief retirements with an explicit KEEP list naming the merged
+  surfaces, or expect a repair wave.
+- LEARNED: full-suite parallelism load-flakes (canonicalResultEmbeddedPython, queueBridge tick,
+  authorizedFailedRunReconciliation, store tampering, synthetic-acceptance) — all pass isolated.
+  Never chase these under full-suite load; verify isolation FIRST.
+- LEARNED: pre-existing main defect found by 1b acceptance: workflowRun.test.ts asserted the
+  pre-routing-doctrine agent_runner filter string — cross-file consistency tests go stale
+  silently when the ps1 side changes on ops/main out-of-band. Fixed on the cloud branch.
+- DOCTRINE (Daniel, this session): pilot-first cloud spend (~$20 hourly-billed before monthly);
+  API-key relaxation IN PRINCIPLE for capped glue (subscription stays primary — 5-20x cheaper);
+  Atlas included via browser-tab audio (open tab ⇒ listening, AudioWorklet not timers);
+  PTY retired for good; platform verdict = keep homegrown (memo in docs/research/).
