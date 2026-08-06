@@ -6,7 +6,7 @@ target: orgs/faceless-youtube/channels/the-second-take/videos/2026-08-06-slice-t
 risk-tier: T1
 owner: dashboard-engine
 claim-token: null
-state: inbox
+state: done
 approval: null
 workflow: null
 depends-on: []
@@ -65,3 +65,7 @@ a second time). Read the brief first; the dossier serves that short and nothing 
 Append a `## Result` section: the repo-relative path you wrote, the count of facts verified vs.
 omitted-and-flagged, the sources used, and a one-line honest status. Do not overstate — if a fact
 could not be two-source verified, say so plainly.
+
+## Bridged run
+
+This trigger card was consumed by the dashboard engine and run as run-92d33b09-235c-4b50-a976-191fc196e763.
