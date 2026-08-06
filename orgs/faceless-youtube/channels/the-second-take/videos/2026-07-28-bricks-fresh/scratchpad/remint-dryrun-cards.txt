@@ -1,0 +1,57 @@
+  [1/4] fig-auditor-rep--action-present--expr-deadpan: DRY (no API call) mode=environment aspect=2:3 size=1K
+      seeds: ['channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png', 'channels/the-second-take/visual-kit/refs/base/expr-deadpan.png', 'channels/the-second-take/visual-kit/refs/base/action-present.png']
+      retry authority: {"changed_spans": 1, "character": "auditor-rep", "defect": "rig", "kind": "step1-remint"}
+      ----- assembled prompt -----
+      Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.
+      
+      Every FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands — exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) — do NOT force this full rig onto them. Hold ONLY this form — costume, pose, expression, head tone, build, and framing are set by the generation delta, not here.
+      
+      SEED ROLES. The FIRST image is `auditor-rep`'s character canonical — identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-deadpan` expression reference for `auditor-rep` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-present` pose reference for `auditor-rep` — copy only body pose, hands and limb placement; ignore identity and costume.
+      
+      The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.
+      
+      ARM COUNT IS LOAD-BEARING: this figure has exactly TWO arms - one presenting arm held out from the shoulder with the palm turned up, plus ONE other arm; no third limb, no extra shoulder, no spare sleeve, no duplicated forearm anywhere in the frame. Both arms grow from the two shoulders of the one torso and nowhere else.
+      ----- end -----
+  [2/4] fig-qt-wiles--action-accuse--expr-deadpan: DRY (no API call) mode=environment aspect=2:3 size=1K
+      seeds: ['channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png', 'channels/the-second-take/visual-kit/refs/base/expr-deadpan.png', 'channels/the-second-take/visual-kit/refs/base/action-accuse.png']
+      retry authority: {"changed_spans": 1, "character": "qt-wiles", "defect": "rig", "kind": "step1-remint"}
+      ----- assembled prompt -----
+      Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.
+      
+      Every FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands — exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) — do NOT force this full rig onto them. Hold ONLY this form — costume, pose, expression, head tone, build, and framing are set by the generation delta, not here.
+      
+      SEED ROLES. The FIRST image is `qt-wiles`'s character canonical — identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-deadpan` expression reference for `qt-wiles` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-accuse` pose reference for `qt-wiles` — copy only body pose, hands and limb placement; ignore identity and costume.
+      
+      The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.
+      
+      ARM COUNT IS LOAD-BEARING: this figure has exactly TWO arms - one accusing arm raised and pointing forward, plus ONE other arm; no third limb, no extra shoulder, no spare sleeve, no duplicated forearm anywhere in the frame. Both arms grow from the two shoulders of the one torso and nowhere else.
+      ----- end -----
+  [3/4] fig-qt-wiles--action-present--expr-delighted: DRY (no API call) mode=environment aspect=2:3 size=1K
+      seeds: ['channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png', 'channels/the-second-take/visual-kit/refs/base/expr-delighted.png', 'channels/the-second-take/visual-kit/refs/base/action-present.png']
+      retry authority: {"changed_spans": 1, "character": "qt-wiles", "defect": "rig", "kind": "step1-remint"}
+      ----- assembled prompt -----
+      Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.
+      
+      Every FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands — exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) — do NOT force this full rig onto them. Hold ONLY this form — costume, pose, expression, head tone, build, and framing are set by the generation delta, not here.
+      
+      SEED ROLES. The FIRST image is `qt-wiles`'s character canonical — identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `qt-wiles` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-present` pose reference for `qt-wiles` — copy only body pose, hands and limb placement; ignore identity and costume.
+      
+      The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.
+      
+      ARM COUNT IS LOAD-BEARING: this figure has exactly TWO arms - one presenting arm held out from the shoulder with the palm turned up, plus ONE other arm; no third limb, no extra shoulder, no spare sleeve, no duplicated forearm anywhere in the frame. Both arms grow from the two shoulders of the one torso and nowhere else.
+      ----- end -----
+  [4/4] fig-qt-wiles--action-armscrossed--expr-crestfallen: DRY (no API call) mode=environment aspect=2:3 size=1K
+      seeds: ['channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png', 'channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png', 'channels/the-second-take/visual-kit/refs/base/action-armscrossed.png']
+      retry authority: {"changed_spans": 1, "character": "qt-wiles", "defect": "rig", "kind": "step1-remint"}
+      ----- assembled prompt -----
+      Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.
+      
+      Every FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands — exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the §2d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) — do NOT force this full rig onto them. Hold ONLY this form — costume, pose, expression, head tone, build, and framing are set by the generation delta, not here.
+      
+      SEED ROLES. The FIRST image is `qt-wiles`'s character canonical — identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-crestfallen` expression reference for `qt-wiles` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-armscrossed` pose reference for `qt-wiles` — copy only body pose, hands and limb placement; ignore identity and costume.
+      
+      The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.
+      
+      HEAD TONE IS LOAD-BEARING: the face and both hands render in exactly the SAME warm cream head tone as the canonical seed - one flat uniform warm tone across face, neck and every exposed hand. Do NOT lighten, cool, grey, desaturate or wash out the skin; no pale porcelain, no cool grey-blue cast, no blush. Arms crossed at the chest, exactly TWO arms and no third limb.
+      ----- end -----
+  == DRY RUN: 4 prompts assembled, 0 API calls, 0 files written ==

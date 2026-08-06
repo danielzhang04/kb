@@ -81,7 +81,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   `place`):** the symbolic/abstract/object-insert `shot_class` values — `symbolic-stand-in-object`,
   `number-glued-to-object`, `map-plan-view`, `physicalized-imbalance`, `register-shift-infographic`
   (`visual-grammar.md §1`'s table: each depicts a floating object or abstraction, never a set) — plus a
-  short's `first_frame` and the thumbnail block; these run as seedless roots under the hardened descriptor
+  short's `first_frame` and the thumbnail block; these run as seedless roots under the bible descriptor + style suffix
   regardless of place. A beat that genuinely wants BOTH an exempt class and its set may be authored in a
   non-exempt class instead (`literal`, `ironic-counterpoint`, `staged-interaction`) to keep it on the set —
   a class is a depiction decision, and losing the setting to a schema rule is the worse trade. Record the

@@ -1,0 +1,30 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L72",
+      "character": "qt-wiles",
+      "name": "fig-qt-wiles--action-accuse--expr-deadpan",
+      "defect": "rig",
+      "instruction": "ARM COUNT IS LOAD-BEARING: this figure has exactly TWO arms - one accusing arm raised and pointing forward, plus ONE other arm; no third limb, no extra shoulder, no spare sleeve, no duplicated forearm anywhere in the frame. Both arms grow from the two shoulders of the one torso and nowhere else."
+    },
+    {
+      "kind": "step1",
+      "shot": "L134",
+      "character": "qt-wiles",
+      "name": "fig-qt-wiles--action-present--expr-delighted",
+      "defect": "rig",
+      "instruction": "ARM COUNT IS LOAD-BEARING: this figure has exactly TWO arms - one presenting arm held out from the shoulder with the palm turned up, plus ONE other arm; no third limb, no extra shoulder, no spare sleeve, no duplicated forearm anywhere in the frame. Both arms grow from the two shoulders of the one torso and nowhere else."
+    },
+    {
+      "kind": "step1",
+      "shot": "L236",
+      "character": "qt-wiles",
+      "name": "fig-qt-wiles--action-armscrossed--expr-crestfallen",
+      "defect": "rig",
+      "instruction": "HEAD TONE IS LOAD-BEARING: the face and both hands render in exactly the SAME warm cream head tone as the canonical seed - one flat uniform warm tone across face, neck and every exposed hand. Do NOT lighten, cool, grey, desaturate or wash out the skin; no pale porcelain, no cool grey-blue cast, no blush. Arms crossed at the chest, exactly TWO arms and no third limb."
+    }
+  ]
+}

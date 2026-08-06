@@ -1,0 +1,48 @@
+{
+ "figures": {
+  "fig-auditor-rep--action-present--expr-deadpan": {
+   "canonical_sha256": "aecea51e672d8469a44072a40e9bd18c526640377942778329e147d755b48e53",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "",
+   "date": "2026-08-05"
+  },
+  "fig-qt-wiles--action-accuse--expr-deadpan": {
+   "canonical_sha256": "5ee8ff809f66059a04778e69ba06a064213e9f719661657af82fe41837c85883",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "",
+   "date": "2026-08-05"
+  },
+  "fig-qt-wiles--action-present--expr-delighted": {
+   "canonical_sha256": "c686537ab4fb91b590fc975cdb9c0f68ac5d558a48fde821f3a85aef2b69d356",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "",
+   "date": "2026-08-05"
+  },
+  "fig-qt-wiles--action-armscrossed--expr-crestfallen": {
+   "canonical_sha256": "f775eed2b7271293ca79d6ff289d50749638fe69e2da1e33b8ddea6c0acf2dfe",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "",
+   "date": "2026-08-05"
+  }
+ }
+}

@@ -1,0 +1,213 @@
+[
+  {
+    "name": "L03",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE DISCIPLINE, and nothing else. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA rented warehouse interior at night, cast-free. Bare grey concrete runs back to a shut roller door at the rear, empty steel shelving lines the right wall, high dusty windows sit black above, and one work lamp on a tripod stands stage-left throwing a hard pool of light across the floor. The lit pool lies centre and near and everything past its edge stands unlit. Every wall face, pallet wrap and carton side stands completely blank and unlettered. Palette: cold concrete grey, warm amber lamp pool, brown board, charcoal dark. Standing in that pool, large and high in frame, are three shrink-wrapped pallets of sealed brown cartons, stranded alone in the middle of a large dark room.",
+    "payload": "A rented warehouse interior at night, cast-free. Bare grey concrete runs back to a shut roller door at the rear, empty steel shelving lines the right wall, high dusty windows sit black above, and one work lamp on a tripod stands stage-left throwing a hard pool of light across the floor. The lit pool lies centre and near and everything past its edge stands unlit. Every wall face, pallet wrap and carton side stands completely blank and unlettered. Palette: cold concrete grey, warm amber lamp pool, brown board, charcoal dark. Standing in that pool, large and high in frame, are three shrink-wrapped pallets of sealed brown cartons, stranded alone in the middle of a large dark room.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor"
+  },
+  {
+    "name": "L28",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE DISCIPLINE, and nothing else. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA disk-drive assembly floor, cast-free, wide static eye-level from the aisle. Two long workbenches recede stage-right laid out with beige drive shells, screwdrivers and trays of small parts; steel shelving lines the left wall stacked with flat cartons; a shut roll-up shipping door closes the rear wall; fluorescent tubes run overhead and the concrete floor is sealed and pale. Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left. Palette: beige, steel grey, cool white tube light. Above the floor entrance stage-left, a broad plank board carries 'MINISCRIBE'.",
+    "payload": "A disk-drive assembly floor, cast-free, wide static eye-level from the aisle. Two long workbenches recede stage-right laid out with beige drive shells, screwdrivers and trays of small parts; steel shelving lines the left wall stacked with flat cartons; a shut roll-up shipping door closes the rear wall; fluorescent tubes run overhead and the concrete floor is sealed and pale. Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left. Palette: beige, steel grey, cool white tube light. Above the floor entrance stage-left, a broad plank board carries 'MINISCRIBE'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  },
+  {
+    "name": "L63",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE DISCIPLINE, and nothing else. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA first-floor office in Los Angeles at midday, cast-free. A broad walnut desk stands angled to a wall of venetian-blinded windows stage-right, its swivel chair pushed back and empty, hot flat light coming through the slats in hard bars across the carpet. A low filing cabinet with a fern on it closes the wall stage-left, a black telephone and a wire tray sit on the desk, and the door in the background wall stands shut with its glass panel plain and unlettered. Framing: wide static from the doorway, the empty chair centre and the blind wall filling stage-right. Palette: warm walnut, cream blind slats, hot white daylight, olive carpet. Through the slats a line of palms stands against a flat pale sky.",
+    "payload": "A first-floor office in Los Angeles at midday, cast-free. A broad walnut desk stands angled to a wall of venetian-blinded windows stage-right, its swivel chair pushed back and empty, hot flat light coming through the slats in hard bars across the carpet. A low filing cabinet with a fern on it closes the wall stage-left, a black telephone and a wire tray sit on the desk, and the door in the background wall stands shut with its glass panel plain and unlettered. Framing: wide static from the doorway, the empty chair centre and the blind wall filling stage-right. Palette: warm walnut, cream blind slats, hot white daylight, olive carpet. Through the slats a line of palms stands against a flat pale sky.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor"
+  },
+  {
+    "name": "L71",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nA long boardroom table runs away down the centre of the frame in a windowless meeting room. A crowd of managers is seated along both far sides of it with folders shut in front of them and their chairs drawn in; at the far end two of them are up on their feet, standing clear of their chairs with their hands at their sides while every seated head stays turned to the table. The walls are plain painted plaster carrying nothing, a row of pendant shades hangs down the table's length, and the door at the far end stands shut. Framing: wide one-point view straight down the table from its near end. Palette: dark table timber, drained shirt white, cream plaster, cold pendant light.",
+    "payload": "A long boardroom table runs away down the centre of the frame in a windowless meeting room. A crowd of managers is seated along both far sides of it with folders shut in front of them and their chairs drawn in; at the far end two of them are up on their feet, standing clear of their chairs with their hands at their sides while every seated head stays turned to the table. The walls are plain painted plaster carrying nothing, a row of pendant shades hangs down the table's length, and the door at the far end stands shut. Framing: wide one-point view straight down the table from its near end. Palette: dark table timber, drained shirt white, cream plaster, cold pendant light.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L113",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE DISCIPLINE, and nothing else. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA brick company's open yard on a flat plain, cast-free. Long ranks of red clay bricks stand banded into shoulder-high stacks running away in rows toward a low open-fronted drying shed, a yard crane on rails stands over the nearest rank, a flat steel trolley waits empty in the roadway between two stacks, and the ground is packed red dust. Framing: wide static at eye level down the roadway, the stacks filling the lower two-thirds under a wide pale sky. Palette: brick red, packed red dust, weathered grey timber, pale sky. A broad plank board over the yard gate stage-left carries 'COLORADO BRICK'.",
+    "payload": "A brick company's open yard on a flat plain, cast-free. Long ranks of red clay bricks stand banded into shoulder-high stacks running away in rows toward a low open-fronted drying shed, a yard crane on rails stands over the nearest rank, a flat steel trolley waits empty in the roadway between two stacks, and the ground is packed red dust. Framing: wide static at eye level down the roadway, the stacks filling the lower two-thirds under a wide pale sky. Palette: brick red, packed red dust, weathered grey timber, pale sky. A broad plank board over the yard gate stage-left carries 'COLORADO BRICK'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  },
+  {
+    "name": "L172",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nA newspaper newsroom at night, cast-free. Rows of wooden desks run away down the room with a typewriter and a shaded lamp on each, a crowd of reporters works the far side of the desk run with their heads down, and a bank of pigeonholes and a rail of hanging galley proofs stand behind them. On the near desk in the foreground one black telephone lies lifted off its cradle with the receiver laid flat on a spiral pad, the pad's lines blank and unlettered, and the desk lamp lit over it. Every board and proof surface in the room stands plain and unlettered. Framing: medium-wide at desk height down the desk run, the lifted receiver near and large stage-right. Palette: warm lamp amber, night window black, dull green desk metal, buff paper.",
+    "payload": "A newspaper newsroom at night, cast-free. Rows of wooden desks run away down the room with a typewriter and a shaded lamp on each, a crowd of reporters works the far side of the desk run with their heads down, and a bank of pigeonholes and a rail of hanging galley proofs stand behind them. On the near desk in the foreground one black telephone lies lifted off its cradle with the receiver laid flat on a spiral pad, the pad's lines blank and unlettered, and the desk lamp lit over it. Every board and proof surface in the room stands plain and unlettered. Framing: medium-wide at desk height down the desk run, the lifted receiver near and large stage-right. Palette: warm lamp amber, night window black, dull green desk metal, buff paper.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L196",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE DISCIPLINE, and nothing else. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA plain courtroom in cold morning light, cast-free. The jury box beyond the rail stands empty with both its rows of seats bare and the rail in front of it clear along its whole length, the raised bench above stands empty with its chair pushed right back, two counsel tables face it across a boarded floor, and panelled walls run up to tall sash windows stage-right. Every nameplate along the bench face and every board on the side wall stands blank and unlettered. Framing: wide static at chest height from the gallery rail, the empty box stage-left and the bench centre with the bare floor running out to both edges. Palette: warm oak brown, cold window daylight, pale plaster, black leather seat. A wall calendar block hangs beside the side door lettered '1992'.",
+    "payload": "A plain courtroom in cold morning light, cast-free. The jury box beyond the rail stands empty with both its rows of seats bare and the rail in front of it clear along its whole length, the raised bench above stands empty with its chair pushed right back, two counsel tables face it across a boarded floor, and panelled walls run up to tall sash windows stage-right. Every nameplate along the bench face and every board on the side wall stands blank and unlettered. Framing: wide static at chest height from the gallery rail, the empty box stage-left and the bench centre with the bare floor running out to both edges. Palette: warm oak brown, cold window daylight, pale plaster, black leather seat. A wall calendar block hangs beside the side door lettered '1992'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  }
+]

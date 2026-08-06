@@ -1,0 +1,11 @@
+  [1/7] L03: START provider call
+  [1/7] L03: OK -> _staging/L03.png
+  [2/7] L28: START provider call
+  [2/7] L28: OK -> _staging/L28.png
+  [3/7] L63: START provider call
+  [3/7] L63: OK -> _staging/L63.png
+  [4/7] L71: START provider call
+  [4/7] L71: OK -> _staging/L71.png
+  [5/7] L113: START provider call
+  [5/7] L113: ERR Remote end closed connection without response
+  [6/7] L172: START provider call

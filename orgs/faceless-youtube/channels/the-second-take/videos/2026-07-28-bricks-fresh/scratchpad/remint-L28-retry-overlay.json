@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L28",
+      "name": "L28-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "Framing: wide from the aisle, the benches stage-right and the floor entrance stage-left.",
+        "to": "Framing: wide static from the aisle with the camera held strictly at standing EYE LEVEL - not elevated, no high or bird's-eye angle, no downward tilt, and never looking down the bench line from above; the bench tops read edge-on as thin horizontal lines rather than as open surfaces seen from above, and the floor occupies only the lower band of the frame, the benches stage-right and the floor entrance stage-left. Draw every edge in the register's even MEDIUM-THICK dark warm brown-black (#241a12) outline throughout, the same weight on near and far objects alike - no thin hairline strokes, no fine cool-grey or silver linework, no unoutlined shapes."
+      }
+    }
+  ]
+}
