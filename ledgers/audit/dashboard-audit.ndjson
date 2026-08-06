@@ -127,3 +127,4 @@
 {"ts":"2026-08-05T23:04:17.718Z","action":"pty-open","owner":"operator","result":"opened","detail":{"sessionId":"pty-1785971057701-1","spawn":"workflow","workflowRef":"video-run","sessionRunRef":"srun-03df8a67-4cfb-42ae-bfe1-a73f40882603"}}
 {"ts":"2026-08-05T23:10:39.485Z","action":"auth","owner":"operator","result":"login"}
 {"ts":"2026-08-05T23:11:14.995Z","action":"pty-open","owner":"operator","result":"opened","detail":{"sessionId":"pty-1785971474971-2","spawn":"agent","agentId":"fyt-checker","sessionRunRef":"srun-e5887543-586e-4f43-b421-afdf8f4b9d95"}}
+{"ts":"2026-08-06T04:32:59.142Z","action":"auth","owner":"operator","result":"login"}
