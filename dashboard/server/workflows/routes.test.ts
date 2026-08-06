@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, existsSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync, cpSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,13 @@ import { createProviderIdProtector } from '../composer/protector.ts';
 import type { AuditEvent } from '../audit/log.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import { parseWorkflowDef } from './defs.ts';
-import { registerWorkflows } from './routes.ts';
+import {
+  declaredWorkflowDefPath,
+  registerWorkflows,
+  resetWorkflowRosterCache,
+  scanWorkflowDefs,
+  workflowPrimingText,
+} from './routes.ts';
 import { createFileAssignmentAmendmentStore, createInMemoryAssignmentAmendmentStore } from './amendmentStore.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('workflow-route-test-secret-32byte!'), ttlMs: 60_000 };
@@ -822,5 +828,164 @@ describe('workflow assignment amendment route', () => {
     const response = await amendGovernance(await governanceInput());
     expect(response.statusCode).toBe(502);
     expect(response.json()).toMatchObject({ error: 'governance-durable-route-incomplete', committed: true, pushed: true });
+  });
+});
+
+/**
+ * DEFAULT ASSIGNMENT projection + the workflow-definition path ALLOWLIST.
+ *
+ * These exercise the scan/allowlist exports directly against a scratch repo root, so no HTTP, control
+ * store, or git seam is involved and no assertion depends on this checkout's own workflow tree.
+ */
+describe('workflow default assignments + declaredWorkflowDefPath allowlist', () => {
+  let repoRoot: string;
+
+  function writeDef(project: string, name: string, text: string): void {
+    const dir = join(repoRoot, 'orgs', project, 'workflows');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${name}.md`), text, 'utf8');
+  }
+
+  function writeAgentDecl(id: string, lines: string[]): void {
+    const dir = join(repoRoot, 'agents');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${id}.md`), ['---', `id: ${id}`, ...lines, '---', 'Bounded declaration.', ''].join('\n'), 'utf8');
+  }
+
+  /** A definition whose ONLY assignment signal is its governance chain — the shape of the real defs. */
+  function governedDef(id: string, project: string): string {
+    return [
+      '---', `id: ${id}`, `project: ${project}`, 'title: Governed run', 'profile: research',
+      'governedBy: chief',
+      'stages:',
+      '  - id: brief', '    title: Write the brief', '    action: research:web-brief',
+      `    target: orgs/${project}/output`, '    workOrder: research it',
+      '  - id: check', '    title: Check the brief', '    action: research:web-check',
+      `    target: orgs/${project}/output`, '    workOrder: check it', '    dependsOn: [brief]',
+      '    governedBy: checker',
+      '---', 'body', '',
+    ].join('\n');
+  }
+
+  const MANAGER_DECL = [
+    'role: manage', 'runtime: claude', 'model: claude-opus-5',
+    'default-profile: manager:claude:claude-opus-5', 'allowed-profiles: [manager:claude:claude-opus-5]',
+    'projects: [kb-ops]', 'runner-bound: true',
+  ];
+  const CHECKER_DECL = [
+    'role: inspect', 'runtime: claude', 'model: claude-sonnet-5',
+    'default-profile: worker:claude:claude-sonnet-5', 'allowed-profiles: [worker:claude:claude-sonnet-5]',
+    'projects: [kb-ops]', 'runner-bound: true',
+  ];
+
+  beforeEach(() => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'kb-workflow-defaults-'));
+    resetWorkflowRosterCache();
+  });
+
+  afterEach(() => {
+    resetWorkflowRosterCache();
+    rmSync(repoRoot, { recursive: true, force: true });
+  });
+
+  it('carries the resolved manager and per-stage default onto the DTO ALONGSIDE the declared fields', () => {
+    writeAgentDecl('chief', MANAGER_DECL);
+    writeAgentDecl('checker', CHECKER_DECL);
+    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
+
+    const entry = scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === 'governed')?.entry;
+    expect(entry?.manager).toBeNull(); // the DECLARED field stays untouched
+    expect(entry?.resolvedManager).toMatchObject({
+      agentId: 'chief', profileId: 'manager:claude:claude-opus-5', source: 'governed-by',
+    });
+    const stages = Object.fromEntries((entry?.stages ?? []).map((stage) => [stage.id, stage]));
+    expect(stages.brief.declaredAssignment).toBeNull();
+    expect(stages.brief.resolvedAssignment).toMatchObject({ agentId: 'chief', source: 'manager-default' });
+    expect(stages.check.declaredAssignment).toBeNull();
+    expect(stages.check.resolvedAssignment).toMatchObject({ agentId: 'checker', source: 'stage-governed-by' });
+  });
+
+  it('resolves an all-null cast for a project with no declared agents, and still scans the def as valid', () => {
+    writeDef('kb-ops', 'orphan', governedDef('orphan', 'kb-ops'));
+    const entry = scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === 'orphan')?.entry;
+    expect(entry?.valid).toBe(true);
+    expect(entry?.resolvedManager).toBeNull();
+    expect((entry?.stages ?? []).map((stage) => stage.resolvedAssignment)).toEqual([null, null]);
+  });
+
+  it('leaves an INVALID definition with resolvedManager null and no resolved stages', () => {
+    writeDef('kb-ops', 'broken', 'not a definition at all\n');
+    const entry = scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === 'kb-ops~broken')?.entry;
+    expect(entry?.valid).toBe(false);
+    expect(entry?.resolvedManager).toBeNull();
+    expect(entry?.stages).toEqual([]);
+  });
+
+  it('accepts an injected roster instead of reading one, and never resolves an UNDECLARED roster entry', () => {
+    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
+    const undeclared = {
+      id: 'chief', displayName: 'chief', shortRef: 1, role: 'manage', working: false, current: null,
+      projects: ['kb-ops'], cardCount: 0, ledger: { dispatches: 0, steps: 0, days: 0, lastActive: null },
+      sources: [], effective: { runtime: 'claude', model: 'claude-opus-5', sourceRuntime: 'policy' as const, sourceModel: 'policy' as const },
+      declared: false, runnerBound: false, declaredRuntime: null, declaredModel: null,
+      defaultProfile: null, allowedProfiles: null, description: null,
+    };
+    const withUndeclared = scanWorkflowDefs(repoRoot, { roster: [undeclared] })
+      .find((candidate) => candidate.entry.ref === 'governed')?.entry;
+    expect(withUndeclared?.resolvedManager).toBeNull();
+
+    const withDeclared = scanWorkflowDefs(repoRoot, { roster: [{ ...undeclared, declared: true }] })
+      .find((candidate) => candidate.entry.ref === 'governed')?.entry;
+    expect(withDeclared?.resolvedManager).toEqual({
+      agentId: 'chief', profileId: null, model: 'claude-opus-5', source: 'governed-by',
+    });
+  });
+
+  it('resolves a known ref to its definition file, rebuilt from the SCAN result and re-asserted in-repo', () => {
+    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
+    const resolved = declaredWorkflowDefPath(repoRoot, 'governed');
+    expect(resolved).not.toBeNull();
+    expect(readFileSync(resolved as string, 'utf8')).toContain('id: governed');
+    expect(realpathSync(resolved as string).startsWith(realpathSync(repoRoot))).toBe(true);
+  });
+
+  it('refuses traversal, empty, non-string, unknown, and invalid-definition refs', () => {
+    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
+    writeDef('kb-ops', 'broken', 'not a definition at all\n');
+    expect(declaredWorkflowDefPath(repoRoot, '../../etc/passwd')).toBeNull();
+    expect(declaredWorkflowDefPath(repoRoot, '..%2f..')).toBeNull();
+    expect(declaredWorkflowDefPath(repoRoot, '../../../orgs/kb-ops/workflows/governed.md')).toBeNull();
+    // Even the definition's own REAL repo-relative path is not a ref: only `entry.ref` resolves.
+    expect(declaredWorkflowDefPath(repoRoot, 'orgs/kb-ops/workflows/governed.md')).toBeNull();
+    expect(declaredWorkflowDefPath(repoRoot, '')).toBeNull();
+    expect(declaredWorkflowDefPath(repoRoot, 42)).toBeNull();
+    expect(declaredWorkflowDefPath(repoRoot, null)).toBeNull();
+    expect(declaredWorkflowDefPath(repoRoot, 'no-such-workflow')).toBeNull();
+    expect(declaredWorkflowDefPath(repoRoot, 'kb-ops~broken')).toBeNull();
+  });
+
+  it('refuses a DUPLICATED id, so neither copy can become a spawn argument', () => {
+    writeDef('kb-ops', 'twin', governedDef('twin', 'kb-ops'));
+    writeDef('faceless-youtube', 'twin', governedDef('twin', 'faceless-youtube'));
+    expect(declaredWorkflowDefPath(repoRoot, 'twin')).toBeNull();
+    expect(declaredWorkflowDefPath(repoRoot, 'kb-ops~twin')).toBeNull();
+  });
+
+  it('renders priming text naming the workflow, its repo-relative path, and the resolved cast', () => {
+    writeAgentDecl('chief', MANAGER_DECL);
+    writeAgentDecl('checker', CHECKER_DECL);
+    writeDef('kb-ops', 'governed', governedDef('governed', 'kb-ops'));
+
+    const primed = workflowPrimingText(repoRoot, 'governed');
+    expect(primed?.repoRelativePath).toBe('orgs/kb-ops/workflows/governed.md');
+    expect(primed?.text).toContain('# Governing agent — workflow: Governed run');
+    expect(primed?.text).toContain('- workflow ref: governed');
+    expect(primed?.text).toContain('- definition (repo-relative): orgs/kb-ops/workflows/governed.md');
+    expect(primed?.text).toContain('[governed-by]');
+    expect(primed?.text).toContain('brief — Write the brief — research:web-brief → chief');
+    expect(primed?.text).toContain('check — Check the brief — research:web-check → checker');
+    expect(primed?.text).toContain('[stage-governed-by]');
+    expect(workflowPrimingText(repoRoot, 'no-such-workflow')).toBeNull();
+    expect(workflowPrimingText(repoRoot, '../../etc/passwd')).toBeNull();
   });
 });

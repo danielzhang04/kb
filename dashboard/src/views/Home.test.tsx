@@ -1,56 +1,33 @@
 // @vitest-environment jsdom
 /**
- * U3 — Home, the default landing rollup. Covers the definition-of-done: KPI tiles render from an index
+ * Home, the default landing rollup. Covers the definition-of-done: four KPI tiles render from an index
  * snapshot; the running/resume hero lists working cards + pending approvals; NO dollar figure appears
- * anywhere (usage, not spend); `onNavigate` fires on row/tile activation; and the governed
- * LaunchControls surface is present + enabled only when a `sessionToken` is supplied.
+ * anywhere (usage, not spend); a row opens its ENTITY through `onNavigateTarget` and falls back to the
+ * destination through `onNavigate`; and the ExecutionUnlock panel (arming PAID execution) stays.
+ *
+ * The launch-form suite is GONE with the form (spec §5): work is launched from its workflow now, and
+ * `LaunchControls` itself is still covered by launchControls.test.tsx + Control.test.tsx.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { Home } from './Home';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { ParsedCard } from '../../server/planeA/cards';
-import type { AgentRosterEntry } from '../../server/agents/roster';
+import type { CardProjection } from '../../server/planeA/cards';
 import type { ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import type { ExecutionPostureDto } from '../control/controlClient';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
 
-/** Build a full roster entry with sane defaults, overriding only the fields a test cares about. */
-function rosterEntry(over: Partial<AgentRosterEntry> & { id: string }): AgentRosterEntry {
-  return {
-    role: null,
-    working: false,
-    current: null,
-    projects: [],
-    cardCount: 0,
-    ledger: { dispatches: 0, steps: 0, days: 0, lastActive: null },
-    sources: [],
-    effective: { runtime: 'claude', model: 'claude-opus-4-8', sourceRuntime: 'policy', sourceModel: 'policy' },
-    declared: false,
-    runnerBound: false,
-    declaredRuntime: null,
-    declaredModel: null,
-    defaultProfile: null,
-    allowedProfiles: null,
-    description: null,
-    ...over,
-  };
+/** Render a locked Home (no stored bearer) — the default for every read-only rollup assertion. */
+function render0(ui: React.ReactElement): ReturnType<typeof render> {
+  return render(<SessionProvider>{ui}</SessionProvider>);
 }
 
-const ROUTING = {
-  policy: {
-    version: 1,
-    runtimes: {
-      claude: { default_worker: 'worker-desktop', aliases: {}, known_models: ['claude-opus-4-8'] },
-      codex: { default_worker: 'codex-worker', aliases: {}, known_models: ['gpt-5-codex'] },
-    },
-    matrix: {},
-    role_default: null,
-  },
-  agents: [],
-  cards: {},
-  audit: { mismatches: [], overrides: [] },
-  overrides: [],
-};
+/** The app's ONE unlock, driven from a test: a stored bearer (already unlocked) and an injected ceremony. */
+function withSession(ui: React.ReactElement, opts: { stored?: string; signIn?: () => Promise<Session> } = {}): React.ReactElement {
+  if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider deps={opts.signIn ? { signIn: opts.signIn } : undefined}>{ui}</SessionProvider>;
+}
 
 const LOCKED_EXECUTION: ExecutionPostureDto = {
   state: 'locked',
@@ -73,10 +50,15 @@ function executionClient(posture: ExecutionPostureDto): ExecutionUnlockClient {
   };
 }
 
-function card(id: string, owner: string | null, state: string, tier = 'T1'): ParsedCard {
+/** A card as the server projects it: `displayName` is the card's action (planeA/cards.ts#cardTitle),
+ *  which is what the resume rows render — the raw id never appears as text. */
+function card(id: string, owner: string | null, state: string, tier = 'T1'): CardProjection {
+  const action = `demo:${id}`;
   return {
-    meta: { id, project: 'kb', action: 'demo', target: 'docs/x.md', 'risk-tier': tier, owner, state },
+    meta: { id, project: 'kb', action, target: 'docs/x.md', 'risk-tier': tier, owner, state },
     body: '',
+    displayName: action,
+    shortRef: 1,
   };
 }
 
@@ -110,12 +92,13 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  clearStoredSession();
   vi.unstubAllGlobals();
 });
 
 describe('Home view — KPI tiles', () => {
   it('renders KPI tiles from an index snapshot', () => {
-    render(<Home snapshot={SNAPSHOT} />);
+    render0(<Home snapshot={SNAPSHOT} />);
 
     // Two distinct card owners across all buckets → 2 agents.
     expect(screen.getByTestId('kpi-agents').textContent).toContain('2');
@@ -123,29 +106,34 @@ describe('Home view — KPI tiles', () => {
     expect(screen.getByTestId('kpi-running').textContent).toContain('2');
     // One card in `approvals` → waiting 1.
     expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
-    // One blocked, one queued (inbox), three ledger steps.
     expect(screen.getByTestId('kpi-blocked').textContent).toContain('1');
-    expect(screen.getByTestId('kpi-queued').textContent).toContain('1');
-    expect(screen.getByTestId('kpi-steps').textContent).toContain('3');
+    // FOUR tiles only: `queued` and `steps` are gone — a queued count is not something acted on here,
+    // and the step count is the Usage panel's first number.
+    expect(screen.queryByTestId('kpi-queued')).toBeNull();
+    expect(screen.queryByTestId('kpi-steps')).toBeNull();
   });
 });
 
 describe('Home view — running / resume hero', () => {
   it('lists working cards and the pending-approval in the resume panel', () => {
-    render(<Home snapshot={SNAPSHOT} />);
+    render0(<Home snapshot={SNAPSHOT} />);
     const resume = screen.getByTestId('home-resume');
 
-    expect(resume.textContent).toContain('id-work-1');
-    expect(resume.textContent).toContain('id-work-2');
+    // Rows name the card; the raw id is never rendered as text.
+    expect(resume.textContent).toContain('demo:id-work-1');
+    expect(resume.textContent).toContain('demo:id-work-2');
+    // The canonical id is reachable only through EntityName's tooltip, never as row text.
+    expect([...resume.querySelectorAll('[data-testid="entity-name"]')].map((n) => n.getAttribute('title')))
+      .toContain('id-work-1');
     // The approval waiting on a signature is surfaced here too.
-    expect(resume.textContent).toContain('id-appr-1');
+    expect(resume.textContent).toContain('demo:id-appr-1');
     // Project STATE one-liner is reconstructed for resume.
     expect(resume.textContent).toContain('demo');
     expect(resume.textContent).toContain('Building the Plane-A indexer.');
   });
 
   it('shows calm empty states when nothing is running or pending', () => {
-    render(<Home snapshot={{ ...SNAPSHOT, cards: {} }} />);
+    render0(<Home snapshot={{ ...SNAPSHOT, cards: {} }} />);
     const resume = screen.getByTestId('home-resume');
     expect(resume.textContent).toMatch(/Nothing running/i);
     // Legitimately empty: `cards: {}` means there is genuinely nothing for the operator anywhere.
@@ -162,22 +150,24 @@ describe('Home view — running / resume hero', () => {
  * These snapshots contain NOTHING in `approvals`, so the old state-keyed code renders 0 and the false
  * empty state; every assertion below fails against it.
  */
-function gate(id: string, action: string, owner: string | null = 'human-operator', tier = 'T3'): ParsedCard {
+function gate(id: string, action: string, owner: string | null = 'human-operator', tier = 'T3'): CardProjection {
   return {
     meta: { id, project: 'kb', action, target: '.', 'risk-tier': tier, owner, state: 'inbox' },
     body: '## Work order\n\nClear the gate.\n',
+    displayName: action,
+    shortRef: 1,
   };
 }
 
-function snapshotOf(cards: ParsedCard[]): PlaneAIndex {
-  const grouped: Record<string, ParsedCard[]> = {};
+function snapshotOf(cards: CardProjection[]): PlaneAIndex {
+  const grouped: Record<string, CardProjection[]> = {};
   for (const value of cards) (grouped[String(value.meta.state)] ??= []).push(value);
   return { ...SNAPSHOT, cards: grouped, orgStates: [] };
 }
 
 describe('Home view — counts who must act, not card state', () => {
   it('counts human-operator inbox gates in the waiting KPI even with an empty approvals bucket', () => {
-    render(<Home snapshot={snapshotOf([
+    render0(<Home snapshot={snapshotOf([
       gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
       gate('6a5d6b23-05204b15', 'approve:oauth-gate-g2'),
       gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
@@ -188,23 +178,23 @@ describe('Home view — counts who must act, not card state', () => {
 
   it('counts a gate on the owner limb alone', () => {
     // `decide:*` matches no other predicate — only `owner: human-operator` can surface it.
-    render(<Home snapshot={snapshotOf([gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing')])} />);
+    render0(<Home snapshot={snapshotOf([gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing')])} />);
     expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
   });
 
   it('counts a gate on the approve:* limb alone, with an agent owner', () => {
-    render(<Home snapshot={snapshotOf([gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1', 'codex-worker')])} />);
+    render0(<Home snapshot={snapshotOf([gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1', 'codex-worker')])} />);
     expect(screen.getByTestId('kpi-approvals').textContent).toContain('1');
   });
 
   it('lists the gates in the resume hero and never claims nothing is waiting', () => {
-    render(<Home snapshot={snapshotOf([
+    render0(<Home snapshot={snapshotOf([
       gate('6a5d6b23-12ddfee2', 'approve:oauth-gate-g1'),
       gate('6a5e482a-3b8707b5', 'decide:budget-gate-measures-nothing'),
     ])} />);
     const resume = screen.getByTestId('home-resume');
 
-    expect(resume.textContent).toContain('6a5d6b23-12ddfee2');
+    expect(resume.textContent).not.toContain('6a5d6b23-12ddfee2');
     expect(resume.textContent).toContain('approve:oauth-gate-g1');
     expect(resume.textContent).toContain('decide:budget-gate-measures-nothing');
     // The false empty state must be impossible while anything at all awaits the human.
@@ -215,7 +205,7 @@ describe('Home view — counts who must act, not card state', () => {
 
 describe('Home view — usage, never spend', () => {
   it('surfaces model mix but never renders a dollar figure anywhere', () => {
-    const { container } = render(<Home snapshot={SNAPSHOT} />);
+    const { container } = render0(<Home snapshot={SNAPSHOT} />);
 
     const usage = screen.getByTestId('home-usage');
     expect(usage.textContent).toContain('claude-sonnet-5');
@@ -230,143 +220,53 @@ describe('Home view — usage, never spend', () => {
 describe('Home view — navigation', () => {
   it('fires onNavigate with the entity id when a running row is activated', () => {
     const onNavigate = vi.fn();
-    render(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
+    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Open id-work-1 in tasks/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Open demo:id-work-1/i }));
     expect(onNavigate).toHaveBeenCalledWith('tasks');
+  });
+
+  it('opens the exact CARD when a deep-link handler is wired, not just its destination', () => {
+    const onNavigate = vi.fn();
+    const onNavigateTarget = vi.fn();
+    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} onNavigateTarget={onNavigateTarget} />);
+
+    // spec §5 — a waiting-on-you row lands on the card that needs the operator, with its work order.
+    fireEvent.click(screen.getByRole('button', { name: /Open demo:id-appr-1/i }));
+    expect(onNavigateTarget).toHaveBeenCalledWith({ view: 'tasks', focus: { kind: 'card', id: 'id-appr-1' } });
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it('renders a row name exactly once — the name column and the detail column are not the same text', () => {
+    render0(<Home snapshot={SNAPSHOT} />);
+    const row = screen.getByRole('button', { name: /Open demo:id-work-1/i });
+    expect(row.textContent?.match(/demo:id-work-1/g)).toHaveLength(1);
+    // The second column carries what the card ACTS ON, which is a different fact.
+    expect(row.textContent).toContain('docs/x.md');
   });
 
   it('fires onNavigate to approvals from the Waiting KPI tile', () => {
     const onNavigate = vi.fn();
-    render(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
+    render0(<Home snapshot={SNAPSHOT} onNavigate={onNavigate} />);
 
     fireEvent.click(screen.getByTestId('kpi-approvals'));
     expect(onNavigate).toHaveBeenCalledWith('approvals');
   });
 });
 
-describe('Home view — launch surface', () => {
-  it('renders the LaunchControls surface, disabled until a sessionToken is provided', () => {
-    render(<Home snapshot={SNAPSHOT} />);
+describe('Home view — execution status stays', () => {
+  it('keeps the execution panel and has no launch form beside it', async () => {
+    render(withSession(
+      <Home snapshot={SNAPSHOT} executionClient={executionClient(LOCKED_EXECUTION)} />,
+      { stored: 'fake-session-token' },
+    ));
 
-    expect(screen.getByTestId('home-launch')).toBeTruthy();
-    // Fail-closed pre-session: the Launch button is present but disabled.
-    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByLabelText('Launch card')).toBeTruthy();
-  });
-
-  it('keeps Launch disabled until execution is explicitly unlocked with a passkey', async () => {
-    const client = executionClient(LOCKED_EXECUTION);
-    const view = render(<Home snapshot={SNAPSHOT} sessionToken="fake-session-token" executionClient={client} />);
-
-    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
-    const unlock = await screen.findByRole('button', { name: 'Unlock execution' });
-    expect(launch.disabled).toBe(true);
-
-    fireEvent.submit(screen.getByLabelText('Launch card'));
-    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
-    expect(vi.mocked(globalThis.fetch).mock.calls.some(([url]) => url === '/api/write/launch')).toBe(false);
-
-    fireEvent.click(unlock);
-    await waitFor(() => expect(launch.disabled).toBe(false));
-    expect(client.unlock).toHaveBeenCalledWith('fake-session-token');
-
-    // An unlock belongs to the bearer that completed it. A replacement session must fail closed while
-    // its own posture is loading; it cannot inherit the prior session's local ready state.
-    view.rerender(<Home snapshot={SNAPSHOT} sessionToken="replacement-token" executionClient={client} />);
-    expect(launch.disabled).toBe(true);
-  });
-
-  it('never releases the launch token for a malformed passkey posture', async () => {
-    const malformed = {
-      ...PASSKEY_EXECUTION,
-      unlockedAt: '1',
-    } as ExecutionPostureDto;
-    render(
-      <Home
-        snapshot={SNAPSHOT}
-        sessionToken="fake-session-token"
-        executionClient={executionClient(malformed)}
-      />,
-    );
-
-    expect(await screen.findByRole('alert')).toHaveProperty(
-      'textContent',
-      'Execution state could not be loaded. Execution remains unavailable.',
-    );
-    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it('POSTs a launch request with a bearer token, and never calls fetch on a signed-out submit', () => {
-    // Signed out with no mint capability: submitting must NOT fetch a launch — it just surfaces the
-    // sign-in nudge. (No session + no onRequestSession → the owner picker also issues no roster fetch.)
-    const fetchMock = vi.fn(() => new Promise(() => {}));
-    vi.stubGlobal('fetch', fetchMock);
-    render(<Home snapshot={SNAPSHOT} />);
-
-    fireEvent.submit(screen.getByLabelText('Launch card'));
-    expect(screen.getByTestId('launch-status').textContent).toMatch(/sign in with your passkey/i);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  // C7.8 — the host wires the LIVE roster into the owner picker: it fetches /api/agents + /api/routing,
-  // maps them to the assignable set (declared agents ∪ registered default_workers), and passes them in.
-  // Selecting an owner threads it into the governed launch POST body.
-  it('populates the owner picker from the live roster and threads a chosen owner into the launch POST', async () => {
-    const roster: AgentRosterEntry[] = [
-      // Declared + runner-bound → a plain assignable option.
-      rosterEntry({ id: 'claude-m1', declared: true, runnerBound: true }),
-      // Declared but no runner yet → still assignable, shown with the "(no runner)" warning affordance.
-      rosterEntry({ id: 'atlas-writer', declared: true, runnerBound: false }),
-      // Owns cards but NOT declared and not a default_worker → NOT assignable (excluded).
-      rosterEntry({ id: 'codex-a', declared: false, runnerBound: false }),
-    ];
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string, init?: RequestInit) => {
-        calls.push({ url, init });
-        if (url === '/api/agents') {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve(roster) } as Response);
-        }
-        if (url === '/api/routing') {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve(ROUTING) } as Response);
-        }
-        if (url === '/api/write/launch') {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve({ cardId: 'c-owned' }) } as Response);
-        }
-        return new Promise(() => {});
-      }),
-    );
-
-    render(
-      <Home
-        snapshot={SNAPSHOT}
-        sessionToken="fake-session-token"
-        executionClient={executionClient(PASSKEY_EXECUTION)}
-      />,
-    );
-
-    const ownerSelect = screen.getByLabelText('Owner') as HTMLSelectElement;
-    // The live roster populates the closed set: declared agents ∪ registered default_workers.
-    await waitFor(() => expect(within(ownerSelect).getByRole('option', { name: 'claude-m1' })).toBeTruthy());
-    expect(within(ownerSelect).getByRole('option', { name: 'atlas-writer (no runner)' })).toBeTruthy();
-    // Registered default_workers surface even without a declaration…
-    expect(within(ownerSelect).getByRole('option', { name: 'worker-desktop' })).toBeTruthy();
-    expect(within(ownerSelect).getByRole('option', { name: 'codex-worker' })).toBeTruthy();
-    // …but a non-declared, non-default_worker card owner does NOT.
-    expect(within(ownerSelect).queryByRole('option', { name: 'codex-a' })).toBeNull();
-
-    await waitFor(() => {
-      expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
-    });
-
-    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'kb' } });
-    fireEvent.change(ownerSelect, { target: { value: 'claude-m1' } });
-    fireEvent.submit(screen.getByLabelText('Launch card'));
-
-    await waitFor(() => expect(screen.getByTestId('launch-status').textContent).toContain('c-owned'));
-    const launchCall = calls.find((c) => c.url === '/api/write/launch');
-    expect(JSON.parse(launchCall?.init?.body as string)).toMatchObject({ project: 'kb', owner: 'claude-m1' });
+    // The panel survives the sweep, but as a STATUS readout. Execution arms with the sign-in, so
+    // there is no unlock button left here for the operator to press a second time.
+    expect(await screen.findByText('Execution armed · passkey')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Unlock execution' })).toBeNull();
+    // The launch/rerun form does not: work is launched from the workflow that owns it.
+    expect(screen.queryByTestId('home-launch')).toBeNull();
+    expect(screen.queryByLabelText('Launch card')).toBeNull();
   });
 });

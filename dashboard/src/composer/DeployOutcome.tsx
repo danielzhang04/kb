@@ -15,8 +15,8 @@
  * No new gate, no new auth, no new audit sink: deploy() rides the already-governed /api/write/* endpoints.
  * `deployImpl` is injectable so the suite drives a fake — no real network, no real server, no real claude.
  */
-import { useCallback, useEffect, useState } from 'react';
-import { SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
+import { useCallback, useState } from 'react';
+import { useSession } from '../lib/sessionContext';
 import { Composer } from './Composer';
 import { deploy as defaultDeploy } from './deploy';
 import type { DeployRefusal, DeployResult, DeploySuccess } from './deploy';
@@ -29,11 +29,6 @@ export interface DeployOutcomeProps {
   onComposerSessionChange?: (session: ComposerSession) => void;
   onRunningChange?: (running: boolean) => void;
   onOpenRun?: (runRef: string) => void;
-  /** WebAuthn session token — forwarded to Composer/ComposerChat and to every deploy() call. */
-  sessionToken?: string;
-  /** Point-of-action passkey mint used by both chat and deploy. The returned token is consumed directly
-   *  for the pending action and cached locally while the parent updates its session state. */
-  onRequestSession?: () => Promise<Session | null>;
   /** Pre-seed the Composer type chip. `idea` (default) is the idea-first entry; entity pickers pass a kind. */
   initialKind?: SeedKind;
   /** Optional out-of-band idea text an entity picker may pre-fill (forwarded to Composer). */
@@ -64,41 +59,20 @@ export function DeployOutcome({
   onComposerSessionChange,
   onRunningChange,
   onOpenRun,
-  sessionToken,
-  onRequestSession,
   initialKind = 'idea',
   ideaText = '',
   onBack,
   deployImpl = defaultDeploy,
 }: DeployOutcomeProps): React.JSX.Element {
+  const { requireSession } = useSession();
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<DeployResult | null>(null);
   const [followUps, setFollowUps] = useState<Record<string, FollowUpState>>({});
-  const [localToken, setLocalToken] = useState<string | undefined>(sessionToken);
 
-  useEffect(() => {
-    if (sessionToken) setLocalToken(sessionToken);
-  }, [sessionToken]);
-
-  useEffect(() => {
-    const invalidate = (): void => setLocalToken(undefined);
-    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-  }, []);
-
+  /** Point-of-action unlock through the app's ONE ceremony; a refusal fails the deploy closed. */
   const resolveToken = useCallback(async (): Promise<string | undefined> => {
-    const existing = sessionToken ?? localToken;
-    if (existing) return existing;
-    if (!onRequestSession) return undefined;
-    try {
-      const session = await onRequestSession();
-      if (!session) return undefined;
-      setLocalToken(session.token);
-      return session.token;
-    } catch {
-      return undefined;
-    }
-  }, [localToken, onRequestSession, sessionToken]);
+    return (await requireSession())?.token;
+  }, [requireSession]);
 
   // Primary deploy: hand the validated plan to the governed dispatcher and store the outcome. Resetting
   // the follow-up map on each primary keeps a re-deploy's offered saves in sync with the fresh result.
@@ -155,8 +129,6 @@ export function DeployOutcome({
       onComposerSessionChange={onComposerSessionChange}
       onRunningChange={onRunningChange}
       onOpenRun={onOpenRun}
-      sessionToken={sessionToken}
-      onRequestSession={onRequestSession}
       initialKind={initialKind}
       ideaText={ideaText}
       onBack={onBack}
@@ -173,11 +145,7 @@ export function DeployOutcome({
         </>
       }
       renderProposalReview={composerSession ? (
-        <ProposalReviewPanel
-          composerSession={composerSession}
-          sessionToken={sessionToken ?? localToken}
-          onRequestSession={onRequestSession}
-        />
+        <ProposalReviewPanel composerSession={composerSession} />
       ) : null}
     />
   );

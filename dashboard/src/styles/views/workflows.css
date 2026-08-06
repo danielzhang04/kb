@@ -2,10 +2,11 @@
  * ============================================================================
  * WORKFLOWS view (U3) — registered reusable definition artifacts
  * ============================================================================
- * The designed EMPTY state is the centrepiece (the live repo has no workflows/
- * registry yet), so it reads calm and explanatory — never an error. A dense
- * table renders when workflows exist; a small note points launched queue-card
- * dependency graphs to the separate Runs view.
+ * The EMPTY state is a quiet sentence (the live repo may have no workflows/
+ * registry yet) — calm and explanatory, never an error and never a big
+ * placeholder card. A dense table renders when workflows exist, keyed on the
+ * workflow name and what its runs are doing — never on a file path. The table
+ * shell/header/row rhythm is the shared .mc-table geometry in app.css.
  *
  * Tokens only (docs/design-brief.md §A–F); dark default, light remap carries
  * via var(). Signature: hairline borders, mono tabular-nums for ids/paths, one
@@ -31,105 +32,46 @@
 
 .v-workflows__title {
   margin: 0;
-  font-size: var(--text-xl);
-  font-weight: 600;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
   line-height: 1.2;
 }
 
-.v-workflows__lede {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
-}
-
-/* ---- Designed empty state (calm, explanatory — never an error) --------- */
+/* ---- Empty state — a quiet sentence, not a placeholder card. It used to be a 32px-padded bordered
+ * panel; nothing-here is not an event, so it now reads as calm prose in the page's own rhythm. ---- */
 .v-workflows__empty {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-8);
   max-width: 46rem;
 }
 
 .v-workflows__empty-title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--fg-primary);
-}
-
-.v-workflows__empty-body {
-  margin: 0 0 var(--space-3);
-  font-size: var(--text-base);
-  line-height: 1.6;
+  margin: 0 0 var(--space-1);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
   color: var(--fg-dim);
 }
 
+.v-workflows__empty-body {
+  margin: 0 0 var(--space-2);
+  font-size: var(--type-meta-size);
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
 .v-workflows__empty-body code {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.05em 0.35em;
-  color: var(--fg-primary);
+  color: var(--fg-dim);
 }
 
-.v-workflows__empty-sub {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--fg-faint);
-}
-
-/* ---- Populated: dense table ------------------------------------------- */
-.v-workflows__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-base);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.v-workflows__table thead th {
-  padding: var(--space-1) var(--space-2);
-  text-align: left;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 600;
-  color: var(--fg-faint);
-  border-bottom: 1px solid var(--border);
-}
-
-.v-workflows__row {
-  transition: background 160ms ease-out;
-}
-
-.v-workflows__row td {
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-
-.v-workflows__row:last-child td {
-  border-bottom: none;
-}
-
-.v-workflows__row:hover {
-  background: var(--bg-elevated);
-}
-
+/* ---- Populated: the shared .mc-table / .mc-table--boxed geometry (app.css) carries the shell, the
+ * header style, the row height and the cell padding. Only the workflow-specific cells live here. ---- */
 .v-workflows__cell-id {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-primary);
   white-space: nowrap;
-}
-
-.v-workflows__cell-path {
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
-  word-break: break-all;
 }
 
 /* Workflow name (primary) + its mono id (secondary, only shown when it differs from the name). */
@@ -143,76 +85,84 @@
   display: inline-flex;
   align-items: baseline;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  margin-left: calc(-1 * var(--space-2));
-  border: 1px solid transparent;
-  border-left: 2px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: color 150ms ease-out, border-color 150ms ease-out;
-}
-
-.v-workflows__open:hover {
-  border-left-color: var(--accent-strong);
-}
-
-.v-workflows__open:focus-visible {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: -1px;
-}
-
-.v-workflows__wf-id {
-  margin-left: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-}
-
-.v-workflows__cell-status {
-  white-space: nowrap;
 }
 
 .v-workflows__status-label {
-  margin-left: var(--space-2);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
 }
 
-/* ---- Relationship to launched runs ------------------------------------ */
-.v-workflows__runs-note {
-  margin: 0;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-  font-size: var(--text-sm);
-  line-height: 1.5;
+/* ---- Run columns ------------------------------------------------------- */
+.v-workflows__cell-latest,
+.v-workflows__cell-counts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  font-size: var(--type-meta-size);
+}
+
+.v-workflows__muted { color: var(--fg-faint); font-size: var(--type-meta-size); }
+
+/* Amber = the operator is what these runs are waiting for. Data-encoding, not decoration. */
+.v-workflows__needs-you { color: var(--warning); font-size: var(--type-meta-size); }
+
+.v-workflows__live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  font-size: var(--type-meta-size);
+  color: var(--fg-dim);
+}
+
+.v-workflows__flag {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  color: var(--error);
+  font-size: var(--type-meta-size);
+}
+
+/* The launch outcome line, beside the direct-launch button behind the technical fold. */
+.v-workflows__run-status {
   color: var(--fg-faint);
+  font-size: var(--type-meta-size);
 }
 
-.v-workflows__cell-run {
-  min-width: 180px;
+/* The governed direct launch and the inputs a definition declares. It used to be the primary header
+ * action; "Run workflow" is now, and this is the power path behind the fold. */
+.v-workflows__direct-launch {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 
-.v-workflows__run-status,
-.v-workflows__not-runnable {
-  display: block;
-  margin-top: 4px;
-  color: var(--fg-faint);
-  font-size: var(--text-xs);
+/* ---- Runs no workflow owns -------------------------------------------- */
+.v-workflows__adhoc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-/* ---- Agent handoff network ------------------------------------------- */
+/* ---- The workflow graph ------------------------------------------------
+ * The graph IS the surface now, so it gets the full width. The inspector column
+ * it used to sit beside is gone: a node carries its own steps and their pickers,
+ * so nothing is left to inspect elsewhere. */
 .v-workflow-network {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
-  gap: var(--space-4);
   min-width: 0;
 }
 
+/* An EXPLICIT height, not merely a min-height. reactflow's own root element is `height: 100%`, and a
+ * percentage height resolves against the parent's `height` PROPERTY — a `min-height` alone leaves that
+ * indeterminate, so `.react-flow` computed to 0px, `fitView` framed a zero-height box, and every node
+ * landed outside the `overflow: hidden` clip. The graph was fully rendered (15 nodes, 21 edges in the
+ * DOM) and entirely invisible: "nothing to see, nothing to click on". Measured live before/after —
+ * `.react-flow` height 0px -> 734px the moment an explicit height exists.
+ * If you change this, keep a HEIGHT here; min-height alone reintroduces the bug. */
 .v-workflow-network__canvas {
-  min-height: 46rem;
+  height: 46rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -226,7 +176,7 @@
   padding: 0.3rem 0.5rem;
   color: var(--fg-dim);
   background: var(--bg-panel);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   line-height: 1.35;
 }
 
@@ -238,7 +188,7 @@
 .v-workflow-handoff .react-flow__edge-text {
   fill: var(--fg-primary);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
 }
 
 .v-workflow-handoff .react-flow__edge-textbg {
@@ -247,73 +197,161 @@
   stroke-width: 1;
 }
 
-.v-workflow-network__canvas:focus-within,
-.v-workflow-network__inspector:focus-within {
+.v-workflow-network__canvas:focus-within {
   outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }
 
-.v-workflow-network__inspector {
-  min-width: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-}
-
+/* One AGENT card: who it is, what it runs on, the steps it governs, and a folded-away override.
+ *
+ * The width here is the width the layout in `WorkflowAgentGraph.tsx` reasons in
+ * (`AGENT_NODE_WIDTH` = 304px = 19rem). Change one and change the other, or `fitView` frames the
+ * wrong box. Few large cards is the whole point of the agent-keyed graph: the step-keyed one drew
+ * fourteen small boxes and could only fit them by zooming the text down to nothing. */
 .v-workflow-agent {
-  width: 21rem;
-  padding: var(--space-2);
+  width: 19rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
   border: 1px solid var(--border);
   border-left: 2px solid transparent;
   border-radius: var(--radius-md);
   background: var(--bg-panel);
-  cursor: pointer;
 }
 
-.v-workflow-agent--selected { border-left-color: var(--accent-strong); background: var(--accent-quiet); }
-.v-workflow-agent--unassigned { border-style: dashed; }
+/* The agent that runs the whole workflow. Named by its accent rail plus its chip — never by a
+ * second box shape, because an agent that both manages and works is still one agent. */
+.v-workflow-agent--manager { border-left-color: var(--mc-accent); }
+
+/* Nothing resolved for these steps. Quieter than a real cast card, and still a card, not a void. */
+.v-workflow-agent--unresolved { border-style: dashed; background: var(--bg-sunken); }
+
 .v-workflow-agent__handle { opacity: 0; pointer-events: none; }
-.v-workflow-agent__head, .v-workflow-agent__stages, .v-workflows__governance-summary { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
-.v-workflow-agent__head { justify-content: space-between; margin-bottom: var(--space-2); }
-.v-workflow-agent__inspect {
+
+.v-workflow-agent__head {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* The agent's name is the loudest thing on the canvas — it is what the graph is now keyed by. */
+.v-workflow-agent__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--fg-primary);
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
+  line-height: 1.2;
+}
+
+/* What it runs on. An ordinary statement of fact, not a highlight. */
+.v-workflow-agent__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: var(--type-meta-size);
+}
+
+.v-workflow-agent__model { color: var(--fg-dim); overflow-wrap: anywhere; }
+
+/* "default" — the agent was resolved from the file rather than named on these steps. A quiet tag,
+ * never a warning: a resolved default is the normal, wanted case. */
+.v-workflow-agent__default {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-faint);
+  font-size: var(--type-section-size);
+}
+
+/* Nothing resolved. A statement, not a call to action — so no border, no button, no accent. */
+.v-workflow-agent__nobody { margin: 0; }
+
+.v-workflow-agent__open {
+  margin-left: auto;
   border: 0;
   padding: 0.15rem 0.3rem;
   color: var(--fg-dim);
   background: transparent;
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--type-meta-size);
   cursor: pointer;
+  transition: color var(--transition);
 }
-.v-workflow-agent__inspect:hover { color: var(--fg-primary); }
+.v-workflow-agent__open:hover { color: var(--fg-primary); }
+
+/* The steps this agent governs, in pipeline order. Numbered, because the order is the point.
+ * Row height here is `AGENT_STAGE_ROW_HEIGHT` (21px) in the layout — keep them in step. */
+.v-workflow-agent__stages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
 .v-workflow-agent__stage {
-  display: inline-flex;
-  gap: var(--space-1);
-  max-width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.2rem 0.35rem;
-  color: var(--fg-primary);
-  background: var(--bg-elevated);
-  cursor: grab;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-height: 21px;
+  color: var(--fg-secondary);
+  font-size: var(--type-meta-size);
+  line-height: 1.35;
 }
-.v-workflow-agent__stage:focus-visible, .v-workflow-agent__inspect:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
-.v-workflow-agent__stage:active { cursor: grabbing; }
-.v-workflow-network__handoffs { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
-.v-workflow-network__handoffs h5, .v-workflow-network__handoffs p { margin: 0 0 var(--space-1); }
-.v-workflow-network__handoffs .mc-mono { overflow-wrap: anywhere; }
-.v-workflow-network__stage-detail { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
-.v-workflow-network__stage-detail h5, .v-workflow-network__stage-detail p { margin: 0 0 var(--space-1); }
-.v-workflow-network__actions { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; margin-top: var(--space-3); }
-.v-workflows__governance-summary { font-size: var(--text-xs); }
-.v-workflows__governance-summary .entity-chip { white-space: nowrap; }
+
+.v-workflow-agent__stage-index { color: var(--fg-faint); font-size: var(--type-section-size); }
+.v-workflow-agent__stage-title { min-width: 0; overflow-wrap: anywhere; }
+.v-workflow-agent__stages-empty { margin: 0; }
+
+/* The override, folded away. It changes who runs a step, so it stays reachable — and quiet. */
+.v-workflow-agent__override > summary {
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  cursor: pointer;
+  list-style-position: inside;
+}
+.v-workflow-agent__override > summary:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+
+.v-workflow-agent__override-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.v-workflow-agent__override-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--type-section-size);
+  color: var(--fg-dim);
+}
+.v-workflow-agent__override-name { min-width: 0; overflow-wrap: anywhere; }
+.v-workflow-agent__override-row select {
+  max-width: 10rem;
+  font: inherit;
+  font-size: var(--type-section-size);
+  color: var(--fg-dim);
+}
+.v-workflow-agent__unavailable { color: var(--fg-faint); font-size: var(--type-section-size); }
+.v-workflow-agent__open:focus-visible, .v-workflow-network select:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 
 @media (max-width: 820px) {
-  .v-workflow-network { grid-template-columns: 1fr; }
-  .v-workflow-network__canvas { min-height: 25rem; }
+  /* Same contract as the base rule: an explicit height, never a bare min-height. */
+  .v-workflow-network__canvas { height: 25rem; }
   .v-workflow-agent { width: min(19rem, calc(100vw - 5rem)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .v-workflows__row, .v-workflow-agent, .v-workflow-agent__stage { transition: none; }
+  .v-workflows__open { transition: none; }
 }

@@ -5,7 +5,7 @@
  *   1. `security/origin.ts#originPlugin`   — Origin/Host guard (fail-closed: empty allowlist 403s all).
  *   2. `http/middleware.ts#writeRateLimitHook` — sliding-window rate-limit + lockout.
  *
- * then registers the auth / write / vibe / approvals routes onto that scope (each mutating route adds
+ * then registers the auth / write / composer / approvals routes onto that scope (each mutating route adds
  * its own `requireSession` preHandler, so the full chain is origin -> rate-limit -> session -> gate ->
  * audit). `/healthz` and the read-only hub/registry/planeA routes stay OUTSIDE this scope — untouched.
  *
@@ -20,11 +20,10 @@ import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
 import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
 import { resolveCredentials } from '../auth/credentialStore.ts';
-import { makeDefaultWriteRateGuard, writeRateLimitHook } from './middleware.ts';
+import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
-import { registerVibeRoutes } from '../vibe/routes.ts';
 import { registerComposerRoutes } from '../composer/routes.ts';
 import { createResumeRegistry } from '../composer/resumeRegistry.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
@@ -39,6 +38,8 @@ import { buildActivatedExecution, createExecutionLatch } from '../control/activa
 import { createPtyHost } from '../pty/host.ts';
 import type { PtyHost } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
+import { createSessionRunStore } from '../pty/sessionRuns.ts';
+import { createTranscriptRecorder } from '../pty/transcripts.ts';
 import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
@@ -64,12 +65,12 @@ export interface SurfaceActivationSeam {
   env?: Record<string, string | undefined>;
 }
 
-/** Stable, detail-free refusal shared by browser and roster PTY opens at the host boundary. */
+/** Stable, detail-free refusal for manual Terminal PTY opens at the host boundary. */
 export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
 
 /**
  * Put the fleet preamble on the shared host itself, not only on one HTTP route. The browser route may
- * deliberately check twice; the second check closes the gap for roster/session-registry callers that
+ * deliberately check twice; the second check closes the gap for session-registry callers that
  * reach `PtyHost.open` without traversing that route. Construction stays inert: no preamble runs and no
  * shell opens until `open` is actually invoked.
  */
@@ -80,7 +81,7 @@ function fleetGatedPtyHost(host: PtyHost, repoRoot: string, runPreamble: Preambl
         if (!assertFleetRunnable(repoRoot, runPreamble).ok) throw new Error(PTY_OPEN_FLEET_FROZEN);
       } catch {
         // Preamble stdout/stderr can name environment or credential problems. Never surface those details
-        // through a PTY spawn error, audit row, WebSocket close reason, or roster activity message.
+        // through a PTY spawn error, audit row, or WebSocket close reason.
         throw new Error(PTY_OPEN_FLEET_FROZEN);
       }
       return host.open(request);
@@ -118,8 +119,8 @@ export function makeSurfaceContext(
     || overrides.containManagerStart !== undefined
     || overrides.verifyCanonicalResult !== undefined;
   const build = activation.build ?? buildActivatedExecution;
-  // The daemon's single pty stack, shared by `/api/pty` (browser terminals) and the run roster, so a
-  // roster session IS an attachable terminal. Constructing a host spawns nothing; only `open` does.
+  // The daemon's PTY stack belongs exclusively to `/api/pty` browser terminals. Constructing a host
+  // spawns nothing; only `open` does.
   const underlyingPtyHost = overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' });
   const ptyHost = fleetGatedPtyHost(
     underlyingPtyHost,
@@ -127,6 +128,12 @@ export function makeSurfaceContext(
     overrides.runPreamble ?? defaultPreambleRunner,
   );
   const ptySessions = overrides.ptySessions ?? createPersistentSessionRegistry();
+  // Session runs + transcripts (leg 2). Construction is INERT: the store's JSON document is created
+  // lazily and the recorder only touches disk once a session is actually taped, so building a context
+  // — which every server test does — writes nothing. The `live` → `abandoned` boot sweep runs at ROUTE
+  // REGISTRATION instead, the one moment that happens exactly once per daemon boot.
+  const ptySessionRuns = overrides.ptySessionRuns ?? createSessionRunStore(stateRoot);
+  const ptyTranscripts = overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot });
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   const ctx: SurfaceContext = {
     repoRoot,
@@ -136,6 +143,7 @@ export function makeSurfaceContext(
     sessionConfig,
     allowedOrigins: overrides.allowedOrigins ?? resolveAllowedOrigins(),
     rateGuard: overrides.rateGuard ?? makeDefaultWriteRateGuard(),
+    readRateGuard: overrides.readRateGuard ?? makeDefaultReadRateGuard(),
     // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
     // (which the origin guard has already blocked when the allowlist is empty), never at registration.
     webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),
@@ -162,6 +170,8 @@ export function makeSurfaceContext(
     controlStore,
     ptyHost,
     ptySessions,
+    ptySessionRuns,
+    ptyTranscripts,
     // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
     // every control route observes exactly the pre-activation refusals. The latch below rebinds them in
     // place on unlock and clears them on lock.
@@ -170,6 +180,10 @@ export function makeSurfaceContext(
     cancelAutomatic: overrides.cancelAutomatic,
     containManagerStart: overrides.containManagerStart,
     verifyCanonicalResult: overrides.verifyCanonicalResult,
+    // Paid-action execution starts UNBOUND for the same reason as the executor fields above: the latch
+    // binds it on unlock and clears it on lock. A test may inject it directly to exercise the route.
+    paidActionService: overrides.paidActionService,
+    spendGrantStore: overrides.spendGrantStore,
     runControlTransactions: overrides.runControlTransactions ?? new RunControlTransactions(),
     managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs ?? DEFAULT_MANAGER_START_ACK_TIMEOUT_MS,
     triggerRunner: overrides.triggerRunner,
@@ -179,39 +193,36 @@ export function makeSurfaceContext(
     livenessCache: overrides.livenessCache ?? new Map(),
   };
 
-  // The latch owns construction from here on. An explicitly injected latch or roster (tests, or a future
-  // direct wiring) stands as given; when executor fields are injected directly no latch is created at all;
+  // The latch owns construction from here on. An explicitly injected latch stands as given; when
+  // executor fields are injected directly no latch is created at all;
   // otherwise the daemon boots locked — or, with the headless override set, unlocks itself immediately
   // inside `createExecutionLatch`, which is the pre-latch behaviour.
-  if (overrides.rosterSessions !== undefined) ctx.rosterSessions = overrides.rosterSessions;
   if (overrides.executionLatch !== undefined) {
     ctx.executionLatch = overrides.executionLatch;
   } else if (!activationOverridden) {
     ctx.executionLatch = createExecutionLatch({
       build,
       env: activation.env,
-      buildOptions: { controlStore, repoRoot, stateRoot, ptyHost, ptySessions },
+      buildOptions: { controlStore, repoRoot, stateRoot },
       onChange: (execution) => {
         ctx.controlBroker = execution?.controlBroker;
         ctx.runAutomatic = execution?.runAutomatic;
         ctx.cancelAutomatic = execution?.cancelAutomatic;
         ctx.containManagerStart = execution?.containManagerStart;
         ctx.verifyCanonicalResult = execution?.verifyCanonicalResult;
-        ctx.rosterSessions = execution?.rosterSessions;
+        ctx.paidActionService = execution?.paidActionService;
+        ctx.spendGrantStore = execution?.spendGrantStore;
       },
     });
   }
   return ctx;
 }
 
-/** Register the governed write surface (auth + write + vibe + approvals) as one guarded child scope. */
+/** Register the governed write surface (auth + write + composer + approvals) as one guarded child scope. */
 export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext = makeSurfaceContext()): void {
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
   // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
   app.addHook('preClose', async () => {
-    // A shutdown re-locks by construction; retire the roster terminals with it so no agent REPL is
-    // orphaned by a daemon restart.
-    ctx.rosterSessions?.retireAll('daemon shutdown');
     ctx.controlBroker?.drain();
     drainVibeProcesses();
     // Kill any in-flight (possibly network-stalled) coordination git/gh child so shutdown never blocks
@@ -220,12 +231,14 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
   });
   app.register(async (scope) => {
     // Order matters: origin guard first (fail-closed), then the rate-limiter, both as onRequest hooks.
+    // The rate-limiter meters GET/HEAD and mutations against SEPARATE budgets (see middleware.ts):
+    // this scope fronts every governed read the UI polls, and metering those against the 30/min write
+    // budget threw the whole dashboard into a 5-minute lockout under ordinary polling load.
     originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
-    scope.addHook('onRequest', writeRateLimitHook(ctx.rateGuard));
+    scope.addHook('onRequest', surfaceRateLimitHook(ctx.readRateGuard, ctx.rateGuard));
 
     registerAuthRoutes(scope, ctx);
     registerWriteRoutes(scope, ctx);
-    registerVibeRoutes(scope, ctx);
     registerComposerRoutes(scope, ctx);
     registerControlRoutes(scope, ctx);
     registerApprovalsRoutes(scope, ctx);

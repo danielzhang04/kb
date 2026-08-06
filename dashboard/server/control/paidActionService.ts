@@ -20,6 +20,8 @@ export const FYT_GEMINI_2K_IMAGE_COST_USD_MICROS = 134_000;
 /** ElevenLabs Multilingual v2/v3 $0.10/1k characters, reserved conservatively for the whole slice call. */
 export const FYT_LOCKED_TTS_COST_USD_MICROS = 45_000;
 export const FYT_THIN_SLICE_TTS_MAX_CHARACTERS = 450;
+/** Journal-wide absolute floor: thin-slice envelope is $1.40 image + $0.045 tts = $1.445, so $1.50 is the hard floor. */
+export const FYT_PAID_ACTION_GLOBAL_CEILING_USD_MICROS = 1_500_000;
 
 export type PaidActionOperation = 'fyt.gemini-3-pro-image-2k' | 'fyt.elevenlabs.locked-tts';
 export type PaidActionProvider = 'gemini' | 'elevenlabs';
@@ -44,7 +46,7 @@ interface PaidActionDefinition {
 }
 
 /** The server, not a worker request, owns every spend-bearing provider/model/voice dial. */
-const FYT_PAID_ACTION_DEFINITIONS: Readonly<Record<PaidActionOperation, PaidActionDefinition>> = Object.freeze({
+export const FYT_PAID_ACTION_DEFINITIONS: Readonly<Record<PaidActionOperation, PaidActionDefinition>> = Object.freeze({
   'fyt.gemini-3-pro-image-2k': {
     provider: 'gemini',
     stageId: 'images',
@@ -213,6 +215,7 @@ export type PaidActionErrorCode =
   | 'call-out-of-order'
   | 'attempt-in-progress'
   | 'startup-reconciliation-required'
+  | 'artifact-verification-unavailable'
   | 'journal-unavailable';
 
 /** Only stable, non-provider details cross this boundary; never attach a caught provider error. */
@@ -378,13 +381,16 @@ function assertJournal(value: unknown): asserts value is PaidActionJournal {
         || (action.operation === 'fyt.elevenlabs.locked-tts' && action.output.mediaType !== 'audio/mpeg')))) {
       fail('journal-unavailable', 'paid action journal is invalid');
     }
+    // A failed action charged $0 and produced no artifact, so it never holds the path; only
+    // reserved/dispatching/succeeded/unknown claim ownership uniqueness.
+    const ownsArtifact = action.state !== 'failed';
     if (!expectedIdentity || expectedIdentity.ownershipKey !== action.artifactOwnershipKey
-      || seenArtifactOwnershipKeys.has(action.artifactOwnershipKey)
+      || (ownsArtifact && seenArtifactOwnershipKeys.has(action.artifactOwnershipKey))
       || (action.output !== null && action.output.artifactPath !== action.expectedArtifactPath)) {
       fail('journal-unavailable', 'paid action journal is invalid');
     }
     seen.add(action.idempotencyKey);
-    seenArtifactOwnershipKeys.add(action.artifactOwnershipKey);
+    if (ownsArtifact) seenArtifactOwnershipKeys.add(action.artifactOwnershipKey);
   }
 }
 
@@ -715,7 +721,8 @@ export function createPaidActionService(options: PaidActionServiceOptions): {
     if (sequence.some((candidate) => candidate.state === 'reserved' || candidate.state === 'dispatching')) {
       fail('attempt-in-progress', 'the preceding paid action call is still in progress');
     }
-    if (journal.actions.some((candidate) => candidate.artifactOwnershipKey === action.artifactOwnershipKey)) {
+    // A failed action charged $0 and produced no artifact, so it does not permanently own its path.
+    if (journal.actions.some((candidate) => candidate.state !== 'failed' && candidate.artifactOwnershipKey === action.artifactOwnershipKey)) {
       fail('invalid-input', 'expected artifact path is already owned by another paid action');
     }
 
@@ -724,6 +731,15 @@ export function createPaidActionService(options: PaidActionServiceOptions): {
       && candidate.operation === action.input.operation);
     if (exceedsCaps(runUsage, action.reservation, action.definition.perRun) || exceedsCaps(stageUsage, action.reservation, action.definition.perStage)) {
       fail('cap-exhausted', 'paid action cap is exhausted');
+    }
+    // Defense-in-depth absolute floor across ALL runs/stages, using the same spend-consuming rule as
+    // usageFor/stateConsumesSpend (reserved/dispatching/succeeded/unknown consume; failed releases).
+    // Enforced only at reserve time, mirroring how the per-run/per-stage caps work: a validly produced
+    // journal never exceeds it (existing caps admit at most $1.445), so it is deliberately NOT an
+    // assertJournal invariant — a load-time throw would brick reads of an otherwise readable journal.
+    const journalUsage = usageFor(journal.actions, () => true);
+    if (journalUsage.costUsdMicros + action.reservation.costUsdMicros > FYT_PAID_ACTION_GLOBAL_CEILING_USD_MICROS) {
+      fail('cap-exhausted', 'paid action global spend ceiling is exhausted');
     }
     const channelId = 'channelId' in action.input ? action.input.channelId : null;
     const record: PaidActionRecord = {
@@ -780,11 +796,14 @@ export function createPaidActionService(options: PaidActionServiceOptions): {
 
   const replay = async (action: NormalizedAction, record: PaidActionRecord): Promise<PaidActionResult> => {
     if (record.state === 'succeeded' && record.output) {
-      let measured: PaidActionOutputMetadata | null = null;
+      let measured: PaidActionOutputMetadata | null;
       try {
         measured = await options.verifier.verify({ actionRef: record.actionRef, output: structuredClone(record.output) });
       } catch {
-        // A missing/unreadable artifact is indistinguishable from a mismatched one at this boundary.
+        // A THROW is a transient read failure, not evidence the paid artifact is gone. Surface it as a
+        // retryable error and leave the succeeded record (and its charge) untouched — only a RETURNED
+        // null/mismatch is proof the artifact is missing or wrong and downgrades to unknown below.
+        fail('artifact-verification-unavailable', 'paid action artifact verification is temporarily unavailable');
       }
       if (!measured || !isOutputMetadata(measured) || !metadataMatches(measured, record.output)) {
         const unknown = await transition(action, 'succeeded', 'unknown', { unknownReason: 'artifact-verification-failed' });

@@ -3,8 +3,8 @@
  * opens a small popover to pick runtime + model (+ optional TTL) and writes through a GOVERNED endpoint.
  * Endpoint-agnostic: the parent supplies `onApply` / `onClear` (Agents -> routing-override agent scope;
  * Tasks -> card-routing card scope), so this component never calls fetch directly and never chooses a
- * write path. Fail-closed like launchControls: without a session the control is disabled with a nudge;
- * `canAct` is `session || onRequestSession` (the parent resolves the token at point-of-action).
+ * write path. Unlock is point-of-action through the shared session context: the parent's `onApply`/
+ * `onClear` mint if the tab is locked and return a plain refusal when the ceremony is refused.
  *
  * Styling: Claude-dark neutral — mono model ids, provenance as a muted mono tag, semantic status dots
  * only (no decorative accent). No new colors.
@@ -46,8 +46,6 @@ export interface RoutingControlProps {
   registry: Record<string, RuntimeRegistryEntry>;
   /** Effective routing to display in the chip (or an unroutable marker). */
   effective?: EffectiveOrUnroutable | null;
-  /** Whether a session (or point-of-action mint) is available — governs enablement. */
-  canAct: boolean;
   /** Show the TTL selector (agent-scope overrides expire; card-frontmatter overrides do not). */
   ttl?: boolean;
   /** Whether a "clear override" affordance should show (an override/stamp currently exists). */
@@ -86,7 +84,7 @@ function EffectiveChip({ effective }: { effective?: EffectiveOrUnroutable | null
 }
 
 export function RoutingControl(props: RoutingControlProps): React.JSX.Element {
-  const { label, registry, effective, canAct, ttl = false, canClear = false, lockedReason = null, onApply, onClear, testIdPrefix } = props;
+  const { label, registry, effective, ttl = false, canClear = false, lockedReason = null, onApply, onClear, testIdPrefix } = props;
   const runtimeNames = Object.keys(registry);
   const effectiveRuntime = effective && !('unroutable' in effective && effective.unroutable) ? effective.runtime : undefined;
   const initialRuntime = effectiveRuntime && runtimeNames.includes(effectiveRuntime) ? effectiveRuntime : runtimeNames[0] ?? '';
@@ -108,7 +106,7 @@ export function RoutingControl(props: RoutingControlProps): React.JSX.Element {
   }
 
   async function apply(): Promise<void> {
-    if (!canAct || !runtime || !model) return;
+    if (!runtime || !model) return;
     setBusy(true);
     const expires = ttlMs === null ? null : new Date(Date.now() + ttlMs).toISOString();
     const res = await onApply(runtime, model, ttl ? expires : null);
@@ -118,7 +116,7 @@ export function RoutingControl(props: RoutingControlProps): React.JSX.Element {
   }
 
   async function clear(): Promise<void> {
-    if (!canAct || !onClear) return;
+    if (!onClear) return;
     setBusy(true);
     const res = await onClear();
     setBusy(false);
@@ -138,24 +136,20 @@ export function RoutingControl(props: RoutingControlProps): React.JSX.Element {
         aria-label={`Routing for ${label}`}
         aria-haspopup="dialog"
         aria-expanded={open}
-        disabled={!canAct || noRegistry || locked}
-        title={locked ? (lockedReason as string) : canAct ? 'Change routing' : 'Sign in with your passkey to change routing'}
+        disabled={noRegistry || locked}
+        title={locked ? (lockedReason as string) : 'Change routing'}
         onClick={() => setOpen((o) => !o)}
       >
         <EffectiveChip effective={effective} />
       </button>
 
-      {!canAct ? (
-        <span className="v-routing__nudge" data-testid={`${testIdPrefix}-routing-nudge`}>
-          sign in to change
-        </span>
-      ) : locked ? (
+      {locked ? (
         <span className="v-routing__nudge" data-testid={`${testIdPrefix}-routing-locked`}>
           {lockedReason}
         </span>
       ) : null}
 
-      {open && canAct && !locked ? (
+      {open && !locked ? (
         <div className="v-routing__pop mc-panel" role="dialog" aria-label={`Set routing for ${label}`} data-testid={`${testIdPrefix}-routing-pop`}>
           <label className="v-routing__field">
             <span className="v-routing__field-label">runtime</span>

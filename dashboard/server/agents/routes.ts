@@ -10,6 +10,8 @@ import { existsSync, lstatSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { indexRepo } from '../planeA/indexer.ts';
+import { defaultNamingRegistry } from '../naming.ts';
+import type { NamingRegistry } from '../naming.ts';
 import { loadPolicy, loadOverride } from '../routing/policy.ts';
 import { scanWorkflowDefs } from '../workflows/routes.ts';
 import { taskForOwner } from '../runner/trigger.ts';
@@ -147,12 +149,16 @@ export function resolveRepoRoot(): string {
 }
 
 /** Register the read-only agents roster route on the Fastify app. */
-export function registerAgents(app: FastifyInstance, repoRoot: string = resolveRepoRoot()): void {
+export function registerAgents(
+  app: FastifyInstance,
+  repoRoot: string = resolveRepoRoot(),
+  naming: NamingRegistry = defaultNamingRegistry(),
+): void {
   app.get('/api/agents', async () => {
     const policy = loadPolicy(repoRoot);
     const override = loadOverride(repoRoot);
-    const index = indexRepo(repoRoot);
-    return buildRoster(index, repoRoot, policy, override);
+    const index = indexRepo(repoRoot, naming);
+    return buildRoster(index, repoRoot, policy, override, naming);
   });
   app.get('/api/agents/system-workers', async () => readSystemWorkers(repoRoot));
   app.get('/api/agents/:id', async (req, reply) => {

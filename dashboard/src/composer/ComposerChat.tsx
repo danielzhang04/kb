@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { TimelineModel } from '../lib/timelineModel';
-import type { Session } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import { Timeline } from '../views/Timeline';
 import { defaultComposerStream, getComposerSession } from './workspaceClient';
 import type { ComposerSession, ComposerStreamFn } from './workspaceClient';
@@ -9,8 +9,6 @@ import { listRuns, type RunMetadataDto } from '../control/controlClient';
 
 export interface ComposerChatProps {
   composerSession?: ComposerSession;
-  sessionToken?: string;
-  onRequestSession?: () => Promise<Session | null>;
   onSessionChange?: (session: ComposerSession) => void;
   onRunningChange?: (running: boolean) => void;
   stream?: ComposerStreamFn;
@@ -76,18 +74,17 @@ function LiveAssistant({ model }: { model: TimelineModel }): React.JSX.Element {
 /** Workspace-scoped operational chat. Its component stays mounted while its tab is open. */
 export function ComposerChat({
   composerSession = FALLBACK_SESSION,
-  sessionToken,
-  onRequestSession,
   onSessionChange,
   onRunningChange,
   stream = defaultComposerStream,
   onOpenRun,
   fetchImpl = fetch,
 }: ComposerChatProps): React.JSX.Element {
+  const { session, requireSession } = useSession();
+  const token = session?.token;
   const [prompt, setPrompt] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [localToken, setLocalToken] = useState<string | undefined>(sessionToken);
   const [signingIn, setSigningIn] = useState(false);
   const [livePrompt, setLivePrompt] = useState<string | null>(null);
   const [liveModel, setLiveModel] = useState<TimelineModel | null>(null);
@@ -100,10 +97,6 @@ export function ComposerChat({
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
   const [parameterValues, setParameterValues] = useState<Record<string, string>>({});
   const [linkedRuns, setLinkedRuns] = useState<RunMetadataDto[] | null>(null);
-
-  useEffect(() => {
-    if (sessionToken) setLocalToken(sessionToken);
-  }, [sessionToken]);
 
   useEffect(() => { runningObserverRef.current = onRunningChange; }, [onRunningChange]);
 
@@ -133,7 +126,6 @@ export function ComposerChat({
     return () => { alive = false; };
   }, [composerSession.agent, fetchImpl]);
 
-  const token = sessionToken ?? localToken;
   const historicalTurns = useMemo(() => composerSession.turns, [composerSession.turns]);
 
   useEffect(() => {
@@ -145,26 +137,23 @@ export function ComposerChat({
     return () => { alive = false; };
   }, [composerSession.agent, composerSession.composerRef, fetchImpl, token]);
 
+  /** Point-of-action unlock through the app's ONE ceremony; a refusal is reported, never retried in a loop. */
   const resolveToken = useCallback(async (): Promise<string | undefined> => {
     if (token) return token;
-    if (!onRequestSession || signingIn) return undefined;
+    if (signingIn) return undefined;
     setSigningIn(true);
     setError(null);
     try {
-      const next = await onRequestSession();
+      const next = await requireSession();
       if (!next) {
         setError('passkey sign-in failed — no session was created');
         return undefined;
       }
-      setLocalToken(next.token);
       return next.token;
-    } catch {
-      setError('passkey sign-in failed — no session was created');
-      return undefined;
     } finally {
       setSigningIn(false);
     }
-  }, [onRequestSession, signingIn, token]);
+  }, [requireSession, signingIn, token]);
 
   const refresh = useCallback(async (activeToken: string): Promise<void> => {
     if (!onSessionChange || composerSession.composerRef === FALLBACK_SESSION.composerRef) return;

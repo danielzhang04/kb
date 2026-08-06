@@ -4,7 +4,8 @@
  * `src/nav/config.ts`. The groups are UNLABELLED (hairline dividers only — no uppercase group headers,
  * no per-section collapse); a [+ New ▾] menu sits above the first divider with truthful outcome hints.
  * a live item swaps the main content; greyed ("soon") items never become active; a sidebar-wide toggle
- * collapses to an icon rail; the Session/Stop floor is present regardless of the active view.
+ * collapses to an icon rail. The sidebar ENDS at the nav: spec §6 removed the pinned Session/Stop floor,
+ * and the stop controls now live on the Sentinel view.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
@@ -43,7 +44,6 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Atlas',
       'Terminal',
       'Workflows',
-      'Runs',
       'Agents',
       'Tasks',
       'Projects',
@@ -58,10 +58,9 @@ describe('App shell — entity-first sidebar navigation', () => {
 
   it('does not render any dropped verb-IA destination', () => {
     render(<App />);
-    // D3.4 makes `Runs` (stable route id: `pipeline`) and D3.5 makes `Sentinel` real destinations again,
-    // so neither is in the
-    // dropped set any more.
-    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry']) {
+    // D3.5 makes `Sentinel` a real destination again, so it is not in the dropped set. `Runs` and
+    // `Run Canvas` joined that set when runs collapsed into Workflows.
+    for (const dropped of ['Board', 'Editor', 'Vibe', 'Registry', 'Runs', 'Run Canvas']) {
       expect(screen.queryByRole('button', { name: new RegExp(`^${dropped}$`) })).toBeNull();
     }
   });
@@ -72,20 +71,38 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByRole('button', { name: 'Home' }).getAttribute('aria-current')).toBe('page');
   });
 
-  it('pins the Session/Stop floor in the shell, present regardless of the active view', () => {
+  it('carries NO stop floor: the sidebar ends at the nav and the stop controls live on Sentinel', () => {
     render(<App />);
-    expect(screen.getByTestId('stop-floor')).toBeTruthy();
-    // U5.1 — the floor carries a passive session indicator, NOT sign-in/out chrome.
-    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard locked/i);
-    expect(screen.getByRole('button', { name: 'Unlock dashboard' })).toBeTruthy();
-    expect(screen.getByTestId('session-state').textContent).toMatch(/no private key leaves your device/i);
+    // spec §6 — the pinned floor region is gone from the shell entirely: no region, no controls.
+    expect(screen.queryByTestId('stop-floor')).toBeNull();
+    expect(screen.queryByLabelText('Stop floor')).toBeNull();
+    expect(screen.queryByLabelText('Emergency stop')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'STOP everything' })).toBeNull();
+    // Session state left the shell too: the top-bar chip is the app's ONE unlock affordance.
+    expect(screen.queryByTestId('session-state')).toBeNull();
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /sign out/i })).toBeNull();
-    expect(screen.getByLabelText('Stop floor')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
 
+    // Still absent after navigating — it was a shell region, so this proves the region, not a view.
     fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(screen.getByLabelText('Stop floor')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'STOP everything' })).toBeNull();
+
+    // …and reachable in exactly ONE place: the Sentinel view, beside the health readout.
+    fireEvent.click(screen.getByRole('button', { name: 'Sentinel' }));
+    expect(screen.getByLabelText('Emergency stop')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
+  });
+
+  it('carries exactly ONE unlock affordance: the top-bar lock chip', () => {
+    render(<App />);
+    const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
+    expect(chip.textContent).toBe('Unlock');
+    expect(chip.disabled).toBe(false);
+    // No other surface offers an unlock of ANY kind. The execution panel used to carry its own
+    // "Unlock execution" button; execution now arms off this one sign-in (App's ExecutionArmingProvider),
+    // so the chip is the ONLY unlock-named button in the app — and locked, it reads as one.
+    expect(screen.queryAllByRole('button', { name: /unlock/i }).map((b) => b.textContent))
+      .toEqual(['Unlock']);
   });
 
   it('restores an unexpired tab session after a refresh-sized remount', () => {
@@ -95,8 +112,10 @@ describe('App shell — entity-first sidebar navigation', () => {
     );
     render(<App />);
 
-    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
-    expect(screen.queryByRole('button', { name: 'Unlock dashboard' })).toBeNull();
+    const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
+    expect(chip.textContent).toMatch(/^Unlocked · expires in \d+m$/);
+    // Unlocked, the chip is an inert readout rather than a second unlock button.
+    expect(chip.disabled).toBe(true);
   });
 
   it('drops an in-memory saved session after a governed bad-signature response', async () => {
@@ -105,27 +124,25 @@ describe('App shell — entity-first sidebar navigation', () => {
       JSON.stringify({ token: 'rotated-secret-token', expiresAt: Date.now() + 60_000 }),
     );
     render(<App />);
-    expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard unlocked/i);
+    expect(screen.getByTestId('session-chip').textContent).toMatch(/^Unlocked/);
 
     await invalidateSessionOnGovernedAuthFailure(new Response(JSON.stringify({
       error: 'unauthenticated',
       reason: 'bad-signature',
     }), { status: 401, headers: { 'content-type': 'application/json' } }));
 
-    await waitFor(() => expect(screen.getByTestId('session-state').textContent).toMatch(/dashboard locked/i));
+    await waitFor(() => expect(screen.getByTestId('session-chip').textContent).toBe('Unlock'));
     expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Unlock dashboard' })).toBeTruthy();
   });
 
-  it('lays the sidebar out as a full-height column: [+ New] header, scrollable nav, pinned floor last', () => {
-    // U5.1 item 7 — the sidebar is a three-zone flex column pinned to the viewport height. jsdom can't
-    // compute the 100dvh/zoom layout, so this pins the STRUCTURE the CSS relies on: the middle nav zone
-    // exists (it carries overflow-y:auto), and the Session·STOP floor is the LAST child of the sidebar
-    // so margin-top:auto pins it to the bottom rather than letting it be pushed off-screen mid-column.
+  it('lays the sidebar out as a two-zone column: [+ New] header, then the scrollable nav — and ends there', () => {
+    // U5.1 item 7 — the sidebar is a flex column pinned to the viewport height. jsdom can't compute the
+    // 100dvh/zoom layout, so this pins the STRUCTURE the CSS relies on: the nav zone exists (it carries
+    // overflow-y:auto) and is now the LAST child, because the pinned floor below it was removed (§6).
     render(<App />);
     const sidebar = screen.getByLabelText('Primary navigation');
     expect(sidebar.querySelector('.mc-nav')).toBeTruthy();
-    expect(sidebar.lastElementChild?.getAttribute('data-testid')).toBe('stop-floor');
+    expect(sidebar.lastElementChild?.className).toBe('mc-nav');
     // The [+ New] header zone sits inside the sidebar, above the nav list.
     expect(within(sidebar).getByRole('button', { name: 'New' })).toBeTruthy();
   });
@@ -227,10 +244,10 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
     expect(btn.getAttribute('aria-current')).toBe('page');
-    // The real Terminal view mounts (session-gated: it shows the passkey prompt, not the U3 placeholder).
+    // The real Terminal view mounts (session-gated: it shows the calm locked line, not the U3 placeholder).
     const view = screen.getByLabelText('Terminal view');
     expect(view.textContent ?? '').not.toMatch(/built in U3/i);
-    expect(view.textContent ?? '').toMatch(/passkey/i);
+    expect(within(view).getByTestId('terminal-locked')).toBeTruthy();
   });
 
   it('keeps the Terminal workspace mounted across navigation', () => {
@@ -243,7 +260,7 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(surface.hidden).toBe(false);
 
     // Destination navigation hides the same mounted node; returning reveals it rather than remounting it.
-    fireEvent.click(screen.getByRole('button', { name: 'Runs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(surface.hidden).toBe(true);
     expect(screen.getByLabelText('Terminal view')).toBe(terminal);
     fireEvent.click(terminalButton);
@@ -338,7 +355,7 @@ describe('App shell — Composer workspaces', () => {
     expect(firstPane.hidden).toBe(false);
     expect(secondPane.hidden).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Runs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(screen.getByTestId('composer-workspace-cw-1')).toBe(firstPane);
     expect(screen.getByTestId('composer-workspace-cw-2')).toBe(secondPane);
     expect(firstPane.hidden).toBe(true);
@@ -392,5 +409,84 @@ describe('App shell — Composer workspaces', () => {
         '/api/composer/sessions/cw-2/restore',
       ]),
     );
+  });
+});
+
+/**
+ * spec §5 — the Inbox links OUT, and the shell is what makes that true.
+ *
+ * The list itself answers no gate; a row is only useful if the shell carries it to the surface that
+ * owns the gate. This drives the REAL wiring — App → ViewBody → ApprovalsLive → the nav stack — because
+ * the props are optional and a missing one fails silently as a dead click, which no view-level test can
+ * see.
+ */
+describe('App shell — the Inbox deep-links to the surface that owns each gate', () => {
+  const waitingCard = {
+    meta: {
+      id: 'card-77', project: 'kb', action: 'approve:oauth-gate', target: 'infra/oauth.yaml',
+      'risk-tier': 'T3', owner: 'human-operator', state: 'inbox',
+    },
+    body: '## Work order\n\nCreate the OAuth client.\n',
+    displayName: 'approve:oauth-gate',
+    shortRef: 1,
+  };
+
+  /** Serve only the two feeds this path reads; everything else stays on the never-resolving default. */
+  function serveInbox(): void {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === '/api/human-inbox') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({
+          items: [{
+            card: waitingCard, category: 'gate', categoryLabel: 'Gate', urgency: 'high',
+            status: 'Waiting on the human operator', reason: 'Assigned to the human operator.',
+            nextAction: 'Carry out the work order, then move the card.', context: 'Create the OAuth client.',
+          }],
+          counts: { total: 1, decision: 0, gate: 1, input: 0, intervention: 0, stranded: 0 },
+        }) } as Response);
+      }
+      if (url === '/api/index') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({
+          cards: { inbox: [waitingCard] },
+          ledgers: {
+            dispatch: { count: 0, cards: 0, byProject: {} },
+            cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
+            grades: { count: 0, rows: [] },
+            activity: { count: 0, rows: [] },
+          },
+          orgStates: [],
+        }) } as Response);
+      }
+      return new Promise(() => {});
+    }));
+  }
+
+  it('carries an inbox row through to the card surface that holds its work order', async () => {
+    serveInbox();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    const row = await screen.findByTestId('inbox-row-card:card-77');
+    // The row is the plain line + where it lives; it answers nothing itself.
+    expect(row.textContent).toContain('approve:oauth-gate');
+    expect(screen.queryByTestId('respond-form')).toBeNull();
+
+    fireEvent.click(row);
+
+    // The shell landed on Tasks with THAT card open — the work order the decision needs is now in view.
+    // (The empty placeholder shares the `Card detail` label, so this waits for real content, not a node.)
+    expect(screen.getByLabelText('Tasks view')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('Card detail').textContent).toContain('Create the OAuth client.'));
+  });
+
+  it('carries a Home waiting-on-you row to the same card surface', async () => {
+    serveInbox();
+    render(<App />);
+
+    // Home is the landing view; its waiting rows deep-link exactly like the Inbox rows do.
+    const row = await screen.findByRole('button', { name: /Open approve:oauth-gate/i });
+    fireEvent.click(row);
+
+    expect(screen.getByLabelText('Tasks view')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('Card detail').textContent).toContain('Create the OAuth client.'));
   });
 });

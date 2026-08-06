@@ -18,7 +18,7 @@ import { indexRepo } from '../planeA/indexer.ts';
 import { loadPolicy, loadOverride } from './policy.ts';
 import type { CardMetaLike } from './effective.ts';
 import { effectiveForCard, RoutingError } from './effective.ts';
-import { listAgents } from '../agents/roster.ts';
+import { listAgents, readDeclaredAgents } from '../agents/roster.ts';
 import { readRoutingAudit } from './audit.ts';
 
 /** dashboard/server/routing/routes.ts -> ../../../ is the repo root. Overridable for tests/config. */
@@ -80,7 +80,12 @@ export function buildRoutingSnapshot(repoRoot: string, nowMs: number = Date.now(
       matrix: policy.policy ?? {},
       role_default: policy.role_default ?? null,
     },
-    agents: listAgents(index, policy, override).map((a) => ({ id: a.id, effective: a.effective })),
+    // Declarations are rung 1 of agent routing, so this snapshot resolves them the same way `/api/agents`
+    // (`buildRoster`) does — the two surfaces must never report different models for the same agent.
+    agents: listAgents(index, policy, override, readDeclaredAgents(repoRoot)).map((a) => ({
+      id: a.id,
+      effective: a.effective,
+    })),
     cards,
     audit,
     overrides: audit.overrides,

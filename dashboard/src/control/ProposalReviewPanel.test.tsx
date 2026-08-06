@@ -3,8 +3,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ComposerSession } from '../composer/workspaceClient';
 import { ProposalReviewPanel } from './ProposalReviewPanel';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'token'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
 
 afterEach(() => {
+  clearStoredSession();
   cleanup();
   vi.unstubAllGlobals();
 });
@@ -54,7 +63,7 @@ describe('ProposalReviewPanel', () => {
     });
     vi.stubGlobal('fetch', fetchImpl);
 
-    render(<ProposalReviewPanel composerSession={session} sessionToken="token" />);
+    render(unlocked(<ProposalReviewPanel composerSession={session} />));
     expect(screen.getByTestId('composer-proposal-review')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Compile latest completed turn' }));
     expect(await screen.findByRole('heading', { name: 'Control run' })).toBeTruthy();
@@ -71,7 +80,7 @@ describe('ProposalReviewPanel', () => {
   });
 
   it('stays absent while the conversation has no completed response', () => {
-    render(<ProposalReviewPanel composerSession={{ ...session, turns: [{ ...session.turns[0], state: 'running' }] }} sessionToken="token" />);
+    render(unlocked(<ProposalReviewPanel composerSession={{ ...session, turns: [{ ...session.turns[0], state: 'running' }] }} />));
     expect(screen.queryByTestId('composer-proposal-review')).toBeNull();
   });
 
@@ -88,10 +97,10 @@ describe('ProposalReviewPanel', () => {
         },
       }],
     };
-    render(<ProposalReviewPanel composerSession={fenced} sessionToken="token" />);
+    render(unlocked(<ProposalReviewPanel composerSession={fenced} />));
     expect(screen.getByTestId('composer-proposal-banner')).toBeTruthy();
     cleanup();
-    render(<ProposalReviewPanel composerSession={session} sessionToken="token" />);
+    render(unlocked(<ProposalReviewPanel composerSession={session} />));
     expect(screen.queryByTestId('composer-proposal-banner')).toBeNull();
   });
 });

@@ -55,8 +55,9 @@ export interface EntityFact {
 
 export interface EntityDetailProps {
   entity: EntityRef;
-  /** "Governed run · <runRef>" */
-  eyebrow: string;
+  /** "Governed run · <EntityName …>" — a node, not a string, so the entity's identity renders through
+   *  the one `EntityName` component instead of being string-interpolated into a raw ref. */
+  eyebrow: React.ReactNode;
   title: string;
   status?: { label: string; tone: StatusTone };
   facts: EntityFact[];
@@ -177,7 +178,15 @@ export function EntityDetail({
         </nav>
       ) : null}
 
-      <div className="entity-detail__tabs" role="tablist" aria-label={`${entity.kind} sections`}>
+      {/* A one-section detail renders NO tab bar. A tablist with a single, permanently-selected tab is
+       *  pure ceremony — the surfaces that collapsed to one body (workflow, run) would otherwise carry a
+       *  control that can never do anything. */}
+      <div
+        className="entity-detail__tabs"
+        role="tablist"
+        aria-label={`${entity.kind} sections`}
+        hidden={sections.length < 2}
+      >
         {sections.map((section) => (
           <button
             key={section.id}
@@ -194,7 +203,7 @@ export function EntityDetail({
             ) : null}
             {section.attention ? (
               <span
-                className="entity-detail__tab-attention"
+                className="mc-status-dot mc-status-dot--waiting entity-detail__tab-attention"
                 data-testid={`entity-tab-${section.id}-attention`}
                 aria-label="needs you"
               />

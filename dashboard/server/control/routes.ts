@@ -1,9 +1,6 @@
-import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
-import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
-import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
-import { auditFn, type SurfaceContext } from '../http/context.ts';
+import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
@@ -20,7 +17,7 @@ import {
 } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
-import type { ControlResult, JsonObject, ProposalDecision, Run } from './types.ts';
+import type { ControlResult, HumanRequest, JsonObject, ProposalDecision, Run, RunDetail } from './types.ts';
 import {
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
   AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
@@ -38,10 +35,14 @@ import {
   reconcileAuthorized20260801FailedRun,
 } from './authorizedFailedRunReconciliation.ts';
 import type { ActivatedExecution } from './activation.ts';
+import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
 import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf } from './launch.ts';
+import { registerPaidActionRoute } from './paidActionRoute.ts';
+import type { EntityDisplay } from '../naming.ts';
+import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -64,8 +65,72 @@ function subject(req: FastifyRequest): string | null {
   return verifiedSession(req)?.claims.sub ?? null;
 }
 
-/** Challenge purpose prefix that separates an execution-unlock ceremony from a sign-in one. */
-const EXECUTION_UNLOCK_PURPOSE = 'kb.execution-unlock';
+/**
+ * The `sourceComposerRef` that `server/workflows/routes.ts` stamps on every revision it creates from a
+ * workflow definition; such a revision carries that definition's id in `sourceTurnId`.
+ */
+const WORKFLOW_COMPOSER_REF = 'workflow-registry';
+
+/**
+ * `proposalRef -> workflow-definition id`, for runs born from the workflow registry.
+ *
+ * This join used to be re-derived in the BROWSER, which forced every surface listing runs to also fetch
+ * the whole revision list just to answer "which workflow does this run belong to". The revisions are
+ * already in the store here, so the grouping key is stamped at the DTO-build site instead.
+ */
+function workflowRefIndex(ctx: SurfaceContext, sub: string): Map<string, string> {
+  const byProposal = new Map<string, string>();
+  for (const revision of ctx.controlStore.listProposalRevisionsForComposer(sub, WORKFLOW_COMPOSER_REF)) {
+    if (revision.sourceTurnId) byProposal.set(revision.proposalRef, revision.sourceTurnId);
+  }
+  return byProposal;
+}
+
+/**
+ * Display-identity embedding for the run DTOs. The canonical `runRef` is untouched and still on the
+ * wire — these fields exist so the run list, run detail, and Inbox never have to print it as the
+ * primary text an operator reads. `workflowRef` is the grouping key that files a run under its
+ * definition; null means the run is ad-hoc (launched from a Composer proposal, not the registry).
+ */
+function runDisplay<T extends { runRef: string; title: string; proposalRef: string }>(
+  ctx: SurfaceContext,
+  run: T,
+  workflows: Map<string, string>,
+): T & EntityDisplay & { workflowRef: string | null } {
+  return {
+    ...run,
+    ...namingFor(ctx).displayFor('run', run.runRef, run.title),
+    workflowRef: workflows.get(run.proposalRef) ?? null,
+  };
+}
+
+/**
+ * A Human Request has no identity of its own in the naming registry: the operator reads it as "this
+ * RUN needs you", and every surface that lists one renders the owning run beside the request's own
+ * `title`. So the two display fields on a request describe its OWNING RUN (kind `'run'`, keyed by
+ * `request.runRef`) — never the request.
+ *
+ * The same build attaches the plain-language `ask` (see `humanRequestAsk.ts`) and demotes the machine's
+ * own words to `technicalDetail`. Both are derived HERE, at the one DTO-build site, so no surface can
+ * put a traceback in front of the operator as the thing they are being asked.
+ */
+function humanRequestDisplay(
+  ctx: SurfaceContext,
+  request: HumanRequest,
+  runTitle: string,
+): HumanRequest & EntityDisplay & HumanRequestAsk {
+  const display = namingFor(ctx).displayFor('run', request.runRef, runTitle);
+  return { ...request, ...display, ...askForHumanRequest(request, display.displayName) };
+}
+
+/** The `/api/control/runs/:runRef` DTO: the run and each of its requests carry the run's display identity. */
+function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail): RunDetail {
+  return {
+    ...detail,
+    run: runDisplay(ctx, detail.run, workflowRefIndex(ctx, sub)),
+    humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
+  };
+}
 
 /** The latch posture every execution-touching response carries, so the UI never has to guess. */
 function executionPosture(ctx: SurfaceContext): {
@@ -110,9 +175,7 @@ function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): Ac
     || snapshot.unlockedBy !== sub || ctx.controlBroker !== current.controlBroker
     || ctx.runAutomatic !== current.runAutomatic || ctx.cancelAutomatic !== current.cancelAutomatic
     || ctx.containManagerStart !== current.containManagerStart
-    || ctx.verifyCanonicalResult !== current.verifyCanonicalResult
-    || !ctx.rosterSessions || !current.rosterSessions
-    || ctx.rosterSessions !== current.rosterSessions) return null;
+    || ctx.verifyCanonicalResult !== current.verifyCanonicalResult) return null;
   return current;
 }
 
@@ -132,15 +195,14 @@ export function authorizedFailedRunReconciliationGrant(
   if (!latch || (expected && latch !== expected.latch)) return null;
   const snapshot = latch.snapshot();
   const wiring = latch.current();
-  if (!wiring || ctx.controlBroker !== wiring.controlBroker || ctx.rosterSessions !== wiring.rosterSessions
+  if (!wiring || ctx.controlBroker !== wiring.controlBroker
     || ctx.runAutomatic !== wiring.runAutomatic || ctx.cancelAutomatic !== wiring.cancelAutomatic
     || ctx.containManagerStart !== wiring.containManagerStart
     || ctx.verifyCanonicalResult !== wiring.verifyCanonicalResult) return null;
-  const hasLiveRun = !!wiring?.rosterSessions?.hasRoster(AUTHORIZED_20260801_FAILED_RUN_REF)
-    || !!wiring && [
-      AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
-      ...AUTHORIZED_20260801_FAILED_RUN_STAGES.map((stage) => stage.sessionRef),
-    ].some((sessionRef) => wiring.controlBroker.isRunning(sessionRef));
+  const hasLiveRun = [
+    AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
+    ...AUTHORIZED_20260801_FAILED_RUN_STAGES.map((stage) => stage.sessionRef),
+  ].some((sessionRef) => wiring.controlBroker.isRunning(sessionRef));
   if (snapshot.state !== 'unlocked' || snapshot.source !== 'passkey'
     || snapshot.unlockedBy !== sub || !snapshot.unlockedAt || hasLiveRun
     || (expected && (snapshot.unlockedAt !== expected.unlockedAt || wiring !== expected.wiring))) return null;
@@ -181,6 +243,12 @@ class ActivationPreparationError extends Error {
 /** Authenticated app-local proposal/run control plane. Queue cards remain canonical execution truth. */
 export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
   const preHandler = requireSession(ctx.sessionConfig);
+
+  // FYT paid-action wiring (Unit D2): the non-session `POST /api/control/paid-action` route and its
+  // bearer-grant preHandler. Registered on this same guarded scope (origin + rate-limit apply) but WITHOUT
+  // `requireSession`, since a headless worker has no browser session. It derives every spend-bearing
+  // identity server-side from the resolved grant + execution state — see paidActionRoute.ts.
+  registerPaidActionRoute(scope, ctx);
 
   scope.get('/api/control/proposals', { preHandler }, async (req, reply) => {
     const sub = subject(req);
@@ -329,32 +397,22 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   });
 
   // ── EXECUTION UNLOCK LATCH ─────────────────────────────────────────────────────────────────────────
-  // The daemon boots LOCKED: no broker, no engine, no roster terminals. Construction is authorized by a
-  // fresh WebAuthn passkey assertion over a purpose-bound challenge — a login token alone is not enough,
-  // so a stolen/replayed bearer cannot turn execution on. Lock is the fail-safe direction and needs only
-  // the session. Both transitions are audited like every other consequential control action.
+  // The daemon boots LOCKED: no broker, no engine, no worker processes. Construction is authorized by the
+  // operator's WebAuthn-minted SESSION BEARER — the same one governing every other consequential control
+  // action — verified by the scope's `requireSession` preHandler before this handler runs.
+  //
+  // This route used to run a SECOND, purpose-bound WebAuthn ceremony of its own. That was removed
+  // deliberately: the platform's binding requirement is ONE dashboard unlock for the whole platform, and
+  // the second biometric prompt made an operator who had already signed in unlock twice to arm the
+  // executor. Nothing else was relaxed — origin guard, session verification, and the T3 audit row all
+  // still gate this route, and the audit still happens BEFORE anything is constructed. The latch records
+  // `source: 'passkey'` truthfully: the authorization chain still roots in a passkey assertion, just the
+  // sign-in one. Arming stays an EXPLICIT act — signing in never unlocks execution on its own; the
+  // operator must still call this route. Lock remains the fail-safe direction and is unchanged.
   scope.get('/api/control/execution', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     return reply.send({ execution: executionPosture(ctx) });
-  });
-
-  scope.post('/api/control/execution/unlock/options', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ctx.executionLatch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
-    let config;
-    try {
-      config = ctx.webAuthnConfig();
-    } catch {
-      return reply.code(503).send({ error: 'webauthn-unconfigured', reason: 'DASHBOARD_RP_ORIGIN is not set' });
-    }
-    // Purpose-bound challenge: the authenticator signs over "unlock execution for THIS subject", never a
-    // generic login nonce, so an assertion captured on the sign-in path cannot be presented here.
-    const challenge = `${EXECUTION_UNLOCK_PURPOSE}:${sub}:${randomBytes(18).toString('base64url')}`;
-    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
-    const { ceremonyId } = rememberChallenge(options.challenge);
-    return reply.send({ ceremonyId, options });
   });
 
   scope.post('/api/control/execution/unlock', { preHandler }, async (req, reply) => {
@@ -362,42 +420,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const latch = ctx.executionLatch;
     if (!latch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
-    const body = record(req.body);
-    const expectedChallenge = consumeChallenge(string(body.ceremonyId));
-    if (!expectedChallenge) {
-      return reply.code(400).send({ error: 'bad-ceremony', reason: 'unknown or expired unlock ceremony' });
-    }
-    // The ceremony must be an UNLOCK ceremony minted for THIS operator. A login ceremony's challenge, or
-    // another subject's, is refused here even though both are single-use and unexpired.
-    const preimage = Buffer.from(expectedChallenge, 'base64url').toString('utf8');
-    if (!preimage.startsWith(`${EXECUTION_UNLOCK_PURPOSE}:${sub}:`)) {
-      return reply.code(400).send({ error: 'bad-ceremony', reason: 'challenge is not an execution-unlock challenge for this operator' });
-    }
-    const response = record(body.response);
-    const credential = findCredential(ctx.credentials(), string(response.id));
-    if (!credential) {
-      // Fail closed: no registered passkey means execution cannot be unlocked at all. That is the correct
-      // posture, not a bug — the operator provisions a credential out of band first.
-      return reply.code(401).send({ error: 'unauthenticated', reason: 'no registered credential for this assertion' });
-    }
-    let config;
-    try {
-      config = ctx.webAuthnConfig();
-    } catch {
-      return reply.code(503).send({ error: 'webauthn-unconfigured', reason: 'DASHBOARD_RP_ORIGIN is not set' });
-    }
-    let verification;
-    try {
-      verification = await verifyAssertion(body.response as never, { expectedChallenge, credential, config });
-    } catch (error) {
-      return reply.code(401).send({ error: 'unauthenticated', reason: error instanceof Error ? error.message : 'assertion failed' });
-    }
-    if (!verification.verified) return reply.code(401).send({ error: 'unauthenticated', reason: 'assertion not verified' });
     // Audit BEFORE constructing anything: an unlock that cannot be recorded does not happen.
     try {
       await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-execution-unlock-authorize', owner: sub, target: 'execution', riskTier: 'T3',
-        result: 'authorized:unlock', detail: { method: 'webauthn-passkey' },
+        result: 'authorized:unlock', detail: { method: 'session-bearer' },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'execution-unlock-audit-required' });
@@ -554,7 +581,15 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
 
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
     const sub = subject(req);
-    return sub ? reply.send({ runs: ctx.controlStore.listRuns(sub) }) : reply.code(401).send({ error: 'unauthenticated' });
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    // One revision walk for the whole list, not one per run.
+    const workflows = workflowRefIndex(ctx, sub);
+    // An archived run is one the operator explicitly dismissed. It stays fully readable by ref and is
+    // still listable on request, but it is out of the DEFAULT projection every surface renders —
+    // otherwise "archive" would mean nothing and dead runs would keep haunting every list.
+    const includeArchived = string((req.query as { includeArchived?: unknown }).includeArchived) === '1';
+    const runs = ctx.controlStore.listRuns(sub).filter((run) => includeArchived || run.state !== 'archived');
+    return reply.send({ runs: runs.map((run) => runDisplay(ctx, run, workflows)) });
   });
 
   scope.get('/api/control/runs/:runRef', { preHandler }, async (req, reply) => {
@@ -563,13 +598,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const runRef = (req.params as { runRef: string }).runRef;
     const detail = ctx.controlStore.getRun(sub, runRef);
     if (!detail.ok) return sendResult(reply, detail);
-    // Roster state for the canvas: derived per request from durable run state plus the live session map —
-    // no polling loop, and an empty array while execution is locked or the run has no roster.
     return reply.send({
       ok: true,
-      value: detail.value,
+      value: runDetailDto(ctx, sub, detail.value),
       replayed: detail.replayed ?? false,
-      roster: ctx.rosterSessions?.state(sub, runRef) ?? [],
       execution: executionPosture(ctx),
     });
   });
@@ -922,6 +954,30 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return reply.send({ ok: true, value: committed.value.event, replayed: committed.replayed ?? false });
   });
 
+  /** Deliver to a live Claude worker when possible; otherwise persist inert text for its next turn. */
+  scope.post('/api/control/runs/:runRef/agents/:agentId/messages', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const { runRef, agentId } = req.params as { runRef: string; agentId: string };
+    const detail = ctx.controlStore.getRun(sub, runRef);
+    if (!detail.ok) return sendResult(reply, detail);
+    const assignment = detail.value.stages.find((stage) => stage.assignment?.agentId === agentId)?.assignment;
+    if (!assignment) return reply.code(404).send({ error: 'agent-not-found' });
+    const message = string(record(req.body).message).trim();
+    if (!message || message.length > MAX_OPERATOR_MESSAGE_CHARS || message.includes('\0')) {
+      return reply.code(400).send({ error: 'invalid-agent-message' });
+    }
+    const delivery = ctx.executionLatch?.current()?.agentMessages;
+    if (!delivery) return reply.code(409).send({ error: 'agent-message-delivery-unavailable' });
+    try {
+      return reply.code(202).send({ delivery: await delivery.deliver({
+        runRef, agentId, runtime: assignment.runtime, message,
+      }) });
+    } catch {
+      return reply.code(409).send({ error: 'agent-message-delivery-unavailable' });
+    }
+  });
+
   scope.post('/api/control/runs/:runRef/manager/steer', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -980,6 +1036,62 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         detail: error instanceof Error ? error.message : 'the executor could not confirm Manager and Worker cancellation',
       });
     }
+    });
+  });
+
+  /**
+   * spec §3b — dismiss a dead run.
+   *
+   * Session-gated and T3-audited like every other governed run write: the audit row lands BEFORE the
+   * mutation and a failure to write it refuses the request, so no run is ever dismissed off the record.
+   * `reason` is the operator's own words and is carried into that row — it is what makes a bulk
+   * clean-up (the stale thin-slice validation runs) auditable one run at a time, which is also why
+   * there is deliberately no bulk endpoint.
+   *
+   * Idempotency is the store's: the same `idempotencyKey` replays, a reused key with a different reason
+   * is a conflict. A replay re-audits nothing.
+   */
+  scope.post('/api/control/runs/:runRef/archive', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const runRef = (req.params as { runRef: string }).runRef;
+    const body = record(req.body);
+    const idempotencyKey = string(body.idempotencyKey);
+    const reason = body.reason == null ? null : string(body.reason);
+    if (!idempotencyKey || idempotencyKey.length > 512 || (body.reason != null && typeof body.reason !== 'string')) {
+      return reply.code(400).send({ error: 'invalid-archive', detail: 'idempotencyKey is required and reason must be text' });
+    }
+    return ctx.runControlTransactions.run(sub, runRef, async () => {
+      const detail = ctx.controlStore.getRun(sub, runRef);
+      if (!detail.ok) return sendResult(reply, detail);
+      if (detail.value.run.state !== 'archived') {
+        try {
+          await auditFn(ctx)(ctx.repoRoot, {
+            action: 'control-run-archive-authorize', owner: sub, target: runRef, riskTier: 'T3',
+            result: `authorized:${idempotencyKey}`,
+            detail: {
+              runRef,
+              runVersion: detail.value.run.version,
+              runState: detail.value.run.state,
+              openHumanRequestCount: detail.value.humanRequests.filter((request) => request.state === 'open').length,
+              reason,
+            },
+          }, { runGit: ctx.opsGit, now: ctx.now });
+        } catch {
+          return reply.code(500).send({ error: 'run-archive-audit-required' });
+        }
+      }
+      const archived = ctx.controlStore.archiveRun(sub, runRef, { idempotencyKey, reason });
+      if (!archived.ok) return sendResult(reply, archived);
+      if (!archived.replayed) {
+        ctx.controlStore.appendEvent(sub, runRef, {
+          kind: 'governance', source: 'human', status: 'stopped',
+          summary: reason
+            ? `Run archived by the operator: ${reason}`
+            : 'Run archived by the operator',
+        });
+      }
+      return sendResult(reply, archived);
     });
   });
 
@@ -1376,6 +1488,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         summary: `Human Request ${responded.value.response?.decision ?? 'resolved'} at revision ${responded.value.revision}`,
       });
     }
+    // Unit-B's spend-grant mint marker used to live here. Unit D moved it to STAGE LAUNCH (see
+    // execution.ts `provisionSpendGrant` + spendGrantProvision.ts): the token FILE must exist inside the
+    // attempt worktree before the worker spawns, but that worktree is created AFTER this gate approval, and
+    // `mint` returns the raw token only once — so minting here would strand the token with nowhere to
+    // write it. This route now records the approval exactly as before; the engine mints the grant and writes
+    // `.kb/spend-grant.json` when it prepares the worktree for a spending stage whose gate is recorded
+    // approved (re-verified against these same resolved human requests).
     return sendResult(reply, responded);
   });
 

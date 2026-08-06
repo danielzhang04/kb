@@ -4,8 +4,18 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { ComposerChat } from './ComposerChat';
 import type { ComposerSession, ComposerStreamFn } from './workspaceClient';
 import type { TimelineModel } from '../lib/timelineModel';
+import { SessionProvider } from '../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../lib/authClient';
+/** The app's ONE unlock, driven from a test: a stored fresh bearer read by the provider on mount. */
+function unlocked(ui: React.ReactElement, token = 'tok'): React.ReactElement {
+  persistSession({ token, expiresAt: Date.now() + 60_000 });
+  return <SessionProvider>{ui}</SessionProvider>;
+}
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearStoredSession();
+});
 
 const MODEL: TimelineModel = {
   turns: [{ index: 0, model: 'claude', timestamp: null, usage: null, steps: [{ kind: 'text', text: 'A useful answer' }] }],
@@ -28,7 +38,7 @@ describe('ComposerChat workspace', () => {
       throw new Error(`unexpected ${String(input)}`);
     });
     const onOpenRun = vi.fn();
-    render(<ComposerChat composerSession={{ ...SESSION, composerRef: 'cw_agent', agent: { id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'a'.repeat(64), projects: ['faceless-youtube'] } }} sessionToken="tok" fetchImpl={fetchImpl} onOpenRun={onOpenRun} />);
+    render(unlocked(<ComposerChat composerSession={{ ...SESSION, composerRef: 'cw_agent', agent: { id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'a'.repeat(64), projects: ['faceless-youtube'] } }} fetchImpl={fetchImpl} onOpenRun={onOpenRun} />));
     expect(await screen.findByRole('option', { name: /Video/ })).toBeTruthy();
     expect(screen.queryByText('Other')).toBeNull();
     fireEvent.change(screen.getByLabelText('Workflow parameter channel'), { target: { value: 'the-second-take' } });
@@ -44,7 +54,7 @@ describe('ComposerChat workspace', () => {
   });
 
   it('does not render a workflow launcher for unbound Composer workspaces', () => {
-    render(<ComposerChat composerSession={SESSION} sessionToken="tok" />);
+    render(unlocked(<ComposerChat composerSession={SESSION} />));
     expect(screen.queryByRole('button', { name: 'Launch workflow' })).toBeNull();
   });
 
@@ -54,13 +64,13 @@ describe('ComposerChat workspace', () => {
       if (input === '/api/control/runs') return { ok: true, json: async () => ({ runs: [] }) } as Response;
       throw new Error(`unexpected ${String(input)}`);
     });
-    render(<ComposerChat composerSession={{ ...SESSION, composerRef: 'cw_agent', agent: { id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'a'.repeat(64), projects: ['faceless-youtube'] } }} sessionToken="tok" fetchImpl={fetchImpl} />);
+    render(unlocked(<ComposerChat composerSession={{ ...SESSION, composerRef: 'cw_agent', agent: { id: 'fyt-runner', path: 'agents/fyt-runner.md', sourceHash: 'a'.repeat(64), projects: ['faceless-youtube'] } }} fetchImpl={fetchImpl} />));
     expect((await screen.findByTestId('agent-workspace-pending-amendment')).textContent).toMatch(/recovery is required/i);
     expect((screen.getByRole('button', { name: 'Launch workflow' }) as HTMLButtonElement).disabled).toBe(true);
     expect((fetchImpl.mock.calls as unknown as Array<[RequestInfo | URL]>).some(([url]) => String(url).includes('/launch'))).toBe(false);
   });
   it('shows server history including user prompts and no provider identifiers', () => {
-    render(<ComposerChat composerSession={SESSION} sessionToken="tok" />);
+    render(unlocked(<ComposerChat composerSession={SESSION} />));
     expect(screen.getByText('Earlier question')).toBeTruthy();
     expect(screen.getByText('A useful answer')).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/resumeId|sessionId/);
@@ -72,7 +82,7 @@ describe('ComposerChat workspace', () => {
       onDelta(MODEL);
       finish = () => resolve({ ok: true });
     });
-    render(<ComposerChat composerSession={{ ...SESSION, turns: [] }} sessionToken="tok" stream={stream} />);
+    render(unlocked(<ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />));
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Plan Atlas' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByRole('button', { name: 'Stop' });
@@ -89,12 +99,11 @@ describe('ComposerChat workspace', () => {
     const stream: ComposerStreamFn = () => new Promise((resolve) => {
       finish = () => resolve({ ok: true });
     });
-    render(<ComposerChat
+    render(unlocked(<ComposerChat
       composerSession={{ ...SESSION, turns: [] }}
-      sessionToken="tok"
       stream={stream}
       onRunningChange={onRunningChange}
-    />);
+    />));
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Long plan' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(onRunningChange).toHaveBeenCalledWith(true));
@@ -109,7 +118,7 @@ describe('ComposerChat workspace', () => {
       signal = activeSignal;
       return new Promise(() => {});
     };
-    render(<ComposerChat composerSession={{ ...SESSION, turns: [] }} sessionToken="tok" stream={stream} />);
+    render(unlocked(<ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />));
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Long task' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Stop' }));
@@ -118,9 +127,13 @@ describe('ComposerChat workspace', () => {
   });
 
   it('unlocks at send time and preserves the drafted prompt', async () => {
-    const onRequestSession = vi.fn(async () => ({ token: 'fresh', expiresAt: Date.now() + 60_000 }));
+    const signIn = vi.fn(async () => ({ token: 'fresh', expiresAt: Date.now() + 60_000 }));
     const stream: ComposerStreamFn = vi.fn(async () => ({ ok: true }));
-    render(<ComposerChat composerSession={{ ...SESSION, turns: [] }} onRequestSession={onRequestSession} stream={stream} />);
+    render(
+      <SessionProvider deps={{ signIn }}>
+        <ComposerChat composerSession={{ ...SESSION, turns: [] }} stream={stream} />
+      </SessionProvider>,
+    );
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Keep me' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(stream).toHaveBeenCalledWith('cw_alpha', 'Keep me', 'fresh', expect.any(Function), expect.any(AbortSignal)));

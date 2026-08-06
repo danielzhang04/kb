@@ -139,7 +139,7 @@ stages:
         kind: approval
         prompt: "GATE 2 — approve the root plans and checks/slice/thin-run-slice.json only. This authorizes at most 11 image calls/USD 1.40 for this image stage; nothing else."
         spendAuthorization: true
-    workOrder: "After G2, re-hash root plans against checks/slice/thin-run-slice.json. Dry-run image-generation, then generate only the ordered eight contract shots. Count every paid image/cutout/retry; stop before either ceiling and hard-park an eleventh call at the documented USD 0.134 2K rate. No thumbnails, shorts, later shots, or unrelated assets. Log planned and actual use; leave review to fyt-checker."
+    workOrder: "After G2, re-hash root plans against checks/slice/thin-run-slice.json. Dry-run image-generation, then generate only the ordered eight contract shots by invoking forge.py gen with --kit orgs/faceless-youtube/channels/<channel>/visual-kit and --to orgs/faceless-youtube/channels/<channel>/videos/<slug>/assets/scenes — the declared scene-manifest destination, never the channel-level visual-kit/_staging/ dir a route-mode call cannot target. Count every paid image/cutout/retry; stop before either ceiling and hard-park an eleventh call at the documented USD 0.134 2K rate. No thumbnails, shorts, later shots, or unrelated assets. Log planned and actual use; leave review to fyt-checker."
     artifacts:
       - id: scene-manifest
         path: orgs/faceless-youtube/channels/<channel>/videos/<slug>/assets/scenes/manifest.json

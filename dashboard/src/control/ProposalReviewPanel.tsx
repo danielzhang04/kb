@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SESSION_INVALIDATED_EVENT, type Session } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import type { TimelineModel } from '../lib/timelineModel';
 import type { ComposerSession } from '../composer/workspaceClient';
 import {
@@ -15,8 +15,6 @@ import { ProposalCard } from './ProposalCard';
 
 export interface ProposalReviewPanelProps {
   composerSession: ComposerSession;
-  sessionToken?: string;
-  onRequestSession?: () => Promise<Session | null>;
 }
 
 /** Display-only cue that the assistant emitted a proposal block. The server's import route is the
@@ -32,14 +30,13 @@ function hasProposalFence(model: TimelineModel | null): boolean {
 /** Secondary, exact-revision review for proposals emitted by completed Composer turns. */
 export function ProposalReviewPanel({
   composerSession,
-  sessionToken,
-  onRequestSession,
 }: ProposalReviewPanelProps): React.JSX.Element | null {
+  const { session, requireSession } = useSession();
+  const sessionToken = session?.token;
   const completedTurns = useMemo(
     () => composerSession.turns.filter((turn) => turn.state === 'complete'),
     [composerSession.turns],
   );
-  const [localToken, setLocalToken] = useState(sessionToken);
   const [revision, setRevision] = useState<ProposalRevisionDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<string | null>(null);
@@ -49,21 +46,6 @@ export function ProposalReviewPanel({
     [completedTurns],
   );
 
-  useEffect(() => { if (sessionToken) setLocalToken(sessionToken); }, [sessionToken]);
-  useEffect(() => {
-    const invalidate = (): void => setLocalToken(undefined);
-    window.addEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-    return () => window.removeEventListener(SESSION_INVALIDATED_EVENT, invalidate);
-  }, []);
-
-  const resolveToken = useCallback(async (): Promise<string | null> => {
-    if (sessionToken ?? localToken) return sessionToken ?? localToken ?? null;
-    const unlocked = await onRequestSession?.();
-    if (!unlocked) return null;
-    setLocalToken(unlocked.token);
-    return unlocked.token;
-  }, [localToken, onRequestSession, sessionToken]);
-
   const refresh = useCallback(async (token: string): Promise<void> => {
     const items = await listProposalRevisions(composerSession.composerRef, token);
     const latest = items.sort((a, b) => b.revision - a.revision)[0];
@@ -71,12 +53,11 @@ export function ProposalReviewPanel({
   }, [composerSession.composerRef]);
 
   useEffect(() => {
-    const token = sessionToken ?? localToken;
-    if (!token || completedTurns.length === 0) return;
+    if (!sessionToken || completedTurns.length === 0) return;
     let alive = true;
-    refresh(token).catch(() => { if (alive) setRevision(null); });
+    refresh(sessionToken).catch(() => { if (alive) setRevision(null); });
     return () => { alive = false; };
-  }, [completedTurns.length, localToken, refresh, sessionToken]);
+  }, [completedTurns.length, refresh, sessionToken]);
 
   if (completedTurns.length === 0) return null;
 
@@ -85,8 +66,8 @@ export function ProposalReviewPanel({
     setBusy(true);
     setOutcome(null);
     try {
-      const token = await resolveToken();
-      if (!token) throw new Error('Unlock dashboard to review a proposal.');
+      const token = (await requireSession())?.token;
+      if (!token) throw new Error('The dashboard is locked — the proposal was not touched.');
       await action(token);
     } catch (error) {
       setOutcome(error instanceof Error ? error.message : 'Proposal action failed.');

@@ -24,10 +24,14 @@
  *              --error / --warning / --success
  *              --status-running / --status-done / --status-blocked / --status-idle
  *              --tier-t1 / --tier-t2 / --tier-t3   (escalating warmth = risk)
- *   Spacing    --space-1 (4px) .. --space-12 (48px), 4px-atomic, --gap (legacy alias = --space-3)
+ *   Spacing    --space-0 (2px) / --space-1 (4px) .. --space-12 (48px), --gap (alias = --space-3)
  *   Type       --font-sans / --font-mono (system stacks only, no external fonts)
  *              --text-xs 11 / --text-sm 12 / --text-base 13 / --text-md 14 / --text-lg 16 / --text-xl 20
+ *   Type ROLES --type-title / --type-section / --type-body / --type-meta / --type-metric (-size/-weight)
+ *              + --tracking-eyebrow.  A VIEW STYLES BY ROLE, never by raw --text-* or a px literal.
  *   Radius     --radius-sm 6 / --radius-md 8 / --radius-lg 12
+ *   Motion     --transition (the ONE duration+easing for every hover / state change)
+ *   Accent     --mc-accent / --mc-accent-fg (the single accent slot; warm parchment, landed 2026-08-05)
  *   Elevation  --shadow-elevated / --shadow-overlay / --shadow-sunken (panels are border-only)
  *   Layout     --sidebar-w / --sidebar-w-rail / --topbar-h
  *
@@ -38,11 +42,14 @@
  *
  * COMPONENT-CLASS VOCABULARY (reusable — later view-styling batches consume these):
  *   .app-shell, .app-shell--rail (whole-sidebar collapsed/icon-rail mode)
- *   .mc-sidebar, .mc-sidebar__brand, .mc-sidebar__collapse-toggle, .mc-sidebar__floor
+ *   .mc-sidebar, .mc-sidebar__brand, .mc-sidebar__collapse-toggle
  *   .mc-nav, .mc-nav-section, .mc-nav-section__header/__label/__caret/__items
  *   .mc-nav-item, .mc-nav-item--active, .mc-nav-item--disabled, __icon/__label/__hint
  *   .mc-topbar, .mc-topbar__title, .mc-topbar__glance
- *   .mc-main, .mc-panel, .mc-card, .mc-table, .mc-badge*, .mc-status-dot*, .mc-btn*
+ *   .mc-main, .mc-panel, .mc-card, .mc-table, .mc-table--boxed, .mc-badge*, .mc-status-dot*, .mc-btn*
+ *   .mc-row-link — the ONE clickable-row hover treatment (2px left rail, painted on hover/focus)
+ *   .mc-empty    — the ONE empty state: a quiet sentence, never a placeholder box
+ *   .mc-stop     — the emergency-stop controls (mounted on the Sentinel view)
  *   .mc-mono — ids/hashes/tiers/sessions (also tabular figures)
  *   .mc-num  — tabular figures on any non-mono live/columnar number
  *
@@ -106,6 +113,7 @@
   --tier-t3: #c1503a;
 
   /* ---- Spacing (4px atomic) ---- */
+  --space-0: 2px; /* the ONE sub-atomic step: tight list stacks (nav items, home rows, panel headers) */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -125,10 +133,45 @@
   --text-lg: 16px; /* section headers */
   --text-xl: 20px; /* view titles / KPI numbers */
 
+  /* ---- Typographic ROLES (Phase 6). The raw --text-* scale above is the vocabulary; these five roles
+   * are the GRAMMAR — every surface renders each role with exactly ONE size+weight pair, and no view
+   * invents a sixth level or a one-off px value. A polish pass changes the role here, once, and every
+   * surface moves together.
+   *   title   — the one page/view heading per surface
+   *   section — a section heading inside a surface (rendered uppercase with --tracking-eyebrow)
+   *   body    — body copy, table cells, a row's primary text
+   *   meta    — timestamps, counts, help text, secondary cells (always --fg-dim or --fg-faint)
+   *   metric  — the big tile numeral (mono + tabular)
+   * ---- */
+  --type-title-size: var(--text-lg);
+  --type-title-weight: 600;
+  --type-section-size: var(--text-xs);
+  --type-section-weight: 600;
+  --type-body-size: var(--text-base);
+  --type-body-weight: 400;
+  --type-meta-size: var(--text-sm);
+  --type-meta-weight: 400;
+  --type-metric-size: var(--text-xl);
+  --type-metric-weight: 650;
+  /* ONE tracking for every uppercase section heading (was 0.02/0.04/0.05/0.06em scattered). */
+  --tracking-eyebrow: 0.05em;
+
   /* ---- Radius ---- */
   --radius-sm: 6px; /* buttons / inputs / badges */
   --radius-md: 8px; /* cards / panels */
   --radius-lg: 12px; /* modals / palette */
+
+  /* ---- Motion: ONE duration + easing for every hover / state transition in the app. A hover is a
+   * quiet acknowledgement, never an animation — nothing here moves, only colour and border shift. ---- */
+  --transition: 120ms ease-out;
+
+  /* ---- Accent slot. Every place an accent touches (active nav rail, primary button fill, focus
+   * rings, the unlock chip) reads --mc-accent. Landed 2026-08-05: candidate C "warm parchment" from
+   * docs/superpowers/plans/2026-08-05-accent-swatches.md — #d9c7a8 dark / #6b5b41 light, low-chroma
+   * sand deliberately distinct from the saturated amber/tier chips. --mc-accent-fg is the text colour
+   * that sits ON a filled accent; --bg-base is correct in both themes. ---- */
+  --mc-accent: #d9c7a8;
+  --mc-accent-fg: var(--bg-base);
 
   /* ---- Elevation (hairline borders do most of the work; shadows reserved for floating,
    * neutral black low-opacity, never colored/glow) ---- */
@@ -162,6 +205,7 @@
     --accent-strong: #2b2925;
     --accent: #6b6558;
     --accent-quiet: rgba(0, 0, 0, 0.05);
+    --mc-accent: #6b5b41;
 
     /* Light hairline is a dark low-alpha line (structure requires the token; value unchanged from the
      * prior --border/--border-strong so light is visually identical to before this sharpen pass). */
@@ -203,6 +247,7 @@
   --accent-strong: #2b2925;
   --accent: #6b6558;
   --accent-quiet: rgba(0, 0, 0, 0.05);
+  --mc-accent: #6b5b41;
 
   --hairline: rgba(0, 0, 0, 0.1);
   --hairline-strong: rgba(0, 0, 0, 0.16);
@@ -240,6 +285,7 @@
   --accent-strong: #ededea;
   --accent: #a3a099;
   --accent-quiet: rgba(245, 244, 239, 0.06);
+  --mc-accent: #d9c7a8;
 
   --hairline: rgba(255, 255, 255, 0.1);
   --hairline-strong: rgba(255, 255, 255, 0.16);
@@ -299,8 +345,8 @@ button {
 /* The shell is pinned to EXACTLY the viewport height (dvh handles mobile browser chrome; vh is the
  * fallback) and clips its own overflow. This is load-bearing for the full-height sidebar (U5.1 item 7):
  * because the shell never grows past the viewport, the sidebar (which spans both grid rows) is always a
- * full-height column, its nav scrolls internally, and the Session·STOP floor stays pinned on screen at
- * every zoom. Vertical overflow lives in `.mc-main` (and `.mc-nav`), never on <body>. */
+ * full-height column and its nav scrolls internally at every zoom. Vertical overflow lives in `.mc-main`
+ * (and `.mc-nav`), never on <body>. */
 .app-shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
@@ -443,10 +489,10 @@ button {
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-overlay);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 .mc-new__item {
@@ -487,7 +533,7 @@ button {
   height: 0;
   border: 0;
   border-top: 1px solid var(--border);
-  margin: 2px var(--space-2);
+  margin: var(--space-0) var(--space-2);
 }
 
 /* The divider above the very first group sits flush under the [+ New] menu. */
@@ -498,7 +544,7 @@ button {
 .mc-nav-section__items {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
   list-style: none;
   margin: 0;
   padding: 0;
@@ -532,7 +578,7 @@ button {
 .mc-nav-item--active {
   background: var(--accent-quiet);
   color: var(--fg-primary);
-  border-left-color: var(--accent-strong);
+  border-left-color: var(--mc-accent);
   font-weight: 500;
 }
 
@@ -603,220 +649,6 @@ button {
   gap: var(--space-2);
 }
 
-/* ============================================================================
- * Session / Stop floor (U5.1 redesign) — pinned bottom, hairline-separated, always reachable.
- * Minimal + dignified + well-spaced: a quiet passive session indicator (no sign-in/out chrome —
- * the passkey ceremony now runs at point-of-action) above a restrained STOP surface. STOP stays
- * unmistakable via the semantic --error only — no glow, no gradient.
- * ============================================================================ */
-.mc-sidebar__floor {
-  margin-top: auto;
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-/* Passive session indicator — a dot + quiet label, informational only (NOT a button). */
-.mc-session {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-  font-size: var(--text-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--fg-faint);
-}
-
-.mc-session__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.mc-session__label {
-  font-weight: 500;
-}
-
-.mc-session__unlock {
-  width: 100%;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  color: var(--fg-primary);
-  padding: var(--space-1) var(--space-2);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  cursor: pointer;
-}
-
-.mc-session__unlock:hover:not(:disabled) {
-  border-color: var(--accent-strong);
-}
-
-.mc-session__unlock:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.mc-session__help,
-.mc-session__error {
-  margin: 0;
-  font-size: var(--text-xs);
-  line-height: 1.4;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.mc-session__help {
-  color: var(--fg-faint);
-}
-
-.mc-session__error {
-  color: var(--error);
-}
-
-/* De-chrome the relocated StopControls inside the narrow floor — it drops its panel frame and
- * reads as part of the shell, not a card. (View-body internals are untouched otherwise.) */
-.mc-sidebar__floor .control__stop {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  overflow: visible;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.mc-sidebar__floor .control__stop h2 {
-  margin: 0;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--fg-faint);
-}
-
-/* Each governed form is a tidy stacked group, well spaced from its neighbour. */
-.mc-sidebar__floor .control__stop form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.mc-sidebar__floor .control__stop input[type='text'],
-.mc-sidebar__floor .control__stop input:not([type]) {
-  width: 100%;
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--fg-primary);
-  font: inherit;
-  font-size: var(--text-sm);
-  padding: var(--space-1) var(--space-2);
-}
-
-.mc-sidebar__floor .control__stop input:focus-visible {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: -1px;
-}
-
-/* Scoped (non-nuclear) buttons: quiet, full-width, hairline. */
-.mc-sidebar__floor .control__stop button {
-  width: 100%;
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--bg-elevated);
-  color: var(--fg-dim);
-  cursor: pointer;
-}
-
-.mc-sidebar__floor .control__stop button:hover:not(:disabled) {
-  color: var(--fg-primary);
-}
-
-.mc-sidebar__floor .control__stop button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.mc-sidebar__floor .control__stop-warning {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-}
-
-.mc-sidebar__floor .control__stop [data-testid$='-status'],
-.mc-sidebar__floor .control__stop p {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--fg-dim);
-}
-
-/* Nuclear STOP: a restrained danger control — semantic red outline that fills red on hover, and its
- * confirm checkbox row. Unmistakable, never decorative; no glow/gradient. */
-.mc-sidebar__floor .control__stop-nuke {
-  gap: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
-}
-
-.mc-sidebar__floor .control__stop-nuke label {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--fg-dim);
-  cursor: pointer;
-}
-
-.mc-sidebar__floor .control__stop-nuke button {
-  border-color: var(--error);
-  color: var(--error);
-  background: transparent;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.mc-sidebar__floor .control__stop-nuke button:not(:disabled):hover {
-  background: var(--error);
-  color: var(--bg-base);
-}
-
-/* Rail-mode: floor collapses to a single stop glyph; the detail forms hide. */
-.mc-sidebar__floor-rail {
-  display: none;
-}
-
-.app-shell--rail .mc-sidebar__floor .control__stop,
-.app-shell--rail .mc-session__label,
-.app-shell--rail .mc-session__unlock,
-.app-shell--rail .mc-session__help,
-.app-shell--rail .mc-session__error {
-  display: none;
-}
-
-.app-shell--rail .mc-session {
-  align-items: center;
-}
-
-.app-shell--rail .mc-sidebar__floor-rail {
-  display: block;
-  text-align: center;
-  color: var(--error);
-  font-size: var(--text-md);
-}
-
 /* ---- Topbar ---- */
 .mc-topbar {
   grid-area: topbar;
@@ -847,6 +679,55 @@ button {
   white-space: nowrap;
 }
 
+/* The app's ONE unlock affordance — a quiet chip in the topbar, same visual weight as the glance.
+ * Locked it is a button (click = the single passkey ceremony); unlocked it is an inert readout. */
+.mc-session-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mc-session-chip:disabled {
+  cursor: default;
+  color: var(--fg-faint);
+}
+
+.mc-session-chip:hover:not(:disabled) {
+  color: var(--fg-primary);
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.mc-session-chip:focus-visible {
+  outline: 2px solid var(--mc-accent);
+  outline-offset: 1px;
+}
+
+/* Locked = a real filled Unlock button (mc-btn--primary supplies the accent fill); this modifier only
+ * restores the chip's compact top-bar metrics over the button's larger defaults. */
+.mc-session-chip--locked {
+  padding: var(--space-1) var(--space-3);
+  color: var(--mc-accent-fg);
+  font-weight: 600;
+}
+
+.mc-session-chip--locked:hover {
+  color: var(--mc-accent-fg);
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+  filter: brightness(1.06);
+}
+
 /* Quiet theme toggle — a subtle icon button (dark default, light on demand; choice persisted). */
 .mc-theme-toggle {
   flex: 0 0 auto;
@@ -872,7 +753,7 @@ button {
 }
 
 .mc-theme-toggle:focus-visible {
-  outline: 2px solid var(--accent-strong);
+  outline: 2px solid var(--mc-accent);
   outline-offset: 1px;
 }
 
@@ -929,37 +810,57 @@ button {
   font-size: var(--text-base);
 }
 
-/* ---- Table (dense rows, mono + tabular figures on cells) ---- */
+/* ---- Table — ONE table shape for the whole app (Phase 6). Every list table (Agents, Tasks, Workflows,
+ * Home usage, the layer panels) uses this: same header style, same row height, same cell padding. Views
+ * add columns and cell classes, never a second geometry. `--boxed` adds the self-contained panel frame
+ * for a table that stands on the page rather than sitting inside a `.mc-panel`. ---- */
 .mc-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--text-sm);
+  font-size: var(--type-body-size);
   font-variant-numeric: tabular-nums;
 }
 
 .mc-table th,
 .mc-table td {
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
   text-align: left;
+  vertical-align: middle;
   border-bottom: 1px solid var(--border);
 }
 
 .mc-table th {
   color: var(--fg-dim);
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
 }
 
 .mc-table td.mc-mono,
 .mc-table td[data-mono='true'] {
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
+}
+
+.mc-table tbody tr {
+  transition: background-color var(--transition);
 }
 
 .mc-table tbody tr:hover {
   background: var(--bg-elevated);
+}
+
+/* A table that carries its own panel frame (no `.mc-panel` wrapper around it). */
+.mc-table--boxed {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.mc-table--boxed tbody tr:last-child td {
+  border-bottom: none;
 }
 
 /* ---- Badge (tier / status pill) ---- */
@@ -1013,13 +914,17 @@ button {
   border-color: var(--error);
 }
 
-/* ---- Status dot ---- */
+/* ---- Status dot — the app's ONE state indicator (Phase 6). Same shape, same size, same tone mapping
+ * everywhere: Home tiles, agent rows, run states, inbox chips, Sentinel liveness. A new state taxonomy
+ * gets a modifier here and reuses this geometry; it never gets a second dot implementation or a new hue.
+ *   idle → grey · running → green · done → green · waiting → amber · blocked/failed/error → red
+ * ---- */
 .mc-status-dot {
   display: inline-block;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  background: var(--fg-faint);
+  background: var(--status-idle);
   flex: 0 0 auto;
 }
 
@@ -1031,7 +936,14 @@ button {
   background: var(--status-done);
 }
 
-.mc-status-dot--blocked {
+/* Waiting on a person — the one amber state; it must not read as a failure. */
+.mc-status-dot--waiting {
+  background: var(--warning);
+}
+
+.mc-status-dot--blocked,
+.mc-status-dot--failed,
+.mc-status-dot--error {
   background: var(--status-blocked);
 }
 
@@ -1039,8 +951,63 @@ button {
   background: var(--status-idle);
 }
 
-.mc-status-dot--error {
-  background: var(--error);
+/* ---- Entity name (spec §2: displayName + #shortRef, id hidden behind title/copy) ----
+ * The ref chip reuses .mc-badge + .mc-mono verbatim (same hairline vocabulary as tier/status pills);
+ * only the label/copy-glyph chrome below is new. No new colours — copy affordance sits in --fg-faint
+ * at rest and borrows --status-done only to confirm a copy, never to decorate. */
+.entity-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.entity-name__label {
+  color: var(--fg-primary);
+  overflow-wrap: anywhere;
+}
+
+.entity-name--muted .entity-name__label {
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+
+.entity-name--muted .entity-name__ref {
+  font-size: var(--type-section-size);
+}
+
+.entity-name__ref {
+  white-space: nowrap;
+}
+
+.entity-name__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.entity-name__copy:hover {
+  color: var(--fg-primary);
+  background: var(--bg-elevated);
+}
+
+.entity-name__copy:focus-visible {
+  outline: 2px solid var(--mc-accent);
+  outline-offset: 1px;
+}
+
+.entity-name__copy--copied {
+  color: var(--status-done);
 }
 
 /* ---- Buttons ---- */
@@ -1067,9 +1034,9 @@ button {
 /* Primary = neutral near-white fill (dark theme) / near-black fill (light theme) with the shell base
  * colour as its text — a Linear/Claude-dark solid button, no accent hue. */
 .mc-btn--primary {
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
-  color: var(--bg-base);
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+  color: var(--mc-accent-fg);
 }
 
 .mc-btn--quiet {
@@ -1082,6 +1049,166 @@ button {
   background: transparent;
   border-color: var(--error);
   color: var(--error);
+}
+
+/* ---- Row link — ONE hover treatment for every clickable row/cell in an entity list (Phase 6).
+ * Six views had hand-copied this: a transparent 2px left rail that paints on hover/focus, so geometry
+ * never shifts between states. It is the same ACTIVE/SELECTED language as .mc-nav-item--active, learned
+ * once and reused. A view adds only its own layout (display/gap) on top. ---- */
+.mc-row-link {
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  border: 1px solid transparent;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--transition), background-color var(--transition), border-color var(--transition);
+}
+
+.mc-row-link:hover {
+  color: var(--fg-primary);
+  border-left-color: var(--mc-accent);
+}
+
+.mc-row-link:focus-visible {
+  outline: 2px solid var(--mc-accent);
+  outline-offset: -1px;
+}
+
+/* ---- Empty state — ONE quiet sentence, never a placeholder box (Phase 6). Three views had grown
+ * bordered/dashed cards up to 48px of padding for "there is nothing here"; nothing is not an event. ---- */
+.mc-empty {
+  margin: 0;
+  padding: var(--space-3) 0;
+  font-size: var(--type-meta-size);
+  color: var(--fg-faint);
+  line-height: 1.5;
+}
+
+/* ---- Emergency stop (the app's ONE stop implementation — `views/Control.tsx#StopControls`, mounted on
+ * the Sentinel view). Three stacked controls, narrowest first, each with one plain sentence of context.
+ * The nuclear control is set apart by a hairline and carries the semantic --error only: no glow, no
+ * gradient, no decorative hue. ---- */
+.mc-stop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 34rem;
+}
+
+.mc-stop__title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.mc-stop__lead {
+  margin: calc(var(--space-3) * -1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.mc-stop__control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mc-stop__control--nuke {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.mc-stop__help {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.mc-stop__status {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+.mc-stop form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mc-stop input[type='text'],
+.mc-stop input:not([type]) {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: var(--text-base);
+  padding: var(--space-1) var(--space-2);
+}
+
+.mc-stop input:focus-visible {
+  outline: 2px solid var(--mc-accent);
+  outline-offset: -1px;
+}
+
+.mc-stop button {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: color var(--transition), background-color var(--transition), border-color var(--transition);
+}
+
+.mc-stop button:hover:not(:disabled) {
+  color: var(--fg-primary);
+}
+
+.mc-stop button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mc-stop__control--nuke form {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.mc-stop__control--nuke label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+
+.mc-stop__control--nuke button {
+  border-color: var(--error);
+  color: var(--error);
+  background: transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mc-stop__control--nuke button:not(:disabled):hover {
+  background: var(--error);
+  color: var(--bg-base);
 }
 
 /* ============================================================================

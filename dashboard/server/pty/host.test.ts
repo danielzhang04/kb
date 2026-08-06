@@ -139,6 +139,34 @@ describe('createPtyHost — spawns node-pty with the constrained env; the shell 
     expect(calls[0].opts.env.GITHUB_TOKEN).toBeUndefined();
     // The child env is a fresh object, never the parent env by reference.
     expect(Object.keys(calls[0].opts.env)).not.toContain('CLAUDE_CODE_OAUTH_TOKEN');
+    // No `command` on the request => the login shell with NO arguments, exactly as before.
+    expect(calls[0].args).toEqual([]);
+  });
+
+  it('runs a requested program as file + ARGV ARRAY, under the same filtered env as a shell', () => {
+    const { factory, calls } = recordingFactory([fakeHandle().handle]);
+    const host = createPtyHost({
+      ptyFactory: factory,
+      parentEnv: { PATH: '/usr/bin', ANTHROPIC_API_KEY: 'sk-must-not-pass', GITHUB_TOKEN: 'ghp_must-not-pass' },
+      shell: '/bin/bash',
+      sessionId: () => 'pty-1',
+    });
+
+    host.open({
+      requestId: 'req-1',
+      cols: 80,
+      rows: 24,
+      cwd: '/repo',
+      command: { file: 'claude', args: ['--append-system-prompt-file', '/repo/agents/fyt runner.md'] },
+    });
+
+    expect(calls[0].file).toBe('claude'); // the shell is replaced, not wrapped around a command string
+    // The path stays ONE argv element even with a space in it — nothing re-parses it.
+    expect(calls[0].args).toEqual(['--append-system-prompt-file', '/repo/agents/fyt runner.md']);
+    // A primed claude inherits exactly the shell's credential-filtered environment, never more.
+    expect(calls[0].opts.env.PATH).toBe('/usr/bin');
+    expect(calls[0].opts.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(calls[0].opts.env.GITHUB_TOKEN).toBeUndefined();
   });
 });
 

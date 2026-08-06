@@ -1,11 +1,15 @@
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { parseYaml } from '../routing/yaml.ts';
 import type { PolicyDoc, OverrideDoc } from '../routing/policy.ts';
+import { loadPolicy, loadOverride } from '../routing/policy.ts';
+import { effectiveForAgent, SAFE_DEFAULT } from '../routing/effective.ts';
+import type { AgentDeclarationRouting } from '../routing/effective.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
-import type { ParsedCard } from '../planeA/cards.ts';
+import type { CardProjection } from '../planeA/cards.ts';
 import {
   listAgents,
   buildRoster,
@@ -16,6 +20,7 @@ import {
   roleFor,
   readDeclaredAgents,
   executionAssignmentRole,
+  declaredAgentFilePath,
 } from './roster.ts';
 
 const POLICY = parseYaml(`version: 1
@@ -27,19 +32,23 @@ runtimes:
   codex:
     default_worker: codex-worker
     aliases: { codex: gpt-5-codex }
-    known_models: [gpt-5-codex]
+    # gpt-5.6-sol is registered because the declaration fixtures below declare it (as the real
+    # agents/*.md do); an unregistered model is covered by its own degradation test.
+    known_models: [gpt-5-codex, gpt-5.6-sol]
 policy:
+  manage:
+    "*": { runtime: claude, model: opus }
   work:
     T3: { runtime: claude, model: opus }
 role_default: { runtime: claude, model: sonnet }
 `) as PolicyDoc;
 
-function card(meta: Record<string, unknown>): ParsedCard {
-  return { meta: meta as ParsedCard['meta'], body: '' };
+function card(meta: Record<string, unknown>): CardProjection {
+  return { meta: meta as CardProjection['meta'], body: '', displayName: String(meta.action ?? 'card'), shortRef: 1 };
 }
 
-function indexOf(cards: ParsedCard[]): PlaneAIndex {
-  const byState: Record<string, ParsedCard[]> = {};
+function indexOf(cards: CardProjection[]): PlaneAIndex {
+  const byState: Record<string, CardProjection[]> = {};
   for (const c of cards) (byState[String(c.meta.state)] ??= []).push(c);
   return { cards: byState, ledgers: {} as PlaneAIndex['ledgers'], orgStates: [] };
 }
@@ -84,6 +93,32 @@ overrides:
 
   it('is empty-safe with no cards', () => {
     expect(listAgents(indexOf([]), POLICY, { overrides: [] })).toEqual([]);
+  });
+
+  it('resolves a card owner against its own declaration, not the safe default', () => {
+    const index = indexOf([card({ id: 'c1', owner: 'fyt-runner', state: 'working', action: 'run', project: 'fyt' })]);
+    const declarations = new Map([['fyt-runner', { role: 'manage', runtime: 'codex', model: 'gpt-5.6-sol' }]]);
+    const row = listAgents(index, POLICY, { overrides: [] }, declarations)[0];
+    expect([row.effective.runtime, row.effective.model, row.effective.sourceModel]).toEqual([
+      'codex',
+      'gpt-5.6-sol',
+      'card',
+    ]);
+  });
+
+  it("uses the DECLARED ROLE for the policy row when the declaration names no model (manage -> opus)", () => {
+    const index = indexOf([card({ id: 'c1', owner: 'roleonly', state: 'inbox', action: 'x', project: 'fyt' })]);
+    const declarations = new Map([['roleonly', { role: 'manage', runtime: null, model: null }]]);
+    const row = listAgents(index, POLICY, { overrides: [] }, declarations)[0];
+    expect([row.effective.model, row.effective.sourceModel]).toEqual(['claude-opus-4-8', 'policy']);
+  });
+
+  it('a declaration naming a model its runtime does not know degrades to its ROLE row, never crashes', () => {
+    const index = indexOf([card({ id: 'c1', owner: 'bad-decl', state: 'inbox', action: 'x', project: 'fyt' })]);
+    // claude does not know gpt-5.6-sol -> the unusable runtime/model pair is dropped, the role is kept.
+    const declarations = new Map([['bad-decl', { role: 'manage', runtime: 'claude', model: 'gpt-5.6-sol' }]]);
+    const row = listAgents(index, POLICY, { overrides: [] }, declarations)[0];
+    expect([row.effective.model, row.effective.sourceModel]).toEqual(['claude-opus-4-8', 'policy']);
   });
 });
 
@@ -276,6 +311,25 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(entry!.sources).toEqual([]); // neither a card owner nor a ledger writer
   });
 
+  it("a declared-only agent's roster DTO carries its DECLARED model as the effective one", () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    const entry = buildRoster(indexOf([]), root, POLICY, { overrides: [] }).find((r) => r.id === 'research-worker')!;
+    // Declared codex/gpt-5.6-sol — NOT the safe default the resolver used to hand every agent.
+    expect([entry.effective.runtime, entry.effective.model, entry.effective.sourceModel]).toEqual([
+      'codex',
+      'gpt-5.6-sol',
+      'card',
+    ]);
+    expect(entry.effective.model).toBe(entry.declaredModel);
+  });
+
+  it('a declared agent that ALSO owns cards gets the same declared model on its merged entry', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    const index = indexOf([card({ id: 'c1', owner: 'research-worker', state: 'working', action: 'b', project: 'kb' })]);
+    const entry = buildRoster(index, root, POLICY, { overrides: [] }).find((r) => r.id === 'research-worker')!;
+    expect([entry.effective.runtime, entry.effective.model]).toEqual(['codex', 'gpt-5.6-sol']);
+  });
+
   it('a declared id that also owns cards merges into ONE entry (declared ∧ queue)', () => {
     const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
     const index = indexOf([card({ id: 'c1', owner: 'research-worker', state: 'working', action: 'build', project: 'kb' })]);
@@ -378,5 +432,129 @@ describe('readDeclaredAgents / buildRoster declared source (C7.3)', () => {
     expect(problems.get('mismatch')?.problem).toBe('id-mismatch');
     expect(problems.get('first')?.problem).toBe('duplicate-id');
     expect(problems.get('second')?.problem).toBe('duplicate-id');
+  });
+});
+
+/**
+ * The exact-match allowlist behind the dashboard's "Run agent" action. Anything that turns an operator
+ * string into a spawn path goes through here, so the refusals are the security boundary, not a nicety.
+ */
+describe('declaredAgentFilePath — the Run-agent allowlist', () => {
+  it('resolves a declared agent to its own file inside the served repo', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    const resolved = declaredAgentFilePath(root, 'research-worker');
+    expect(resolved).not.toBeNull();
+    expect(realpathSync(resolved as string)).toBe(realpathSync(join(root, 'agents', 'research-worker.md')));
+  });
+
+  it('refuses every id that is not exactly a declared agent', () => {
+    const root = repoWithAgents({ 'research-worker.md': AGENT_FILE });
+    for (const id of [
+      'ghost',                       // simply not declared
+      'Research-Worker',             // case is not a match; ids are lower-case by contract
+      '../../etc/passwd',            // traversal
+      'research-worker.md',          // the filename, not the id
+      'research-worker\u0000',       // NUL smuggling
+      '',                            // empty
+      'research worker',             // whitespace
+    ]) {
+      expect(declaredAgentFilePath(root, id)).toBeNull();
+    }
+    // Non-strings never reach a path join either.
+    expect(declaredAgentFilePath(root, undefined)).toBeNull();
+    expect(declaredAgentFilePath(root, 42)).toBeNull();
+    expect(declaredAgentFilePath(root, { id: 'research-worker' })).toBeNull();
+  });
+
+  it('refuses an id whose declaration was rejected by the scanner, and a repo with no agents dir', () => {
+    const rejected = repoWithAgents({ 'mismatch.md': '---\nid: different\n---\nmismatch\n' });
+    expect(declaredAgentFilePath(rejected, 'mismatch')).toBeNull();
+    expect(declaredAgentFilePath(rejected, 'different')).toBeNull();
+
+    const bare = mkdtempSync(join(tmpdir(), 'roster-noagents-path-'));
+    expect(declaredAgentFilePath(bare, 'research-worker')).toBeNull();
+  });
+});
+
+/**
+ * LIVE ACCEPTANCE — the real `governance/model-routing.yaml` and the real `agents/*.md`, not fixtures.
+ * The defect this pins: every one of these agents used to resolve the safe default (claude-sonnet-5)
+ * because the agent resolver discarded both the declaration and the declared role.
+ */
+describe('live acceptance — real governance/model-routing.yaml + agents/*.md', () => {
+  // dashboard/server/agents/roster.test.ts -> ../../../ is the repo root (same rule as resolveRepoRoot).
+  const LIVE_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+  const LIVE_POLICY = loadPolicy(LIVE_ROOT);
+  const LIVE_OVERRIDE = loadOverride(LIVE_ROOT);
+  const LIVE_DECLARED = readDeclaredAgents(LIVE_ROOT);
+  const live = (id: string, declaration: AgentDeclarationRouting | null = LIVE_DECLARED.get(id) ?? null) =>
+    effectiveForAgent(id, LIVE_POLICY, LIVE_OVERRIDE, declaration);
+
+  it('the live policy is the one being asserted against (sanity)', () => {
+    expect(LIVE_POLICY.runtimes?.codex?.known_models).toContain('gpt-5.6-sol');
+    expect(LIVE_POLICY.role_default).toMatchObject({ runtime: 'claude', model: 'sonnet' });
+  });
+
+  it('fyt-runner (role manage, declares gpt-5.6-sol) resolves gpt-5.6-sol — NOT the safe default', () => {
+    expect(LIVE_DECLARED.get('fyt-runner')).toMatchObject({ role: 'manage', runtime: 'codex', model: 'gpt-5.6-sol' });
+    const r = live('fyt-runner');
+    expect([r.runtime, r.model, r.sourceRuntime, r.sourceModel]).toEqual(['codex', 'gpt-5.6-sol', 'card', 'card']);
+    expect(r.model).not.toBe(SAFE_DEFAULT[1]);
+  });
+
+  it('every declared fyt agent resolves its OWN declared model', () => {
+    const declared = [...LIVE_DECLARED.values()].filter((d) => d.model !== null);
+    expect(declared.length).toBeGreaterThan(0);
+    for (const d of declared) {
+      expect([d.id, live(d.id).model]).toEqual([d.id, d.model]);
+    }
+  });
+
+  it('an fyt WORK agent with no declared model takes the yaml work row: role_default claude-sonnet-5', () => {
+    // `policy.work` in the live yaml is tier-keyed (T1/T2 sonnet, T3 opus) with no "*" cell, and an agent
+    // carries no risk tier — so the resolver finds no work cell and reports `role_default`, whose model
+    // alias `sonnet` resolves to claude-sonnet-5. Same value as work/T1-T2, honestly sourced from policy.
+    const r = live('fyt-story', { role: 'work', runtime: null, model: null });
+    expect([r.runtime, r.model, r.sourceRuntime, r.sourceModel]).toEqual([
+      'claude',
+      'claude-sonnet-5',
+      'policy',
+      'policy',
+    ]);
+  });
+
+  it('an agent with a "*" role row takes that row (inspect -> claude-opus-5)', () => {
+    const r = live('fyt-checker', { role: 'inspect', runtime: null, model: null });
+    expect([r.runtime, r.model, r.sourceModel]).toEqual(['claude', 'claude-opus-5', 'policy']);
+  });
+
+  it('neither declaration nor role match: role_default under the live yaml, SAFE_DEFAULT with no yaml', () => {
+    const undeclared = live('no-such-agent', null);
+    expect([undeclared.runtime, undeclared.model, undeclared.sourceModel]).toEqual([
+      'claude',
+      'claude-sonnet-5',
+      'policy',
+    ]);
+    // SAFE_DEFAULT is reached only when the policy file itself is unreadable — rung 4, source `default`.
+    const noPolicy = effectiveForAgent('no-such-agent', {}, { overrides: [] }, null);
+    expect([noPolicy.runtime, noPolicy.model, noPolicy.sourceRuntime, noPolicy.sourceModel]).toEqual([
+      ...SAFE_DEFAULT,
+      'default',
+      'default',
+    ]);
+  });
+
+  it('the roster DTO the Agents table + workflow defaults read carries the corrected model', () => {
+    const roster = buildRoster(indexOf([]), LIVE_ROOT, LIVE_POLICY, LIVE_OVERRIDE);
+    const runner = roster.find((r) => r.id === 'fyt-runner')!;
+    expect(runner.declared).toBe(true);
+    expect(runner.effective.model).toBe('gpt-5.6-sol');
+    expect(runner.effective.model).toBe(runner.declaredModel);
+    // Not a single declared agent is left on the safe default any more.
+    const declaredRows = roster.filter((r) => r.declared && r.declaredModel !== null);
+    expect(declaredRows.length).toBeGreaterThan(0);
+    expect(declaredRows.map((r) => [r.id, r.effective.model])).toEqual(
+      declaredRows.map((r) => [r.id, r.declaredModel]),
+    );
   });
 });

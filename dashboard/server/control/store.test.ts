@@ -3372,3 +3372,116 @@ describe('authorized 2026-08-01 settlement durability', () => {
     expect(() => createFileControlPlaneStore(root)).toThrow(/authorized failed-run reconciliation event/);
   });
 });
+
+/**
+ * spec §3b — dismissing a dead run.
+ *
+ * The two things that make this safe are tested here rather than at the route: `archived` is reachable
+ * ONLY from a settled or parked run (never from live work), and the dismissal and the resolution of the
+ * run's open asks are ONE commit — a run can never end up dismissed while still holding an open ask.
+ */
+describe('run archival', () => {
+  /** A published run parked at `waiting-human` with one unanswered ask — the shape being dismissed. */
+  function parkedRunWithOpenRequest(store: ControlPlaneStore) {
+    const detail = prepareActivatableRun(store, false);
+    const request = store.createHumanRequest('alice', detail.run.runRef, {
+      kind: 'intervention',
+      title: 'Traceback: manager boot failed',
+      prompt: 'Error: spawn claude ENOENT\n  at ChildProcess.handle',
+    });
+    if (!request.ok) throw new Error(request.detail);
+    const current = store.getRun('alice', detail.run.runRef);
+    if (!current.ok) throw new Error(current.detail);
+    return { run: current.value.run, requestRef: request.value.requestRef };
+  }
+
+  it('moves a parked run to archived and resolves its open requests in the same commit', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run, requestRef } = parkedRunWithOpenRequest(store);
+
+    const archived = store.archiveRun('alice', run.runRef, {
+      idempotencyKey: `archive:${run.runRef}:1`, reason: 'obsolete thin-slice validation run',
+    });
+    if (!archived.ok) throw new Error(archived.detail);
+    expect(archived.value.run.state).toBe('archived');
+    expect(archived.value.run.version).toBe(run.version + 1);
+    expect(archived.value.resolvedRequests.map((item) => item.requestRef)).toEqual([requestRef]);
+    expect(archived.value.pinnedRequestRefs).toEqual([]);
+
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    // The run keeps every record it had — archiving hides it, it does not delete anything.
+    expect(detail.value.humanRequests).toHaveLength(1);
+    expect(detail.value.humanRequests[0]).toMatchObject({
+      state: 'resolved',
+      response: { decision: 'responded', respondedBy: 'alice', response: 'obsolete thin-slice validation run' },
+    });
+  });
+
+  it('replays an identical archive and refuses a reused key with a different reason', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = parkedRunWithOpenRequest(store);
+    const input = { idempotencyKey: 'archive-key-1', reason: 'stale validation run' };
+
+    const first = store.archiveRun('alice', run.runRef, input);
+    if (!first.ok) throw new Error(first.detail);
+    const replay = store.archiveRun('alice', run.runRef, input);
+    expect(replay).toMatchObject({ ok: true, replayed: true });
+    // A replay never re-archives: the version is the one the first call produced.
+    expect(replay.ok && replay.value.run.version).toBe(first.value.run.version);
+    expect(replay.ok && replay.value.resolvedRequests).toHaveLength(1);
+
+    expect(store.archiveRun('alice', run.runRef, { ...input, reason: 'different reason' }))
+      .toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-key-2', reason: 'stale validation run' }))
+      .toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('archives a settled run and refuses one that is still live', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const settled = settleRetryPredecessor(store);
+    expect(store.archiveRun('alice', settled.run.runRef, { idempotencyKey: 'archive-failed-run' }))
+      .toMatchObject({ ok: true, value: { run: { state: 'archived' } } });
+
+    const live = createRun(store, 'bob');
+    const running = store.transitionRun('bob', live.run.runRef, live.run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const refused = store.archiveRun('bob', live.run.runRef, { idempotencyKey: 'archive-live-run' });
+    expect(refused).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(refused.ok ? '' : refused.detail).toMatch(/finished, stopped, interrupted, or waiting-human/);
+  });
+
+  it('refuses a bare transition into archived, and archived is absorbing', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = parkedRunWithOpenRequest(store);
+    // Only `archiveRun` may write the edge — a bare transition would strand the open asks.
+    expect(store.transitionRun('alice', run.runRef, run.version, 'archived'))
+      .toMatchObject({ ok: false, reason: 'invalid' });
+
+    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-absorbing' });
+    if (!archived.ok) throw new Error(archived.detail);
+    for (const state of ['running', 'waiting-human', 'failed', 'stopped'] as const) {
+      expect(store.transitionRun('alice', run.runRef, archived.value.run.version, state))
+        .toMatchObject({ ok: false, reason: 'invalid' });
+    }
+  });
+
+  it('survives a reload and keeps the archive private bookkeeping off the public run', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-archive-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const { run } = parkedRunWithOpenRequest(store);
+    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead' });
+    if (!archived.ok) throw new Error(archived.detail);
+    expect(Object.keys(archived.value.run)).not.toContain('archiveOperationKey');
+    expect(Object.keys(archived.value.run)).not.toContain('archiveOperationFingerprint');
+
+    const reopened = createFileControlPlaneStore(root, deterministicOptions());
+    const detail = reopened.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.run.state).toBe('archived');
+    // The idempotency record survived the restart too, so a retried request still replays.
+    expect(reopened.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead' }))
+      .toMatchObject({ ok: true, replayed: true });
+  });
+});

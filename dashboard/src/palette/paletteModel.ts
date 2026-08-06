@@ -7,10 +7,10 @@
  *     `disabled`: visible so the operator learns the map, but Enter is a no-op). Selecting one changes
  *     the active view — nothing more.
  *   - `act` — shortcuts to a governed surface that ALREADY exists in the UI. CRITICAL: an act command
- *     NEVER invokes a governed endpoint. It only NAVIGATES to (or focuses) the surface where the
- *     WebAuthn-gated control lives — "Approve…" opens Approvals, "Launch task" opens Home's launch
- *     surface, "Stop / Session" focuses the pinned floor. The palette is a shortcut, never a bypass:
- *     no verify/launch/stop network call originates here.
+ *     NEVER invokes a governed endpoint. It only NAVIGATES to the surface where the WebAuthn-gated
+ *     control lives — "Open Inbox" opens the Inbox, "Launch a workflow" opens Workflows (which owns the
+ *     one Launch button), "Emergency stop" opens Sentinel (which owns the stop controls). The palette is
+ *     a shortcut, never a bypass: no verify/launch/stop network call originates here.
  *
  * The filter is a simple case-insensitive substring-or-subsequence match over label + hint + keywords —
  * no new dependency, predictable, and good enough for a fixed, small command set.
@@ -33,10 +33,8 @@ export interface PaletteCommand {
   disabled: boolean;
   /** Extra search terms folded into the filter (never rendered). */
   keywords: string;
-  /** Destination to navigate to on run. Absent only for the pure focus-floor command. */
-  target?: DestinationId;
-  /** When true, running the command focuses the pinned Session/Stop floor (no endpoint call). */
-  focusFloor?: boolean;
+  /** Destination to navigate to on run. Every command carries one — running a command is a navigation. */
+  target: DestinationId;
 }
 
 /** Navigate commands — one per destination, derived straight from the nav config (single source). */
@@ -69,24 +67,28 @@ export const ACT_COMMANDS: PaletteCommand[] = [
     target: 'approvals',
   },
   {
+    // Home's launch form is gone (spec §5): work is launched from the workflow it belongs to, by the
+    // ONE Launch button on that surface. The shortcut follows the button rather than a dead form.
     id: 'act:launch',
     kind: 'act',
-    label: 'Launch task',
+    label: 'Launch a workflow',
     icon: '+',
-    hint: 'Home launch surface',
+    hint: 'Workflows',
     disabled: false,
-    keywords: 'launch task new run rerun start dispatch card',
-    target: 'home',
+    keywords: 'launch task new run rerun start dispatch card workflow',
+    target: 'workflows',
   },
   {
+    // The stop controls left the sidebar floor (spec §6): they live on Sentinel, beside the fleet-health
+    // readout an operator is looking at when they reach for them. The shortcut follows the controls.
     id: 'act:stop',
     kind: 'act',
-    label: 'Stop / Session',
+    label: 'Emergency stop',
     icon: '⏻',
-    hint: 'focus the pinned floor',
+    hint: 'Sentinel',
     disabled: false,
-    keywords: 'stop halt session sign in passkey webauthn kill freeze nuclear',
-    focusFloor: true,
+    keywords: 'stop halt kill freeze nuclear pause cadence emergency passkey',
+    target: 'sentinel',
   },
 ];
 

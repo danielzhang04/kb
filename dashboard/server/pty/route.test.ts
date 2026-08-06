@@ -7,8 +7,11 @@
  * Every allowed-origin attempt writes exactly one audit row. A socket close now DETACHES (the shell keeps
  * running); the shell dies only on an explicit close frame, a shell exit, or the shutdown drain.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import { mintSession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
@@ -16,14 +19,30 @@ import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { HostOpenRequest, PtyHandle, PtyHost, PtySession } from './host.ts';
 import { createPersistentSessionRegistry } from './persistentSessions.ts';
 import type { PersistentSessionRegistry } from './persistentSessions.ts';
+import { declaredWorkflowDefPath } from '../workflows/routes.ts';
 import {
+  buildSpawnCommand,
   handlePtyConnection,
   makePtyRouteContext,
+  parseSpawnParams,
   registerPtyRoute,
   sessionParamFromUrl,
+  SPAWN_EFFORT,
   tokenFromSubprotocol,
+  workflowPrimingFileName,
 } from './route.ts';
 import type { PtyRouteContext, PtySocketLike } from './route.ts';
+import { CommandNotFoundError } from './resolveCommand.ts';
+import { createSessionRunStore } from './sessionRuns.ts';
+import { createTranscriptRecorder } from './transcripts.ts';
+
+/** The absolute path the tests' claude resolver returns. Hermetic: no test needs the CLI installed, and
+ *  its ABSOLUTENESS is itself the property under test (node-pty cannot spawn a bare name). */
+const FAKE_CLAUDE = process.platform === 'win32' ? 'C:\\fake\\bin\\claude.exe' : '/fake/bin/claude';
+
+/** The effort flag pair every claude spawn must carry, built from the constant so a change to the cap
+ *  updates the expectation in one place — and a change to the FLAG NAME still has to be deliberate. */
+const EFFORT_ARGS = ['--effort', SPAWN_EFFORT];
 
 const SECRET = Buffer.from('pty-route-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
@@ -163,12 +182,31 @@ function fakePtyHost(options: { spawnError?: Error; sessionId?: string } = {}) {
   };
 }
 
+/** Temp directories created by a test; swept after each so no priming file or fixture repo survives. */
+const scratchDirs: string[] = [];
+function scratchDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  scratchDirs.push(dir);
+  return dir;
+}
+afterEach(() => {
+  while (scratchDirs.length > 0) rmSync(scratchDirs.pop() as string, { recursive: true, force: true });
+});
+
 function harness(options: {
   preamble?: PreambleRunner;
   host?: ReturnType<typeof fakePtyHost>;
   registry?: PersistentSessionRegistry;
   maxConcurrent?: number;
   appendAudit?: PtyRouteContext['appendAudit'];
+  resolveAgentFile?: PtyRouteContext['resolveAgentFile'];
+  resolveWorkflowFile?: PtyRouteContext['resolveWorkflowFile'];
+  resolveClaudeFile?: PtyRouteContext['resolveClaudeFile'];
+  resolveAgentRouting?: PtyRouteContext['resolveAgentRouting'];
+  repoRoot?: string;
+  workflowPrimingRoot?: string;
+  sessionRuns?: PtyRouteContext['sessionRuns'];
+  transcripts?: PtyRouteContext['transcripts'];
 } = {}): {
   ctx: PtyRouteContext;
   audit: ReturnType<typeof recordingAppendAudit>;
@@ -186,7 +224,7 @@ function harness(options: {
     return run(repoRoot);
   };
   const ctx = makePtyRouteContext({
-    repoRoot: '/repo',
+    repoRoot: options.repoRoot ?? '/repo',
     sessionConfig: SESSION_CONFIG,
     allowedOrigins: ALLOWED,
     ptyHost: host.host,
@@ -194,6 +232,23 @@ function harness(options: {
     runPreamble,
     appendAudit: options.appendAudit ?? audit.fn,
     maxConcurrent: options.maxConcurrent,
+    // Hermetic by default: NO agent id and NO workflow ref resolves unless a test supplies the allowlist
+    // explicitly, so a spawn test can never accidentally depend on this checkout's own `agents/` or
+    // `orgs/**/workflows/` trees.
+    resolveAgentFile: options.resolveAgentFile ?? (() => null),
+    resolveWorkflowFile: options.resolveWorkflowFile ?? (() => null),
+    // Never the repo, never the real daemon state root: a temp directory per test.
+    workflowPrimingRoot: options.workflowPrimingRoot ?? scratchDir('kb-pty-priming-'),
+    // Hermetic: a FIXED absolute path, so no test depends on this machine having the claude CLI
+    // installed. Tests that care about the not-found branch inject a thrower.
+    resolveClaudeFile: options.resolveClaudeFile ?? (() => FAKE_CLAUDE),
+    // Hermetic: NOTHING routes unless a test supplies it, so no test builds this checkout's real roster.
+    // The default therefore also pins the degraded path — an unresolvable routing still spawns, capped.
+    resolveAgentRouting: options.resolveAgentRouting ?? (() => null),
+    // Session-run recording is OFF unless a test wires it: the pre-leg-2 behaviour is the default, so
+    // every existing spawn/attach/cap test still exercises exactly the path it was written for.
+    ...(options.sessionRuns ? { sessionRuns: options.sessionRuns } : {}),
+    ...(options.transcripts ? { transcripts: options.transcripts } : {}),
   });
   return { ctx, audit, host, registry, preambleCalls: () => calls };
 }
@@ -219,6 +274,576 @@ describe('tokenFromSubprotocol / sessionParamFromUrl', () => {
     expect(sessionParamFromUrl('/api/pty?session=pty-9')).toBe('pty-9');
     expect(sessionParamFromUrl('/api/pty')).toBeUndefined();
     expect(sessionParamFromUrl(undefined)).toBeUndefined();
+  });
+});
+
+describe('parseSpawnParams / buildSpawnCommand — the "Run agent" admission rules', () => {
+  it('treats an absent spawn pair as the ordinary shell open', () => {
+    expect(parseSpawnParams('/api/pty')).toEqual({ ok: true, spawn: null });
+    expect(parseSpawnParams(undefined)).toEqual({ ok: true, spawn: null });
+    expect(parseSpawnParams('/api/pty?session=pty-9')).toEqual({ ok: true, spawn: null });
+  });
+
+  it('accepts only the three exact known modes with exactly their required companion parameter', () => {
+    expect(parseSpawnParams('/api/pty?spawn=claude')).toEqual({ ok: true, spawn: { mode: 'claude' } });
+    expect(parseSpawnParams('/api/pty?spawn=agent&agent=fyt-runner')).toEqual({
+      ok: true,
+      spawn: { mode: 'agent', agentId: 'fyt-runner' },
+    });
+    expect(parseSpawnParams('/api/pty?spawn=workflow&workflow=video-run')).toEqual({
+      ok: true,
+      spawn: { mode: 'workflow', workflowRef: 'video-run' },
+    });
+  });
+
+  it('refuses every malformed, ambiguous, or attach-combined spawn request', () => {
+    expect(parseSpawnParams('/api/pty?spawn=bash')).toEqual({ ok: false, reason: 'unknown-spawn-mode' });
+    expect(parseSpawnParams('/api/pty?agent=fyt-runner')).toEqual({ ok: false, reason: 'unknown-spawn-mode' });
+    expect(parseSpawnParams('/api/pty?spawn=agent')).toEqual({ ok: false, reason: 'agent-required' });
+    expect(parseSpawnParams('/api/pty?spawn=agent&agent=')).toEqual({ ok: false, reason: 'agent-required' });
+    expect(parseSpawnParams('/api/pty?spawn=claude&agent=fyt-runner')).toEqual({ ok: false, reason: 'agent-not-allowed' });
+    // An attach reuses a live shell and spawns nothing; silently ignoring a spawn there would be a lie.
+    expect(parseSpawnParams('/api/pty?session=pty-9&spawn=claude')).toEqual({ ok: false, reason: 'spawn-with-attach' });
+  });
+
+  it('refuses every malformed or cross-wired WORKFLOW spawn request', () => {
+    expect(parseSpawnParams('/api/pty?spawn=workflow')).toEqual({ ok: false, reason: 'workflow-required' });
+    expect(parseSpawnParams('/api/pty?spawn=workflow&workflow=')).toEqual({ ok: false, reason: 'workflow-required' });
+    expect(parseSpawnParams('/api/pty?spawn=workflow&agent=fyt-runner')).toEqual({ ok: false, reason: 'agent-not-allowed' });
+    expect(parseSpawnParams('/api/pty?spawn=workflow&workflow=video-run&agent=fyt-runner')).toEqual({ ok: false, reason: 'agent-not-allowed' });
+    expect(parseSpawnParams('/api/pty?spawn=claude&workflow=video-run')).toEqual({ ok: false, reason: 'workflow-not-allowed' });
+    expect(parseSpawnParams('/api/pty?spawn=agent&agent=fyt-runner&workflow=video-run')).toEqual({ ok: false, reason: 'workflow-not-allowed' });
+    // A BARE workflow= is NOT an ordinary shell open — same rule a bare agent= has always had.
+    expect(parseSpawnParams('/api/pty?workflow=video-run')).toEqual({ ok: false, reason: 'unknown-spawn-mode' });
+    expect(parseSpawnParams('/api/pty?session=pty-9&spawn=workflow&workflow=video-run')).toEqual({ ok: false, reason: 'spawn-with-attach' });
+  });
+
+  it('builds an ARGV ARRAY, with the server-resolved priming path as its own element', () => {
+    const stub = () => FAKE_CLAUDE;
+    expect(buildSpawnCommand({ mode: 'claude' }, null, stub)).toEqual({ file: FAKE_CLAUDE, args: [...EFFORT_ARGS] });
+    expect(buildSpawnCommand({ mode: 'agent', agentId: 'fyt-runner' }, '/repo/agents/fyt-runner.md', stub)).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS],
+    });
+    expect(buildSpawnCommand({ mode: 'workflow', workflowRef: 'video-run' }, '/state/pty-priming/workflow-video-run.md', stub)).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/state/pty-priming/workflow-video-run.md', ...EFFORT_ARGS],
+    });
+  });
+
+  /**
+   * THE REGRESSION PIN for Daniel's live complaint (2026-08-04): spawned terminals opened on Fable at
+   * `max`, because passing NO flags let the child inherit his personal CLI config. Effort is a HARD CAP
+   * in every mode — including the modes that resolve no model — and it is never `max`.
+   */
+  it('caps EVERY spawn mode at the effort ceiling, and that ceiling is not max', () => {
+    const stub = () => FAKE_CLAUDE;
+    for (const command of [
+      buildSpawnCommand({ mode: 'claude' }, null, stub),
+      buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', stub),
+      buildSpawnCommand({ mode: 'workflow', workflowRef: 'w' }, '/state/w.md', stub),
+      // A codex-runtime agent resolves a model, but not one this claude may be told to run.
+      buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', stub, {
+        runtime: 'codex',
+        model: 'gpt-5.6-sol',
+      }),
+    ]) {
+      const effortAt = command.args.indexOf('--effort');
+      expect(effortAt).toBeGreaterThanOrEqual(0);
+      expect(command.args[effortAt + 1]).toBe('high');
+      expect(command.args).not.toContain('max');
+    }
+    expect(SPAWN_EFFORT).toBe('high');
+  });
+
+  /**
+   * The model is stamped from the roster's EFFECTIVE routing — but only for a claude runtime. A spawned
+   * terminal IS a claude process, so writing a codex model onto its argv would record a model that never
+   * ran; the honest cross-runtime console is a separate feature.
+   */
+  it('stamps --model for a CLAUDE runtime and refuses to stamp any other runtime\'s model', () => {
+    const stub = () => FAKE_CLAUDE;
+    expect(
+      buildSpawnCommand({ mode: 'agent', agentId: 'fyt-scriptwriter' }, '/repo/agents/fyt-scriptwriter.md', stub, {
+        runtime: 'claude',
+        model: 'claude-sonnet-5',
+      }).args,
+    ).toEqual(['--append-system-prompt-file', '/repo/agents/fyt-scriptwriter.md', '--model', 'claude-sonnet-5', ...EFFORT_ARGS]);
+
+    // codex runtime → effort only, and the GPT model string appears nowhere in the argv.
+    const codex = buildSpawnCommand({ mode: 'agent', agentId: 'fyt-runner' }, '/repo/agents/fyt-runner.md', stub, {
+      runtime: 'codex',
+      model: 'gpt-5.6-sol',
+    });
+    expect(codex.args).toEqual(['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS]);
+    expect(codex.args).not.toContain('--model');
+    expect(codex.args.join(' ')).not.toContain('gpt-5.6-sol');
+
+    // A workflow spawn routes through its resolved MANAGER, so it takes a model the same way.
+    expect(
+      buildSpawnCommand({ mode: 'workflow', workflowRef: 'email-triage' }, '/state/w.md', stub, {
+        runtime: 'claude',
+        model: 'claude-sonnet-5',
+      }).args,
+    ).toEqual(['--append-system-prompt-file', '/state/w.md', '--model', 'claude-sonnet-5', ...EFFORT_ARGS]);
+
+    // Plain `claude` belongs to no entity: it never takes a model, even if one is somehow supplied.
+    expect(
+      buildSpawnCommand({ mode: 'claude' }, null, stub, { runtime: 'claude', model: 'claude-sonnet-5' }).args,
+    ).toEqual([...EFFORT_ARGS]);
+
+    // Unresolvable routing degrades to the cap alone rather than refusing the terminal.
+    expect(buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', stub, null).args).toEqual([
+      '--append-system-prompt-file',
+      '/repo/agents/a.md',
+      ...EFFORT_ARGS,
+    ]);
+  });
+
+  /**
+   * THE REGRESSION PIN for the live "Run agent / Run workflow dies instantly" defect.
+   *
+   * The bare name `claude` reached node-pty, whose ConPTY agent does not PATHEXT-search an
+   * extensionless name, and every spawn failed with an empty `File not found: `. Shell tabs were
+   * unaffected because the default shell is `ComSpec`, already absolute. `file` must therefore be an
+   * ABSOLUTE path in every spawn mode — not the bare command name.
+   */
+  it('emits an ABSOLUTE file, never the bare command name, in every spawn mode', () => {
+    const stub = () => FAKE_CLAUDE;
+    for (const command of [
+      buildSpawnCommand({ mode: 'claude' }, null, stub),
+      buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', stub),
+      buildSpawnCommand({ mode: 'workflow', workflowRef: 'w' }, '/state/w.md', stub),
+    ]) {
+      expect(command.file).not.toBe('claude');
+      expect(isAbsolute(command.file)).toBe(true);
+    }
+  });
+
+  it('propagates a not-found resolution instead of falling back to the bare name', () => {
+    const missing = () => {
+      throw new CommandNotFoundError('claude', 3);
+    };
+    expect(() => buildSpawnCommand({ mode: 'claude' }, null, missing)).toThrow(CommandNotFoundError);
+    expect(() => buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', missing)).toThrow(
+      CommandNotFoundError,
+    );
+  });
+
+  it('refuses to build a primed argv without a resolved path rather than dropping the flag', () => {
+    expect(() => buildSpawnCommand({ mode: 'agent', agentId: 'x' }, null)).toThrow(/server-resolved/);
+    expect(() => buildSpawnCommand({ mode: 'workflow', workflowRef: 'x' }, null)).toThrow(/server-generated/);
+  });
+
+  it('derives a deterministic per-ref priming filename that can never carry a path separator', () => {
+    expect(workflowPrimingFileName('video-run')).toBe('workflow-video-run.md');
+    expect(workflowPrimingFileName('video-run')).toBe(workflowPrimingFileName('video-run'));
+    const hostile = workflowPrimingFileName('../../etc/passwd');
+    expect(hostile).toMatch(/^workflow-[a-f0-9]{32}\.md$/);
+    expect(hostile).not.toContain('/');
+    expect(hostile).not.toContain('..');
+  });
+});
+
+describe('agent-primed spawn (Run agent)', () => {
+  const ALLOWLIST: PtyRouteContext['resolveAgentFile'] = (repoRoot, agentId) =>
+    agentId === 'fyt-runner' ? `${repoRoot}/agents/fyt-runner.md` : null;
+
+  it('spawns claude primed with the SERVER-resolved declaration path, in the repo the daemon serves', async () => {
+    const h = harness({ resolveAgentFile: ALLOWLIST });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), h.ctx);
+
+    expect(h.host.opens).toHaveLength(1);
+    expect(h.host.opens[0].command).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS],
+    });
+    expect(h.host.opens[0].cwd).toBe('/repo'); // never a client-supplied cwd
+    expect(h.audit.rows[0].event).toMatchObject({
+      action: 'pty-open',
+      result: 'opened',
+      detail: { spawn: 'agent', agentId: 'fyt-runner', effort: 'high' },
+    });
+  });
+
+  it('spawns a plain claude with no priming argument for the toggle\'s other position', async () => {
+    const h = harness({ resolveAgentFile: ALLOWLIST });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=claude'), h.ctx);
+
+    // Effort ONLY: a plain claude belongs to no entity, so there is no model to resolve for it.
+    expect(h.host.opens[0].command).toEqual({ file: FAKE_CLAUDE, args: [...EFFORT_ARGS] });
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { spawn: 'claude', effort: 'high' } });
+    expect((h.audit.rows[0].event.detail as Record<string, unknown>).model).toBeUndefined();
+  });
+
+  /** END TO END: the roster's effective routing reaches the real argv AND the audit row, for both a
+   *  claude-runtime agent (model stamped) and a codex-runtime one (model deliberately withheld). */
+  it('passes the agent\'s EFFECTIVE model on the wire and records what it passed', async () => {
+    const routes: Record<string, { runtime: string; model: string }> = {
+      'fyt-runner': { runtime: 'codex', model: 'gpt-5.6-sol' },
+      'fyt-scriptwriter': { runtime: 'claude', model: 'claude-sonnet-5' },
+    };
+    const h = harness({
+      resolveAgentFile: (repoRoot, agentId) => (routes[agentId] ? `${repoRoot}/agents/${agentId}.md` : null),
+      resolveAgentRouting: (_repoRoot, agentId) => routes[agentId] ?? null,
+    });
+
+    const claudeAgent = fakeSocket();
+    await handlePtyConnection(
+      claudeAgent.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-scriptwriter'),
+      h.ctx,
+    );
+    expect(h.host.opens[0].command).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-scriptwriter.md', '--model', 'claude-sonnet-5', ...EFFORT_ARGS],
+    });
+    expect(h.audit.rows[0].event).toMatchObject({
+      result: 'opened',
+      detail: { spawn: 'agent', agentId: 'fyt-scriptwriter', model: 'claude-sonnet-5', effort: 'high' },
+    });
+
+    const codexAgent = fakeSocket();
+    await handlePtyConnection(
+      codexAgent.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'),
+      h.ctx,
+    );
+    expect(h.host.opens[1].command).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS],
+    });
+    // The row is honest about WHY no model rode the argv, instead of silently omitting the fact.
+    expect(h.audit.rows[1].event).toMatchObject({
+      result: 'opened',
+      detail: { spawn: 'agent', agentId: 'fyt-runner', effort: 'high', modelSkippedForRuntime: 'codex' },
+    });
+    expect((h.audit.rows[1].event.detail as Record<string, unknown>).model).toBeUndefined();
+  });
+
+  /** Routing is an enrichment, never a precondition: a resolver that BLOWS UP costs the terminal its
+   *  model flag, not its existence — and the effort cap still lands. */
+  it('still spawns, capped, when the routing resolver throws', async () => {
+    const h = harness({
+      resolveAgentFile: ALLOWLIST,
+      resolveAgentRouting: () => {
+        throw new Error('roster build exploded');
+      },
+    });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), h.ctx);
+
+    expect(h.host.opens).toHaveLength(1);
+    expect(h.host.opens[0].command).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS],
+    });
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { effort: 'high' } });
+  });
+
+  /**
+   * The live failure wrote `spawn-failed` with `error: "File not found: "` — an EMPTY name that told
+   * nobody anything. A missing CLI must now be refused BEFORE the spawn, under its own name, and must
+   * never reach the pty host.
+   */
+  it('refuses with a NAMED reason when claude is not on the child PATH, and spawns nothing', async () => {
+    const h = harness({
+      resolveAgentFile: ALLOWLIST,
+      resolveClaudeFile: () => {
+        throw new CommandNotFoundError('claude', 7);
+      },
+    });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), h.ctx);
+
+    expect(h.host.opens).toHaveLength(0); // nothing was ever spawned
+    expect(h.audit.rows).toHaveLength(1);
+    expect(h.audit.rows[0].event).toMatchObject({
+      action: 'pty-open',
+      result: 'claude-not-found-on-path',
+      detail: { command: 'claude', searchedDirs: 7 },
+    });
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'claude-not-found-on-path' });
+    expect(ws.closes[0]?.reason).toBe('claude-not-found-on-path');
+  });
+
+  it('leaves the default shell open byte-identical when no spawn parameter is present', async () => {
+    const h = harness({ resolveAgentFile: ALLOWLIST });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken())), h.ctx);
+
+    expect(h.host.opens[0].command).toBeUndefined();
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { spawn: 'shell' } });
+  });
+
+  /**
+   * The session LIST has to say what each session is, not just that it exists. Without it an embedded
+   * console (an agent's own detail) cannot tell "the shell already primed for this agent" from "somebody
+   * else's shell", so remounting that surface would spawn a second one — and every leaked shell is one
+   * the Terminal's tabs can no longer open, since the 8-terminal cap is daemon-wide.
+   */
+  it('records what each session was opened as, so the list can be matched to an entity', async () => {
+    const registry = createPersistentSessionRegistry();
+    const primed = harness({ resolveAgentFile: ALLOWLIST, registry, host: fakePtyHost({ sessionId: 'pty-agent' }) });
+    await handlePtyConnection(
+      fakeSocket().sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'),
+      primed.ctx,
+    );
+    const plain = harness({ resolveAgentFile: ALLOWLIST, registry, host: fakePtyHost({ sessionId: 'pty-shell' }) });
+    await handlePtyConnection(fakeSocket().sock, req(GOOD_HEADERS(validToken())), plain.ctx);
+
+    const byId = new Map(registry.list('operator-1').map((s) => [s.sessionId, s]));
+    expect(byId.get('pty-agent')).toMatchObject({ kind: 'agent', targetRef: 'fyt-runner' });
+    // The login shell names no entity and must not be adoptable by any surface looking for one.
+    expect(byId.get('pty-shell')).toMatchObject({ kind: 'shell', targetRef: null });
+  });
+
+  it('refuses an agent id that is not on the roster BEFORE anything is spawned', async () => {
+    const h = harness({ resolveAgentFile: ALLOWLIST });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=not-an-agent'), h.ctx);
+
+    expect(h.host.opens).toHaveLength(0);
+    expect(h.registry.liveCount()).toBe(0);
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unknown-agent' });
+    expect(ws.closes[0]?.code).toBe(1008);
+    expect(h.audit.rows).toHaveLength(1);
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'unknown-agent', detail: { agentId: 'not-an-agent' } });
+  });
+
+  it('refuses a traversing id without ever handing it to the resolver as a path', async () => {
+    const seen: string[] = [];
+    const h = harness({
+      resolveAgentFile: (_root, agentId) => {
+        seen.push(agentId);
+        return null; // the real allowlist rejects it; this proves nothing is spawned either way
+      },
+    });
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=..%2F..%2Fetc%2Fpasswd'),
+      h.ctx,
+    );
+
+    expect(seen).toEqual(['../../etc/passwd']); // reaches the ALLOWLIST, never a join
+    expect(h.host.opens).toHaveLength(0);
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unknown-agent' });
+  });
+
+  it('refuses an unknown spawn mode without consulting the roster or the cap', async () => {
+    const resolver = vi.fn(() => '/repo/agents/fyt-runner.md');
+    const h = harness({ resolveAgentFile: resolver });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=bash'), h.ctx);
+
+    expect(resolver).not.toHaveBeenCalled();
+    expect(h.host.opens).toHaveLength(0);
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'bad-spawn-request' });
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'bad-spawn-request', detail: { reason: 'unknown-spawn-mode' } });
+  });
+
+  it('refuses a spawn request before the session gate has passed nothing — auth still wins', async () => {
+    const resolver = vi.fn(() => '/repo/agents/fyt-runner.md');
+    const h = harness({ resolveAgentFile: resolver });
+    const ws = fakeSocket();
+    // No bearer in the subprotocol: the session refusal must come first, and no roster read may happen.
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(), '/api/pty?spawn=agent&agent=fyt-runner'), h.ctx);
+
+    expect(resolver).not.toHaveBeenCalled();
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unauthenticated' });
+  });
+});
+
+describe('workflow-primed spawn (Run workflow)', () => {
+  /**
+   * A scratch repo whose definition has ZERO executable assignment — no `manager:`, no stage
+   * `agentId`/`profileId`. That is the shape of ALL FIVE real definitions in this repo today, so it is
+   * the shape that must spawn cleanly. Governance (`governedBy`) is what names the cast.
+   */
+  function zeroAssignmentRepo(options: { withAgents?: boolean } = {}): string {
+    const repoRoot = scratchDir('kb-pty-workflow-repo-');
+    const workflows = join(repoRoot, 'orgs', 'kb-ops', 'workflows');
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(
+      join(workflows, 'email-triage.md'),
+      [
+        '---', 'id: email-triage', 'project: kb-ops', 'title: Email triage (draft-only)', 'profile: gmail-triage',
+        'governedBy: chief',
+        'stages:',
+        '  - id: triage', '    title: Triage the inbox', '    action: research:email-triage',
+        '    target: orgs/kb-ops/output', '    riskTier: T2', '    workOrder: triage it',
+        '  - id: report', '    title: Write the report', '    action: draft:triage-report',
+        '    target: orgs/kb-ops/output', '    workOrder: write it', '    dependsOn: [triage]',
+        '    governedBy: scribe',
+        '---', 'body', '',
+      ].join('\n'),
+      'utf8',
+    );
+    if (options.withAgents) {
+      const agents = join(repoRoot, 'agents');
+      mkdirSync(agents, { recursive: true });
+      for (const [id, role] of [['chief', 'manage'], ['scribe', 'work']]) {
+        writeFileSync(
+          join(agents, `${id}.md`),
+          ['---', `id: ${id}`, `role: ${role}`, 'runtime: claude', 'model: claude-sonnet-5', 'projects: [kb-ops]', 'runner-bound: true', '---', 'Bounded declaration.', ''].join('\n'),
+          'utf8',
+        );
+      }
+    }
+    return repoRoot;
+  }
+
+  it('spawns claude primed with a GENERATED file outside the repo, naming the resolved cast', async () => {
+    const repoRoot = zeroAssignmentRepo({ withAgents: true });
+    const primingRoot = scratchDir('kb-pty-priming-out-');
+    // The REAL allowlist and the REAL priming writer — only the repo root and the state root are scratch.
+    // The routing resolver records WHO it was asked about: a workflow terminal must route through the
+    // definition's own resolved manager, never through a second, independent resolution.
+    const routedFor: string[] = [];
+    const h = harness({
+      repoRoot,
+      workflowPrimingRoot: primingRoot,
+      resolveWorkflowFile: declaredWorkflowDefPath,
+      resolveAgentRouting: (_repoRoot, agentId) => {
+        routedFor.push(agentId);
+        return agentId === 'chief' ? { runtime: 'claude', model: 'claude-sonnet-5' } : null;
+      },
+    });
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=workflow&workflow=email-triage'),
+      h.ctx,
+    );
+
+    expect(h.host.opens).toHaveLength(1);
+    const command = h.host.opens[0].command as { file: string; args: readonly string[] };
+    expect(command.file).toBe(FAKE_CLAUDE);
+    expect(command.args[0]).toBe('--append-system-prompt-file');
+    const primingPath = command.args[1];
+    expect(primingPath).toBe(join(primingRoot, 'workflow-email-triage.md'));
+    expect(primingPath.startsWith(repoRoot)).toBe(false); // NEVER inside the repo
+    expect(h.host.opens[0].cwd).toBe(repoRoot); // still the repo the daemon serves
+
+    // Routed through the definition's RESOLVED MANAGER (`chief`) — the same agent the priming file below
+    // prints as the default manager, so the terminal's model and its own brief cannot disagree.
+    expect(routedFor).toEqual(['chief']);
+    expect(command.args).toEqual([
+      '--append-system-prompt-file',
+      primingPath,
+      '--model',
+      'claude-sonnet-5',
+      ...EFFORT_ARGS,
+    ]);
+
+    const primed = readFileSync(primingPath, 'utf8');
+    expect(primed).toContain('# Governing agent — workflow: Email triage (draft-only)');
+    expect(primed).toContain('HEAD, GOVERNING agent');
+    expect(primed).toContain('- workflow ref: email-triage');
+    expect(primed).toContain('- definition (repo-relative): orgs/kb-ops/workflows/email-triage.md');
+    expect(primed).toContain('- default manager: chief (claude-sonnet-5) [governed-by]');
+    expect(primed).toContain('triage — Triage the inbox — research:email-triage → chief (claude-sonnet-5) [manager-default]');
+    expect(primed).toContain('report — Write the report — draft:triage-report → scribe (claude-sonnet-5) [stage-governed-by]');
+    expect(primed).toContain('CONVERSATIONALLY');
+    expect(primed).not.toContain('CLAUDE_CODE_OAUTH_TOKEN'); // no credential name ever reaches the file
+
+    expect(h.audit.rows).toHaveLength(1);
+    expect(h.audit.rows[0].event).toMatchObject({
+      action: 'pty-open',
+      result: 'opened',
+      detail: { spawn: 'workflow', workflowRef: 'email-triage', model: 'claude-sonnet-5', effort: 'high' },
+    });
+  });
+
+  it('spawns CLEANLY for a def with no resolvable cast, printing the honest refusal per stage', async () => {
+    // Zero declared agents in the project: manager null, every stage null. The spawn must still succeed.
+    const repoRoot = zeroAssignmentRepo();
+    const primingRoot = scratchDir('kb-pty-priming-empty-');
+    const h = harness({ repoRoot, workflowPrimingRoot: primingRoot, resolveWorkflowFile: declaredWorkflowDefPath });
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=workflow&workflow=email-triage'),
+      h.ctx,
+    );
+
+    expect(h.host.opens).toHaveLength(1);
+    expect(h.registry.liveCount()).toBe(1);
+    const primed = readFileSync((h.host.opens[0].command as { args: readonly string[] }).args[1], 'utf8');
+    expect(primed).toContain('- default manager: no default agent resolvable');
+    expect(primed).toContain('triage — Triage the inbox — research:email-triage → no default agent resolvable');
+    expect(primed).toContain('report — Write the report — draft:triage-report → no default agent resolvable');
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { spawn: 'workflow' } });
+  });
+
+  it('refuses an unknown workflow ref BEFORE anything is spawned or written', async () => {
+    const primingRoot = scratchDir('kb-pty-priming-unknown-');
+    const h = harness({ workflowPrimingRoot: primingRoot }); // default allowlist resolves nothing
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=workflow&workflow=not-a-workflow'),
+      h.ctx,
+    );
+
+    expect(h.host.opens).toHaveLength(0);
+    expect(h.registry.liveCount()).toBe(0);
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unknown-workflow' });
+    expect(ws.closes[0]?.code).toBe(1008);
+    expect(h.audit.rows).toHaveLength(1);
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'unknown-workflow', detail: { workflowRef: 'not-a-workflow' } });
+  });
+
+  it('refuses a traversing ref without ever handing it to a path join', async () => {
+    const seen: string[] = [];
+    const h = harness({
+      resolveWorkflowFile: (_root, ref) => {
+        seen.push(ref);
+        return null;
+      },
+    });
+    const ws = fakeSocket();
+    await handlePtyConnection(
+      ws.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=workflow&workflow=..%2F..%2Fetc%2Fpasswd'),
+      h.ctx,
+    );
+
+    expect(seen).toEqual(['../../etc/passwd']); // reaches the ALLOWLIST, never a join
+    expect(h.host.opens).toHaveLength(0);
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unknown-workflow' });
+  });
+
+  it('refuses a workflow spawn before authentication has passed — auth still wins', async () => {
+    const resolver = vi.fn(() => '/repo/orgs/kb-ops/workflows/email-triage.md');
+    const h = harness({ resolveWorkflowFile: resolver });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(), '/api/pty?spawn=workflow&workflow=email-triage'), h.ctx);
+
+    expect(resolver).not.toHaveBeenCalled();
+    expect(ws.controls()).toContainEqual({ type: 'error', reason: 'unauthenticated' });
+  });
+});
+
+describe('makePtyRouteContext fail-closed host (N4)', () => {
+  it('THROWS when no ptyHost is supplied rather than fabricating an ungated host', () => {
+    // The daemon builds ONE fleet-gated host and passes it in; a context with no host would otherwise
+    // silently fall back to a raw `createPtyHost` that bypasses the fleet gate. Construction must fail closed.
+    expect(() => makePtyRouteContext({ sessionConfig: SESSION_CONFIG })).toThrow(/ptyHost is required/);
+  });
+
+  it('builds a context when the (gated) host is supplied', () => {
+    const host = fakePtyHost();
+    const ctx = makePtyRouteContext({
+      sessionConfig: SESSION_CONFIG,
+      allowedOrigins: ALLOWED,
+      ptyHost: host.host,
+    });
+    expect(ctx.ptyHost).toBe(host.host);
   });
 });
 
@@ -477,7 +1102,11 @@ describe('handlePtyConnection attach path', () => {
 });
 
 describe('registerPtyRoute REST session endpoints', () => {
-  async function restApp(registry: PersistentSessionRegistry) {
+  async function restApp(
+    registry: PersistentSessionRegistry,
+    resolveAgentFile: PtyRouteContext['resolveAgentFile'] = () => null,
+    resolveWorkflowFile: PtyRouteContext['resolveWorkflowFile'] = () => null,
+  ) {
     const app = Fastify({ logger: false });
     const host = fakePtyHost();
     const ctx = makePtyRouteContext({
@@ -488,11 +1117,76 @@ describe('registerPtyRoute REST session endpoints', () => {
       registry,
       runPreamble: okPreamble(),
       appendAudit: recordingAppendAudit().fn,
+      resolveAgentFile,
+      resolveWorkflowFile,
+      workflowPrimingRoot: scratchDir('kb-pty-priming-rest-'),
     });
     await registerPtyRoute(app, ctx);
     await app.ready();
     return app;
   }
+
+  /**
+   * Admission control on the UPGRADE REQUEST itself: an unknown agent or a malformed spawn mode is a
+   * plain HTTP 400 and no WebSocket is ever established. `/api/pty` answers 404 to an ordinary (non
+   * upgrade) GET, so a 400 here is unambiguous proof the hook refused before the route body.
+   */
+  it('400s an unknown agent id and a malformed spawn mode on the upgrade, and lets a known agent through', async () => {
+    const app = await restApp(
+      createPersistentSessionRegistry(),
+      (repoRoot, agentId) => (agentId === 'fyt-runner' ? `${repoRoot}/agents/fyt-runner.md` : null),
+    );
+    try {
+      const unknown = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=ghost' });
+      expect(unknown.statusCode).toBe(400);
+      expect(unknown.json()).toEqual({ error: 'unknown-agent' });
+
+      const traversal = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=..%2F..%2Fsecrets' });
+      expect(traversal.statusCode).toBe(400);
+
+      const badMode = await app.inject({ method: 'GET', url: '/api/pty?spawn=bash' });
+      expect(badMode.statusCode).toBe(400);
+      expect(badMode.json()).toMatchObject({ error: 'bad-spawn-request', reason: 'unknown-spawn-mode' });
+
+      // A roster-known agent clears admission; the non-upgrade GET then falls through to the route's
+      // own 404, which is exactly what proves the hook did NOT refuse it.
+      const allowed = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=fyt-runner' });
+      expect(allowed.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('400s an unknown workflow ref on the upgrade, and lets an allowlisted ref through', async () => {
+    const app = await restApp(
+      createPersistentSessionRegistry(),
+      () => null,
+      (repoRoot, ref) => (ref === 'email-triage' ? `${repoRoot}/orgs/kb-ops/workflows/email-triage.md` : null),
+    );
+    try {
+      const unknown = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=ghost' });
+      expect(unknown.statusCode).toBe(400);
+      expect(unknown.json()).toEqual({ error: 'unknown-workflow' });
+
+      const traversal = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=..%2F..%2Fsecrets' });
+      expect(traversal.statusCode).toBe(400);
+      expect(traversal.json()).toEqual({ error: 'unknown-workflow' });
+
+      const missingRef = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow' });
+      expect(missingRef.statusCode).toBe(400);
+      expect(missingRef.json()).toMatchObject({ error: 'bad-spawn-request', reason: 'workflow-required' });
+
+      const crossWired = await app.inject({ method: 'GET', url: '/api/pty?spawn=claude&workflow=email-triage' });
+      expect(crossWired.statusCode).toBe(400);
+      expect(crossWired.json()).toMatchObject({ error: 'bad-spawn-request', reason: 'workflow-not-allowed' });
+
+      // An allowlisted ref clears admission; the non-upgrade GET then falls through to the route's 404.
+      const allowed = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=email-triage' });
+      expect(allowed.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
 
   it('GET /api/pty/sessions requires a bearer and lists only the caller-owned sessions', async () => {
     const registry = createPersistentSessionRegistry();
@@ -552,5 +1246,133 @@ describe('registerPtyRoute REST session endpoints', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+/**
+ * Leg 2 — the SESSION RUN lifecycle, driven by the daemon and nothing else.
+ *
+ * A session run is a separate record from a governed control-plane run; none of these tests touch
+ * `server/control/`. What they pin is the ordering that makes the record trustworthy: it exists before
+ * any byte reaches the operator, it ends only when the daemon OBSERVES the shell die, and closing a
+ * browser tab is not that observation.
+ */
+describe('session runs — the daemon-driven record of an entity-primed terminal', () => {
+  function recordingHarness(options: Parameters<typeof harness>[0] = {}) {
+    const root = scratchDir('kb-pty-session-runs-');
+    const sessionRuns = createSessionRunStore(root);
+    const transcripts = createTranscriptRecorder({ root });
+    return { ...harness({ ...options, sessionRuns, transcripts }), sessionRuns, transcripts, root };
+  }
+
+  const agentAllowlist = (repoRoot: string, id: string): string | null =>
+    id === 'fyt-runner' ? `${repoRoot}/agents/fyt-runner.md` : null;
+
+  it('writes a LIVE record — with its pty session id and priming file — before the opened audit', async () => {
+    const { ctx, audit, sessionRuns, transcripts } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+
+    const runs = sessionRuns.list('operator-1');
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      kind: 'agent',
+      targetRef: 'fyt-runner',
+      outcome: 'live',
+      ptySessionId: 'pty-test-1',
+      endedAt: null,
+    });
+    expect(runs[0]?.primingPath).toContain('fyt-runner.md');
+    // Still EXACTLY one audit row per connection, and it names the record it opened.
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.event.result).toBe('opened');
+    expect((audit.rows[0]?.event.detail as { sessionRunRef?: string }).sessionRunRef).toBe(runs[0]?.sessionRunRef);
+    transcripts.dispose();
+  });
+
+  it('records NOTHING for a login shell or a plain claude — they belong to no entity', async () => {
+    const { ctx, sessionRuns, transcripts } = recordingHarness();
+    const shell = fakeSocket();
+    await handlePtyConnection(shell.sock, req(GOOD_HEADERS(validToken()), '/api/pty'), ctx);
+    const claude = fakeSocket();
+    await handlePtyConnection(claude.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=claude'), ctx);
+    expect(sessionRuns.list('operator-1')).toEqual([]);
+    transcripts.dispose();
+  });
+
+  it('ends the record and attaches the flushed transcript when the shell exits', async () => {
+    const { ctx, host, sessionRuns, transcripts, root } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+    const ref = sessionRuns.list('operator-1')[0]?.sessionRunRef as string;
+
+    host.emitData('agent said hello\n');
+    host.emitExit(0);
+    await vi.waitFor(() => expect(sessionRuns.get('operator-1', ref)?.outcome).toBe('ended'));
+
+    const ended = sessionRuns.get('operator-1', ref);
+    expect(ended?.endedAt).not.toBeNull();
+    expect(ended?.transcript).toMatchObject({ truncated: false });
+    // The exit code came from the still-attached sink; the gone-notification cannot carry one.
+    await vi.waitFor(() => expect(sessionRuns.get('operator-1', ref)?.exitCode).toBe(0));
+    expect(readFileSync(join(root, 'pty', 'transcripts', 'pty-test-1.log'), 'utf8')).toContain('agent said hello');
+    transcripts.dispose();
+  });
+
+  it('ends the record on an operator close frame', async () => {
+    const { ctx, sessionRuns, transcripts } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+    const ref = sessionRuns.list('operator-1')[0]?.sessionRunRef as string;
+
+    socket.emit('message', JSON.stringify({ type: 'close' }));
+    await vi.waitFor(() => expect(sessionRuns.get('operator-1', ref)?.outcome).toBe('ended'));
+    transcripts.dispose();
+  });
+
+  it('leaves the record LIVE when the browser tab closes — a detach is not an ending', async () => {
+    const { ctx, sessionRuns, transcripts } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+    const ref = sessionRuns.list('operator-1')[0]?.sessionRunRef as string;
+
+    socket.emit('close');
+    await new Promise((resolve) => setImmediate(resolve));
+    // The shell is still running and still buffering, so `live` is the only truthful outcome.
+    expect(sessionRuns.get('operator-1', ref)?.outcome).toBe('live');
+    transcripts.dispose();
+  });
+
+  it('does NOT open a second record when the operator reattaches to the same shell', async () => {
+    const { ctx, sessionRuns, transcripts } = recordingHarness({ resolveAgentFile: agentAllowlist });
+    const first = fakeSocket();
+    await handlePtyConnection(first.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+    first.emit('close');
+    const again = fakeSocket();
+    await handlePtyConnection(again.sock, req(GOOD_HEADERS(validToken()), '/api/pty?session=pty-test-1'), ctx);
+    expect(sessionRuns.list('operator-1')).toHaveLength(1);
+    transcripts.dispose();
+  });
+
+  it('fails the spawn CLOSED when the record cannot be written: the shell is killed and nothing is left running', async () => {
+    const failing = {
+      create: () => Promise.reject(new Error('state root unavailable')),
+      end: () => Promise.resolve(null),
+      stampExitCode: () => Promise.resolve(),
+      sweepAbandoned: () => Promise.resolve(0),
+      archive: () => Promise.resolve({ ok: false as const, error: 'not-found' as const }),
+      list: () => [],
+      get: () => null,
+    };
+    const { ctx, audit, host, registry } = harness({ resolveAgentFile: agentAllowlist, sessionRuns: failing });
+    const socket = fakeSocket();
+    await handlePtyConnection(socket.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), ctx);
+
+    expect(registry.liveCount()).toBe(0);
+    expect(host.stops).toContain('pty-test-1');
+    expect(socket.controls()).toContainEqual({ type: 'error', reason: 'session-run-record-failed' });
+    // Still exactly ONE audit row, reported as the spawn failure it became.
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]?.event.result).toBe('spawn-failed');
   });
 });

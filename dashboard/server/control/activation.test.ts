@@ -34,11 +34,20 @@ function spyDeps(): ActivationDeps {
     cancelRun: vi.fn().mockResolvedValue({ state: 'stopped' }),
     containManagerStart: vi.fn().mockResolvedValue(undefined),
   };
-  const broker = { __brand: 'broker' } as never;
+  const broker = { __brand: 'broker', drain: vi.fn() } as never;
   return {
-    loadPolicy: vi.fn().mockReturnValue({ profiles: [], curatedSkills: new Set<string>(), contractText: '', governanceContents: {} }),
+    loadPolicy: vi.fn().mockReturnValue({
+      profiles: [
+        { id: 'manager:claude:claude-opus', role: 'manager', runtime: 'claude', model: 'claude-opus', capabilities: ['read', 'emit-events'] },
+        { id: 'manager:codex:gpt-5.6-sol', role: 'manager', runtime: 'codex', model: 'gpt-5.6-sol', capabilities: ['read', 'emit-events'] },
+        { id: 'worker:claude:claude-sonnet', role: 'worker', runtime: 'claude', model: 'claude-sonnet', capabilities: ['read', 'emit-events'] },
+        { id: 'worker:codex:gpt-5.6-sol', role: 'worker', runtime: 'codex', model: 'gpt-5.6-sol', capabilities: ['read', 'emit-events'] },
+      ],
+      curatedSkills: new Set<string>(), contractText: '', governanceContents: {},
+    }),
     resolveBaseCommit: vi.fn().mockReturnValue('f'.repeat(40)),
     createSessionAdapter: vi.fn().mockReturnValue({ start: vi.fn() }) as never,
+    createCodexSessionAdapter: vi.fn().mockReturnValue({ start: vi.fn() }) as never,
     createBrokerPersistence: vi.fn().mockReturnValue({}) as never,
     createBroker: vi.fn().mockReturnValue(broker),
     createWorktrees: vi.fn().mockReturnValue({}) as never,
@@ -48,20 +57,12 @@ function spyDeps(): ActivationDeps {
     createToolPolicyResolver: vi.fn().mockReturnValue(() => ({ allowedTools: ['Read'], permissionMode: 'default' })) as never,
     createAssignedAgentResolver: vi.fn().mockReturnValue({ resolve: vi.fn() }) as never,
     createWorkers: vi.fn().mockReturnValue({}) as never,
+    createCodexWorkers: vi.fn().mockReturnValue({}) as never,
+    createSessionChains: vi.fn().mockReturnValue({ get: vi.fn().mockReturnValue(null), record: vi.fn().mockResolvedValue(undefined) }) as never,
     createRegistry: vi.fn().mockReturnValue({ register: vi.fn(), cancel: vi.fn(), clear: vi.fn() }) as never,
     createManagers: vi.fn().mockReturnValue({ ensure: vi.fn() }) as never,
     createCancellation: vi.fn().mockReturnValue({ cancelManager: vi.fn(), cancelWorker: vi.fn() }) as never,
     createEngine: vi.fn().mockReturnValue(engine),
-    createRoster: vi.fn().mockReturnValue({
-      ensureRoster: vi.fn().mockReturnValue({ runRef: 'run-1', spawned: [], existing: [] }),
-      hasRoster: vi.fn().mockReturnValue(false),
-      deliver: vi.fn(),
-      retire: vi.fn().mockReturnValue([]),
-      retireAll: vi.fn().mockReturnValue([]),
-      state: vi.fn().mockReturnValue([]),
-    }) as never,
-    createRosterWorkers: vi.fn().mockReturnValue({ execute: vi.fn() }) as never,
-    loadProfiles: vi.fn().mockReturnValue([]) as never,
     settleLedgerForRun: vi.fn().mockReturnValue({ settled: true, emitted: 1, blocked: false }) as never,
   };
 }
@@ -350,15 +351,14 @@ describe('createExecutionLatch (runtime unlock)', () => {
     expect(latch.current()).toBe(wiring);
   });
 
-  it('lock drops the wiring, retires every roster session, and can be re-unlocked', () => {
+  it('lock drains managed sessions, drops the wiring, and can be re-unlocked', () => {
     const { deps, latch, changes } = latchHarness();
     latch.unlock({ subject: 'operator' });
-    const roster = (deps.createRoster as ReturnType<typeof vi.fn>).mock.results[0]?.value;
+    const broker = (deps.createBroker as ReturnType<typeof vi.fn>).mock.results[0]?.value;
     expect(latch.lock({ subject: 'operator' })).toEqual({ state: 'locked', source: null, unlockedAt: null, unlockedBy: null });
     expect(latch.current()).toBeNull();
-    // Nothing constructed stays reachable, and roster terminals are reaped rather than orphaned.
     expect(changes.at(-1)?.execution).toBeNull();
-    if (roster) expect(roster.retireAll).toHaveBeenCalledWith('execution locked');
+    expect(broker.drain).toHaveBeenCalledOnce();
     // A locked latch locks idempotently, then unlocks again on a fresh assertion.
     expect(latch.lock({ subject: 'operator' }).state).toBe('locked');
     expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
@@ -391,7 +391,7 @@ describe('createExecutionLatch (runtime unlock)', () => {
   });
 });
 
-describe('buildActivatedExecution — unlock grants and the roster substrate', () => {
+describe('buildActivatedExecution — unlock grants and headless execution', () => {
   it('constructs with a latch-minted grant and NOTHING with a forged one', () => {
     const forged = spyDeps();
     expect(buildActivatedExecution({
@@ -413,52 +413,25 @@ describe('buildActivatedExecution — unlock grants and the roster substrate', (
     expect(real.createEngine).toHaveBeenCalledTimes(1);
   });
 
-  it('wires roster delivery only when the daemon shares its pty stack, and keeps the headless path otherwise', () => {
-    const without = spyDeps();
-    const headlessOnly = buildActivatedExecution(baseOptions(without, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
-    expect(without.createRoster).not.toHaveBeenCalled();
-    expect(without.createRosterWorkers).not.toHaveBeenCalled();
-    expect(headlessOnly?.rosterSessions).toBeUndefined();
-    const headlessEngine = (without.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(headlessEngine.workers).toBe((without.createWorkers as ReturnType<typeof vi.fn>).mock.results[0].value);
-
-    const withPty = spyDeps();
-    const built = buildActivatedExecution({
-      ...baseOptions(withPty, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
-      ptyHost: { open: vi.fn(), stop: vi.fn(), stopAll: vi.fn(), sessions: () => [] } as never,
-      ptySessions: {} as never,
-    });
-    expect(withPty.createRoster).toHaveBeenCalledTimes(1);
-    expect(built?.rosterSessions).toBeDefined();
-    const rosterEngine = (withPty.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    // The engine drives the ROSTER adapter, which falls back to the headless one per run.
-    expect(rosterEngine.workers).toBe((withPty.createRosterWorkers as ReturnType<typeof vi.fn>).mock.results[0].value);
-    expect((withPty.createRosterWorkers as ReturnType<typeof vi.fn>).mock.calls[0][0].fallback)
-      .toBe((withPty.createWorkers as ReturnType<typeof vi.fn>).mock.results[0].value);
+  it('constructs the headless worker router without PTY inputs', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const engineOptions = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(engineOptions.workers).toEqual(expect.objectContaining({ execute: expect.any(Function) }));
   });
 
-  it('ensures the roster before the boundary drive and retires it when the run goes terminal', async () => {
+  it('drives and cancels through the headless engine', async () => {
     const deps = spyDeps();
-    const built = buildActivatedExecution({
-      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
-      ptyHost: { open: vi.fn(), stop: vi.fn(), stopAll: vi.fn(), sessions: () => [] } as never,
-      ptySessions: {} as never,
-    });
-    const roster = (deps.createRoster as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     const engine = (deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value;
     const proposal = { project: 'faceless-youtube', stages: [{ id: 'idea', assignment: { agentId: 'fyt-story' } }] };
     await built?.runAutomatic({ subject: 'operator', runRef: 'run-7', proposal } as never);
-    expect(roster.ensureRoster).toHaveBeenCalledWith({ subject: 'operator', runRef: 'run-7', proposal });
-    expect(roster.ensureRoster.mock.invocationCallOrder[0]).toBeLessThan(engine.runToBoundary.mock.invocationCallOrder[0]);
-    // The fake engine reports succeeded, so the terminals are retired with the run.
-    expect(roster.retire).toHaveBeenCalledWith('run-7', 'run succeeded');
-
-    // A cancellation retires them too — a stopped run must never leave live agent REPLs behind.
+    expect(engine.runToBoundary).toHaveBeenCalledWith({ subject: 'operator', runRef: 'run-7', proposal });
     await built?.cancelAutomatic({ subject: 'operator', runRef: 'run-7', idempotencyKey: 'k', reason: 'stop' } as never);
-    expect(roster.retire).toHaveBeenCalledWith('run-7', 'run cancelled');
+    expect(engine.cancelRun).toHaveBeenCalled();
   });
 
-  it('refuses a Codex route without a resolved managed roster assignment before the Claude worker can run', async () => {
+  it('allows a Codex route without a legacy roster assignment', async () => {
     const deps = spyDeps();
     const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     const engine = (deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value;
@@ -468,11 +441,11 @@ describe('buildActivatedExecution — unlock grants and the roster substrate', (
     };
 
     await expect(built?.runAutomatic({ subject: 'operator', runRef: 'run-codex-unmanaged', proposal } as never))
-      .rejects.toThrow(/Codex execution refused: stage 'codex-stage' routes to Codex without a resolved Codex roster assignment/);
-    expect(engine.runToBoundary).not.toHaveBeenCalled();
+      .resolves.toEqual({ state: 'succeeded' });
+    expect(engine.runToBoundary).toHaveBeenCalled();
   });
 
-  it('refuses a resolved Codex roster run when the PTY substrate is absent, never selecting the Claude headless path', async () => {
+  it('allows a resolved Codex assignment when the PTY substrate is absent', async () => {
     const deps = spyDeps();
     const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     const engine = (deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value;
@@ -486,18 +459,13 @@ describe('buildActivatedExecution — unlock grants and the roster substrate', (
     };
 
     await expect(built?.runAutomatic({ subject: 'operator', runRef: 'run-codex-no-pty', proposal } as never))
-      .rejects.toThrow(/Codex execution requires the managed roster PTY runtime/);
-    expect(engine.runToBoundary).not.toHaveBeenCalled();
+      .resolves.toEqual({ state: 'succeeded' });
+    expect(engine.runToBoundary).toHaveBeenCalled();
   });
 
-  it('spawns the persistent roster for a resolved Codex manager even with no assigned worker stage', async () => {
+  it('runs a resolved Codex manager through the headless path', async () => {
     const deps = spyDeps();
-    const built = buildActivatedExecution({
-      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
-      ptyHost: { open: vi.fn(), stop: vi.fn(), stopAll: vi.fn(), sessions: () => [] } as never,
-      ptySessions: {} as never,
-    });
-    const roster = (deps.createRoster as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     const assignment = {
       agentId: 'fyt-manager-codex', declarationPath: 'agents/fyt-manager-codex.md', declarationHash: 'a'.repeat(64),
       profileId: 'manager:codex:gpt-5.6-sol', runtime: 'codex', model: 'gpt-5.6-sol',
@@ -508,18 +476,63 @@ describe('buildActivatedExecution — unlock grants and the roster substrate', (
     };
 
     await built?.runAutomatic({ subject: 'operator', runRef: 'run-codex-manager', proposal } as never);
-    expect(roster.ensureRoster).toHaveBeenCalledWith({ subject: 'operator', runRef: 'run-codex-manager', proposal });
+    expect((deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value.runToBoundary).toHaveBeenCalled();
   });
 
-  it('leaves a run WITHOUT assigned stages entirely on the headless path (no roster spawn)', async () => {
+  it('runs an unassigned stage through the headless path', async () => {
     const deps = spyDeps();
-    const built = buildActivatedExecution({
-      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
-      ptyHost: { open: vi.fn(), stop: vi.fn(), stopAll: vi.fn(), sessions: () => [] } as never,
-      ptySessions: {} as never,
-    });
-    const roster = (deps.createRoster as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const built = buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
     await built?.runAutomatic({ subject: 'operator', runRef: 'run-8', proposal: { stages: [{ id: 'brief' }] } } as never);
-    expect(roster.ensureRoster).not.toHaveBeenCalled();
+    expect((deps.createEngine as ReturnType<typeof vi.fn>).mock.results[0].value.runToBoundary).toHaveBeenCalled();
+  });
+
+  it('routes worker execution by ExecutionProfile.runtime', async () => {
+    const deps = spyDeps();
+    const claudeExecute = vi.fn().mockResolvedValue({ state: 'succeeded' });
+    const codexExecute = vi.fn().mockResolvedValue({ state: 'succeeded' });
+    (deps.createWorkers as ReturnType<typeof vi.fn>).mockReturnValue({ execute: claudeExecute });
+    (deps.createCodexWorkers as ReturnType<typeof vi.fn>).mockReturnValue({ execute: codexExecute });
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const workers = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0].workers;
+    await workers.execute({ profile: { runtime: 'claude' } } as never);
+    await workers.execute({ profile: { runtime: 'codex' } } as never);
+    expect(claudeExecute).toHaveBeenCalledOnce();
+    expect(codexExecute).toHaveBeenCalledOnce();
+  });
+
+  it('routes managed sessions by their server-owned profile runtime', () => {
+    const deps = spyDeps();
+    const claudeStart = vi.fn().mockReturnValue({ stop: vi.fn() });
+    const codexStart = vi.fn().mockReturnValue({ stop: vi.fn() });
+    (deps.createSessionAdapter as ReturnType<typeof vi.fn>).mockReturnValue({ start: claudeStart });
+    (deps.createCodexSessionAdapter as ReturnType<typeof vi.fn>).mockReturnValue({ start: codexStart });
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const adapter = (deps.createBroker as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const observer = { onEvent: vi.fn(), onExit: vi.fn() };
+    adapter.start({ runRef: 'run-1', sessionRef: 'manager-1', role: 'manager', profileId: 'manager:claude:claude-opus', approvedPrompt: 'x' }, observer);
+    adapter.start({ runRef: 'run-1', sessionRef: 'manager-2', role: 'manager', profileId: 'manager:codex:gpt-5.6-sol', approvedPrompt: 'x' }, observer);
+    expect(claudeStart).toHaveBeenCalledOnce();
+    expect(codexStart).toHaveBeenCalledOnce();
+  });
+
+  it('wires the async chain store into both worker adapters and rejects runtime mismatch', async () => {
+    const deps = spyDeps();
+    const chains = {
+      get: vi.fn((_runRef: string, agentId: string) => agentId === 'claude-agent'
+        ? { runtime: 'claude', sessionId: 'claude-session', updatedAt: new Date().toISOString() }
+        : null),
+      record: vi.fn().mockResolvedValue(undefined),
+    };
+    (deps.createSessionChains as ReturnType<typeof vi.fn>).mockReturnValue(chains);
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const claudeOptions = (deps.createWorkers as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const codexOptions = (deps.createCodexWorkers as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(claudeOptions.resolveSession('run-1', 'claude-agent')).toBe('claude-session');
+    expect(codexOptions.resolveThread('run-1', 'codex-agent')).toBeNull();
+    await claudeOptions.recordSession('run-1', 'claude-agent', 'next-claude');
+    await codexOptions.recordThread('run-1', 'codex-agent', 'next-codex');
+    expect(chains.record).toHaveBeenCalledWith('run-1', 'claude-agent', { runtime: 'claude', sessionId: 'next-claude' });
+    expect(chains.record).toHaveBeenCalledWith('run-1', 'codex-agent', { runtime: 'codex', sessionId: 'next-codex' });
+    expect(() => codexOptions.resolveThread('run-1', 'claude-agent')).toThrow(/runtime differs/);
   });
 });

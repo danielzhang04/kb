@@ -22,7 +22,6 @@ import { CARD_RESPOND_SCRIPT } from './write/cardRespond.ts';
 import { CARD_ROUTING_SCRIPT } from './write/cardRouting.ts';
 import { CARD_OP_SCRIPT } from './write/launch.ts';
 import { STOP_CARD_SCRIPT } from './stop/floor.ts';
-import { PTY_VERIFY_SCRIPT } from './pty/ptyAssertionVerify.ts';
 import {
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
@@ -42,7 +41,6 @@ const SCRIPTS: Record<string, string> = {
   CARD_ROUTING_SCRIPT,
   CARD_OP_SCRIPT,
   STOP_CARD_SCRIPT,
-  PTY_VERIFY_SCRIPT,
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
   WEBAUTHN_VERIFY_SCRIPT,

@@ -2,8 +2,9 @@
  * Home view (U3) — the default landing rollup. Styled with design tokens only (see app.css §A/B/C);
  * dark + light both work via the token remap. Namespaced `.v-home__…`; reuses the `.mc-*` primitives
  * (panels, tables, badges, status dots, buttons, mono) for everything shared. Signature rules (§F):
- * hairline borders do the work, mono tabular-nums on every id/count/figure, ONE terracotta accent used
- * sparingly (the Approvals-waiting tile + the row active-language left-border), 150ms ease-out motion.
+ * hairline borders do the work, mono tabular-nums on every id/count/figure, the accent slot used
+ * sparingly (the Approvals-waiting tile + the row active-language left-border), and the ONE
+ * --transition token for motion. Type sizes come from the --type-* roles, never a local px value.
  */
 
 .v-home {
@@ -37,7 +38,6 @@
   font: inherit;
   color: inherit;
   cursor: pointer;
-  transition: background 150ms ease-out, border-color 150ms ease-out;
 }
 
 .v-home__kpi--link:hover {
@@ -46,29 +46,30 @@
 }
 
 .v-home__kpi--link:focus-visible {
-  outline: 2px solid var(--accent-strong);
+  outline: 2px solid var(--mc-accent);
   outline-offset: 1px;
 }
 
 /* The single terracotta accent: only while something is actually waiting on a signature. */
 .v-home__kpi--accent {
-  border-left-color: var(--accent-strong);
+  border-left-color: var(--mc-accent);
 }
 
 .v-home__kpi--accent .v-home__kpi-value {
-  color: var(--accent-strong);
+  color: var(--mc-accent);
 }
 
 .v-home__kpi-value {
-  font-size: var(--text-xl);
-  font-weight: 650;
+  font-size: var(--type-metric-size);
+  font-weight: var(--type-metric-weight);
   line-height: 1.1;
 }
 
 .v-home__kpi-label {
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-dim);
 }
 
@@ -89,8 +90,8 @@
 
 .v-home__panel-title {
   margin: 0 0 var(--space-3);
-  font-size: var(--text-lg);
-  font-weight: 600;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
   line-height: 1.2;
 }
 
@@ -109,32 +110,27 @@
 }
 
 .v-home__eyebrow {
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-dim);
-  font-weight: 600;
 }
 
 .v-home__count {
-  font-size: var(--text-xs);
-  color: var(--fg-faint);
-}
-
-.v-home__empty {
-  margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--type-section-size);
   color: var(--fg-faint);
 }
 
 .v-home__rows {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 /* A resume row is a button (keyboard-reachable). Left-border accent = the shared active/selected
- * language, painted on hover/focus only; geometry stays stable via the transparent resting rail. */
+ * language, painted on hover/focus only; geometry stays stable via the transparent resting rail.
+ * ONE hover treatment covers every clickable surface on this view (rows, projects, KPI tiles). */
 .v-home__row {
   display: flex;
   align-items: center;
@@ -146,23 +142,30 @@
   border-radius: var(--radius-sm);
   padding: var(--space-1) var(--space-2);
   font: inherit;
-  font-size: var(--text-base);
+  font-size: var(--type-body-size);
   color: var(--fg-primary);
   text-align: left;
   cursor: pointer;
-  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.v-home__kpi--link,
+.v-home__row,
+.v-home__project {
+  transition: background-color var(--transition), border-color var(--transition);
 }
 
 .v-home__row:hover,
-.v-home__row:focus-visible {
+.v-home__row:focus-visible,
+.v-home__project:hover,
+.v-home__project:focus-visible {
   background: var(--bg-elevated);
-  border-left-color: var(--accent-strong);
+  border-left-color: var(--mc-accent);
   outline: none;
 }
 
 .v-home__row-id {
   flex: 0 0 auto;
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
 }
 
@@ -176,7 +179,7 @@
 
 .v-home__row-meta {
   flex: 0 0 auto;
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-faint);
 }
 
@@ -187,7 +190,7 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0);
 }
 
 .v-home__project {
@@ -201,24 +204,16 @@
   border-radius: var(--radius-sm);
   padding: var(--space-1) var(--space-2);
   font: inherit;
-  font-size: var(--text-base);
+  font-size: var(--type-body-size);
   color: var(--fg-primary);
   text-align: left;
   cursor: pointer;
-  transition: background 150ms ease-out, border-color 150ms ease-out;
-}
-
-.v-home__project:hover,
-.v-home__project:focus-visible {
-  background: var(--bg-elevated);
-  border-left-color: var(--accent-strong);
-  outline: none;
 }
 
 .v-home__project-name {
   flex: 0 0 auto;
-  font-size: var(--text-sm);
-  color: var(--accent-strong);
+  font-size: var(--type-meta-size);
+  color: var(--fg-primary);
 }
 
 .v-home__project-now {
@@ -228,7 +223,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-dim);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
 }
 
 /* ── Usage panel ──────────────────────────────────────────────────────────────────────────────── */
@@ -240,8 +235,8 @@
 }
 
 .v-home__usage-total-value {
-  font-size: var(--text-xl);
-  font-weight: 650;
+  font-size: var(--type-metric-size);
+  font-weight: var(--type-metric-weight);
   line-height: 1.1;
 }
 
@@ -252,7 +247,7 @@
 /* ── Launch surface ───────────────────────────────────────────────────────────────────────────── */
 .v-home__launch-warning {
   margin: 0 0 var(--space-3);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--warning);
 }
 
@@ -270,7 +265,7 @@
 
 .v-home__input {
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--type-body-size);
   background: var(--bg-sunken);
   color: var(--fg-primary);
   border: 1px solid var(--border-strong);
@@ -280,7 +275,7 @@
 
 .v-home__input:focus-visible {
   outline: none;
-  border-color: var(--accent-strong);
+  border-color: var(--mc-accent);
 }
 
 textarea.v-home__input {
@@ -291,7 +286,7 @@ textarea.v-home__input {
 
 .v-home__form-status {
   margin: var(--space-2) 0 0;
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
 }
 
@@ -305,33 +300,34 @@ textarea.v-home__input {
 }
 .v-home__execution {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .v-home__execution-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .v-home__execution-state,
 .v-home__execution-help,
 .v-home__execution-error {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 .v-home__execution-state {
-  font-weight: 600;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
 }
 
 .v-home__execution-help {
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--fg-faint);
+  font-size: var(--type-meta-size);
   line-height: 1.45;
 }
 
 .v-home__execution-error {
-  color: var(--danger, #b44b43);
-  font-size: 12px;
+  color: var(--error);
+  font-size: var(--type-meta-size);
 }

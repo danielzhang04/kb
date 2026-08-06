@@ -92,6 +92,20 @@ def find_repo_root(start: Path) -> Path:
     return start
 
 
+def find_route(start: Path):
+    """Walk up from `start` looking for `.kb/spend-grant.json` (mirrors `find_repo_root`'s `.env`
+    walk, but independently — an attempt worktree may carry the grant file with no `.env` at all).
+    Its presence gates worker-mediated ROUTE MODE: spend goes through the daemon's paid-action
+    route instead of a direct ElevenLabs call, and ELEVENLABS_API_KEY is never read. Its directory
+    is the ROUTE ROOT that `expectedArtifactPath` is expressed relative to. Returns
+    (grant_dict, route_root) or (None, None) when absent — the direct-provider path is unchanged."""
+    for d in [start, *start.parents]:
+        p = d / ".kb" / "spend-grant.json"
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8")), d
+    return None, None
+
+
 def load_env(env_path: Path) -> dict:
     env = {}
     if not env_path.exists():
@@ -502,6 +516,94 @@ def tts_request(text, cfg, api_key, prev_text, next_text, timeout=180):
     raise SystemExit("ElevenLabs request failed after retries.")
 
 
+ROUTE_OPERATION = "fyt.elevenlabs.locked-tts"
+
+# Mirrors `dashboard/server/control/paidActionService.ts` `PAID_ARTIFACT_NAMESPACE` (~line 15) and
+# `orgs/faceless-youtube/.claude/skills/image-generation/scripts/forge.py`'s
+# `validate_route_artifact_path` exactly, adapted for this route's `.mp3` extension: the daemon
+# REJECTS ('invalid-input') any `expectedArtifactPath` that doesn't start with this literal,
+# repo-root-relative prefix. Route-mode voiceover output already lands under the video's own
+# `assets/` dir (`video_dir/assets/vo.mp3` or `assets/shorts/short-NN.mp3`), which satisfies the
+# namespace by construction — this check exists so a misconfigured `video_dir` (wrong channel, a
+# path outside `videos/<slug>/`) fails LOCALLY before any paid call, not with a remote 400.
+PAID_ARTIFACT_NAMESPACE = "orgs/faceless-youtube/channels/the-second-take/videos/"
+_SAFE_ARTIFACT_PATH_RE = re.compile(r"^[A-Za-z0-9._ -]+(?:/[A-Za-z0-9._ -]+)*$")
+
+
+def validate_route_artifact_path(rel_out, name):
+    """Hard-fail LOCALLY, before any paid call, when a route-mode `expectedArtifactPath` cannot
+    possibly pass the daemon's `paidActionService.ts` `SAFE_ARTIFACT_PATH` + `PAID_ARTIFACT_NAMESPACE`
+    gate (~lines 7, 15, 428-443). Mirrors forge.py's validator of the same name, adapted for `.mp3`.
+    Without this, a misconfigured `video_dir` would burn the piece's one route call against a
+    guaranteed `invalid-input` rejection instead of failing before any spend."""
+    ok = (
+        isinstance(rel_out, str)
+        and rel_out.startswith(PAID_ARTIFACT_NAMESPACE)
+        and rel_out.lower().endswith(".mp3")
+        and not rel_out.startswith("/")
+        and re.match(r"^[A-Za-z]:", rel_out) is None
+        and ".." not in rel_out.split("/")
+        and len(rel_out) <= 512
+        and _SAFE_ARTIFACT_PATH_RE.match(rel_out) is not None
+    )
+    if not ok:
+        raise SystemExit(
+            f"{name}: route-mode expectedArtifactPath {rel_out!r} would be REJECTED by the "
+            f"daemon's paid-artifact namespace check — it must start with "
+            f"{PAID_ARTIFACT_NAMESPACE!r}, end in '.mp3', use forward slashes, and carry no "
+            f"'..', drive letter, or leading slash. Check video_dir / the route root.")
+
+
+def _route_urlopen(req, timeout):
+    # routeUrl is the local daemon (typically http://); only pay for a TLS context when the URL
+    # actually needs one.
+    if req.full_url.lower().startswith("https"):
+        return urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def tts_request_via_route(route, route_root, text, out_path, timeout=180):
+    """Route-mode equivalent of `tts_request()`: POST one call through the daemon's paid-action
+    route (Unit D) instead of calling ElevenLabs directly, so the worker never sees
+    ELEVENLABS_API_KEY. Per the thin-slice work order this is ONE call, no in-script retry — a
+    non-succeeded status is surfaced as a hard error (the call is already spent; a caller that
+    wants another attempt re-runs the piece, which draws the grant's NEXT capped ordinal).
+
+    NOTE (flagged, not solved here): the direct path's `/with-timestamps` response carries
+    character-level alignment that `stitch_chunks`/`words_from_alignment` turn into per-word
+    timings render-builder syncs shots to. The route contract's AUDIO response has no alignment
+    equivalent — the daemon returns only the committed mp3. Route-mode pieces therefore carry
+    an EMPTY word_timings list; any shot-level VO sync for a route-mode piece has no timing data
+    to sync to. This is a real gap, not a bug in this script — flagged for Unit D/the thin-slice
+    scope, not silently patched over here."""
+    rel_out = os.path.relpath(out_path, route_root).replace(os.sep, "/")
+    validate_route_artifact_path(rel_out, out_path.stem)
+    body = {"operation": ROUTE_OPERATION, "text": text, "expectedArtifactPath": rel_out}
+    req = urllib.request.Request(
+        route["routeUrl"],
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Authorization": f"Bearer {route['token']}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with _route_urlopen(req, timeout) as r:
+            resp = json.loads(r.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:500]
+        raise SystemExit(f"route HTTP {e.code}: {detail}")
+    except urllib.error.URLError as e:
+        raise SystemExit(f"Network error calling route: {e}")
+    status = resp.get("status")
+    if status != "succeeded":
+        raise SystemExit(
+            f"route call did not succeed (status={status!r}, reason={resp.get('reason')!r}) - "
+            "this call is already spent; re-run to draw the grant's next capped call if budget remains."
+        )
+    if not out_path.exists():
+        raise SystemExit(f"route reported succeeded but {out_path} was not committed")
+    return out_path.read_bytes()
+
+
 def words_from_alignment(chars, starts, ends):
     """Collapse ElevenLabs character-level alignment into [word, start_s] pairs
     (a word's start = its first character's start). Whitespace + break-tag markup
@@ -551,11 +653,14 @@ def stitch_chunks(chunk_results, duration_probe=measure_chunk_duration_s):
     return audio, words, offset
 
 
-def synthesize(text, cfg, api_key, out_path, args, budget, is_v3=False):
+def synthesize(text, cfg, api_key, out_path, args, budget, is_v3=False, route=None, route_root=None):
     """Synthesize one piece; return (audio_written, char_count, est_duration_s,
     chunk_count, word_timings). word_timings is [[word, start_s], ...] on the global
     (stitched) timeline — the ground truth render-builder syncs shots to.
-    budget is a mutable [remaining_chars] list for --limit-chars; None = unlimited."""
+    budget is a mutable [remaining_chars] list for --limit-chars; None = unlimited.
+
+    Route mode (`route` set): ONE daemon-mediated call, no chunking, no in-script retry (thin-slice
+    work order) — see `tts_request_via_route` for why word_timings comes back empty in this mode."""
     if budget is not None:
         if budget[0] <= 0:
             return False, 0, 0.0, 0, []
@@ -567,6 +672,11 @@ def synthesize(text, cfg, api_key, out_path, args, budget, is_v3=False):
     char_count = len(text)
     if args.dry_run:
         return False, char_count, est_duration_from_words(text), 0, []
+
+    if route:
+        audio = tts_request_via_route(route, route_root, text, out_path)
+        dur = est_duration_from_bytes(len(audio), cfg["output_format"])
+        return True, char_count, dur, 1, []
 
     chunks = chunk_text(text, args.max_chunk_chars, is_v3=is_v3)
 
@@ -608,9 +718,17 @@ def main():
 
     repo_root = find_repo_root(video_dir)
     env_path = Path(args.env).resolve() if args.env else repo_root / ".env"
-    api_key = load_env(env_path).get("ELEVENLABS_API_KEY", "")
-    if not args.dry_run and not api_key:
-        raise SystemExit(f"ELEVENLABS_API_KEY not found in {env_path}. Use --dry-run to test parsing offline.")
+    # Worker-mediated spend routing (Phase 3 Unit E): a `.kb/spend-grant.json` anywhere from
+    # video_dir upward means this is a daemon-managed attempt worktree — route ALL spend through
+    # the daemon's paid-action route instead of a direct ElevenLabs call, and never read
+    # ELEVENLABS_API_KEY. Absent the grant file, behavior is exactly the pre-existing direct path.
+    route, route_root = find_route(video_dir)
+    if route:
+        api_key = ""
+    else:
+        api_key = load_env(env_path).get("ELEVENLABS_API_KEY", "")
+        if not args.dry_run and not api_key:
+            raise SystemExit(f"ELEVENLABS_API_KEY not found in {env_path}. Use --dry-run to test parsing offline.")
 
     # Channel dna.md lives two levels up: channels/<name>/videos/<slug>/ -> channels/<name>/dna.md
     dna_path = video_dir.parent.parent / "dna.md"
@@ -685,7 +803,8 @@ def main():
         txt_path.write_text(text, encoding="utf-8")
 
         written, chars, dur, chunks, word_timings = synthesize(
-            text, cfg, api_key, video_dir / out_rel, args, budget, is_v3=is_v3
+            text, cfg, api_key, video_dir / out_rel, args, budget, is_v3=is_v3,
+            route=route, route_root=route_root,
         )
         state = "synthesized" if written else ("dry-run" if args.dry_run else "skipped-budget")
         if args.dry_run:
@@ -702,7 +821,11 @@ def main():
             "short_status": status,
             "char_count": chars,
             "est_duration_s": dur,
-            "duration_basis": "elevenlabs-alignment" if written else "word-count-estimate",
+            "duration_basis": (
+                "mp3-byte-estimate-routed" if written and route else
+                "elevenlabs-alignment" if written else
+                "word-count-estimate"
+            ),
             "chunk_count": chunks,
             "word_timings": word_timings,
             "state": state,

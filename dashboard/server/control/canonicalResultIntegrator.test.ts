@@ -684,6 +684,87 @@ describe('canonical Git result integrator', () => {
     expect(item.gitCalls.some((call) => call.args[0] === 'fetch')).toBe(true);
   });
 
+  it('resumes a lineage-local record stranded by a failed publication when lookup is retried', async () => {
+    const item = fixture({ lineagePushFails: true });
+    const path = join(item.stateRoot, 'control/canonical-integration.json');
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('lineage publication failed');
+    expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('lineage-local');
+
+    // The transport failure is repaired; the very next lookup drives the SAME progression integrate()
+    // implements rather than parking the stage on a false identity claim.
+    item.setLineagePushFails(false);
+    await expect(item.integrator.lookup({
+      operationKey: item.input.operationKey,
+      subject: item.input.subject,
+      runRef: item.input.runRef,
+      stageId: item.input.stageId,
+    })).resolves.toMatchObject({
+      summary: 'stage complete',
+      resultHash: item.input.resultHash,
+      durability: 'canonical',
+      attemptBaseCommit: 'a'.repeat(40),
+      integrationCommit: 'd'.repeat(40),
+    });
+    expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-committed');
+    expect(item.cardMutations()).toBe(1);
+    expect(item.gitCalls.filter((call) => call.args[0] === 'cherry-pick')).toHaveLength(1);
+  });
+
+  it('resumes an intent-state record through lookup without duplicating the attempt commit', async () => {
+    const item = fixture({ failAfterAttemptCommit: true });
+    const path = join(item.stateRoot, 'control/canonical-integration.json');
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('simulated daemon exit after attempt commit');
+    expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('intent');
+
+    await expect(item.integrator.lookup({
+      operationKey: item.input.operationKey,
+      subject: item.input.subject,
+      runRef: item.input.runRef,
+      stageId: item.input.stageId,
+    })).resolves.toMatchObject({ resultHash: item.input.resultHash, durability: 'canonical' });
+    expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-committed');
+    expect(item.gitCalls.filter((call) => call.args[0] === 'commit')).toHaveLength(1);
+    expect(item.gitCalls.filter((call) => call.args[0] === 'cherry-pick')).toHaveLength(1);
+  });
+
+  it('names the stranded state and the failed step when resumption fails again', async () => {
+    const item = fixture({ lineagePushFails: true });
+    const path = join(item.stateRoot, 'control/canonical-integration.json');
+    await expect(item.integrator.integrate(item.input)).rejects.toThrow('lineage publication failed');
+
+    const error = await item.integrator.lookup({
+      operationKey: item.input.operationKey,
+      subject: item.input.subject,
+      runRef: item.input.runRef,
+      stageId: item.input.stageId,
+    }).then(() => null, (thrown: unknown) => thrown as Error);
+    expect(error).toBeInstanceOf(Error);
+    expect(error!.message).toContain('canonical integration incomplete (state: lineage-local)');
+    expect(error!.message).toContain('lineage publication failed');
+    // The record IS this operation's own; claiming an identity mismatch was the false human ask.
+    expect(error!.message).not.toContain('identity differs');
+    expect((error as unknown as { canonicalIntegrationIncomplete?: unknown }).canonicalIntegrationIncomplete).toBe(true);
+    expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('lineage-local');
+    expect(item.cardMutations()).toBe(0);
+  });
+
+  it('still refuses hard when the journaled identity truly differs', async () => {
+    const item = fixture();
+    await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
+    for (const mismatch of [{ subject: 'someone-else' }, { stageId: 'other-stage' }, { runRef: 'run-2' }]) {
+      const error = await item.integrator.lookup({
+        operationKey: item.input.operationKey,
+        subject: item.input.subject,
+        runRef: item.input.runRef,
+        stageId: item.input.stageId,
+        ...mismatch,
+      }).then(() => null, (thrown: unknown) => thrown as Error);
+      expect(error!.message).toContain('identity differs');
+      expect(error!.message).not.toContain('integration incomplete');
+      expect((error as unknown as { canonicalIntegrationIncomplete?: unknown }).canonicalIntegrationIncomplete).toBeUndefined();
+    }
+  });
+
   it('rebases and re-verifies a journaled canonical commit after one concurrent ops advance', async () => {
     const item = fixture({ pushFailsOnce: true });
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });

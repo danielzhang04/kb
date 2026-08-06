@@ -12,7 +12,12 @@ Reads (per channel visual-kit):
   <kit>/refs/<character>/...     canonical reference frames to seed from
 
 Subcommands:
-  gen      generate one or a --batch of assets into <kit>/_staging/  (does NOT auto-register);
+  gen      generate one or a --batch of assets. Direct mode (no spend grant) stages into
+           <kit>/_staging/ (does NOT auto-register), unchanged. ROUTE mode (a `.kb/spend-grant.json`
+           grant is present) instead requires --to <videos/<slug>/assets/...> — the real video-asset
+           destination — and writes directly there, because the daemon's paid-artifact namespace
+           only accepts paths under a video's own `videos/<slug>/` tree, never the channel-level
+           `_staging/` dir (see `validate_route_artifact_path`).
            --dry-run assembles + prints every prompt and calls nothing (batch pre-flight)
   batch    build the policied seed slate for a video's shots.json -> a `gen --batch` spec
            (the two-step figure seeding of the SEEDING LAW; never truncates, never spends)
@@ -34,6 +39,24 @@ def load_env(root):
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1); env[k] = v
     return env
+
+def find_route(start):
+    """Walk up from `start` looking for `.kb/spend-grant.json` (mirrors the `.env` walk this
+    script already does). Its presence gates worker-mediated ROUTE MODE: spend goes through the
+    daemon's paid-action route instead of a direct provider call, and no provider key is ever
+    read. Its directory is the ROUTE ROOT that `expectedArtifactPath` is expressed relative to
+    (independent of the `.env`-anchored `root`, which an attempt worktree may not have). Absent
+    the grant file, returns (None, None) and the direct-provider path is unchanged."""
+    d = os.path.abspath(start)
+    while d:
+        p = os.path.join(d, ".kb", "spend-grant.json")
+        if os.path.exists(p):
+            return json.load(open(p, encoding="utf-8")), d
+        nd = os.path.dirname(d)
+        if nd == d:
+            break
+        d = nd
+    return None, None
 
 def ctx():
     try:
@@ -83,6 +106,104 @@ def nano(url, parts, aspect, context, image_size=IMAGE_SIZE_DEFAULT):
             if a < 4:
                 time.sleep(8); continue
             raise
+
+# Route mode (Phase 3 Unit E): the daemon makes exactly ONE provider attempt per POST to
+# `/api/control/paid-action`, so `unknown`/`failed`/a retryable transport error re-issues as a
+# FRESH capped call (the daemon's next journal ordinal), not an in-transport retry. This budget
+# mirrors nano()'s direct-path attempt count so route mode spends no more calls than the direct
+# path would have made HTTP attempts.
+ROUTE_MAX_CALLS = 5
+ROUTE_OPERATION = "fyt.gemini-3-pro-image-2k"
+
+# Mirrors `dashboard/server/control/paidActionService.ts` `PAID_ARTIFACT_NAMESPACE` (~line 15)
+# exactly: the daemon REJECTS ('invalid-input') any `expectedArtifactPath` that doesn't start with
+# this literal, repo-root-relative prefix. The channel-level `<kit>/_staging/` dir (used by direct
+# mode) is under `orgs/faceless-youtube/channels/<channel>/visual-kit/_staging/` — one directory
+# short of this namespace — so route mode can never target it; see `validate_route_artifact_path`.
+PAID_ARTIFACT_NAMESPACE = "orgs/faceless-youtube/channels/the-second-take/videos/"
+_SAFE_ARTIFACT_PATH_RE = re.compile(r"^[A-Za-z0-9._ -]+(?:/[A-Za-z0-9._ -]+)*$")
+
+
+def validate_route_artifact_path(rel_out, name):
+    """Hard-fail LOCALLY, before any paid call, when a route-mode `expectedArtifactPath` cannot
+    possibly pass the daemon's `paidActionService.ts` `SAFE_ARTIFACT_PATH` + `PAID_ARTIFACT_NAMESPACE`
+    gate (~lines 7, 15, 428-443). Mirrors that regex/namespace check exactly. Without this, a
+    misconfigured `--to` would burn the whole batch's retry budget against a guaranteed
+    `invalid-input` rejection — one wasted round trip per item — before failing anyway."""
+    ok = (
+        isinstance(rel_out, str)
+        and rel_out.startswith(PAID_ARTIFACT_NAMESPACE)
+        and rel_out.lower().endswith(".png")
+        and not rel_out.startswith("/")
+        and re.match(r"^[A-Za-z]:", rel_out) is None
+        and ".." not in rel_out.split("/")
+        and len(rel_out) <= 512
+        and _SAFE_ARTIFACT_PATH_RE.match(rel_out) is not None
+    )
+    if not ok:
+        raise SystemExit(
+            f"{name}: route-mode expectedArtifactPath {rel_out!r} would be REJECTED by the "
+            f"daemon's paid-artifact namespace check — it must start with "
+            f"{PAID_ARTIFACT_NAMESPACE!r}, end in '.png', use forward slashes, and carry no "
+            f"'..', drive letter, or leading slash. Check the --to destination.")
+
+def _route_urlopen(req, timeout):
+    # routeUrl is the local daemon (typically http://); only build a TLS context when the URL
+    # actually needs one, so a plain-http daemon URL never pays for cert lookup.
+    if req.full_url.lower().startswith("https"):
+        return urllib.request.urlopen(req, context=ctx(), timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+def nano_via_route(route, text, seeds, rel_out, abs_out):
+    """Route-mode equivalent of `nano()`: POST the image request through the daemon's paid-action
+    route (Unit D) instead of calling Gemini directly, so the worker never sees GEMINI_API_KEY.
+    On `succeeded` (incl. a replayed success), the daemon has already committed the PNG to
+    `abs_out` server-side — read it back rather than expecting bytes over HTTP. A `cap-exhausted`
+    409 is terminal (stop, no further spend); other retryable errors (503, retryable 409) re-issue
+    as a fresh capped call up to ROUTE_MAX_CALLS."""
+    body_seeds = []
+    for seed in seeds:
+        s, expected_sha256 = seed if isinstance(seed, tuple) else (seed, None)
+        raw = open(s, "rb").read()
+        if expected_sha256 and hashlib.sha256(raw).hexdigest() != expected_sha256:
+            raise SeedIntegrityError(f"seed SHA-256 changed before route request assembly: {s}")
+        body_seeds.append({"pngBase64": base64.b64encode(raw).decode(),
+                           "sha256": hashlib.sha256(raw).hexdigest()})
+    payload = json.dumps({"operation": ROUTE_OPERATION, "prompt": text, "seeds": body_seeds,
+                          "expectedArtifactPath": rel_out}).encode("utf-8")
+    last = "no attempt made"
+    for attempt in range(ROUTE_MAX_CALLS):
+        req = urllib.request.Request(
+            route["routeUrl"], data=payload, method="POST",
+            headers={"Authorization": f"Bearer {route['token']}", "Content-Type": "application/json"})
+        try:
+            with _route_urlopen(req, 300) as r:
+                resp = json.load(r)
+        except urllib.error.HTTPError as e:
+            try:
+                err = json.loads(e.read().decode("utf-8", "replace"))
+            except Exception:
+                err = {}
+            code = err.get("error", f"http-{e.code}")
+            if code == "cap-exhausted":
+                raise RuntimeError(f"route cap-exhausted — stopping, no further calls")
+            if e.code == 401:
+                raise RuntimeError("route 401 — spend grant missing/expired/invalid")
+            if err.get("retryable") and attempt < ROUTE_MAX_CALLS - 1:
+                last = code; time.sleep(8); continue
+            raise RuntimeError(f"route HTTP {e.code}: {code}")
+        except (urllib.error.URLError, TimeoutError):
+            if attempt < ROUTE_MAX_CALLS - 1:
+                last = "network error"; time.sleep(8); continue
+            raise RuntimeError("route: network error, exhausted retry budget")
+        status = resp.get("status")
+        if status == "succeeded":
+            if not os.path.exists(abs_out):
+                raise RuntimeError(f"route reported succeeded but {abs_out} was not committed")
+            return open(abs_out, "rb").read()
+        last = resp.get("reason", status or "unknown")
+        # unknown/failed: issue the NEXT capped call rather than an in-transport retry
+    raise RuntimeError(f"route: exhausted {ROUTE_MAX_CALLS} capped calls without success ({last})")
 
 class SeedIntegrityError(RuntimeError):
     """A checked seed changed after preflight: abort, rather than spending on a mixed batch."""
@@ -381,9 +502,17 @@ class Kit:
         self.reg = json.load(open(self.reg_path, encoding="utf-8"))
         self.model = self.reg.get("engine", "gemini-3-pro-image")
         self.dry = dry
+        # Worker-mediated spend routing (Phase 3 Unit E): a `.kb/spend-grant.json` anywhere from
+        # the kit dir upward means this is a daemon-managed attempt worktree — route ALL spend
+        # through the daemon's paid-action route instead of a direct provider call. Absent the
+        # grant file, behavior is exactly the pre-existing direct-provider path.
+        self.route, self.route_root = find_route(self.kit)
         if dry:
             # A dry assembly reads the bible + registry and nothing else: no key is loaded and no
             # request URL exists, so a pre-flight check cannot reach the engine even by mistake.
+            self.key, self.url, self.ctx = "", None, None
+        elif self.route:
+            # Route mode: no provider key is ever read here (the daemon resolves it server-side).
             self.key, self.url, self.ctx = "", None, None
         else:
             self.key = load_env(self.root)["GEMINI_API_KEY"]
@@ -572,14 +701,15 @@ def seeding_law_violations(k, r, seeds):
         bad.append(f"{name}: {len(seeds)} seeds over the cap of {SEED_CAP} — "
                    f"{', '.join(_stem(s) for s in seeds[SEED_CAP:])} did not fit. Nothing is "
                    f"truncated: restage the shot (fewer cast) rather than drop a seed.")
-    chars = k.reg.get("characters", {})
+    reg = getattr(k, "reg", {})
+    chars = reg.get("characters", {})
     omitted = r.get("assets_omitted") or ()      # the shot's DELIBERATE exclusions, carried through
     cast = [(c, [p for p in prims if p not in omitted])
-            for c, prims in shot_cast(k.reg, delta)]
+            for c, prims in shot_cast(reg, delta)]
     if name.startswith(FIGURE_PREFIX):
         # STEP 1 itself — the recipe, unchanged: canonical + the named primitives, in ONE gen.
         for c, prims in cast:
-            if not any(_is_canonical(k.reg, s, c) for s in seeds):
+            if not any(_is_canonical(reg, s, c) for s in seeds):
                 bad.append(f"{name}: STEP-1 figure frame for `{c}` without `{c}`'s canonical — the "
                            f"one seed that owns identity, head tone, hair and costume.")
             for p in prims:
@@ -590,7 +720,7 @@ def seeding_law_violations(k, r, seeds):
     delta_beat = str(r.get("stage_role", "")).lower() == "delta"
     for c, prims in cast:
         if chars.get(c, {}).get("no_hands"):     # personified object: canonical IS the whole rig
-            if not any(_is_canonical(k.reg, s, c) for s in seeds):
+            if not any(_is_canonical(reg, s, c) for s in seeds):
                 bad.append(f"{name}: `{c}` (no_hands) carries no seed — seed its canonical.")
             continue
         if delta_beat:
@@ -603,21 +733,21 @@ def seeding_law_violations(k, r, seeds):
         held = [s for s in seeds if _is_figure_frame(s, c)]
         if not held:
             bad.append(f"{name}: `{c}` is staged FRESH with no STEP-1 figure frame in the slate — "
-                       f"expected {figure_frame_name(c, *_split_primitives(k.reg, prims))}. Build "
+                       f"expected {figure_frame_name(c, *_split_primitives(reg, prims))}. Build "
                        f"the slate with `forge.py batch`.")
             continue
         # Only the pair the builder ATTRIBUTES to this figure is demanded of its frame. Order-based
         # binding cannot tell a second expression meant for an anonymous figure ("...toward two
         # anonymous figures, both `expr-fear`") from one meant for the named lead, and a law that
         # guesses would condemn correct slates. Surplus primitives are RECORDED by `batch` instead.
-        for p in (p for p in _split_primitives(k.reg, prims) if p):
+        for p in (p for p in _split_primitives(reg, prims) if p):
             if p not in _stem(held[0]):
                 bad.append(f"{name}: `{c}` names `{p}` but its STEP-1 frame is {_stem(held[0])} — "
                            f"the slate carries a different pose/expression than the shot authored.")
     return bad
 
 
-def resolve_request_seeds(k, r, pending=()):
+def resolve_request_seeds(k, r, pending=(), output_dir=None):
     """ONE place resolves a request's seed list, so the pre-flight and the generator can never
     disagree about what a gen is actually carrying. `pending` names the frames earlier entries in
     THIS batch will stage, so an in-chain parent resolves at dry-run before it exists — and a seed
@@ -641,7 +771,7 @@ def resolve_request_seeds(k, r, pending=()):
     out = []
     for s in seeds:
         if "_staging/" in str(s).replace("\\", "/"):
-            staged = os.path.join(k.staging, _stem(s) + ".png")
+            staged = os.path.join(output_dir or k.staging, _stem(s) + ".png")
             if _stem(s) in pending or os.path.exists(staged):
                 out.append(staged); continue
             raise SystemExit(f"{name}: seed '{s}' names a staged frame that does not exist and is "
@@ -655,11 +785,11 @@ LOCK_STALE_SECONDS = 60 * 60
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
-def _staging_png(k, name):
-    """A generation target is always a direct child of the resolved staging directory."""
+def _staging_png(k, name, output_dir=None):
+    """A generation target is a direct child of staging, or of route mode's video destination."""
     if not isinstance(name, str) or not name or os.path.basename(name) != name:
         raise SystemExit("generation request `name` must be a non-empty filename stem.")
-    staging = os.path.realpath(k.staging)
+    staging = os.path.realpath(output_dir or k.staging)
     target = os.path.realpath(os.path.join(staging, name + ".png"))
     try:
         inside = os.path.commonpath((target, staging)) == staging
@@ -819,17 +949,17 @@ def _publish_staging_png(k, name, out, data, force):
             os.unlink(tmp)
 
 
-def preflight_batch(k, reqs, force, dry):
+def preflight_batch(k, reqs, force, dry, output_dir=None):
     """Resolve every seed and run the seeding law over the WHOLE batch BEFORE the first API call.
     Returns `[(request, resolved seeds or None-if-skipped), ...]`. A violation anywhere stops the
     batch at $0 — the intended signal, and cheaper than $0.134 a frame."""
     plan, pending, bad = [], set(), []
     for r in reqs:
         name = r["name"]
-        out = _staging_png(k, name)
+        out = _staging_png(k, name, output_dir)
         if _existing_staging_png(out) and not force and not dry:
             plan.append((r, None)); pending.add(name); continue
-        seeds = resolve_request_seeds(k, r, pending)
+        seeds = resolve_request_seeds(k, r, pending, output_dir)
         verify_request_seed_digests(k, r, seeds)
         bad.extend(seeding_law_violations(k, r, seeds))
         plan.append((r, seeds)); pending.add(name)
@@ -839,7 +969,7 @@ def preflight_batch(k, reqs, force, dry):
     return plan
 
 
-def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
+def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False, to_dir=None):
     # Results are reported AS THEY LAND, not buffered to the end of the batch. A 20-scene batch
     # is otherwise ~15 minutes of total silence, which (a) trips agent stream watchdogs and
     # (b) hides a systematic per-gen failure until every call has already been paid for — a
@@ -858,7 +988,41 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
     if image_size not in IMAGE_SIZES:
         raise SystemExit(f"unknown --image-size ceiling {image_size!r} (allowed: {', '.join(IMAGE_SIZES)})")
     os.makedirs(k.staging, exist_ok=True)
-    plan = preflight_batch(k, reqs, force, dry)   # the seeding law, at $0, before any API call
+    # Path-namespace fix (Phase 3 Unit E follow-up): `<kit>/_staging/` is channel-scoped
+    # (`orgs/faceless-youtube/channels/<channel>/visual-kit/_staging/`) — one directory short of
+    # `PAID_ARTIFACT_NAMESPACE`, which requires a `videos/<slug>/` segment. Route mode therefore
+    # cannot stage there: every route-mode `expectedArtifactPath` built from it would be REJECTED
+    # ('invalid-input') by the daemon before any bytes moved. Route mode instead requires
+    # `--to <videos/<slug>/assets/...>` (the real intended video-asset destination) and writes
+    # directly there — there is no local stage-then-place step in route mode, because the daemon
+    # already commits the PNG server-side to the exact validated path on the FIRST successful call.
+    # Direct mode is completely untouched: `to_dir` is read only when `k.route` is set.
+    route = getattr(k, "route", None)
+    dest_root = k.staging
+    if route and not dry:
+        if not to_dir:
+            raise SystemExit(
+                "gen: route mode requires --to <videos/<slug>/assets/...> — the visual-kit's "
+                "_staging/ dir is channel-scoped and can never satisfy the daemon's paid-artifact "
+                f"namespace ({PAID_ARTIFACT_NAMESPACE!r}); pass the real destination video's asset dir.")
+        # Anchored against ROUTE_ROOT (the `.kb/spend-grant.json` dir found by `find_route`), never
+        # the `.env`-anchored `k.root` — an attempt worktree may carry no `.env` at all, in which
+        # case `k.root`'s upward walk in `Kit.__init__` would silently continue past the worktree
+        # to an arbitrary filesystem ancestor (see `find_route`'s docstring). `route_root` is
+        # already an absolute path (built from `os.path.abspath` + `os.path.dirname`), so `dest_root`
+        # and every `out` built from it below are absolute too — immune to whatever the process's
+        # CWD happens to be (the daemon runs codex with CWD `<worktree>/orgs/faceless-youtube`, not
+        # the worktree root; see rosterSessions.ts `resolveCodexAttemptWorkDir`).
+        dest_root = to_dir if os.path.isabs(to_dir) else os.path.join(k.route_root, to_dir)
+        for r in reqs:
+            out = _staging_png(k, r["name"], dest_root)
+            rel_out = os.path.relpath(out, k.route_root).replace(os.sep, "/")
+            validate_route_artifact_path(rel_out, r["name"])
+
+    # Keep main's whole-batch, no-spend preflight. Routed in-batch `_staging/` references resolve
+    # to the video destination where the daemon commits each predecessor.
+    plan = preflight_batch(k, reqs, force, dry,
+                           output_dir=dest_root if route and not dry else None)
     results = []
     total = len(reqs)
 
@@ -869,7 +1033,7 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
     for r, seeds in plan:
         name = r["name"]; mode = r.get("mode", "identity")
         if seeds is None:
-            report(name, "skip (exists in staging)"); continue
+            report(name, "skip (exists)"); continue
         figures = r.get("figures")
         hold = should_hold(mode, seeds, r["delta"], figures)
         text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
@@ -900,20 +1064,31 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
             continue
         out = lock = token = None
         try:
-            out, lock, token, skip = _reserve_staging_output(k, name, force)
-            if skip:
-                report(name, skip); continue
-            # `ip` reads the checked bytes directly into the request, closing the practical gap
-            # between retry-overlay SHA-256 validation and the provider call.
-            parts = [ip(s, _digest_for_seed(k, r, s)) for s in seeds] + [{"text": text}]
-            print(f"  [{len(results) + 1}/{total}] {name}: START provider call", flush=True)
-            data = nano(k.url, parts, aspect, k.ctx, size)
-            data = to_png_bytes(data)  # engine returns JPEG; normalize to the pipeline's PNG contract
-            validate_png(data)
-            if _publish_staging_png(k, name, out, data, force):
-                report(name, f"OK size={size} -> _staging/" + name + ".png")
+            if route:
+                # The daemon commits the PNG directly into the validated video destination.
+                # Pair each seed with main's retry-overlay digest so the exact posted bytes are checked.
+                out = _staging_png(k, name, dest_root)
+                rel_out = os.path.relpath(out, k.route_root).replace(os.sep, "/")
+                routed_seeds = [(s, _digest_for_seed(k, r, s)) for s in seeds]
+                print(f"  [{len(results) + 1}/{total}] {name}: START provider call", flush=True)
+                data = nano_via_route(route, text, routed_seeds, rel_out, out)
+                validate_png(data)
+                report(name, f"OK size={size} -> {rel_out} (routed)")
             else:
-                report(name, "skip (concurrent survivor in staging)")
+                out, lock, token, skip = _reserve_staging_output(k, name, force)
+                if skip:
+                    report(name, skip); continue
+                # `ip` reads the checked bytes directly into the request, closing the practical gap
+                # between retry-overlay SHA-256 validation and the provider call.
+                parts = [ip(s, _digest_for_seed(k, r, s)) for s in seeds] + [{"text": text}]
+                print(f"  [{len(results) + 1}/{total}] {name}: START provider call", flush=True)
+                data = nano(k.url, parts, aspect, k.ctx, size)
+                data = to_png_bytes(data)  # engine returns JPEG; normalize to the pipeline's PNG contract
+                validate_png(data)
+                if _publish_staging_png(k, name, out, data, force):
+                    report(name, f"OK size={size} -> _staging/" + name + ".png")
+                else:
+                    report(name, "skip (concurrent survivor in staging)")
         except SeedIntegrityError as e:
             report(name, "ERR integrity " + str(e)[:150] + "; aborting remaining batch")
             raise SystemExit(f"{name}: seed integrity failure; remaining batch aborted") from e
@@ -1691,8 +1866,11 @@ def main():
     ap.add_argument("--hi", type=int, default=175, help="cutout: alpha-harden high threshold")
     ap.add_argument("--allow-wide", action="store_true",
                     help="cutout: allow a wide (w/h >= 1.5) input — a legitimately wide object (e.g. a star row)")
-    # Q7 place / manifest
-    ap.add_argument("--to", help="place/manifest: destination dir (e.g. videos/<slug>/assets/scenes)")
+    # Q7 place / manifest; also gen ROUTE MODE only (path-namespace fix)
+    ap.add_argument("--to", help="place/manifest: destination dir (e.g. videos/<slug>/assets/scenes). "
+                                 "gen: REQUIRED in route mode only — the real video-asset destination "
+                                 "the daemon's paid-artifact namespace requires (direct-mode gen "
+                                 "ignores this and always stages into <kit>/_staging/)")
     ap.add_argument("--kind", choices=["scenes", "library"], help="manifest: which manifest to emit")
     ap.add_argument("--slug", help="manifest: video_slug for the envelope")
     ap.add_argument("--notes", help="manifest: free-text notes for the envelope")
@@ -1712,7 +1890,7 @@ def main():
         vid = a.video or video_dir_of(reqs, k.root)
         if vid and os.path.isdir(vid):
             k.use_video(vid)
-        cmd_gen(k, reqs, a.force, a.image_size, dry)
+        cmd_gen(k, reqs, a.force, a.image_size, dry, to_dir=a.to)
     elif a.cmd == "batch":
         if not a.batch or not a.out:
             raise SystemExit("batch needs --batch <videos/slug/shots.json> and --out <spec.json>")

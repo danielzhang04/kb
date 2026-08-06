@@ -54,7 +54,13 @@ export type RunState =
   | 'succeeded'
   | 'failed'
   | 'stopped'
-  | 'interrupted';
+  | 'interrupted'
+  /**
+   * Operator-dismissed. A terminal, absorbing state reachable only from a settled or parked run
+   * (`archiveRun`): the run keeps every record it had, stops appearing in default list projections,
+   * and its answerable open requests are resolved in the same commit. Nothing transitions out of it.
+   */
+  | 'archived';
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';

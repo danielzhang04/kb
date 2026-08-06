@@ -1,6 +1,6 @@
 /**
- * U2 — browser glue for the approvals surface. `fetchPending` reads the live `GET /api/approvals`
- * corroboration feed; `verifyApproval` drives `POST /api/approvals/verify` for an EXPLICIT operator
+ * U2 — browser glue for the approvals surface. `fetchHumanInbox` reads the unified read-only Human
+ * Inbox projection; `verifyApproval` drives `POST /api/approvals/verify` for an EXPLICIT operator
  * verify click (never on card selection). `fetch` is injected (mirrors the sseClient/webauthnClient DI
  * seam) so this is unit-testable with no network.
  *
@@ -9,29 +9,12 @@
  * the WebAuthn login (`authClient.ts`); absent a session the server replies 401, which is surfaced to
  * the caller rather than hidden.
  */
-import type { ParsedCard } from '../../server/planeA/cards';
-import type { ApprovalButtons } from '../../server/approvals/assurance';
 import type { HumanInboxProjection } from '../../server/approvals/humanInbox';
 import type { OwnerLiveness } from '../../server/runner/liveness';
 import { invalidateSessionOnGovernedAuthFailure } from './authClient';
 
 export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
 export type FetchLike = typeof fetch;
-
-/** One row of the `GET /api/approvals` payload. */
-export interface PendingApproval {
-  card: ParsedCard;
-  buttons: ApprovalButtons;
-}
-
-/** Fetch the ranked pending approvals. Returns the parsed cards (the Approvals view recomputes its own
- *  buttons from `assurance.ts`, so only the cards are threaded through). Throws on a non-2xx response. */
-export async function fetchPending(fetchImpl: FetchLike = fetch): Promise<ParsedCard[]> {
-  const res = await fetchImpl('/api/approvals', { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error(`GET /api/approvals failed: ${res.status}`);
-  const body = (await res.json()) as { pending?: PendingApproval[] };
-  return (body.pending ?? []).map((p) => p.card);
-}
 
 /** Fetch the unified, read-only Human Inbox projection. */
 export async function fetchHumanInbox(fetchImpl: FetchLike = fetch): Promise<HumanInboxProjection> {

@@ -1,38 +1,53 @@
 /**
- * arc-3 step 3 — the agent detail, on the shared {@link EntityDetail} shell.
+ * The agent detail, on the shared {@link EntityDetail} shell.
  *
- * The Agents view was a table with no clickable row and no detail surface at all, while `/api/agents`
- * had been returning `description`, `declaredModel`, `ledger.{dispatches,steps,days}` and `sources`
- * provenance on every load, none of it rendered anywhere. This view is where those land.
+ * ── Shape (UX overhaul §4): identity, then what it is DOING, then ONE technical fold ──
  *
- * ── The not-declared state is the load-bearing design decision here ──
+ * Primary UI answers an operator's three questions in order: who is this agent, what is it doing right
+ * now, and can I talk to it (the "Run agent" action, one click into a live primed session). Everything
+ * that is machinery rather than status — the declaration file and its instructions, declared runtime /
+ * model / execution profiles, the runner flag, roster provenance, governed workflows and stages, ledger
+ * rollups, and the effective-routing control — lives behind a SINGLE "Technical details" fold. There is
+ * no second fold and no jargon in the primary text: `declared`, `runner-bound` and `binding` are terms
+ * of art, and terms of art belong inside the fold that explains them.
  *
- * `agents/` does not exist in this checkout, so `readDeclaredAgents` fails OPEN to an empty map and
- * every roster row is `observed` / `no runner` with a null `description`, `declaredRuntime` and
- * `declaredModel`. Rendering those nulls as blanks would produce a detail view that looks broken —
- * the operator cannot tell "we failed to load this" from "this was never written down".
+ * ── The not-declared state is still stated, never implied ──
  *
- * So the absence is stated, not implied: a NOT-DECLARED panel names the exact missing file, says what
- * the agent is known from instead, and lists what a declaration would add. That is honest whether or
- * not `agents/` is ever populated, and it degrades to nothing the moment a declaration exists.
- *
- * No new hues: the panel is neutral chrome. A missing declaration is a fact, not an error.
+ * On a checkout with no `agents/` directory, `readDeclaredAgents` fails OPEN to an empty map and every
+ * roster row arrives with a null `description`, `declaredRuntime` and `declaredModel`. Rendering those
+ * nulls as blanks would look broken — the operator could not tell "we failed to load this" from "this
+ * was never written down". So the primary surface says it in one plain line, and the fold names the
+ * exact missing file and what writing it would add. Neutral chrome throughout: a missing declaration is
+ * a fact, not an error.
  */
+import { useState } from 'react';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { RunMetadataDto } from '../control/controlClient';
-import { cardsForAgent } from '../control/entityLinks';
+import { cardsForAgent, runLink } from '../control/entityLinks';
+import { relativeAge } from '../control/runEvents';
+import { EntityName } from '../components/EntityName';
+import { entityRowProps } from '../components/entityRow';
+import { ConsolePane } from '../console/ConsolePane';
+import type { ConsoleControl } from '../console/ConsolePane';
+import { useAttachableSession } from '../console/useAttachableSession';
+import { SessionRunRow, useSessionRuns } from '../console/sessionRuns';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import type { AgentDetailDto } from '../lib/agentClient';
 import { renderMarkdown } from '../lib/markdown';
+import { useOptionalSession } from '../lib/sessionContext';
+import type { PtySocketFactory, SessionRunsClient, TerminalSessionsClient } from '../lib/terminalClient';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/entity.css';
+import '../styles/views/agents.css';
 
 /** Everything the detail renders about one agent. A superset of the roster table's row. */
 export interface AgentDetailRow {
   id: string;
+  /** Server-owned agent display identity, or null on a card-ownership fallback row (see Agents.tsx). */
+  display: { displayName: string; shortRef: number } | null;
   role: string | null;
   working: boolean;
-  current: { action: string; id: string } | null;
+  current: { action: string; id: string; displayName: string; shortRef: number } | null;
   projects: string[];
   cardCount: number;
   lastActive: string | null;
@@ -71,8 +86,12 @@ export interface AgentDetailProps {
   detail?: AgentDetailDto | null;
   /** Distinguishes a request still in flight from a detail that has no optional relationships. */
   detailState?: 'loading' | 'ready' | 'unavailable';
-  /** Opens the existing Composer workspace targeted to this declared agent; it never starts a runner directly. */
-  onWorkWithAgent?: (agent: AgentDetailRow) => void;
+  /** Injected in tests so no component test opens a real WebSocket. Defaults to the real `/api/pty`. */
+  socketFactory?: PtySocketFactory;
+  /** Injected in tests so no component test hits the network. Defaults to the real session REST client. */
+  sessionsClient?: TerminalSessionsClient;
+  /** Injected in tests; defaults to the real `/api/pty/session-runs` client. */
+  sessionRunsClient?: SessionRunsClient;
   activeSectionId?: string;
   onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
@@ -83,6 +102,15 @@ export interface AgentDetailProps {
 /** A value that exists, or an explicit dash — never an empty cell that reads as a load failure. */
 function orDash(value: string | null): React.ReactNode {
   return value ?? <span className="entity-empty-value">—</span>;
+}
+
+/**
+ * Last activity as an age ("3d ago"), which is what an operator actually reads for. A raw `YYYY-MM-DD`
+ * is a record, not a status. `null` means the agent has never written a ledger row, and says so.
+ */
+export function lastActiveLabel(lastActive: string | null, now: number = Date.now()): React.ReactNode {
+  if (lastActive === null) return <span className="entity-empty-value">never</span>;
+  return relativeAge(lastActive, now);
 }
 
 /** Profile declarations are distinct from legacy runtime/model defaults and must not render as blanks. */
@@ -130,6 +158,155 @@ export function NotDeclaredPanel({ agent }: { agent: AgentDetailRow }): React.JS
   );
 }
 
+/**
+ * The agent's OWN console — a live shell, primed as this agent, inside its detail.
+ *
+ * "Run agent" used to throw the operator across the app to the Terminal destination, where a tab
+ * appeared named after an agent whose page they had just left. The session belongs to the agent, so it
+ * renders on the agent, and `useAttachableSession` is what lets it: because the daemon records what each
+ * session was opened as, coming back to this tab REATTACHES to the shell that is already running (the
+ * server replays its 512 KB output ring, so the scrollback comes back too) instead of spawning a second.
+ *
+ * The order below is load-bearing. Until the live-session lookup settles (`status === 'loading'`) NO
+ * console is rendered — rendering the spawn target early is exactly how a remount becomes a respawn, and
+ * every leaked shell is one the operator's Terminal tabs can no longer open, since the daemon's
+ * 8-terminal cap is shared across every console in the app.
+ */
+export function AgentConsole({
+  agentId,
+  declared,
+  started,
+  onStop,
+  socketFactory,
+  sessionsClient,
+}: {
+  agentId: string;
+  /** An undeclared agent has no file to prime a session with, so it is never offered one. */
+  declared: boolean;
+  /** The operator has asked for a session here (the "Run agent" action above). */
+  started: boolean;
+  /** The session ended (shell exit, or the operator closed it) — clears the started request. */
+  onStop: () => void;
+  socketFactory?: PtySocketFactory;
+  sessionsClient?: TerminalSessionsClient;
+}): React.JSX.Element {
+  const sessionContext = useOptionalSession();
+  const [signingIn, setSigningIn] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [control, setControl] = useState<ConsoleControl | null>(null);
+  const attachable = useAttachableSession(declared ? { kind: 'agent', ref: agentId } : null, {
+    ...(sessionsClient ? { sessionsClient } : {}),
+  });
+
+  // An already-running shell WINS over a fresh spawn request: if this agent has a live session, that is
+  // the session the operator means, whatever they just clicked.
+  const target = attachable.attach ?? (started ? attachable.spawn : null);
+
+  async function handleUnlock(): Promise<void> {
+    if (signingIn || !sessionContext) return;
+    setSigningIn(true);
+    try {
+      await sessionContext.requireSession();
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  const stop = (): void => {
+    setNotice(null);
+    attachable.release();
+    onStop();
+  };
+
+  let body: React.ReactNode;
+  if (!declared) {
+    body = (
+      <p className="entity-note" data-testid="agent-console-undeclared">
+        This agent has no definition file, so there is nothing to prime a session with.
+      </p>
+    );
+  } else if (!attachable.unlocked) {
+    body = sessionContext ? (
+      <button
+        type="button"
+        className="mc-btn agent-console__unlock"
+        onClick={() => void handleUnlock()}
+        disabled={signingIn}
+        data-testid="agent-console-locked"
+      >
+        {signingIn ? 'Unlocking…' : 'Locked — unlock to open a session'}
+      </button>
+    ) : (
+      <p className="entity-note" data-testid="agent-console-locked">
+        Locked — opening a session needs an unlocked passkey session.
+      </p>
+    );
+  } else if (attachable.status === 'loading') {
+    body = (
+      <p className="entity-note" data-testid="agent-console-loading">
+        Checking whether this agent already has a live session…
+      </p>
+    );
+  } else if (!target) {
+    body = (
+      <p className="entity-note" data-testid="agent-console-idle">
+        No live session. Use <strong>Run agent</strong> above to start one you can type into.
+      </p>
+    );
+  } else {
+    body = (
+      <>
+        <div className="agent-console__bar">
+          <span className="agent-console__state mc-mono" data-testid="agent-console-mode">
+            {target.mode === 'attach' ? 'attached' : 'starting'}
+          </span>
+          <button
+            type="button"
+            className="agent-console__close"
+            onClick={() => (control ? control.requestClose() : stop())}
+            data-testid="agent-console-close"
+          >
+            End session
+          </button>
+        </div>
+        {/* The pane is ALWAYS visible here — an embedded console has no hidden position of its own; the
+            whole section unmounts when the operator leaves this tab. */}
+        <ConsolePane
+          target={target}
+          visible
+          {...(socketFactory ? { socketFactory } : {})}
+          {...(sessionsClient ? { sessionsClient } : {})}
+          onError={(reason) =>
+            setNotice(
+              reason === 'too-many-terminals'
+                ? 'The fleet already has the maximum number of terminals open. Close one — here or in the Terminal — and try again.'
+                : null,
+            )
+          }
+          onExit={stop}
+          registerControl={setControl}
+          testIdSuffix="-agent"
+          ariaLabel={`Live session as ${agentId}`}
+        />
+      </>
+    );
+  }
+
+  return (
+    <section className="entity-block agent-console" aria-label="Live session for this agent">
+      <h3 className="entity-block__title">Session</h3>
+      {/* The cap refusal renders HERE, in the console the operator opened, and never as a navigation to
+          somewhere else: they share the daemon's one 8-terminal cap with the Terminal view's tabs. */}
+      {notice ? (
+        <p className="agent-console__notice" role="status" data-testid="agent-console-notice">
+          {notice}
+        </p>
+      ) : null}
+      {body}
+    </section>
+  );
+}
+
 export function AgentDetail({
   agent,
   index,
@@ -138,13 +315,36 @@ export function AgentDetail({
   routing,
   detail,
   detailState,
-  onWorkWithAgent,
+  socketFactory,
+  sessionsClient,
+  sessionRunsClient,
   activeSectionId,
   onSectionChange,
   onNavigate,
   onBack,
   backLabel,
 }: AgentDetailProps): React.JSX.Element {
+  // Whether the operator has asked for a session on THIS agent. It lives here, not in the section body,
+  // because the body unmounts on every tab switch — and the request must survive that, exactly as the
+  // shell it started does.
+  const [consoleStarted, setConsoleStarted] = useState(false);
+  const [expandedSessionRef, setExpandedSessionRef] = useState<string | null>(null);
+  // This agent's own session runs — the record of every terminal session primed as it. A DIFFERENT kind
+  // of record from the governed runs below, and labelled as one on every row.
+  const sessionRuns = useSessionRuns(
+    { kind: 'agent', ref: agent.id },
+    { ...(sessionRunsClient ? { client: sessionRunsClient } : {}) },
+  );
+  // The section is mirrored here so "Run agent" can SHOW the tab it just started a session on. When the
+  // nav stack supplies `activeSectionId` it still wins (back-navigation must restore the operator's tab);
+  // the local copy only carries the uncontrolled case, which is otherwise a button that does nothing
+  // visible.
+  const [localSection, setLocalSection] = useState<string | undefined>(undefined);
+  const selectedSection = activeSectionId ?? localSection;
+  const selectSection = (id: string): void => {
+    setLocalSection(id);
+    onSectionChange?.(id);
+  };
   const cards = index ? cardsForAgent(agent.id, index) : [];
   // The compact roster provides these facts before the declaration read completes. When the detail
   // projection arrives, prefer its exact declaration-backed values without changing legacy nulls.
@@ -162,21 +362,10 @@ export function AgentDetail({
     ...(agent.role && !agent.declared ? ['role catalog'] : []),
   ];
 
-  const overview = (
+  /** Everything technical about this agent, folded once. Nothing below this line is primary UI. */
+  const technical = (
     <>
       {agent.declared ? null : <NotDeclaredPanel agent={agent} />}
-
-      <section className="entity-block" aria-label="What this agent exists to do">
-        <h3 className="entity-block__title">Purpose</h3>
-        {agent.description ? (
-          <p className="entity-prose" data-testid="agent-description">{agent.description}</p>
-        ) : (
-          <p className="entity-note" data-testid="agent-description-absent">
-            No description recorded. A declared agent states its purpose in one line in its
-            <code className="mc-mono"> agents/{agent.id}.md</code> frontmatter.
-          </p>
-        )}
-      </section>
 
       <section className="entity-block" aria-label="Declared defaults">
         <h3 className="entity-block__title">Declared defaults</h3>
@@ -342,70 +531,6 @@ export function AgentDetail({
     </>
   );
 
-  const work = (
-    <>
-      <section className="entity-block" aria-label="Current work">
-        <h3 className="entity-block__title">Doing now</h3>
-        {agent.current ? (
-          <button
-            type="button"
-            className="entity-row entity-row--link"
-            data-testid={`agent-current-${agent.current.id}`}
-            disabled={!onNavigate}
-            onClick={() => onNavigate?.({ view: 'tasks', focus: { kind: 'card', id: agent.current!.id } })}
-          >
-            <span className="entity-row__main">{agent.current.action}</span>
-            <span className="mc-mono entity-row__ref">{agent.current.id}</span>
-          </button>
-        ) : (
-          <p className="entity-note" data-testid="agent-idle">
-            Idle — this agent owns no card in the <code className="mc-mono">working</code> state.
-          </p>
-        )}
-      </section>
-
-      <section className="entity-block" aria-label="Owned queue cards">
-        <h3 className="entity-block__title">
-          Queue cards <span className="mc-mono entity-block__count">{cards.length}</span>
-        </h3>
-        {cards.length ? (
-          <ol className="entity-list" data-testid="agent-cards">
-            {cards.map((card) => (
-              <li key={card.id}>
-                <button
-                  type="button"
-                  className="entity-row entity-row--link"
-                  data-testid={`agent-card-${card.id}`}
-                  disabled={!onNavigate}
-                  onClick={() => onNavigate?.({ view: 'tasks', focus: { kind: 'card', id: card.id } })}
-                >
-                  <span className="entity-row__main">{card.action}</span>
-                  <span className="mc-mono entity-row__ref">{card.id}</span>
-                  <span className="mc-mono entity-row__meta">{card.state}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="entity-note">This agent owns no queue cards.</p>
-        )}
-      </section>
-
-      <section className="entity-block" aria-label="Projects">
-        <h3 className="entity-block__title">Projects</h3>
-        {agent.projects.length ? (
-          <div className="entity-chips" data-testid="agent-projects">
-            {agent.projects.map((project) => (
-              <span key={project} className="entity-chip mc-mono">{project}</span>
-            ))}
-          </div>
-        ) : (
-          <p className="entity-note">No project recorded on any owned card.</p>
-        )}
-      </section>
-    </>
-  );
-
   const activity = (
     <section className="entity-block" aria-label="Ledger activity">
       <h3 className="entity-block__title">Ledger activity</h3>
@@ -434,72 +559,208 @@ export function AgentDetail({
     </section>
   );
 
+  const overview = (
+    <>
+      {agent.declared ? null : (
+        // One plain line in the primary surface; the fold below carries the full explanation.
+        <p className="entity-note" data-testid="agent-undefined-note">
+          There is no definition file for this agent yet, so everything here is inferred from what it has
+          actually done.
+        </p>
+      )}
+
+      <section className="entity-block" aria-label="Current work">
+        <h3 className="entity-block__title">Doing now</h3>
+        {agent.current ? (
+          <div
+            className="entity-row entity-row--link"
+            data-testid={`agent-current-${agent.current.id}`}
+            aria-disabled={!onNavigate || undefined}
+            {...entityRowProps(() => onNavigate?.({ view: 'tasks', focus: { kind: 'card', id: agent.current!.id } }))}
+          >
+            <span className="entity-row__main">
+              <EntityName kind="card" id={agent.current.id} displayName={agent.current.displayName} shortRef={agent.current.shortRef} />
+            </span>
+          </div>
+        ) : (
+          <p className="entity-note" data-testid="agent-idle">Idle — it has no task in progress.</p>
+        )}
+      </section>
+
+      <section className="entity-block" aria-label="What this agent exists to do">
+        <h3 className="entity-block__title">Purpose</h3>
+        {agent.description ? (
+          <p className="entity-prose" data-testid="agent-description">{agent.description}</p>
+        ) : (
+          <p className="entity-note" data-testid="agent-description-absent">
+            No description recorded. An agent states its purpose in one line at the top of its own
+            definition file — named under Technical details below.
+          </p>
+        )}
+      </section>
+
+      <section className="entity-block" aria-label="Owned queue cards">
+        <h3 className="entity-block__title">
+          Queue cards <span className="mc-mono entity-block__count">{cards.length}</span>
+        </h3>
+        {cards.length ? (
+          <ol className="entity-list" data-testid="agent-cards">
+            {cards.map((card) => (
+              <li key={card.id}>
+                <div
+                  className="entity-row entity-row--link"
+                  data-testid={`agent-card-${card.id}`}
+                  aria-disabled={!onNavigate || undefined}
+                  {...entityRowProps(() => onNavigate?.({ view: 'tasks', focus: { kind: 'card', id: card.id } }))}
+                >
+                  <span className="entity-row__main">
+                    <EntityName kind="card" id={card.id} displayName={card.displayName} shortRef={card.shortRef} />
+                  </span>
+                  <span className="mc-mono entity-row__meta">{card.state}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="entity-note">This agent owns no queue cards.</p>
+        )}
+      </section>
+
+      <section className="entity-block" aria-label="Projects">
+        <h3 className="entity-block__title">Projects</h3>
+        {agent.projects.length ? (
+          <div className="entity-chips" data-testid="agent-projects">
+            {agent.projects.map((project) => (
+              <span key={project} className="entity-chip mc-mono">{project}</span>
+            ))}
+          </div>
+        ) : (
+          <p className="entity-note">No project recorded on any owned card.</p>
+        )}
+      </section>
+
+      {/* THE fold. One disclosure holds every technical fact about this agent — definition file,
+          declared defaults, roster provenance, governed workflows, runner facts, ledger rollups and the
+          governed routing control. Primary UI above it stays plain-language. */}
+      <details className="entity-fold" data-testid="agent-technical">
+        <summary>Technical details</summary>
+        <div className="entity-fold__body">
+          {technical}
+          {activity}
+          {routing ? (
+            <section className="entity-block" aria-label="Model routing">
+              <h3 className="entity-block__title">Effective routing</h3>
+              {routing}
+              <p className="entity-note">
+                Changing the model is a governed, audited server write and needs a passkey session.
+              </p>
+            </section>
+          ) : null}
+        </div>
+      </details>
+    </>
+  );
+
   /**
    * Runs. `undefined` and `[]` are DIFFERENT answers and are worded differently — "we did not look" is
    * not the same claim as "we looked and there are none", and conflating them is how a dashboard starts
    * lying quietly.
    */
   const runsSection = (
-    <section className="entity-block" aria-label="Runs this agent is working">
-      <h3 className="entity-block__title">Runs</h3>
+    <>
+      <AgentConsole
+        agentId={agent.id}
+        declared={agent.declared}
+        started={consoleStarted}
+        onStop={() => {
+          setConsoleStarted(false);
+          // The session just became a PAST session; re-read so the list below stops calling it live.
+          sessionRuns.refresh();
+        }}
+        {...(socketFactory ? { socketFactory } : {})}
+        {...(sessionsClient ? { sessionsClient } : {})}
+      />
+      <section className="entity-block" aria-label="Runs this agent is working">
+        <h3 className="entity-block__title">Runs</h3>
       {runs === undefined ? (
         <p className="entity-note" data-testid="agent-runs-unloaded">
-          Not loaded. Runs are joined to agents through queue-card ownership, which needs an unlocked
-          cockpit session to read.
+          Not loaded — reading this agent's runs needs an unlocked session.
         </p>
       ) : runs.length === 0 ? (
         <p className="entity-note" data-testid="agent-runs-empty">
-          No managed run has a stage whose canonical queue card this agent owns.
+          No run is working a task this agent owns.
         </p>
       ) : (
         <ol className="entity-list" data-testid="agent-runs">
           {runs.map((run) => (
             <li key={run.runRef}>
-              <button
-                type="button"
+              <div
                 className="entity-row entity-row--link"
                 data-testid={`agent-run-${run.runRef}`}
-                disabled={!onNavigate}
-                onClick={() => onNavigate?.({ view: 'pipeline', focus: { kind: 'run', id: run.runRef } })}
+                aria-disabled={!onNavigate || undefined}
+                {...entityRowProps(() => onNavigate?.(runLink(run.runRef)))}
               >
-                <span className="entity-row__main">{run.title}</span>
-                <span className="mc-mono entity-row__ref">{run.runRef}</span>
+                <span className="entity-row__main">
+                  <EntityName kind="run" id={run.runRef} displayName={run.displayName} shortRef={run.shortRef} />
+                </span>
                 <span className="mc-mono entity-row__meta">{run.state}</span>
-              </button>
+              </div>
             </li>
           ))}
         </ol>
       )}
       <p className="entity-note">
-        Agent-workspace launches are joined by their immutable recorded declaration provenance. Older
-        runs are derived via queue cards through canonical queue-card ownership.
+        Runs this agent started directly are matched by their recorded provenance. Derived via queue cards
+        for older runs, through the tasks this agent owns.
         {runs !== undefined && runScanLimit ? (
-          <> Scanned the {runScanLimit} most recent runs only for that legacy queue-card inference.</>
+          <> Scanned the {runScanLimit} most recent runs only for that older inference.</>
         ) : null}
       </p>
-    </section>
+      </section>
+
+      {/*
+        * Past CHAT SESSIONS. Kept as its own list rather than merged into the governed runs above,
+        * because on an agent the two answer different questions — "what governed work is this agent
+        * doing" and "what have I talked to it about" — and the console for the live one is right at the
+        * top of this tab. Every row still says which kind of record it is.
+        */}
+      <section className="entity-block" aria-label="Past sessions with this agent">
+        <h3 className="entity-block__title">Past sessions</h3>
+        {sessionRuns.error ? (
+          <p className="entity-note" role="status" data-testid="agent-session-runs-error">{sessionRuns.error}</p>
+        ) : null}
+        {sessionRuns.runs === undefined ? (
+          <p className="entity-note" data-testid="agent-session-runs-unloaded">
+            Not loaded — reading past sessions needs an unlocked session.
+          </p>
+        ) : sessionRuns.runs.length === 0 ? (
+          <p className="entity-note" data-testid="agent-session-runs-empty">
+            Nobody has opened a session with this agent yet.
+          </p>
+        ) : (
+          <ol className="entity-list" data-testid="agent-session-runs">
+            {sessionRuns.runs.map((run) => (
+              <li key={run.sessionRunRef}>
+                <SessionRunRow
+                  run={run}
+                  expanded={expandedSessionRef === run.sessionRunRef}
+                  onToggle={() => setExpandedSessionRef((current) =>
+                    current === run.sessionRunRef ? null : run.sessionRunRef)}
+                  onArchive={() => void sessionRuns.archive(run.sessionRunRef)}
+                  archiving={sessionRuns.archivingRef === run.sessionRunRef}
+                  {...(sessionRunsClient ? { client: sessionRunsClient } : {})}
+                />
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </>
   );
 
   const sections: DetailSection[] = [
-    { id: 'overview', label: 'Overview', render: () => overview },
-    { id: 'work', label: 'Work', count: cards.length, render: () => work },
-    { id: 'activity', label: 'Activity', render: () => activity },
+    { id: 'overview', label: 'Overview', count: cards.length, render: () => overview },
     { id: 'runs', label: 'Runs', count: runs?.length, render: () => runsSection },
-    ...(routing
-      ? [{
-          id: 'routing',
-          label: 'Routing',
-          render: () => (
-            <section className="entity-block" aria-label="Model routing">
-              <h3 className="entity-block__title">Effective routing</h3>
-              {routing}
-              <p className="entity-note">
-                Writing an override is a governed, audited server write and needs a passkey session.
-              </p>
-            </section>
-          ),
-        }]
-      : []),
   ];
 
   const links: EntityLink[] = agent.current
@@ -513,37 +774,44 @@ export function AgentDetail({
   return (
     <EntityDetail
       entity={{ kind: 'agent', id: agent.id }}
-      eyebrow={`Fleet agent · ${agent.id}`}
+      eyebrow={agent.display
+        ? <>Fleet agent · <EntityName kind="agent" id={agent.id} displayName={agent.display.displayName} shortRef={agent.display.shortRef} muted /></>
+        : `Fleet agent · ${agent.id}`}
       title={agent.role ? `${agent.id} · ${agent.role}` : agent.id}
       status={{
         label: agent.working ? 'working' : 'idle',
         tone: agent.working ? 'running' : 'idle',
       }}
+      // Identity only. Declaration/runner status is machinery and lives in the fold, not the header.
       facts={[
         { label: 'Role', value: orDash(agent.role), mono: true },
-        { label: 'Definition', value: agent.declared ? 'declared' : 'not declared', mono: true },
-        { label: 'Runner', value: agent.runnerBound ? 'bound' : 'no runner', mono: true },
-        { label: 'Cards', value: agent.cardCount, mono: true },
-        { label: 'Last active', value: orDash(agent.lastActive), mono: true },
+        { label: 'Model', value: orDash(agent.declaredModel), mono: true },
+        { label: 'Tasks', value: agent.cardCount, mono: true },
+        { label: 'Last active', value: lastActiveLabel(agent.lastActive), mono: true },
       ]}
       links={links}
       sections={sections}
-      activeSectionId={activeSectionId}
-      onSectionChange={onSectionChange}
+      activeSectionId={selectedSection}
+      onSectionChange={selectSection}
       onNavigate={onNavigate}
       onBack={onBack}
       backLabel={backLabel}
-      actions={agent.declared && onWorkWithAgent ? (
+      // "Run agent" now lands IN THIS PAGE: it asks the Runs tab for a session and shows the tab, instead
+      // of navigating the operator to the Terminal destination and leaving the agent they were reading.
+      actions={agent.declared ? (
         <div>
           <button
             type="button"
             className="mc-btn mc-btn--primary"
-            data-testid="agent-work-with"
-            onClick={() => onWorkWithAgent(agent)}
+            data-testid="agent-run"
+            onClick={() => {
+              setConsoleStarted(true);
+              selectSection('runs');
+            }}
           >
-            Work with this agent
+            Run agent
           </button>
-          <p className="entity-note">Opens a Composer workspace; it does not start the background runner.</p>
+          <p className="entity-note">Opens a session you can type into, set up as this agent, under Runs.</p>
         </div>
       ) : undefined}
     />

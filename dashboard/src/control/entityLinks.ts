@@ -1,14 +1,15 @@
 /**
- * arc-3 step 2 — the cross-entity joins, as pure functions.
+ * arc-3 step 2 — the cross-entity joins and the link builders over them.
  *
  * The dashboard had every entity and almost none of the edges between them: a launch returned an inert
- * `runRef` string, an agent row could not reach its work, and a run could not name the definition that
- * produced it. Every join below is computed IN THE BROWSER from data already on the wire. None of them
- * needed a server change.
+ * `runRef` string and an agent row could not reach its work. Every join below is computed IN THE BROWSER
+ * from data already on the wire; kept pure and DTO-shaped (no fetching, no React) so each is testable
+ * against a literal fixture.
  *
- * Kept deliberately pure and DTO-shaped (no fetching, no React) so each join is testable against a
- * literal fixture — which matters most for `sourceTurnId`, whose silent loss is invisible at runtime:
- * the UI just quietly renders "no runs" forever.
+ * Run → its workflow is deliberately NOT here any more: it is a server-stamped grouping key
+ * (`RunDto.workflowRef`, built in `server/control/routes.ts#workflowRefIndex`). Re-deriving it in the
+ * browser cost every run-listing surface a full proposal-revision fetch to answer a question the store
+ * already knew. What survives on that side is link BUILDING only.
  *
  * The one join that is NOT here is agent → its live managed *sessions*. `ManagedSessionDto` and
  * `AttemptDto` carry `runtime` and `model` but no agent id, so there is no honest client-side join for
@@ -16,66 +17,34 @@
  * is listed as an interface request rather than approximated here.
  */
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { ProposalRevisionMetadataDto, RunMetadataDto, StageDto } from './controlClient';
+import type { RunMetadataDto, StageDto } from './controlClient';
+import { focusTarget, type NavTarget } from '../nav/stack';
 
-/**
- * The `sourceComposerRef` that `server/workflows/routes.ts` stamps on every revision it creates from a
- * workflow definition. A revision carrying it has its definition id in `sourceTurnId`.
- */
-export const WORKFLOW_COMPOSER_REF = 'workflow-registry';
-
-/**
- * The proposal refs produced by one workflow definition.
- *
- * A definition may be launched many times; when its content hash is unchanged the launch REUSES the
- * already-approved revision, so several launches can share one `proposalRef` — hence a Set.
- */
-export function proposalRefsForWorkflow(
-  workflowId: string,
-  revisions: ProposalRevisionMetadataDto[],
-): Set<string> {
-  const refs = new Set<string>();
-  for (const revision of revisions) {
-    if (revision.sourceComposerRef !== WORKFLOW_COMPOSER_REF) continue;
-    if (revision.sourceTurnId !== workflowId) continue;
-    refs.add(revision.proposalRef);
-  }
-  return refs;
+/** Open a run — inside the Workflows destination, which owns runs now (see `nav/stack.ts`). */
+export function runLink(runRef: string): NavTarget {
+  return focusTarget({ kind: 'run', id: runRef });
 }
 
-/**
- * Workflow → its runs. The link that makes Launch's `runRef` stop being inert text.
- *
- * Newest first: the operator opening a definition almost always wants the run they just launched.
- */
-export function runsForWorkflow(
-  workflowId: string,
-  revisions: ProposalRevisionMetadataDto[],
-  runs: RunMetadataDto[],
-): RunMetadataDto[] {
-  const refs = proposalRefsForWorkflow(workflowId, revisions);
-  if (refs.size === 0) return [];
+/** Open a workflow definition. */
+export function workflowLink(workflowId: string): NavTarget {
+  return focusTarget({ kind: 'workflow', id: workflowId });
+}
+
+/** Open an agent's detail. */
+export function agentLink(agentId: string): NavTarget {
+  return focusTarget({ kind: 'agent', id: agentId });
+}
+
+/** Open a queue card in the Tasks detail pane. */
+export function cardLink(cardId: string): NavTarget {
+  return focusTarget({ kind: 'card', id: cardId });
+}
+
+/** Runs belonging to one workflow definition, newest first, off the server's grouping key. */
+export function runsForWorkflow(workflowId: string, runs: RunMetadataDto[]): RunMetadataDto[] {
   return runs
-    .filter((run) => refs.has(run.proposalRef))
+    .filter((run) => run.workflowRef === workflowId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-/**
- * Run → its workflow definition id, or null for an ad-hoc (Composer) run.
- *
- * The inverse of the above, and the reason a run is not required to be workflow-launched: a run is an
- * instance of ANY proposal, so "no workflow" is a normal answer here, not a failure.
- */
-export function workflowIdForRun(
-  run: { proposalRef: string },
-  revisions: ProposalRevisionMetadataDto[],
-): string | null {
-  for (const revision of revisions) {
-    if (revision.proposalRef !== run.proposalRef) continue;
-    if (revision.sourceComposerRef !== WORKFLOW_COMPOSER_REF) continue;
-    if (revision.sourceTurnId) return revision.sourceTurnId;
-  }
-  return null;
 }
 
 /**
@@ -157,6 +126,9 @@ export function runsForAgent(agentId: string, loaded: RunWithStages[], owners: M
 /** The queue cards an agent owns, newest-id-last, from the Plane-A snapshot. */
 export interface AgentCardRef {
   id: string;
+  /** Carried straight from the server card DTO — never derived here. */
+  displayName: string;
+  shortRef: number;
   action: string;
   state: string;
   bucket: string;
@@ -176,6 +148,8 @@ export function cardsForAgent(agentId: string, index: PlaneAIndex): AgentCardRef
       if (typeof id !== 'string' || id === '') continue;
       cards.push({
         id,
+        displayName: card.displayName,
+        shortRef: card.shortRef,
         action: typeof card.meta.action === 'string' ? card.meta.action : '—',
         state: typeof card.meta.state === 'string' ? card.meta.state : bucket,
         bucket,

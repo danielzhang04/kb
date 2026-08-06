@@ -1,34 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { listProposalRevisions, type ProposalRevisionMetadataDto, type RunMetadataDto, type StageDto } from './controlClient';
+import type { RunMetadataDto, StageDto } from './controlClient';
 import {
   agentIdsForRun,
   agentsForRun,
+  agentLink,
+  cardLink,
   cardOwnerIndex,
   cardsForAgent,
-  proposalRefsForWorkflow,
+  runLink,
   runsForAgent,
   runsForWorkflow,
-  workflowIdForRun,
-  WORKFLOW_COMPOSER_REF,
+  workflowLink,
 } from './entityLinks';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-
-const revision = (over: Partial<ProposalRevisionMetadataDto>): ProposalRevisionMetadataDto => ({
-  proposalRef: 'wf-aaa',
-  revision: 1,
-  contentHash: 'hash-a',
-  previousContentHash: null,
-  createdAt: '2026-07-20T10:00:00.000Z',
-  sourceComposerRef: WORKFLOW_COMPOSER_REF,
-  sourceTurnId: 'video-pipeline',
-  approval: null,
-  ...over,
-});
 
 const run = (over: Partial<RunMetadataDto>): RunMetadataDto => ({
   runRef: 'run-1',
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline',
+  displayName: 'Rebuild the faceless video pipeline',
+  shortRef: 1,
+  workflowRef: 'video-pipeline',
   proposalRef: 'wf-aaa',
   proposalRevision: 1,
   proposalHash: 'hash-a',
@@ -79,73 +71,26 @@ const indexWith = (cards: Array<{ id: string; owner?: string; state?: string; ac
   orgStates: [],
 });
 
-/**
- * THE join key. `sourceTurnId` is invisible at runtime when it goes missing — the workflow detail just
- * renders "no runs" forever and nothing errors — so its survival through normalization is asserted
- * directly against the wire shape rather than trusted.
- */
-describe('proposal revision provenance survives normalization', () => {
-  it('keeps sourceTurnId and sourceComposerRef from the raw wire record', async () => {
-    const wire = {
-      proposals: [
-        {
-          proposalRef: 'wf-aaa',
-          sourceComposerRef: 'workflow-registry',
-          sourceTurnId: 'video-pipeline',
-          revision: 1,
-          hash: 'hash-a',
-          previousHash: null,
-          title: 'Video pipeline',
-          createdAt: '2026-07-20T10:00:00.000Z',
-          approval: null,
-        },
-      ],
-    };
-    const fetchImpl = (async () =>
-      new Response(JSON.stringify(wire), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
-
-    const [only] = await listProposalRevisions('workflow-registry', 'token', fetchImpl);
-
-    // If either assertion fails, workflow -> runs is silently severed everywhere in the UI.
-    expect(only.sourceTurnId).toBe('video-pipeline');
-    expect(only.sourceComposerRef).toBe('workflow-registry');
+describe('links', () => {
+  it('sends every entity to the destination that owns it', () => {
+    // The retarget lives in one table (`nav/stack.ts#focusTarget`); these builders are how the rest of
+    // the app reaches it, so a run link can never drift back to a destination that no longer exists.
+    expect(runLink('run-1')).toEqual({ view: 'workflows', focus: { kind: 'run', id: 'run-1' } });
+    expect(workflowLink('video-pipeline')).toEqual({ view: 'workflows', focus: { kind: 'workflow', id: 'video-pipeline' } });
+    expect(agentLink('claude-worker')).toEqual({ view: 'agents', focus: { kind: 'agent', id: 'claude-worker' } });
+    expect(cardLink('card-100')).toEqual({ view: 'tasks', focus: { kind: 'card', id: 'card-100' } });
   });
 });
 
 describe('workflow -> runs', () => {
-  it('collects every proposal ref a definition launched', () => {
-    const refs = proposalRefsForWorkflow('video-pipeline', [
-      revision({}),
-      revision({ proposalRef: 'wf-bbb', revision: 2 }),
-      revision({ proposalRef: 'wf-ccc', sourceTurnId: 'other-pipeline' }),
+  it('groups on the server-stamped key, newest first, and leaves ad-hoc runs out', () => {
+    const runs = runsForWorkflow('video-pipeline', [
+      run({ runRef: 'run-1', createdAt: '2026-07-20T10:00:00.000Z' }),
+      run({ runRef: 'run-2', createdAt: '2026-07-20T12:00:00.000Z' }),
+      run({ runRef: 'run-3', workflowRef: 'other-workflow', createdAt: '2026-07-20T13:00:00.000Z' }),
+      run({ runRef: 'run-4', workflowRef: null, createdAt: '2026-07-20T14:00:00.000Z' }),
     ]);
-    expect([...refs].sort()).toEqual(['wf-aaa', 'wf-bbb']);
-  });
-
-  it('ignores revisions that did not come from the workflow registry', () => {
-    const refs = proposalRefsForWorkflow('video-pipeline', [
-      revision({ sourceComposerRef: 'composer', proposalRef: 'adhoc-1' }),
-    ]);
-    expect(refs.size).toBe(0);
-  });
-
-  it('reaches the runs launched from a definition, newest first', () => {
-    const runs = runsForWorkflow(
-      'video-pipeline',
-      [revision({}), revision({ proposalRef: 'wf-bbb' })],
-      [
-        run({ runRef: 'run-1', proposalRef: 'wf-aaa', createdAt: '2026-07-20T10:00:00.000Z' }),
-        run({ runRef: 'run-2', proposalRef: 'wf-bbb', createdAt: '2026-07-20T12:00:00.000Z' }),
-        run({ runRef: 'run-3', proposalRef: 'unrelated', createdAt: '2026-07-20T13:00:00.000Z' }),
-      ],
-    );
     expect(runs.map((r) => r.runRef)).toEqual(['run-2', 'run-1']);
-  });
-
-  it('resolves a run back to its definition, and to null for an ad-hoc run', () => {
-    const revisions = [revision({}), revision({ proposalRef: 'adhoc-1', sourceComposerRef: 'composer' })];
-    expect(workflowIdForRun({ proposalRef: 'wf-aaa' }, revisions)).toBe('video-pipeline');
-    expect(workflowIdForRun({ proposalRef: 'adhoc-1' }, revisions)).toBeNull();
   });
 });
 

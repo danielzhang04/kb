@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 /**
- * arc-3 step 4 — the workflow-definition detail.
+ * The workflow detail — one graph, one Launch, one list of runs.
  *
- * The headline assertion is workflow → its runs: before the `sourceTurnId` un-drop there was no way to
- * get from a definition to anything it had ever launched, so Launch printed a runRef into a status
- * string and the trail ended there. That path is pinned end to end here — through the real join, not a
- * stubbed run list — so a regression in either the un-drop or the join fails a test.
+ * The headline assertions are the collapse itself: a run is reachable from the workflow that produced
+ * it (through the server's grouping key, not a client-side re-derivation), running the workflow is ONE
+ * button that needs nothing filled in first, and the engine vocabulary the surface used to lead with —
+ * "compiled proposal", "proposal revision", "amendment", and now the parameterised governed launch
+ * itself — is behind the technical fold or gone.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Workflows } from './Workflows';
+import { SessionProvider } from '../lib/sessionContext';
 import { WorkflowDetail, type WorkflowDefEntry } from './WorkflowDetail';
-import type { ProposalRevisionMetadataDto, RunMetadataDto } from '../control/controlClient';
+import type { RunMetadataDto } from '../control/controlClient';
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -19,6 +21,8 @@ beforeEach(() => {
 });
 
 const def = (over: Partial<WorkflowDefEntry> & { ref: string }): WorkflowDefEntry => ({
+  displayName: over.title ?? 'Video pipeline',
+  shortRef: 1,
   project: 'kb',
   path: 'orgs/kb/workflows/video.md',
   sourceHash: 'a'.repeat(64),
@@ -35,21 +39,12 @@ const def = (over: Partial<WorkflowDefEntry> & { ref: string }): WorkflowDefEntr
   ...over,
 });
 
-const revision = (over: Partial<ProposalRevisionMetadataDto> = {}): ProposalRevisionMetadataDto => ({
-  proposalRef: 'wf-aaa',
-  revision: 1,
-  contentHash: 'hash-a',
-  previousContentHash: null,
-  createdAt: '2026-07-20T10:00:00.000Z',
-  sourceComposerRef: 'workflow-registry',
-  sourceTurnId: 'kb~video.md',
-  approval: null,
-  ...over,
-});
-
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline and republish the audio stage',
+  displayName: 'Rebuild the faceless video pipeline and republish the audio stage',
+  shortRef: 1,
+  workflowRef: 'kb~video.md',
   proposalRef: 'wf-aaa',
   proposalRevision: 1,
   proposalHash: 'hash-a',
@@ -70,26 +65,13 @@ const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto
 });
 
 describe('reaching a workflow detail and coming back', () => {
-  it('surfaces checked-in governance diagnostics without calling the workflow invalid', () => {
-    render(<WorkflowDetail entry={def({
-      ref: 'kb~governance.md',
-      governanceProblems: [
-        "workflow governance agent 'missing-governor' is not declared",
-        "stage 'render' governance agent 'other-agent' is not declared for project 'kb'",
-      ],
-    })} compiled={null} />);
-    const warning = screen.getByTestId('workflow-governance-problems');
-    expect(warning.textContent).toContain('missing-governor');
-    expect(warning.textContent).toContain('other-agent');
-    expect(warning.textContent).toMatch(/compile-neutral/i);
-    expect(screen.getByTestId('entity-detail-status').textContent).toContain('valid');
-  });
-
-  it('opens the detail on a definition click and returns to the list on back', () => {
+  it('opens the detail on a workflow click and returns to the roster on back', () => {
     render(
-      <Workflows
-        definitions={{ items: [def({ ref: 'kb~video.md' }), def({ ref: 'kb~audio.md', title: 'Audio pipeline' })] }}
-      />,
+      <SessionProvider>
+        <Workflows
+          definitions={{ items: [def({ ref: 'kb~video.md' }), def({ ref: 'kb~audio.md', title: 'Audio pipeline' })] }}
+        />
+      </SessionProvider>,
     );
 
     fireEvent.click(screen.getByTestId('workflow-open-kb~video.md'));
@@ -105,219 +87,270 @@ describe('reaching a workflow detail and coming back', () => {
   });
 
   /**
-   * A `sourceTurnId` on an older run outlives the definition it names once that file is deleted from
-   * `workflows/`. This used to fall through to the roster with no message: the operator clicked a link,
-   * landed on a list, and an invisible extra entry sat on the nav stack with no back affordance to pop it.
+   * A run's `workflowRef` outlives the definition it names once that file is deleted from `workflows/`.
+   * This used to fall through to the roster with no message: the operator clicked a link, landed on a
+   * list, and an invisible extra entry sat on the nav stack with no back affordance to pop it.
    */
-  it('says a focused definition is no longer registered instead of silently showing the roster', () => {
+  it('says a focused workflow is no longer registered instead of silently showing the roster', () => {
     const onBack = vi.fn();
     render(
-      <Workflows
-        definitions={{ items: [def({ ref: 'kb~video.md' })] }}
-        focusWorkflowId="kb~deleted.md"
-        onOpenWorkflow={vi.fn()}
-        onBack={onBack}
-      />,
+      <SessionProvider>
+        <Workflows
+          definitions={{ items: [def({ ref: 'kb~video.md' })] }}
+          focusWorkflowId="kb~deleted.md"
+          onOpenWorkflow={vi.fn()}
+          onBack={onBack}
+        />
+      </SessionProvider>,
     );
 
     expect(screen.queryByTestId('entity-detail-workflow')).toBeNull();
-    // The dead ref is NAMED.
     expect(screen.getByTestId('workflow-not-found-ref').textContent).toBe('kb~deleted.md');
-    // And the operator is not quietly dropped on a roster they did not ask for.
     expect(screen.queryByTestId('workflow-def-kb~video.md')).toBeNull();
 
     fireEvent.click(screen.getByTestId('workflow-not-found-back'));
     expect(onBack).toHaveBeenCalled();
   });
 
-  it('does not call a definition unregistered while the index is still loading', () => {
+  it('does not call a workflow unregistered while the index is still loading', () => {
     // No `definitions` prop and no fetch result yet: the ref is UNKNOWN, not missing.
-    render(<Workflows focusWorkflowId="kb~video.md" onOpenWorkflow={vi.fn()} />);
+    render(<SessionProvider><Workflows focusWorkflowId="kb~video.md" onOpenWorkflow={vi.fn()} /></SessionProvider>);
     expect(screen.queryByTestId('workflow-not-found')).toBeNull();
-  });
-
-  it('visibly disables Launch for a parser-valid definition the compiler refuses', () => {
-    render(
-      <Workflows
-        definitions={{ items: [def({
-          ref: 'kb~unavailable.md', launchable: false, compileError: 'assigned-agent-not-runner-bound',
-          compileDetail: "assigned agent 'worker-a' is not runner-bound",
-        })] }}
-      />,
-    );
-    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
-    expect(launch.disabled).toBe(true);
-    expect(screen.getByTestId('workflow-def-unavailable-kb~unavailable.md').textContent).toContain("assigned agent 'worker-a' is not runner-bound");
   });
 });
 
-/** The step-2 payoff, asserted through the real join rather than a hand-fed run list. */
-describe('workflow -> its launched runs', () => {
-  it('reaches the runs launched from this definition, via sourceTurnId', () => {
-    const onNavigate = vi.fn();
+/**
+ * The primary action is ONE button that needs nothing filled in first. The definition already says who
+ * runs what, so running a workflow is a click, not a form. The governed direct launch — with the inputs
+ * the definition declares — is still fully wired, one fold down, for the governing agent and power use.
+ */
+describe('one Run workflow button', () => {
+  it('offers exactly one primary action, and it lands IN THIS PAGE on the Runs tab', () => {
+    render(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
+      compiled={null}
+      onLaunch={vi.fn()}
+    />);
+
+    const actions = screen.getByTestId('entity-detail-workflow').querySelector('.entity-detail__actions');
+    const buttons = actions?.querySelectorAll('button') ?? [];
+    expect([...buttons].map((button) => button.textContent)).toEqual(['Run workflow']);
+
+    // Leg 2: no navigation away. The click selects this detail's own Runs tab, where the session opens.
+    fireEvent.click(screen.getByRole('button', { name: 'Run workflow' }));
+    expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('Live session for this workflow')).toBeTruthy();
+  });
+
+  it('moves the inputs and the direct Launch into the technical fold, still working', () => {
+    const onParameterChange = vi.fn();
+    const onLaunch = vi.fn();
+    render(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
+      compiled={null}
+      onLaunch={onLaunch}
+      parameterValues={{ channel: 'the-second-take', slug: '2026-07-19-wells-fargo' }}
+      onParameterChange={onParameterChange}
+    />);
+
+    const fold = screen.getByTestId('workflow-technical');
+    expect(fold.contains(screen.getByTestId('workflow-direct-launch'))).toBe(true);
+    expect(fold.contains(screen.getByLabelText('Workflow parameter channel'))).toBe(true);
+    expect(fold.contains(screen.getByRole('button', { name: 'Launch' }))).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Workflow parameter slug'), { target: { value: '2026-08-05-bricks' } });
+    expect(onParameterChange).toHaveBeenCalledWith('slug', '2026-08-05-bricks');
+    fireEvent.click(screen.getByRole('button', { name: 'Launch' }));
+    expect(onLaunch).toHaveBeenCalled();
+  });
+
+  it('keeps the Flow tab as the landing section, so a visit never auto-opens a console', () => {
+    render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} />);
+    expect(screen.getByTestId('entity-tab-flow').getAttribute('aria-selected')).toBe('true');
+    // The console section only exists once the operator asks for the Runs tab.
+    expect(screen.queryByLabelText('Live session for this workflow')).toBeNull();
+  });
+});
+
+describe('the governed direct launch, with its inputs, behind the fold', () => {
+  it('enables Launch when the definition compiles and states the refusal when it does not', () => {
+    const onLaunch = vi.fn();
+    const { rerender } = render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} onLaunch={onLaunch} />);
+    const launch = () => screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    expect(launch().disabled).toBe(false);
+    fireEvent.click(launch());
+    expect(onLaunch).toHaveBeenCalled();
+
+    rerender(<WorkflowDetail
+      entry={def({
+        ref: 'kb~video.md', launchable: false, compileError: 'assigned-agent-not-runner-bound',
+        compileDetail: "assigned agent 'worker-a' is not runner-bound",
+      })}
+      compiled={null}
+      onLaunch={onLaunch}
+    />);
+    expect(launch().disabled).toBe(true);
+    expect(screen.getByTestId('workflow-compile-unavailable').textContent)
+      .toContain("assigned agent 'worker-a' is not runner-bound");
+  });
+
+  it('puts declared inputs beside the button and holds Launch until each is filled', () => {
+    const onParameterChange = vi.fn();
+    const { rerender } = render(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
+      compiled={null}
+      onLaunch={vi.fn()}
+      parameterValues={{}}
+      onParameterChange={onParameterChange}
+    />);
+    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Workflow parameter channel'), { target: { value: 'the-second-take' } });
+    expect(onParameterChange).toHaveBeenCalledWith('channel', 'the-second-take');
+
+    rerender(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
+      compiled={null}
+      onLaunch={vi.fn()}
+      parameterValues={{ channel: 'the-second-take', slug: '2026-07-19-wells-fargo' }}
+      onParameterChange={onParameterChange}
+    />);
+    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('blocks Launch on a pending change and says so in plain words', () => {
+    render(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md' })}
+      compiled={null}
+      onLaunch={vi.fn()}
+      blockedReason="A change to this workflow is waiting for a human to review it, so it cannot run yet."
+    />);
+    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(true);
+    const blocked = screen.getByTestId('workflow-blocked').textContent ?? '';
+    expect(blocked).toContain('waiting for a human to review it');
+    // The machinery's own words never reach the operator.
+    expect(blocked).not.toMatch(/amendment|canonical|proposal revision/i);
+  });
+});
+
+describe('workflow -> its runs', () => {
+  it('lists this workflow runs and opens one, grouped on the server key', () => {
+    const onOpenRun = vi.fn();
     render(
-      <Workflows
-        definitions={{ items: [def({ ref: 'kb~video.md' })] }}
-        focusWorkflowId="kb~video.md"
-        onOpenWorkflow={vi.fn()}
-        onNavigate={onNavigate}
-        revisions={[revision(), revision({ proposalRef: 'wf-other', sourceTurnId: 'kb~audio.md' })]}
-        runs={[
-          run({ runRef: 'run-7', proposalRef: 'wf-aaa' }),
-          run({ runRef: 'run-8', proposalRef: 'wf-other' }),
-        ]}
-      />,
+      <SessionProvider>
+        <Workflows
+          definitions={{ items: [def({ ref: 'kb~video.md' })] }}
+          focusWorkflowId="kb~video.md"
+          onOpenWorkflow={vi.fn()}
+          onOpenRun={onOpenRun}
+          runs={[
+            run({ runRef: 'run-7' }),
+            run({ runRef: 'run-8', workflowRef: 'kb~audio.md' }),
+          ]}
+        />
+      </SessionProvider>,
     );
 
     fireEvent.click(screen.getByTestId('entity-tab-runs'));
-
-    // Only the run whose proposal this definition actually stamped.
     expect(screen.getByTestId('workflow-run-run-7')).toBeTruthy();
     expect(screen.queryByTestId('workflow-run-run-8')).toBeNull();
 
-    // And it is a LIVE link into the run detail, not inert text.
     fireEvent.click(screen.getByTestId('workflow-run-run-7'));
-    expect(onNavigate).toHaveBeenCalledWith({ view: 'pipeline', focus: { kind: 'run', id: 'run-7' } });
+    expect(onOpenRun).toHaveBeenCalledWith('run-7');
   });
 
   it('renders the full run title without truncating it', () => {
-    render(
-      <WorkflowDetail
-        entry={def({ ref: 'kb~video.md' })}
-        compiled={null}
-        runs={[run({ runRef: 'run-7' })]}
-      />,
-    );
+    render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[run({ runRef: 'run-7' })]} />);
     fireEvent.click(screen.getByTestId('entity-tab-runs'));
     expect(screen.getByTestId('workflow-run-run-7').textContent).toContain(
       'Rebuild the faceless video pipeline and republish the audio stage',
     );
   });
 
-  it('says "not loaded" rather than "never launched" when there is no session', () => {
+  it('says "not loaded" rather than "never run" when the tab is locked', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} />);
     fireEvent.click(screen.getByTestId('entity-tab-runs'));
-
-    expect(screen.getByTestId('workflow-runs-unloaded').textContent).toMatch(/needs an unlocked cockpit session/i);
+    expect(screen.getByTestId('workflow-runs-unloaded').textContent).toMatch(/unlock the dashboard/i);
     expect(screen.queryByTestId('workflow-runs-empty')).toBeNull();
   });
 
-  it('says "not launched yet" when the join genuinely returns nothing', () => {
+  it('says "has not run yet" when there genuinely are none', () => {
     render(<WorkflowDetail entry={def({ ref: 'kb~video.md' })} compiled={null} runs={[]} />);
     fireEvent.click(screen.getByTestId('entity-tab-runs'));
-    expect(screen.getByTestId('workflow-runs-empty').textContent).toMatch(/not been launched yet/i);
+    expect(screen.getByTestId('workflow-runs-empty').textContent).toMatch(/has not run yet/i);
   });
 });
 
-describe('fields the tables never rendered', () => {
-  it('renders the invalid reason as readable text instead of a title= tooltip', () => {
-    render(
-      <WorkflowDetail
-        activeSectionId="overview"
-        entry={def({ ref: 'kb~broken.md', valid: false, detail: 'stage "render" depends on unknown stage "mix"' })}
-        compiled={null}
-      />,
-    );
+describe('the graph is the surface, and the engine detail is behind one fold', () => {
+  it('renders the agent graph in the LANDING body, behind no tab of its own', () => {
+    render(<WorkflowDetail
+      entry={def({
+        ref: 'kb~video.md',
+        stages: [{ id: 'write', title: 'Write', action: 'write', target: 'script.md', riskTier: 'T1', declaredAssignment: { agentId: 'worker-a', profileId: 'worker:claude:claude-sonnet-5' } }],
+      })}
+      compiled={null}
+    />);
+    // Leg 2 adds exactly ONE more section (the merged run/session history) — not the five engine tabs
+    // this surface used to have, and the graph is still what an operator lands on.
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Flow', 'Runs0']);
+    expect(screen.getByTestId('workflow-agent-network')).toBeTruthy();
+  });
+
+  it('keeps ids, hashes and step scope inside the technical fold', () => {
+    const hash = 'c'.repeat(64);
+    render(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md' })}
+      compiled={{
+        ok: true,
+        proposalId: 'wf-abc123',
+        contentHash: hash,
+        stages: [{
+          id: 'render', title: 'Render', action: 'render', target: 'out.mp4',
+          workOrder: 'Render the approved script to video.', riskTier: 'T2', dependsOn: ['write'],
+          worker: { runtime: 'claude', model: 'claude-opus-4-8' }, requiredSkills: [],
+          scope: { read: ['script.md'], write: ['out.mp4'] }, artifacts: [], checkpoints: [], humanGates: [],
+        }],
+      }}
+    />);
+    const fold = screen.getByTestId('workflow-technical');
+    expect(fold.textContent).toContain('orgs/kb/workflows/video.md');
+    expect(fold.textContent).toContain('wf-abc123');
+    // In FULL — a sliced hash cannot be compared against anything, which is its only purpose.
+    expect(fold.textContent).toContain(hash);
+    expect(screen.getByTestId('workflow-stage-render').textContent).toContain('after write');
+    expect(screen.getByTestId('workflow-stages').textContent).toContain('Render the approved script to video.');
+    expect(screen.getByTestId('workflow-stages').textContent).toContain('script.md');
+  });
+
+  it('renders the reason a workflow does not read, as text rather than a title= tooltip', () => {
+    render(<WorkflowDetail
+      entry={def({ ref: 'kb~broken.md', valid: false, detail: 'stage "render" depends on unknown stage "mix"' })}
+      compiled={null}
+    />);
     expect(screen.getByTestId('workflow-invalid-detail').textContent).toContain(
       'stage "render" depends on unknown stage "mix"',
     );
+    expect(screen.getByTestId('entity-detail-status').textContent).toContain('needs a fix');
   });
 
-  it('renders the definition-level risk tier', () => {
-    render(<WorkflowDetail activeSectionId="overview" entry={def({ ref: 'kb~video.md', riskTier: 'T3' })} compiled={null} />);
-    expect(screen.getByTestId('workflow-facts').textContent).toContain('T3');
+  it('surfaces checked-in governance diagnostics without calling the workflow broken', () => {
+    render(<WorkflowDetail entry={def({
+      ref: 'kb~governance.md',
+      governanceProblems: [
+        "workflow governance agent 'missing-governor' is not declared",
+        "stage 'render' governance agent 'other-agent' is not declared for project 'kb'",
+      ],
+    })} compiled={null} />);
+    const warning = screen.getByTestId('workflow-governance-problems');
+    expect(warning.textContent).toContain('missing-governor');
+    expect(warning.textContent).toContain('other-agent');
+    expect(screen.getByTestId('entity-detail-status').textContent).toContain('ready');
   });
 
-  it('renders compiled stages with their dependencies and scope', () => {
-    render(
-      <WorkflowDetail
-        entry={def({ ref: 'kb~video.md' })}
-        compiled={{
-          ok: true,
-          proposalId: 'wf-abc123',
-          contentHash: 'c'.repeat(64),
-          stages: [{
-            id: 'render', title: 'Render', action: 'render', target: 'out.mp4',
-            workOrder: 'Render the approved script to video.', riskTier: 'T2', dependsOn: ['write'],
-            worker: { runtime: 'claude', model: 'claude-opus-4-8' }, requiredSkills: [],
-            scope: { read: ['script.md'], write: ['out.mp4'] }, artifacts: [], checkpoints: [], humanGates: [],
-          }],
-        }}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('entity-tab-stages'));
-
-    const stage = screen.getByTestId('workflow-stage-render');
-    expect(stage.textContent).toContain('depends on write');
-    const stages = screen.getByTestId('workflow-stages');
-    expect(stages.textContent).toContain('Render the approved script to video.');
-    expect(stages.textContent).toContain('script.md');
-  });
-
-  it('renders the compiled proposal identity in full', () => {
-    const hash = 'c'.repeat(64);
-    render(
-      <WorkflowDetail
-        entry={def({ ref: 'kb~video.md' })}
-        compiled={{ ok: true, proposalId: 'wf-abc123', contentHash: hash, stages: [] }}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('entity-tab-compiled'));
-
-    const compiled = screen.getByTestId('workflow-compiled');
-    expect(compiled.textContent).toContain('wf-abc123');
-    // In FULL — a sliced hash cannot be compared against anything, which is its only purpose.
-    expect(compiled.textContent).toContain(hash);
-  });
-
-  it('surfaces a compile failure instead of an empty panel', () => {
-    render(
-      <WorkflowDetail
-        entry={def({ ref: 'kb~video.md' })}
-        compiled={{ ok: false, error: 'unknown-skill', detail: 'stage "render" requires skill "ffmpeg"' }}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('entity-tab-compiled'));
-    expect(screen.getByTestId('workflow-compile-error').textContent).toContain('requires skill "ffmpeg"');
-  });
-
-  it('renders manager and stage declared assignments separately from immutable effective routing', () => {
-    render(
-      <WorkflowDetail
-        entry={def({
-          ref: 'kb~assigned.md',
-          profile: 'research',
-          manager: { agentId: 'manager-a', profileId: 'manager:claude:claude-opus-4-8' },
-          stages: [{ id: 'write', action: 'write', target: 'script.md', riskTier: 'T1', declaredAssignment: { agentId: 'worker-a', profileId: 'worker:claude:claude-sonnet-5' } }],
-        })}
-        compiled={{
-          ok: true, proposalId: 'wf-assigned', contentHash: 'a'.repeat(64),
-          manager: { runtime: 'claude', model: 'claude-opus-4-8', requiredSkills: [], assignment: { agentId: 'manager-a', profileId: 'manager:claude:claude-opus-4-8', declarationPath: 'agents/manager-a.md', declarationHash: 'm'.repeat(64), runtime: 'claude', model: 'claude-opus-4-8' } },
-          stages: [{ id: 'write', title: 'Write', action: 'write', target: 'script.md', workOrder: 'Write.', riskTier: 'T1', dependsOn: [], worker: { runtime: 'claude', model: 'claude-sonnet-5' }, requiredSkills: [], scope: { read: [], write: ['script.md'] }, artifacts: [], checkpoints: [], humanGates: [], assignment: { agentId: 'worker-a', profileId: 'worker:claude:claude-sonnet-5', declarationPath: 'agents/worker-a.md', declarationHash: 'w'.repeat(64), runtime: 'claude', model: 'claude-sonnet-5' } }],
-        }}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('entity-tab-overview'));
-    expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('manager-a · manager:claude:claude-opus-4-8');
-    expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('claude/claude-opus-4-8');
-    expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('m'.repeat(64));
-    fireEvent.click(screen.getByTestId('entity-tab-stages'));
-    expect(screen.getByTestId('workflow-stage-routing-write').textContent).toContain('worker-a · worker:claude:claude-sonnet-5');
-    expect(screen.getByTestId('workflow-stage-routing-write').textContent).toContain('w'.repeat(64));
-    expect(screen.getByTestId('entity-detail-facts').textContent).toContain('Workflow tool profile');
-  });
-
-  it('renders unassigned routing and exposes an exact compiler refusal as unavailable', () => {
-    render(
-      <WorkflowDetail
-        entry={def({ ref: 'kb~unavailable.md', launchable: false, compileError: 'assigned-agent-not-runner-bound', compileDetail: "assigned agent 'worker-a' is not runner-bound" })}
-        compiled={{ ok: false, error: 'assigned-agent-not-runner-bound', detail: "assigned agent 'worker-a' is not runner-bound" }}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('entity-tab-overview'));
-    expect(screen.getByTestId('workflow-compile-unavailable').textContent).toContain("assigned agent 'worker-a' is not runner-bound");
-    expect(screen.getByTestId('workflow-manager-routing').textContent).toContain('unassigned');
-    fireEvent.click(screen.getByTestId('entity-tab-stages'));
-    expect(screen.getByTestId('workflow-stage-routing-write').textContent).toContain('Effective routing unavailable');
+  it('says a compile failure out loud instead of leaving an empty panel', () => {
+    render(<WorkflowDetail
+      entry={def({ ref: 'kb~video.md', launchable: false, compileDetail: 'stage "render" requires skill "ffmpeg"' })}
+      compiled={{ ok: false, error: 'unknown-skill', detail: 'stage "render" requires skill "ffmpeg"' }}
+    />);
+    expect(screen.getByTestId('workflow-compile-unavailable').textContent).toContain('requires skill "ffmpeg"');
   });
 });

@@ -23,7 +23,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ComposerChat } from './ComposerChat';
 import { defaultComposerStream } from './chatClient';
 import type { ComposerStreamFn } from './chatClient';
-import type { Session } from '../lib/authClient';
 import { RISK_TIERS, seedTemplate, toDeploy, validateDraft } from './artifactTypes';
 import type {
   ArtifactKind,
@@ -66,11 +65,6 @@ export interface ComposerProps {
   onComposerSessionChange?: (session: ComposerSession) => void;
   onRunningChange?: (running: boolean) => void;
   onOpenRun?: (runRef: string) => void;
-  /** WebAuthn session token — forwarded to ComposerChat, which gates every turn on it (no token, no send). */
-  sessionToken?: string;
-  /** Point-of-action passkey mint for signed-out Composer chat. DeployOutcome uses the same callback for
-   *  writes; Composer only forwards it to the chat pane. */
-  onRequestSession?: () => Promise<Session | null>;
   /** Pre-seed the type. `idea` (default) is the idea-first entry; entity pickers (C5) pass a concrete kind. */
   initialKind?: SeedKind;
   /** Out-of-band idea text an entity picker may pre-fill; if set, it is the seed's idea and the operator's
@@ -292,8 +286,6 @@ export function Composer({
   onComposerSessionChange,
   onRunningChange,
   onOpenRun,
-  sessionToken,
-  onRequestSession,
   initialKind = 'idea',
   ideaText = '',
   onDeploy,
@@ -420,8 +412,6 @@ export function Composer({
       <div className="v-composer__chat">
         <ComposerChat
           composerSession={composerSession}
-          sessionToken={sessionToken}
-          onRequestSession={onRequestSession}
           onSessionChange={onComposerSessionChange}
           onRunningChange={onRunningChange}
           onOpenRun={onOpenRun}

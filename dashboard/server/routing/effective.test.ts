@@ -266,3 +266,80 @@ overrides:
     expect([r.runtime, r.model, r.sourceRuntime]).toEqual([...SAFE_DEFAULT, 'default']);
   });
 });
+
+/**
+ * The agent-side precedence, rung by rung. Before this suite every agent resolved `role_default` because
+ * the wrapper hard-coded role='' AND discarded the agent's own declared runtime/model.
+ */
+describe('effectiveForAgent precedence: declaration > override > policy[role] > SAFE_DEFAULT', () => {
+  it('rung 1 — the agent DECLARATION wins over its role row (source=card, its own frontmatter)', () => {
+    const r = effectiveForAgent('boss', POLICY, EMPTY_OVERRIDE, {
+      role: 'manage',
+      runtime: 'codex',
+      model: 'gpt-5-codex',
+    });
+    // `manage` would give claude/opus; the agent's own declaration outranks it.
+    expect(r).toEqual({ runtime: 'codex', model: 'gpt-5-codex', sourceRuntime: 'card', sourceModel: 'card' });
+  });
+
+  it('rung 2 — a scope:agent override outranks the declaration ONLY where the declaration is silent', () => {
+    const override = ov(`version: 1
+overrides:
+  - scope: agent
+    key: half-declared
+    runtime: codex
+    model: gpt-5-codex
+`);
+    // Declares a runtime but no model: runtime stays the declaration's, the model comes from the override.
+    const r = effectiveForAgent('half-declared', POLICY, override, { role: 'manage', runtime: 'codex', model: null });
+    expect([r.runtime, r.sourceRuntime, r.model, r.sourceModel]).toEqual(['codex', 'card', 'gpt-5-codex', 'override']);
+    // Fully declared: the declaration wins both fields outright.
+    const declared = effectiveForAgent('half-declared', POLICY, override, {
+      role: 'manage',
+      runtime: 'claude',
+      model: 'claude-opus-4-8',
+    });
+    expect([declared.model, declared.sourceModel]).toEqual(['claude-opus-4-8', 'card']);
+  });
+
+  it('rung 3 — with no declared model the DECLARED ROLE selects the policy row (manage -> opus)', () => {
+    const r = effectiveForAgent('mgr', POLICY, EMPTY_OVERRIDE, { role: 'manage', runtime: null, model: null });
+    expect(r).toEqual({
+      runtime: 'claude',
+      model: 'claude-opus-4-8',
+      sourceRuntime: 'policy',
+      sourceModel: 'policy',
+    });
+    const scout = effectiveForAgent('sc', POLICY, EMPTY_OVERRIDE, { role: 'scout', runtime: null, model: null });
+    expect([scout.model, scout.sourceModel]).toEqual(['claude-haiku-4-5', 'policy']);
+  });
+
+  it('rung 3 — a role whose row is tier-keyed only (work) falls to role_default: an agent has no tier', () => {
+    // `work` declares T1/T2/T3 and no "*" cell, and an agent carries no risk tier, so `policyCell` finds
+    // no cell and falls to role_default. No tier is invented on the agent's behalf.
+    const r = effectiveForAgent('w', POLICY, EMPTY_OVERRIDE, { role: 'work', runtime: null, model: null });
+    expect([r.runtime, r.model, r.sourceModel]).toEqual(['claude', 'claude-sonnet-5', 'policy']);
+  });
+
+  it('rung 3 — an unknown role also falls to role_default (source stays policy)', () => {
+    const r = effectiveForAgent('x', POLICY, EMPTY_OVERRIDE, { role: 'some-future-role', runtime: null, model: null });
+    expect([r.model, r.sourceModel]).toEqual(['claude-sonnet-5', 'policy']);
+  });
+
+  it('rung 4 — no declaration and no readable policy is the ONLY path to SAFE_DEFAULT', () => {
+    const r = effectiveForAgent('x', {}, EMPTY_OVERRIDE, { role: 'manage', runtime: null, model: null });
+    expect([r.runtime, r.model, r.sourceRuntime, r.sourceModel]).toEqual([...SAFE_DEFAULT, 'default', 'default']);
+  });
+
+  it('a declaration naming a model its runtime does not know fails LOUD (parity with dispatch)', () => {
+    expect(() =>
+      effectiveForAgent('x', POLICY, EMPTY_OVERRIDE, { role: 'work', runtime: 'claude', model: 'gpt-5-codex' }),
+    ).toThrow(RoutingError);
+  });
+
+  it('an omitted declaration is exactly the pre-declaration behaviour (role_default)', () => {
+    expect(effectiveForAgent('x', POLICY, EMPTY_OVERRIDE)).toEqual(
+      effectiveForAgent('x', POLICY, EMPTY_OVERRIDE, null),
+    );
+  });
+});

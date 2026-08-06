@@ -17,9 +17,10 @@
  * stands alone until the integrator adds the `case`.
  */
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import type { ParsedCard, CardFieldValue } from '../../server/planeA/cards';
+import type { CardProjection, ParsedCard, CardFieldValue } from '../../server/planeA/cards';
+import { EntityName } from '../components/EntityName';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { Session } from '../lib/authClient';
+import { useSession } from '../lib/sessionContext';
 import {
   EMPTY_ROUTING,
   fetchRouting,
@@ -29,10 +30,18 @@ import {
 } from '../lib/routingClient';
 import { RoutingControl } from './routingControls';
 import { renderMarkdown } from '../lib/markdown';
+import { projectHumanInbox, type HumanInboxItem } from '../../server/approvals/humanInbox';
+import {
+  respondToCard,
+  verifyApproval,
+  type ApprovalChannel,
+  type RespondAction,
+} from '../lib/approvalsClient';
 import '../styles/views/tasks.css';
+import '../styles/views/approvals.css';
 
 /** Cards grouped by state — the shape of `PlaneAIndex.cards`. */
-export type CardsByState = Record<string, ParsedCard[]>;
+export type CardsByState = Record<string, CardProjection[]>;
 
 type DotKind = 'idle' | 'running' | 'blocked' | 'done' | 'error';
 
@@ -113,7 +122,7 @@ function CardRow({
   selected,
   onSelect,
 }: {
-  card: ParsedCard;
+  card: CardProjection;
   selected: boolean;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
@@ -136,7 +145,10 @@ function CardRow({
         }
       }}
     >
-      <td className="v-tasks__cell-id mc-mono">{id}</td>
+      {/* The card's name, not its id: the id stays reachable through the tooltip + copy affordance. */}
+      <td className="v-tasks__cell-id">
+        <EntityName kind="card" id={id} displayName={card.displayName} shortRef={card.shortRef} />
+      </td>
       <td className="v-tasks__cell-action">{fieldStr(card.meta.action)}</td>
       <td className="v-tasks__cell-tier">
         {cls ? <span className={`mc-badge ${cls}`}>{tier}</span> : null}
@@ -156,7 +168,7 @@ function StateGroup({
   onSelect,
 }: {
   state: string;
-  cards: ParsedCard[];
+  cards: CardProjection[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
@@ -169,12 +181,13 @@ function StateGroup({
         <span className="v-tasks__group-count mc-num">{cards.length}</span>
       </header>
       {cards.length === 0 ? (
-        <p className="v-tasks__group-empty">Nothing in {meta.label.toLowerCase()}.</p>
+        <p className="mc-empty">Nothing in {meta.label.toLowerCase()}.</p>
       ) : (
-        <table className="v-tasks__table">
+        <table className="mc-table mc-table--boxed">
           <thead>
             <tr>
-              <th>ID</th>
+              {/* The card's NAME now leads this column; its id lives in the EntityName tooltip. */}
+              <th>Card</th>
               <th>Action</th>
               <th>Tier</th>
               <th>Owner</th>
@@ -201,20 +214,21 @@ function StateGroup({
  *  and a governed card-scope override toggle. Card frontmatter is the TOP-precedence routing input. */
 function CardRoutingBar({
   cardId,
+  cardName,
   cardState,
   cardOwner,
   view,
   registry,
-  canAct,
   onApply,
   onClear,
 }: {
   cardId: string;
+  /** The card's display name — the aria labels below name the card, never its id. */
+  cardName: string;
   cardState: string;
   cardOwner: unknown;
   view: CardRoutingView | undefined;
   registry: RoutingSnapshot['policy']['runtimes'];
-  canAct: boolean;
   onApply: (runtime: string, model: string) => Promise<{ ok: boolean; reason?: string }>;
   onClear: () => Promise<{ ok: boolean; reason?: string }>;
 }): React.JSX.Element {
@@ -233,11 +247,10 @@ function CardRoutingBar({
       )}
       <span className="v-routing-bar__label">effective routing</span>
       <RoutingControl
-        label={cardId}
+        label={cardName}
         testIdPrefix={`card-${cardId}`}
         registry={registry}
         effective={view?.effective ?? null}
-        canAct={canAct}
         canClear={Boolean(routed)}
         lockedReason={lockedReason}
         onApply={(runtime, model) => onApply(runtime, model)}
@@ -247,18 +260,109 @@ function CardRoutingBar({
   );
 }
 
+/**
+ * spec §5 — where a card's gate is actually ANSWERED.
+ *
+ * The Inbox is a list of links now: it says what needs a person and sends them here, because a decision
+ * needs the card's work order, frontmatter and body around it — which the Inbox row deliberately does
+ * not show. So the verify channels and the reply/resolve box that used to live in an Inbox detail pane
+ * live HERE, beside the content they are about. The predicate is the SAME projection the Inbox lists
+ * from, never a second opinion about what needs a human.
+ */
+function CardGate({
+  item,
+  busy,
+  draft,
+  onDraftChange,
+  onVerify,
+  onRespond,
+}: {
+  item: HumanInboxItem;
+  busy: boolean;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onVerify: (channel: ApprovalChannel) => void;
+  onRespond: (action: RespondAction, message: string) => void;
+}): React.JSX.Element {
+  return (
+    <section className="v-tasks__gate" aria-label="Waiting on you" data-testid="card-gate">
+      <p className={`v-approvals__eyebrow v-approvals__eyebrow--${item.category}`}>{item.categoryLabel}</p>
+      <h3 className="v-tasks__gate-head">{item.status}</h3>
+      <p className="v-tasks__gate-reason">{item.reason}</p>
+      <p className="v-tasks__gate-next"><strong>Next action</strong> {item.nextAction}</p>
+
+      {item.respond ? (
+        <div className="v-approvals__respond" data-testid="respond-form">
+          <label className="v-approvals__field-label" htmlFor="respond-message">
+            {item.respond === 'reply' ? 'Reply to the owning agent' : 'Resolution note'}
+          </label>
+          <textarea
+            id="respond-message"
+            className="v-approvals__respond-input"
+            data-testid="respond-message"
+            rows={4}
+            maxLength={16000}
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            placeholder={item.respond === 'reply'
+              ? 'Your note is appended to the card and it stays queued for pickup.'
+              : 'Recorded on the card as an operator resolution.'}
+          />
+          <div className="v-approvals__buttons">
+            <button
+              type="button"
+              className="mc-btn mc-btn--primary"
+              data-testid="respond-submit"
+              disabled={draft.trim().length === 0 || busy}
+              onClick={() => onRespond(item.respond as RespondAction, draft.trim())}
+            >
+              {item.respond === 'reply' ? 'Send reply' : 'Resolve'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {item.category === 'decision' && item.buttons ? (
+        <>
+          <p className="v-approvals__truth-note" role="note">
+            Evidence verification records/checks an approval. It does not itself start, resume, or complete this workflow.
+          </p>
+          <div className="v-approvals__buttons">
+            {item.buttons.signed ? (
+              <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => onVerify('signed')}>
+                Verify evidence (signed)
+              </button>
+            ) : null}
+            {item.buttons.possession ? (
+              <button type="button" className="mc-btn" disabled={busy} onClick={() => onVerify('possession')}>
+                Verify evidence (possession)
+              </button>
+            ) : null}
+            {item.buttons.webauthn ? (
+              <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => onVerify('webauthn')}>
+                Verify evidence (WebAuthn)
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function DetailPane({
   card,
+  gate,
   routingView,
   registry,
-  canAct,
   onApplyRouting,
   onClearRouting,
 }: {
-  card: ParsedCard;
+  card: CardProjection;
+  /** The gate block, when this card is one of the things waiting on a person. */
+  gate: React.ReactNode;
   routingView: CardRoutingView | undefined;
   registry: RoutingSnapshot['policy']['runtimes'];
-  canAct: boolean;
   onApplyRouting: (cardId: string, runtime: string, model: string) => Promise<{ ok: boolean; reason?: string }>;
   onClearRouting: (cardId: string) => Promise<{ ok: boolean; reason?: string }>;
 }): React.JSX.Element {
@@ -267,16 +371,20 @@ function DetailPane({
   const cardId = String(card.meta.id);
   return (
     <aside className="v-tasks__detail" aria-label="Card detail">
-      <h2 className="v-tasks__detail-id mc-mono">{cardId}</h2>
+      <h2 className="v-tasks__detail-id">
+        <EntityName kind="card" id={cardId} displayName={card.displayName} shortRef={card.shortRef} />
+      </h2>
       <p className="v-tasks__detail-caption">Card content below is rendered as inert data.</p>
+
+      {gate}
 
       <CardRoutingBar
         cardId={cardId}
+        cardName={card.displayName}
         cardState={String(card.meta.state)}
         cardOwner={card.meta.owner}
         view={routingView}
         registry={registry}
-        canAct={canAct}
         onApply={(runtime, model) => onApplyRouting(cardId, runtime, model)}
         onClear={() => onClearRouting(cardId)}
       />
@@ -297,7 +405,7 @@ function DetailPane({
           dangerouslySetInnerHTML={{ __html: renderMarkdown(card.body) }}
         />
       ) : (
-        <p className="v-tasks__body-empty">This card has no body.</p>
+        <p className="mc-empty">This card has no body.</p>
       )}
     </aside>
   );
@@ -309,21 +417,24 @@ function DetailPane({
 export function Tasks({
   data,
   routing,
-  sessionToken,
-  onRequestSession,
   initialSelectedId,
+  fetchImpl,
 }: {
   data?: CardsByState;
   routing?: RoutingSnapshot;
-  sessionToken?: string;
-  onRequestSession?: () => Promise<Session | null>;
-  /** Card id to open in the detail pane on mount — used by the Pipeline canvas click-through so a node
-   *  jump lands directly on that card's full frontmatter/body/routing surface. */
+  /** Card id to open in the detail pane on mount — used by a card click-through (a run's card graph,
+   *  a step's canonical card) so a jump lands on that card's full frontmatter/body/routing surface. */
   initialSelectedId?: string;
+  /** Injected for tests; the gate's governed writes use the real `fetch` in production. */
+  fetchImpl?: typeof fetch;
 } = {}): React.JSX.Element {
+  const { requireSession } = useSession();
   const [fetched, setFetched] = useState<CardsByState | null>(null);
   const [routingState, setRoutingState] = useState<RoutingSnapshot | null>(routing ?? null);
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? null);
+  const [gateDraft, setGateDraft] = useState('');
+  const [gateBusy, setGateBusy] = useState(false);
+  const [gateOutcome, setGateOutcome] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     if (data) return;
@@ -356,12 +467,10 @@ export function Tasks({
 
   const cards = data ?? fetched ?? EMPTY;
   const routingSnap = routing ?? routingState ?? EMPTY_ROUTING;
-  const canAct = Boolean(sessionToken) || Boolean(onRequestSession);
 
+  /** Point-of-action unlock: a routing write on a locked tab runs the ONE ceremony first. */
   async function resolveToken(): Promise<string | undefined> {
-    if (sessionToken) return sessionToken;
-    if (onRequestSession) return (await onRequestSession())?.token ?? undefined;
-    return undefined;
+    return (await requireSession())?.token;
   }
 
   async function applyCardRouting(cardId: string, runtime: string, model: string): Promise<{ ok: boolean; reason?: string }> {
@@ -382,7 +491,7 @@ export function Tasks({
 
   // Flat lookup so selection resolves regardless of which state bucket a card sits in.
   const byId = useMemo(() => {
-    const m = new Map<string, ParsedCard>();
+    const m = new Map<string, CardProjection>();
     for (const bucket of Object.values(cards)) {
       for (const card of bucket) m.set(String(card.meta.id), card);
     }
@@ -390,6 +499,85 @@ export function Tasks({
   }, [cards]);
 
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
+
+  // A fresh selection clears any half-typed response — the box is always scoped to the visible card.
+  useEffect(() => {
+    setGateDraft('');
+    setGateOutcome(null);
+  }, [selectedId]);
+
+  /**
+   * Is the selected card one of the things waiting on a person, and what may the operator do about it?
+   *
+   * Answered by the SAME projection the Inbox lists from, run over this one card — a second predicate
+   * here is exactly how the two surfaces would come to disagree about what needs Daniel.
+   */
+  const gateItem = useMemo((): HumanInboxItem | null => {
+    if (!selected) return null;
+    const state = String(selected.meta.state ?? '');
+    return projectHumanInbox({
+      cards: { [state]: [selected] },
+      ledgers: {
+        dispatch: { count: 0, cards: 0, byProject: {} },
+        cost: { stepCount: 0, perModelSteps: {}, modelMix: {}, usdPresent: false },
+        grades: { count: 0, rows: [] },
+        activity: { count: 0, rows: [] },
+      },
+      orgStates: [],
+    }).items[0] ?? null;
+  }, [selected]);
+
+  /**
+   * One governed click on a card gate: reuse the live bearer, else run the app's ONE passkey ceremony,
+   * and replace a bearer the server invalidated (401) exactly ONCE before retrying. Never a loop, never
+   * a silent downgrade — the same rule the Inbox container used to carry for these two writes.
+   */
+  const governCard = async (
+    label: string,
+    call: (token: string) => Promise<{ ok: boolean; reason: string; status: number; liveness?: { online: boolean } }>,
+  ): Promise<void> => {
+    if (gateBusy) return;
+    setGateBusy(true);
+    setGateOutcome(null);
+    try {
+      let token = (await requireSession())?.token;
+      if (!token) {
+        setGateOutcome({ kind: 'error', message: `The dashboard is locked — ${label} was not sent.` });
+        return;
+      }
+      let result = await call(token);
+      if (result.status === 401) {
+        const replacement = await requireSession();
+        if (replacement && replacement.token !== token) {
+          token = replacement.token;
+          result = await call(token);
+        }
+      }
+      const name = selected?.displayName ?? 'this card';
+      if (!result.ok) {
+        setGateOutcome({
+          kind: 'error',
+          message: result.reason ? `${name} was not updated: ${result.reason}` : `${name} was not updated (HTTP ${result.status}).`,
+        });
+        return;
+      }
+      // A reply COMMITS here, but it only PROGRESSES if a runner picks the card up. When the server says
+      // no consumer is online, say so plainly rather than implying delivery.
+      const offline = result.liveness && !result.liveness.online;
+      const owner = typeof selected?.meta.owner === 'string' && selected.meta.owner ? `\`${selected.meta.owner}\`` : 'its owner';
+      setGateOutcome({
+        kind: 'success',
+        message: offline
+          ? `${name}: ${label} recorded and committed. No runner is online for ${owner} — this card will not progress until one runs.`
+          : `${name}: ${label} recorded and committed.`,
+      });
+      setGateDraft('');
+    } catch (cause) {
+      setGateOutcome({ kind: 'error', message: cause instanceof Error ? cause.message : `${label} was refused.` });
+    } finally {
+      setGateBusy(false);
+    }
+  };
 
   // Render primary states always; extra states only when they hold cards.
   const groups = STATE_ORDER.filter(
@@ -413,9 +601,30 @@ export function Tasks({
       {selected ? (
         <DetailPane
           card={selected}
+          gate={gateItem ? (
+            <>
+              {gateOutcome ? (
+                <p
+                  className={`v-approvals__outcome v-approvals__outcome--${gateOutcome.kind}`}
+                  role={gateOutcome.kind === 'error' ? 'alert' : 'status'}
+                >
+                  {gateOutcome.message}
+                </p>
+              ) : null}
+              <CardGate
+                item={gateItem}
+                busy={gateBusy}
+                draft={gateDraft}
+                onDraftChange={setGateDraft}
+                onVerify={(channel) => void governCard('verification', (token) =>
+                  verifyApproval(String(selected.meta.id), channel, { token, fetchImpl }))}
+                onRespond={(action, message) => void governCard(action === 'reply' ? 'reply' : 'resolution', (token) =>
+                  respondToCard(String(selected.meta.id), action, message, { token, fetchImpl }))}
+              />
+            </>
+          ) : null}
           routingView={routingSnap.cards[String(selected.meta.id)]}
           registry={routingSnap.policy.runtimes}
-          canAct={canAct}
           onApplyRouting={applyCardRouting}
           onClearRouting={clearCardRouting}
         />

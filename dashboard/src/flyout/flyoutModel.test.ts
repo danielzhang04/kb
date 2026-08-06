@@ -4,11 +4,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
-import type { ParsedCard } from '../../server/planeA/cards';
+import type { CardProjection } from '../../server/planeA/cards';
 import { FLYOUT_DESTINATIONS, summaryFor, type RegistrySnapshot } from './flyoutModel';
 
-function card(meta: Record<string, unknown>): ParsedCard {
-  return { meta: meta as ParsedCard['meta'], body: '' };
+function card(meta: Record<string, unknown>): CardProjection {
+  return { meta: meta as CardProjection['meta'], body: '', displayName: String(meta.action ?? 'card'), shortRef: 1 };
 }
 
 const EMPTY: PlaneAIndex = {

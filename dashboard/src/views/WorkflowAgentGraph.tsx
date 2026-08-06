@@ -1,4 +1,34 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+/**
+ * The workflow graph — the workflow detail's PRIMARY surface.
+ *
+ * ONE NODE PER AGENT. Each agent governs its own steps, so the picture answers the question an
+ * operator actually asks of a workflow: WHO runs this thing, and in what order do they hand off?
+ * A fourteen-step video pipeline is four agents, not fourteen boxes — the steps live INSIDE the
+ * agent that governs them, as that agent's ordered worklist.
+ *
+ * Who governs what is resolved by the server (`resolvedAssignment` / `resolvedManager`) out of the
+ * definition itself — an explicit assignment, else the step's governing agent, else the workflow's
+ * manager — so a workflow nobody hand-assigned still reads as a specific cast. A resolved default is
+ * tagged as a default; an explicitly named agent is not tagged at all. When nothing resolves for a
+ * step, those steps gather under ONE honest node saying no default agent is resolvable — never an
+ * empty canvas, and never a demand to go and assign something.
+ *
+ * Arrows are INTER-AGENT handoffs: the steps' own `dependsOn` links collapsed to the agent level and
+ * deduped, with self-handoffs (an agent's step depending on its own earlier step) dropped, because an
+ * agent handing off to itself is not a handoff. The manager reaches the agent that owns the opening
+ * step distinctly.
+ *
+ * The pickers are an OVERRIDE, not the way work gets staffed: choosing a value submits through the
+ * SAME governed write the per-step boxes used (`POST /api/workflows/:id/assignment-amendments`, owned
+ * by the detail's caller). There is no second write path and no batch "submit". They live in a fold
+ * inside the agent node so the node reads as a cast card first and an editor second.
+ *
+ * This replaced a STEP-keyed projection (one node per step). It was truthful but unreadable: fourteen
+ * small boxes spread over four dependency lanes, so `fitView` framed a chain wider than the canvas and
+ * most of the workflow sat off-screen. Agent nodes are few and large, so the whole chain frames at
+ * roughly 1:1 with text at its declared size.
+ */
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Background,
   Controls,
@@ -19,119 +49,139 @@ import {
 import 'reactflow/dist/style.css';
 import type { WorkflowDefEntry } from './WorkflowDetail';
 
-export const UNASSIGNED_GOVERNOR = '__unassigned__';
+/** Which part of the definition an edit addresses. Mirrors the governed route's own body. */
+export type AssignTarget = { kind: 'manager' } | { kind: 'stage'; stageId: string };
 
-export interface GovernanceAgentOption { id: string; role: string | null; description: string | null }
-export interface GovernanceDraft { workflow: string | null; stages: Record<string, string | null> }
-export interface HandoffStagePair { sourceStageId: string; targetStageId: string }
-export interface HandoffDirection { source: string; target: string; stagePairs: HandoffStagePair[] }
-export interface GovernanceHandoffData { directions: HandoffDirection[] }
+export interface Assignment { agentId: string; profileId: string }
 
-interface GovernorNodeData {
-  id: string;
-  role: string | null;
-  stages: WorkflowDefEntry['stages'];
-  workflowGovernor: boolean;
-  selected: boolean;
-  readOnly: boolean;
-  onSelect: (id: string) => void;
-  onDropStage: (stageId: string, governor: string | null) => void;
+/**
+ * Where the server got the agent it says will run something. `declared` means the definition names it
+ * outright; every other value is a DEFAULT the server resolved, which the node tags as such.
+ */
+export type AssignmentSource =
+  | 'declared'
+  | 'stage-governed-by'
+  | 'governed-by'
+  | 'project-manager'
+  | 'sole-project-agent'
+  | 'manager-default';
+
+/** The server's answer to "who runs this today", declaration or resolved default alike. */
+export interface ResolvedAssignment {
+  agentId: string;
+  profileId: string | null;
+  /** Effective model from the roster. May be null when the roster does not pin one. */
+  model: string | null;
+  source: AssignmentSource;
 }
 
-function GovernorNode({ data }: NodeProps<GovernorNodeData>): React.JSX.Element {
-  const unassigned = data.id === UNASSIGNED_GOVERNOR;
-  const handles = [
-    ['top', Position.Top],
-    ['right', Position.Right],
-    ['bottom', Position.Bottom],
-    ['left', Position.Left],
-  ] as const;
-  return (
-    <article
-      className={`v-workflow-agent${data.selected ? ' v-workflow-agent--selected' : ''}${unassigned ? ' v-workflow-agent--unassigned' : ''}`}
-      data-testid={`workflow-agent-node-${data.id}`}
-      onClick={() => data.onSelect(data.id)}
-      onDragOver={(event) => { if (!data.readOnly) event.preventDefault(); }}
-      onDrop={(event) => {
-        if (data.readOnly) return;
-        const stageId = event.dataTransfer.getData('application/x-kb-workflow-stage');
-        if (stageId) data.onDropStage(stageId, unassigned ? null : data.id);
-      }}
-    >
-      {handles.flatMap(([id, position]) => [
-        <Handle key={`target-${id}`} id={`target-${id}`} type="target" position={position} className="v-workflow-agent__handle" />,
-        <Handle key={`source-${id}`} id={`source-${id}`} type="source" position={position} className="v-workflow-agent__handle" />,
-      ])}
-      <header className="v-workflow-agent__head">
-        <strong className="mc-mono">{unassigned ? 'Unassigned' : data.id}</strong>
-        {data.workflowGovernor ? <span className="entity-chip">workflow governor</span> : null}
-        {data.role ? <span className="entity-chip mc-mono">{data.role}</span> : null}
-        <button
-          type="button"
-          className="v-workflow-agent__inspect nodrag nopan"
-          aria-label={`Inspect ${unassigned ? 'unassigned stages' : data.id}`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => { event.stopPropagation(); data.onSelect(data.id); }}
-        >
-          Inspect
-        </button>
-      </header>
-      <div className="v-workflow-agent__stages">
-        {data.stages.map((stage) => (
-          <button
-            type="button"
-            key={stage.id}
-            draggable={!data.readOnly}
-            className="v-workflow-agent__stage nodrag nopan"
-            data-testid={`workflow-stage-chip-${stage.id}`}
-            onPointerDown={(event) => event.stopPropagation()}
-            onDragStart={(event) => {
-              event.stopPropagation();
-              event.dataTransfer.setData('application/x-kb-workflow-stage', stage.id);
-              event.dataTransfer.effectAllowed = 'move';
-            }}
-            onClick={(event) => { event.stopPropagation(); data.onSelect(data.id); }}
-          >
-            <span>{stage.title ?? stage.action}</span><span className="mc-mono">{stage.id}</span>
-          </button>
-        ))}
-        {data.stages.length === 0 ? <span className="entity-note">Coordinates; no owned stage</span> : null}
-      </div>
-    </article>
-  );
+/** Server-derived eligible choices; this view never infers an assignment from a declaration itself. */
+export interface AssignmentChoices { options: Assignment[]; unavailable: string | null }
+
+export interface WorkflowAssignmentOptions {
+  manager: AssignmentChoices;
+  stages: Record<string, AssignmentChoices>;
 }
 
-const NODE_TYPES: NodeTypes = { governor: GovernorNode };
+type WorkflowStage = WorkflowDefEntry['stages'][number];
 
-export function initialGovernance(entry: WorkflowDefEntry): GovernanceDraft {
+/**
+ * The node id of the group that holds the steps nothing resolved for. Namespaced with the agent nodes
+ * so a project that literally has an agent called `unresolved` still gets its own node.
+ */
+export const UNRESOLVED_NODE = 'agent:';
+
+/** An agent's node id. Namespaced so an agent id can never collide with anything else on the canvas. */
+export function agentNodeId(agentId: string | null): string {
+  return `agent:${agentId ?? ''}`;
+}
+
+/** `agentId · profileId` as one select value, so a pair round-trips through a `<select>` intact. */
+export function assignmentKey(assignment: Assignment | null | undefined): string {
+  return assignment ? JSON.stringify([assignment.agentId, assignment.profileId]) : '';
+}
+
+/** What the server says about one step or one workflow. `null` means nothing resolved — say so. */
+export interface AgentSlot {
+  agentId: string;
+  model: string | null;
+  source: AssignmentSource;
+  /** Anything the server resolved rather than read literally out of the file. */
+  isDefault: boolean;
+}
+
+function slotFrom(resolved: ResolvedAssignment | null | undefined): AgentSlot | null {
+  if (!resolved?.agentId) return null;
   return {
-    workflow: entry.governedBy ?? null,
-    stages: Object.fromEntries(entry.stages.map((stage) => [stage.id, stage.governedBy ?? null])),
+    agentId: resolved.agentId,
+    model: resolved.model ?? null,
+    source: resolved.source,
+    isDefault: resolved.source !== 'declared',
   };
 }
 
-/** A persisted draft can predate a newly-added stage.  Missing keys mean unassigned, never invisible. */
-export function normalizeGovernance(entry: WorkflowDefEntry, draft: GovernanceDraft): GovernanceDraft {
-  return {
-    workflow: draft.workflow ?? null,
-    stages: Object.fromEntries(entry.stages.map((stage) => [stage.id, draft.stages[stage.id] ?? null])),
-  };
+/**
+ * Who will run this step. The server's resolution wins; the two fallbacks below exist only so an older
+ * payload (or a fixture written before the resolution shipped) still shows the definition's real cast
+ * instead of collapsing every step into the unresolved node. Nothing beyond what the file itself names
+ * is ever invented.
+ */
+export function stageSlot(stage: WorkflowStage): AgentSlot | null {
+  const resolved = slotFrom(stage.resolvedAssignment);
+  if (resolved) return resolved;
+  if (stage.declaredAssignment?.agentId) {
+    return { agentId: stage.declaredAssignment.agentId, model: null, source: 'declared', isDefault: false };
+  }
+  if (stage.governedBy) {
+    return { agentId: stage.governedBy, model: null, source: 'stage-governed-by', isDefault: true };
+  }
+  return null;
 }
 
-function stageRanks(entry: WorkflowDefEntry): Map<string, number> {
+/** Who runs the workflow itself, on the same declaration-then-resolution-then-nothing footing. */
+export function managerSlot(entry: WorkflowDefEntry): AgentSlot | null {
+  const resolved = slotFrom(entry.resolvedManager);
+  if (resolved) return resolved;
+  if (entry.manager?.agentId) {
+    return { agentId: entry.manager.agentId, model: null, source: 'declared', isDefault: false };
+  }
+  if (entry.governedBy) {
+    return { agentId: entry.governedBy, model: null, source: 'governed-by', isDefault: true };
+  }
+  return null;
+}
+
+/** Plain-words provenance for a resolved default, used as the tag's tooltip. */
+export function sourceExplanation(source: AssignmentSource): string {
+  switch (source) {
+    case 'declared': return 'Named in the workflow file.';
+    case 'stage-governed-by': return 'The agent that governs these steps.';
+    case 'governed-by': return 'The agent that governs this workflow.';
+    case 'project-manager': return 'This project’s manager.';
+    case 'sole-project-agent': return 'The only agent this project has.';
+    case 'manager-default': return 'The agent that runs this workflow.';
+    default: return 'Resolved from the workflow file.';
+  }
+}
+
+/** The name an operator reads for a step. */
+export function stageLabel(stage: WorkflowStage): string {
+  return stage.title ?? stage.action;
+}
+
+/** How far along the chain each step sits. A malformed cycle ranks 0 rather than recursing forever. */
+export function stageRanks(entry: WorkflowDefEntry): Map<string, number> {
   const stagesById = new Map(entry.stages.map((stage) => [stage.id, stage]));
   const ranks = new Map<string, number>();
   const visiting = new Set<string>();
   const rank = (stageId: string): number => {
     const cached = ranks.get(stageId);
     if (cached !== undefined) return cached;
-    // A malformed stage cycle must still render instead of recursing forever.
     if (visiting.has(stageId)) return 0;
     visiting.add(stageId);
     const stage = stagesById.get(stageId);
-    const next = stage?.dependsOn?.length
-      ? Math.max(...stage.dependsOn.map((dependency) => rank(dependency) + 1))
-      : 0;
+    const dependencies = (stage?.dependsOn ?? []).filter((dependency) => stagesById.has(dependency));
+    const next = dependencies.length ? Math.max(...dependencies.map((dependency) => rank(dependency) + 1)) : 0;
     visiting.delete(stageId);
     ranks.set(stageId, next);
     return next;
@@ -140,153 +190,141 @@ function stageRanks(entry: WorkflowDefEntry): Map<string, number> {
   return ranks;
 }
 
-function ownerLinks(entry: WorkflowDefEntry, draft: GovernanceDraft): Array<[string, string]> {
-  const links = new Set<string>();
-  const stageIds = new Set(entry.stages.map((stage) => stage.id));
-  for (const stage of entry.stages) {
-    const target = draft.stages[stage.id] ?? UNASSIGNED_GOVERNOR;
-    for (const dependency of stage.dependsOn ?? []) {
-      if (!stageIds.has(dependency)) continue;
-      const source = draft.stages[dependency] ?? UNASSIGNED_GOVERNOR;
-      if (source !== target) links.add(`${source}\u0000${target}`);
-    }
-  }
-  return [...links].map((link) => link.split('\u0000') as [string, string]);
-}
-
-function ownerComponents(owners: string[], links: Array<[string, string]>): string[][] {
-  const ownerSet = new Set(owners);
-  const adjacency = new Map(owners.map((owner) => [owner, [] as string[]]));
-  for (const [source, target] of links) {
-    if (ownerSet.has(source) && ownerSet.has(target)) adjacency.get(source)?.push(target);
-  }
-  let nextIndex = 0;
-  const indices = new Map<string, number>();
-  const lowLinks = new Map<string, number>();
-  const stack: string[] = [];
-  const onStack = new Set<string>();
-  const components: string[][] = [];
-  const connect = (owner: string): void => {
-    const ownerIndex = nextIndex++;
-    indices.set(owner, ownerIndex);
-    lowLinks.set(owner, ownerIndex);
-    stack.push(owner);
-    onStack.add(owner);
-    for (const target of adjacency.get(owner) ?? []) {
-      if (!indices.has(target)) {
-        connect(target);
-        lowLinks.set(owner, Math.min(lowLinks.get(owner) ?? ownerIndex, lowLinks.get(target) ?? ownerIndex));
-      } else if (onStack.has(target)) {
-        lowLinks.set(owner, Math.min(lowLinks.get(owner) ?? ownerIndex, indices.get(target) ?? ownerIndex));
-      }
-    }
-    if (lowLinks.get(owner) !== indices.get(owner)) return;
-    const component: string[] = [];
-    let member: string | undefined;
-    do {
-      member = stack.pop();
-      if (member !== undefined) {
-        onStack.delete(member);
-        component.push(member);
-      }
-    } while (member !== owner);
-    components.push(component);
-  };
-  for (const owner of owners) {
-    if (!indices.has(owner)) connect(owner);
-  }
-  const order = new Map(owners.map((owner, index) => [owner, index]));
-  return components
-    .map((component) => component.sort((left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0)))
-    .sort((left, right) => (order.get(left[0] ?? '') ?? 0) - (order.get(right[0] ?? '') ?? 0));
-}
-
-/** Stable owner order follows stage progression, not the server's agent declaration order. */
-export function governanceOwnerOrder(entry: WorkflowDefEntry, draft: GovernanceDraft, visibleNodeIds: string[]): string[] {
-  const ranks = stageRanks(entry);
-  const firstStageIndex = new Map<string, number>();
-  const firstRank = new Map<string, number>();
-  entry.stages.forEach((stage, index) => {
-    const owner = draft.stages[stage.id] ?? UNASSIGNED_GOVERNOR;
-    firstStageIndex.set(owner, Math.min(firstStageIndex.get(owner) ?? index, index));
-    firstRank.set(owner, Math.min(firstRank.get(owner) ?? (ranks.get(stage.id) ?? 0), ranks.get(stage.id) ?? 0));
-  });
-  return [...visibleNodeIds].sort((left, right) => {
-    const leftParticipates = firstStageIndex.has(left);
-    const rightParticipates = firstStageIndex.has(right);
-    if (leftParticipates !== rightParticipates) return leftParticipates ? -1 : 1;
-    return (firstRank.get(left) ?? Number.MAX_SAFE_INTEGER) - (firstRank.get(right) ?? Number.MAX_SAFE_INTEGER)
-      || (firstStageIndex.get(left) ?? Number.MAX_SAFE_INTEGER) - (firstStageIndex.get(right) ?? Number.MAX_SAFE_INTEGER)
-      || left.localeCompare(right);
-  });
+/** One agent node: the agent, everything it governs here, and whether it also runs the workflow. */
+export interface AgentGroup {
+  /** The node key: the agent id, or `''` for the steps nothing resolved for. */
+  key: string;
+  /** `null` when nothing resolved — the node says exactly that rather than naming a guess. */
+  agentId: string | null;
+  /** Every distinct effective model across this agent's steps here. Usually one; never invented. */
+  models: string[];
+  /** Provenance of the first resolution in the group, used for the default tag's tooltip. */
+  source: AssignmentSource | null;
+  /** True only when EVERY resolution in the group is a server default — a mixed group claims nothing. */
+  isDefault: boolean;
+  /** This agent also runs the workflow. One node wears both roles; there is never a second box. */
+  isManager: boolean;
+  /** The steps this agent governs, in pipeline order (dependency rank, then declaration order). */
+  stages: WorkflowStage[];
+  /** The rank of this agent's earliest step; the manager sorts ahead of everything regardless. */
+  rank: number;
 }
 
 /**
- * Cyclic owner projections use a ring so return paths stay on the perimeter.
- * Acyclic projections use stage-rank lanes. Manual dragging is preserved separately.
+ * Steps grouped by the agent that will run them, in pipeline order.
+ *
+ * The rules, in one place:
+ *  1. A step belongs to `stageSlot(step)`'s agent; steps nothing resolved for share ONE group keyed `''`.
+ *  2. Within a group, steps keep pipeline order: dependency rank first, declaration order to break ties.
+ *  3. The manager joins the group of the agent it is, if that agent governs steps here; otherwise it
+ *     gets a group of its own with no steps. Either way there is exactly one manager node.
+ *  4. Groups are ordered manager first (it starts the workflow), then by earliest step — rank first,
+ *     declaration order to break ties. The unresolved group takes its place by the same rule; it is
+ *     not special-cased to the end.
  */
-export function governanceNodePositions(
-  entry: WorkflowDefEntry,
-  draft: GovernanceDraft,
-  visibleNodeIds: string[],
-): Map<string, XYPosition> {
-  const order = governanceOwnerOrder(entry, draft, visibleNodeIds);
-  const participating = order.filter((owner) => entry.stages.some(
-    (stage) => (draft.stages[stage.id] ?? UNASSIGNED_GOVERNOR) === owner,
-  ));
-  const positions = new Map<string, XYPosition>();
-  const links = ownerLinks(entry, draft);
-  const components = ownerComponents(participating, links);
-  if (components.length === 1 && participating.length >= 3 && participating.length <= 5) {
-    participating.forEach((owner, index) => {
-      const angle = -3 * Math.PI / 4 + (2 * Math.PI * index) / participating.length;
-      positions.set(owner, {
-        x: Math.round(450 + 450 * Math.cos(angle)),
-        y: Math.round(300 + 260 * Math.sin(angle)),
-      });
-    });
-  } else {
-    const componentByOwner = new Map<string, number>();
-    components.forEach((component, componentIndex) => {
-      for (const owner of component) componentByOwner.set(owner, componentIndex);
-    });
-    const predecessors = new Map(components.map((_, index) => [index, new Set<number>()]));
-    for (const [source, target] of links) {
-      const sourceComponent = componentByOwner.get(source);
-      const targetComponent = componentByOwner.get(target);
-      if (sourceComponent !== undefined && targetComponent !== undefined && sourceComponent !== targetComponent) {
-        predecessors.get(targetComponent)?.add(sourceComponent);
-      }
+export function agentGroups(entry: WorkflowDefEntry): AgentGroup[] {
+  const ranks = stageRanks(entry);
+  const order = new Map(entry.stages.map((stage, index) => [stage.id, index]));
+  const sortKey = (stage: WorkflowStage): [number, number] => [ranks.get(stage.id) ?? 0, order.get(stage.id) ?? 0];
+
+  const groups = new Map<string, AgentGroup>();
+  for (const stage of entry.stages) {
+    const slot = stageSlot(stage);
+    const key = slot?.agentId ?? '';
+    const existing = groups.get(key);
+    if (existing) {
+      existing.stages.push(stage);
+      if (slot?.model && !existing.models.includes(slot.model)) existing.models.push(slot.model);
+      existing.isDefault = existing.isDefault && (slot?.isDefault ?? false);
+      continue;
     }
-    const componentRanks = new Map<number, number>();
-    const rankComponent = (componentIndex: number): number => {
-      const cached = componentRanks.get(componentIndex);
-      if (cached !== undefined) return cached;
-      const rank = Math.max(0, ...[...(predecessors.get(componentIndex) ?? [])].map((source) => rankComponent(source) + 1));
-      componentRanks.set(componentIndex, rank);
-      return rank;
-    };
-    components.forEach((_, index) => rankComponent(index));
-    const rowsByLane = new Map<number, number>();
-    components.forEach((component, componentIndex) => {
-      const lane = componentRanks.get(componentIndex) ?? 0;
-      let row = rowsByLane.get(lane) ?? 0;
-      for (const owner of component) {
-        positions.set(owner, { x: lane * 430, y: row * 300 });
-        row += 1;
-      }
-      rowsByLane.set(lane, row);
+    groups.set(key, {
+      key,
+      agentId: slot?.agentId ?? null,
+      models: slot?.model ? [slot.model] : [],
+      source: slot?.source ?? null,
+      isDefault: slot?.isDefault ?? false,
+      isManager: false,
+      stages: [stage],
+      rank: 0,
     });
   }
-  const idleY = Math.max(300, ...[...positions.values()].map((position) => position.y + 300));
-  order.filter((owner) => !positions.has(owner)).forEach((owner, index) => {
-    positions.set(owner, { x: (index % 3) * 390, y: idleY + Math.floor(index / 3) * 280 });
+
+  const manager = managerSlot(entry);
+  if (manager) {
+    const own = groups.get(manager.agentId);
+    if (own) {
+      own.isManager = true;
+      if (manager.model && !own.models.includes(manager.model)) own.models.push(manager.model);
+    } else {
+      groups.set(manager.agentId, {
+        key: manager.agentId,
+        agentId: manager.agentId,
+        models: manager.model ? [manager.model] : [],
+        source: manager.source,
+        isDefault: manager.isDefault,
+        isManager: true,
+        stages: [],
+        rank: 0,
+      });
+    }
+  }
+
+  const ordered = [...groups.values()];
+  for (const group of ordered) {
+    group.stages.sort((a, b) => {
+      const [rankA, indexA] = sortKey(a);
+      const [rankB, indexB] = sortKey(b);
+      return rankA - rankB || indexA - indexB;
+    });
+    group.rank = group.stages.length ? (ranks.get(group.stages[0]!.id) ?? 0) : 0;
+  }
+  const earliestIndex = (group: AgentGroup): number =>
+    group.stages.length ? (order.get(group.stages[0]!.id) ?? 0) : -1;
+  ordered.sort((a, b) => {
+    if (a.isManager !== b.isManager) return a.isManager ? -1 : 1;
+    return a.rank - b.rank || earliestIndex(a) - earliestIndex(b);
   });
-  return positions;
+  return ordered;
 }
 
-function handoffSummary(direction: HandoffDirection): string {
-  return direction.stagePairs.map(({ sourceStageId, targetStageId }) => `${sourceStageId} → ${targetStageId}`).join(', ');
+/** The node width, gaps, and per-step row height the layout below reasons in. Pixels, not rems: the
+ *  canvas is a transformed plane, so these are the same numbers reactflow measures. */
+export const AGENT_NODE_WIDTH = 304;
+export const AGENT_NODE_GAP_X = 56;
+export const AGENT_NODE_GAP_Y = 48;
+/** Header, model line, the override fold, and padding — everything on a node that is not a step row. */
+export const AGENT_NODE_BASE_HEIGHT = 136;
+export const AGENT_STAGE_ROW_HEIGHT = 21;
+/**
+ * At most two columns. A single row of four-to-six agent cards is 1300–1900px wide, which `fitView`
+ * can only frame by zooming to ~0.5 — the unreadable-text complaint that started this redesign. Two
+ * columns keep the chain inside roughly one canvas width, so it frames at about 1:1.
+ */
+export const AGENT_GRID_COLUMNS = 2;
+
+/** How tall a node will be once rendered. An estimate, used only to space rows apart before measurement. */
+export function agentNodeHeight(group: AgentGroup): number {
+  return AGENT_NODE_BASE_HEIGHT + group.stages.length * AGENT_STAGE_ROW_HEIGHT;
+}
+
+/**
+ * Agents laid out in pipeline reading order — left to right, wrapping to a second column-pair row.
+ * Each row is spaced by the tallest node in the row above it, so a seven-step card never overlaps.
+ */
+export function agentNodePositions(entry: WorkflowDefEntry): Map<string, XYPosition> {
+  const groups = agentGroups(entry);
+  const columns = Math.max(1, Math.min(groups.length, AGENT_GRID_COLUMNS));
+  const positions = new Map<string, XYPosition>();
+  let y = 0;
+  for (let start = 0; start < groups.length; start += columns) {
+    const row = groups.slice(start, start + columns);
+    row.forEach((group, column) => {
+      positions.set(agentNodeId(group.agentId), { x: column * (AGENT_NODE_WIDTH + AGENT_NODE_GAP_X), y });
+    });
+    y += Math.max(...row.map(agentNodeHeight)) + AGENT_NODE_GAP_Y;
+  }
+  return positions;
 }
 
 function nearestHandles(source: XYPosition | undefined, target: XYPosition | undefined): {
@@ -306,56 +344,217 @@ function nearestHandles(source: XYPosition | undefined, target: XYPosition | und
     : { sourceHandle: 'source-top', targetHandle: 'target-bottom' };
 }
 
-export function governanceEdges(entry: WorkflowDefEntry, draft: GovernanceDraft): Edge<GovernanceHandoffData>[] {
-  const owner = (stageId: string): string => draft.stages[stageId] ?? UNASSIGNED_GOVERNOR;
-  const stageIds = new Set(entry.stages.map((stage) => stage.id));
-  const participatingOwners = [...new Set(entry.stages.map((stage) => owner(stage.id)))];
-  const routingPositions = governanceNodePositions(entry, draft, participatingOwners);
-  const aggregates = new Map<string, { first: string; second: string; directions: Map<string, HandoffDirection> }>();
-  for (const stage of entry.stages) {
-    for (const dependency of stage.dependsOn ?? []) {
-      if (!stageIds.has(dependency)) continue;
-      const source = owner(dependency);
-      const target = owner(stage.id);
-      if (source === target) continue;
-      const [first, second] = source.localeCompare(target) <= 0 ? [source, target] : [target, source];
-      const key = `${first}\u0000${second}`;
-      const current = aggregates.get(key) ?? { first, second, directions: new Map() };
-      const directionKey = `${source}\u0000${target}`;
-      const direction = current.directions.get(directionKey) ?? { source, target, stagePairs: [] };
-      direction.stagePairs.push({ sourceStageId: dependency, targetStageId: stage.id });
-      current.directions.set(directionKey, direction);
-      aggregates.set(key, current);
-    }
-  }
-  return [...aggregates.values()].map((handoff) => {
-    const directions = [...handoff.directions.values()].sort((left) => left.source === handoff.first ? -1 : 1);
-    const forward = directions.find((direction) => direction.source === handoff.first);
-    const reverse = directions.find((direction) => direction.source === handoff.second);
-    const total = directions.reduce((count, direction) => count + direction.stagePairs.length, 0);
-    const marker = { type: MarkerType.ArrowClosed, width: 16, height: 16 };
-    const handles = nearestHandles(routingPositions.get(handoff.first), routingPositions.get(handoff.second));
-    return {
-      id: `handoff-${handoff.first}~${handoff.second}`,
-      source: handoff.first,
-      target: handoff.second,
+/** The name a node shows, and the name an arrow uses when it talks about that node. */
+export function agentGroupName(group: AgentGroup): string {
+  return group.agentId ?? 'No default agent';
+}
+
+/**
+ * Who hands off to whom: every `dependsOn` link collapsed to the agent level, deduped, self-handoffs
+ * dropped — plus one arrow from the manager into the agent that owns each opening step, since it is the
+ * manager that sets those going. Dependencies naming a step this definition does not declare are
+ * skipped rather than drawn into nowhere.
+ */
+export function agentEdges(entry: WorkflowDefEntry): Edge[] {
+  const groups = agentGroups(entry);
+  const positions = agentNodePositions(entry);
+  const names = new Map(groups.map((group) => [group.key, agentGroupName(group)]));
+  const groupOf = new Map<string, string>();
+  for (const group of groups) for (const stage of group.stages) groupOf.set(stage.id, group.key);
+  const marker = { type: MarkerType.ArrowClosed, width: 16, height: 16 };
+  const edges: Edge[] = [];
+  const seen = new Set<string>();
+  const manager = groups.find((group) => group.isManager) ?? null;
+
+  const push = (from: string, to: string, id: string, ariaLabel: string): void => {
+    if (from === to || seen.has(`${from}~${to}`)) return;
+    seen.add(`${from}~${to}`);
+    const source = agentNodeId(from === '' ? null : from);
+    const target = agentNodeId(to === '' ? null : to);
+    edges.push({
+      id,
+      source,
+      target,
       type: 'smoothstep',
-      pathOptions: { borderRadius: 12, offset: 28 },
-      label: `${total} handoff${total === 1 ? '' : 's'}`,
-      labelShowBg: true,
-      labelBgPadding: [5, 3],
-      labelBgBorderRadius: 4,
-      markerStart: reverse ? { ...marker, orient: 'auto-start-reverse' } : undefined,
-      markerEnd: forward ? marker : undefined,
-      ...handles,
-      data: { directions },
-      ariaLabel: directions.map((direction) => `${direction.source} to ${direction.target}: ${handoffSummary(direction)}`).join('; '),
+      pathOptions: { borderRadius: 12 },
+      markerEnd: marker,
+      ...nearestHandles(positions.get(source), positions.get(target)),
+      ariaLabel,
       className: 'v-workflow-handoff',
       animated: false,
       focusable: false,
-    };
-  });
+    });
+  };
+
+  for (const stage of entry.stages) {
+    const to = groupOf.get(stage.id);
+    if (to === undefined) continue;
+    const dependencies = (stage.dependsOn ?? []).filter((dependency) => groupOf.has(dependency));
+    if (manager && dependencies.length === 0) {
+      push(manager.key, to, `start-${to}`, `${names.get(to) ?? to} starts the workflow`);
+    }
+    for (const dependency of dependencies) {
+      const from = groupOf.get(dependency)!;
+      push(from, to, `handoff-${from}~${to}`, `${names.get(to) ?? to} takes over from ${names.get(from) ?? from}`);
+    }
+  }
+  return edges;
 }
+
+interface AgentNodeData {
+  group: AgentGroup;
+  /** The manager's own picker row, present only on the node that runs the workflow. */
+  managerDeclared: Assignment | null;
+  managerChoices: AssignmentChoices | undefined;
+  stageChoices: Record<string, AssignmentChoices | undefined>;
+  readOnly: boolean;
+  onAssign?: (target: AssignTarget, assignment: Assignment | null) => void;
+  onOpenAgent?: (agentId: string) => void;
+}
+
+/** One eligible-choice picker. Selecting a value IS the governed write; there is no separate apply. */
+function AssignmentPicker({
+  label,
+  value,
+  choices,
+  readOnly,
+  onPick,
+}: {
+  label: string;
+  value: Assignment | null | undefined;
+  choices: AssignmentChoices | undefined;
+  readOnly: boolean;
+  onPick: (assignment: Assignment | null) => void;
+}): React.JSX.Element {
+  if (choices && choices.options.length === 0 && choices.unavailable) {
+    return <span className="v-workflow-agent__unavailable">{choices.unavailable}</span>;
+  }
+  return (
+    <select
+      className="nodrag nopan"
+      aria-label={label}
+      value={assignmentKey(value)}
+      disabled={readOnly || !choices}
+      onPointerDown={(event) => event.stopPropagation()}
+      onChange={(event) => {
+        const picked = choices?.options.find((option) => assignmentKey(option) === event.target.value) ?? null;
+        onPick(picked);
+      }}
+    >
+      {/* Empty is not "nobody": it means the default above stands. */}
+      <option value="">Keep the default</option>
+      {/* The current pair may no longer be eligible (a declaration changed under it); keep it listed so
+       *  the picker shows the truth instead of silently reading as undeclared. */}
+      {value && !choices?.options.some((option) => assignmentKey(option) === assignmentKey(value)) ? (
+        <option value={assignmentKey(value)}>{value.agentId} · {value.profileId}</option>
+      ) : null}
+      {(choices?.options ?? []).map((option) => (
+        <option key={assignmentKey(option)} value={assignmentKey(option)}>{option.agentId} · {option.profileId}</option>
+      ))}
+    </select>
+  );
+}
+
+function AgentNode({ data }: NodeProps<AgentNodeData>): React.JSX.Element {
+  const { group } = data;
+  const testId = `workflow-agent-node-${group.key || 'unresolved'}`;
+  const handles = [
+    ['top', Position.Top],
+    ['right', Position.Right],
+    ['bottom', Position.Bottom],
+    ['left', Position.Left],
+  ] as const;
+  return (
+    <article
+      className={`v-workflow-agent${group.isManager ? ' v-workflow-agent--manager' : ''}${group.agentId ? '' : ' v-workflow-agent--unresolved'}`}
+      data-testid={testId}
+    >
+      {handles.flatMap(([id, position]) => [
+        <Handle key={`target-${id}`} id={`target-${id}`} type="target" position={position} className="v-workflow-agent__handle" />,
+        <Handle key={`source-${id}`} id={`source-${id}`} type="source" position={position} className="v-workflow-agent__handle" />,
+      ])}
+
+      <header className="v-workflow-agent__head">
+        <strong className="v-workflow-agent__name">{agentGroupName(group)}</strong>
+        {group.isManager ? <span className="entity-chip">runs the workflow</span> : null}
+      </header>
+
+      {/* The second line, only when there is something true to put on it: an empty bordered strip
+       *  states nothing, and the agent's own name is already in the header. */}
+      {group.agentId ? (group.models.length || (group.isDefault && group.source) || data.onOpenAgent ? (
+        <div className="v-workflow-agent__meta" data-testid={`${testId}-agent`}>
+          {group.models.length ? (
+            <span className="mc-mono v-workflow-agent__model">{group.models.join(' · ')}</span>
+          ) : null}
+          {group.isDefault && group.source ? (
+            <span className="v-workflow-agent__default" title={sourceExplanation(group.source)}>default</span>
+          ) : null}
+          {data.onOpenAgent ? (
+            <button
+              type="button"
+              className="v-workflow-agent__open nodrag nopan"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => data.onOpenAgent?.(group.agentId ?? '')}
+            >
+              Open agent
+            </button>
+          ) : null}
+        </div>
+      ) : null) : (
+        <p className="v-workflow-agent__nobody entity-note" data-testid={`${testId}-nobody`}>
+          no default agent resolvable
+        </p>
+      )}
+
+      {group.stages.length ? (
+        <ol className="v-workflow-agent__stages" data-testid={`${testId}-stages`}>
+          {group.stages.map((stage, index) => (
+            <li key={stage.id} className="v-workflow-agent__stage" data-testid={`workflow-agent-stage-${stage.id}`}>
+              <span className="v-workflow-agent__stage-index mc-mono">{index + 1}</span>
+              <span className="v-workflow-agent__stage-title">{stageLabel(stage)}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="v-workflow-agent__stages-empty entity-note">no steps of its own</p>
+      )}
+
+      {/* The override, folded away: the node is a cast card first and an editor second. Choosing a
+       *  value here is the same single governed write the caller has always owned. */}
+      <details className="v-workflow-agent__override nodrag nopan" data-testid={`${testId}-override`}>
+        <summary onPointerDown={(event) => event.stopPropagation()}>Change who runs these</summary>
+        <div className="v-workflow-agent__override-body">
+          {group.isManager ? (
+            <label className="v-workflow-agent__override-row">
+              <span className="v-workflow-agent__override-name">the workflow itself</span>
+              <AssignmentPicker
+                label="Who runs the workflow"
+                value={data.managerDeclared}
+                choices={data.managerChoices}
+                readOnly={data.readOnly}
+                onPick={(assignment) => data.onAssign?.({ kind: 'manager' }, assignment)}
+              />
+            </label>
+          ) : null}
+          {group.stages.map((stage) => (
+            <label key={stage.id} className="v-workflow-agent__override-row">
+              <span className="v-workflow-agent__override-name">{stageLabel(stage)}</span>
+              <AssignmentPicker
+                label={`Who runs ${stageLabel(stage)}`}
+                value={stage.declaredAssignment ?? null}
+                choices={data.stageChoices[stage.id]}
+                readOnly={data.readOnly}
+                onPick={(assignment) => data.onAssign?.({ kind: 'stage', stageId: stage.id }, assignment)}
+              />
+            </label>
+          ))}
+        </div>
+      </details>
+    </article>
+  );
+}
+
+const NODE_TYPES: NodeTypes = { agent: AgentNode };
 
 function rememberNodePositions(changes: NodeChange[], positions: Map<string, XYPosition>): void {
   for (const change of changes) {
@@ -363,57 +562,50 @@ function rememberNodePositions(changes: NodeChange[], positions: Map<string, XYP
   }
 }
 
-export function WorkflowAgentGraph({ entry, agents, draft, onDraftChange, onOpenAgent, readOnly = false }: {
+/** Frame the WHOLE cast by default. `maxZoom: 1` stops a two-node workflow ballooning; the low floor
+ *  exists only so an unusually large cast still fits rather than being clipped by reactflow's 0.5 default. */
+const FIT_VIEW_OPTIONS = { padding: 0.08, maxZoom: 1, minZoom: 0.3 };
+
+export function WorkflowAgentGraph({
+  entry,
+  assignmentOptions,
+  onAssign,
+  onOpenAgent,
+  readOnly = false,
+}: {
   entry: WorkflowDefEntry;
-  agents: GovernanceAgentOption[];
-  draft: GovernanceDraft;
-  onDraftChange: (next: GovernanceDraft) => void;
+  assignmentOptions?: WorkflowAssignmentOptions | null;
+  onAssign?: (target: AssignTarget, assignment: Assignment | null) => void;
   onOpenAgent?: (agentId: string) => void;
   readOnly?: boolean;
 }): React.JSX.Element {
-  const normalizedDraft = useMemo(() => normalizeGovernance(entry, draft), [entry.stages, draft]);
-  const referenced = new Set([normalizedDraft.workflow, ...Object.values(normalizedDraft.stages)].filter((id): id is string => id !== null));
-  const byId = new Map(agents.map((agent) => [agent.id, agent]));
-  const nodeIds = [...new Set([...agents.map((agent) => agent.id), ...referenced, UNASSIGNED_GOVERNOR])];
-  const visibleNodeIds = nodeIds.filter((id) => id !== UNASSIGNED_GOVERNOR || Object.values(normalizedDraft.stages).some((owner) => owner === null));
-  const orderedNodeIds = useMemo(
-    () => governanceOwnerOrder(entry, normalizedDraft, visibleNodeIds),
-    [entry.stages, normalizedDraft, visibleNodeIds.join('\u0000')],
-  );
-  const defaultPositions = useMemo(
-    () => governanceNodePositions(entry, normalizedDraft, orderedNodeIds),
-    [entry.stages, normalizedDraft, orderedNodeIds.join('\u0000')],
-  );
-  const handoffs = useMemo(() => governanceEdges(entry, normalizedDraft), [entry.stages, normalizedDraft]);
-  const [selected, setSelected] = useState(normalizedDraft.workflow ?? orderedNodeIds[0] ?? UNASSIGNED_GOVERNOR);
-  const positions = useRef(new Map<string, { x: number; y: number }>());
-  const onDropStage = useCallback((stageId: string, governor: string | null): void => {
-    if (readOnly || !entry.stages.some((stage) => stage.id === stageId)) return;
-    onDraftChange({ ...normalizedDraft, stages: { ...normalizedDraft.stages, [stageId]: governor } });
-    setSelected(governor ?? UNASSIGNED_GOVERNOR);
-  }, [entry.stages, normalizedDraft, onDraftChange, readOnly]);
-  // A selection may become invalid after a drop or a server refresh.  Keep the inspector on a real node.
-  useEffect(() => {
-    if (!orderedNodeIds.includes(selected)) setSelected(orderedNodeIds[0] ?? UNASSIGNED_GOVERNOR);
-  }, [selected, orderedNodeIds.join('\u0000')]);
-  const projectedNodes = useMemo<Node<GovernorNodeData>[]>(() => orderedNodeIds
-    .map((id) => ({
+  const groups = useMemo(() => agentGroups(entry), [entry]);
+  const defaultPositions = useMemo(() => agentNodePositions(entry), [entry]);
+  const handoffs = useMemo(() => agentEdges(entry), [entry]);
+  const positions = useRef(new Map<string, XYPosition>());
+
+  const projectedNodes = useMemo<Node<AgentNodeData>[]>(() => groups.map((group) => {
+    const id = agentNodeId(group.agentId);
+    const stageChoices: Record<string, AssignmentChoices | undefined> = {};
+    for (const stage of group.stages) stageChoices[stage.id] = assignmentOptions?.stages?.[stage.id];
+    return {
       id,
-      type: 'governor',
+      type: 'agent',
       position: positions.current.get(id) ?? defaultPositions.get(id) ?? { x: 0, y: 0 },
       data: {
-        id,
-        role: byId.get(id)?.role ?? null,
-        stages: entry.stages.filter((stage) => (normalizedDraft.stages[stage.id] ?? UNASSIGNED_GOVERNOR) === id),
-        workflowGovernor: normalizedDraft.workflow === id,
-        selected: selected === id,
+        group,
+        managerDeclared: entry.manager ?? null,
+        managerChoices: assignmentOptions?.manager,
+        stageChoices,
         readOnly,
-        onSelect: setSelected,
-        onDropStage,
+        onAssign,
+        onOpenAgent,
       },
-    })), [agents, normalizedDraft, entry.stages, readOnly, selected, defaultPositions, orderedNodeIds.join('\u0000')]);
+    };
+  }), [entry, groups, assignmentOptions, readOnly, onAssign, onOpenAgent, defaultPositions]);
+
   const [nodes, setNodes, onNodesChange] = useNodesState(projectedNodes);
-  const routedHandoffs = useMemo(() => {
+  const routedEdges = useMemo(() => {
     const livePositions = new Map(nodes.map((node) => [node.id, node.position]));
     return handoffs.map((edge) => ({
       ...edge,
@@ -424,21 +616,22 @@ export function WorkflowAgentGraph({ entry, agents, draft, onDraftChange, onOpen
     rememberNodePositions(changes, positions.current);
     onNodesChange(changes);
   }, [onNodesChange]);
-  // Ownership changes replace node data while the durable local position map survives every projection.
+  // An assignment change replaces node data while the durable local position map survives the reprojection.
   useEffect(() => setNodes((current) => {
     const unchanged = current.length === projectedNodes.length && current.every((node, index) => {
       const next = projectedNodes[index];
       return next && node.id === next.id
-        && (node.data as GovernorNodeData).selected === next.data.selected
-        && (node.data as GovernorNodeData).stages === next.data.stages
+        && (node.data as AgentNodeData).group === next.data.group
+        && (node.data as AgentNodeData).readOnly === next.data.readOnly
+        && (node.data as AgentNodeData).managerChoices === next.data.managerChoices
         && node.position.x === next.position.x && node.position.y === next.position.y;
     });
     return unchanged ? current : projectedNodes;
   }), [projectedNodes, setNodes]);
-  const selectedId = selected === UNASSIGNED_GOVERNOR ? null : selected;
-  const selectedStages = entry.stages.filter((stage) => (normalizedDraft.stages[stage.id] ?? null) === selectedId);
-  const selectedHandoffs = handoffs.flatMap((edge) => edge.data?.directions ?? [])
-    .filter((direction) => direction.source === selected || direction.target === selected);
+
+  if (entry.stages.length === 0) {
+    return <p className="entity-note" data-testid="workflow-agent-network-empty">This workflow has no steps yet.</p>;
+  }
 
   return (
     <div className="v-workflow-network">
@@ -446,47 +639,23 @@ export function WorkflowAgentGraph({ entry, agents, draft, onDraftChange, onOpen
         <ReactFlowProvider>
           <ReactFlow
             nodes={nodes}
-            edges={routedHandoffs}
+            edges={routedEdges}
             nodeTypes={NODE_TYPES}
             onNodesChange={keepPosition}
             fitView
-            nodesDraggable={!readOnly}
+            fitViewOptions={FIT_VIEW_OPTIONS}
+            minZoom={0.2}
+            maxZoom={1.75}
             nodesConnectable={false}
+            proOptions={{ hideAttribution: true }}
           >
             <Background gap={18} size={1} /><Controls showInteractive={false} />
             <Panel position="top-left" className="v-workflow-network__legend">
-              One line per agent pair · arrows show direction · badges count stage handoffs
+              Each card is an agent and the steps it governs · arrows show the handoffs between them
             </Panel>
           </ReactFlow>
         </ReactFlowProvider>
       </div>
-      <aside className="v-workflow-network__inspector" data-testid="workflow-agent-inspector">
-        <h4>{selectedId ?? 'Unassigned'}</h4>
-        {selectedId && !byId.has(selectedId) ? <p className="entity-note">Warning: this governance ID has no current agent declaration.</p> : null}
-        {selectedId === draft.workflow ? <p className="entity-note">Governs the whole workflow and coordinates handoffs.</p> : null}
-        {selectedId && onOpenAgent ? <button type="button" className="mc-btn mc-btn--quiet" onClick={() => onOpenAgent(selectedId)}>Open agent</button> : null}
-        {selectedHandoffs.length ? (
-          <section className="v-workflow-network__handoffs">
-            <h5>Handoffs</h5>
-            {selectedHandoffs.map((direction) => (
-              <p key={`${direction.source}-${direction.target}`}>
-                <strong>{direction.source === selected ? `To ${direction.target}` : `From ${direction.source}`}</strong>{' '}
-                <span className="mc-mono">{handoffSummary(direction)}</span>
-              </p>
-            ))}
-          </section>
-        ) : null}
-        {selectedStages.length ? selectedStages.map((stage) => (
-          <section key={stage.id} className="v-workflow-network__stage-detail">
-            <h5>{stage.title ?? stage.action} <span className="mc-mono">{stage.id}</span></h5>
-            <p><strong>Input</strong> {stage.dependsOn?.length ? stage.dependsOn.join(', ') : 'workflow start'}</p>
-            <p><strong>Output</strong> <span className="mc-mono">{stage.action}</span> to <span className="mc-mono">{stage.target}</span></p>
-            {stage.review ? <p><strong>Review</strong> {stage.review.subjectStageId}; max {stage.review.maxCreatorReworks} reworks</p> : null}
-            {stage.completionGate ? <p><strong>Gate</strong> {stage.completionGate.id}: approval after review pass</p> : null}
-            {!readOnly ? <label>Governed by <select aria-label={`${stage.id} governed by`} value={normalizedDraft.stages[stage.id] ?? ''} onChange={(event) => onDropStage(stage.id, event.target.value || null)}><option value="">Unassigned</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}</select></label> : null}
-          </section>
-        )) : <p className="entity-note">No stages in this node.</p>}
-      </aside>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   FYT_GEMINI_2K_IMAGE_COST_USD_MICROS,
   FYT_LOCKED_TTS_COST_USD_MICROS,
+  FYT_PAID_ACTION_GLOBAL_CEILING_USD_MICROS,
   PaidActionError,
   createPaidActionService,
   type PaidActionCommitInput,
@@ -605,5 +606,94 @@ describe('PaidActionService', () => {
     expect(credentialCalls).toBe(0);
     expect(dispatchCalls).toBe(0);
     expect(() => { throw new PaidActionError('cap-exhausted', 'paid action cap is exhausted'); }).toThrow('paid action cap is exhausted');
+  });
+
+  it('holds an absolute journal-wide spend ceiling across independent runRefs (F1)', async () => {
+    const root = temporaryRoot();
+    const service = await ready(root);
+    // run-1 spends its full eight-output allowance ($1.072).
+    for (let ordinal = 1; ordinal <= 8; ordinal += 1) {
+      await expect(service.execute(image({
+        runRef: 'run-1', stageRef: 'stage-images-1', callOrdinal: ordinal,
+        prompt: `run-1 image ${ordinal}`, expectedArtifactPath: `${ARTIFACT_ROOT}/run-1-shot-${ordinal}.png`,
+      }))).resolves.toMatchObject({ status: 'succeeded' });
+    }
+    // A fresh run has full per-run/per-stage headroom; three more images fit under the global ceiling.
+    for (let ordinal = 1; ordinal <= 3; ordinal += 1) {
+      await expect(service.execute(image({
+        runRef: 'run-2', stageRef: 'stage-images-2', callOrdinal: ordinal,
+        prompt: `run-2 image ${ordinal}`, expectedArtifactPath: `${ARTIFACT_ROOT}/run-2-shot-${ordinal}.png`,
+      }))).resolves.toMatchObject({ status: 'succeeded' });
+    }
+    // The twelfth image is refused by the GLOBAL floor alone — run-2 has spent only $0.402 of its own
+    // $1.40/eight-output budget, so reverting F1 lets this succeed.
+    await expect(service.execute(image({
+      runRef: 'run-2', stageRef: 'stage-images-2', callOrdinal: 4,
+      prompt: 'run-2 image 4', expectedArtifactPath: `${ARTIFACT_ROOT}/run-2-shot-4.png`,
+    }))).rejects.toMatchObject({ code: 'cap-exhausted', message: 'paid action global spend ceiling is exhausted' });
+    const totalCharged = service.snapshot().reduce((sum, action) => sum + action.chargedCostUsdMicros, 0);
+    expect(totalCharged).toBe(11 * FYT_GEMINI_2K_IMAGE_COST_USD_MICROS);
+    expect(totalCharged).toBeGreaterThan(1_400_000);
+    expect(totalCharged).toBeLessThanOrEqual(FYT_PAID_ACTION_GLOBAL_CEILING_USD_MICROS);
+  });
+
+  it('lets a failed $0 action release its artifact path for re-reservation and still loads (F2)', async () => {
+    const root = temporaryRoot();
+    let resolveCalls = 0;
+    const service = await ready(root, {
+      credentials: { resolve: async () => { resolveCalls += 1; return resolveCalls === 1 ? null : 'opaque'; } },
+    });
+    const contested = `${ARTIFACT_ROOT}/contested.png`;
+    await expect(service.execute(image({ attemptRef: 'attempt-images-a', expectedArtifactPath: contested }))).resolves.toMatchObject({
+      status: 'failed', reason: 'credential-unavailable',
+    });
+    // The failed action charged $0 and produced no bytes, so a new action may claim the same path
+    // (reverting F2's reserve() change makes this throw 'expected artifact path is already owned').
+    await expect(service.execute(image({ attemptRef: 'attempt-images-b', expectedArtifactPath: contested }))).resolves.toMatchObject({
+      status: 'succeeded',
+    });
+    // And a journal holding one failed + one succeeded action on the same path still loads
+    // (reverting F2's assertJournal change makes reconcileStartup reject 'journal-unavailable').
+    const reopened = createPaidActionService(options(root));
+    await expect(reopened.reconcileStartup()).resolves.toEqual({ failed: 0, unknown: 0 });
+    expect(reopened.snapshot().filter((action) => action.expectedArtifactPath === contested)).toHaveLength(2);
+  });
+
+  it('treats a verifier THROW on replay as retryable but a returned mismatch as a downgrade (F3)', async () => {
+    const root = temporaryRoot();
+    let dispatches = 0;
+    let mode: 'ok' | 'throw' | 'mismatch' = 'ok';
+    const service = await ready(root, {
+      transport: { dispatch: async () => { dispatches += 1; return IMAGE_RESULT; } },
+      verifier: {
+        verify: async (input) => {
+          if (mode === 'throw') throw new Error('transient artifact read error');
+          if (mode === 'mismatch') return { ...input.output, sha256: '0'.repeat(64) };
+          return input.output;
+        },
+      },
+    });
+    const request = image();
+    await expect(service.execute(request)).resolves.toMatchObject({ status: 'succeeded' });
+
+    // A THROW is surfaced as a retryable error and must NOT mutate state or re-charge
+    // (reverting F3 makes this resolve to unknown/artifact-verification-failed instead).
+    mode = 'throw';
+    await expect(service.execute(request)).rejects.toMatchObject({ code: 'artifact-verification-unavailable' });
+    expect(service.snapshot()).toEqual([expect.objectContaining({
+      state: 'succeeded', chargedCostUsdMicros: FYT_GEMINI_2K_IMAGE_COST_USD_MICROS, output: expect.any(Object),
+    })]);
+
+    // A later clean read still replays succeeded — the transient throw never burned the success.
+    mode = 'ok';
+    await expect(service.execute(request)).resolves.toMatchObject({ status: 'replayed', priorState: 'succeeded' });
+
+    // A RETURNED mismatch (not a throw) still downgrades to durable unknown, exactly as today.
+    mode = 'mismatch';
+    await expect(service.execute(request)).resolves.toMatchObject({ status: 'unknown', reason: 'artifact-verification-failed' });
+    expect(service.snapshot()).toEqual([expect.objectContaining({
+      state: 'unknown', output: null, unknownReason: 'artifact-verification-failed',
+    })]);
+    expect(dispatches).toBe(1);
   });
 });

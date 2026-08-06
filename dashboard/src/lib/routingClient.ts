@@ -121,7 +121,7 @@ export async function postCardRouting(
   });
   await invalidateSessionOnGovernedAuthFailure(res);
   const data = (await res.json().catch(() => ({}))) as { reason?: string; error?: string };
-  // Surface status + error code so a caller (e.g. the pipeline node toggle) can freeze on a 409
+  // Surface status + error code so a caller (e.g. the Tasks routing control) can freeze on a 409
   // `approval-locked` refusal WITHOUT a retry and WITHOUT a second write path.
   return { ok: res.ok, reason: data.reason, status: res.status, error: data.error };
 }

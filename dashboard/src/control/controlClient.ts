@@ -6,9 +6,6 @@
  * public protocol. Governed mutations always carry an exact hash/version and an idempotency key.
  */
 import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
-import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
-import { performAssertion, realWebAuthnBrowser } from '../lib/webauthnClient';
-import type { WebAuthnBrowserLike } from '../lib/webauthnClient';
 
 export type FetchLike = typeof fetch;
 export type JsonPrimitive = string | number | boolean | null;
@@ -124,7 +121,9 @@ export interface LaunchProposalResultDto {
 
 export type RunState =
   | 'planned' | 'recovering' | 'running' | 'waiting-human' | 'stopping'
-  | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
+  | 'succeeded' | 'failed' | 'stopped' | 'interrupted'
+  /** Operator-dismissed and terminal. Out of the default run list; still readable by ref forever. */
+  | 'archived';
 export type StageState = 'blocked' | 'ready' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type AttemptState = 'queued' | 'starting' | 'running' | 'waiting-human' | 'succeeded' | 'failed' | 'stopped' | 'interrupted';
 export type ManagedSessionState = 'pending' | 'starting' | 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' | 'interrupted';
@@ -133,6 +132,14 @@ export interface RunDto {
   runRef: string;
   predecessorRunRef: string | null;
   title: string;
+  /** Server-owned display identity (`server/naming.ts`, embedded by `server/control/routes.ts`).
+   *  `runRef` stays canonical and stays on the wire; it just never reaches primary UI text again. */
+  displayName: string;
+  shortRef: number;
+  /** The workflow definition this run was launched from, or null for an ad-hoc (Composer) run.
+   *  Joined server-side at the DTO-build site (`server/control/routes.ts#workflowRefIndex`): it is the
+   *  grouping key that files every run under its workflow, so no client surface re-derives it. */
+  workflowRef: string | null;
   proposalRef: string;
   proposalRevision: number;
   proposalHash: string;
@@ -206,12 +213,27 @@ export interface ManagedSessionDto {
 export interface HumanRequestDto {
   requestRef: string;
   runRef: string;
+  /**
+   * The OWNING RUN's display identity, not the request's — a Human Request has no registry identity of
+   * its own, and every surface listing one shows "which run needs you" beside the request's `title`.
+   * Feed these to `<EntityName kind="run" id={request.runRef} …>`.
+   */
+  displayName: string;
+  shortRef: number;
   stageRef: string | null;
   kind: 'input' | 'approval' | 'review' | 'intervention' | 'governance-refusal';
   revision: number;
   state: 'open' | 'resolved';
   title: string;
   prompt: string;
+  /**
+   * The plain-language rendering of this request: what happened and what the operator can do, in one
+   * sentence, built server-side in `server/control/humanRequestAsk.ts`. This is the ONLY text a surface
+   * may use as the primary "what needs you" line — `title`/`prompt` are the machine's own words.
+   */
+  ask: string;
+  /** The machine's words (traceback, refusal code) — a detail fold, never the ask. Null when empty. */
+  technicalDetail: string | null;
   response: {
     requestRevision: number;
     decision: HumanRequestDecision;
@@ -251,29 +273,6 @@ export interface RunDetailDto {
   humanRequests: HumanRequestDto[];
   reviewLoops: ReviewLoopDto[];
   reviewReceipts: ReviewReceiptDto[];
-}
-
-/**
- * A run-roster agent's canvas-facing state (FYT gated-pipeline, Task 5), mirroring
- * `server/control/rosterSessions.ts#RosterAgentState` — duplicated at this boundary like every other
- * DTO here, never imported at runtime (that module reaches `node:crypto`/`node:fs`).
- */
-export interface RosterAgentStateDto {
-  agentId: string;
-  /** The live pty session id (attachable at `/api/pty?session=<id>`), or null when not spawned. */
-  sessionId: string | null;
-  status: 'active' | 'waiting' | 'blocked' | 'idle';
-  /** One line, e.g. `image-gen batch 2/4`. */
-  activity: string;
-  /** Agent ids this agent is waiting on (status `waiting`), or gate ids blocking it (status `blocked`). */
-  waitingOn: string[];
-}
-
-/** `getRun`'s actual response shape: the run detail plus the roster projection the canvas reads. Kept
- *  as an EXTENSION of {@link RunDetailDto}, never a fork, so every existing `getRun` caller (which reads
- *  only the fields on `RunDetailDto`) keeps compiling and running unchanged. */
-export interface RunDetailWithRosterDto extends RunDetailDto {
-  roster: RosterAgentStateDto[];
 }
 
 /**
@@ -508,38 +507,19 @@ export async function getExecutionPosture(token: string, fetchImpl?: FetchLike):
   return posture;
 }
 
-export interface UnlockExecutionDeps {
-  fetchImpl?: FetchLike;
-  browser?: WebAuthnBrowserLike;
-}
-
 /**
- * Run the dedicated execution-unlock ceremony. This intentionally does not call `signIn`: the server
- * challenge is purpose-bound to `kb.execution-unlock`, and the existing bearer only authenticates who
- * is asking. A 200 response is accepted only when the server confirms a passkey-sourced unlock.
+ * Arm the daemon's execution latch under the operator's EXISTING dashboard session.
+ *
+ * This used to run a second, purpose-bound WebAuthn ceremony of its own, which meant an operator who
+ * had already signed in was prompted for a biometric TWICE. The platform's requirement is one dashboard
+ * unlock for the whole platform, so authorization is now the session bearer every other governed
+ * mutation carries; the server independently verifies it and writes the same T3 audit row. Arming is
+ * still an explicit act — signing in never calls this. A 200 is accepted only when the server confirms
+ * a passkey-sourced unlocked posture.
  */
-export async function unlockExecution(token: string, deps: UnlockExecutionDeps = {}): Promise<ExecutionPostureDto> {
-  const optionsBody = await write<{ ceremonyId?: unknown; options?: unknown }>(
-    '/api/control/execution/unlock/options', {}, token, deps.fetchImpl,
-  );
-  if (
-    typeof optionsBody.ceremonyId !== 'string'
-    || optionsBody.ceremonyId.trim().length === 0
-    || !optionsBody.options
-    || typeof optionsBody.options !== 'object'
-    || Array.isArray(optionsBody.options)
-    || Object.keys(optionsBody.options).length === 0
-  ) {
-    throw new Error('execution unlock options response was invalid');
-  }
-  const response = await performAssertion(
-    optionsBody.options as PublicKeyCredentialRequestOptionsJSON,
-    deps.browser ?? realWebAuthnBrowser,
-  );
-  const unlockedBody = await request<{ ok?: unknown; execution?: unknown }>(
-    '/api/control/execution/unlock',
-    { method: 'POST', body: JSON.stringify({ ceremonyId: optionsBody.ceremonyId, response }) },
-    { token, fetchImpl: deps.fetchImpl, preserveSessionOnAuthFailure: isExecutionAssertionRefusal },
+export async function unlockExecution(token: string, fetchImpl?: FetchLike): Promise<ExecutionPostureDto> {
+  const unlockedBody = await write<{ ok?: unknown; execution?: unknown }>(
+    '/api/control/execution/unlock', {}, token, fetchImpl,
   );
   const posture = parseExecutionPosture(unlockedBody.execution);
   if (unlockedBody.ok !== true || posture?.state !== 'unlocked' || posture.source !== 'passkey') {
@@ -577,24 +557,15 @@ export function executionUnlockErrorMessage(error: unknown): string {
 interface RequestOptions {
   token?: string;
   fetchImpl?: FetchLike;
-  /** Exact protocol classifier for a second-factor refusal that is not a bearer failure. */
-  preserveSessionOnAuthFailure?: (status: number, body: Record<string, unknown>) => boolean;
 }
 
 /**
- * The unlock handler and the bearer pre-handler both use HTTP 401. Preserve a valid bearer only for
- * the stable assertion-refusal envelopes emitted after the pre-handler has passed. Everything
- * else, including `expired`, `bad-signature`, `malformed`, and `missing session token`, flows through
- * the shared session invalidator. Deliberately exact: arbitrary verifier prose never grants an
- * exception to invalidation.
+ * Every governed 401 on this surface is now a bearer failure: the execution-unlock route no longer
+ * verifies a second WebAuthn assertion, so there is no longer a class of 401 that means "your session
+ * is fine, the second factor was refused". The `preserveSessionOnAuthFailure` seam that carved out
+ * those assertion-refusal envelopes was removed with it — a 401 here always invalidates the session,
+ * and nothing else (notably 429) ever does.
  */
-function isExecutionAssertionRefusal(status: number, body: Record<string, unknown>): boolean {
-  if (status !== 401 || body.error !== 'unauthenticated' || typeof body.reason !== 'string') return false;
-  return body.reason === 'no registered credential for this assertion'
-    || body.reason === 'assertion failed'
-    || body.reason === 'assertion not verified';
-}
-
 async function request<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const headers = new Headers(init.headers);
@@ -613,11 +584,7 @@ async function request<T>(path: string, init: RequestInit, options: RequestOptio
     }
   }
   const body = await response.json().catch(() => ({})) as T & { reason?: unknown; detail?: unknown; error?: unknown };
-  const bodyRecord = body && typeof body === 'object' && !Array.isArray(body)
-    ? body as Record<string, unknown>
-    : {};
-  const preserveSession = options.preserveSessionOnAuthFailure?.(response.status, bodyRecord) === true;
-  if (!preserveSession && authFailureResponse) {
+  if (authFailureResponse) {
     await invalidateSessionOnGovernedAuthFailure(authFailureResponse);
   }
   if (!response.ok) {
@@ -810,13 +777,32 @@ export async function listRuns(token: string, fetchImpl?: FetchLike): Promise<Ru
   return body.runs;
 }
 
-export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailWithRosterDto> {
-  const body = await read<{ ok: true; value: RunDetailDto; roster?: RosterAgentStateDto[] }>(
+export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailDto> {
+  const body = await read<{ ok: true; value: RunDetailDto }>(
     `/api/control/runs/${segment(runRef)}`, token, fetchImpl,
   );
-  // `roster` is absent whenever execution is locked or the run has no live roster (see
-  // `server/control/routes.ts` — it always sends an array, but default to `[]` defensively).
-  return { ...body.value, roster: Array.isArray(body.roster) ? body.roster : [] };
+  return body.value;
+}
+
+/**
+ * Dismiss a dead run (spec §3b). Terminal, T3-audited server-side, and idempotent on the key built
+ * here from the run's identity + version, so a double-click can never archive twice or diverge.
+ *
+ * `reason` is the operator's own words and is what makes a clean-up of several stale runs auditable
+ * one run at a time — there is deliberately no bulk endpoint.
+ */
+export function archiveRun(
+  run: Pick<RunDto, 'runRef' | 'version'>,
+  reason: string | null,
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<{ run: RunDto; resolvedRequests: HumanRequestDto[]; pinnedRequestRefs: string[] }> {
+  return write<{ ok: true; value: { run: RunDto; resolvedRequests: HumanRequestDto[]; pinnedRequestRefs: string[] } }>(
+    `/api/control/runs/${segment(run.runRef)}/archive`,
+    { idempotencyKey: `archive:${run.runRef}:${run.version}`, reason },
+    token,
+    fetchImpl,
+  ).then((body) => body.value);
 }
 
 export async function listRunEvents(

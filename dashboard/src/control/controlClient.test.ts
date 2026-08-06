@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   activateRun,
+  archiveRun,
   createProposalRevision,
   createManagerSuccessor,
   decideProposalRevision,
@@ -24,7 +25,6 @@ import {
   type PlanProposalDto,
 } from './controlClient';
 import { SESSION_STORAGE_KEY } from '../lib/authClient';
-import type { WebAuthnBrowserLike } from '../lib/webauthnClient';
 
 const proposal: PlanProposalDto = {
   schema: 'kb.plan-proposal/v1',
@@ -101,54 +101,33 @@ describe('control client execution unlock ceremony', () => {
     expect(clone).toHaveBeenCalledTimes(1);
   });
 
-  it('uses only the purpose-bound options, browser assertion, and unlock endpoints', async () => {
-    const assertion = { id: 'credential-1', rawId: 'raw', response: {}, type: 'public-key' };
-    const browser: WebAuthnBrowserLike = {
-      browserSupportsWebAuthn: () => true,
-      startAuthentication: vi.fn(async () => assertion as never),
-      startRegistration: vi.fn(async () => ({} as never)),
-    };
-    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url.endsWith('/unlock/options')) return response({ ceremonyId: 'unlock-ceremony-1', options: { challenge: 'purpose-bound' } });
-      if (url.endsWith('/unlock')) return response({ ok: true, execution: PASSKEY_EXECUTION });
-      return response({ error: 'unexpected endpoint' }, 500);
-    }) as unknown as FetchLike;
+  it('arms execution with the ONE session bearer: a single POST, no options fetch, no browser ceremony', async () => {
+    const fetchImpl = vi.fn(async () => response({ ok: true, execution: PASSKEY_EXECUTION })) as unknown as FetchLike;
 
-    await expect(unlockExecution('bearer', { fetchImpl, browser })).resolves.toEqual(PASSKEY_EXECUTION);
+    await expect(unlockExecution('bearer', fetchImpl)).resolves.toEqual(PASSKEY_EXECUTION);
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls.map((call) => String(call[0]))).toEqual([
-      '/api/control/execution/unlock/options', '/api/control/execution/unlock',
-    ]);
-    expect(browser.startAuthentication).toHaveBeenCalledWith({ optionsJSON: { challenge: 'purpose-bound' } });
-    expect(JSON.parse(String((calls[1]?.[1] as RequestInit).body))).toEqual({
-      ceremonyId: 'unlock-ceremony-1', response: assertion,
-    });
+    expect(calls.map((call) => String(call[0]))).toEqual(['/api/control/execution/unlock']);
+    // The mandate: ONE passkey ceremony for the platform. No purpose-bound options round trip, and no
+    // re-authentication of any kind — the sign-in bearer is the whole authorization.
+    expect(calls.some((call) => String(call[0]).includes('/unlock/options'))).toBe(false);
     expect(calls.some((call) => String(call[0]).includes('/api/auth/assert'))).toBe(false);
     expect(calls.some((call) => String(call[0]).includes('/launch'))).toBe(false);
-  });
-
-  it('stops after browser cancellation and never submits an unlock or launch', async () => {
-    const browser: WebAuthnBrowserLike = {
-      browserSupportsWebAuthn: () => true,
-      startAuthentication: vi.fn(async () => { throw new Error('NotAllowedError: cancelled'); }),
-      startRegistration: vi.fn(async () => ({} as never)),
-    };
-    const fetchImpl = recordedFetch({ ceremonyId: 'cancelled', options: { challenge: 'x' } });
-    await expect(unlockExecution('bearer', { fetchImpl, browser })).rejects.toThrow(/cancel/i);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const init = calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({});
+    expect(new Headers(init.headers as HeadersInit).get('authorization')).toBe('Bearer bearer');
   });
 
   it('rejects a 200 response unless the source is passkey', async () => {
-    const browser: WebAuthnBrowserLike = {
-      browserSupportsWebAuthn: () => true,
-      startAuthentication: vi.fn(async () => ({ id: 'credential-1' } as never)),
-      startRegistration: vi.fn(async () => ({} as never)),
-    };
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ceremonyId: 'bad-source', options: { challenge: 'x' } }))
-      .mockResolvedValueOnce(response({ ok: true, execution: { ...PASSKEY_EXECUTION, source: 'env-override' } })) as unknown as FetchLike;
-    await expect(unlockExecution('bearer', { fetchImpl, browser })).rejects.toThrow(/not passkey-authorized/i);
+    const fetchImpl = vi.fn(async () => response({
+      ok: true, execution: { ...PASSKEY_EXECUTION, source: 'env-override' },
+    })) as unknown as FetchLike;
+    await expect(unlockExecution('bearer', fetchImpl)).rejects.toThrow(/not passkey-authorized/i);
+  });
+
+  it('rejects a 200 response that never confirmed the unlock', async () => {
+    const fetchImpl = vi.fn(async () => response({ execution: PASSKEY_EXECUTION })) as unknown as FetchLike;
+    await expect(unlockExecution('bearer', fetchImpl)).rejects.toThrow(/not passkey-authorized/i);
   });
 
   it.each([
@@ -177,58 +156,44 @@ describe('control client execution unlock ceremony', () => {
     })).toEqual({ state: 'injected', source: null, unlockedAt: null, unlockedBy: null });
   });
 
-  it.each([
-    { ceremonyId: '', options: { challenge: 'x' } },
-    { ceremonyId: '   ', options: { challenge: 'x' } },
-    { ceremonyId: 'ceremony', options: {} },
-    { ceremonyId: 'ceremony', options: [] },
-  ])('rejects malformed unlock options before invoking the browser %#', async (optionsBody) => {
-    const browser: WebAuthnBrowserLike = {
-      browserSupportsWebAuthn: () => true,
-      startAuthentication: vi.fn(async () => ({ id: 'credential-1' } as never)),
-      startRegistration: vi.fn(async () => ({} as never)),
-    };
-    await expect(unlockExecution('bearer', {
-      fetchImpl: recordedFetch(optionsBody),
-      browser,
-    })).rejects.toThrow(/options response was invalid/i);
-    expect(browser.startAuthentication).not.toHaveBeenCalled();
-  });
-
-  it('does not erase the dashboard session when the distinct execution assertion is refused', async () => {
+  it.each([429, 503, 500])('NEVER erases the dashboard session on a non-401 refusal (%i)', async (status) => {
+    // Defect 2: after the live 429 storm the operator had to sign in again. Throttling must never be
+    // able to log anyone out — only a genuine 401 unauthenticated response may invalidate the session.
     const removeItem = vi.fn();
+    const dispatchEvent = vi.fn();
     vi.stubGlobal('window', {
       sessionStorage: { getItem: vi.fn(() => 'saved'), setItem: vi.fn(), removeItem },
-      dispatchEvent: vi.fn(),
+      dispatchEvent,
     });
-    const browser: WebAuthnBrowserLike = {
-      browserSupportsWebAuthn: () => true,
-      startAuthentication: vi.fn(async () => ({ id: 'wrong-credential' } as never)),
-      startRegistration: vi.fn(async () => ({} as never)),
-    };
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ceremonyId: 'refused', options: { challenge: 'x' } }))
-      .mockResolvedValueOnce(response({ error: 'unauthenticated', reason: 'assertion not verified' }, 401)) as unknown as FetchLike;
-    await expect(unlockExecution('bearer', { fetchImpl, browser })).rejects.toThrow(/401/);
+    const fetchImpl = vi.fn(async () => response({ error: 'locked-out', retryAfterMs: 60_000 }, status)) as unknown as FetchLike;
+    await expect(unlockExecution('bearer', fetchImpl)).rejects.toThrow(String(status));
     expect(removeItem).not.toHaveBeenCalledWith(SESSION_STORAGE_KEY);
+    expect(dispatchEvent).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
-  it('erases the dashboard session when the final unlock POST reports an expired bearer', async () => {
+  it('a throttled GET poll leaves the session intact too', async () => {
+    const removeItem = vi.fn();
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('window', {
+      sessionStorage: { getItem: vi.fn(() => 'saved'), setItem: vi.fn(), removeItem },
+      dispatchEvent,
+    });
+    const fetchImpl = vi.fn(async () => response({ error: 'throttled', retryAfterMs: 1_000 }, 429)) as unknown as FetchLike;
+    await expect(getExecutionPosture('bearer', fetchImpl)).rejects.toThrow('429');
+    expect(removeItem).not.toHaveBeenCalledWith(SESSION_STORAGE_KEY);
+    expect(dispatchEvent).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('erases the dashboard session when the unlock POST reports an expired bearer', async () => {
     const removeItem = vi.fn();
     vi.stubGlobal('window', {
       sessionStorage: { getItem: vi.fn(() => 'saved'), setItem: vi.fn(), removeItem },
       dispatchEvent: vi.fn(),
     });
-    const browser: WebAuthnBrowserLike = {
-      browserSupportsWebAuthn: () => true,
-      startAuthentication: vi.fn(async () => ({ id: 'credential-1' } as never)),
-      startRegistration: vi.fn(async () => ({} as never)),
-    };
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(response({ ceremonyId: 'expired-session', options: { challenge: 'x' } }))
-      .mockResolvedValueOnce(response({ error: 'unauthenticated', reason: 'expired' }, 401)) as unknown as FetchLike;
-    await expect(unlockExecution('expired-bearer', { fetchImpl, browser })).rejects.toThrow(/401/);
+    const fetchImpl = vi.fn(async () => response({ error: 'unauthenticated', reason: 'expired' }, 401)) as unknown as FetchLike;
+    await expect(unlockExecution('expired-bearer', fetchImpl)).rejects.toThrow(/401/);
     expect(removeItem).toHaveBeenCalledWith(SESSION_STORAGE_KEY);
     vi.unstubAllGlobals();
   });
@@ -536,5 +501,33 @@ describe('control client run and retention writes', () => {
     expect(requestBody(quarantineFetch as unknown as ReturnType<typeof vi.fn>)).toEqual({
       runRefs: ['run-1'], expectedPlanHash: 'c'.repeat(64),
     });
+  });
+});
+
+describe('archiveRun', () => {
+  it('POSTs to the run archive route with an identity-bound idempotency key and the reason', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      ok: true, value: { run: { runRef: 'run-1', state: 'archived' }, resolvedRequests: [], pinnedRequestRefs: [] },
+    })) as unknown as FetchLike;
+
+    const result = await archiveRun({ runRef: 'run-1', version: 7 }, 'obsolete validation run', 'tok', fetchImpl);
+
+    expect(result.run.state).toBe('archived');
+    const [url, init] = vi.mocked(fetchImpl).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/control/runs/run-1/archive');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Headers).get('authorization')).toBe('Bearer tok');
+    // Keyed on the run's identity AND version: a double-click replays instead of archiving twice.
+    expect(JSON.parse(String(init.body))).toEqual({
+      idempotencyKey: 'archive:run-1:7', reason: 'obsolete validation run',
+    });
+  });
+
+  it('sends a null reason rather than an empty string when the operator typed nothing', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      ok: true, value: { run: { runRef: 'run-1', state: 'archived' }, resolvedRequests: [], pinnedRequestRefs: [] },
+    })) as unknown as FetchLike;
+    await archiveRun({ runRef: 'run-1', version: 1 }, null, 'tok', fetchImpl);
+    expect(JSON.parse(String((vi.mocked(fetchImpl).mock.calls[0] as [string, RequestInit])[1].body)).reason).toBeNull();
   });
 });

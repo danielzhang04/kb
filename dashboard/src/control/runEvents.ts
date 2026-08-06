@@ -20,7 +20,8 @@
  *
  * Everything here is a pure function over one DTO so each is testable with a literal fixture.
  */
-import type { OperationalEventDto } from './controlClient';
+import type { OperationalEventDto, RunState } from './controlClient';
+import type { StatusTone } from '../entity/EntityDetail';
 
 /** The lifecycle position of a checkpoint. `queued`/`failed` are derived from `status` on the two
  *  steering paths, which carry no state word; the broker path carries the first three verbatim. */
@@ -117,7 +118,65 @@ export function timestampLabel(iso: string): string {
   return at.toISOString().replace('T', ' ').replace('.000Z', 'Z');
 }
 
-/** Coarse age label ("4m ago") for run cards. `now` is injectable so tests stay deterministic. */
+/** Map a run state onto a data-encoding tone. No new hues — these resolve to existing status tokens. */
+export function runTone(state: RunState): StatusTone {
+  switch (state) {
+    case 'running':
+    case 'recovering':
+      return 'running';
+    case 'succeeded':
+      return 'ok';
+    case 'failed':
+    case 'interrupted':
+      return 'error';
+    case 'waiting-human':
+    case 'stopping':
+    case 'stopped':
+      return 'warn';
+    // A dismissed run is inert, not something to look at again: idle, never warn or error.
+    case 'archived':
+    default:
+      return 'idle';
+  }
+}
+
+const RUN_DOT_BY_TONE: Record<StatusTone, string> = {
+  running: 'running',
+  ok: 'done',
+  error: 'error',
+  warn: 'blocked',
+  idle: 'idle',
+};
+
+/** The `mc-status-dot--*` modifier for a run state. */
+export function runDot(state: string): string {
+  return RUN_DOT_BY_TONE[runTone(state as RunState)];
+}
+
+/**
+ * A run's state in the words an operator reads.
+ *
+ * The state-machine token is still the truth on the wire and still shown in the technical fold; this is
+ * the label for the places where a person is scanning a list, and `waiting-human` is the one that most
+ * needed translating — it is the state that means "you".
+ */
+export function runStateLabel(state: string): string {
+  switch (state) {
+    case 'running': return 'running';
+    case 'recovering': return 'restarting';
+    case 'waiting-human': return 'needs you';
+    case 'succeeded': return 'finished';
+    case 'failed': return 'failed';
+    case 'stopped': return 'stopped';
+    case 'stopping': return 'stopping';
+    case 'interrupted': return 'interrupted';
+    case 'planned': return 'not started yet';
+    case 'archived': return 'archived';
+    default: return state;
+  }
+}
+
+/** Coarse age label ("4m ago") for run rows. `now` is injectable so tests stay deterministic. */
 export function relativeAge(iso: string, now: number = Date.now()): string {
   const at = new Date(iso).getTime();
   if (Number.isNaN(at)) return 'unknown';

@@ -93,7 +93,47 @@ export function makeDefaultWriteRateGuard(): LockoutGuard {
   return lockout(rateLimit({ limit: 30, windowMs: 60_000 }), { threshold: 5, lockoutMs: 5 * 60_000 });
 }
 
+/**
+ * Default READ limiter, sized for a real operator UI rather than for a mutation burst.
+ *
+ * The governed scope fronts every polled GET the dashboard makes (control runs, execution posture, the
+ * human inbox, workflows). Metering those through the 30/min WRITE budget meant ordinary polling on a
+ * real state root exhausted the window in seconds, escalated into the 5-minute lockout, and 429'd the
+ * whole dashboard — the operator saw "Execution state could not be loaded. Execution remains
+ * unavailable." with nothing actually wrong. Reads are idempotent and cheap, so they get their own
+ * far larger budget and a short 60s lockout that a transient burst recovers from on its own.
+ *
+ * This is a budget split, NOT a weakening: reads remain keyed on peer IP, remain behind the origin
+ * guard, and remain behind `requireSession` on every route that had it before.
+ */
+export function makeDefaultReadRateGuard(): LockoutGuard {
+  return lockout(rateLimit({ limit: 300, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+}
+
 /** The scope-level `onRequest` rate-limit hook, keyed by {@link rateLimitKey}. */
 export function writeRateLimitHook(guard: LockoutGuard) {
   return rateLimitHook(guard, rateLimitKey);
+}
+
+/** True for the safe, idempotent methods metered against the read budget. */
+function isReadMethod(method: string | undefined): boolean {
+  const verb = (method ?? '').toUpperCase();
+  return verb === 'GET' || verb === 'HEAD';
+}
+
+/**
+ * The scope-level `onRequest` rate-limit hook, dispatching by METHOD to one of two independent budgets:
+ * GET/HEAD consume `readGuard`, every other method consumes `writeGuard`. The buckets are separate
+ * objects, so a read storm can never spend the write budget (or trip its lockout) and vice versa —
+ * exactly the coupling that took the live dashboard down.
+ *
+ * Both budgets keep the same peer-IP key ({@link rateLimitKey}) and the same position in the chain, so
+ * the origin -> rate-limit -> session order is unchanged.
+ */
+export function surfaceRateLimitHook(readGuard: LockoutGuard, writeGuard: LockoutGuard) {
+  const readHook = rateLimitHook(readGuard, rateLimitKey);
+  const writeHook = rateLimitHook(writeGuard, rateLimitKey);
+  return async function onRequestSurfaceRateLimitGuard(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+    await (isReadMethod(req.method) ? readHook : writeHook)(req, reply);
+  };
 }

@@ -13,6 +13,7 @@ import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
+import { registerSessionRunRoutes } from './pty/sessionRunRoutes.ts';
 import { originPlugin } from './security/origin.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
@@ -116,16 +117,34 @@ export function buildApp(): FastifyInstance {
   // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
   // cross-user host/Factor-C path is a future hardening milestone, not an active control.
   {
-    // ONE pty host + session registry for the whole daemon, resolved on the surface context: browser
-    // terminals and run-roster agent terminals live in the same registry, so the canvas can attach to a
-    // roster session by id and the concurrency cap counts both.
+    // ONE pty host + session registry for the whole daemon, resolved on the surface context. Manual
+    // Terminal sessions persist across browser reconnects without coupling them to worker execution.
+    // N4 (fail-closed host, 2026-08-03): the host is passed UNCONDITIONALLY. `makeSurfaceContext` always
+    // builds the fleet-gated host, so `surfaceCtx.ptyHost` is present in production; if it were ever absent,
+    // `makePtyRouteContext` THROWS (no ungated fallback) and the daemon refuses to start — the old
+    // conditional spread would instead have let the route fabricate a raw, ungated shell host.
     const ptyCtx = makePtyRouteContext({
       sessionConfig: surfaceCtx.sessionConfig,
-      ...(surfaceCtx.ptyHost ? { ptyHost: surfaceCtx.ptyHost } : {}),
+      ptyHost: surfaceCtx.ptyHost,
       ...(surfaceCtx.ptySessions ? { registry: surfaceCtx.ptySessions } : {}),
+      // Leg 2: the daemon records the entity-primed sessions it spawns (agent / workflow), and tapes
+      // their output. Both are owned by the surface context so there is exactly one of each per process.
+      ...(surfaceCtx.ptySessionRuns ? { sessionRuns: surfaceCtx.ptySessionRuns } : {}),
+      ...(surfaceCtx.ptyTranscripts ? { transcripts: surfaceCtx.ptyTranscripts } : {}),
     });
     app.register(async (scope) => {
       await registerPtyRoute(scope, ptyCtx);
+      // The session-run REST surface sits BESIDE /api/pty inside the same origin-guarded scope, and is
+      // registered here rather than from the pty route so neither module has to import the other. Its
+      // registration also runs the boot sweep that corrects any `live` record left by the last process.
+      if (surfaceCtx.ptySessionRuns) {
+        await registerSessionRunRoutes(scope, {
+          repoRoot: ptyCtx.repoRoot,
+          sessionConfig: ptyCtx.sessionConfig,
+          sessionRuns: surfaceCtx.ptySessionRuns,
+          ...(surfaceCtx.ptyTranscripts ? { transcripts: surfaceCtx.ptyTranscripts } : {}),
+        });
+      }
       originPlugin(scope, { allowedOrigins: ptyCtx.allowedOrigins ?? [] });
     });
   }

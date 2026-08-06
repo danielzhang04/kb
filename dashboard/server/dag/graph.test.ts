@@ -6,9 +6,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildDag } from './graph.ts';
-import type { ParsedCard } from '../planeA/cards.ts';
+import type { CardProjection } from '../planeA/cards.ts';
 
-function card(over: Partial<ParsedCard['meta']> & { id: string }): ParsedCard {
+function card(over: Partial<CardProjection['meta']> & { id: string }): CardProjection {
   return {
     meta: {
       project: 'kb',
@@ -20,12 +20,14 @@ function card(over: Partial<ParsedCard['meta']> & { id: string }): ParsedCard {
       ...over,
     },
     body: '',
+    displayName: String(over.action ?? 'noop'),
+    shortRef: 1,
   };
 }
 
 /** A minimal index (only `cards` matters to buildDag) grouped by state, like PlaneAIndex.cards. */
-function indexOf(cards: ParsedCard[]): { cards: Record<string, ParsedCard[]> } {
-  const grouped: Record<string, ParsedCard[]> = {};
+function indexOf(cards: CardProjection[]): { cards: Record<string, CardProjection[]> } {
+  const grouped: Record<string, CardProjection[]> = {};
   for (const c of cards) (grouped[String(c.meta.state)] ??= []).push(c);
   return { cards: grouped };
 }

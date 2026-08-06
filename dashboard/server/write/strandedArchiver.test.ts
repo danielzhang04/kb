@@ -22,7 +22,7 @@ import {
 } from './strandedArchiver.ts';
 import type { OwnerActivity, OwnerActivityReader } from './ownerActivity.ts';
 import type { OwnerLiveness } from '../runner/liveness.ts';
-import type { ParsedCard } from '../planeA/cards.ts';
+import type { CardProjection } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 
 const NOW = new Date('2026-07-21T00:00:00.000Z');
@@ -36,15 +36,17 @@ function hexId(secondsAgo: number, suffix = 'abcd1234'): string {
   return `${Math.floor(NOW_SEC - secondsAgo).toString(16).padStart(8, '0')}-${suffix}`;
 }
 
-function card(id: string, state: string, owner: string | null, overrides: Partial<ParsedCard['meta']> = {}, body = '## Work order\n\ndo it\n'): ParsedCard {
+function card(id: string, state: string, owner: string | null, overrides: Partial<CardProjection['meta']> = {}, body = '## Work order\n\ndo it\n'): CardProjection {
   return {
     meta: { id, project: 'kb', action: 'research:topic', target: '.', 'risk-tier': 'T2', owner, state, ...overrides },
     body,
+    displayName: 'research:topic',
+    shortRef: 1,
   };
 }
 
-function index(cards: ParsedCard[]): PlaneAIndex {
-  const grouped: Record<string, ParsedCard[]> = {};
+function index(cards: CardProjection[]): PlaneAIndex {
+  const grouped: Record<string, CardProjection[]> = {};
   for (const c of cards) (grouped[String(c.meta.state)] ??= []).push(c);
   return {
     cards: grouped,
@@ -76,7 +78,7 @@ const FRESH_OWNER: OwnerActivityReader = activityAt(NOW_MS - 1 * DAY * 1000);
 /** Recording deps using the REAL executeCardMutation. `dryRun:false` by default HERE so the mutation path
  *  is exercised; the sweep's own default (dry-run) is asserted separately. */
 function recordingDeps(
-  cards: ParsedCard[],
+  cards: CardProjection[],
   over: Partial<StrandedArchiveDeps> = {},
 ): { deps: StrandedArchiveDeps; calls: string[]; ops: Array<{ cardId: string; transitions: string[]; block: string }> } {
   const calls: string[] = [];

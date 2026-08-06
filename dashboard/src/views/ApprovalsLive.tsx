@@ -1,39 +1,98 @@
 /**
- * The connected Human Inbox container. It sources decisions, input and interventions from the live
- * `GET /api/human-inbox` feed (refreshed whenever an SSE delta arrives) and
- * wires the presentational {@link Approvals} view's `onVerify` to `POST /api/approvals/verify`.
+ * The connected Human Inbox — spec §5.
  *
- * The ordering law is preserved BY CONSTRUCTION: this container only supplies `items` + `onVerify`;
- * the {@link Approvals} view renders the corroboration panel on selection and fires `onVerify` only on
- * an explicit verify click — this container never prompts a biometric before that, and cannot re-order
- * the view's own calls.
+ * It joins the TWO things that can need a person into one live list: queue cards (the
+ * `GET /api/human-inbox` projection, refreshed on every SSE tick) and managed-run asks (each parked
+ * run's open Human Requests, plus a run parked with none — otherwise invisible in both feeds). They
+ * used to be a view and a separate panel wall stacked under it, with two vocabularies for one job.
+ *
+ * This container FETCHES and MERGES; it does not write. Every gate is answered on the surface that owns
+ * it — a run ask deep-links into that run (`RunDetail`'s "Waiting on you" strip has the same respond /
+ * resume machinery this file used to duplicate, with the run's stream and transcript around it), and a
+ * card deep-links into Tasks (whose detail pane owns verify + reply/resolve). Nothing is recorded here
+ * as "handled": when a writer anywhere moves a card or run on, the item stops being projected and the
+ * row goes away by itself.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Approvals, inboxRows, type RunAskRow } from './Approvals';
 import type { HumanInboxItem } from '../../server/approvals/humanInbox';
-import { Approvals } from './Approvals';
-import type { ApprovalChannel, RespondAction } from './Approvals';
 import { useSse } from '../lib/sseClient';
-import { fetchHumanInbox, respondToCard, verifyApproval, type FetchLike } from '../lib/approvalsClient';
-import { HumanRequestsPanel } from '../control/HumanRequestsPanel';
+import { useSession } from '../lib/sessionContext';
+import { fetchHumanInbox, type FetchLike } from '../lib/approvalsClient';
+import { getRun, listRuns, type FetchLike as ControlFetchLike, type RunDetailDto } from '../control/controlClient';
+import { tierForHumanRequest } from '../control/humanBoundaries';
+import type { NavTarget } from '../nav/stack';
 
 export interface ApprovalsLiveProps {
-  /** The WebAuthn-minted session bearer (from `authClient.signIn`), if the dashboard is unlocked. */
-  sessionToken?: string;
-  /** Point-of-action dashboard unlock. `force` replaces a bearer invalidated by a daemon restart. */
-  onRequestSession?: (force?: boolean) => Promise<{ token: string } | null>;
   /** Injected for tests; production uses the real `fetch`/`EventSource`. */
   fetchImpl?: FetchLike;
+  /** Open the surface that owns a gate. Wired by the shell to its nav stack. */
+  onNavigate?: (target: NavTarget) => void;
 }
 
-export function ApprovalsLive({
-  sessionToken,
-  onRequestSession,
-  fetchImpl,
-}: ApprovalsLiveProps): React.JSX.Element {
+/** The inbox category a run ask reads as, from the kind of request the engine filed. */
+function categoryOf(kind: RunDetailDto['humanRequests'][number]['kind']): RunAskRow['category'] {
+  if (kind === 'approval' || kind === 'review') return 'gate';
+  if (kind === 'input') return 'input';
+  return 'intervention';
+}
+
+function labelOf(category: RunAskRow['category']): RunAskRow['categoryLabel'] {
+  return category === 'gate' ? 'Gate' : category === 'input' ? 'Input' : 'Intervention';
+}
+
+/** Every open ask on a run, in the words the server already rendered them in (`HumanRequestDto.ask`). */
+function asksForRun(detail: RunDetailDto): RunAskRow[] {
+  const open = detail.humanRequests.filter((request) => request.state === 'open');
+  if (open.length > 0) {
+    return open.map((request) => {
+      const category = categoryOf(request.kind);
+      return {
+        requestRef: request.requestRef,
+        runRef: request.runRef,
+        displayName: request.displayName,
+        shortRef: request.shortRef,
+        ask: request.ask,
+        tier: tierForHumanRequest(request.kind),
+        category,
+        categoryLabel: labelOf(category),
+        urgency: tierForHumanRequest(request.kind) === 'T3' ? 'high' : 'normal',
+      };
+    });
+  }
+  // A run parked on a human with NO open request is still waiting on one — and is otherwise reachable
+  // from no feed at all. It gets one row that says exactly that, and links to the run.
+  if (detail.run.state !== 'waiting-human') return [];
+  return [{
+    requestRef: `${detail.run.runRef}:parked`,
+    runRef: detail.run.runRef,
+    displayName: detail.run.displayName,
+    shortRef: detail.run.shortRef,
+    ask: `${detail.run.displayName} is paused and waiting on a person, with nothing recorded to answer. Open the run to see where it stopped.`,
+    tier: 'T2',
+    category: 'intervention',
+    categoryLabel: 'Intervention',
+    urgency: 'normal',
+  }];
+}
+
+export function ApprovalsLive({ fetchImpl, onNavigate }: ApprovalsLiveProps): React.JSX.Element {
+  const { session } = useSession();
+  const token = session?.token;
   const [items, setItems] = useState<HumanInboxItem[]>([]);
-  const [outcome, setOutcome] = useState<{ kind: 'progress' | 'success' | 'error'; message: string } | null>(null);
+  const [runAsks, setRunAsks] = useState<RunAskRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
   // Refetch on every SSE arrival; `count` starts at 0, so the effect also runs once on mount.
   const { count } = useSse('/events');
+
+  const loadRunAsks = useCallback(async (activeToken: string): Promise<RunAskRow[]> => {
+    const runs = await listRuns(activeToken, fetchImpl as ControlFetchLike | undefined);
+    // Widen beyond "has open requests" to also pull `waiting-human` runs. Archived runs are already
+    // absent — the server drops them from this list, which is what archiving is FOR.
+    const parked = runs.filter((run) => run.openHumanRequestCount > 0 || run.state === 'waiting-human');
+    const details = await Promise.all(parked.map((run) => getRun(run.runRef, activeToken, fetchImpl as ControlFetchLike | undefined)));
+    return details.flatMap(asksForRun);
+  }, [fetchImpl]);
 
   useEffect(() => {
     let alive = true;
@@ -44,126 +103,35 @@ export function ApprovalsLive({
       .catch(() => {
         // A transient fetch failure leaves the last-known list in place; the next SSE tick retries.
       });
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [count, fetchImpl]);
 
-  const onVerify = (cardId: string, channel: ApprovalChannel): void => {
-    // Fired only on an explicit, post-corroboration verify click (see Approvals). If this tab has not
-    // been unlocked yet, that same click runs the passkey ceremony before any verify request.
-    void (async () => {
-      setOutcome({
-        kind: 'progress',
-        message: sessionToken ? `Preparing verification for ${cardId}…` : 'Unlocking dashboard…',
+  useEffect(() => {
+    // Run asks need the session the card feed does not. A locked tab simply shows the card side; there
+    // is no unlock button here — the app has ONE unlock, and any governed click runs it.
+    if (!token) {
+      setRunAsks([]);
+      return;
+    }
+    let alive = true;
+    loadRunAsks(token)
+      .then((asks) => {
+        if (!alive) return;
+        setRunAsks(asks);
+        setError(null);
+      })
+      .catch((cause: unknown) => {
+        if (alive) setError(cause instanceof Error ? cause.message : 'Could not load run requests.');
       });
-      let token = sessionToken;
-      if (!token) token = (await onRequestSession?.())?.token;
-      if (!token) {
-        setOutcome({ kind: 'error', message: 'Approval was not sent because the dashboard is still locked.' });
-        return;
-      }
+    return () => { alive = false; };
+  }, [count, loadRunAsks, token]);
 
-      setOutcome({ kind: 'progress', message: `Verifying ${cardId}…` });
-      let result = await verifyApproval(cardId, channel, { token, fetchImpl });
-      if (result.status === 401 && onRequestSession) {
-        // A daemon restart invalidates an otherwise unexpired stateless bearer. Replace it once, then
-        // retry the exact operator-selected card/channel; never loop or silently downgrade.
-        const replacement = await onRequestSession(true);
-        if (replacement) {
-          token = replacement.token;
-          result = await verifyApproval(cardId, channel, { token, fetchImpl });
-        }
-      }
-
-      if (result.ok) {
-        setOutcome({
-          kind: 'success',
-          message: result.reason ? `${cardId}: ${result.reason}` : `${cardId} was verified.`,
-        });
-        try {
-          setItems((await fetchHumanInbox(fetchImpl)).items);
-        } catch {
-          // The SSE feed will reconcile the list; the successful verification remains visible.
-        }
-      } else {
-        setOutcome({
-          kind: 'error',
-          message: result.reason
-            ? `${cardId} was not verified: ${result.reason}`
-            : `${cardId} was not verified (HTTP ${result.status}).`,
-        });
-      }
-    })();
-  };
-
-  const onRespond = (cardId: string, action: RespondAction, message: string): void => {
-    // Fired only on an explicit send-reply / resolve click (see Approvals). Same point-of-action unlock
-    // and single 401-session-replacement retry as onVerify — never a loop or a silent downgrade.
-    void (async () => {
-      const verb = action === 'reply' ? 'reply' : 'resolution';
-      setOutcome({
-        kind: 'progress',
-        message: sessionToken ? `Sending ${verb} for ${cardId}…` : 'Unlocking dashboard…',
-      });
-      let token = sessionToken;
-      if (!token) token = (await onRequestSession?.())?.token;
-      if (!token) {
-        setOutcome({ kind: 'error', message: `The ${verb} was not sent because the dashboard is still locked.` });
-        return;
-      }
-
-      setOutcome({ kind: 'progress', message: `Sending ${verb} for ${cardId}…` });
-      let result = await respondToCard(cardId, action, message, { token, fetchImpl });
-      if (result.status === 401 && onRequestSession) {
-        const replacement = await onRequestSession(true);
-        if (replacement) {
-          token = replacement.token;
-          result = await respondToCard(cardId, action, message, { token, fetchImpl });
-        }
-      }
-
-      if (result.ok) {
-        // G3 reply-liveness: the write committed, but a reply only PROGRESSES if a consumer runs. When the
-        // server reports no online consumer for the owner, say so plainly instead of implying delivery.
-        const committed = action === 'reply' ? `${cardId}: reply recorded and committed.` : `${cardId}: resolved and committed.`;
-        const liveness = result.liveness;
-        const ownerRaw = items.find((item) => item.card.meta.id === cardId)?.card.meta.owner;
-        const ownerLabel = typeof ownerRaw === 'string' && ownerRaw ? `\`${ownerRaw}\`` : 'its owner';
-        setOutcome({
-          kind: 'success',
-          message: liveness && !liveness.online
-            ? `${committed} No runner is online for ${ownerLabel} — this card will not progress until one runs.`
-            : committed,
-        });
-        try {
-          setItems((await fetchHumanInbox(fetchImpl)).items);
-        } catch {
-          // The SSE feed will reconcile the list; the successful response remains visible.
-        }
-      } else {
-        setOutcome({
-          kind: 'error',
-          message: result.reason
-            ? `${cardId} was not updated: ${result.reason}`
-            : `${cardId} was not updated (HTTP ${result.status}).`,
-        });
-      }
-    })();
-  };
-
+  // The `Human Inbox` landmark label belongs to the list itself (see Approvals); this shell only
+  // carries the load error above it, so it must not claim the same name twice.
   return (
-    <section className="v-approvals-live" aria-label="Approval verification">
-      {outcome ? (
-        <p
-          className={`v-approvals__outcome v-approvals__outcome--${outcome.kind}`}
-          role={outcome.kind === 'error' ? 'alert' : 'status'}
-        >
-          {outcome.message}
-        </p>
-      ) : null}
-      <Approvals items={items} onVerify={onVerify} onRespond={onRespond} pendingRespond={outcome?.kind === 'progress'} />
-      <HumanRequestsPanel sessionToken={sessionToken} onRequestSession={onRequestSession} fetchImpl={fetchImpl} />
+    <section className="v-approvals-live">
+      {error ? <p className="v-approvals__outcome v-approvals__outcome--error" role="alert">{error}</p> : null}
+      <Approvals rows={inboxRows(items, runAsks)} onNavigate={onNavigate} />
     </section>
   );
 }

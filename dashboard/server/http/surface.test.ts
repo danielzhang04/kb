@@ -1,10 +1,9 @@
 /**
  * U2 — route-level security tests for the governed write surface. These exercise the REAL composition
  * chain (Origin/Host guard -> rate-limit -> session -> gate -> audit) end to end via `app.inject`
- * (which, unlike fetch/undici, does not strip the `Origin` header) and a real-listen fetch for the
- * streaming vibe path. Only the leaf side-effect runners (git/py/spawn/appendAudit) are injected as the
- * SAME hermetic fakes the gate modules' own unit tests use — no security check is ever faked, and there
- * is no dev-mode/bypass flag to disable one.
+ * (which, unlike fetch/undici, does not strip the `Origin` header). Only the leaf side-effect runners
+ * (git/py/spawn/appendAudit) are injected as the SAME hermetic fakes the gate modules' own unit tests
+ * use — no security check is ever faked, and there is no dev-mode/bypass flag to disable one.
  *
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
@@ -124,7 +123,6 @@ describe('write surface — composition chain', () => {
       '/api/write/stop',
       '/api/write/stop-card',
       '/api/write/pause-cadence',
-      '/api/vibe',
       '/api/approvals/verify',
     ]) {
       const res = await app.inject({ method: 'POST', url, headers: headers(false), payload: {} });
@@ -168,8 +166,8 @@ describe('write surface — composition chain', () => {
     expect(bad.statusCode).toBe(401);
   });
 
-  it('429s once the rate-limit window is breached (before the session check)', async () => {
-    // limit 1 / window: the 2nd valid-origin request in the window is throttled.
+  it('429s a WRITE once the write rate-limit window is breached (before the session check)', async () => {
+    // limit 1 / window: the 2nd valid-origin mutation in the window is throttled.
     const { lockout, rateLimit } = await import('../security/ratelimit.ts');
     const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
     ({ app } = buildApp({ rateGuard: guard }));
@@ -179,6 +177,49 @@ describe('write surface — composition chain', () => {
     const second = await app.inject({ method: 'POST', url: '/api/write/stop', headers: headers(false), payload: {} });
     expect(second.statusCode).toBe(429);
     expect(second.json()).toMatchObject({ error: 'throttled' });
+  });
+
+  it('429s a GET once the READ rate-limit window is breached (before the session check)', async () => {
+    const { lockout, rateLimit } = await import('../security/ratelimit.ts');
+    const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+    ({ app } = buildApp({ readRateGuard: guard }));
+
+    const first = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(false) });
+    expect(first.statusCode).toBe(401); // passed origin + rate-limit, failed session
+    const second = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(false) });
+    expect(second.statusCode).toBe(429);
+    expect(second.json()).toMatchObject({ error: 'throttled' });
+  });
+
+  it('a GET storm NEVER consumes the write budget (the live 429-lockout defect)', async () => {
+    // The defect: ONE shared 30/min bucket fronted every governed GET the UI polls AND every write, so
+    // ordinary polling burned the write budget, escalated into the 5-minute lockout, and 429'd the whole
+    // dashboard. Two independent buckets, dispatched by method, are what make that impossible.
+    const { lockout, rateLimit } = await import('../security/ratelimit.ts');
+    const writeGuard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 5, lockoutMs: 5 * 60_000 });
+    const readGuard = lockout(rateLimit({ limit: 300, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+    ({ app } = buildApp({ rateGuard: writeGuard, readRateGuard: readGuard }));
+
+    for (let i = 0; i < 60; i += 1) {
+      const poll = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(false) });
+      expect(poll.statusCode).toBe(401); // never 429 — reads are metered on their own budget
+    }
+    // The write budget is untouched by all of that: the first mutation still reaches the session check.
+    const first = await app.inject({ method: 'POST', url: '/api/write/stop', headers: headers(false), payload: {} });
+    expect(first.statusCode).toBe(401);
+    // ...and it still throttles on its own terms (limit 1) — the write budget itself is unchanged.
+    const second = await app.inject({ method: 'POST', url: '/api/write/stop', headers: headers(false), payload: {} });
+    expect(second.statusCode).toBe(429);
+  });
+
+  it('the SHIPPED default read budget survives a realistic UI poll burst', async () => {
+    // No guard overrides: exactly what production wires. 120 polled reads is well past the old 30/min
+    // shared budget that took the live dashboard down, and comfortably inside the 300/min read budget.
+    ({ app } = buildApp());
+    for (let i = 0; i < 120; i += 1) {
+      const poll = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(false) });
+      expect(poll.statusCode).toBe(401);
+    }
   });
 
   it('writes exactly one audit row on a successful governed save', async () => {
@@ -805,8 +846,9 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(build).toHaveBeenCalledWith(expect.objectContaining({
       env: { DASHBOARD_EXECUTION_ACTIVATED: '1' },
       repoRoot: REPO_A,
-      ptyHost: ctx.ptyHost,
     }));
+    expect(build.mock.calls[0][0]).not.toHaveProperty('ptyHost');
+    expect(build.mock.calls[0][0]).not.toHaveProperty('ptySessions');
     expect(ctx.ptyHost).not.toBe(underlying.host);
     expect(ctx.controlBroker).toBe(triple.controlBroker);
     expect(ctx.runAutomatic).toBe(triple.runAutomatic);
@@ -889,71 +931,5 @@ describe('surface — shared PTY host fleet gate', () => {
     expect(underlying.stop).toHaveBeenCalledWith('pty-surface-test');
     expect(underlying.stopAll).toHaveBeenCalledOnce();
     expect(underlying.sessions).toHaveBeenCalledOnce();
-  });
-});
-
-describe('vibe surface — gate wiring', () => {
-  it('401s without a session (before any spawn)', async () => {
-    const spawn = vi.fn();
-    ({ app } = buildApp({ spawn }));
-    const res = await app.inject({ method: 'POST', url: '/api/vibe', headers: headers(false), payload: { prompt: 'hi' } });
-    expect(res.statusCode).toBe(401);
-    expect(spawn).not.toHaveBeenCalled();
-  });
-
-  it('503s (fleet-frozen) via spawnVibe and audits the refused attempt, never spawning', async () => {
-    const audit = recordingAudit();
-    const spawn = vi.fn();
-    ({ app } = buildApp({ appendAudit: audit.fn, runPreamble: frozenPreamble, spawn }));
-    const res = await app.inject({ method: 'POST', url: '/api/vibe', headers: headers(true), payload: { prompt: 'hi' } });
-    expect(res.statusCode).toBe(503);
-    expect(res.json()).toMatchObject({ error: 'fleet-frozen' });
-    expect(spawn).not.toHaveBeenCalled(); // gate refused before spawn
-    expect(audit.rows[0]).toMatchObject({ action: 'vibe-spawn', result: 'fleet-frozen' });
-  });
-
-  it('streams NDJSON frames from a spawned session over real HTTP (past all gates)', async () => {
-    const audit = recordingAudit();
-    // A fake spawner that emits one stream-json line then exits ASYNCHRONOUSLY (as a real child does),
-    // so the route has already hijacked + started streaming before any frame arrives.
-    const spawn = (_args: string[], _cwd: string) => {
-      let onOut: ((c: string) => void) | undefined;
-      let onExit: ((c: number | null) => void) | undefined;
-      return {
-        onStdout(cb: (c: string) => void) { onOut = cb; },
-        onStderr() {},
-        onExit(cb: (c: number | null) => void) { onExit = cb; },
-        writeStdin() {},
-        endStdin() {
-          setImmediate(() => {
-            onOut?.('{"type":"user","uuid":"u1","timestamp":"2026-07-16T00:00:00Z"}\n');
-            onExit?.(0);
-          });
-        },
-        kill() {},
-      };
-    };
-    // A LIVE, mutable allowlist the origin guard reads per request — undici strips Origin, so the
-    // Host authority (127.0.0.1:port) is what must be enrolled, only knowable after listen().
-    const allowedOrigins: string[] = [];
-    const built = buildApp({ allowedOrigins, appendAudit: audit.fn, runPreamble: okPreamble, spawn });
-    app = built.app;
-    await app.listen({ port: 0, host: '127.0.0.1' });
-    const port = (app.server.address() as { port: number }).port;
-    allowedOrigins.push(`http://127.0.0.1:${port}`);
-
-    const res = await fetch(`http://127.0.0.1:${port}/api/vibe`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token()}` },
-      body: JSON.stringify({ prompt: 'hello fleet' }),
-    });
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toContain('application/x-ndjson');
-    const text = await res.text();
-    const frames = text.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l) as { type: string });
-    expect(frames.some((f) => f.type === 'delta')).toBe(true);
-    expect(frames.some((f) => f.type === 'exit')).toBe(true);
-    // spawnVibe wrote its single audit row for the actual spawn.
-    expect(audit.rows.some((r) => r.action === 'vibe-spawn' && r.result === 'spawned')).toBe(true);
   });
 });

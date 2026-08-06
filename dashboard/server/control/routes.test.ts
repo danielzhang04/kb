@@ -22,20 +22,19 @@ const ORIGIN = 'http://localhost:5317';
 describe('authorized failed-run route grant', () => {
   function exactContext(liveSession = false): SurfaceContext {
     const controlBroker = { isRunning: () => liveSession };
-    const rosterSessions = { hasRoster: () => false };
     const runAutomatic = vi.fn();
     const cancelAutomatic = vi.fn();
     const containManagerStart = vi.fn();
     const verifyCanonicalResult = vi.fn();
     const wiring = {
-      controlBroker, rosterSessions, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
+      controlBroker, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
     };
     const executionLatch = {
       snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z' }),
       current: () => wiring,
     };
     return {
-      executionLatch, controlBroker, rosterSessions, runAutomatic, cancelAutomatic,
+      executionLatch, controlBroker, runAutomatic, cancelAutomatic,
       containManagerStart, verifyCanonicalResult,
     } as unknown as SurfaceContext;
   }
@@ -1890,74 +1889,130 @@ describe('control proposal routes', () => {
 
 /**
  * The runtime execution latch routes. The daemon boots LOCKED, so a launch refusal must be distinct
- * enough for the UI to raise an unlock prompt, unlock must require a fresh purpose-bound passkey
- * assertion (a session bearer alone is never enough), and Lock must be reachable with the session only.
+ * enough for the UI to raise an unlock prompt, and BOTH transitions are authorized by the operator's
+ * WebAuthn-minted session bearer plus an audit row — never by a second, purpose-bound ceremony of their
+ * own. That second ceremony was removed: the platform's requirement is ONE dashboard unlock, and it made
+ * an already-signed-in operator unlock twice to arm the executor.
  */
-describe('control execution latch routes', () => {
-  const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
+const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
 
-  function fakeLatch(initial: 'locked' | 'unlocked') {
-    let state = initial === 'locked'
-      ? { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }
-      : { state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
-    const unlock = vi.fn(() => ({ ok: true as const, state }));
-    const lock = vi.fn(() => {
-      state = { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null };
-      return state;
-    });
-    return {
-      latch: {
-        snapshot: () => state,
-        current: () => null,
-        unlock,
-        lock,
-      },
+function fakeLatch(initial: 'locked' | 'unlocked') {
+  let state = initial === 'locked'
+    ? { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }
+    : { state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
+  const unlock = vi.fn(() => ({ ok: true as const, state }));
+  const lock = vi.fn(() => {
+    state = { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null };
+    return state;
+  });
+  return {
+    latch: {
+      snapshot: () => state,
+      current: () => null,
       unlock,
       lock,
+    },
+    unlock,
+    lock,
+  };
+}
+
+function buildApp(overrides: Record<string, unknown> = {}) {
+  const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `latch-${++n}`; })() });
+  const audit: Array<Record<string, unknown>> = [];
+  const app = Fastify();
+  const ctx = makeSurfaceContext({
+    repoRoot: fileURLToPath(new URL('../../../', import.meta.url)),
+    sessionConfig: SESSION,
+    allowedOrigins: [ORIGIN],
+    controlStore: store,
+    webAuthnConfig: TEST_WEBAUTHN,
+    credentials: () => [],
+    appendAudit: (_root: string, event: Record<string, unknown>) => {
+      audit.push(event);
+      return { ts: '2026-07-30T00:00:00.000Z', action: String(event.action) } as never;
+    },
+    opsGit: () => ({ stdout: '', stderr: '', exitCode: 0 }),
+    ...overrides,
+  } as never);
+  registerWriteSurface(app, ctx);
+  return { app, ctx, store, audit, token: mintSession('operator', SESSION).token };
+}
+
+/** Seed one approved run in the store so a route reaches its execution-posture check. */
+function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string): string {
+  const created = store.createProposalRevision('operator', {
+    sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: `Run ${key}`,
+    snapshot: proposal as unknown as JsonObject,
+  });
+  if (!created.ok) throw new Error(created.detail);
+  if (!store.decideProposal('operator', created.value.proposalRef, 1, {
+    expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+  }).ok) throw new Error('approval failed');
+  const run = store.createRun('operator', {
+    title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
+    expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
+    idempotencyKey: `${key}-launch`,
+    stages: proposal.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+  });
+  if (!run.ok) throw new Error(run.detail);
+  return run.value.run.runRef;
+}
+
+describe('control execution latch routes', () => {
+
+  it('requires a session, rejects unknown agents, and returns the activated worker delivery result', async () => {
+    const delivery = vi.fn(async () => 'queued' as const);
+    const latch = {
+      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      current: () => ({ agentMessages: { deliver: delivery } }),
+      unlock: vi.fn(), lock: vi.fn(),
     };
-  }
-
-  function buildApp(overrides: Record<string, unknown> = {}) {
-    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `latch-${++n}`; })() });
-    const audit: Array<Record<string, unknown>> = [];
-    const app = Fastify();
-    const ctx = makeSurfaceContext({
-      repoRoot: fileURLToPath(new URL('../../../', import.meta.url)),
-      sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN],
-      controlStore: store,
-      webAuthnConfig: TEST_WEBAUTHN,
-      credentials: () => [],
-      appendAudit: (_root: string, event: Record<string, unknown>) => {
-        audit.push(event);
-        return { ts: '2026-07-30T00:00:00.000Z', action: String(event.action) } as never;
-      },
-      opsGit: () => ({ stdout: '', stderr: '', exitCode: 0 }),
-      ...overrides,
-    } as never);
-    registerWriteSurface(app, ctx);
-    return { app, ctx, store, audit, token: mintSession('operator', SESSION).token };
-  }
-
-  /** Seed one approved run in the store so a route reaches its execution-posture check. */
-  function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string): string {
+    const { app, token, store } = buildApp({ executionLatch: latch });
+    const assignment = {
+      agentId: 'fyt-codex', declarationPath: 'agents/fyt-codex.md', declarationHash: 'a'.repeat(64),
+      profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex' as const, model: 'gpt-5.6-sol',
+    };
+    const assignedProposal = { ...proposal, stages: proposal.stages.map((stage) => ({ ...stage, assignment })) };
     const created = store.createProposalRevision('operator', {
-      sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: `Run ${key}`,
-      snapshot: proposal as unknown as JsonObject,
+      sourceComposerRef: 'composer-agent-message', sourceTurnId: 'turn-agent-message', title: assignedProposal.title,
+      snapshot: assignedProposal as unknown as JsonObject,
     });
     if (!created.ok) throw new Error(created.detail);
     if (!store.decideProposal('operator', created.value.proposalRef, 1, {
-      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-agent-message',
     }).ok) throw new Error('approval failed');
     const run = store.createRun('operator', {
-      title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
-      expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
-      idempotencyKey: `${key}-launch`,
-      stages: proposal.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+      title: assignedProposal.title, proposalRef: created.value.proposalRef, proposalRevision: 1,
+      expectedProposalHash: created.value.hash, managerRuntime: assignedProposal.manager.runtime, managerModel: assignedProposal.manager.model,
+      idempotencyKey: 'launch-agent-message',
+      stages: assignedProposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn, assignment })),
     });
     if (!run.ok) throw new Error(run.detail);
-    return run.value.run.runRef;
-  }
+    try {
+      const anonymous = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/fyt-codex/messages`,
+        headers: { origin: ORIGIN, host: 'localhost:5317' }, payload: { message: 'Queue this.' },
+      });
+      expect(anonymous.statusCode).toBe(401);
+      const unknown = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/unknown/messages`, headers: headers(token), payload: { message: 'Nope.' },
+      });
+      expect(unknown.statusCode).toBe(404);
+      const accepted = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/fyt-codex/messages`, headers: headers(token), payload: { message: ' Queue this. ' },
+      });
+      expect(accepted.statusCode, accepted.body).toBe(202);
+      expect(accepted.json()).toEqual({ delivery: 'queued' });
+      expect(delivery).toHaveBeenCalledWith({
+        runRef: run.value.run.runRef, agentId: 'fyt-codex', runtime: 'codex', message: 'Queue this.',
+      });
+      const oversized = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/fyt-codex/messages`, headers: headers(token), payload: { message: 'x'.repeat(64 * 1024 + 1) },
+      });
+      expect(oversized.statusCode).toBe(400);
+    } finally { await app.close(); }
+  });
 
   it('boots LOCKED and reports the posture with the unlock route to call', async () => {
     const { app, token } = buildApp();
@@ -1999,65 +2054,74 @@ describe('control execution latch routes', () => {
     }
   });
 
-  it('issues a PURPOSE-BOUND unlock ceremony and refuses a sign-in ceremony at the unlock route', async () => {
-    const { app, token } = buildApp();
+  it('unlocks under the ONE dashboard session with no second ceremony, and audits the transition', async () => {
+    const { latch, unlock } = fakeLatch('locked');
+    const { app, token, audit } = buildApp({ executionLatch: latch });
     try {
-      const options = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock/options', headers: headers(token), payload: {},
+      const unlocked = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token), payload: {},
       });
-      expect(options.statusCode).toBe(200);
-      const body = options.json() as { ceremonyId: string; options: { challenge: string; userVerification: string } };
-      expect(typeof body.ceremonyId).toBe('string');
-      // The authenticator signs over "unlock execution for THIS operator", not a bare login nonce.
-      const preimage = Buffer.from(body.options.challenge, 'base64url').toString('utf8');
-      expect(preimage.startsWith('kb.execution-unlock:operator:')).toBe(true);
-      expect(body.options.userVerification).toBe('required');
-
-      // A LOGIN ceremony cannot be redeemed at the unlock route even though it is fresh and single-use.
-      const login = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: headers(token), payload: {} });
-      const loginCeremony = (login.json() as { ceremonyId: string }).ceremonyId;
-      const crossed = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
-        payload: { ceremonyId: loginCeremony, response: { id: 'cred-1' } },
+      expect(unlocked.statusCode, unlocked.body).toBe(200);
+      expect(unlocked.json()).toMatchObject({ ok: true });
+      // The bearer's own subject authorizes it — no assertion, no ceremonyId, no second biometric.
+      expect(unlock).toHaveBeenCalledWith({ subject: 'operator' });
+      const row = audit.find((entry) => entry.action === 'control-execution-unlock-authorize');
+      expect(row).toMatchObject({
+        owner: 'operator', target: 'execution', riskTier: 'T3',
+        result: 'authorized:unlock', detail: { method: 'session-bearer' },
       });
-      expect(crossed.statusCode).toBe(400);
-      expect(crossed.json()).toMatchObject({ error: 'bad-ceremony' });
     } finally {
       await app.close();
     }
   });
 
-  it('never unlocks without a verified assertion: no credential, unknown ceremony, or replay all fail closed', async () => {
-    const { latch, unlock } = fakeLatch('locked');
-    const { app, token } = buildApp({ executionLatch: latch });
+  it('the removed purpose-bound unlock ceremony route is gone entirely', async () => {
+    const { app, token } = buildApp();
     try {
-      // Unknown ceremony → refused before any credential lookup.
-      const unknown = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
-        payload: { ceremonyId: 'never-issued', response: { id: 'cred-1' } },
-      });
-      expect(unknown.statusCode).toBe(400);
-
-      // Real ceremony, but the credential store is fail-closed empty (the pre-passkey reality).
       const options = await app.inject({
         method: 'POST', url: '/api/control/execution/unlock/options', headers: headers(token), payload: {},
       });
-      const ceremonyId = (options.json() as { ceremonyId: string }).ceremonyId;
-      const attempt = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
-        payload: { ceremonyId, response: { id: 'cred-1' } },
-      });
-      expect(attempt.statusCode).toBe(401);
-      expect(attempt.json()).toMatchObject({ error: 'unauthenticated' });
+      expect(options.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
 
-      // The same ceremony cannot be replayed (single-use), and the latch was never asked to unlock.
-      const replay = await app.inject({
-        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token),
-        payload: { ceremonyId, response: { id: 'cred-1' } },
+  it('still fails closed without a session, and never unlocks when the latch is absent', async () => {
+    const { latch, unlock } = fakeLatch('locked');
+    const { app } = buildApp({ executionLatch: latch });
+    try {
+      // No bearer: the scope's requireSession preHandler refuses before the handler runs.
+      const anonymous = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock',
+        headers: { origin: ORIGIN, host: 'localhost:5317' }, payload: {},
       });
-      expect(replay.statusCode).toBe(400);
+      expect(anonymous.statusCode).toBe(401);
+
+      // A forged/garbage bearer is refused the same way — the session is verified, never trusted.
+      const forged = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock',
+        headers: { origin: ORIGIN, host: 'localhost:5317', authorization: 'Bearer not.a.real.token' }, payload: {},
+      });
+      expect(forged.statusCode).toBe(401);
+
       expect(unlock).not.toHaveBeenCalled();
       expect(latch.snapshot().state).toBe('locked');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses to unlock when no execution latch is wired', async () => {
+    // An injected executor skips latch construction entirely (`activationOverridden` in surface.ts),
+    // so there is nothing to unlock and the route says so rather than pretending it armed anything.
+    const { app, token } = buildApp({ controlBroker: { drain: () => {} } });
+    try {
+      const unlocked = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token), payload: {},
+      });
+      expect(unlocked.statusCode).toBe(409);
+      expect(unlocked.json()).toMatchObject({ error: 'execution-latch-unavailable' });
     } finally {
       await app.close();
     }
@@ -2086,13 +2150,9 @@ describe('control execution latch routes', () => {
     }
   });
 
-  it('serves roster state and the execution posture on the run detail the canvas reads', async () => {
-    const roster = [{ agentId: 'fyt-visuals', sessionId: 'pty-roster-2', status: 'blocked', activity: 'blocked: g2 awaiting approval', waitingOn: ['g2-visual-plan'] }];
+  it('serves durable run detail and the execution posture the canvas reads', async () => {
     const { latch } = fakeLatch('unlocked');
-    const { app, token, store } = buildApp({
-      executionLatch: latch,
-      rosterSessions: { state: () => roster, hasRoster: () => true, ensureRoster: () => ({ runRef: 'r', spawned: [], existing: [] }), deliver: async () => ({}), retire: () => [], retireAll: () => [] },
-    });
+    const { app, token, store } = buildApp({ executionLatch: latch });
     try {
       const runRef = seedRun(store, 'roster');
 
@@ -2102,27 +2162,14 @@ describe('control execution latch routes', () => {
       expect(detail.statusCode).toBe(200);
       expect(detail.json()).toMatchObject({
         ok: true,
-        roster,
         execution: { state: 'unlocked' },
         value: { run: { runRef } },
       });
+      expect(detail.json()).not.toHaveProperty('roster');
 
-      // A missing run still 404s (the roster projection never invents a run).
+      // A missing run still 404s.
       const missing = await app.inject({ method: 'GET', url: '/api/control/runs/run-absent', headers: headers(token) });
       expect(missing.statusCode).toBe(404);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('reports an empty roster while execution is locked', async () => {
-    const { app, token, store } = buildApp();
-    try {
-      const runRef = seedRun(store, 'locked-roster');
-      const detail = await app.inject({
-        method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token),
-      });
-      expect(detail.json()).toMatchObject({ roster: [], execution: { state: 'locked' } });
     } finally {
       await app.close();
     }
@@ -2135,10 +2182,8 @@ describe('control execution latch routes', () => {
     const containManagerStart = vi.fn();
     const verifyCanonicalResult = vi.fn();
     const broker = { drain: vi.fn() };
-    const roster = { retireAll: vi.fn() };
     const execution = {
       controlBroker: broker,
-      rosterSessions: roster,
       runAutomatic,
       cancelAutomatic,
       containManagerStart,
@@ -2151,7 +2196,7 @@ describe('control execution latch routes', () => {
     };
     const activateManagedRoots = vi.fn();
     const { app, token, store, audit } = buildApp({
-      executionLatch: latch, controlBroker: broker, rosterSessions: roster,
+      executionLatch: latch, controlBroker: broker,
       runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult, activateManagedRoots,
       appendAudit: (_root: string, event: Record<string, unknown>) => {
         order.push('audit');
@@ -2236,10 +2281,9 @@ describe('control execution latch routes', () => {
     } finally { await locked.app.close(); }
 
     const broker = { drain: vi.fn() };
-    const roster = { retireAll: vi.fn() };
     const exactRun = vi.fn();
     const execution = {
-      controlBroker: broker, rosterSessions: roster, runAutomatic: exactRun,
+      controlBroker: broker, runAutomatic: exactRun,
       cancelAutomatic: vi.fn(), verifyCanonicalResult: vi.fn(),
     };
     const latch = {
@@ -2247,7 +2291,7 @@ describe('control execution latch routes', () => {
       current: () => execution, unlock: vi.fn(), lock: vi.fn(),
     };
     const mismatched = buildApp({
-      executionLatch: latch, controlBroker: broker, rosterSessions: roster, runAutomatic: vi.fn(),
+      executionLatch: latch, controlBroker: broker, runAutomatic: vi.fn(),
       cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
     });
     vi.spyOn(mismatched.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
@@ -2263,31 +2307,8 @@ describe('control execution latch routes', () => {
       expect(mismatched.audit).toHaveLength(0);
     } finally { await mismatched.app.close(); }
 
-    const noRosterExecution = {
-      controlBroker: broker, runAutomatic: exactRun,
-      cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
-    };
-    const noRosterLatch = { ...latch, current: () => noRosterExecution };
-    const absentRoster = buildApp({
-      executionLatch: noRosterLatch, controlBroker: broker, runAutomatic: exactRun,
-      cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
-    });
-    vi.spyOn(absentRoster.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
-      ok: true, value: { disposition: 'eligible', result: null },
-    } as never);
-    const absentRosterRecover = vi.spyOn(absentRoster.store, 'recoverAuthorized20260731ExecutionLock');
-    try {
-      const response = await absentRoster.app.inject({
-        method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(absentRoster.token), payload: body,
-      });
-      expect(response.statusCode).toBe(409);
-      expect(response.json()).toMatchObject({ error: 'legacy-recovery-execution-not-passkey-bound' });
-      expect(absentRosterRecover).not.toHaveBeenCalled();
-      expect(absentRoster.audit).toHaveLength(0);
-    } finally { await absentRoster.app.close(); }
-
     const auditFailure = buildApp({
-      executionLatch: latch, controlBroker: broker, rosterSessions: roster, runAutomatic: exactRun,
+      executionLatch: latch, controlBroker: broker, runAutomatic: exactRun,
       cancelAutomatic: execution.cancelAutomatic, verifyCanonicalResult: execution.verifyCanonicalResult,
       appendAudit: () => { throw new Error('audit unavailable'); },
     });
@@ -2317,5 +2338,176 @@ describe('control execution latch routes', () => {
       expect(ineligibleRecover).not.toHaveBeenCalled();
       expect(ineligible.audit.filter((row) => row.action === 'control-legacy-execution-lock-reclassify-authorize')).toHaveLength(0);
     } finally { await ineligible.app.close(); }
+  });
+});
+
+/**
+ * spec §3b — the governed dismissal of a dead run.
+ *
+ * What has to hold: the write is session-gated, the T3 audit row lands BEFORE the store mutation (and a
+ * failed audit refuses), the operator reason reaches that row, the whole thing replays on the same key,
+ * and an archived run leaves the default run list while staying readable by ref.
+ */
+describe('control run archive route', () => {
+  /** Publish `runRef` and park it at waiting-human with one open ask — an archivable dead run. */
+  function parkRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, runRef: string, key: string): string {
+    const run = store.getRun('operator', runRef);
+    if (!run.ok) throw new Error(run.detail);
+    const publishing = store.transitionPublication('operator', runRef, run.value.run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const published = store.transitionPublication('operator', runRef, publishing.value.version, 'published');
+    if (!published.ok) throw new Error(published.detail);
+    const parked = store.transitionRun('operator', runRef, published.value.version, 'waiting-human');
+    if (!parked.ok) throw new Error(parked.detail);
+    const request = store.createHumanRequest('operator', runRef, {
+      kind: 'intervention', title: `Manager boot failed (${key})`, prompt: 'Error: spawn claude ENOENT',
+    });
+    if (!request.ok) throw new Error(request.detail);
+    return request.value.requestRef;
+  }
+
+  it('audits at T3 with the operator reason, archives, resolves the open ask, and replays', async () => {
+    const { app, token, store, audit } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive');
+      const requestRef = parkRun(store, runRef, 'archive');
+      const payload = { idempotencyKey: `archive:${runRef}:1`, reason: 'obsolete thin-slice validation run' };
+
+      const archived = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload,
+      });
+      expect(archived.statusCode).toBe(200);
+      expect(archived.json()).toMatchObject({ ok: true, value: { run: { runRef, state: 'archived' } } });
+
+      const row = audit.find((event) => event.action === 'control-run-archive-authorize');
+      expect(row).toMatchObject({
+        owner: 'operator', target: runRef, riskTier: 'T3',
+        detail: { runRef, runState: 'waiting-human', openHumanRequestCount: 1, reason: payload.reason },
+      });
+
+      // The ask is resolved by the same commit — nothing is left waiting on a dismissed run.
+      const detail = store.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      expect(detail.value.humanRequests.find((item) => item.requestRef === requestRef)).toMatchObject({
+        state: 'resolved', response: { decision: 'responded', response: payload.reason },
+      });
+
+      // A replay is idempotent AND does not write a second audit row.
+      const replay = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload,
+      });
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json()).toMatchObject({ replayed: true });
+      expect(audit.filter((event) => event.action === 'control-run-archive-authorize')).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses without a session and refuses a body with no idempotency key', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive-guard');
+      parkRun(store, runRef, 'archive-guard');
+
+      const anonymous = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`,
+        headers: { origin: ORIGIN, host: 'localhost:5317', 'content-type': 'application/json' },
+        payload: { idempotencyKey: 'k' },
+      });
+      expect(anonymous.statusCode).toBe(401);
+
+      const invalid = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload: { reason: 'why' },
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(store.getRun('operator', runRef)).toMatchObject({ ok: true, value: { run: { state: 'waiting-human' } } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('does not archive when the T3 audit cannot be written', async () => {
+    const { app, token, store } = buildApp({
+      appendAudit: () => { throw new Error('audit unavailable'); },
+    });
+    try {
+      const runRef = seedRun(store, 'archive-audit');
+      parkRun(store, runRef, 'archive-audit');
+
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+        payload: { idempotencyKey: 'archive-audit-1', reason: 'dead' },
+      });
+      expect(refused.statusCode).toBe(500);
+      expect(refused.json()).toEqual({ error: 'run-archive-audit-required' });
+      expect(store.getRun('operator', runRef)).toMatchObject({ ok: true, value: { run: { state: 'waiting-human' } } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses to archive a live run', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive-live');
+      const run = store.getRun('operator', runRef);
+      if (!run.ok) throw new Error(run.detail);
+      if (!store.transitionRun('operator', runRef, run.value.run.version, 'running').ok) throw new Error('transition failed');
+
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+        payload: { idempotencyKey: 'archive-live-1' },
+      });
+      expect(refused.statusCode).toBe(400);
+      expect(refused.json().error).toBe('invalid');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('drops archived runs from the default list and returns them only with includeArchived=1', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const archivedRef = seedRun(store, 'archive-list-a');
+      const liveRef = seedRun(store, 'archive-list-b');
+      parkRun(store, archivedRef, 'archive-list-a');
+      const done = await app.inject({
+        method: 'POST', url: `/api/control/runs/${archivedRef}/archive`, headers: headers(token),
+        payload: { idempotencyKey: 'archive-list-1', reason: 'stale' },
+      });
+      expect(done.statusCode).toBe(200);
+
+      const listed = await app.inject({ method: 'GET', url: '/api/control/runs', headers: headers(token) });
+      expect(listed.json().runs.map((run: { runRef: string }) => run.runRef)).toEqual([liveRef]);
+
+      const all = await app.inject({ method: 'GET', url: '/api/control/runs?includeArchived=1', headers: headers(token) });
+      expect(all.json().runs.map((run: { runRef: string }) => run.runRef).sort()).toEqual([archivedRef, liveRef].sort());
+
+      // Archiving hides a run from lists; it never makes it unreadable.
+      const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${archivedRef}`, headers: headers(token) });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json()).toMatchObject({ value: { run: { state: 'archived' } } });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('gives every human request a plain-language ask and demotes the raw text to technicalDetail', async () => {
+    const { app, token, store } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive-ask');
+      parkRun(store, runRef, 'archive-ask');
+
+      const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token) });
+      const request = detail.json().value.humanRequests[0];
+      expect(request.ask).toMatch(/never got started/i);
+      // The ask names the run the operator recognizes, and no traceback reaches it.
+      expect(request.ask).toContain(detail.json().value.run.displayName);
+      expect(request.ask).not.toMatch(/ENOENT/);
+      expect(request.technicalDetail).toMatch(/ENOENT/);
+    } finally {
+      await app.close();
+    }
   });
 });

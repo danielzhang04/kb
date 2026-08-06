@@ -13,14 +13,15 @@
 import type { ApprovalButtons } from './assurance.ts';
 import { buttonsFor } from './assurance.ts';
 import { workOrderOf } from '../auth/workOrder.ts';
-import type { ParsedCard } from '../planeA/cards.ts';
+import type { CardProjection, ParsedCard } from '../planeA/cards.ts';
 import type { PlaneAIndex } from '../planeA/indexer.ts';
 
 export type HumanInboxCategory = 'decision' | 'gate' | 'input' | 'intervention' | 'stranded';
 export type HumanInboxUrgency = 'critical' | 'high' | 'normal' | 'low';
 
 export interface HumanInboxItem {
-  card: ParsedCard;
+  /** Carries the server-owned `displayName`/`shortRef` so the Inbox names the card, not its id. */
+  card: CardProjection;
   category: HumanInboxCategory;
   categoryLabel: 'Decision' | 'Gate' | 'Input' | 'Intervention' | 'Stranded';
   urgency: HumanInboxUrgency;
@@ -146,7 +147,7 @@ function formatAge(ms: number): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
-function classify(card: ParsedCard, now: number): HumanInboxItem | null {
+function classify(card: CardProjection, now: number): HumanInboxItem | null {
   const state = text(card.meta.state).toLowerCase();
   const action = text(card.meta.action);
   const context = safeWorkOrder(card);
@@ -316,6 +317,10 @@ function stopFileItem(): HumanInboxItem {
         state: '',
       },
       body: '',
+      // Synthetic: it is not a card, so it has no registry ordinal. `0` is outside the registry's
+      // 1-based range and reads as "no ordinal" rather than colliding with a real card's #1.
+      displayName: 'Fleet frozen — STOP file present',
+      shortRef: 0,
     },
     category: 'intervention',
     categoryLabel: 'Intervention',

@@ -38,8 +38,6 @@ describe('nav/config', () => {
     ]);
     expect(NAV_SECTIONS[1].items.map((d) => d.id)).toEqual([
       'workflows',
-      'pipeline',
-      'runCanvas',
       'agents',
       'tasks',
       'projects',
@@ -59,9 +57,14 @@ describe('nav/config', () => {
     }
   });
 
-  it('presents the pipeline destination as Runs without changing its stable route id', () => {
-    const runs = ALL.find((d) => d.id === 'pipeline');
-    expect(runs?.label).toBe('Runs');
+  it('carries no run destination at all — runs live inside Workflows', () => {
+    const ids = new Set<string>(ALL.map((d) => d.id));
+    expect(ids.has('pipeline')).toBe(false);
+    expect(ids.has('runCanvas')).toBe(false);
+    // The labels went with them: neither "Runs" nor "Run Canvas" is a place you can navigate to.
+    expect(ALL.map((d) => d.label)).not.toContain('Runs');
+    expect(ALL.map((d) => d.label)).not.toContain('Run Canvas');
+    expect(ALL.find((d) => d.id === 'workflows')?.label).toBe('Workflows');
   });
 
   it('presents approvals as the unified Inbox without changing its stable route id', () => {
@@ -81,10 +84,10 @@ describe('nav/config', () => {
 
   it('drops every superseded verb-IA destination', () => {
     const ids = new Set<string>(ALL.map((d) => d.id));
-    // D3.4 un-defers `pipeline` (the depends-on DAG canvas) into the entities group and D3.5 re-introduces
-    // `sentinel` as a real system destination (the layer panels) — both are now live destinations and are
-    // deliberately NOT in this dropped set any more. The rest of the superseded verb-IA set stays gone.
-    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry']) {
+    // D3.5 re-introduced `sentinel` as a real system destination (the layer panels), so it is
+    // deliberately NOT in this dropped set. The rest of the superseded verb-IA set stays gone, and
+    // `pipeline`/`runCanvas` joined it when runs collapsed into Workflows.
+    for (const dropped of ['board', 'editor', 'vibe', 'skills', 'registry', 'pipeline', 'runCanvas']) {
       expect(ids.has(dropped)).toBe(false);
     }
     // "timeline" and "browser" were renamed to entity destinations, not kept.
@@ -107,8 +110,6 @@ describe('nav/config', () => {
       'approvals',
       'activity',
       'workflows',
-      'pipeline',
-      'runCanvas',
       'agents',
       'tasks',
       'projects',

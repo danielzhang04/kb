@@ -10,7 +10,7 @@
  * Signature obeyed: hairline borders (shadows almost nowhere); mono tabular-nums
  * for every id/tier/owner/project/count; the 2px left-border accent is the ONE
  * selected marker (reused from nav/approvals — learned once); one terracotta
- * accent, never a decorative wash; 150–200ms ease-out only. Banned (glass /
+ * accent, never a decorative wash; the ONE --transition token. Banned (glass /
  * gradient / glow / rainbow badge soup) never appears — new state taxonomies
  * ride the shared status-dot + label, not new hues.
  * ============================================================================
@@ -45,16 +45,16 @@
 
 .v-tasks__group-title {
   margin: 0;
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
   color: var(--fg-dim);
 }
 
-/* A count, not a hue — mono tabular in a quiet pill. */
+/* A count, not a hue — tabular in a quiet pill. */
 .v-tasks__group-count {
-  font-size: var(--text-xs);
+  font-size: var(--type-section-size);
   color: var(--fg-faint);
   background: var(--bg-elevated);
   border-radius: var(--radius-sm);
@@ -63,75 +63,29 @@
   text-align: center;
 }
 
-.v-tasks__group-empty {
-  margin: 0;
-  padding: var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--fg-faint);
-  background: var(--bg-panel);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-}
-
-/* ---- Dense table ------------------------------------------------------- */
-.v-tasks__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-base);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.v-tasks__table thead th {
-  padding: var(--space-1) var(--space-2);
-  text-align: left;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 600;
-  color: var(--fg-faint);
-  border-bottom: 1px solid var(--border);
-}
-
+/* ---- Dense table — the shell, header style, row height and cell padding are the shared
+ * .mc-table / .mc-table--boxed geometry in app.css. Only the selection rail and the task-specific
+ * cells live here, so this table cannot drift from the Agents/Workflows/Home ones. ---- */
 .v-tasks__row {
   /* 2px transparent left rail keeps geometry stable; only selection paints it. */
   border-left: 2px solid transparent;
   cursor: pointer;
-  transition:
-    background 160ms ease-out,
-    border-color 160ms ease-out,
-    color 160ms ease-out;
-}
-
-.v-tasks__row td {
-  padding: var(--space-2) var(--space-2);
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-
-.v-tasks__row:last-child td {
-  border-bottom: none;
-}
-
-.v-tasks__row:hover {
-  background: var(--bg-elevated);
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition);
 }
 
 .v-tasks__row:focus-visible {
-  outline: 2px solid var(--accent-strong);
+  outline: 2px solid var(--mc-accent);
   outline-offset: -2px;
 }
 
 /* Selected = the single left-border-accent language, reused. */
 .v-tasks__row--selected {
   background: var(--accent-quiet);
-  border-left-color: var(--accent-strong);
+  border-left-color: var(--mc-accent);
 }
 
 .v-tasks__cell-id {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-primary);
   white-space: nowrap;
 }
@@ -142,7 +96,7 @@
 
 .v-tasks__cell-owner,
 .v-tasks__cell-project {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
   white-space: nowrap;
 }
@@ -156,37 +110,36 @@
 .v-tasks__placeholder {
   position: sticky;
   top: var(--space-4);
-  background: var(--bg-panel);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
   min-width: 0;
 }
 
 .v-tasks__detail {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   padding: var(--space-4);
   max-height: calc(100vh - var(--topbar-h) - var(--space-12));
   overflow-y: auto;
 }
 
+/* No card selected is not an event: a quiet line, not a 48px dashed box. */
 .v-tasks__placeholder {
-  border: 1px dashed var(--border);
-  padding: var(--space-12) var(--space-4);
-  text-align: center;
-  font-size: var(--text-sm);
-  color: var(--fg-dim);
+  padding: var(--space-3) 0;
+  font-size: var(--type-meta-size);
+  color: var(--fg-faint);
 }
 
 .v-tasks__detail-id {
   margin: 0 0 var(--space-1);
-  font-size: var(--text-lg);
-  font-weight: 600;
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
   line-height: 1.2;
   word-break: break-word;
 }
 
 .v-tasks__detail-caption {
   margin: 0 0 var(--space-4);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-dim);
 }
 
@@ -211,21 +164,21 @@
 }
 
 .v-tasks__fm-key {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-faint);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .v-tasks__fm-val {
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   color: var(--fg-primary);
   word-break: break-word;
 }
 
 /* ---- Rendered card body (inert) --------------------------------------- */
 .v-tasks__body {
-  font-size: var(--text-base);
+  font-size: var(--type-body-size);
   line-height: 1.6;
   color: var(--fg-primary);
   word-break: break-word;
@@ -235,8 +188,8 @@
 .v-tasks__body h2,
 .v-tasks__body h3,
 .v-tasks__body h4 {
-  font-size: var(--text-md);
-  font-weight: 600;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
   margin: var(--space-4) 0 var(--space-2);
   color: var(--fg-primary);
 }
@@ -262,7 +215,7 @@
 
 .v-tasks__body code {
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  font-size: var(--type-meta-size);
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -283,7 +236,7 @@
   background: none;
   border: none;
   padding: 0;
-  font-size: var(--text-base);
+  font-size: var(--type-body-size);
   line-height: 1.6;
 }
 
@@ -295,11 +248,46 @@
 }
 
 .v-tasks__body a {
-  color: var(--accent-strong);
+  color: var(--mc-accent);
 }
 
-.v-tasks__body-empty {
+/* ---- Card gate (spec §5) ----
+ * "This needs you", stated on the card's own surface, directly above the frontmatter and work order it
+ * is about. The Inbox row that linked here deliberately shows none of that context, so this block is
+ * where a card's decision is actually made. Verify/respond controls reuse the inbox classes so the two
+ * surfaces read as one language. */
+.v-tasks__gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--mc-accent);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.v-tasks__gate-head {
   margin: 0;
-  font-size: var(--text-sm);
-  color: var(--fg-faint);
+  color: var(--fg-primary);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-title-weight);
+}
+
+.v-tasks__gate-reason,
+.v-tasks__gate-next {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+  line-height: 1.5;
+}
+
+.v-tasks__gate-next strong {
+  margin-right: var(--space-2);
+  color: var(--fg-primary);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
 }

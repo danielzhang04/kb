@@ -54,11 +54,36 @@ export interface CreatedSession {
   createdAt: number;
 }
 
-/** One row of `list(owner)` — a live session the operator may reattach to. */
+/**
+ * WHAT a session was opened as. `shell` is the login shell (no spawn parameters on the upgrade); the
+ * other three mirror the route's `PtySpawnMode`. Recorded at create time and never mutated — a PTY's
+ * program is fixed at spawn, so this is a fact about the session, not a setting.
+ */
+export type SessionKind = 'shell' | 'claude' | 'agent' | 'workflow';
+
+/**
+ * The entity a session was primed FOR, as the route resolved it from the (already allowlisted) spawn
+ * parameters. Purely descriptive: it is a label on a session, never an authorisation input — attach,
+ * write, close and list all still gate on `owner` alone.
+ */
+export interface SessionTarget {
+  kind: SessionKind;
+  /** The agent id or workflow ref, or null for a shell / plain claude. */
+  targetRef?: string | null;
+}
+
+/** The kind a session gets when `create` is called without a target — today's behaviour, named. */
+export const DEFAULT_SESSION_TARGET: SessionTarget = { kind: 'shell', targetRef: null };
+
+/** One row of `list(owner)` — a live session the operator may reattach to. `kind`/`targetRef` let a
+ *  surface find the session ALREADY bound to the entity it is showing, instead of opening a second one
+ *  beside it (an embedded console must reattach on remount, never respawn). */
 export interface SessionSummary {
   sessionId: string;
   createdAt: number;
   attached: boolean;
+  kind: SessionKind;
+  targetRef: string | null;
 }
 
 /** Typed attach/canAttach outcome. `not-found` = unknown id; `exited` = shell already gone; `not-owner`
@@ -75,12 +100,12 @@ export type CloseAndWaitResult =
   | { ok: false; reason: 'not-found' | 'not-owner' | 'timeout' | 'unconfirmed' };
 
 /**
- * A server-side, NON-EXCLUSIVE output tap on one session (added for run-roster work-order delivery).
+ * A server-side, NON-EXCLUSIVE output tap on one manual Terminal session.
  *
  * Why this is not `attach`: a sink is single and evictable by design — the browser terminal owns it, and
- * a second attach displaces the first. A server component that must READ a session's output for the whole
- * run (the roster's completion-marker watcher) can therefore never use a sink without fighting the UI for
- * it. An observer is additive: it receives every chunk the ring receives, it is never evicted by an
+ * a second attach displaces the first. A diagnostic that must READ a session's output can therefore never
+ * use a sink without fighting the UI for it. An observer is additive: it receives every chunk the ring
+ * receives, it is never evicted by an
  * attach, and it can never send input (that stays `write`, which is owner-checked).
  */
 export type SessionObserver = (chunk: string) => void;
@@ -88,15 +113,16 @@ export type SessionObserver = (chunk: string) => void;
 /**
  * Paired "this session is gone" notification for an observer — fired when the shell exits OR the session
  * is explicitly closed, exactly once, before the observer set is dropped. Without it a server component
- * awaiting output (the roster waiting for a completion marker) would wait forever on a dead shell.
+ * awaiting output would wait forever on a dead shell.
  */
 export type SessionObserverGone = () => void;
 
 /** The owner-bound registry surface. A single instance is shared by the WS route, the REST endpoints,
  *  and the shutdown drain. */
 export interface PersistentSessionRegistry {
-  /** Spawn a shell via `host.open`, start buffering immediately, and track it under `owner`. */
-  create(owner: string, host: PtyHost, openRequest: HostOpenRequest): CreatedSession;
+  /** Spawn a shell via `host.open`, start buffering immediately, and track it under `owner`. `target`
+   *  records WHAT was spawned (see {@link SessionTarget}); omitted it defaults to the login shell. */
+  create(owner: string, host: PtyHost, openRequest: HostOpenRequest, target?: SessionTarget): CreatedSession;
   /** Pure ownership/existence check (no side effects) — lets the route audit the correct result BEFORE
    *  attaching, preserving the fail-closed "audit before any byte flows" discipline. */
   canAttach(owner: string, sessionId: string): AttachResult;
@@ -109,9 +135,8 @@ export interface PersistentSessionRegistry {
   /**
    * Install a non-evicting, owner-checked output tap; returns its unsubscribe. Unknown/foreign/dead
    * sessions yield a no-op unsubscribe rather than a throw, so a caller racing a shell exit is safe.
-   * Observers never receive replay of the existing ring — a watcher installed at create time (the
-   * roster's use) has seen every byte anyway, and replaying scrollback into a marker scanner would
-   * re-fire completions.
+   * Observers never receive replay of the existing ring: a watcher installed at create time has seen
+   * every byte already, and replaying scrollback would duplicate observations.
    */
   observe(owner: string, sessionId: string, observer: SessionObserver, onGone?: SessionObserverGone): () => void;
   /** Kill the shell (host.stop) and forget it. */
@@ -146,6 +171,9 @@ interface SessionEntry {
   sessionId: string;
   owner: string;
   createdAt: number;
+  /** Descriptive only — what this session was opened as. Stamped at create, never mutated. */
+  kind: SessionKind;
+  targetRef: string | null;
   host: PtyHost;
   handle: { write(d: string): void; resize(c: number, r: number): void };
   chunks: string[];
@@ -205,12 +233,14 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
   };
 
   return {
-    create(owner, host, openRequest) {
+    create(owner, host, openRequest, target = DEFAULT_SESSION_TARGET) {
       const session = host.open(openRequest);
       const entry: SessionEntry = {
         sessionId: session.sessionId,
         owner,
         createdAt: now(),
+        kind: target.kind,
+        targetRef: target.targetRef ?? null,
         host,
         handle: session.handle,
         chunks: [],
@@ -398,7 +428,13 @@ export function createPersistentSessionRegistry(deps: RegistryDeps = {}): Persis
       const out: SessionSummary[] = [];
       for (const entry of sessions.values()) {
         if (entry.owner !== owner || entry.disposed || entry.closing) continue;
-        out.push({ sessionId: entry.sessionId, createdAt: entry.createdAt, attached: entry.sink !== null });
+        out.push({
+          sessionId: entry.sessionId,
+          createdAt: entry.createdAt,
+          attached: entry.sink !== null,
+          kind: entry.kind,
+          targetRef: entry.targetRef,
+        });
       }
       return out;
     },

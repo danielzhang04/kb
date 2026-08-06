@@ -19,7 +19,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { auditFn, type SurfaceContext } from '../http/context.ts';
+import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { requireSession, verifiedSession, writeRateLimitHook } from '../http/middleware.ts';
 import { originPlugin } from '../security/origin.ts';
 import { loadWorkflowCompileEnvironment, workflowProfileIds } from '../control/environment.ts';
@@ -38,10 +38,20 @@ import type { PendingDefinitionAmendment } from './amendmentStore.ts';
 import { DEFAULT_WORK_BRANCH, DurableRouteError, routeDurable } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import {
+  buildRoster,
   executionAssignmentRole,
   readDeclaredAgentDetails,
+  type AgentRosterEntry,
   type DeclaredAgentDetail,
 } from '../agents/roster.ts';
+import { indexRepo } from '../planeA/indexer.ts';
+import { loadOverride, loadPolicy } from '../routing/policy.ts';
+import {
+  renderWorkflowPriming,
+  resolveWorkflowDefaults,
+  type ResolvedAssignment,
+  type WorkflowDefaults,
+} from './defaults.ts';
 
 interface WorkflowStagePreview {
   id: string;
@@ -54,6 +64,12 @@ interface WorkflowStagePreview {
   dependsOn: string[];
   /** Authored declaration, not effective routing. Null keeps legacy default routing. */
   declaredAssignment: WorkflowAssignmentPreview | null;
+  /**
+   * Who WILL run this stage if nobody assigns anyone — the server-resolved default (see
+   * `defaults.ts`). Kept ALONGSIDE `declaredAssignment`, never merged into it, so the UI can render a
+   * declared assignment and an inherited default differently. Null = nothing resolvable.
+   */
+  resolvedAssignment: ResolvedAssignment | null;
   review: { subjectStageId: string; maxCreatorReworks: number } | null;
   completionGate: { id: string; kind: 'approval'; requiresReview: 'pass' } | null;
 }
@@ -64,7 +80,12 @@ export interface WorkflowAssignmentPreview {
   profileId: string;
 }
 
-export interface WorkflowDefEntry {
+/**
+ * A scanned definition, before the DTO builder attaches its display identity. `scanWorkflowDefs` is a
+ * pure filesystem projection with no naming registry; {@link entryWithCompileStatus} is the one place
+ * that turns a record into the wire {@link WorkflowDefEntry}.
+ */
+export interface WorkflowDefRecord {
   /** URL id: the definition's own id when it parses, else a stable path-derived fallback. */
   ref: string;
   project: string;
@@ -79,6 +100,12 @@ export interface WorkflowDefEntry {
   /** Declaration/project diagnostics for authored governance. They never alter compiled execution. */
   governanceProblems: string[];
   manager: WorkflowAssignmentPreview | null;
+  /**
+   * Who WILL manage this workflow if nobody assigns anyone. Kept ALONGSIDE the authored `manager` so
+   * the UI can tell an explicit assignment apart from an inherited default. Null for an invalid
+   * definition and for a definition whose governance chain and project roster name nobody.
+   */
+  resolvedManager: ResolvedAssignment | null;
   stageCount: number;
   parameters: string[];
   riskTier: 'T1' | 'T2' | 'T3' | null;
@@ -92,6 +119,16 @@ export interface WorkflowDefEntry {
   /** Server-owned durable amendment state. It stays blocking until active canonical bytes equal its proposal. */
   pendingAmendment?: PendingDefinitionAmendment | null;
   pendingAmendmentError?: string | null;
+}
+
+/**
+ * The wire shape of one definition. The workflow's TITLE is its identity — `path` and `sourceHash`
+ * are technical detail — so the display fields are derived from `title` (the registry falls back to a
+ * truncated ref for a definition too broken to parse a title out of).
+ */
+export interface WorkflowDefEntry extends WorkflowDefRecord {
+  displayName: string;
+  shortRef: number;
 }
 
 const ORGS_DIR = 'orgs';
@@ -117,6 +154,7 @@ function invalidEntry(project: string, basename: string, path: string, detail: s
       governedBy: null,
       governanceProblems: [],
       manager: null,
+      resolvedManager: null,
       stageCount: 0,
       parameters: [],
       riskTier: null,
@@ -135,12 +173,60 @@ function highestTier(def: WorkflowDef): 'T1' | 'T2' | 'T3' {
 }
 
 export interface ScannedDef {
-  entry: WorkflowDefEntry;
+  entry: WorkflowDefRecord;
   def: WorkflowDef | null;
 }
 
-/** Scan `orgs/<project>/workflows/*.md`, parsing each definition and recording its validation status. */
-export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
+/**
+ * The declared-agent roster is a READ PROJECTION assembled exactly as `/api/agents` assembles it
+ * (`indexRepo` + `buildRoster`), which costs ~85ms on this repo — enough that paying it on every scan
+ * would multiply through the definition routes, each of which scans at least once. It is cached per
+ * repoRoot for a short window so a burst of requests pays for one build.
+ *
+ * The staleness this admits is bounded and harmless: the roster only feeds DEFAULT assignments, which
+ * are a display/priming projection, never an authorization decision. Compile, launch, amendment CAS, and
+ * governance validation all still read canonical bytes on every call and are untouched by this cache.
+ */
+const ROSTER_CACHE_TTL_MS = 2_000;
+/** Bounded so a long-lived process that scans many roots (tests, multi-checkout tooling) cannot grow the
+ *  map without limit. The daemon itself only ever serves one root. */
+const ROSTER_CACHE_MAX_ROOTS = 16;
+const rosterCache = new Map<string, { at: number; roster: readonly AgentRosterEntry[] }>();
+
+/** Drop the cached roster (all roots, or one). For tests that mutate a fixture roster between scans. */
+export function resetWorkflowRosterCache(repoRoot?: string): void {
+  if (repoRoot === undefined) rosterCache.clear();
+  else rosterCache.delete(repoRoot);
+}
+
+function cachedRoster(repoRoot: string): readonly AgentRosterEntry[] {
+  const hit = rosterCache.get(repoRoot);
+  const now = Date.now();
+  if (hit && now - hit.at < ROSTER_CACHE_TTL_MS) return hit.roster;
+  const roster = buildRoster(indexRepo(repoRoot), repoRoot, loadPolicy(repoRoot), loadOverride(repoRoot));
+  if (rosterCache.size >= ROSTER_CACHE_MAX_ROOTS) {
+    const oldest = rosterCache.keys().next();
+    if (!oldest.done) rosterCache.delete(oldest.value);
+  }
+  rosterCache.set(repoRoot, { at: now, roster });
+  return roster;
+}
+
+export interface ScanWorkflowOptions {
+  /**
+   * The declared-agent roster used to resolve DEFAULT assignments. Omitted in production: the scan then
+   * builds it itself, exactly the way `/api/agents` does, ONCE per scan and only if at least one
+   * definition actually parses. Injected by tests so no roster filesystem read is needed.
+   */
+  roster?: readonly AgentRosterEntry[];
+}
+
+/** Scan `orgs/<project>/workflows/*.md`, parsing each definition and recording its validation status.
+ *
+ *  This is also the ONE honest place default assignments are resolved: the resolution is a property of
+ *  the definition plus the roster, not of the compile status, and doing it here means the roster is
+ *  computed once for the whole scan rather than once per definition. */
+export function scanWorkflowDefs(repoRoot: string, options: ScanWorkflowOptions = {}): ScannedDef[] {
   const orgsRoot = join(repoRoot, ORGS_DIR);
   if (!existsSync(orgsRoot)) return [];
   let rootReal: string;
@@ -154,6 +240,13 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
   if (!isWithin(rootReal, orgsReal)) return [];
   const knownProfiles = workflowProfileIds();
   const declarations = readDeclaredAgentDetails(repoRoot);
+  // LAZY and memoized: a scan that parses no valid definition never pays for a roster build, and a scan
+  // that parses twenty pays for exactly one. Assembled the same way `/api/agents` assembles it.
+  let scanRoster: readonly AgentRosterEntry[] | undefined = options.roster;
+  const roster = (): readonly AgentRosterEntry[] => {
+    if (scanRoster === undefined) scanRoster = cachedRoster(repoRoot);
+    return scanRoster;
+  };
   const scanned: ScannedDef[] = [];
   for (const project of readdirSync(orgsRoot, { withFileTypes: true })) {
     if (!project.isDirectory()) continue;
@@ -214,6 +307,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
           parsed.value,
           governanceOf(parsed.value),
         );
+        const defaults = resolveWorkflowDefaults(parsed.value, roster());
         scanned.push({
           def: parsed.value,
           entry: {
@@ -227,6 +321,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
             governedBy: parsed.value.governedBy ?? null,
             governanceProblems,
             manager: parsed.value.manager ? { ...parsed.value.manager } : null,
+            resolvedManager: defaults.manager,
             stageCount: parsed.value.stages.length,
             parameters: [...(parsed.value.parameters ?? [])],
             riskTier: highestTier(parsed.value),
@@ -236,6 +331,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
               dependsOn: [...stage.dependsOn],
               declaredAssignment: stage.agentId && stage.profileId
                 ? { agentId: stage.agentId, profileId: stage.profileId } : null,
+              resolvedAssignment: defaults.stages[stage.id] ?? null,
               review: stage.review ? { subjectStageId: stage.review.subjectStageId, maxCreatorReworks: stage.review.maxCreatorReworks } : null,
               completionGate: stage.completionGate ? { id: stage.completionGate.id, kind: stage.completionGate.kind, requiresReview: stage.completionGate.requiresReview } : null,
             })),
@@ -272,6 +368,7 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
         governedBy: null,
         governanceProblems: [],
         manager: null,
+        resolvedManager: null,
         stageCount: 0,
         parameters: [],
         riskTier: null,
@@ -289,6 +386,69 @@ export function scanWorkflowDefs(repoRoot: string): ScannedDef[] {
 
 function findScannedDef(repoRoot: string, ref: string): ScannedDef | undefined {
   return scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === ref);
+}
+
+/**
+ * Resolve an operator-supplied workflow REF to the absolute path of its definition file, or null.
+ *
+ * This is the EXACT-MATCH ALLOWLIST that any caller turning a workflow ref into a path or an argv MUST
+ * go through — the workflow twin of `declaredAgentFilePath`, and deliberately built the same way:
+ *
+ *   1. The ref must be a non-empty string. Nothing is joined onto a directory before the check.
+ *   2. It must equal the `entry.ref` of a scanned entry that is `valid` with a non-null `def`. The scan
+ *      itself already proved that file is a non-symlink, UTF-8, project-matching, uniquely-identified
+ *      regular file under a real `orgs/<project>/workflows` directory inside the real repo root; a
+ *      duplicate id has already been demoted to an invalid, path-qualified entry, so a duplicated ref
+ *      can never resolve here either.
+ *   3. ONLY THEN is the absolute path rebuilt — from the SCAN RESULT'S OWN `entry.path`, never from the
+ *      caller's string — and re-asserted to live inside the real repo root before it is returned.
+ *
+ * An unknown, invalid, duplicated, or traversing ref therefore yields null and can never become a spawn
+ * argument. It lives here rather than in `defs.ts` because the scan lives here and `defs.ts` is the pure
+ * parser (importing the scan there would be a cycle).
+ */
+export function declaredWorkflowDefPath(repoRoot: string, ref: unknown): string | null {
+  if (typeof ref !== 'string' || ref === '') return null;
+  const scanned = scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === ref);
+  if (!scanned || !scanned.def || !scanned.entry.valid) return null;
+  try {
+    const rootReal = realpathSync(resolve(repoRoot));
+    // `entry.path` is server-derived (`orgs/<project>/workflows/<name>.md` built from the directory walk),
+    // so this rebuilds a path the scan already proved, rather than trusting anything the caller sent.
+    const fileReal = realpathSync(resolve(rootReal, scanned.entry.path));
+    if (!isWithin(rootReal, fileReal)) return null;
+    return fileReal;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The governing-agent priming TEXT for one workflow ref, or null when the ref is not on the allowlist.
+ *
+ * Single source of truth for what a `spawn=workflow` terminal is told: the definition's own title, ref,
+ * repo-relative path, declared parameters, and the DEFAULT CAST resolved by `resolveWorkflowDefaults`.
+ * The rendering is pure (`defaults.ts`); this only supplies it a scanned definition and the roster.
+ */
+export function workflowPrimingText(
+  repoRoot: string,
+  ref: unknown,
+  options: ScanWorkflowOptions = {},
+): { text: string; repoRelativePath: string; defaults: WorkflowDefaults } | null {
+  if (typeof ref !== 'string' || ref === '') return null;
+  const scanned = scanWorkflowDefs(repoRoot, options).find((candidate) => candidate.entry.ref === ref);
+  if (!scanned || !scanned.def || !scanned.entry.valid) return null;
+  // Read the cast back off the SCAN's own DTO rather than resolving a second time, so the priming file
+  // and the `/api/workflows` payload can never disagree about who runs what.
+  const defaults: WorkflowDefaults = {
+    manager: scanned.entry.resolvedManager,
+    stages: Object.fromEntries(scanned.entry.stages.map((stage) => [stage.id, stage.resolvedAssignment])),
+  };
+  return {
+    text: renderWorkflowPriming(scanned.def, defaults, scanned.entry.path),
+    repoRelativePath: scanned.entry.path,
+    defaults,
+  };
 }
 
 function subject(req: FastifyRequest): string | null {
@@ -389,7 +549,7 @@ function compiledPreview(repoRoot: string, def: WorkflowDef): { proposalId: stri
 }
 
 /** Preserve parser validity while exposing the compiler's exact semantic launch decision. */
-function pendingAmendmentFor(ctx: SurfaceContext, entry: WorkflowDefEntry): { pending: PendingDefinitionAmendment | null; error: string | null } {
+function pendingAmendmentFor(ctx: SurfaceContext, entry: WorkflowDefRecord): { pending: PendingDefinitionAmendment | null; error: string | null } {
   if (!entry.sourceHash) return { pending: null, error: null };
   const lookup = ctx.definitionAmendmentStore.lookup(entry.path, entry.sourceHash);
   if (!lookup.ok) return { pending: null, error: lookup.detail };
@@ -398,10 +558,13 @@ function pendingAmendmentFor(ctx: SurfaceContext, entry: WorkflowDefEntry): { pe
 
 function entryWithCompileStatus(scanned: ScannedDef, ctx: SurfaceContext): WorkflowDefEntry {
   const amendment = pendingAmendmentFor(ctx, scanned.entry);
-  if (!scanned.def) return { ...scanned.entry, pendingAmendment: amendment.pending, pendingAmendmentError: amendment.error };
+  // The DTO-build site: every definition leaves here with the display identity the roster renders.
+  const display = namingFor(ctx).displayFor('workflow', scanned.entry.ref, scanned.entry.title ?? undefined);
+  if (!scanned.def) return { ...scanned.entry, ...display, pendingAmendment: amendment.pending, pendingAmendmentError: amendment.error };
   const preview = compiledPreview(ctx.repoRoot, scanned.def);
   return {
     ...scanned.entry,
+    ...display,
     pendingAmendment: amendment.pending,
     pendingAmendmentError: amendment.error,
     launchable: !('error' in preview),

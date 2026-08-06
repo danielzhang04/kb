@@ -282,10 +282,49 @@ describe('createPersistentSessionRegistry — lifecycle', () => {
     expect(registry.list('op-a')).toHaveLength(2);
     expect(registry.list('op-b')).toHaveLength(1);
   });
+
+  /**
+   * A summary now carries WHAT the session is, so a surface showing one agent can find the shell already
+   * primed for that agent and reattach instead of spawning a second one every time it re-mounts.
+   * Descriptive only: it changes no gate — `owner` still decides everything.
+   */
+  it('a summary reports what the session was opened as, defaulting to the login shell', () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry({ now: () => 1000 });
+    const shell = registry.create('op', fh.host, OPEN_REQ);
+    const agent = registry.create('op', fh.host, OPEN_REQ, { kind: 'agent', targetRef: 'fyt-runner' });
+    const flow = registry.create('op', fh.host, OPEN_REQ, { kind: 'workflow', targetRef: 'video-run' });
+    const claude = registry.create('op', fh.host, OPEN_REQ, { kind: 'claude' });
+
+    const byId = new Map(registry.list('op').map((s) => [s.sessionId, s]));
+    // Omitting the target is exactly today's behaviour, now named rather than implied.
+    expect(byId.get(shell.sessionId)).toEqual({
+      sessionId: shell.sessionId,
+      createdAt: 1000,
+      attached: false,
+      kind: 'shell',
+      targetRef: null,
+    });
+    expect(byId.get(agent.sessionId)).toMatchObject({ kind: 'agent', targetRef: 'fyt-runner' });
+    expect(byId.get(flow.sessionId)).toMatchObject({ kind: 'workflow', targetRef: 'video-run' });
+    // A plain claude names no entity: an absent ref is normalised to null, never left undefined.
+    expect(byId.get(claude.sessionId)).toMatchObject({ kind: 'claude', targetRef: null });
+  });
+
+  it('the recorded target survives attach/detach — it is a fact about the session, not its socket', () => {
+    const fh = fakeHost();
+    const registry = createPersistentSessionRegistry();
+    const { sessionId } = registry.create('op', fh.host, OPEN_REQ, { kind: 'agent', targetRef: 'fyt-runner' });
+    const sink = recordingSink();
+    registry.attach('op', sessionId, sink);
+    expect(registry.list('op')[0]).toMatchObject({ attached: true, kind: 'agent', targetRef: 'fyt-runner' });
+    registry.detach(sessionId, sink);
+    expect(registry.list('op')[0]).toMatchObject({ attached: false, kind: 'agent', targetRef: 'fyt-runner' });
+  });
 });
 
 /**
- * `observe` — the non-exclusive server-side output tap the run roster's completion-marker watcher uses.
+ * `observe` — the non-exclusive server-side output tap for diagnostics on a live Terminal session.
  * It must coexist with the browser's single sink, survive an attach/evict, and never be able to write.
  */
 describe('server-side output observers', () => {

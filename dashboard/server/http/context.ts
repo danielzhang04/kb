@@ -6,6 +6,9 @@
  * back to its real default (shell git/py/claude); route tests inject recording fakes so no real
  * subprocess, git remote, or `queue/` tree is ever touched — the security chain itself is never faked.
  */
+import { join, resolve } from 'node:path';
+import { NamingRegistry, defaultNamingRegistry } from '../naming.ts';
+import { resolveDashboardStateRoot } from '../composer/store.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
@@ -32,9 +35,12 @@ import type {
 } from '../control/execution.ts';
 import type { RunControlTransactions } from '../control/runTransactions.ts';
 import type { ExecutionLatch } from '../control/activation.ts';
-import type { RosterSessionManager } from '../control/rosterSessions.ts';
+import type { PaidActionExecutor } from '../control/paidActionWiring.ts';
+import type { SpendGrant } from '../control/spendGrant.ts';
 import type { PtyHost } from '../pty/host.ts';
 import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
+import type { SessionRunStore } from '../pty/sessionRuns.ts';
+import type { TranscriptRecorder } from '../pty/transcripts.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import type { activateManagedRootCards } from '../write/workflowRun.ts';
 
@@ -58,7 +64,11 @@ export interface SurfaceContext {
    *  every write route. Re-resolving per request would mint a fresh random secret and break everything. */
   sessionConfig: SessionConfig;
   allowedOrigins: AllowedOrigins;
+  /** The MUTATION budget (POST/PUT/PATCH/DELETE/...) on the governed scope. */
   rateGuard: LockoutGuard;
+  /** The independent GET/HEAD budget on the governed scope. A separate bucket by design: UI polling
+   *  must never be able to spend the write budget or trip its lockout. See `middleware.ts`. */
+  readRateGuard: LockoutGuard;
   /** Lazy — `auth/webauthn.ts#resolveWebAuthnConfig` THROWS when `DASHBOARD_RP_ORIGIN` is unset, so it
    *  is only ever called inside a handler (which the origin guard already blocked when the allowlist is
    *  empty), never at registration time. */
@@ -99,12 +109,24 @@ export interface SurfaceContext {
    * the current posture without a second lookup path. Absent only when a test injects the executor.
    */
   executionLatch?: ExecutionLatch;
-  /** The live run-roster manager while unlocked; the roster-state endpoint reads it. */
-  rosterSessions?: RosterSessionManager;
-  /** The daemon's single node-pty host and persistent session registry, shared with `/api/pty` so the
-   *  canvas attaches to the very sessions the roster spawned. */
+  /** FYT paid-action executor (server-owned spend). Bound ONLY behind the activation gate (with the
+   *  executor fields above), so it is `undefined` while the daemon is locked/inert and the paid-action
+   *  route fails closed. Never supplied by the browser. */
+  paidActionService?: PaidActionExecutor;
+  /** The durable spend-grant resolver the paid-action route validates a worker's bearer token against.
+   *  Bound with {@link paidActionService}; the raw token never leaves the worker, only its hash is stored. */
+  spendGrantStore?: { resolve(token: string, now?: Date): SpendGrant | null };
+  /** The daemon's node-pty host and persistent session registry, owned by the manual Terminal view. */
   ptyHost?: PtyHost;
   ptySessions?: PersistentSessionRegistry;
+  /**
+   * The durable record of entity-primed terminal sessions, and their transcripts. Deliberately NOT
+   * control-plane objects: a session run has no proposal hash, no executor, and no closed-tab exit (see
+   * `server/pty/sessionRuns.ts`). Both are inert to construct — no file is touched until a session is
+   * actually recorded.
+   */
+  ptySessionRuns?: SessionRunStore;
+  ptyTranscripts?: TranscriptRecorder;
   /** Optional server-owned automatic executor; never supplied by the browser. */
   runAutomatic?: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   /** Optional executor-owned cancellation boundary for Manager and Worker processes. */
@@ -126,9 +148,35 @@ export interface SurfaceContext {
   /** Per-context TTL cache backing the liveness probe, created once per process in `makeSurfaceContext`
    *  (so a slow schtasks is queried at most once per TTL across responds) and fresh per test context. */
   livenessCache?: LivenessCache;
+  /** Display-name/short-ref registry used when a route builds an entity DTO. Left undefined in
+   *  production and in tests: {@link namingFor} then derives one from this context's own `stateRoot`,
+   *  so a test whose `stateRoot` is a temp dir automatically gets an isolated ordinal file. */
+  naming?: NamingRegistry;
 }
 
 /** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */
 export function auditFn(ctx: SurfaceContext): AppendAuditFn {
   return ctx.appendAudit ?? realAppendAudit;
+}
+
+/**
+ * One {@link NamingRegistry} per state root. Ordinals are append-only and each save rewrites the WHOLE
+ * document from that instance's own in-memory snapshot, so two instances over one file would hand out
+ * "the next ordinal" from stale snapshots and silently clobber each other's assignments. Every caller
+ * on a given state root therefore shares one instance.
+ */
+const registryByStateRoot = new Map<string, NamingRegistry>();
+
+/** The display-name registry a DTO builder should use for this context. */
+export function namingFor(ctx: SurfaceContext): NamingRegistry {
+  if (ctx.naming) return ctx.naming;
+  // The ungoverned Plane-A reads (`/api/index`, `/api/dag`, `/api/agents`) hold no SurfaceContext and
+  // use `defaultNamingRegistry()` over the SAME shared file. On the production state root this must
+  // resolve to that very instance, never a second one.
+  if (resolve(ctx.stateRoot) === resolve(resolveDashboardStateRoot())) return defaultNamingRegistry();
+  const existing = registryByStateRoot.get(ctx.stateRoot);
+  if (existing) return existing;
+  const created = new NamingRegistry(join(ctx.stateRoot, 'naming.json'));
+  registryByStateRoot.set(ctx.stateRoot, created);
+  return created;
 }

@@ -152,9 +152,9 @@ export interface WorkflowStageDef {
   humanGates?: WorkflowHumanGateDef[];
   /**
    * The load-bearing files this stage must actually leave on disk. These are VERIFIED server-side before
-   * a completion is accepted (`rosterSessions.ts#deliver`), which is the only thing standing between "the
-   * agent printed DONE" and "the stage succeeded": with no declared artifacts the verification loop
-   * iterates an empty list and a bare marker with nothing on disk is accepted, so the run advances to the
+   * a completion is accepted (`execution.ts#validateWorkerResultEnvelope`), which is the only thing standing
+   * between a successful worker result and a stage succeeding: with no declared artifacts the verification
+   * loop iterates an empty list and a result with nothing on disk is accepted, so the run advances to the
    * next gate asking a human to approve an artifact that does not exist.
    *
    * Paths are repo-relative, may carry `<parameter>` placeholders (substituted by

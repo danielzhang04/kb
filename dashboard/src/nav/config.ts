@@ -5,24 +5,31 @@
  * layout/CSS change (a destination with a dedicated view also gets one `case` in App's body switch;
  * everything else falls through to the shared U3 placeholder).
  *
- * This SUPERSEDES the design brief §D verb-grouping (Operate/Build/Knowledge/System). Daniel locked an
- * entity-first IA: the groups are UNLABELLED — hairline dividers only (Linear pattern), no uppercase
- * group headers. The brief's sidebar BEHAVIOUR (48px rail, hover tooltips, expand to ~220px) and every
- * §E/§F visual rule remain authoritative.
+ * The design brief §D was rewritten to match this file (2026-08-05 docs sync) — brief and config now
+ * agree: an entity-first IA where the groups are UNLABELLED — hairline dividers only (Linear pattern),
+ * no uppercase group headers. The brief's sidebar BEHAVIOUR (48px rail, hover tooltips, expand to
+ * ~220px) and every §E/§F visual rule remain authoritative.
  *
  *   ── (divider, below the [+ New] menu) ──
  *   Home · Approvals(n) · Activity · Atlas(live — Atlas V1) · Terminal(live — D3.2)
  *   ── (divider) ──
- *   Workflows · Runs · Agents · Tasks · Projects · Files
+ *   Workflows · Agents · Tasks · Projects · Files
  *   ── (divider) ──
- *   Connectors · Ledgers
- *   ── pinned floor ──  Session · STOP  (a shell region in App.tsx, not a nav destination)
+ *   Connectors · Ledgers · Sentinel
+ *
+ * The sidebar ENDS there. Session state is the top-bar lock chip, and the emergency-stop controls live
+ * on the Sentinel view next to the fleet-health readout they act on — neither is a pinned shell region.
  *
  * Live day-one views: Home, Approvals, Activity, Workflows, Files, Connectors. Agents/Tasks/Projects/
  * Ledgers are reachable nav items that land on a U3 placeholder (the nav skeleton is real; the view
  * lands next wave). Terminal is LIVE as of D3.2 (the PTY pane); Atlas is LIVE as of Atlas V1 (the voice
  * worker mirror — big orb + live transcript + activity history), amending the locked entity-first IA
  * per Daniel's 2026-07-20 call (the old greyed "soon" stub is promoted, not moved).
+ *
+ * The former `pipeline` ("Runs") and `runCanvas` ("Run Canvas") destinations are GONE: a run is an
+ * execution of a workflow, not a sibling entity of one, so runs live inside `workflows` as a deep
+ * target (`{ view: 'workflows', focus: { kind: 'run' } }` — see `nav/stack.ts#focusTarget`). There is
+ * deliberately no redirect stub for either id.
  */
 
 /** A destination's build state. `live` is reachable now; `soon`/`future` render greyed + disabled. */
@@ -36,8 +43,6 @@ export type DestinationId =
   | 'atlas'
   | 'terminal'
   | 'workflows'
-  | 'pipeline'
-  | 'runCanvas'
   | 'agents'
   | 'tasks'
   | 'projects'
@@ -85,12 +90,9 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: 'entities',
     items: [
+      // Definitions AND their executions. Runs are reached by drilling into the workflow that produced
+      // them (or the "Ad-hoc" group for runs no definition owns) — never from a nav entry of their own.
       { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
-      { id: 'pipeline', label: 'Runs', icon: '⋔', status: 'live' },
-      // FYT gated-pipeline Task 5 — the live roster canvas for one selected run (mini-terminal tiles on
-      // artifact-flow lanes). Sits right after Runs: it is a monitoring/engagement view OVER a run, not
-      // a distinct entity type of its own.
-      { id: 'runCanvas', label: 'Run Canvas', icon: '⊞', status: 'live' },
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
       { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },
@@ -111,10 +113,3 @@ export const NAV_SECTIONS: NavSection[] = [
 
 /** The default landing destination (Home). */
 export const DEFAULT_DESTINATION: DestinationId = 'home';
-
-/** The [+ New ▾] menu entries (C5 — idea-first, Composer live). The FIRST entry is a freeform "Idea…" —
- *  the menu's shape says "bring an idea, iterate", not "pick an entity type". `idea` opens the Composer
- *  convergence surface in idea mode; `workflow`/`skill`/`project` open the SAME surface pre-seeded to that
- *  type (secondary entry points into the one flow); `task` keeps its day-one route to the governed launch
- *  surface (Home). `agent` opens the first-class declaration form. Outcome hints state what each choice
- *  does without implying that registered artifacts execute automatically. */

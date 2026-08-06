@@ -60,7 +60,7 @@ export function FlightRecorder({ cardIds }: { cardIds?: string[] } = {}): React.
       </div>
 
       {ids.length === 0 ? (
-        <p className="v-panel__empty">No committed traces recorded yet.</p>
+        <p className="mc-empty">No committed traces recorded yet.</p>
       ) : (
         <table className="mc-table">
           <thead>

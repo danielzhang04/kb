@@ -36,6 +36,26 @@ export interface NavTarget {
   section?: string;
 }
 
+/**
+ * The ONE destination that owns each focus kind.
+ *
+ * A run used to have two homes of its own (`pipeline` and `runCanvas`). It has none now: a run is an
+ * execution OF a workflow, so it is a deep target inside `workflows` — the same destination that lists
+ * the definition it came from. Everything that links to a run goes through {@link focusTarget}, so the
+ * retarget is one table, not a search-and-replace across every caller.
+ */
+export const DESTINATION_BY_FOCUS: Record<Focus['kind'], DestinationId> = {
+  run: 'workflows',
+  workflow: 'workflows',
+  agent: 'agents',
+  card: 'tasks',
+};
+
+/** The nav target that opens an entity, in whichever destination owns its kind. */
+export function focusTarget(focus: Focus, section?: string): NavTarget {
+  return { view: DESTINATION_BY_FOCUS[focus.kind], focus, ...(section === undefined ? {} : { section }) };
+}
+
 export type NavEntry = NavTarget;
 
 /** Depth cap. Drilling deeper drops from the BOTTOM so the operator never loses their current context. */
