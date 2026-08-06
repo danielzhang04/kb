@@ -11,7 +11,7 @@ import {
   QUEUE_BRIDGE_SELECT_SCRIPT,
   type OwnedCard,
 } from './queueBridge.ts';
-import type { PyRunResult } from '../write/launch.ts';
+import { defaultPyRunner, type PyRunResult } from '../write/launch.ts';
 import type { PreambleRunResult } from '../write/preambleGate.ts';
 
 const SUBJECT = 'dashboard-engine';
@@ -162,6 +162,29 @@ describe('createQueueBridge.tick', () => {
     const res = await bridge.tick();
     expect(res).toEqual({ ran: true, blocked: false, discovered: 1, dispatched: 1 });
   });
+
+  it('isolates a thrown dispatcher and continues the tick with later cards', async () => {
+    const py = pyReturning([
+      { id: 'bad', path: 'bad', state: 'inbox' },
+      { id: 'good', path: 'good', state: 'inbox' },
+    ]);
+    const seen: string[] = [];
+    const onError = vi.fn();
+    const bridge = createQueueBridge({
+      repoRoot: '/repo',
+      runPreamble: okPreamble,
+      runPy: py.runPy,
+      onError,
+      dispatch: async (card) => {
+        seen.push(card.id);
+        if (card.id === 'bad') throw new Error('hostile dispatcher');
+      },
+    });
+
+    await expect(bridge.tick()).resolves.toEqual({ ran: true, blocked: false, discovered: 2, dispatched: 2 });
+    expect(seen).toEqual(['bad', 'good']);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'hostile dispatcher' }));
+  });
 });
 
 // ===================================================================================================
@@ -174,6 +197,8 @@ import {
   type ParsedCard,
 } from './queueBridge.ts';
 import type { SurfaceContext } from '../http/context.ts';
+import { MAX_DEFINITION_BYTES } from '../workflows/defs.ts';
+import { loadRuntimeSkillRegistry } from './environment.ts';
 
 const KNOWN = new Set(['research']);
 
@@ -198,6 +223,46 @@ function baseCard(bodyExtra = ''): ParsedCard {
       bodyExtra,
     ].join('\n'),
   };
+}
+
+const MULTI_STAGE_DEF = [
+  '---',
+  'id: multi-run',
+  'project: kb-ops',
+  'title: Multi-stage bridge run',
+  'profile: research',
+  'governedBy: bridge-manager',
+  'parameters: [channel]',
+  'stages:',
+  '  - id: research',
+  '    title: Research',
+  '    action: research:web-brief',
+  '    target: orgs/kb-ops/output/<channel>/research',
+  '    workOrder: Research <channel>.',
+  '    governedBy: researcher',
+  '    workflowProfile: research',
+  '  - id: draft',
+  '    title: Draft',
+  '    action: draft:report',
+  '    target: orgs/kb-ops/output/<channel>/draft',
+  '    workOrder: Draft <channel>.',
+  '    dependsOn: [research]',
+  '    governedBy: writer',
+  '    workflowProfile: research',
+  '---',
+  '',
+  'Definition-level context.',
+  '',
+].join('\n');
+
+const T2_STAGE_DEF = MULTI_STAGE_DEF
+  .replace('id: multi-run', 'id: tiered-run')
+  .replace('    action: research:web-brief', '    action: research:web-brief\n    riskTier: T2');
+
+function writeWorkflowDef(repoRoot: string, id: string, source: string): void {
+  const workflows = join(repoRoot, 'orgs', 'kb-ops', 'workflows');
+  mkdirSync(workflows, { recursive: true });
+  writeFileSync(join(workflows, `${id}.md`), source, 'utf8');
 }
 
 describe('cardToWorkflowRequest — mapping + Evidence exclusion', () => {
@@ -316,6 +381,291 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     runPreamble: okPre,
     internalCaller: stubCaller,
     ...over,
+  });
+
+  it('treats workflow-def: null as an invalid declaration, not as an absent definition', () => {
+    const card = baseCard();
+    card.meta['workflow-def'] = null;
+    expect(() => cardToWorkflowRequest(card, { knownProfiles: KNOWN, repoRoot: '/repo' })).toThrow(/safe identifier/);
+  });
+
+  it('returns a generic parse refusal while logging the detailed definition error server-side', () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-private-parse-error-'));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      writeWorkflowDef(repoRoot, 'private-invalid', MULTI_STAGE_DEF
+        .replace('id: multi-run', 'id: private-invalid')
+        .replace('title: Multi-stage bridge run', 'private-inner-field: do-not-echo'));
+      const card = {
+        ...baseCard(),
+        meta: { ...baseCard().meta, 'workflow-def': 'private-invalid', parameters: { channel: 'x' } },
+      };
+
+      expect(() => cardToWorkflowRequest(card, { knownProfiles: KNOWN, repoRoot }))
+        .toThrow("registered workflow definition 'private-invalid' failed to parse");
+      expect(logged).toHaveBeenCalledWith(
+        "queue bridge definition 'private-invalid' failed to parse",
+        expect.stringContaining('private-inner-field'),
+      );
+    } finally {
+      logged.mockRestore();
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an oversized definition from lstat size without reading the file', () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-oversized-stat-'));
+    const readDefinitionFile = vi.fn(() => { throw new Error('full read must not happen'); });
+    try {
+      writeWorkflowDef(repoRoot, 'oversized-stat', `${'x'.repeat(MAX_DEFINITION_BYTES + 1)}`);
+      const card = {
+        ...baseCard(),
+        meta: { ...baseCard().meta, 'workflow-def': 'oversized-stat' },
+      };
+
+      expect(() => cardToWorkflowRequest(card, { knownProfiles: KNOWN, repoRoot, readDefinitionFile }))
+        .toThrow(`definition must be at most ${MAX_DEFINITION_BYTES} bytes`);
+      expect(readDefinitionFile).not.toHaveBeenCalled();
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('uses the real compiler and server-compiled validator to launch every stage of a parameterized definition', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-workflow-def-'));
+    try {
+      writeWorkflowDef(repoRoot, 'multi-run', MULTI_STAGE_DEF);
+      const card = {
+        ...baseCard(),
+        meta: { ...baseCard().meta, 'workflow-def': 'multi-run', parameters: { channel: 'daily-news' }, 'risk-tier': 'T3' },
+        body: '## Work order\n\nAdvisory trigger prose must not replace definition stage work orders.',
+      };
+      const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-multi', cards: [] } });
+      const { ctx } = fakeCtx({ repoRoot });
+      const deps = commonDeps({
+        readCard: () => card,
+        loadRegistry: () => loadRuntimeSkillRegistry(REPO_ROOT),
+        launch: launch as never,
+        reconcile: vi.fn().mockResolvedValue(undefined),
+      });
+      delete (deps as Record<string, unknown>).compile;
+      delete (deps as Record<string, unknown>).validate;
+
+      const result = await dispatchClaimedCard(ctx, owned, deps);
+
+      expect(result).toMatchObject({ outcome: 'launched', runRef: 'run-multi', reconciled: true });
+      expect(launch).toHaveBeenCalledOnce();
+      const snapshot = launch.mock.calls[0][2].snapshot as {
+        parameters?: Record<string, string>;
+        stages: Array<{ id: string; dependsOn: string[]; workflowProfile?: string; target: string; workOrder: string }>;
+      };
+      expect(snapshot.parameters).toEqual({ channel: 'daily-news' });
+      expect(snapshot.stages).toMatchObject([
+        { id: 'research', dependsOn: [], workflowProfile: 'research', target: 'orgs/kb-ops/output/daily-news/research', workOrder: 'Research daily-news.' },
+        { id: 'draft', dependsOn: ['research'], workflowProfile: 'research', target: 'orgs/kb-ops/output/daily-news/draft', workOrder: 'Draft daily-news.' },
+      ]);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('fails a non-JSON-serializable YAML parameter per card and continues the tick to the next card', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-date-parameter-'));
+    const queueRoot = join(repoRoot, 'queue');
+    const inbox = join(queueRoot, 'inbox');
+    try {
+      mkdirSync(inbox, { recursive: true });
+      const cardText = (id: string, parameterLines: string[]) => [
+        '---',
+        `id: ${id}`,
+        'project: kb-ops',
+        'action: research:web-brief',
+        'target: orgs/kb-ops/output',
+        'risk-tier: T3',
+        'profile: research',
+        ...parameterLines,
+        `owner: ${SUBJECT}`,
+        'state: inbox',
+        'execution-controller: dashboard',
+        '---',
+        '',
+        '## Work order',
+        '',
+        'Run this card.',
+        '',
+      ].join('\n');
+      writeFileSync(join(inbox, 'a-bad-date.md'), cardText('a-bad-date', ['parameters:', '  channel: 2026-08-05']), 'utf8');
+      writeFileSync(join(inbox, 'b-good.md'), cardText('b-good', []), 'utf8');
+
+      const { ctx } = fakeCtx({
+        repoRoot,
+        runPy: (_root: string, code: string, arg: string) => defaultPyRunner(REPO_ROOT, code, arg),
+      });
+      const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-good', cards: [] } });
+      const outcomes: Awaited<ReturnType<typeof dispatchClaimedCard>>[] = [];
+      const deps = commonDeps({ launch: launch as never, reconcile: vi.fn().mockResolvedValue(undefined) });
+      delete (deps as Record<string, unknown>).readCard;
+      const bridge = createQueueBridge({
+        repoRoot: REPO_ROOT,
+        queueRoot,
+        runPreamble: okPreamble,
+        dispatch: async (card) => { outcomes.push(await dispatchClaimedCard(ctx, card, deps)); },
+      });
+
+      await expect(bridge.tick()).resolves.toEqual({ ran: true, blocked: false, discovered: 2, dispatched: 2 });
+      expect(outcomes[0]).toMatchObject({ cardId: 'a-bad-date', outcome: 'failed', status: 500, reconciled: false });
+      expect(outcomes[0].detail).toMatch(/date.*JSON serializable/i);
+      expect(outcomes[1]).toMatchObject({ cardId: 'b-good', outcome: 'launched', runRef: 'run-good' });
+      expect(launch).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('enforces the instantiated definition tier as the trigger-card risk-tier floor', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-risk-tier-floor-'));
+    try {
+      writeWorkflowDef(repoRoot, 'tiered-run', T2_STAGE_DEF);
+      const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-tiered', cards: [] } });
+      const low = {
+        ...baseCard(),
+        meta: { ...baseCard().meta, id: 'low-tier', 'workflow-def': 'tiered-run', parameters: { channel: 'x' }, 'risk-tier': 'T1' },
+      };
+      const matching = {
+        ...low,
+        meta: { ...low.meta, id: 'matching-tier', 'risk-tier': 'T2' },
+      };
+
+      const lowResult = await dispatchClaimedCard(fakeCtx({ repoRoot }).ctx, owned, commonDeps({
+        readCard: () => low,
+        launch: launch as never,
+      }));
+      const matchingResult = await dispatchClaimedCard(fakeCtx({ repoRoot }).ctx, owned, commonDeps({
+        readCard: () => matching,
+        launch: launch as never,
+        reconcile: vi.fn().mockResolvedValue(undefined),
+      }));
+
+      expect(lowResult).toMatchObject({ outcome: 'failed', status: 400, reconciled: false });
+      expect(lowResult.detail).toMatch(/required tier T2/i);
+      expect(matchingResult).toMatchObject({ outcome: 'launched', runRef: 'run-tiered' });
+      expect(launch).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('bridge tick reads a def-card with YAML parameters and dispatches the full definition', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-def-card-integration-'));
+    const queueRoot = join(repoRoot, 'queue');
+    const inbox = join(queueRoot, 'inbox');
+    const cardPath = join(inbox, 'def-card.md');
+    try {
+      writeWorkflowDef(repoRoot, 'multi-run', MULTI_STAGE_DEF);
+      mkdirSync(inbox, { recursive: true });
+      writeFileSync(cardPath, [
+        '---',
+        'id: def-card',
+        'project: kb-ops',
+        'action: research:web-brief',
+        'target: orgs/kb-ops/output',
+        'risk-tier: T3',
+        'profile: research',
+        'workflow-def: multi-run',
+        // The trigger tier is a reviewable floor for all definition stages, never decorative metadata.
+        'parameters:',
+        '  channel: parsed-yaml',
+        `owner: ${SUBJECT}`,
+        'state: inbox',
+        'execution-controller: dashboard',
+        '---',
+        '',
+        '## Work order',
+        '',
+        'Advisory trigger context.',
+        '',
+      ].join('\n'), 'utf8');
+
+      const compile = vi.fn((_def: unknown) => ({ ok: true, value: proposal }));
+      const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-def-card', cards: [] } });
+      const { ctx } = fakeCtx({
+        repoRoot,
+        runPy: (_root: string, code: string, arg: string) => defaultPyRunner(REPO_ROOT, code, arg),
+      });
+      let outcome: Awaited<ReturnType<typeof dispatchClaimedCard>> | undefined;
+      const deps = commonDeps({
+        compile: compile as never,
+        launch: launch as never,
+        reconcile: vi.fn().mockResolvedValue(undefined),
+      });
+      delete (deps as Record<string, unknown>).readCard;
+      const bridge = createQueueBridge({
+        repoRoot: REPO_ROOT,
+        queueRoot,
+        runPreamble: okPreamble,
+        dispatch: async (card) => { outcome = await dispatchClaimedCard(ctx, card, deps); },
+      });
+
+      await expect(bridge.tick()).resolves.toEqual({ ran: true, blocked: false, discovered: 1, dispatched: 1 });
+      expect(outcome).toMatchObject({ outcome: 'launched', runRef: 'run-def-card' });
+      expect(launch).toHaveBeenCalledOnce();
+      const def = compile.mock.calls[0][0] as { stages: Array<{ id: string; dependsOn: string[]; target: string }> };
+      expect(def.stages).toMatchObject([
+        { id: 'research', dependsOn: [], target: 'orgs/kb-ops/output/parsed-yaml/research' },
+        { id: 'draft', dependsOn: ['research'], target: 'orgs/kb-ops/output/parsed-yaml/draft' },
+      ]);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('returns per-card failures for bad registered definitions and continues the tick', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-workflow-refusals-'));
+    try {
+      writeWorkflowDef(repoRoot, 'multi-run', MULTI_STAGE_DEF);
+      writeWorkflowDef(repoRoot, 'cross-project', MULTI_STAGE_DEF
+        .replace('id: multi-run', 'id: cross-project')
+        .replace('project: kb-ops', 'project: atlas-prep')
+        .replaceAll('orgs/kb-ops', 'orgs/atlas-prep'));
+      writeWorkflowDef(repoRoot, 'oversized', `${MULTI_STAGE_DEF.replace('id: multi-run', 'id: oversized')}\n${'x'.repeat(MAX_DEFINITION_BYTES)}`);
+
+      const cardsByPath: Record<string, ParsedCard> = {
+        unknown: { ...baseCard(), meta: { ...baseCard().meta, id: 'unknown', 'workflow-def': 'missing' } },
+        cross: { ...baseCard(), meta: { ...baseCard().meta, id: 'cross', 'workflow-def': 'cross-project', parameters: { channel: 'x' } } },
+        unsafe: { ...baseCard(), meta: { ...baseCard().meta, id: 'unsafe', 'workflow-def': '../escape' } },
+        oversized: { ...baseCard(), meta: { ...baseCard().meta, id: 'oversized', 'workflow-def': 'oversized', parameters: { channel: 'x' } } },
+        missingParameters: { ...baseCard(), meta: { ...baseCard().meta, id: 'missing-parameters', 'workflow-def': 'multi-run' } },
+        good: { ...baseCard(), meta: { ...baseCard().meta, id: 'good' } },
+      };
+      const scanned = Object.keys(cardsByPath).map((path) => ({ id: cardsByPath[path].meta.id as string, path, state: 'inbox' }));
+      const outcomes: Awaited<ReturnType<typeof dispatchClaimedCard>>[] = [];
+      const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-good', cards: [] } });
+      const { ctx } = fakeCtx({ repoRoot });
+      const deps = commonDeps({
+        readCard: (_ctx: SurfaceContext, path: string) => cardsByPath[path],
+        launch: launch as never,
+        reconcile: vi.fn().mockResolvedValue(undefined),
+      });
+      const bridge = createQueueBridge({
+        repoRoot,
+        runPreamble: okPreamble,
+        runPy: pyReturning(scanned).runPy,
+        dispatch: async (card) => { outcomes.push(await dispatchClaimedCard(ctx, card, deps)); },
+      });
+
+      await expect(bridge.tick()).resolves.toEqual({ ran: true, blocked: false, discovered: 6, dispatched: 6 });
+      expect(outcomes.slice(0, 5).map((result) => result.outcome)).toEqual(['failed', 'failed', 'failed', 'failed', 'failed']);
+      expect(outcomes.slice(0, 5).map((result) => result.status)).toEqual([400, 400, 400, 400, 400]);
+      expect(outcomes[0].detail).toMatch(/not found/i);
+      expect(outcomes[1].detail).toMatch(/project.*does not match/i);
+      expect(outcomes[2].detail).toMatch(/safe identifier/i);
+      expect(outcomes[3].detail).toContain(`at most ${MAX_DEFINITION_BYTES} bytes`); // stat-size refusal wins before read/parse
+      expect(outcomes[4].detail).toMatch(/launch parameters must provide exactly the declared keys/i);
+      expect(outcomes[5]).toMatchObject({ outcome: 'launched', runRef: 'run-good' });
+      expect(launch).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 
   it('bridge tick launches and reconciles one dashboard-owned card, then ignores it after its owner changes', async () => {
@@ -449,7 +799,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
   });
 
   it('launches with subject=dashboard-engine and card-derived idempotency/source, then reconciles on 201', async () => {
-    const { ctx } = fakeCtx();
+    const { ctx, store } = fakeCtx();
     const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1', cards: [] } });
     const reconcile = vi.fn().mockResolvedValue(undefined);
     const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile }));
@@ -460,6 +810,9 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(input.idempotencyKey).toBe('queue-bridge:6a5ed0b7-56cc254c');
     expect(input.predecessorRunRef).toBeNull();
     expect(reconcile).toHaveBeenCalledWith(ctx, owned, 'run-1');
+    expect(store.createProposalRevision).toHaveBeenCalledWith('dashboard-engine', expect.objectContaining({
+      sourceTurnId: 'bridge:bridge-6a5ed0b7-56cc254c',
+    }));
   });
 
   it('dispatches with NO ambient WebAuthn session: passes an internal service caller, sessionToken undefined (the check-3 fix)', async () => {
@@ -489,7 +842,9 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     const saved = process.env.DASHBOARD_EXECUTION_ACTIVATED;
     try {
       delete process.env.DASHBOARD_EXECUTION_ACTIVATED;
-      await expect(dispatchClaimedCard(ctx, owned, depsNoStub())).rejects.toThrow(/activation gate/);
+      await expect(dispatchClaimedCard(ctx, owned, depsNoStub())).resolves.toMatchObject({
+        outcome: 'failed', status: 500, detail: expect.stringMatching(/activation gate/),
+      });
       expect(launch).not.toHaveBeenCalled();
 
       process.env.DASHBOARD_EXECUTION_ACTIVATED = '1';
@@ -548,7 +903,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     // must reuse p1/1 — not call createProposalRevision again and leak a second undecided revision.
     const { ctx, store } = fakeCtx();
     store.listProposalRevisionsForComposer.mockReturnValue([
-      { sourceTurnId: 'bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: null, proposalRef: 'p1', revision: 1 },
+      { sourceTurnId: 'bridge:bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: null, proposalRef: 'p1', revision: 1 },
     ]);
     const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1' } });
     const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile: vi.fn() }));
@@ -576,7 +931,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
   it('reuses an already-approved revision for the same card content (no duplicate import)', async () => {
     const { ctx, store } = fakeCtx();
     store.listProposalRevisionsForComposer.mockReturnValue([
-      { sourceTurnId: 'bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: { decision: 'approved' }, proposalRef: 'p9', revision: 3 },
+      { sourceTurnId: 'bridge:bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: { decision: 'approved' }, proposalRef: 'p9', revision: 3 },
     ]);
     const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1' } });
     await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile: vi.fn() }));
