@@ -60,8 +60,8 @@ function index(cards: CardProjection[]): PlaneAIndex {
   };
 }
 
-const OFFLINE: OwnerLiveness = { consumer: 'scheduled-task', online: false, detail: 'schtasks query for kb-codex-runner failed' };
-const ONLINE: OwnerLiveness = { consumer: 'scheduled-task', online: true, detail: 'scheduled task kb-codex-runner is Running' };
+const OFFLINE: OwnerLiveness = { consumer: 'runner-process', online: false, detail: 'runner kb-codex-runner is not running' };
+const ONLINE: OwnerLiveness = { consumer: 'runner-process', online: true, detail: 'runner kb-codex-runner is running (pid 42)' };
 
 /** Owner-activity reader that reports a FIXED age for every owner (or UNKNOWN when `null`). */
 function activityAt(ms: number | null): OwnerActivityReader {

@@ -4,7 +4,7 @@
  * DRY-RUN-ONLY, DEFAULT-OFF.
  *
  * WHAT WENT WRONG IN v1 (`claude/stranded-archiver` @ ced3716, HELD): it gated abandonment on
- * `ownerLiveness().online === false` — a G3 schtasks reply-liveness badge whose `taskForOwner` map covers
+ * `ownerLiveness().online === false` — a G3 PID/start-time reply-liveness badge whose closed runner map covers
  * ONLY `codex-worker`. Every `claude-*` / `dispatcher-cloud` / `worker-desktop` owner therefore read
  * `online:false` and would have been archived; a MISSING schtasks task was silently converted into "the
  * agent abandoned this card." On the live queue that would have wrongly archived two 84h worker-desktop
@@ -52,7 +52,7 @@ import type { GitRunner } from './branch.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import { ownerLiveness } from '../runner/liveness.ts';
-import type { OwnerLiveness, SchtasksRunner, LivenessCache } from '../runner/liveness.ts';
+import type { OwnerLiveness, RunnerStateReader, ProcessStartTimeReader, LivenessCache } from '../runner/liveness.ts';
 import { defaultOwnerActivity } from './ownerActivity.ts';
 import type { OwnerActivity, OwnerActivityReader } from './ownerActivity.ts';
 
@@ -167,7 +167,8 @@ export interface StrandedArchiveDeps {
   ownerActivity?: OwnerActivityReader;
   /** Owner-offline probe (VETO ONLY); default wraps {@link ownerLiveness} over the schtasks/cache seams. */
   liveness?: LivenessProbe;
-  schtasksRun?: SchtasksRunner;
+  runnerState?: RunnerStateReader;
+  runnerProcessStartTime?: ProcessStartTimeReader;
   livenessCache?: LivenessCache;
   platform?: NodeJS.Platform;
   env?: Record<string, string | undefined>;
@@ -211,10 +212,10 @@ export async function archiveStrandedCards(deps: StrandedArchiveDeps): Promise<S
   const bridgeActive = deps.dashboardBridgeActive ?? false;
   const ownerActivity = deps.ownerActivity ?? ((owner, repoRoot) => defaultOwnerActivity(owner, repoRoot));
   const liveness: LivenessProbe = deps.liveness ?? ((owner, card) => ownerLiveness(owner, card, {
-    run: deps.schtasksRun,
+    readState: deps.runnerState,
+    processStartTime: deps.runnerProcessStartTime,
     cache: deps.livenessCache,
     now: deps.now ? () => deps.now!().getTime() : undefined,
-    platform: deps.platform,
     env: deps.env,
   }));
 

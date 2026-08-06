@@ -481,7 +481,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       let liveness: OwnerLiveness = { consumer: 'none', online: false, detail: '' };
       try {
         liveness = ownerLiveness(str(parsed.meta.owner), parsed, {
-          run: ctx.schtasksRun,
+          readState: ctx.runnerState,
+          processStartTime: ctx.runnerProcessStartTime,
           cache: ctx.livenessCache,
           now: ctx.now ? () => ctx.now!().getTime() : undefined,
         });

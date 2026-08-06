@@ -1,8 +1,8 @@
-"""Wave D — Sentinel tests (scripts/sentinel.py + sentinel_watchdog.ps1).
+"""Wave D — Sentinel tests (scripts/sentinel.py).
 
 Fully hermetic: every reconcile/usage test builds a throwaway repo under tmp_path
 and asserts on functions/exit-codes. Nothing touches the real queue/, ledgers/, or
-STOP. The watchdog .ps1 is asserted STATICALLY (file contents) — never executed.
+STOP.
 """
 import datetime
 from pathlib import Path
@@ -334,40 +334,3 @@ def test_cli_usage_breach_exit_code(tmp_path, monkeypatch):
     sentinel.reserve(repo, "w", "a", "steps", 99)
     monkeypatch.setattr(sentinel, "_preamble_blocked", lambda *a, **k: [])
     assert sentinel.main(["--repo", str(repo), "usage", "check"]) == sentinel.EXIT_BREACH
-
-
-# --------------------------------------------------------------------------- #
-# watchdog: STATIC assertions only (never execute the .ps1)                    #
-# --------------------------------------------------------------------------- #
-WATCHDOG = Path(__file__).resolve().parents[1] / "scripts" / "sentinel_watchdog.ps1"
-
-
-def _code_body() -> str:
-    """The .ps1 with comment-only lines stripped — static assertions run against
-    executable statements, not the (necessarily string-bearing) header comment."""
-    return "\n".join(ln for ln in WATCHDOG.read_text(encoding="utf-8").splitlines()
-                     if not ln.lstrip().startswith("#"))
-
-
-def test_watchdog_checks_stop_first():
-    code = _code_body()
-    stop_idx = code.index("Test-Path $StopFile")
-    # The STOP check must precede any pm2 use and the working-dir change.
-    assert stop_idx < code.index("pm2 jlist")
-    assert stop_idx < code.index("Set-Location")
-    assert stop_idx < code.index("Write-WatchdogRow 'dispatcher'")
-    # ...and it exits before anything else runs.
-    assert "exit 0" in code[stop_idx:code.index("Set-Location")]
-
-
-def test_watchdog_does_not_register_a_task():
-    # Register-ScheduledTask may appear ONLY in the comment header, never in code.
-    assert "Register-ScheduledTask" not in _code_body()
-
-
-def test_watchdog_restart_is_bounded_and_dashboard_only():
-    code = _code_body()
-    # Exactly one dashboard restart invocation (bounded to 1 per run).
-    assert code.count("pm2 restart kb-dashboard") == 1
-    # The dispatcher path is report-only: its (earlier) block issues no restart.
-    assert code.index("pm2 restart kb-dashboard") > code.index("Write-WatchdogRow 'dispatcher'")

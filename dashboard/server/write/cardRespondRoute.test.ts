@@ -13,6 +13,7 @@ import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import type { GitRunner } from './branch.ts';
 import type { PyRunner } from './launch.ts';
+import type { RunnerState } from '../runner/trigger.ts';
 
 const CONFIG = {
   secret: Buffer.from('card-respond-test-secret-0123456789'),
@@ -65,7 +66,7 @@ interface Harness {
   auditRows: AuditRow[];
 }
 
-function harness(repoRoot: string, schtasksRun: (task: string) => string = () => 'Status: Ready'): Harness {
+function harness(repoRoot: string, runnerState: () => RunnerState | null = () => ({ pid: 42, startTime: 99 }), runnerProcessStartTime: (pid: number) => number | null = () => 99): Harness {
   const order: string[] = [];
   const pyOps: Array<Record<string, unknown>> = [];
   const auditRows: AuditRow[] = [];
@@ -98,8 +99,8 @@ function harness(repoRoot: string, schtasksRun: (task: string) => string = () =>
     runPy: py,
     opsGit: git,
     now: () => new Date('2026-07-19T12:00:00.000Z'),
-    // G3: inject the schtasks reader so the post-commit liveness probe never shells a real Task Scheduler.
-    schtasksRun,
+    runnerState,
+    runnerProcessStartTime,
     appendAuditLocal: (_repo, event: AuditEvent) => {
       order.push('audit:local');
       const row = { ts: '2026-07-19T12:00:00.000Z', ...event };
@@ -265,10 +266,10 @@ describe('POST /api/write/card-respond', () => {
     expect(body.liveness).toEqual({ consumer: 'none', online: false, detail: 'no runner is registered for this card' });
   });
 
-  it.skipIf(process.platform !== 'win32')('G3: an owner with a registered runner reporting Ready comes back online (schtasks injected)', async () => {
+  it('G3: an owner with a matching PID/start-time record comes back online', async () => {
     const repo = makeRepo();
     writeCard(repo, 'inbox', 'input-owned', 'inbox', 'needs-input:x', 'codex-worker');
-    const h = harness(repo, () => 'TaskName: \\kb-codex-runner\r\nStatus:                Ready\r\n');
+    const h = harness(repo);
     app = h.app;
 
     const res = await app.inject({
@@ -277,13 +278,13 @@ describe('POST /api/write/card-respond', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().liveness).toEqual({ consumer: 'scheduled-task', online: true, detail: 'scheduled task kb-codex-runner is Ready' });
+    expect(res.json().liveness).toEqual({ consumer: 'runner-process', online: true, detail: 'runner kb-codex-runner is running (pid 42)' });
   });
 
-  it.skipIf(process.platform !== 'win32')('G3: a schtasks fault still returns 200 (liveness never fails the respond)', async () => {
+  it('G3: a stale runner state still returns 200 (liveness never fails the respond)', async () => {
     const repo = makeRepo();
     writeCard(repo, 'inbox', 'input-fault', 'inbox', 'needs-input:x', 'codex-worker');
-    const h = harness(repo, () => { throw new Error('schtasks boom'); });
+    const h = harness(repo, () => ({ pid: 42, startTime: 99 }), () => 100);
     app = h.app;
 
     const res = await app.inject({
@@ -292,7 +293,7 @@ describe('POST /api/write/card-respond', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().liveness).toMatchObject({ consumer: 'scheduled-task', online: false });
+    expect(res.json().liveness).toMatchObject({ consumer: 'runner-process', online: false });
   });
 
   it('404s an unknown card and 401s without a session', async () => {

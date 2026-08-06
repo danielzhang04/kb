@@ -1,0 +1,22 @@
+[Unit]
+Description=kb dashboard daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/kb
+EnvironmentFile=%h/.config/kb/env
+Environment=PATH=%h/.local/share/fnm/aliases/default/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+Environment=DASHBOARD_PORT=5317
+Environment=DASHBOARD_RP_ORIGIN=http://localhost:5317
+Environment=DASHBOARD_SESSION_TTL_MS=28800000
+ExecStart=/usr/bin/env node dashboard/server/pm2Entry.ts
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

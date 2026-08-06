@@ -198,9 +198,9 @@ export function makeSurfaceContext(
     runControlTransactions: overrides.runControlTransactions ?? new RunControlTransactions(),
     managerStartAckTimeoutMs: overrides.managerStartAckTimeoutMs ?? DEFAULT_MANAGER_START_ACK_TIMEOUT_MS,
     triggerRunner: overrides.triggerRunner,
-    schtasksRun: overrides.schtasksRun,
-    // One liveness cache per context (see resumeRegistry) — persists across responds within this process,
-    // fresh per test context so schtasks probe results never leak between tests.
+    runnerState: overrides.runnerState,
+    runnerProcessStartTime: overrides.runnerProcessStartTime,
+    // One liveness cache per context (see resumeRegistry) — persists across responds within this process.
     livenessCache: overrides.livenessCache ?? new Map(),
   };
 

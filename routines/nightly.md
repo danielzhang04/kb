@@ -6,7 +6,7 @@ You are agent `dispatcher-cloud` operating in the kb repo. Follow CLAUDE.md (the
 2. Run `python scripts/preamble.py`. On failure: write a wake-me card describing the failure
    into queue/inbox/ (risk-tier T1), commit + push ops, STOP. (Cloud VM: `python` works.
    Desktop fallback: never bare `python` — the pinned-interpreter wrapper
-   scripts/desktop_dispatch.ps1 owns local scheduled runs.)
+   no desktop fallback runs after the Linux cutover.)
 2a. Ensure pyyaml is importable: if `python -c "import yaml"` fails, run
    `python -m pip install --user pyyaml`, then re-check with `python -c "import yaml"`.
    If it still fails, write a wake-me card into queue/inbox/ (risk-tier T1), commit + push

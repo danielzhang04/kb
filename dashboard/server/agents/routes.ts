@@ -14,7 +14,7 @@ import { defaultNamingRegistry } from '../naming.ts';
 import type { NamingRegistry } from '../naming.ts';
 import { loadPolicy, loadOverride } from '../routing/policy.ts';
 import { scanWorkflowDefs } from '../workflows/routes.ts';
-import { taskForOwner } from '../runner/trigger.ts';
+import { runnerForOwner } from '../runner/trigger.ts';
 import {
   buildRoster,
   isContainedRepoPath,
@@ -137,7 +137,7 @@ export function readSystemWorkers(repoRoot: string): SystemWorkerResponse[] {
       id: config.default_worker,
       runtime,
       addressable: true as const,
-      dashboardTriggerable: taskForOwner(config.default_worker) !== null,
+      dashboardTriggerable: runnerForOwner(config.default_worker) !== null,
       registrationSource: 'runtime-default' as const,
     }] : [])
     .sort((a, b) => a.id.localeCompare(b.id));

@@ -2,7 +2,7 @@
  * Owner-activity reader — the corrected owner-idle clock for the stranded-archiver (redesign 2026-07-21).
  *
  * The held build (`claude/stranded-archiver` @ ced3716) gated abandonment on `ownerLiveness().online`,
- * a G3 schtasks "reply-liveness" badge whose `taskForOwner` map covers ONLY `codex-worker`. Every
+ * a G3 PID/start-time reply-liveness badge whose closed runner map covers ONLY `codex-worker`. Every
  * `claude-*` / `dispatcher-cloud` / `worker-desktop` owner therefore read `online:false` and would have
  * been archived — a missing schtasks task was silently treated as "the agent abandoned this card."
  *

@@ -23,7 +23,7 @@ import type { VibeSpawner } from '../vibe/session.ts';
 import type { ResumeRegistry } from '../composer/resumeRegistry.ts';
 import type { ComposerWorkspaceStore } from '../composer/store.ts';
 import type { RunnerTrigger } from '../runner/trigger.ts';
-import type { LivenessCache, SchtasksRunner } from '../runner/liveness.ts';
+import type { LivenessCache, RunnerStateReader, ProcessStartTimeReader } from '../runner/liveness.ts';
 import type { ControlPlaneStore } from '../control/store.ts';
 import type { ManagedSessionBroker } from '../control/broker.ts';
 import type {
@@ -146,12 +146,10 @@ export interface SurfaceContext {
   managerStartAckTimeoutMs: number;
   /** Signals an already-provisioned background runner after a committed launch. */
   triggerRunner?: RunnerTrigger;
-  /** G3 reply-liveness — read-only Windows Task Scheduler probe seam (mirrors `triggerRunner`). Injected as
-   *  a recording fake in tests; production leaves it undefined and `ownerLiveness` shells the real
-   *  `schtasks /Query`. Never involves a credential. */
-  schtasksRun?: SchtasksRunner;
-  /** Per-context TTL cache backing the liveness probe, created once per process in `makeSurfaceContext`
-   *  (so a slow schtasks is queried at most once per TTL across responds) and fresh per test context. */
+  /** Reply-liveness seams: a runner state record is live only when its PID has the recorded start time. */
+  runnerState?: RunnerStateReader;
+  runnerProcessStartTime?: ProcessStartTimeReader;
+  /** Per-context TTL cache backing the liveness probe. */
   livenessCache?: LivenessCache;
   /** Display-name/short-ref registry used when a route builds an entity DTO. Left undefined in
    *  production and in tests: {@link namingFor} then derives one from this context's own `stateRoot`,

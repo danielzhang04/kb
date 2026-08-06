@@ -261,7 +261,7 @@ role_default: { runtime: claude, model: sonnet }
     expect(outcome.ok && outcome.cards.map((card) => card.state)).toEqual(['blocked', 'blocked']);
     expect(payload).toMatchObject({ managed: true });
     expect(WORKFLOW_CARD_OP_SCRIPT).toContain('if op["managed"] or card.meta["depends-on"]');
-    const runnerSource = readFileSync(fileURLToPath(new URL('../../../scripts/agent_runner.ps1', import.meta.url)), 'utf8');
+    const runnerSource = readFileSync(fileURLToPath(new URL('../../../scripts/agent_runner.py', import.meta.url)), 'utf8');
     // agent_runner skips ANY controller-routed card, not just dashboard-controlled ones:
     // execution-controller is a routing field (governance/card-schema.md, 2026-08-06).
     expect(runnerSource).toContain('if (not card.meta.get("execution-controller")');

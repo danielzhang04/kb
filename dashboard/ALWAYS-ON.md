@@ -1,97 +1,20 @@
-# Running the dashboard and Atlas always-on
+# Always-on dashboard (systemd)
 
-Today the dashboard daemon also serves the built SPA directly (see `server/static/routes.ts`). The
-raw development server defaults to `127.0.0.1:4317`; the PM2 always-on configuration sets it to
-`127.0.0.1:5317`, matching the enrolled passkey origin. Once `dist/` exists, this one process IS the
-whole dashboard. No separate `vite` dev server is needed day-to-day; `npm run dev` still works for UI
-iteration (it proxies `/api/*` to the raw development server on `:4317`).
+On the Linux VM the dashboard is supervised by the `kb-dashboard.service` user
+unit in `deploy/systemd/`; it replaces PM2 and its Windows logon resurrection.
 
-Localhost-only binding (`127.0.0.1`) is deliberate and unchanged — WebAuthn is armed for the
-`localhost` RP origin, so the write surface only works from the same machine.
+Install/enable it with the commands in [deploy/systemd/README.md](../deploy/systemd/README.md).
+After a source update, build the SPA with `npm run build` in `dashboard/`, then
+run `systemctl --user restart kb-dashboard`.
 
-Atlas is a separate desk voice worker with its own PM2 configuration. It is projected read-only in
-the dashboard, but it is not a dashboard-launched agent; start and update the two processes
-independently.
+Useful checks:
 
-## Build
-
-```
-cd dashboard
-npm run build
+```sh
+systemctl --user status kb-dashboard
+journalctl --user -u kb-dashboard -f
 ```
 
-This produces `dashboard/dist/`. If `dist/` is missing, the daemon logs a one-line notice and falls
-back to API-only mode (unchanged dev behavior) — it never fails to boot.
-
-## One-time human setup (PM2)
-
-Run once, from the repo root:
-
-```
-npm i -g pm2
-pm2 start dashboard/pm2.config.cjs
-pm2 start atlas/pm2.config.cjs
-pm2 save
-```
-
-`pm2 save` snapshots the combined running process list so both independently configured processes
-can be resurrected later (next step).
-
-### Resurrect PM2 on Windows logon
-
-PM2's own startup hook targets Linux/macOS init systems; on Windows the documented approach is the
-`pm2-windows-startup` package, which adds a registry Run-key entry that calls `pm2 resurrect` at
-user logon:
-
-```
-npm install -g pm2-windows-startup
-pm2-startup install
-```
-
-(Re-run `pm2 save` any time the process list changes — `pm2-startup install` only wires the
-resurrection *mechanism*; it does not itself capture which processes to restore.)
-
-This runs at **user logon**, not as a background service independent of any signed-in session — if
-that's insufficient (e.g. the machine should serve the dashboard before/without an interactive
-logon), use a Task Scheduler entry triggered `At startup` (not `At log on`) running as the target
-user, with action:
-
-```
-schtasks /create /tn "pm2-resurrect" /sc onstart /ru <username> /rl highest /tr "pm2 resurrect"
-```
-
-`pm2 resurrect` restores the entire saved list. Once that list contains `atlas-worker`, do not use
-the pre-logon Task Scheduler recipe above: Atlas needs the interactive user's microphone and
-speakers. Resurrect the combined dashboard-and-Atlas list at user logon instead.
-
-To remove the registry-based hook: `pm2-startup uninstall`.
-
-## Updating after a merge
-
-Pull the reviewed merged source, then restart only the process whose source changed.
-
-Dashboard change:
-
-```
-git pull
-cd dashboard
-npm run build
-pm2 restart kb-dashboard
-```
-
-Atlas change (from the repo root):
-
-```
-git pull
-pm2 restart atlas-worker
-```
-
-After adding or removing either process, run `pm2 save` again so the resurrection list stays
-aligned.
-
-## Access
-
-Once running under PM2: **http://localhost:5317**
-
-(`127.0.0.1` and `localhost` are equivalent here; the RP origin WebAuthn is armed for is
-`localhost`, so use that host if you're using a passkey.)
+The dashboard is still loopback-only on port 5317. The desktop SSH local-forward
+remains a desktop concern; there is intentionally no VM tunnel unit. Card pickup
+uses a detached POSIX runner process, replacing `schtasks`; the cloud VM has no
+keep-awake service.
