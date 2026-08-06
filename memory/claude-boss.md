@@ -126,3 +126,18 @@
 - LESSON: --version validates no CLI flags; only a real session round trip proves a --model/--effort argv.
 - LESSON: session TTL defaults bite silently — the "auto-logout bug" was a designed 5-min TTL nobody surfaced to the operator; surface the TTL in the UI chip (done: expires-in) and in briefs.
 - LESSON: classifier blocks state-changing commands mid-arc (pm2/taskkill/daemon start on prod state); the `!` handoff pattern (exact command + immediate boss verification after) kept flow with Daniel present.
+
+## 2026-08-05 later — era-restoration wave (session 1b21aff8, handed off mid-remint)
+- LESSON (near-miss): a worker restoring era text from git SHAs regressed a DATA file wholesale —
+  registry.json came back era-vintage (de-badge reverted, new cast entry gone) and my bulk port copied it
+  to main. Caught by reading the ported diff. Rule: after porting worker output, diff every DATA file
+  (registry, manifests, json stores) against git HEAD — byte-guards on the target file are not enough,
+  guard the NEIGHBORS the worker had no business touching.
+- WORKED: mechanism archaeology over image-gazing (Daniel's ruling). "How did the old system produce it"
+  beats "what does the old output look like" — the era suffix had silently stopped being appended AT ALL,
+  which no amount of output-description would have found. Also: check the RESOLUTION (2K vs 1K) before
+  comparing line weights — same stroke, different instrument.
+- WORKED: boss adjudication under "don't delete good stuff / don't keep bad stuff": delete = evidence of
+  failure or contradiction with the proven target; keep = cheap guards that would have caught the drift
+  (one review row, one lint term); era text wins genuine ties.
+- Handoff: handoffs/2026-08-05-fyt-bricks-era-restoration-remint.md (remint worker in flight at handoff).
