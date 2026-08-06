@@ -73,9 +73,11 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
 5. **Verify** every staged asset against **bible §3** by looking at it (inline — Pass 1 is a handful of frames). Pass
    → `register` FIRST if it is being promoted to the channel (register consumes staging → `refs/`), then copy into
    `assets/library/`; otherwise straight to the library. Fail → **ONE re-authored retry**, then surface it flagged.
-   Register any character likely to recur later; a NON-character element recurring across MANY videos (an ongoing
-   ship, a landmark, a channel flag) is a deliberate cross-video lock — `register` with `"environment": true` under
-   `refs/env/`, seeded by every later use.
+   Register any character likely to recur later. **No cross-video environment lock exists (fix 2):** a place lives
+   only inside the video that mints it. A NON-character OBJECT recurring across MANY videos (a ship, a period
+   device) is a recurring PROP — `register` with `kind: "prop"` under `refs/env/`, seeded by every later use
+   exactly like `prop-beige-pc`/`prop-drive` — never `"environment": true`, which is reserved for the two
+   register exemplars (lettering, stamp hands).
 6. **Write `assets/library/manifest.json`:** `{video_slug, generated, assets: [{name, kind, file, source:
    reused|generated, seed: [<frames used>], shots: [<shot ids>], notes}]}`.
 7. **Write the asset tags into `shots.json`.** Each shot gains `"assets": {"<vocab name>": "<file path>", …}` — every
@@ -98,12 +100,16 @@ reverts to the engine's five-finger prior, while the frame carries the four-digi
 | **Cap: ≤4 seeds per gen** | canonical + ONE pose primitive + ONE expression frame + one anchor/exemplar. Past four, dilution weakens every prior; a `base.png` added as an Nth "rig anchor" pins nothing. A figure that needs the base rig spends one of the four on it. |
 | **Attribute routing** | Base-derived seeds are bald, cream, neutral-faced and hoodied, so **any attribute not sourced from the CHARACTER seed bleeds a base trait**. CHARACTER seed → identity, head/skin tone, hair + facial hair, costume, face. POSE / interaction-template seed (geometry only) → body pose, hands, clasp geometry, placement, eye-line. EXPRESSION seed (shape only) → eye/brow/mouth shape, never tone, hairline or identity. Every skin patch, **including both hands**, renders in the CHARACTER's head tone. Expression is the SOFTEST seed and can land weak — the review checks register per beat. |
 | **Exposed hands are seeded, never free-drawn** | A salute, wave, open palm or point is the five-finger drift point: seed the matching pose frame AND state the digit fact in the delta. No library pose covers it → that was a Pass-1 gate item, not an ad-hoc scene invention. |
-| **Style anchor MANDATORY** on every environment, plate and composed-scene gen | Character seeds pin identity, not art style; an unanchored run drifts to a soft detailed-middle look with mismatched line weight (`forge.py` hard-errors a zero-seed environment/style gen). Preference: **the target plate or the prior frame in a chain > a `refs/env/` anchor matched by REGISTER (vivid exterior / muted exterior / parchment map-document) > an approved on-style scene.** Environment and props are **composed in the gen from the shot's facts, never seeded from a pre-baked plate** — a plate built in isolation commits lighting, perspective and negative space blind to the figures, then fights the composite. |
+| **Style anchor MANDATORY** on every environment, plate and composed-scene gen (except the video's own FIRST frame for a place) | Character seeds pin identity, not art style; an unanchored run drifts to a soft detailed-middle look with mismatched line weight (`forge.py` hard-errors a zero-seed environment/style gen). **No cross-video `refs/env/` register exists (fix 2 abolished it).** Preference: **the target plate or the prior frame in a chain (the video's own plate) > a STEP-1 figure frame.** The ONE exception is a batch item marked `plate: true` — the video's first frame for a place, generated as a 2–3-candidate batch and human-picked once — which may run unseeded; every later shot in that place seeds the picked frame. Environment and props are **composed in the gen from the shot's facts, never seeded from a pre-baked cross-video plate** — a plate built in isolation commits lighting, perspective and negative space blind to the figures, then fights the composite. |
 | **Never seed off a downstream derivative** | Trace back to the exact frame the human approved; an "improved" copy can carry silent drift that then propagates as the lock. Exceptions: a delta-chain frame seeding its in-chain parent, and a re-base in the SAME location seeding the prior stage's base frame. |
 | **A rig FIX never seeds the defective frame** | Regen FRESH from canonicals off a re-authored prompt — the defect lives in the strongest seed and rides it back about half the time. The only defective-seed exceptions are an authored delta-chain parent and a human-ordered framing hold, and BOTH require a before/after crop diff on EVERY figure in the frame. |
 | **Match-prop** | A prop in more than one shot seeds its **first approved frame** as the prop canonical; later shots seed that exact frame and never re-describe the design in words. |
 | **Maps are cropped, not regenerated** | A new region of an established map is a deterministic PIL crop; a regen invents a new coastline, palette and lettering hand. Regen only if the map canonical genuinely lacks the region, and then seed the map canonical + the parchment-map anchor. Borders and routes drawn onto the crop are motion layers. |
 | **Crowd with one seeded lead** | The crowd starves the lead's costume: restate its pinned costume explicitly even though it is seeded, and give the crowd a contrasting uniform/palette. Every crowd-bearing gen also seeds the **crowd exemplar** (`refs/base/crowd-exemplar.png`), which is what pins crowd proportion and face. |
+
+For a human-approved place that must survive a regenerated base composite, author its video-local
+`assets/scenes/<frame>.png` as `place_anchor`. Forge resolves links/junctions before verifying the frame
+is under that video's scenes, then seeds it instead of minting a new `plate`; it never accepts a cross-video environment frame.
 
 **Aspect — pass it explicitly, every scene; NEVER 16:9 on a cutout.** Long-form scenes inherit
 `long_form.aspect_ratio`, a short's `9:16`. `forge.py`'s default is portrait `2:3`, so 16:9 work MUST pass `--aspect
@@ -138,6 +144,44 @@ descriptor holds, and where the suffix and the bible disagree **the bible wins**
 gen --dry-run`**: it prints every assembled prompt and resolves every seed with zero API calls — read the prompts
 before paying for the batch.
 
+**Batch specs come from `forge.py batch --batch <shots.json> --out <spec.json>`; a hand-rolled per-run batch script
+is not a supported input.** It builds one deterministic slate per shot from the shot's own `assets` tags and
+`figures`, orchestrates the two steps below, reuses an existing step-1 figure frame before generating one, records
+every slate decision on the item (`why`) and on stdout, and **never truncates** — an over-cap or under-seeded shot is
+a hard error naming the shot and the seed that did not fit, and that list is the re-authoring input. The retry path
+reuses the same builder, so a retry cannot invent a seed the original never had. Behind it, **the SEEDING LAW is
+structural in `forge.py` and no caller can opt out**: a gen that cannot inherit a named figure's rig — a step-1 frame
+when fresh, the canonical plus an in-chain parent when a delta — hard-errors before the API call, at $0.
+
+### Builder-owned retry overlays
+
+An approved surgical retry is authored as a versioned `forge-retry-overlay@1` JSON manifest and passed to
+`forge.py batch --retry <manifest>` with the canonical `shots.json`. It never edits `shots.json` or a generated
+batch: each entry names its canonical `shot`, a distinct safe output `name`, and is rebuilt by forge before its
+overlay applies. The envelope is `{schema, video_slug, entries}`; unknown keys are hard errors.
+
+- A `scene` entry has `{kind: "scene", shot, name, instruction, prepend_seeds?, extra_seeds?, replace?}`.
+  `instruction` is appended verbatim as the one surgical change. `replace` is `{from, to}` and is allowed only when
+  `from` occurs exactly once in that canonical scene delta. Each seed is either a relative string or the narrow
+  `{path, sha256?}` object; a supplied `sha256` is a lowercase SHA-256 digest required at preflight and again on the
+  exact bytes read into a live provider request. A live exact-read mismatch aborts the remaining batch at non-zero
+  status after releasing its reservation; it is an integrity failure, unlike an ordinary per-item provider error.
+  Seeds are resolved existing files contained in this video or its kit,
+  prepended/appended in that order, then re-run through the normal cap and seeding law. A retry is fresh: its name
+  cannot equal its shot or collide with staging/library/scenes, and it cannot seed an old scene output.
+- A `step1` entry has `{kind: "step1", shot, character, name, instruction?}`. Forge derives that named cast
+  member's canonical + pose + expression recipe from the specified canonical shot and emits only that distinct STEP-1
+  request; it never emits the source scene or another cast member. The optional instruction is appended to the
+  reference-sheet delta.
+
+Use `batch` only to build the final retry slate, then `gen --dry-run` to inspect it. Both stay $0; a live `gen`
+without `--force` cannot overwrite a staged survivor, and retry-overlay collision checks reject such a request before
+the generator sees it. Live forge reserves each target with an exclusive PID-owned sidecar before calling the provider,
+then atomically publishes a complete PNG without replacing a concurrent survivor; failed calls clean their lock and
+temporary output. A later run reclaims a recorded lock immediately only when its owner PID is dead (legacy/unreadable
+or ownerless locks retain the one-hour fallback lease); a valid live PID is never reclaimed by timestamp, so a killed
+worker does not block the next retry behind the transport ceiling without risking a live concurrent owner.
+
 Per shot, pick the **cheapest technique that holds the locked elements**:
 
 | Technique | When | How |
@@ -155,12 +199,15 @@ REMOVES a transient element seeds the pre-transient ancestor**, since the immedi
 **LAYER when the change is DISCRETE** (a character enters, a stamp slams onto a page): keep the plate, composite a
 seeded cutout. Art style, proportions and period never switch mid-chain.
 
-- **Two-gen identity pass — the DEFAULT for a scene-heavy single-character shot** (exactly ONE seeded figure in a
-  `still_prompt` dominated by environment content), not a fallback: the heavy delta **starves the lone character
-  seed** and renders the blank base template, which passes every §3 FORM check and is still the wrong character.
-  **Gen A** composes the scene ((b)/(d)); **gen B** seeds `[gen-A frame + character canonical + expression frame]`
-  and changes ONLY identity (head tone + hair + face), holding gen A's environment. Multi-character and
-  character-light shots are unchanged.
+- **Two-step figure seeding — how a FRESH named-cast shot runs, and the only way it may.** The two-gen identity
+  ladder (gen A composes the scene, gen B re-composes identity onto it) is **RETIRED**: a step-2 gen never
+  re-composes identity from words, so the ladder's reason to exist is gone. **STEP 1** runs the unchanged seeding
+  recipe — canonical + pose frame + expression frame — **in isolation**, no scene content, into one portable
+  per-video figure frame (`fig-<character>--<pose>--<expression>`, the video's own asset, never channel `refs/`);
+  **STEP 2**, the scene gen, seeds `[step-1 figure(s)] > [the video's plate]` and never the raw triple again.
+  Splitting the recipe out of the scene gen is the fix: scene complexity competing with rig-hold inside one call is
+  what throws a figure off rig. A **delta beat is unchanged and single-step** — the in-chain parent plus that
+  figure's canonical, in ONE gen. Crowd, environment and prop shots stay single-step too.
 - **De-nose / de-ear fix — a targeted identity pass budgeted for TWO gens.** Seed `[current frame + base-rig
   exemplar]`, change ONLY the faces; the engine re-draws a sticky ear or residual nose about half the time, so the
   reliable shape is a **SECOND targeted pass seeded off the already-fixed frame**. A fix TECHNIQUE, not a loosening
@@ -181,7 +228,8 @@ materialized into the layout the engine reads (render-builder `references/shots-
 `plates/<id>.png` is the scene MINUS the moved element, still reading as a **complete** object, never a blank slot.
 **Cutout layers** `cutouts/<id>-<layer>.png` are **always seeded** — use the layer's own **`seed`** when the plan
 names one (a reference path or a registry vocabulary name, resolved like any Pass-1 tag); otherwise fall back to the
-character/prop canonical, or the destination plate plus a style anchor. **The engine emits no alpha, so transparency
+character/prop canonical, or the destination plate (the video's own plate now carries the style anchor itself — no
+separate cross-video `refs/env/` anchor exists). **The engine emits no alpha, so transparency
 is always post-hoc keying** — the `cutout_prompt` describes the OBJECT ALONE, and YOU add the field here: gen it on a
 **solid MAGENTA chroma field** (*"one solid uniform FLAT magenta background, NO glow, NO
 gradient, NO vignette"*, since fringe and halo failures are generation-side glows), then `forge.py cutout` (rembg →
@@ -207,42 +255,36 @@ generated against**; there is no separate reviewer rulebook, and what lives here
 ONLY seed-routing gate, so watch for what one-run multi-seeding produces: hands off the character's tone, a weak or
 wrong expression, identity bleed between co-present figures.
 
-**Dispatch three concurrent review subagents**, each with one mandate over the batch, given the scene files +
+**Run ONE fresh-eyes review pass per act batch** (not three concurrent subagent dispatches), given the scene files +
 per shot its `still_prompt`, `vo_text` (the full narrated span — facts often live in the tail) and `shot_class`, plus
 bible **§3**, the **§5 recipe** and the channel's `visual-grammar.md` (`vo_ref` is only the render timing anchor,
-never a fidelity source).
+never a fidelity source). **End the pass with an `N/N covered` line** (shots ruled / shots in the batch) — a pass
+that stops short reports exactly how short, never silently.
+
+The pass rules three axes together, per shot, at **ordinary viewing scale**:
 
 1. **Identity/rig** — a **FORCED PASS/FAIL verdict on each §3 invariant**, never a silent pass, for **every seeded
    figure AND every anonymous LARGE/foreground (§2e) figure**, each judged against the tier §3 assigns it (seeded and
    §2e → FULL rig, against that character's approved canonical, not an idealized rig; anonymous small/background →
    CROWD rig). A chain-delta frame adds a **held-set** line (set + identities consistent with this stage's `base`?).
    On any FAIL name the shot id and quote the offending pixel; a hand PASS is never worded as certified, because the
-   human board is the final finger authority. **Rig review runs on the CROP BATTERY, not full-frame eyeballing:**
-   (i) a **localizer** agent returns per-figure face + each-visible-hand boxes as JSON (it never rules);
-   (ii) **`scripts/crop_battery.py`** (PIL, deterministic) cuts them at 3–4× into per-shot contact sheets + crops;
-   (iii) THIS judge rules per crop per invariant with the **crop file path cited as evidence** — a prose "zoomed,
-   verified" claim with **no crop artifact is inadmissible**. A fix pass re-enters the battery on the before AND after
-   frames, all figures; silence on a seeded or §2e figure is not allowed. **This FRESH-EYES review is the rig
-   authority — a GENERATING agent's self-verification does NOT substitute for it** (a generator under-reports its own
-   defects, anchored on the prompt it wrote). **Never downgrade a fresh-eyes nose/ear FAIL to "minor".**
-2. **Fidelity — run it as DSG-lite, two calls per still.** Does the image assert **exactly the shot's load-bearing
-   facts** (layout, geography, orientation, gesture + highlight targets, casting/costume) and **nothing extra that
-   changes the read**? Answer that as a checklist, not as free-form claim-hunting: **(a) one call decomposes** the
-   **ASSEMBLED prompt** — what forge actually sent, which `gen --dry-run` prints, not the `still_prompt` alone — into a
-   small **dependency-ordered list of atomic facts**, `entities → their attributes → relations between them →
-   lettering`, each item naming its `parent` (≈6–12 items; you still judge which facts are load-bearing).
-   **(b) one multimodal call answers them in that order**, and **short-circuits the children of any failed parent**
-   (`verdict: "skipped"`) — an attribute of an absent entity is not a second defect, and asking anyway invents an
-   answer. **Lettering items transcribe LETTER-BY-LETTER** against the words the `still_prompt` quotes; a garbled,
-   misspelled or partial render is **blocking** (§3 sets which text is legal). Log every item into the shot's ruling as
-   `dsg: [{id, parent, q, verdict: pass|fail|skipped, note}]`; **`stamp_review.py` parks any shot carrying a failed
-   item even when the axis severities came back clean** — the items are the evidence, the axis severity only its
-   summary. This is an ADHERENCE check that runs alongside the §3 rig judge above; it never substitutes for it.
+   human board is the final finger authority. **This FRESH-EYES review is the rig authority — a GENERATING agent's
+   self-verification does NOT substitute for it** (a generator under-reports its own defects, anchored on the prompt
+   it wrote). **Never downgrade a fresh-eyes nose/ear FAIL to "minor".**
+2. **Fidelity** — does the image assert **exactly the shot's load-bearing facts** (layout, geography, orientation,
+   gesture + highlight targets, casting/costume) and **nothing extra that changes the read**? A **lettering-bearing
+   shot** additionally runs **DSG-lite**, scoped here to the one class it demonstrably earns (it caught L172's
+   garbled stamp): **(a) one call decomposes** the **ASSEMBLED prompt** — what forge actually sent, which `gen
+   --dry-run` prints — into its diegetic text items, each naming its `parent`; **(b) one multimodal call transcribes
+   them LETTER-BY-LETTER** against the words the `still_prompt` quotes; a garbled, misspelled or partial render is
+   **blocking** (§3 sets which text is legal). Log lettering items as `dsg: [{id, parent, q, verdict:
+   pass|fail|skipped, note}]`; **`stamp_review.py` parks any shot carrying a failed item even when the axis
+   severities came back clean**.
 3. **Style/taste** — does it read as its `shot_class` at a glance, on-recipe per §5 **AND rich — committed scene
    palette, fore/mid/background depth, light/atmosphere, filled edge-to-edge** — or is it slop: generic, cluttered,
    off-register, drifting to the detailed middle, thin, sparse? **Check expression register per beat** (§3).
 
-Each returns a **flagged list keyed by shot id**, one sentence per defect quoting the offending fact. A frame no agent
+Returns a **flagged list keyed by shot id**, one sentence per defect quoting the offending fact. A frame no axis
 flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then surface:**
 
 - **Exactly ONE auto-retry per frame.** Not two, not a ladder. **It is a FRESH gen off a SURGICALLY re-authored prompt
@@ -258,13 +300,15 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
 - **Re-author HOW an authored fact is depicted, never WHETHER it appears.** Deleting or softening a load-bearing fact
   to dodge a rendering defect is a fidelity VIOLATION dressed as a fix; a fact that still won't render clean after the
   one retry is flagged for the human, never silently removed.
-- **Self-check only the flagged points** on the new frame — never re-dispatch the agents or re-review the batch. **Still
-  failing after that one retry → STOP:** keep the best attempt, mark it `flagged` in `assets/scenes/manifest.json` with
-  the reason, surface it in the deliverable. A systematic failure (the same invariant missing both times) that looks
-  like a bible value being off → surface a proposed fix, never self-apply.
-- **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone does**, and only after the crop battery +
-  fresh-eyes review pass. It merges every agent's structured verdict into `assets/_review/merged.json` (one ruling per
-  shot id, per-axis severities + `why`, plus the fidelity agent's `dsg` checklist), then runs `py -3
+- **Sequencing replaces self-check — no agent ever clears its own park.** The retry above generates immediately; it
+  is ruled by the **next act batch's fresh-eyes pass**, already running (a final mini-pass rules the last batch's
+  retries, since there is no next batch to piggyback on). **Still flagged by that ruling → STOP:** keep the best
+  attempt, mark it `flagged` in `assets/scenes/manifest.json` with the reason, surface it in the deliverable. A
+  systematic failure (the same invariant missing both times) that looks like a bible value being off → surface a
+  proposed fix, never self-apply.
+- **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone does**, and only after the fresh-eyes
+  pass. It merges the pass's structured verdict into `assets/_review/merged.json` (one ruling per shot id, per-axis
+  severities + `why`, plus any lettering shot's `dsg` checklist), then runs `py -3
   .claude/skills/image-generation/scripts/stamp_review.py <video_dir>` — the **ONLY writer** of the render gate's
   verdict. It writes **`review_status` + `parked_reasons`** onto each `scenes/manifest.json` entry in three honest
   states: **`verified`** (a fully-clean ruling on every axis AND no failed `dsg` item — the ONLY state render-builder
@@ -303,8 +347,8 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
 What shipped (library counts, scenes by technique), what was reused, what the review caught per category and what it
 regenerated, any frames still **flagged** after the one retry (with their reason), anything escalated for approval,
 and the render-wiring caveat. Publish the images via an Artifact link — full frames, flagged ones marked with their
-reason, and the **crop-battery sheets embedded (collapsible per card)** so the human finger gate rules on evidence at
-seconds per shot.
+reason, and each batch's **`N/N covered`** line, so the human finger gate rules on the same full frames the
+fresh-eyes pass judged, at seconds per shot.
 
 **Present it neutrally — the human calibrates the bar, not you.** Never declare the output "works" or "clears the
 bar": the bar is the reference grade the human holds, and a premature success claim skips real problems and burns

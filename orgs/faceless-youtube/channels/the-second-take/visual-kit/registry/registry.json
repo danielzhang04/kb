@@ -65,7 +65,8 @@
       "role": "Personified beige boxy 1980s home computer \u2014 a FACED machine character (not a human). The cast's cartoon eyes and mouth sit in its front panel; short stubby arms and legs, NO hands. Appears L01-L04, L16.",
       "head_tone": "#e8dcc0",
       "costume": "PINNED canonical form: beige boxy home-computer case with the cast's cartoon eyes and mouth set into the front panel, short stubby arms and legs. NOTE: a personified OBJECT \u2014 never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
-      "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png"
+      "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "no_hands": true
     }
   },
   "assets": [
@@ -511,27 +512,6 @@
       "seed_frame": "channels/the-second-take/visual-kit/refs/mosquito-king/mosquito-king.png"
     },
     {
-      "name": "env-exterior-vivid",
-      "file": "channels/the-second-take/visual-kit/refs/env/env-exterior-vivid.png",
-      "character": null,
-      "kind": "environment",
-      "tag": "exterior-vivid"
-    },
-    {
-      "name": "env-exterior-muted",
-      "file": "channels/the-second-take/visual-kit/refs/env/env-exterior-muted.png",
-      "character": null,
-      "kind": "environment",
-      "tag": "exterior-muted"
-    },
-    {
-      "name": "env-map-parchment",
-      "file": "channels/the-second-take/visual-kit/refs/env/env-map-parchment.png",
-      "character": null,
-      "kind": "environment",
-      "tag": "map-parchment"
-    },
-    {
       "name": "lettering-marker-italic",
       "file": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
       "character": null,
@@ -544,20 +524,6 @@
       "character": null,
       "kind": "environment",
       "tag": "stamp"
-    },
-    {
-      "name": "env-interior-warm",
-      "file": "channels/the-second-take/visual-kit/refs/env/env-interior-warm.png",
-      "character": null,
-      "kind": "environment",
-      "tag": "interior-warm"
-    },
-    {
-      "name": "env-interior-cool",
-      "file": "channels/the-second-take/visual-kit/refs/env/env-interior-cool.png",
-      "character": null,
-      "kind": "environment",
-      "tag": "interior-cool"
     },
     {
       "name": "action-tugofwar",

@@ -27,6 +27,14 @@ is broken output: restage it.
 folder with a `script.md`. Given a slug use it; several scripted with no `shots.json` → do the one
 named, the most recently scripted, or ask. **No `script.md` → stop** and say the video must be scripted.
 
+**SCOPED-REPAIR mode:** request names specific shot ids AND `shots.json` already exists → read the
+file and re-author ONLY those shots, everything else staying byte-identical. Every step below
+(1–8, including the per-act self-audit) scopes to the touched shots — apply the full current law,
+reusing the cast list and colour style already declared in `vpw-log.md` (never re-declare), then
+write back in place. The target list arrives from the caller (board verdict, forge violation list);
+VPW never picks its own targets. **Absent named targets, author the full list as below** — the
+default; scoped-repair is opt-in.
+
 ## Step 1 — Read (always)
 - **`script.md`** — the source of truth; every VO line, in order, is the shot list's spine.
 - **`visual-kit/visual-grammar.md`** — the channel depiction law: the narration→shot-class table, the
@@ -84,6 +92,11 @@ at the first act's level.
 ### 3a — Split + plan (before authoring a single shot)
 - **Split `script.md` into its acts** — the story's own turns (setup / scheme / unraveling / aftermath;
   usually 2–4), never equal word counts.
+- **The video's named cast** — complete, planned before authoring, and derived from the script: include every recurring or
+  story-bearing person or institution whose identity matters. Do not add or remove cast to chase population;
+  if a later identity is genuinely needed, revise the plan before continuing, never invent a slug mid-pass.
+- **The video's colour style, declared once** — a named palette register the whole video holds (a
+  muted video stays muted; no shot departs into an unrelated register). Recorded in `vpw-log.md`.
 - **Stages + environments:** decide now which sets recur and carry held `stage` chains and which are
   one-frame standalones. A set invented twice mid-pass gets described twice differently and renders twice.
 - **The three peaks:** reserve the most striking staging for the opening, the mid-video re-arm (55–65%),
@@ -115,7 +128,9 @@ Step 7; **every other HARD finding is a real defect, fixed now**, while the act 
 Then write yourself ONE paragraph on the act just closed: **non-literal share** (any shot merely drawing
 its line's words?), **class variety** (which `shot_class` values repeated, and has one become a reflex?),
 **red-ink count** (red is the one semantic accent — alarm / prohibition / ownership / the punch element —
-so a rising count means it is turning into decoration), and **cadence vs the 3a budget** (shot count and Σ
+so a rising count means it is turning into decoration), **human use** (flag story-bearing people, decisions, or relationships hidden behind objects, or
+habitual people staged where object, place, document, or mechanism is the subject; no target share), **colour-style departures** (any shot
+straying from the video's declared colour style, 3a), and **cadence vs the 3a budget** (shot count and Σ
 `duration_s` against this act's target). A drifting act is re-authored here, not left for the critic:
 Step 8 is whole-file and one cycle only.
 

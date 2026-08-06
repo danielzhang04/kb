@@ -40,9 +40,10 @@ prevents authoring a motion the engine cannot render.
     to a **shot-relative `start_s`** written into the animation, and the engine `LayerView` starts the
     slide/path/appear window there instead of the default frame-4 lead-in. No `anchor` → the element
     enters at the shot cut (frame 4).
-  - **`seed`** (str, optional) — the reference this cutout is generated FROM: a path (a canonical PNG, a
-    `refs/env/` anchor) or a registry vocabulary name. image-gen resolves it and prefers it over its own
-    fallback (the character/prop canonical, or the destination plate + a style anchor); an unseeded
+  - **`seed`** (str, optional) — the reference this cutout is generated FROM: a path (a canonical PNG, the
+    video's own plate) or a registry vocabulary name. image-gen resolves it and prefers it over its own
+    fallback (the character/prop canonical, or the destination plate — which now carries the style anchor
+    itself, since cross-video `refs/env/` anchors are abolished, fix 2); an unseeded
     cutout invents its own register and lands off-style against a flat-cel plate.
     `motion_plan.py::validate_plan` requires a non-empty string when the field is present.
   - **`reuse`** (str, optional) — a path to an already-materialized cutout PNG. image-gen generates NO
