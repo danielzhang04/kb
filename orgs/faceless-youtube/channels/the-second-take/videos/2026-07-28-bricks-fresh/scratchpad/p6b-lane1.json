@@ -1,0 +1,198 @@
+[
+  {
+    "name": "L02",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nThe same wood-panelled den held exactly: the boxy television centre on its low walnut cabinet, orange shag carpet, plaid armchair stage-left under the hanging globe lamp, heavy curtains drawn behind, the household crowd settled along the low sofa and the carpet on the far side of the room facing the set. Only this changes: the television screen now carries a dark blue maze grid with one yellow wedge and three small drifting shapes inside it, its cool light falling across the carpet; everything else exactly as established.",
+    "payload": "The same wood-panelled den held exactly: the boxy television centre on its low walnut cabinet, orange shag carpet, plaid armchair stage-left under the hanging globe lamp, heavy curtains drawn behind, the household crowd settled along the low sofa and the carpet on the far side of the room facing the set. Only this changes: the television screen now carries a dark blue maze grid with one yellow wedge and three small drifting shapes inside it, its cool light falling across the carpet; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L01.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L01.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L04",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nA pavement newsstand on a busy morning street. The stand's racks are packed three tiers deep with folded newspapers and magazines, every cover face and masthead standing blank and unlettered; a green-and-cream awning shades the plank counter and a bundle of unsold papers sits bound with twine at its foot. Framing: wide static eye-level from the far kerb, the stand foreground-right, the passing stream filling the left two-thirds. Palette: newsprint grey, awning green and cream, cold morning blue. A crowd of commuters streams past on the far side of the stand in overcoats and scarves, briefcases swinging, and not one head is turned toward the racks.",
+    "payload": "A pavement newsstand on a busy morning street. The stand's racks are packed three tiers deep with folded newspapers and magazines, every cover face and masthead standing blank and unlettered; a green-and-cream awning shades the plank counter and a bundle of unsold papers sits bound with twine at its foot. Framing: wide static eye-level from the far kerb, the stand foreground-right, the passing stream filling the left two-thirds. Palette: newsprint grey, awning green and cream, cold morning blue. A crowd of commuters streams past on the far side of the stand in overcoats and scarves, briefcases swinging, and not one head is turned toward the racks.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L11",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `prop-drive` prop canonical \u2014 preserve that object's design.\n\n`pc-boxy`, `expr-delighted`, stands squarely on a plain service bench, beige case front-on to the camera and stubby legs planted. Directly in front of it on the bench stands `prop-drive`, up on its end and turned to show its flat top face. A pegboard of hand tools fills the wall behind and a rack of spare shells stands under the bench; a work lamp lights the bench from stage-right. Framing: medium at bench height, the machine stage-left and the drive centre-right. Palette beige, steel grey, warm lamp amber.",
+    "payload": "`pc-boxy`, `expr-delighted`, stands squarely on a plain service bench, beige case front-on to the camera and stubby legs planted. Directly in front of it on the bench stands `prop-drive`, up on its end and turned to show its flat top face. A pegboard of hand tools fills the wall behind and a rack of spare shells stands under the bench; a work lamp lights the bench from stage-right. Framing: medium at bench height, the machine stage-left and the drive centre-right. Palette beige, steel grey, warm lamp amber.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical"
+  },
+  {
+    "name": "L12",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nOne beige drive unit stands alone on a waist-high dark plinth in a records room, lit hard from stage-left, its case standing as tall and as wide as four courses of the drawer wall behind it. Its front face carries a small steel vault door with a spoked wheel handle centred on it, shut tight, and the unit's power lamp is dark. Behind the plinth a wall of shallow oak card-index drawers runs the width of the room with brass pulls in even rows; a banker's lamp stands lit on a side table stage-right beside a stack of ledgers, and a worn parquet floor runs back to the skirting. Framing: medium, the drive centred against the drawer wall with air above it. Palette: warm beige casing, cold steel wheel, oak drawer fronts, charcoal shadow.",
+    "payload": "One beige drive unit stands alone on a waist-high dark plinth in a records room, lit hard from stage-left, its case standing as tall and as wide as four courses of the drawer wall behind it. Its front face carries a small steel vault door with a spoked wheel handle centred on it, shut tight, and the unit's power lamp is dark. Behind the plinth a wall of shallow oak card-index drawers runs the width of the room with brass pulls in even rows; a banker's lamp stands lit on a side table stage-right beside a stack of ledgers, and a worn parquet floor runs back to the skirting. Framing: medium, the drive centred against the drawer wall with air above it. Palette: warm beige casing, cold steel wheel, oak drawer fronts, charcoal shadow.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor"
+  },
+  {
+    "name": "L13",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nThe same beige drive unit on its dark plinth in the records room, the wall of oak card-index drawers behind it and the banker's lamp lit on the side table stage-right, its steel vault door and spoked wheel held exactly, power lamp dark. Only this changes: the vault door now stands swung fully open on its hinge, showing three narrow shelves inside, each ruled with a shallow lip and standing empty and unlettered; everything else exactly as established.",
+    "payload": "The same beige drive unit on its dark plinth in the records room, the wall of oak card-index drawers behind it and the banker's lamp lit on the side table stage-right, its steel vault door and spoked wheel held exactly, power lamp dark. Only this changes: the vault door now stands swung fully open on its hinge, showing three narrow shelves inside, each ruled with a shallow lip and standing empty and unlettered; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L12.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L12.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  },
+  {
+    "name": "L14",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nThe same beige drive unit on its dark plinth, vault door swung open on its three ruled shelves, the oak drawer wall behind and the banker's lamp lit stage-right. Only this changes: the top two shelves now stand filled \u2014 the upper packed edge to edge with upright manila folders, their tabs staggered and blank, the middle ranked with flat boxed program sleeves stood on their spines and unlettered; everything else exactly as established.",
+    "payload": "The same beige drive unit on its dark plinth, vault door swung open on its three ruled shelves, the oak drawer wall behind and the banker's lamp lit stage-right. Only this changes: the top two shelves now stand filled \u2014 the upper packed edge to edge with upright manila folders, their tabs staggered and blank, the middle ranked with flat boxed program sleeves stood on their spines and unlettered; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L13.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L13.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  }
+]

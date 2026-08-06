@@ -3938,3 +3938,21 @@ the R1 fix is probe-validated.
 **Alternatives rejected.** Warm re-authoring pass over shots.json (R1 — too big, touches authored
 content); 2K re-render of register-critical plates (R2 — accepted at 1K for this video); L05 at
 1K-for-consistency (R5 — taste call went to the prior frame).
+
+## 2026-08-06 — 8 era plates promoted to assets/scenes/ (verified); R4 correction
+
+**Decision.** The 8 board-v2-approved plates (L03, L05, L28=retry1, L63, L71, L113, L172, L196) were
+promoted from _staging into videos/2026-07-28-bricks-fresh/assets/scenes/ via the sanctioned path
+(forge.py manifest --kind scenes with provenance counters copied from the remint batch specs;
+stamp_review.py → 8 verified / 0 parked). L05's entry states root counters by hand: it is the
+human-restored archived first-pass frame (board-v2 R5), no batch spec exists. L28's manifest note
+carries the accepted-but-open ink-register residual verbatim (R2: luminance 44.5 vs prior 23.0) so
+its `verified` is never misread as measured-clean. Promotion closes the forge place-resolution gap
+that blocked 9 slice shots (plates resolve only from assets/scenes/, never _staging).
+**Correction to the 2026-08-06 gate entry as applied.** The dispatch brief for promotion miscounted
+"R2/R3/R5 + five plain passes"; the record stands as written in the gate entry — four numbered plate
+rulings (R2 L28, R3 L03, R4 L172, R5 L05) and four plain passes. L172 is R4, not a plain pass.
+Worker caught the discrepancy against this file and did not silently reconcile — correct behaviour.
+**Residue routed.** forge.py silently degrades a shot whose place plate is missing to a root plate
+(zero continuity, no error) — fail-silent defect queued for a fail-loud fix with tests, next
+doctrine-window (not mid-wave).

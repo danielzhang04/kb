@@ -1,0 +1,31 @@
+[
+  {
+    "name": "L01",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nA wood-panelled suburban den at dusk, wide static eye-level from the doorway. A boxy television on a low walnut cabinet holds the centre with its screen dark and blank; orange shag carpet runs to the frame edge, a plaid armchair stands angled stage-left with a knitted throw over its arm, a hanging globe lamp warms the mid-ground, and heavy curtains close the background wall. A household crowd fills the far side of the room behind the armchair, settled along a low sofa and down onto the carpet facing the set, in wide collars, denim and lacquered teased hair. Framing: wide from the doorway, the television centre and the seated crowd ranked along the back wall. Palette: mustard, burnt orange, walnut brown, warm lamp amber.",
+    "payload": "A wood-panelled suburban den at dusk, wide static eye-level from the doorway. A boxy television on a low walnut cabinet holds the centre with its screen dark and blank; orange shag carpet runs to the frame edge, a plaid armchair stands angled stage-left with a knitted throw over its arm, a hanging globe lamp warms the mid-ground, and heavy curtains close the background wall. A household crowd fills the far side of the room behind the armchair, settled along a low sofa and down onto the carpet facing the set, in wide collars, denim and lacquered teased hair. Framing: wide from the doorway, the television centre and the seated crowd ranked along the back wall. Palette: mustard, burnt orange, walnut brown, warm lamp amber.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  }
+]

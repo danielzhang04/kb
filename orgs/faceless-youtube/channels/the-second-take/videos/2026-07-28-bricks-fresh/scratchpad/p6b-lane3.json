@@ -1,0 +1,95 @@
+[
+  {
+    "name": "L19",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nA drive maker's own shipping back-of-house, off its loading dock: a steel cash box stands open on a packing bench stage-right, packed tight with banded banknotes, and a pallet of finished drive units waits beside it with its dust sheet folded back. On the far side of the racks a crew of packers in overalls works the shelves, banding notes into bundles and stacking them into a strongbox on a trestle. The dock's roll-up door stands open stage-left on a waiting truck, throwing a hard slab of daylight across the concrete. Framing: wide static, the money low in frame and the lit dock door high. Palette: cool grey concrete, warm doorway amber, green banknote banding.",
+    "payload": "A drive maker's own shipping back-of-house, off its loading dock: a steel cash box stands open on a packing bench stage-right, packed tight with banded banknotes, and a pallet of finished drive units waits beside it with its dust sheet folded back. On the far side of the racks a crew of packers in overalls works the shelves, banding notes into bundles and stacking them into a strongbox on a trestle. The dock's roll-up door stands open stage-left on a waiting truck, throwing a hard slab of daylight across the concrete. Framing: wide static, the money low in frame and the lit dock door high. Palette: cool grey concrete, warm doorway amber, green banknote banding.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L20",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nThe same shipping back-of-house: the open cash box of banded banknotes on its packing bench stage-right, the pallet of finished drive units beside it, the crew of packers working the shelves on the far side of the racks, the open dock door stage-left throwing its slab of light across the concrete. Only this changes: a long garden rake now lies across the floor with its head buried in a raked heap of loose banknotes, drag lines fanning out behind it through the dust; everything else exactly as established.",
+    "payload": "The same shipping back-of-house: the open cash box of banded banknotes on its packing bench stage-right, the pallet of finished drive units beside it, the crew of packers working the shelves on the far side of the racks, the open dock door stage-left throwing its slab of light across the concrete. Only this changes: a long garden rake now lies across the floor with its head buried in a raked heap of loose banknotes, drag lines fanning out behind it through the dust; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L19.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L19.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L21",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nA gold-rush supply stall on a muddy riverbank in flat morning light: a plank counter under a canvas awning, the rack behind it hung with pick heads, shovel blades and coils of rope. Behind the counter a crew of aproned sellers works the stall, passing tools across it and hauling more from a stack of crates at their backs; the board above the awning is broad, plain and unlettered. Prospectors work the shallows on the far side of the creek, bent over pans in a long line. Framing: wide, the stall foreground-right, the diggings receding stage-left. Palette: mud brown, canvas cream, steel grey. On the counter among the pick heads and blades stands one beige drive unit, out of place and unremarked.",
+    "payload": "A gold-rush supply stall on a muddy riverbank in flat morning light: a plank counter under a canvas awning, the rack behind it hung with pick heads, shovel blades and coils of rope. Behind the counter a crew of aproned sellers works the stall, passing tools across it and hauling more from a stack of crates at their backs; the board above the awning is broad, plain and unlettered. Prospectors work the shallows on the far side of the creek, bent over pans in a long line. Framing: wide, the stall foreground-right, the diggings receding stage-left. Palette: mud brown, canvas cream, steel grey. On the counter among the pick heads and blades stands one beige drive unit, out of place and unremarked.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  }
+]

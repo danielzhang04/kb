@@ -1,0 +1,152 @@
+{
+ "video_slug": "2026-07-28-bricks-fresh",
+ "generated": "2026-08-06",
+ "notes": "Phase 6B promotion: the 8 board-approved era-remint plates, promoted from <kit>/_staging on Daniel's board-v2 rulings R2 (L28-retry1), R3 (L03), R4 (L172), R5 (L05 = restored archived frame) and four plain passes (L63, L71, L113, L196). C-11 counters copied from the remint batch specs; L05 has no spec and states root counters. review_status written separately by stamp_review.py.",
+ "shots": [
+  {
+   "shot_id": "L03",
+   "file": "assets/scenes/L03.png",
+   "files": [
+    "assets/scenes/L03.png"
+   ],
+   "technique": "(c) character-free / environment gen — era remint",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Daniel board-v2 ruling R3 — night-scene exception granted; accepted as-is, no re-mint. Promoted from <kit>/_staging/L03.png (sha256 ffe78ce41033ecad). C-11 provenance: counters COPIED from remint-plates-slate.json item `L03`."
+  },
+  {
+   "shot_id": "L05",
+   "file": "assets/scenes/L05.png",
+   "files": [
+    "assets/scenes/L05.png"
+   ],
+   "technique": "(a) reuse — human-restored archived first-pass frame, $0, no provider call",
+   "seeds": [],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Daniel board-v2 ruling R5 — the staged style-tile-copy was REJECTED; this slot is the PREVIOUS computer-shop plate restored from `_staging/_pre-remint-archive-2026-08-05/L05.png`. Never went through `batch` (a $0 manual copy-in), so its C-11 counters are stated as root values (parent_depth 0 / lineage 0) rather than copied from a spec. Frame is 2K while the other seven are 1K — Daniel's taste call went to the prior frame over 1K tier consistency. Promoted from <kit>/_staging/L05.png (sha256 9447bfc1a479727b). C-11 provenance: no batch spec — counters STATED as root values (the `_scene_provenance` result for a frame with no place parent, identical to all 7 spec'd siblings)."
+  },
+  {
+   "shot_id": "L28",
+   "file": "assets/scenes/L28.png",
+   "files": [
+    "assets/scenes/L28.png"
+   ],
+   "technique": "(c) character-free / environment gen — era remint",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "one surgical retry against camera elevation + outline line weight; changed_spans=1",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Daniel board-v2 ruling R2 — L28-retry1 ACCEPTED for this video, with the line-weight question absorbed into the systemic R1 fix rather than a further per-plate retry. RESIDUAL, openly unresolved: ink luminance measures 44.5 vs the archived prior's 23.0 (#241a12 is 28.2) and ink coverage fell 11.43% -> 8.90%. The R1 fix (ea71f99) is a style-layer change to the GENERATOR and does not retroactively alter these pixels. Verified here on the human's explicit acceptance, not on a clean measurement. Live file is L28-retry1.png, promoted as L28.png. Promoted from <kit>/_staging/L28-retry1.png (sha256 6f59895098e3d5b6). C-11 provenance: counters COPIED from remint-L28-retry.json item `L28-retry1`."
+  },
+  {
+   "shot_id": "L63",
+   "file": "assets/scenes/L63.png",
+   "files": [
+    "assets/scenes/L63.png"
+   ],
+   "technique": "(c) character-free / environment gen — era remint",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Daniel board-v2 plain pass — correct outline, camera, palette; vantage mildly high but reads as staged. Promoted from <kit>/_staging/L63.png (sha256 b47ffc190078b13a). C-11 provenance: counters COPIED from remint-plates-slate.json item `L63`."
+  },
+  {
+   "shot_id": "L71",
+   "file": "assets/scenes/L71.png",
+   "files": [
+    "assets/scenes/L71.png"
+   ],
+   "technique": "(c) character-free / environment gen — era remint",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Daniel board-v2 plain pass — strongest line weight in the set; set the anonymous-extra convention for this video. Promoted from <kit>/_staging/L71.png (sha256 b27cbff21a629fa6). C-11 provenance: counters COPIED from remint-plates-slate.json item `L71`."
+  },
+  {
+   "shot_id": "L113",
+   "file": "assets/scenes/L113.png",
+   "files": [
+    "assets/scenes/L113.png"
+   ],
+   "technique": "(c) character-free / environment gen — era remint",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Daniel board-v2 plain pass — warmest frame in the set; correct on every criterion. Promoted from <kit>/_staging/L113.png (sha256 fe35be657761cd72). C-11 provenance: counters COPIED from remint-plates-slate.json item `L113`."
+  },
+  {
+   "shot_id": "L172",
+   "file": "assets/scenes/L172.png",
+   "files": [
+    "assets/scenes/L172.png"
+   ],
+   "technique": "(c) character-free / environment gen — era remint",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Daniel board-v2 ruling R4 — remint accepted (after > before). The three-tiers-of-face-finish observation was surfaced but deliberately not routed to a new rule. Promoted from <kit>/_staging/L172.png (sha256 a3c754d5507d98b6). C-11 provenance: counters COPIED from remint-plates-slate.json item `L172`."
+  },
+  {
+   "shot_id": "L196",
+   "file": "assets/scenes/L196.png",
+   "files": [
+    "assets/scenes/L196.png"
+   ],
+   "technique": "(c) character-free / environment gen — era remint",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "Daniel board-v2 plain pass — correct on every criterion; empty room, no anatomy or identity to check. Promoted from <kit>/_staging/L196.png (sha256 bb56bf956f108ae4). C-11 provenance: counters COPIED from remint-plates-slate.json item `L196`."
+  }
+ ]
+}
