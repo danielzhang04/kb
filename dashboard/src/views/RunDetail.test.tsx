@@ -8,7 +8,7 @@
  * that died with the surfaces themselves.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import {
   AgentStreams,
@@ -25,6 +25,7 @@ import {
 } from './RunDetail';
 import type { Dag } from '../../server/dag/graph';
 import type { OperationalEventDto, RunDetailDto } from '../control/controlClient';
+import * as controlClient from '../control/controlClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
 import type { UseSseResult } from '../lib/sseClient';
@@ -265,6 +266,45 @@ describe('the run surface', () => {
     const strip = screen.getByTestId('run-strip');
     expect(screen.getByTestId('workflow-agent-node-fyt-story').textContent).toContain('running');
     expect(graph.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('opens one selected agent panel from the graph, swaps it, closes it, and delegates its gate response', async () => {
+    const detail = makeDetail({
+      stages: [
+        makeStage('idea', 'fyt-story', { state: 'running', currentAttemptRef: 'attempt-story' }),
+        makeStage('visual-plan', 'fyt-visuals', { state: 'ready', currentAttemptRef: 'attempt-visual' }),
+      ],
+      humanRequests: [{
+        requestRef: 'request-story', runRef: 'run-1', displayName: 'headless run', shortRef: 1, stageRef: 'ref-idea',
+        kind: 'approval', revision: 1, state: 'open', title: 'Approve', prompt: 'Approve', ask: 'Approve the story.',
+        technicalDetail: null, response: null, createdAt: '', updatedAt: '',
+      }],
+    });
+    const respond = vi.spyOn(controlClient, 'respondToHumanRequest').mockResolvedValue(detail.humanRequests[0]!);
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/attempts/')) return new Response(JSON.stringify({ entries: [] }), { status: 200 });
+      if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+
+    fireEvent.click(screen.getByTestId('workflow-agent-node-fyt-story').querySelector('header')!);
+    expect(screen.getByTestId('agent-work-panel-fyt-story')).toBeTruthy();
+    const panel = screen.getByTestId('agent-work-panel-fyt-story');
+    expect(within(panel).getByTestId('run-gate-request-story')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Rejected' }));
+    await waitFor(() => expect(respond).toHaveBeenCalledWith('request-story', expect.objectContaining({ decision: 'rejected' }), 'tok', fetchImpl));
+
+    fireEvent.click(screen.getByTestId('workflow-agent-node-fyt-visuals').querySelector('header')!);
+    expect(screen.getByTestId('agent-work-panel-fyt-visuals')).toBeTruthy();
+    expect(screen.queryByTestId('agent-work-panel-fyt-story')).toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('agent-work-panel-fyt-visuals')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('workflow-agent-node-fyt-story').querySelector('header')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
+    expect(screen.queryByTestId('agent-work-panel-fyt-story')).toBeNull();
+    respond.mockRestore();
   });
 
   it('leads with steps, gates and agents, and keeps the engine record in one fold', () => {

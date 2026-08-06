@@ -101,3 +101,16 @@ export function overlaysFromRun(detail: RunDetailDto): Record<string, AgentRunOv
   }
   return overlays;
 }
+
+/** The panel falls back to the most recently created attempt when the live overlay has no active one. */
+export function latestAttemptRefOfAgent(detail: RunDetailDto, agentId: string): string | null {
+  const stageRefs = new Set(detail.stages
+    .filter((stage) => (stage.assignment?.agentId ?? '') === agentId)
+    .map((stage) => stage.stageRef));
+  let latest: { attemptRef: string; createdAt: string } | null = null;
+  for (const attempt of detail.attempts) {
+    if (!stageRefs.has(attempt.stageRef)) continue;
+    if (!latest || attempt.createdAt > latest.createdAt) latest = attempt;
+  }
+  return latest?.attemptRef ?? null;
+}

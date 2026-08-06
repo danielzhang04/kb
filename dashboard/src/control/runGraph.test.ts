@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RunDetailDto } from './controlClient';
 import { agentGroups } from '../views/WorkflowAgentGraph';
 import type { WorkflowDefEntry } from '../views/WorkflowDetail';
-import { entryFromRun, overlaysFromRun } from './runGraph';
+import { entryFromRun, latestAttemptRefOfAgent, overlaysFromRun } from './runGraph';
 
 const assignment = (agentId: string) => ({
   agentId, declarationPath: `agents/${agentId}.md`, declarationHash: 'a'.repeat(64),
@@ -61,5 +61,16 @@ describe('run graph selectors', () => {
     expect(overlays.alpha).toMatchObject({ openGate: false });
     expect(overlays.beta).toMatchObject({ openGate: true });
     expect(overlaysFromRun(runDetail(['succeeded', 'succeeded', 'succeeded'])).alpha.attemptRef).toBeNull();
+  });
+
+  it('finds the newest attempt across an agent\'s stages', () => {
+    const detail = runDetail();
+    detail.attempts = [
+      { attemptRef: 'attempt-old', runRef: 'run-1', stageRef: 'stage-1', generation: 1, predecessorAttemptRef: null, runtime: 'claude', model: 'model', state: 'failed', version: 1, managedSessionRef: null, createdAt: '2026-08-06T00:00:00.000Z', updatedAt: '' },
+      { attemptRef: 'attempt-new', runRef: 'run-1', stageRef: 'stage-2', generation: 1, predecessorAttemptRef: null, runtime: 'claude', model: 'model', state: 'queued', version: 1, managedSessionRef: null, createdAt: '2026-08-06T00:01:00.000Z', updatedAt: '' },
+      { attemptRef: 'attempt-other', runRef: 'run-1', stageRef: 'stage-3', generation: 1, predecessorAttemptRef: null, runtime: 'claude', model: 'model', state: 'queued', version: 1, managedSessionRef: null, createdAt: '2026-08-06T00:02:00.000Z', updatedAt: '' },
+    ];
+    expect(latestAttemptRefOfAgent(detail, 'alpha')).toBe('attempt-new');
+    expect(latestAttemptRefOfAgent(detail, 'missing')).toBeNull();
   });
 });
