@@ -40,7 +40,7 @@ const defaultFactory: SseFactory = (url) => {
 };
 
 /** Channels the hub publishes on, plus the unnamed default. */
-const CHANNELS = ['planeA', 'planeB', 'message'] as const;
+const CHANNELS = ['planeA', 'planeB', 'control', 'message'] as const;
 
 export interface UseSseResult {
   /** The most recent delta, or `null` before the first frame. */

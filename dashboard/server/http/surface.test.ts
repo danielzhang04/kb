@@ -23,6 +23,8 @@ import type { GitRunner } from '../write/branch.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { HostOpenRequest, PtyHost, PtySession } from '../pty/host.ts';
+import type { EventBus } from '../hub/bus.ts';
+import type { AttemptIoAppend } from '../control/attemptIo.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
@@ -869,6 +871,38 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     expect(ctx.runAutomatic).toBeUndefined();
     expect(ctx.cancelAutomatic).toBeUndefined();
     expect(ctx.containManagerStart).toBeUndefined();
+  });
+
+  it('publishes attempt-io while unlocked and drops the tap when the latch locks', () => {
+    let emit: ((event: AttemptIoAppend) => void) | undefined;
+    const off = vi.fn(() => { emit = undefined; });
+    const bus = { publish: vi.fn(), subscribe: vi.fn(), subscriberCount: vi.fn() } as unknown as EventBus;
+    const triple = {
+      ...activatedTriple(),
+      attemptIo: {
+        onAppend: vi.fn((listener: (event: AttemptIoAppend) => void) => {
+          emit = listener;
+          return off;
+        }),
+        stop: vi.fn(),
+      },
+    };
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], hubBus: bus },
+      { build: vi.fn().mockReturnValue(triple) as never, env: {} },
+    );
+
+    expect(ctx.executionLatch?.unlock({ subject: 'operator' }).ok).toBe(true);
+    emit?.({ attemptRef: 'attempt-1', entry: { seq: 1, t: '2026-08-06T00:00:00.000Z', dir: 'out', line: 'redacted' } });
+    expect(bus.publish).toHaveBeenCalledWith({
+      channel: 'control', kind: 'attempt-io',
+      data: { attemptRef: 'attempt-1', seq: 1 },
+    });
+
+    ctx.executionLatch?.lock({ subject: 'operator' });
+    emit?.({ attemptRef: 'attempt-1', entry: { seq: 2, t: '2026-08-06T00:00:01.000Z', dir: 'out', line: 'after lock' } });
+    expect(off).toHaveBeenCalledOnce();
+    expect(bus.publish).toHaveBeenCalledTimes(1);
   });
 });
 

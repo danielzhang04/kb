@@ -35,6 +35,7 @@ import { createFileControlPlaneStore } from '../control/store.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
+import { publishAttemptIoSignal } from '../hub/bus.ts';
 import { createPtyHost } from '../pty/host.ts';
 import type { PtyHost } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
@@ -135,9 +136,11 @@ export function makeSurfaceContext(
   const ptySessionRuns = overrides.ptySessionRuns ?? createSessionRunStore(stateRoot);
   const ptyTranscripts = overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot });
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
+  let offAttemptIo: (() => void) | null = null;
   const ctx: SurfaceContext = {
     repoRoot,
     stateRoot,
+    hubBus: overrides.hubBus,
     definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
@@ -205,6 +208,8 @@ export function makeSurfaceContext(
       env: activation.env,
       buildOptions: { controlStore, repoRoot, stateRoot },
       onChange: (execution) => {
+        offAttemptIo?.();
+        offAttemptIo = null;
         ctx.controlBroker = execution?.controlBroker;
         ctx.runAutomatic = execution?.runAutomatic;
         ctx.cancelAutomatic = execution?.cancelAutomatic;
@@ -212,6 +217,13 @@ export function makeSurfaceContext(
         ctx.verifyCanonicalResult = execution?.verifyCanonicalResult;
         ctx.paidActionService = execution?.paidActionService;
         ctx.spendGrantStore = execution?.spendGrantStore;
+        if (execution && ctx.hubBus) {
+          const bus = ctx.hubBus;
+          offAttemptIo = execution.attemptIo.onAppend((event) => publishAttemptIoSignal(bus, {
+            attemptRef: event.attemptRef,
+            seq: event.entry.seq,
+          }));
+        }
       },
     });
   }

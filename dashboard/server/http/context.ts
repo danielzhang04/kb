@@ -43,6 +43,7 @@ import type { SessionRunStore } from '../pty/sessionRuns.ts';
 import type { TranscriptRecorder } from '../pty/transcripts.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import type { activateManagedRootCards } from '../write/workflowRun.ts';
+import type { EventBus } from '../hub/bus.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -56,6 +57,8 @@ export interface SurfaceContext {
   repoRoot: string;
   /** Dashboard-owned runtime state root; never a repository content path. */
   stateRoot: string;
+  /** Optional live hub bus; the surface uses it only while an execution latch is armed. */
+  hubBus?: EventBus;
   /** Restart-safe, server-owned pending definition-amendment records. */
   definitionAmendmentStore: DefinitionAmendmentStore;
   /** Isolated work-branch checkout used only for durable Composer saves. */

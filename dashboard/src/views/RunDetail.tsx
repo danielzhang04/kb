@@ -33,6 +33,7 @@ import {
 import 'reactflow/dist/style.css';
 import type { Dag, DagNodeData } from '../../server/dag/graph';
 import { useSession } from '../lib/sessionContext';
+import { useSse } from '../lib/sseClient';
 import {
   activateRun,
   archiveRun,
@@ -89,6 +90,8 @@ import '../control/control.css';
 
 /** One poller serves every open tile for this run. */
 export const RUN_POLL_MS = 5_000;
+export const RUN_SSE_POLL_MS = 30_000;
+export const RUN_SSE_FRESH_MS = 60_000;
 export const RUN_MAX_POLL_MS = 60_000;
 
 /* ============================================================================
@@ -701,6 +704,7 @@ export function RunDetail({
   fetchImpl,
 }: RunDetailProps): React.JSX.Element {
   const { session, requireSession } = useSession();
+  const sse = useSse('/events');
   const token = session?.token;
   const [detail, setDetail] = useState<RunDetailDto | null>(injectedDetail ?? null);
   const [events, setEvents] = useState<OperationalEventDto[]>(injectedEvents ?? []);
@@ -712,6 +716,7 @@ export function RunDetail({
   const [error, setError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const [backoffMs, setBackoffMs] = useState<number | null>(null);
+  const [lastControlFrameAt, setLastControlFrameAt] = useState<number | null>(null);
   /**
    * The runRef the server says does not exist. Distinct from `error` on purpose: a missing run is not a
    * transient failure to retry, it is a permanent answer the operator needs stated.
@@ -771,12 +776,31 @@ export function RunDetail({
     return () => { alive = false; };
   }, [live, loadRun, runRef, token]);
 
+  // Control ticks carry no state payload. They only say the operator's run view is stale, so reuse the
+  // normal read path immediately and let the existing rate-limit/backoff discipline govern every fetch.
+  useEffect(() => {
+    if (!live || !token || missing || sse.last?.channel !== 'control' || sse.last.kind !== 'store-change') return;
+    let alive = true;
+    setLastControlFrameAt(Date.now());
+    setBackoffMs(null);
+    setPollError(null);
+    loadRun(token, runRef).catch((cause: unknown) => {
+      if (!alive) return;
+      if (cause instanceof ControlApiError && cause.status === 404) setMissing(true);
+      else setPollError(cause instanceof Error ? cause.message : 'Could not refresh this run.');
+    });
+    return () => { alive = false; };
+  }, [live, loadRun, missing, runRef, sse.last, token]);
+
   // The live stream. One poller for every tile, with backoff on a rate limit rather than a tighter loop.
   useEffect(() => {
     if (!live || !token || missing) return;
     let alive = true;
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    let nextPollMs = RUN_POLL_MS;
+    const basePollMs = (): number => lastControlFrameAt !== null && Date.now() - lastControlFrameAt < RUN_SSE_FRESH_MS
+      ? RUN_SSE_POLL_MS
+      : RUN_POLL_MS;
+    let nextPollMs = basePollMs();
     const poll = async (): Promise<void> => {
       try {
         const window = await loadRunEventWindow(runRef, token,
@@ -785,7 +809,7 @@ export function RunDetail({
         setEvents(window.events);
         setEventWindow(window);
         setPollError(null);
-        nextPollMs = RUN_POLL_MS;
+        nextPollMs = basePollMs();
         setBackoffMs(null);
       } catch (cause) {
         if (!alive) return;
@@ -798,9 +822,9 @@ export function RunDetail({
       }
       if (alive) timeout = setTimeout(() => { void poll(); }, nextPollMs);
     };
-    timeout = setTimeout(() => { void poll(); }, RUN_POLL_MS);
+    timeout = setTimeout(() => { void poll(); }, basePollMs());
     return () => { alive = false; if (timeout !== undefined) clearTimeout(timeout); };
-  }, [fetchImpl, live, missing, runRef, token]);
+  }, [fetchImpl, lastControlFrameAt, live, missing, runRef, token]);
 
   /**
    * The card graph and the card owner index are LINK/PROJECTION decoration: both swallow failure, because

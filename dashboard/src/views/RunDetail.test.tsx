@@ -27,6 +27,13 @@ import type { Dag } from '../../server/dag/graph';
 import type { OperationalEventDto, RunDetailDto } from '../control/controlClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import type { UseSseResult } from '../lib/sseClient';
+
+const sseState = vi.hoisted((): { current: UseSseResult } => ({ current: { last: null, count: 0 } }));
+vi.mock('../lib/sseClient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../lib/sseClient')>(),
+  useSse: () => sseState.current,
+}));
 
 vi.mock('reactflow', async () => {
   const React = await import('react');
@@ -71,6 +78,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.useRealTimers();
+  sseState.current = { last: null, count: 0 };
 });
 
 function makeStage(stageId: string, agentId: string | null, over: Partial<RunDetailDto['stages'][number]> = {}) {
@@ -335,6 +343,29 @@ describe('the run surface', () => {
 });
 
 describe('the live poller', () => {
+  it('refetches immediately on a control store-change and stretches the fallback poll while control frames flow', async () => {
+    vi.useFakeTimers();
+    const detail = makeDetail();
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
+    });
+    const eventRequests = (): number => fetchImpl.mock.calls.filter(([url]) => typeof url === 'string' && url.includes('/events?')).length;
+    const view = render(unlocked(<RunDetail runRef="run-1" dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(eventRequests()).toBe(1);
+
+    sseState.current = { last: { channel: 'control', kind: 'store-change' }, count: 1 };
+    view.rerender(unlocked(<RunDetail runRef="run-1" dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(eventRequests()).toBe(2);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(29_999); });
+    expect(eventRequests()).toBe(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(eventRequests()).toBe(3);
+  });
+
   it('serves every tile from ONE event request and keeps per-agent filtering', async () => {
     vi.useFakeTimers();
     const detail = makeDetail({
