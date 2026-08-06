@@ -3,7 +3,7 @@
 **Topic:** bricks-fresh era arc continued from the 2026-08-05 remint handoff (consumed/deleted): remint
 finished+graded, board-v2 gate ruled, R1 grayscale fix shipped, Phase 6B first tenth generated to the
 machine limit. PAUSED at the P1–P5 human gate — Daniel will give image-gen feedback to a later terminal.
-Everything on branch `claude/bricks-doctrine-reset`, pushed through **`dd22f97`**.
+Everything on branch `claude/bricks-doctrine-reset`, pushed through **`ac01ddb`**.
 
 ### What WORKED (with evidence)
 - **Remint completed** — 7 plates + L05 + 4 cards; 4/4 known defects closed (fresh-eyes verified);
@@ -21,8 +21,12 @@ Everything on branch `claude/bricks-doctrine-reset`, pushed through **`dd22f97`*
 - **Changed-mechanism re-mint beats prompt retries** — L16-remint1 (original slate under the R1-fixed
   generator) fixed colour AND composition in one call after two prompt-level retries each broke something.
 - **FINAL gate board published** to the standing artifact URL
-  https://claude.ai/code/artifact/767b9074-aee3-4d3d-817f-1319f2187325 (rulings P1–P5, verified grid,
-  park lineages). Cost rows on ops: root-2026-08-05.tsv (remint), root-2026-08-06.tsv (R1 + 6B).
+  https://claude.ai/code/artifact/767b9074-aee3-4d3d-817f-1319f2187325 — RESTRUCTURED per Daniel
+  post-pause (ac01ddb): "NEEDS YOUR RULING" section on top (P1–P5 with lineages + script text), then
+  ALL 25 shots strictly sequential, each with its full vo_text, best frame, status badge, collapsible
+  still_prompt. Builder: `scratchpad/_build_p6b_board_final.py` (reads vo_text live from shots.json —
+  keep this layout for future board updates). Cost rows on ops: root-2026-08-05.tsv (remint),
+  root-2026-08-06.tsv (R1 + 6B).
 
 ### What Did NOT Work (and why)
 - **R1 fix is NOT total** — cool ink inversion recurred on L10-retry1 (223°/R−B −1.1) AFTER the fix.
