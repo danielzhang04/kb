@@ -24,10 +24,15 @@ at pre-port SHA until cutover; zero `if (win32)` branches survive). PTY retired.
 
 ## Wave 0 — Provision + auth (DANIEL'S RUNBOOK — no agent work except the verify script)
 
-**Gate: spend approval ~$167/mo before step 1.**
+**Gate: pilot spend approval (Daniel ruled 2026-08-06: test before monthly commitment).**
+Hetzner bills hourly capped at monthly, so a ~2-week pilot ≈ $15–25 total, cancel anytime.
+Pilot box: **shared-CPU CPX line, Ashburn** (same region as the durable target so measured
+latency is real; pick the ~16 GB or ~32 GB CPX tier at order time). The durable **CCX33
+(~$167/mo)** decision moves AFTER the pilot, justified by a week of measured load
+(RAM high-water, CPU steal, run wall-times). Rest of the runbook is identical for the pilot.
 
-1. Hetzner Cloud console → order **CCX33**, location **Ashburn (ash)**, image **Ubuntu 24.04**,
-   enable backups (≈20% surcharge — approve or skip explicitly). Add your SSH public key at order time.
+1. Hetzner Cloud console → order the pilot box (CPX tier, location **Ashburn (ash)**, image
+   **Ubuntu 24.04**; backups optional for a pilot). Add your SSH public key at order time.
 2. As root on the VM:
    ```bash
    adduser kb && usermod -aG sudo kb
