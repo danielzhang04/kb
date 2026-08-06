@@ -141,3 +141,25 @@
   failure or contradiction with the proven target; keep = cheap guards that would have caught the drift
   (one review row, one lint term); era text wins genuine ties.
 - Handoff: handoffs/2026-08-05-fyt-bricks-era-restoration-remint.md (remint worker in flight at handoff).
+
+## 2026-08-06 — bricks p6b first tenth (boss session, Fable 5)
+- WORKED: incremental genlogs (F-agents law) made THREE worker mid-stream deaths zero-loss — every
+  resume was reconcile-from-disk, never re-generation. Pattern: dead worker -> tail its genlog + ls
+  staging by mtime + read its transcript tool calls -> fresh finisher with a "state you inherit" brief.
+- LEARNED: SendMessage-resume of the same worker is cheap and context-rich until ~200k tokens, then it
+  stalls mid-stream (2/2 died past that). Retire workers before that; hand remaining scope to a fresh
+  finisher with the genlog as its brief.
+- WORKED: changed-mechanism re-mint (original slate under a fixed generator) fixed colour+composition in
+  one call where two prompt retries each broke a passing attribute. Route generator-side defects to the
+  generator fix + re-mint, never to more prompt words. Converse also held: two staging misses (L10
+  queue, L25 lettering) resisted two explicit prose corrections each — mechanism, not prose.
+- LEARNED: provider 503 outage handling that worked — stop after one re-issue, bank all state, arm a
+  45-min background sleep as a cooldown timer, resume with a single cheapest-call canary before
+  touching the queue.
+- LEARNED: don''t hand-roll a skill tool''s input schema from its docstring (fumbled forge manifest
+  entries-vs-spec); the worker who ran the flow holds the schema — send the mechanical close to it.
+- LEARNED: grade-the-brief: a worker caught MY ruling-count error (R4 miscounted as plain pass) by
+  checking decisions.md instead of trusting the dispatch. Write briefs that cite the record, and expect
+  workers to check it.
+- MODEL RECEIPTS: all 7 workers/verifiers model-grepped first line (6 opus, 1 sonnet builder), 452
+  tests green at R1, all spend ledgered (remint $0.546, R1 $0.05, p6b $1.872; wave ~$7.0/$40).
