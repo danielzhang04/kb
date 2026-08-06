@@ -3923,3 +3923,18 @@ measurement teardown of poyais pixels (Daniel: analyze the MECHANISM, not the ou
 (content survives; style is carried at gen time).
 **Open risk (named, banked).** Era palettes were authored warm per shot (93% "warm"); the fresh file's
 palette prose is cooler — board v2 renders are the evidence gate for a palette pass.
+
+## 2026-08-06 — board-v2 era-remint gate: Daniel's six rulings
+
+**Decision.** (R1) Grayscale drift = analyze and FIX at the style layer — "I don't care if it's cool,
+but it can't be grayscale"; fix must be a small CHANGE to existing doctrine (style guide / env-plate
+path), never an addition, never per-shot re-authoring. (R2) L28-retry1 accepted for this video
+(line-weight question absorbed into R1 analysis). (R3) L03 night plate accepted. (R4) L172 remint
+accepted (after > before). (R5) L05 slot = the PREVIOUS computer-shop plate restored from
+_pre-remint-archive-2026-08-05 (the staged style-tile copy rejected). (R6) all four reminted cards
+accepted — three-arm and pale-face defect classes closed; auditor-rep's dropped ledger prop accepted.
+C-6 records for the 4 cards merged into _staging/review.json (2026-08-06). Phase 6b proceeds after
+the R1 fix is probe-validated.
+**Alternatives rejected.** Warm re-authoring pass over shots.json (R1 — too big, touches authored
+content); 2K re-render of register-critical plates (R2 — accepted at 1K for this video); L05 at
+1K-for-consistency (R5 — taste call went to the prior frame).

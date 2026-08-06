@@ -39,8 +39,10 @@ PNG = b"\x89PNG\r\n\x1a\n"
 # Restored 2026-08-05. These literals are the drift-lock: the doc that drifts fails the test.
 ERA_STYLE_ONLY = (
     "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an "
-    "even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours "
-    "with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no "
+    "even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid "
+    "down at FULL cel strength — every fill a real colour, and any grey or neutral clearly TINTED "
+    "warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale — with "
+    "gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no "
     "words, no labels.")
 ERA_SUFFIX = (
     "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm "
@@ -220,7 +222,7 @@ def test_the_tiles_role_prose_grants_register_only_and_denies_the_place():
     text = seed_roles_text([{"path": TILE, "role": STYLE_ANCHOR_ROLE,
                              "character": STYLE_TILE}])
     for required in ("SCENE STYLE TILE", "register sample ONLY", "LINE WEIGHT",
-                     "outline colour (#241a12)", "FLAT-CEL RENDER", "PALETTE DISCIPLINE", "Take NOTHING else",
+                     "outline colour (#241a12)", "FLAT-CEL RENDER", "PALETTE SATURATION", "Take NOTHING else",
                      "NOT the place it depicts"):
         assert required in text, (required, text)
     # the generic `environment` prose is the exact opposite instruction and must never appear

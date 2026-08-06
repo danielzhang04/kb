@@ -1163,9 +1163,19 @@ def seed_roles_text(seed_roles):
             # The era's own words for what a `refs/env/` register anchor grants, restored
             # 2026-08-05 from `ff36f63:.../refs/env/README.md`: "the anchor pins line weight,
             # outline color (#241a12), flat-cel render, and palette discipline, not the content".
+            # AMENDED 2026-08-06 (grayscale drift): "palette DISCIPLINE" is a restraint word — it
+            # transfers "few colours", which is what the rest of the prompt already says four times
+            # over (§2b "simple", the authored `Palette:` line, the suffix's "2-3 colour" cap and
+            # its semantic-only red). The tile is the register's chroma AUTHORITY — it measures
+            # mean saturation 0.407 with only 16% of its area near-neutral — and "and nothing else"
+            # was opting that chroma out, leaving grey the only instruction the prompt could
+            # satisfy. It now grants SATURATION, matched in the new frame's own hues, so a cool
+            # authored palette renders cool-and-coloured instead of drained.
             detail = ("the channel's SCENE STYLE TILE — a register sample ONLY. It pins LINE "
                       "WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE "
-                      "DISCIPLINE, and nothing else. Take NOTHING else "
+                      "SATURATION — match how strongly its flat fills are coloured and lay THIS "
+                      "frame's own hues, warm or cool, down at that same strength; a frame drained "
+                      "to neutral grey has failed to take the register. Take NOTHING else "
                       "from it — not its content, not its objects, not its layout or camera, and "
                       "NOT the place it depicts. This image is not a location and never appears "
                       "in the frame you draw")
