@@ -1,7 +1,7 @@
 {
  "video_slug": "2026-07-28-bricks-fresh",
  "generated": "2026-08-06",
- "notes": "Phase 6B promotion: the 8 board-approved era-remint plates, promoted from <kit>/_staging on Daniel's board-v2 rulings R2 (L28-retry1), R3 (L03), R4 (L172), R5 (L05 = restored archived frame) and four plain passes (L63, L71, L113, L196). C-11 counters copied from the remint batch specs; L05 has no spec and states root counters. review_status written separately by stamp_review.py.",
+ "notes": "Phase 6B: 8 board-approved plates (promoted, Daniel board-v2) + 17 phase-6b candidates recorded 2026-08-06. Candidate C-11 counters inherited from p6b-slate.json via --from-batch; L06/L07/L09 copied from p6b-slate2.json. review_status written only by stamp_review.py.",
  "shots": [
   {
    "shot_id": "L03",
@@ -147,6 +147,350 @@
    "parent_depth": 0,
    "lineage": 0,
    "notes": "Daniel board-v2 plain pass — correct on every criterion; empty room, no anatomy or identity to check. Promoted from <kit>/_staging/L196.png (sha256 bb56bf956f108ae4). C-11 provenance: counters COPIED from remint-plates-slate.json item `L196`."
+  },
+  {
+   "shot_id": "L01",
+   "file": "assets/scenes/L01.png",
+   "files": [
+    "assets/scenes/L01.png"
+   ],
+   "technique": "(c) character-free / environment gen",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L01.png (sha256 49d1dbb895057c13). Landed first attempt.",
+   "parent_depth": 0,
+   "lineage": 0
+  },
+  {
+   "shot_id": "L02",
+   "file": "assets/scenes/L02.png",
+   "files": [
+    "assets/scenes/L02.png"
+   ],
+   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "seeds": [
+    "_staging/L01.png",
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L02.png (sha256 5f4e9d875fd33e84). Landed first attempt.",
+   "parent_depth": 1,
+   "lineage": 1
+  },
+  {
+   "shot_id": "L04",
+   "file": "assets/scenes/L04.png",
+   "files": [
+    "assets/scenes/L04.png"
+   ],
+   "technique": "(c) character-free / environment gen",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L04.png (sha256 b18fc18639c1d130). Landed first attempt.",
+   "parent_depth": 0,
+   "lineage": 0
+  },
+  {
+   "shot_id": "L11",
+   "file": "assets/scenes/L11.png",
+   "files": [
+    "assets/scenes/L11.png"
+   ],
+   "technique": "(c) character-free / environment gen",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+    "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L11.png (sha256 a75e82cd16f64f36). Landed first attempt.",
+   "parent_depth": 0,
+   "lineage": 0
+  },
+  {
+   "shot_id": "L12",
+   "file": "assets/scenes/L12.png",
+   "files": [
+    "assets/scenes/L12.png"
+   ],
+   "technique": "(c) character-free scene — derived place plate, bible descriptor + style suffix",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L12.png (sha256 cecf482da8b3a7a9). Landed first attempt.",
+   "parent_depth": 0,
+   "lineage": 0
+  },
+  {
+   "shot_id": "L13",
+   "file": "assets/scenes/L13.png",
+   "files": [
+    "assets/scenes/L13.png"
+   ],
+   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "seeds": [
+    "_staging/L12.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L13.png (sha256 c79fbf99e43ba8da). Landed first attempt.",
+   "parent_depth": 1,
+   "lineage": 1
+  },
+  {
+   "shot_id": "L14",
+   "file": "assets/scenes/L14.png",
+   "files": [
+    "assets/scenes/L14.png"
+   ],
+   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "seeds": [
+    "_staging/L13.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L14.png (sha256 fc01c53abdb5271c). Landed first attempt.",
+   "parent_depth": 2,
+   "lineage": 2
+  },
+  {
+   "shot_id": "L15",
+   "file": "assets/scenes/L15.png",
+   "files": [
+    "assets/scenes/L15.png"
+   ],
+   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "seeds": [
+    "_staging/L14.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L15.png (sha256 d1227d8819d52edb). Landed first attempt.",
+   "parent_depth": 3,
+   "lineage": 3
+  },
+  {
+   "shot_id": "L16",
+   "file": "assets/scenes/L16.png",
+   "files": [
+    "assets/scenes/L16.png"
+   ],
+   "technique": "(c) character-free scene — derived place plate, bible descriptor + style suffix",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: LOW",
+    "style: MEDIUM",
+    "dsg a4: Do the computer cases render BEIGE, per the authored palette 'beige on grey'? — FAIL. The cases render a cool pale grey-green, so the authored two-colour palette collapses to one. The cases are the frame's entire subject; their beige is not decoration.",
+    "dsg s1: Era register: is the outline an even medium-thick WARM brown-black (#241a12)? — FAIL, measured. L16's ink sits at hue 172.2deg (cyan) with R-B -1.4. Every other frame in the batch runs 6-34deg with R-B between +3.4 and +31.3, as do both plates the human board accepted (L03 +3.8, L05 +24.3). L16 is the sole inversion in the set - a cool blue-black outline where the era clause names a warm brown-black.",
+    "The outline is a cool blue-black (measured ink hue 172deg, R-B -1.4) - the only inversion in a batch that otherwise runs 6-34deg with R-B +3.4 to +31.3, as do both human-accepted plates; and the authored 'beige on grey' palette collapsed to one colour because the beige computer cases rendered cool grey. Median saturation 0.1686 is the batch floor, and the frame cuts between the warm-oak L15 and the warm-spotlight L17."
+   ],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L16.png (sha256 332bdee0f293c8d4). Landed first attempt.",
+   "parent_depth": 0,
+   "lineage": 0
+  },
+  {
+   "shot_id": "L17",
+   "file": "assets/scenes/L17.png",
+   "files": [
+    "assets/scenes/L17.png"
+   ],
+   "technique": "(c) character-free / environment gen",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L17.png (sha256 838076a09e97a569). Landed first attempt.",
+   "parent_depth": 0,
+   "lineage": 0
+  },
+  {
+   "shot_id": "L18",
+   "file": "assets/scenes/L18.png",
+   "files": [
+    "assets/scenes/L18.png"
+   ],
+   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "seeds": [
+    "_staging/L17.png",
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: HIGH",
+    "style: MEDIUM",
+    "dsg a1: Do the slabs STAND UPRIGHT, butted face to face and shoved hard against each other, locked up like the two cases behind them? — FAIL, and it is the exact error R-12 was written to fix. The slabs LIE FLAT, splayed open like an opened book - not upright, not butted face to face, not locked up. Two phones lying face-up on a plinth read as display stock, so the mirrored fight that 'and Apple fight over the phone market' needs is simply not depicted. This is the shot's entire payload.",
+    "dsg r1: Is the rest of the display held exactly as established in L17 - plate glass, black platform with its red scuffed arc, spotlight, case proportions? — FAIL. Essentially nothing carried: the plate-glass side panels became a wooden proscenium frame; the red scuffed arc became faint pink scratches; the spotlight cone changed shape and the platform gained a large cream light pool; the cases changed proportion and gained scuff marks they did not have. A delta frame's whole contract is that only the authored change moves.",
+    "dsg r2: Is the crowd of passers-by held - same people, in coats and headscarves with shopping bags? — FAIL, twice over. A wholly different set of people, drawn smaller with a different face treatment and repositioned from the flanks to a band across the top - a continuity break; AND they wear short-sleeved t-shirts, contemporary casual wear and modern hairstyles - an ERA break. The frame's costume no longer reads 1983.",
+    "dsg s1: Era register: warm outline, flat cel, chromatic; and is red used semantically only? — Outline and cel are correct (ink hue 12.3deg, R-B +27.2; median saturation 0.2706) - but the red accent lost its semantics. In L17 red is the contact arc, the punch element; here it survives only as scattered scratch marks with no single semantic referent, which the era suffix licenses red for.",
+    "The two phone slabs lie FLAT on the platform splayed open like a book instead of standing upright butted face to face and locked up, so the mirrored fight the line needs is not depicted; the held set was re-invented (plate-glass panels became a wooden proscenium, the red scuffed arc became faint scratches, the spotlight and platform lighting changed, the cases changed proportion); and the crowd is a different crowd in contemporary short-sleeved dress rather than L17's 1980s coats and headscarves, which is an era break as well as a continuity break."
+   ],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L18.png (sha256 47bcb1ed3d5db4b4). Landed first attempt.",
+   "parent_depth": 1,
+   "lineage": 1
+  },
+  {
+   "shot_id": "L19",
+   "file": "assets/scenes/L19.png",
+   "files": [
+    "assets/scenes/L19.png"
+   ],
+   "technique": "(c) character-free / environment gen",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L19.png (sha256 c6a5d6eac1174df2). Attempt 2 — attempt 1 failed on a transient provider HTTP 503.",
+   "parent_depth": 0,
+   "lineage": 0
+  },
+  {
+   "shot_id": "L20",
+   "file": "assets/scenes/L20.png",
+   "files": [
+    "assets/scenes/L20.png"
+   ],
+   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "seeds": [
+    "_staging/L19.png",
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L20.png (sha256 b2d40d258064e64d). Attempt 2 — attempt 1 failed on a transient provider HTTP 503.",
+   "parent_depth": 1,
+   "lineage": 1
+  },
+  {
+   "shot_id": "L21",
+   "file": "assets/scenes/L21.png",
+   "files": [
+    "assets/scenes/L21.png"
+   ],
+   "technique": "(c) character-free / environment gen",
+   "seeds": [
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L21.png (sha256 9152f5ca2bcdd3aa). Landed first attempt.",
+   "parent_depth": 0,
+   "lineage": 0
+  },
+  {
+   "shot_id": "L06",
+   "file": "assets/scenes/L06.png",
+   "files": [
+    "assets/scenes/L06.png"
+   ],
+   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: MEDIUM",
+    "dsg t2: Is '1983' the ONLY drawn text, with no unauthored second instance? — FAIL. A second '1983' renders as an unauthored TENT CARD standing on the oak counter in the near foreground. The prompt authors only the window card and the era suffix forbids unrequested text. The register is right (marker capitals, correct wording) - the COUNT is wrong, and a dateline stops functioning as a dateline when the room states it twice.",
+    "An unauthored second '1983' tent card on the counter duplicates the established diegetic literal; the prompt authors only the window card and the era suffix forbids unrequested text."
+   ],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L06.png (sha256 c8773bc6a86f77fe). Landed first attempt. C-11 counters copied from p6b-slate2.json (parent_depth=1, lineage=1); seeds the promoted, verified place plate.",
+   "parent_depth": 1,
+   "lineage": 1
+  },
+  {
+   "shot_id": "L07",
+   "file": "assets/scenes/L07.png",
+   "files": [
+    "assets/scenes/L07.png"
+   ],
+   "technique": "(b) seeded composition — seeds the promoted place plate",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+   ],
+   "flagged": false,
+   "review_status": "parked",
+   "parked_reasons": [
+    "fidelity: HIGH",
+    "rig: MEDIUM",
+    "dsg r2: Is the vantage down on the shop floor at counter height, with the counter CROSSING THE FOREGROUND? — FAIL. The counter runs along the right wall into depth - i.e. L05's own door-side wide vantage, reproduced. The prompt authors 'from down on the shop floor... the varnished oak counter crosses the foreground', framed 'medium-wide at counter height, the counter edge across the foreground'. The shot's stated reason for existing (a new vantage so the cut reads against L05's door-side wide) is unmet; against L05 and L06 this cuts as the same camera.",
+    "dsg r3: Is the opened straw-filled crate at the counter's near end? — FAIL. The crate is present but sits on the floor at foreground-LEFT; counter and crate are at opposite sides of the frame, so the authored relation is broken.",
+    "dsg g1: Are the raised banknotes held up over the shoulders by visible hands? — FAIL. Four of the five raised notes have hands; one at approximately (907, 249) in the 1376x768 frame floats above a head with NO hand and NO arm attached. Confirmed at 2x crop.",
+    "dsg t1: Lettering: is any drawn text complete and correctly worded? — FAIL. The '1983' window card IS redrawn at this vantage and is occluded by the foreground buyer's head so only '83' reads. The shot's own notes state the card 'sits behind camera at this vantage, so no established literal is redrawn here'. A half-quoted dateline is a lettering defect, not a neutral crop.",
+    "The authored counter-height vantage was not delivered (L05's door-side wide is reproduced instead); one raised banknote floats with no hand or arm; the established '1983' card is redrawn occluded to a partial '83'; and the crate sits on the floor at foreground-left rather than at the counter's near end."
+   ],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L07.png (sha256 be48a0a66d8a17e1). Landed first attempt. C-11 counters copied from p6b-slate2.json (parent_depth=1, lineage=1); seeds the promoted, verified place plate.",
+   "parent_depth": 1,
+   "lineage": 1
+  },
+  {
+   "shot_id": "L09",
+   "file": "assets/scenes/L09.png",
+   "files": [
+    "assets/scenes/L09.png"
+   ],
+   "technique": "(b) seeded composition — seeds the promoted place plate",
+   "seeds": [
+    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L09.png (sha256 2c8287fa191d1b5b). Landed first attempt. C-11 counters copied from p6b-slate2.json (parent_depth=1, lineage=1); seeds the promoted, verified place plate.",
+   "parent_depth": 1,
+   "lineage": 1
   }
  ]
 }

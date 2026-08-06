@@ -136,3 +136,75 @@ crate delta composited on top. That is the unblock working as intended.
 4. **Consider surfacing the silent-plate-miss as a forge defect**: a missing PLACE plate should
    hard-error at $0 like other unresolvable seeds, instead of silently downgrading to a root plate.
    Not patched (prohibited) — flagged only.
+
+
+---
+
+# CONTINUATION 2026-08-06 — record / stamp / promote / resume / retry
+
+## Weaknesses first (continuation)
+
+**1. The provider is DOWN, and it stopped the run twice.** Resume canary L10 returned `HTTP 503`;
+its one re-issue HUNG past the 4-minute stall ceiling. The retry probe L06-retry1 also returned
+`HTTP 503`. Per the standing instruction I stopped both times rather than burn the ceiling on a dead
+API. **No shot was resumed and no retry frame exists.**
+
+**2. L08 is blocked again — and by the SAME forge defect, on a new path.** After stamping, L08's
+rebuilt slate seeds `[crowd-exemplar]` only: it silently LOST its in-chain parent L07. L07 is
+parked, so it was never promoted; `assets/scenes/L07.png` does not exist; `place_frame` resolves to
+`None`; and forge's explicit parked-parent refusal in `_scene_provenance` ("a parked defect is
+non-shippable and may not be inherited") is NEVER REACHED, because that guard only fires when the
+parent file resolves. Generating L08 would have produced a frame with no continuity to its stage
+parent. **I did not generate it.** L08 now waits on L07's retry being reviewed and verified.
+
+**3. The 4 parked frames' manifest entries point at `assets/scenes/<id>.png`, which does not
+exist** — they were correctly NOT promoted. Harmless today (a parked entry hard-errors the render
+gate before any file is read) but it is an inconsistency a future reader should not trip over.
+
+**4. Nothing was softened.** Every `parked_reason` in the manifest is the verifier's own string
+verbatim, including the two HIGH-severity fidelity parks.
+
+## What landed
+
+**RECORD.** All 17 candidates emitted through `forge.py manifest --kind scenes --from-batch
+p6b-slate.json`; the 8 already-promoted plate entries carried through verbatim so the emit could not
+drop them. L06/L07/L09 counters copied programmatically from `p6b-slate2.json` (`--from-batch` reads
+only one spec). **Manifest: 25 entries.**
+
+**STAMP.** `stamp_review.py` + the verifier's `p6b-rulings.json` -> **`stamped: 13 verified, 4
+parked`**. Manifest now **21 verified / 4 parked / 0 unreviewed**.
+
+**PROMOTE.** 13 verified candidates COPIED (not moved) into `assets/scenes/`; `_staging` keeps every
+copy. **`assets/scenes/` holds 21 PNGs.** The 4 parked are correctly absent.
+
+**RETRIES BUILT + $0-VALIDATED.** One `faceless-youtube/forge-retry-overlay@2` manifest
+(`p6b-retry-overlay.json`), four entries, correction text derived ONLY from the verifier's failed
+attributes. `batch --retry` + `gen --dry-run` confirm **`changed_spans: 1` on all four** — one
+exact-replace authority each, every passing clause byte-identical, names free of collision.
+
+| retry | replaced span | what it corrects (verifier's failed attributes only) |
+| --- | --- | --- |
+| L06-retry1 | the `'1983'` window-card clause | t2 — that card is the ONLY '1983'; no tent card |
+| L07-retry1 | Framing + palette + queue sentence | r2 vantage, r3 crate-at-counter, g1 hand on every note, t1 complete lettering |
+| L16-retry1 | `Palette beige on grey.` | a4 cases warm beige ~#d8c9a3, s1 WARM #241a12 ink (measured cyan, hue 172.2deg, R-B -1.4 — sole inversion in a batch running 6-34deg / +3.4 to +31.3) |
+| L18-retry1 | the `Only this changes:` sentence | a1 slabs STAND ON END, r1 parent set held, r2 same 1980s crowd, s1 red semantic only |
+
+Seeds are right: L06/L07-retry1 seed promoted `scenes/L05.png`; **L18-retry1 seeds promoted verified
+`scenes/L17.png`** — precisely the parent-continuity invariant it broke.
+
+## Ledger
+
+- **Provider-touching calls: 29** (17 successes, 12 failures — 10 of them 503s).
+- **Spend: $1.131 conservative** / **$0.663 realistic**. Ceiling $3.00 — **at most 38% consumed**,
+  **≥$1.87 left** for the 10 frames still owed.
+- **R1 tripwire: NEVER TRIPPED** across all 17.
+
+## Still owed (all specs built — no rework, just a live provider)
+
+| owed | count | blocked by |
+| --- | --- | --- |
+| 4 retry frames (L06/L07/L16/L18-retry1) | 4 | provider 503 — fire `gen --batch p6b-retry-slate.json` |
+| L10, L22, then chain L23→L24→L25 | 5 | provider 503 — `p6b-slate3.json` |
+| L08 | 1 | DOCTRINE: parked parent L07 — needs L07-retry1 reviewed + verified + promoted FIRST |
+
+Retry frames get NO stamp — they return to fresh-eyes. The 4 parked manifest entries stay parked.

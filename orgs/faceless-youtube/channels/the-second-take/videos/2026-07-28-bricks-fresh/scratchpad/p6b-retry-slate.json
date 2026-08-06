@@ -1,0 +1,162 @@
+[
+  {
+    "name": "L06-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts. The THIRD image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nThe same shop interior held exactly: three shelf bays of beige boxed home computers on the back wall, oak counter foreground-right with the brass till, cream-and-teal linoleum, the street door open stage-left, the window card carrying '1983' \u2014 that window card is the ONE AND ONLY place the text '1983' appears anywhere in this frame; there is NO second card, no tent card, no placard, no sign and no label bearing '1983' or any other text standing on the oak counter or anywhere else in the room. Only this changes: an opened wooden crate now stands at the counter's near end with packing straw spilling over its lip and one beige machine half unwrapped inside it; everything else exactly as established.",
+    "payload": "The same shop interior held exactly: three shelf bays of beige boxed home computers on the back wall, oak counter foreground-right with the brass till, cream-and-teal linoleum, the street door open stage-left, the window card carrying '1983' \u2014 that window card is the ONE AND ONLY place the text '1983' appears anywhere in this frame; there is NO second card, no tent card, no placard, no sign and no label bearing '1983' or any other text standing on the oak counter or anywhere else in the room. Only this changes: an opened wooden crate now stands at the counter's near end with packing straw spilling over its lip and one beige machine half unwrapped inside it; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); RETRY overlay from `L06`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "the window card carrying '1983'",
+      "to": "the window card carrying '1983' \u2014 that window card is the ONE AND ONLY place the text '1983' appears anywhere in this frame; there is NO second card, no tent card, no placard, no sign and no label bearing '1983' or any other text standing on the oak counter or anywhere else in the room"
+    }
+  },
+  {
+    "name": "L16-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA long plain shelf runs the full width of a grey stockroom, its face square to the frame and ranked edge to edge along its whole length with identical beige computer cases nose-out, each with an identical drive seated in its front bay. The case at centre has its bay lit from inside; the rest of the rank sits in even shadow, the row carrying on past both frame edges. Steel uprights and crossbraces stand at intervals along the run and flat cardboard sleeves are stacked on the shelf below it. Palette beige on grey, and the two colours must stay clearly distinct: the computer cases are warm BEIGE \u2014 a warm sandy tan around #d8c9a3, visibly warmer and more colour-saturated than the room, never a cool grey, never grey-green \u2014 while the stockroom walls, shelf and steel uprights are the cool grey they sit against. Every outline in the frame is the WARM brown-black #241a12, a brown-toned dark line \u2014 never a cool blue-black, never a cyan- or blue-tinted line.",
+    "payload": "A long plain shelf runs the full width of a grey stockroom, its face square to the frame and ranked edge to edge along its whole length with identical beige computer cases nose-out, each with an identical drive seated in its front bay. The case at centre has its bay lit from inside; the rest of the rank sits in even shadow, the row carrying on past both frame edges. Steel uprights and crossbraces stand at intervals along the run and flat cardboard sleeves are stacked on the shelf below it. Palette beige on grey, and the two colours must stay clearly distinct: the computer cases are warm BEIGE \u2014 a warm sandy tan around #d8c9a3, visibly warmer and more colour-saturated than the room, never a cool grey, never grey-green \u2014 while the stockroom walls, shelf and steel uprights are the cool grey they sit against. Every outline in the frame is the WARM brown-black #241a12, a brown-toned dark line \u2014 never a cool blue-black, never a cyan- or blue-tinted line.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor; RETRY overlay from `L16`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "Palette beige on grey.",
+      "to": "Palette beige on grey, and the two colours must stay clearly distinct: the computer cases are warm BEIGE \u2014 a warm sandy tan around #d8c9a3, visibly warmer and more colour-saturated than the room, never a cool grey, never grey-green \u2014 while the stockroom walls, shelf and steel uprights are the cool grey they sit against. Every outline in the frame is the WARM brown-black #241a12, a brown-toned dark line \u2014 never a cool blue-black, never a cyan- or blue-tinted line."
+    }
+  },
+  {
+    "name": "L07-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u2014 preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nThe 1983 high-street computer shop from down on the shop floor: the varnished oak counter crosses the foreground with its brass till and the opened straw-filled crate at its near end, the three shelf bays stacked with beige boxed home computers rise behind, cream-and-teal linoleum runs underfoot and daylight washes in from the street door. Framing: the camera is DOWN ON THE SHOP FLOOR at counter height, low, looking ACROSS the counter \u2014 the varnished oak counter runs HORIZONTALLY ACROSS THE FULL WIDTH OF THE FOREGROUND as a near edge close to camera, left frame edge to right frame edge, with the room and the three bays filling the space beyond it. The counter does NOT run away from the camera into depth along a side wall. The opened straw-filled crate stands ON THE COUNTER'S NEAR END, at one end of that foreground counter edge and touching it, never on the floor and never at the opposite side of the frame from the counter. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, and the head of the queue is pressed to the counter edge. EVERY raised banknote is GRIPPED BY A VISIBLE CARTOON HAND on a visible arm belonging to a buyer in the queue \u2014 no banknote floats free in the air without a hand and arm attached. Any in-world lettering that appears must be complete and fully legible, never half-hidden behind a head or cropped to a fragment.",
+    "payload": "The 1983 high-street computer shop from down on the shop floor: the varnished oak counter crosses the foreground with its brass till and the opened straw-filled crate at its near end, the three shelf bays stacked with beige boxed home computers rise behind, cream-and-teal linoleum runs underfoot and daylight washes in from the street door. Framing: the camera is DOWN ON THE SHOP FLOOR at counter height, low, looking ACROSS the counter \u2014 the varnished oak counter runs HORIZONTALLY ACROSS THE FULL WIDTH OF THE FOREGROUND as a near edge close to camera, left frame edge to right frame edge, with the room and the three bays filling the space beyond it. The counter does NOT run away from the camera into depth along a side wall. The opened straw-filled crate stands ON THE COUNTER'S NEAR END, at one end of that foreground counter edge and touching it, never on the floor and never at the opposite side of the frame from the counter. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, and the head of the queue is pressed to the counter edge. EVERY raised banknote is GRIPPED BY A VISIBLE CARTOON HAND on a visible arm belonging to a buyer in the queue \u2014 no banknote floats free in the air without a hand and arm attached. Any in-world lettering that appears must be complete and fully legible, never half-hidden behind a head or cropped to a fragment.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place; RETRY overlay from `L07`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "Framing: medium-wide at counter height, the counter edge across the foreground and the room beyond it filled back to the bays. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, banknotes held up over the shoulders in front of them and the head of the queue pressed to the counter edge.",
+      "to": "Framing: the camera is DOWN ON THE SHOP FLOOR at counter height, low, looking ACROSS the counter \u2014 the varnished oak counter runs HORIZONTALLY ACROSS THE FULL WIDTH OF THE FOREGROUND as a near edge close to camera, left frame edge to right frame edge, with the room and the three bays filling the space beyond it. The counter does NOT run away from the camera into depth along a side wall. The opened straw-filled crate stands ON THE COUNTER'S NEAR END, at one end of that foreground counter edge and touching it, never on the floor and never at the opposite side of the frame from the counter. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, and the head of the queue is pressed to the counter edge. EVERY raised banknote is GRIPPED BY A VISIBLE CARTOON HAND on a visible arm belonging to a buyer in the queue \u2014 no banknote floats free in the air without a hand and arm attached. Any in-world lettering that appears must be complete and fully legible, never half-hidden behind a head or cropped to a fragment."
+    }
+  },
+  {
+    "name": "L18-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nThe same lit shop-window display seen from inside: two oversized beige computer cases butted front to front, dented at the corners, the platform scuffed beneath them, the plate glass behind with the crowd of passers-by packed along the pavement on its far side, one spotlight above. Only this changes: two flat black glass phone slabs now STAND VERTICALLY ON END at the front edge of the platform, each one standing upright on its short bottom edge like a domino stood on end or a book shut and stood on a shelf \u2014 their two large flat faces pressed together face to face and shoved hard against each other, a matching dent where they meet, their bottom edges skidded apart under the push, locked up in exactly the same head-to-head shoving match as the two cases behind them, at their own smaller scale. The slabs must NOT lie flat on the platform, must NOT lie face-up, and must NOT be splayed open like an opened book. EVERYTHING ELSE IS HELD EXACTLY AS THE SEED FRAME ESTABLISHES IT, re-drawn unchanged: the PLATE GLASS side panels (flat glass, never a wooden proscenium or timber frame), the black platform carrying its RED SCUFFED CONTACT ARC at full strength, the single spotlight above with its cone unchanged, and the two oversized beige cases at their established proportion, dented only at the corners and otherwise unscuffed. The crowd of passers-by beyond the glass is THE SAME CROWD as established \u2014 the same people in the same positions packed along the pavement, in bulky 1980s winter coats, headscarves and shopping bags; not a new group, not repositioned, and never in short sleeves, t-shirts or modern casual dress. Red appears ONLY as that scuffed contact arc and nowhere else.",
+    "payload": "The same lit shop-window display seen from inside: two oversized beige computer cases butted front to front, dented at the corners, the platform scuffed beneath them, the plate glass behind with the crowd of passers-by packed along the pavement on its far side, one spotlight above. Only this changes: two flat black glass phone slabs now STAND VERTICALLY ON END at the front edge of the platform, each one standing upright on its short bottom edge like a domino stood on end or a book shut and stood on a shelf \u2014 their two large flat faces pressed together face to face and shoved hard against each other, a matching dent where they meet, their bottom edges skidded apart under the push, locked up in exactly the same head-to-head shoving match as the two cases behind them, at their own smaller scale. The slabs must NOT lie flat on the platform, must NOT lie face-up, and must NOT be splayed open like an opened book. EVERYTHING ELSE IS HELD EXACTLY AS THE SEED FRAME ESTABLISHES IT, re-drawn unchanged: the PLATE GLASS side panels (flat glass, never a wooden proscenium or timber frame), the black platform carrying its RED SCUFFED CONTACT ARC at full strength, the single spotlight above with its cone unchanged, and the two oversized beige cases at their established proportion, dented only at the corners and otherwise unscuffed. The crowd of passers-by beyond the glass is THE SAME CROWD as established \u2014 the same people in the same positions packed along the pavement, in bulky 1980s winter coats, headscarves and shopping bags; not a new group, not repositioned, and never in short sleeves, t-shirts or modern casual dress. Red appears ONLY as that scuffed contact arc and nowhere else.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L17.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L17.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place; RETRY overlay from `L18`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "Only this changes: two flat black glass slabs now stand upright at the front edge of the platform, butted face to face and shoved hard against each other with a matching dent where they meet and their bottom edges skidded apart under the push, locked up exactly like the two cases behind them at their own smaller scale; everything else exactly as established.",
+      "to": "Only this changes: two flat black glass phone slabs now STAND VERTICALLY ON END at the front edge of the platform, each one standing upright on its short bottom edge like a domino stood on end or a book shut and stood on a shelf \u2014 their two large flat faces pressed together face to face and shoved hard against each other, a matching dent where they meet, their bottom edges skidded apart under the push, locked up in exactly the same head-to-head shoving match as the two cases behind them, at their own smaller scale. The slabs must NOT lie flat on the platform, must NOT lie face-up, and must NOT be splayed open like an opened book. EVERYTHING ELSE IS HELD EXACTLY AS THE SEED FRAME ESTABLISHES IT, re-drawn unchanged: the PLATE GLASS side panels (flat glass, never a wooden proscenium or timber frame), the black platform carrying its RED SCUFFED CONTACT ARC at full strength, the single spotlight above with its cone unchanged, and the two oversized beige cases at their established proportion, dented only at the corners and otherwise unscuffed. The crowd of passers-by beyond the glass is THE SAME CROWD as established \u2014 the same people in the same positions packed along the pavement, in bulky 1980s winter coats, headscarves and shopping bags; not a new group, not repositioned, and never in short sleeves, t-shirts or modern casual dress. Red appears ONLY as that scuffed contact arc and nowhere else."
+    }
+  }
+]

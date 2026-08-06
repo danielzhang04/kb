@@ -1,0 +1,230 @@
+[
+  {
+    "name": "L08",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nThe same shop held exactly: the oak counter across the foreground with its brass till and the straw-filled crate at its near end, the three shelf bays of beige boxed home computers rising behind, the queue of buyers packed along the counter's far side and ranked back between the bays. Only this changes: every buyer in that queue now carries a boxed beige machine under one arm, held in tight against the coat; everything else exactly as established.",
+    "payload": "The same shop held exactly: the oak counter across the foreground with its brass till and the straw-filled crate at its near end, the three shelf bays of beige boxed home computers rising behind, the queue of buyers packed along the counter's far side and ranked back between the bays. Only this changes: every buyer in that queue now carries a boxed beige machine under one arm, held in tight against the coat; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L10",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u2014 preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nThe same shop seen from inside before dawn: the varnished oak counter and the bare shelf bays sit unlit across the foreground, and beyond the window glass a queue of overnight buyers curls away down the pavement in blue half-light, folding chairs, sleeping bags and flasks along the kerb, breath showing in the cold. Framing: wide from behind the counter, the glass splitting the still interior from the packed street. Palette: blue-grey dawn outside, unlit warm brown inside.",
+    "payload": "The same shop seen from inside before dawn: the varnished oak counter and the bare shelf bays sit unlit across the foreground, and beyond the window glass a queue of overnight buyers curls away down the pavement in blue half-light, folding chairs, sleeping bags and flasks along the kerb, breath showing in the cold. Framing: wide from behind the counter, the glass splitting the still interior from the packed street. Palette: blue-grey dawn outside, unlit warm brown inside.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L22",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place \u2014 preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\nThe rented warehouse again, lamp-lit: the roller door shut at the rear, empty steel shelving down the right wall, the work lamp on its tripod stage-left. The three pallets now stand built shoulder-high with sealed brown cartons ranked in tight rows that run back toward the door; the clear film is drawn hard round the lower courses but is cut back and peeled clear of the whole top row, which stands loose and unwrapped along the length of each stack. A crew of packers works the far pallet in the shadow beyond the lamp, lifting cartons up off a hand truck. The lit pallets stand large and fill the lower two-thirds of the frame. Palette: cold concrete grey, warm lamp amber, brown board. A tally card propped against the front pallet carries '26,000'.",
+    "payload": "The rented warehouse again, lamp-lit: the roller door shut at the rear, empty steel shelving down the right wall, the work lamp on its tripod stage-left. The three pallets now stand built shoulder-high with sealed brown cartons ranked in tight rows that run back toward the door; the clear film is drawn hard round the lower courses but is cut back and peeled clear of the whole top row, which stands loose and unwrapped along the length of each stack. A crew of packers works the far pallet in the shadow beyond the lamp, lifting cartons up off a hand truck. The lit pallets stand large and fill the lower two-thirds of the frame. Palette: cold concrete grey, warm lamp amber, brown board. A tally card propped against the front pallet carries '26,000'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L03.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L03.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L23",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\nThe same lamp-lit warehouse: shoulder-high pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet. Only this changes: the front carton on that unwrapped top row now stands with its flaps folded open, one red clay brick lying inside it on crumpled paper and filling the box exactly; everything else exactly as established.",
+    "payload": "The same lamp-lit warehouse: shoulder-high pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet. Only this changes: the front carton on that unwrapped top row now stands with its flaps folded open, one red clay brick lying inside it on crumpled paper and filling the box exactly; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L22.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L22.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L24",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\nThe same lamp-lit warehouse: pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the front carton on that row open on its red clay brick. Only this changes: every remaining carton along that unwrapped top row now stands with its flaps folded open too, one red clay brick lying inside each on crumpled paper and filling its box exactly; everything else exactly as established.",
+    "payload": "The same lamp-lit warehouse: pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the front carton on that row open on its red clay brick. Only this changes: every remaining carton along that unwrapped top row now stands with its flaps folded open too, one red clay brick lying inside each on crumpled paper and filling its box exactly; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L23.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L23.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 3,
+    "lineage": 3,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L25",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\nThe same lamp-lit warehouse: pallets receding toward the shut roller door, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the whole top row of cartons standing open on one red clay brick each. Only this changes: the front face of every one of those open cartons now carries 'HARD DRIVE' lettered across the middle of the board; everything else exactly as established.",
+    "payload": "The same lamp-lit warehouse: pallets receding toward the shut roller door, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the whole top row of cartons standing open on one red clay brick each. Only this changes: the front face of every one of those open cartons now carries 'HARD DRIVE' lettered across the middle of the board; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L24.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L24.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 4,
+    "lineage": 4,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  }
+]

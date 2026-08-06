@@ -1,0 +1,46 @@
+{
+ "schema": "faceless-youtube/forge-retry-overlay@2",
+ "video_slug": "2026-07-28-bricks-fresh",
+ "entries": [
+  {
+   "kind": "scene",
+   "shot": "L06",
+   "name": "L06-retry1",
+   "defect": "content",
+   "replace": {
+    "from": "the window card carrying '1983'",
+    "to": "the window card carrying '1983' — that window card is the ONE AND ONLY place the text '1983' appears anywhere in this frame; there is NO second card, no tent card, no placard, no sign and no label bearing '1983' or any other text standing on the oak counter or anywhere else in the room"
+   }
+  },
+  {
+   "kind": "scene",
+   "shot": "L16",
+   "name": "L16-retry1",
+   "defect": "content",
+   "replace": {
+    "from": "Palette beige on grey.",
+    "to": "Palette beige on grey, and the two colours must stay clearly distinct: the computer cases are warm BEIGE — a warm sandy tan around #d8c9a3, visibly warmer and more colour-saturated than the room, never a cool grey, never grey-green — while the stockroom walls, shelf and steel uprights are the cool grey they sit against. Every outline in the frame is the WARM brown-black #241a12, a brown-toned dark line — never a cool blue-black, never a cyan- or blue-tinted line."
+   }
+  },
+  {
+   "kind": "scene",
+   "shot": "L07",
+   "name": "L07-retry1",
+   "defect": "content",
+   "replace": {
+    "from": "Framing: medium-wide at counter height, the counter edge across the foreground and the room beyond it filled back to the bays. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, banknotes held up over the shoulders in front of them and the head of the queue pressed to the counter edge.",
+    "to": "Framing: the camera is DOWN ON THE SHOP FLOOR at counter height, low, looking ACROSS the counter — the varnished oak counter runs HORIZONTALLY ACROSS THE FULL WIDTH OF THE FOREGROUND as a near edge close to camera, left frame edge to right frame edge, with the room and the three bays filling the space beyond it. The counter does NOT run away from the camera into depth along a side wall. The opened straw-filled crate stands ON THE COUNTER'S NEAR END, at one end of that foreground counter edge and touching it, never on the floor and never at the opposite side of the frame from the counter. Palette: beige, teal, warm oak, cream. A queue of eager buyers stands packed along the far side of the counter and ranked back between the bays, in wide collars and bulky coats, and the head of the queue is pressed to the counter edge. EVERY raised banknote is GRIPPED BY A VISIBLE CARTOON HAND on a visible arm belonging to a buyer in the queue — no banknote floats free in the air without a hand and arm attached. Any in-world lettering that appears must be complete and fully legible, never half-hidden behind a head or cropped to a fragment."
+   }
+  },
+  {
+   "kind": "scene",
+   "shot": "L18",
+   "name": "L18-retry1",
+   "defect": "content",
+   "replace": {
+    "from": "Only this changes: two flat black glass slabs now stand upright at the front edge of the platform, butted face to face and shoved hard against each other with a matching dent where they meet and their bottom edges skidded apart under the push, locked up exactly like the two cases behind them at their own smaller scale; everything else exactly as established.",
+    "to": "Only this changes: two flat black glass phone slabs now STAND VERTICALLY ON END at the front edge of the platform, each one standing upright on its short bottom edge like a domino stood on end or a book shut and stood on a shelf — their two large flat faces pressed together face to face and shoved hard against each other, a matching dent where they meet, their bottom edges skidded apart under the push, locked up in exactly the same head-to-head shoving match as the two cases behind them, at their own smaller scale. The slabs must NOT lie flat on the platform, must NOT lie face-up, and must NOT be splayed open like an opened book. EVERYTHING ELSE IS HELD EXACTLY AS THE SEED FRAME ESTABLISHES IT, re-drawn unchanged: the PLATE GLASS side panels (flat glass, never a wooden proscenium or timber frame), the black platform carrying its RED SCUFFED CONTACT ARC at full strength, the single spotlight above with its cone unchanged, and the two oversized beige cases at their established proportion, dented only at the corners and otherwise unscuffed. The crowd of passers-by beyond the glass is THE SAME CROWD as established — the same people in the same positions packed along the pavement, in bulky 1980s winter coats, headscarves and shopping bags; not a new group, not repositioned, and never in short sleeves, t-shirts or modern casual dress. Red appears ONLY as that scuffed contact arc and nowhere else."
+   }
+  }
+ ]
+}

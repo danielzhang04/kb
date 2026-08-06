@@ -238,3 +238,85 @@ when the provider recovers is the entire remaining action.
 - **R1 tripwire: NEVER TRIPPED.** No frame < 0.10, so never two consecutive.
 - **Canaries: 2/2 PASSED** (L01 slice 1; L06 slice 2, which additionally proved place continuity
   against the newly promoted L05 plate).
+
+
+---
+
+# CONTINUATION 2026-08-06 — record, stamp, promote, resume, retry
+
+## STEP 1-2 — recorded + stamped
+
+All 17 candidates recorded via `forge.py manifest --kind scenes --from-batch p6b-slate.json`
+(counters inherited from the spec that derived them; L06/L07/L09 copied from `p6b-slate2.json`
+because `--from-batch` reads only one spec). The 8 already-promoted plate entries were carried
+through VERBATIM from the live manifest so the emit could not drop them. Manifest now holds **25
+entries**.
+
+`stamp_review.py` with the verifier's `p6b-rulings.json` -> **`stamped: 13 verified, 4 parked`**.
+Manifest total: **21 verified** (13 candidates + 8 plates), **4 parked**, **0 unreviewed**. Every
+`parked_reason` is the verifier's own string, verbatim — nothing softened, nothing reworded.
+
+| parked | axes | reasons |
+| --- | --- | --- |
+| L06 | fidelity MEDIUM | 3 — unauthored second '1983' tent card |
+| L07 | fidelity HIGH, rig MEDIUM | 7 — vantage, crate relation, floating banknote, partial '83' |
+| L16 | fidelity LOW, style MEDIUM | 5 — cyan ink (hue 172deg), cases grey not beige |
+| L18 | fidelity HIGH, style MEDIUM | 7 — slabs flat not locked up, parent set/crowd/era re-invented |
+
+## STEP 3 — promoted
+
+13 verified candidates COPIED (not moved) `_staging` -> `assets/scenes/`; `_staging` retains every
+copy per house pattern. `assets/scenes/` now holds **21 PNGs**. The 4 parked frames were NOT
+promoted — correctly absent from `scenes/`.
+
+## STEP 4 — resume BLOCKED, and one shot re-blocked on doctrine
+
+**L08 is blocked again, for a NEW reason, and I did not generate it.** Rebuilding its slate after
+the stamp shows L08 seeding `[crowd-exemplar]` ONLY — it silently LOST its in-chain parent L07.
+Mechanism: L07 is parked, so it was never promoted; `assets/scenes/L07.png` does not exist;
+`place_frame` resolves to `None`; and forge's explicit parked-parent refusal in
+`_scene_provenance` ("a parked defect is non-shippable and may not be inherited") is therefore
+NEVER REACHED, because that guard only fires when the parent file resolves. The frame falls back to
+a rootish gen with no continuity. **This is the same silent-fallback defect class flagged in the
+first pass, now firing on the parked-parent path.** L08 must wait for L07's retry to be reviewed
+and verified.
+
+**The provider is down.** Resume canary L10: `HTTP 503`. One re-issue: HUNG past the 4-minute stall
+ceiling, produced nothing. Per the standing instruction — stop, do not burn the ceiling on a dead
+API. L22/L23/L24/L25 not attempted.
+
+## STEP 5 — 4 surgical retries BUILT and $0-VALIDATED, not fired
+
+Authored as a single `faceless-youtube/forge-retry-overlay@2` manifest
+(`p6b-retry-overlay.json`), one entry per parked frame, correction text derived ONLY from the
+verifier's failed attributes. `forge.py batch --retry` + `gen --dry-run` confirm **`changed_spans: 1`
+on all four** — exactly one exact-replace authority each, every passing clause byte-identical.
+
+| retry | defect | replaced span | fixes |
+| --- | --- | --- | --- |
+| L06-retry1 | content | the '1983' window-card clause | states that card is the ONLY '1983' in frame; no tent card |
+| L07-retry1 | content | Framing + palette + queue sentence | counter ACROSS foreground at counter height; crate ON the counter's near end; every note gripped by a visible hand+arm; lettering complete |
+| L16-retry1 | content | `Palette beige on grey.` | cases warm beige ~#d8c9a3 vs cool grey room; outline WARM brown-black #241a12, never cool blue-black |
+| L18-retry1 | content | the `Only this changes:` sentence | slabs STAND VERTICALLY ON END (never flat/splayed); parent's plate glass, red contact arc, spotlight, case proportion held; SAME 1980s crowd, no modern dress; red semantic only |
+
+Seeds are correct: L06/L07-retry1 seed the promoted `scenes/L05.png`; **L18-retry1 seeds the
+promoted, verified `scenes/L17.png`** — the exact parent-continuity invariant it broke. Names
+`L*-retry1` are free and do not clobber the originals, which stay on disk parked.
+
+**Retry probe L06-retry1: HTTP 503.** Stopped. No retry frame exists; no frame was stamped.
+
+| timestamp | shot | status | median HSV saturation | cost |
+| --- | --- | --- | --- | --- |
+| 2026-08-06 | L10 | FAILED — 503 (resume canary) | n/a | $0.039 conservative |
+| 2026-08-06 | L10 | FAILED — re-issue HUNG past the 4-min ceiling | n/a | $0.039 conservative |
+| 2026-08-06 | L06-retry1 | FAILED — 503 (retry probe) | n/a | $0.039 conservative |
+
+## Running totals after the continuation
+
+- **On disk / recorded: 17 candidates** — 13 verified AND promoted, 4 parked with retries built.
+- **Still owed: 6 shots** (L08 doctrine-blocked on parked L07; L10, L22, L23, L24, L25 provider-blocked)
+  **+ 4 retry frames**, all specs built and validated.
+- **Provider-touching calls: 29** (17 successes, 12 failures — 10 of them 503s).
+- **Spend: $1.131 conservative** (every call billed, 503s included) / **$0.663 realistic**.
+  Ceiling $3.00 — **at most 38% consumed**, ≥$1.87 left for the 10 remaining frames.
+- **R1 tripwire: NEVER TRIPPED** across all 17.
