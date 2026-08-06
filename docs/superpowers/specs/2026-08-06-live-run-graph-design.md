@@ -44,12 +44,15 @@ never look governed" stands unchanged.
   per-line BEFORE the line touches disk or the bus. A worker echoing env can never leak a key into
   a transcript or a browser.
 - Caps mirror the PTY recorder: drop-oldest at a byte cap per attempt; flush ≤2s.
-- **Input injection:** adapters keep the worker's stdin open (`--input-format stream-json`).
-  New engine entry `injectAttemptInput(attemptRef, text, caller)`:
-  - callable ONLY with a verified WebAuthn session (same gate as launch) — no internal-caller path;
-  - appends a `dir:'in'` JSONL line AND an `OperationalEvent{kind:'operator-input'}` on the run
-    (audit trail: steering is run history, not a side channel);
-  - refused when the attempt is not `running`/`waiting-human`.
+- **Input injection — ALREADY BUILT upstream (discovered at planning):** the stack
+  `POST /api/control/runs/:runRef/agents/:agentId/messages` (session-gated, `routes.ts:958-980`) →
+  `agentMessages.deliver` (`activation.ts:451-459`, live-or-queued via session chains) →
+  `RunningClaudeWorker.postMessage` (`claudeWorkerAdapter.ts:769-776`, stream-json frame into a
+  deliberately-open stdin) exists end-to-end. W1 therefore only ADDS:
+  - an `OperationalEvent{kind:'message', source:'human'}` appended on successful delivery (audit
+    trail: steering is run history, not a side channel), and
+  - a `dir:'in'` line in the attempt-io transcript at the adapter write points.
+  Codex-runtime delivery already falls back to queued (no live codex injection — spec risk §holds).
 - The existing summary/result contract at `finalize()` is UNCHANGED — engine semantics identical.
 
 ### 2. Live channel (push, not poll)
