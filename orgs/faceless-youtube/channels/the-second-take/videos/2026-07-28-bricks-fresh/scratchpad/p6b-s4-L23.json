@@ -1,0 +1,43 @@
+[
+  {
+    "name": "L23",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene — preserve its held set and existing composition. The SECOND image is the crowd exemplar — use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference — preserve its authored place facts.\n\nThe same lamp-lit warehouse: shoulder-high pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet. Only this changes: the front carton on that unwrapped top row now stands with its flaps folded open, one red clay brick lying inside it on crumpled paper and filling the box exactly; everything else exactly as established.",
+    "payload": "The same lamp-lit warehouse: shoulder-high pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet. Only this changes: the front carton on that unwrapped top row now stands with its flaps folded open, one red clay brick lying inside it on crumpled paper and filling the box exactly; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L22.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L22.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived"
+  }
+]

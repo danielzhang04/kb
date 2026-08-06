@@ -1,0 +1,37 @@
+[
+  {
+    "name": "L10",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the destination place — preserve its set, palette, outline weight and lighting. The SECOND image is the crowd exemplar — use only its anonymous crowd proportion and face tier.\n\nThe same shop seen from inside before dawn: the varnished oak counter and the bare shelf bays sit unlit across the foreground, and beyond the window glass a queue of overnight buyers curls away down the pavement in blue half-light, folding chairs, sleeping bags and flasks along the kerb, breath showing in the cold. Framing: wide from behind the counter, the glass splitting the still interior from the packed street. Palette: blue-grey dawn outside, unlit warm brown inside.",
+    "payload": "The same shop seen from inside before dawn: the varnished oak counter and the bare shelf bays sit unlit across the foreground, and beyond the window glass a queue of overnight buyers curls away down the pavement in blue half-light, folding chairs, sleeping bags and flasks along the kerb, breath showing in the cold. Framing: wide from behind the counter, the glass splitting the still interior from the packed street. Palette: blue-grey dawn outside, unlit warm brown inside.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast — the scene composes from the place"
+  }
+]
