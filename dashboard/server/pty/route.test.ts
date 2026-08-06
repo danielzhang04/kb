@@ -27,6 +27,7 @@ import {
   parseSpawnParams,
   registerPtyRoute,
   sessionParamFromUrl,
+  SPAWN_EFFORT,
   tokenFromSubprotocol,
   workflowPrimingFileName,
 } from './route.ts';
@@ -38,6 +39,10 @@ import { createTranscriptRecorder } from './transcripts.ts';
 /** The absolute path the tests' claude resolver returns. Hermetic: no test needs the CLI installed, and
  *  its ABSOLUTENESS is itself the property under test (node-pty cannot spawn a bare name). */
 const FAKE_CLAUDE = process.platform === 'win32' ? 'C:\\fake\\bin\\claude.exe' : '/fake/bin/claude';
+
+/** The effort flag pair every claude spawn must carry, built from the constant so a change to the cap
+ *  updates the expectation in one place — and a change to the FLAG NAME still has to be deliberate. */
+const EFFORT_ARGS = ['--effort', SPAWN_EFFORT];
 
 const SECRET = Buffer.from('pty-route-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
@@ -197,6 +202,7 @@ function harness(options: {
   resolveAgentFile?: PtyRouteContext['resolveAgentFile'];
   resolveWorkflowFile?: PtyRouteContext['resolveWorkflowFile'];
   resolveClaudeFile?: PtyRouteContext['resolveClaudeFile'];
+  resolveAgentRouting?: PtyRouteContext['resolveAgentRouting'];
   repoRoot?: string;
   workflowPrimingRoot?: string;
   sessionRuns?: PtyRouteContext['sessionRuns'];
@@ -236,6 +242,9 @@ function harness(options: {
     // Hermetic: a FIXED absolute path, so no test depends on this machine having the claude CLI
     // installed. Tests that care about the not-found branch inject a thrower.
     resolveClaudeFile: options.resolveClaudeFile ?? (() => FAKE_CLAUDE),
+    // Hermetic: NOTHING routes unless a test supplies it, so no test builds this checkout's real roster.
+    // The default therefore also pins the degraded path — an unresolvable routing still spawns, capped.
+    resolveAgentRouting: options.resolveAgentRouting ?? (() => null),
     // Session-run recording is OFF unless a test wires it: the pre-leg-2 behaviour is the default, so
     // every existing spawn/attach/cap test still exercises exactly the path it was written for.
     ...(options.sessionRuns ? { sessionRuns: options.sessionRuns } : {}),
@@ -311,15 +320,84 @@ describe('parseSpawnParams / buildSpawnCommand — the "Run agent" admission rul
 
   it('builds an ARGV ARRAY, with the server-resolved priming path as its own element', () => {
     const stub = () => FAKE_CLAUDE;
-    expect(buildSpawnCommand({ mode: 'claude' }, null, stub)).toEqual({ file: FAKE_CLAUDE, args: [] });
+    expect(buildSpawnCommand({ mode: 'claude' }, null, stub)).toEqual({ file: FAKE_CLAUDE, args: [...EFFORT_ARGS] });
     expect(buildSpawnCommand({ mode: 'agent', agentId: 'fyt-runner' }, '/repo/agents/fyt-runner.md', stub)).toEqual({
       file: FAKE_CLAUDE,
-      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md'],
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS],
     });
     expect(buildSpawnCommand({ mode: 'workflow', workflowRef: 'video-run' }, '/state/pty-priming/workflow-video-run.md', stub)).toEqual({
       file: FAKE_CLAUDE,
-      args: ['--append-system-prompt-file', '/state/pty-priming/workflow-video-run.md'],
+      args: ['--append-system-prompt-file', '/state/pty-priming/workflow-video-run.md', ...EFFORT_ARGS],
     });
+  });
+
+  /**
+   * THE REGRESSION PIN for Daniel's live complaint (2026-08-04): spawned terminals opened on Fable at
+   * `max`, because passing NO flags let the child inherit his personal CLI config. Effort is a HARD CAP
+   * in every mode — including the modes that resolve no model — and it is never `max`.
+   */
+  it('caps EVERY spawn mode at the effort ceiling, and that ceiling is not max', () => {
+    const stub = () => FAKE_CLAUDE;
+    for (const command of [
+      buildSpawnCommand({ mode: 'claude' }, null, stub),
+      buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', stub),
+      buildSpawnCommand({ mode: 'workflow', workflowRef: 'w' }, '/state/w.md', stub),
+      // A codex-runtime agent resolves a model, but not one this claude may be told to run.
+      buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', stub, {
+        runtime: 'codex',
+        model: 'gpt-5.6-sol',
+      }),
+    ]) {
+      const effortAt = command.args.indexOf('--effort');
+      expect(effortAt).toBeGreaterThanOrEqual(0);
+      expect(command.args[effortAt + 1]).toBe('high');
+      expect(command.args).not.toContain('max');
+    }
+    expect(SPAWN_EFFORT).toBe('high');
+  });
+
+  /**
+   * The model is stamped from the roster's EFFECTIVE routing — but only for a claude runtime. A spawned
+   * terminal IS a claude process, so writing a codex model onto its argv would record a model that never
+   * ran; the honest cross-runtime console is a separate feature.
+   */
+  it('stamps --model for a CLAUDE runtime and refuses to stamp any other runtime\'s model', () => {
+    const stub = () => FAKE_CLAUDE;
+    expect(
+      buildSpawnCommand({ mode: 'agent', agentId: 'fyt-scriptwriter' }, '/repo/agents/fyt-scriptwriter.md', stub, {
+        runtime: 'claude',
+        model: 'claude-sonnet-5',
+      }).args,
+    ).toEqual(['--append-system-prompt-file', '/repo/agents/fyt-scriptwriter.md', '--model', 'claude-sonnet-5', ...EFFORT_ARGS]);
+
+    // codex runtime → effort only, and the GPT model string appears nowhere in the argv.
+    const codex = buildSpawnCommand({ mode: 'agent', agentId: 'fyt-runner' }, '/repo/agents/fyt-runner.md', stub, {
+      runtime: 'codex',
+      model: 'gpt-5.6-sol',
+    });
+    expect(codex.args).toEqual(['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS]);
+    expect(codex.args).not.toContain('--model');
+    expect(codex.args.join(' ')).not.toContain('gpt-5.6-sol');
+
+    // A workflow spawn routes through its resolved MANAGER, so it takes a model the same way.
+    expect(
+      buildSpawnCommand({ mode: 'workflow', workflowRef: 'email-triage' }, '/state/w.md', stub, {
+        runtime: 'claude',
+        model: 'claude-sonnet-5',
+      }).args,
+    ).toEqual(['--append-system-prompt-file', '/state/w.md', '--model', 'claude-sonnet-5', ...EFFORT_ARGS]);
+
+    // Plain `claude` belongs to no entity: it never takes a model, even if one is somehow supplied.
+    expect(
+      buildSpawnCommand({ mode: 'claude' }, null, stub, { runtime: 'claude', model: 'claude-sonnet-5' }).args,
+    ).toEqual([...EFFORT_ARGS]);
+
+    // Unresolvable routing degrades to the cap alone rather than refusing the terminal.
+    expect(buildSpawnCommand({ mode: 'agent', agentId: 'a' }, '/repo/agents/a.md', stub, null).args).toEqual([
+      '--append-system-prompt-file',
+      '/repo/agents/a.md',
+      ...EFFORT_ARGS,
+    ]);
   });
 
   /**
@@ -379,13 +457,13 @@ describe('agent-primed spawn (Run agent)', () => {
     expect(h.host.opens).toHaveLength(1);
     expect(h.host.opens[0].command).toEqual({
       file: FAKE_CLAUDE,
-      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md'],
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS],
     });
     expect(h.host.opens[0].cwd).toBe('/repo'); // never a client-supplied cwd
     expect(h.audit.rows[0].event).toMatchObject({
       action: 'pty-open',
       result: 'opened',
-      detail: { spawn: 'agent', agentId: 'fyt-runner' },
+      detail: { spawn: 'agent', agentId: 'fyt-runner', effort: 'high' },
     });
   });
 
@@ -394,8 +472,75 @@ describe('agent-primed spawn (Run agent)', () => {
     const ws = fakeSocket();
     await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=claude'), h.ctx);
 
-    expect(h.host.opens[0].command).toEqual({ file: FAKE_CLAUDE, args: [] });
-    expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { spawn: 'claude' } });
+    // Effort ONLY: a plain claude belongs to no entity, so there is no model to resolve for it.
+    expect(h.host.opens[0].command).toEqual({ file: FAKE_CLAUDE, args: [...EFFORT_ARGS] });
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { spawn: 'claude', effort: 'high' } });
+    expect((h.audit.rows[0].event.detail as Record<string, unknown>).model).toBeUndefined();
+  });
+
+  /** END TO END: the roster's effective routing reaches the real argv AND the audit row, for both a
+   *  claude-runtime agent (model stamped) and a codex-runtime one (model deliberately withheld). */
+  it('passes the agent\'s EFFECTIVE model on the wire and records what it passed', async () => {
+    const routes: Record<string, { runtime: string; model: string }> = {
+      'fyt-runner': { runtime: 'codex', model: 'gpt-5.6-sol' },
+      'fyt-scriptwriter': { runtime: 'claude', model: 'claude-sonnet-5' },
+    };
+    const h = harness({
+      resolveAgentFile: (repoRoot, agentId) => (routes[agentId] ? `${repoRoot}/agents/${agentId}.md` : null),
+      resolveAgentRouting: (_repoRoot, agentId) => routes[agentId] ?? null,
+    });
+
+    const claudeAgent = fakeSocket();
+    await handlePtyConnection(
+      claudeAgent.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-scriptwriter'),
+      h.ctx,
+    );
+    expect(h.host.opens[0].command).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-scriptwriter.md', '--model', 'claude-sonnet-5', ...EFFORT_ARGS],
+    });
+    expect(h.audit.rows[0].event).toMatchObject({
+      result: 'opened',
+      detail: { spawn: 'agent', agentId: 'fyt-scriptwriter', model: 'claude-sonnet-5', effort: 'high' },
+    });
+
+    const codexAgent = fakeSocket();
+    await handlePtyConnection(
+      codexAgent.sock,
+      req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'),
+      h.ctx,
+    );
+    expect(h.host.opens[1].command).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS],
+    });
+    // The row is honest about WHY no model rode the argv, instead of silently omitting the fact.
+    expect(h.audit.rows[1].event).toMatchObject({
+      result: 'opened',
+      detail: { spawn: 'agent', agentId: 'fyt-runner', effort: 'high', modelSkippedForRuntime: 'codex' },
+    });
+    expect((h.audit.rows[1].event.detail as Record<string, unknown>).model).toBeUndefined();
+  });
+
+  /** Routing is an enrichment, never a precondition: a resolver that BLOWS UP costs the terminal its
+   *  model flag, not its existence — and the effort cap still lands. */
+  it('still spawns, capped, when the routing resolver throws', async () => {
+    const h = harness({
+      resolveAgentFile: ALLOWLIST,
+      resolveAgentRouting: () => {
+        throw new Error('roster build exploded');
+      },
+    });
+    const ws = fakeSocket();
+    await handlePtyConnection(ws.sock, req(GOOD_HEADERS(validToken()), '/api/pty?spawn=agent&agent=fyt-runner'), h.ctx);
+
+    expect(h.host.opens).toHaveLength(1);
+    expect(h.host.opens[0].command).toEqual({
+      file: FAKE_CLAUDE,
+      args: ['--append-system-prompt-file', '/repo/agents/fyt-runner.md', ...EFFORT_ARGS],
+    });
+    expect(h.audit.rows[0].event).toMatchObject({ result: 'opened', detail: { effort: 'high' } });
   });
 
   /**
@@ -556,7 +701,18 @@ describe('workflow-primed spawn (Run workflow)', () => {
     const repoRoot = zeroAssignmentRepo({ withAgents: true });
     const primingRoot = scratchDir('kb-pty-priming-out-');
     // The REAL allowlist and the REAL priming writer — only the repo root and the state root are scratch.
-    const h = harness({ repoRoot, workflowPrimingRoot: primingRoot, resolveWorkflowFile: declaredWorkflowDefPath });
+    // The routing resolver records WHO it was asked about: a workflow terminal must route through the
+    // definition's own resolved manager, never through a second, independent resolution.
+    const routedFor: string[] = [];
+    const h = harness({
+      repoRoot,
+      workflowPrimingRoot: primingRoot,
+      resolveWorkflowFile: declaredWorkflowDefPath,
+      resolveAgentRouting: (_repoRoot, agentId) => {
+        routedFor.push(agentId);
+        return agentId === 'chief' ? { runtime: 'claude', model: 'claude-sonnet-5' } : null;
+      },
+    });
     const ws = fakeSocket();
     await handlePtyConnection(
       ws.sock,
@@ -573,6 +729,17 @@ describe('workflow-primed spawn (Run workflow)', () => {
     expect(primingPath.startsWith(repoRoot)).toBe(false); // NEVER inside the repo
     expect(h.host.opens[0].cwd).toBe(repoRoot); // still the repo the daemon serves
 
+    // Routed through the definition's RESOLVED MANAGER (`chief`) — the same agent the priming file below
+    // prints as the default manager, so the terminal's model and its own brief cannot disagree.
+    expect(routedFor).toEqual(['chief']);
+    expect(command.args).toEqual([
+      '--append-system-prompt-file',
+      primingPath,
+      '--model',
+      'claude-sonnet-5',
+      ...EFFORT_ARGS,
+    ]);
+
     const primed = readFileSync(primingPath, 'utf8');
     expect(primed).toContain('# Governing agent — workflow: Email triage (draft-only)');
     expect(primed).toContain('HEAD, GOVERNING agent');
@@ -588,7 +755,7 @@ describe('workflow-primed spawn (Run workflow)', () => {
     expect(h.audit.rows[0].event).toMatchObject({
       action: 'pty-open',
       result: 'opened',
-      detail: { spawn: 'workflow', workflowRef: 'email-triage' },
+      detail: { spawn: 'workflow', workflowRef: 'email-triage', model: 'claude-sonnet-5', effort: 'high' },
     });
   });
 

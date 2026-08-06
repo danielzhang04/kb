@@ -243,4 +243,36 @@ describe('node-pty spawn reality check', () => {
     expect(claudePath).toBeTruthy();
     expect(claudePath as string).toMatch(/claude/i);
   });
+
+  /**
+   * THE ARGV PROBE for the spawn-routing fix (2026-08-04). `--effort` / `--model` now ride the argv of
+   * EVERY spawned terminal, so a wrong flag name would kill every "Run agent" and "Run workflow" at boot
+   * — and unit tests asserting our own argv strings could never catch that, because they only compare our
+   * output to itself. This spawns the REAL CLI through the REAL node-pty with the REAL flags.
+   *
+   * It also pins the sharp edge found while probing: an INVALID `--effort` value does NOT fail the
+   * process — it prints `Warning: Unknown --effort value ... using the default effort` and carries on. So
+   * "it spawned" is NOT evidence the cap applied; the absence of that warning is. Asserting on it is what
+   * makes a future typo in `SPAWN_EFFORT` loud, instead of an invisible reversion to the operator's own
+   * `max` default (the very defect this fix exists to close).
+   */
+  it.runIf(live)('accepts the --effort/--model argv every spawn now carries', async () => {
+    const result = await spawnAndCollect(claudePath as string, [
+      '--effort',
+      'high',
+      '--model',
+      'claude-sonnet-5',
+      '--version',
+    ]);
+    expect(result.ok).toBe(true);
+    expect(result.output).toMatch(/\d+\.\d+\.\d+/); // ran through to a version banner → the args parsed
+    expect(result.output).not.toMatch(/unknown|invalid|unrecognized/i);
+  }, 30_000);
+
+  it.runIf(live)('proves that probe can FAIL: a bad effort value warns and silently falls back', async () => {
+    const result = await spawnAndCollect(claudePath as string, ['--effort', 'kb-not-a-level', '--version']);
+    expect(result.ok).toBe(true);
+    // The CONTROL. Without it, the "no warning" assertion above could be vacuously true.
+    expect(result.output).toMatch(/Unknown --effort value/i);
+  }, 30_000);
 });

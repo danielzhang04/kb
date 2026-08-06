@@ -34,6 +34,13 @@
  * refused twice over: HTTP 400 on the upgrade from the route's `preValidation` hook, and a fail-closed
  * re-check in the handler.
  *
+ * SPAWN ROUTING (2026-08-04): a claude spawned with no flags inherits the OPERATOR's personal CLI config —
+ * which is how every agent/workflow terminal ended up running Fable at `max` effort, disagreeing with the
+ * model the Agents view claims for that agent. Every claude spawn now carries `--effort high`
+ * ({@link SPAWN_EFFORT}, a hard cap with no wire override), and an entity-primed spawn additionally
+ * carries `--model <effective>` when — and only when — the roster resolves that entity to the CLAUDE
+ * runtime. See `spawnRouting.ts` for why a non-claude runtime gets no model flag at all.
+ *
  * REST companion (same origin-guarded scope): `GET /api/pty/sessions` lists the caller's live sessions
  * and `DELETE /api/pty/sessions/:id` kills one — both bearer-verified with the SAME `verifySession`, no
  * audit (a read and a not-audited-today close, respectively).
@@ -62,6 +69,8 @@ import type { PtyCommand, PtyHost } from './host.ts';
 import { CommandNotFoundError, resolveCommandPath } from './resolveCommand.ts';
 import { createPersistentSessionRegistry, SESSION_ID_RE } from './persistentSessions.ts';
 import type { PersistentSessionRegistry, SessionSink } from './persistentSessions.ts';
+import { claudeModelArg, resolveAgentSpawnRouting } from './spawnRouting.ts';
+import type { AgentRoutingResolver, SpawnRouting } from './spawnRouting.ts';
 import type { SessionRunKind, SessionRunStore } from './sessionRuns.ts';
 import type { TranscriptRecorder, TranscriptSummary } from './transcripts.ts';
 
@@ -133,6 +142,22 @@ export type SpawnParamResult =
  */
 export const CLAUDE_COMMAND = 'claude';
 
+/**
+ * The effort level EVERY claude this daemon spawns runs at — a HARD CAP, not a default.
+ *
+ * Daniel, 2026-08-04, on finding spawned terminals running Fable at `max`: "Not max. High is fine."
+ * Passing no flags at all meant every spawned terminal silently inherited his personal CLI config, which
+ * is `max` — slow and vastly overpriced for a worker terminal. `high` is now stamped on the argv of every
+ * spawn mode (plain, agent, workflow), and it is deliberately NOT plumbed to a query parameter: a cap a
+ * caller can raise over the wire is not a cap. Changing it is a code change.
+ *
+ * Verified against the CLI on this machine (2.1.222): `--effort <level>` accepts
+ * `low | medium | high | xhigh | max`. Note that an INVALID value does not fail the process — the CLI
+ * warns and falls back to the default effort — so a typo here would degrade silently rather than loudly.
+ * That is exactly why the value is a single named constant with a live spawn probe pinning it.
+ */
+export const SPAWN_EFFORT = 'high';
+
 /** Resolves {@link CLAUDE_COMMAND} to an absolute executable path. Injected in tests. */
 export type ClaudeFileResolver = () => string;
 
@@ -193,13 +218,26 @@ export function parseSpawnParams(url: string | undefined): SpawnParamResult {
  * the CLI is absent from the child's PATH, and the caller fails closed on that.
  *
  * The argv-purity property is unchanged: we resolve a PATH lookup to a path, we do not wrap in a shell.
+ *
+ * ROUTING (2026-08-04). Two flags now ride every spawn:
+ *   `--effort high`   — ALWAYS, in EVERY mode, from {@link SPAWN_EFFORT}. A hard cap; no caller, query
+ *                       parameter, or `routing` value can raise it.
+ *   `--model <model>` — ONLY when `routing` resolves to a CLAUDE runtime (see {@link claudeModelArg}).
+ *                       A non-claude routing (codex, …) stamps no model at all rather than lying about
+ *                       what this claude process is.
+ * `routing` is server-computed from the roster projection and is never a client string. Plain `claude`
+ * mode belongs to no agent, so it has no model to resolve and takes the effort cap alone.
+ *
+ * The priming flag stays FIRST in the argv so `args[0]`/`args[1]` remain the flag and its path.
  */
 export function buildSpawnCommand(
   spawn: PtySpawnRequest,
   primingFile: string | null,
   resolveFile: ClaudeFileResolver = resolveClaudeFile,
+  routing: SpawnRouting | null = null,
 ): PtyCommand {
-  if (spawn.mode === 'claude') return { file: resolveFile(), args: [] };
+  const effort = ['--effort', SPAWN_EFFORT];
+  if (spawn.mode === 'claude') return { file: resolveFile(), args: [...effort] };
   if (primingFile === null || primingFile === '') {
     throw new Error(
       spawn.mode === 'workflow'
@@ -207,7 +245,11 @@ export function buildSpawnCommand(
         : 'buildSpawnCommand: an agent-primed spawn needs a server-resolved declaration path',
     );
   }
-  return { file: resolveFile(), args: ['--append-system-prompt-file', primingFile] };
+  const model = claudeModelArg(routing);
+  return {
+    file: resolveFile(),
+    args: ['--append-system-prompt-file', primingFile, ...(model ? ['--model', model] : []), ...effort],
+  };
 }
 
 /** A workflow ref safe to reuse verbatim as a filename stem (the parser's own definition-id grammar). */
@@ -221,9 +263,23 @@ export function workflowPrimingFileName(ref: string): string {
   return `workflow-${createHash('sha256').update(ref, 'utf8').digest('hex').slice(0, 32)}.md`;
 }
 
+/** What a generated workflow priming file yields the spawn: its own path, plus the agent whose routing
+ *  the spawned terminal should run as. */
+export interface WorkflowPriming {
+  path: string;
+  /**
+   * The workflow's RESOLVED DEFAULT MANAGER — read straight off the same `resolveWorkflowDefaults`
+   * projection that produced the priming text, never re-resolved here. The spawned terminal IS that
+   * governing agent, so it must run on that agent's model; resolving the cast a second time could hand
+   * the operator a terminal whose model disagrees with the cast printed inside its own priming file.
+   * `null` when the definition resolves no manager (ambiguity is reported, never guessed).
+   */
+  managerAgentId: string | null;
+}
+
 /**
  * Generate the governing-agent priming file for an ALREADY-ALLOWLISTED workflow ref and return its
- * absolute path.
+ * absolute path together with the resolved manager that names its routing.
  *
  * It is written into the DAEMON STATE ROOT (`resolveDashboardStateRoot`, the same directory the composer
  * and control stores use), never into the repo: the repo is the operator's working tree and a terminal
@@ -241,7 +297,7 @@ export function writeWorkflowPrimingFile(
   ref: string,
   primingRoot: string,
   defFile: string,
-): string {
+): WorkflowPriming {
   const primed = workflowPrimingText(repoRoot, ref);
   const text = primed?.text ?? [
     `# Governing agent — workflow: ${ref}`,
@@ -259,7 +315,7 @@ export function writeWorkflowPrimingFile(
   mkdirSync(primingRoot, { recursive: true });
   const path = join(primingRoot, workflowPrimingFileName(ref));
   writeFileSync(path, text, 'utf8');
-  return path;
+  return { path, managerAgentId: primed?.defaults.manager?.agentId ?? null };
 }
 
 /** Everything a PTY connection needs, all hermetic-test-injectable. */
@@ -307,6 +363,14 @@ export interface PtyRouteContext {
    */
   resolveClaudeFile: ClaudeFileResolver;
   /**
+   * Resolves ONE agent id to the EFFECTIVE runtime+model the roster already computes for it, so an
+   * entity-primed terminal runs as the model the Agents view says that agent runs on. Defaults to
+   * {@link resolveAgentSpawnRouting} (the real `buildRoster` projection); injected in tests so no test
+   * builds this checkout's roster. It never throws and may return null — a spawn whose routing cannot be
+   * resolved still opens, capped at {@link SPAWN_EFFORT}, simply without a `--model` flag.
+   */
+  resolveAgentRouting: AgentRoutingResolver;
+  /**
    * The durable SESSION RUN record store (`sessionRuns.ts`). Optional: when absent this route behaves
    * exactly as it did before — sessions still spawn, attach and die, they are simply not recorded. It is
    * wired in `server/http/surface.ts` for the daemon; tests inject a store over a temp state root.
@@ -350,6 +414,7 @@ export function makePtyRouteContext(overrides: Partial<PtyRouteContext> = {}): P
     resolveWorkflowFile: overrides.resolveWorkflowFile ?? declaredWorkflowDefPath,
     workflowPrimingRoot: overrides.workflowPrimingRoot ?? join(resolveDashboardStateRoot(), 'pty-priming'),
     resolveClaudeFile: overrides.resolveClaudeFile ?? resolveClaudeFile,
+    resolveAgentRouting: overrides.resolveAgentRouting ?? resolveAgentSpawnRouting,
     // No defaults are fabricated for these two. Constructing a file-backed store here would make every
     // context construction (tests included) touch the daemon's real state root; the composition root
     // owns them instead, exactly as it owns the fleet-gated host.
@@ -565,8 +630,15 @@ export async function handlePtyConnection(
   // Hoisted out of the spawn block: the session-run record keeps the priming file this session was
   // actually started with, which is the only durable answer to "what was this shell told to be?".
   let primingFile: string | null = null;
+  // The agent whose EFFECTIVE routing this terminal should run as: itself for an `agent` spawn, the
+  // workflow's resolved default MANAGER for a `workflow` spawn (the session IS that governing agent), and
+  // nobody for a plain `claude` — which belongs to no entity and so has no model to inherit.
+  let routingAgentId: string | null = null;
+  // The routing actually applied, kept for the audit row so "what we ran" is recorded, not assumed.
+  let routing: SpawnRouting | null = null;
   if (spawnParams.spawn) {
     if (spawnParams.spawn.mode === 'agent') {
+      routingAgentId = spawnParams.spawn.agentId as string;
       primingFile = ctx.resolveAgentFile(ctx.repoRoot, spawnParams.spawn.agentId as string);
       if (primingFile === null) {
         await audit('unknown-agent', owner, { agentId: spawnParams.spawn.agentId });
@@ -585,7 +657,9 @@ export async function handlePtyConnection(
         return;
       }
       try {
-        primingFile = writeWorkflowPrimingFile(ctx.repoRoot, workflowRef, ctx.workflowPrimingRoot, defFile);
+        const primed = writeWorkflowPrimingFile(ctx.repoRoot, workflowRef, ctx.workflowPrimingRoot, defFile);
+        primingFile = primed.path;
+        routingAgentId = primed.managerAgentId;
       } catch (err) {
         await audit('spawn-failed', owner, { workflowRef, error: (err as Error).message });
         if (isOpen(socket)) socket.send(JSON.stringify({ type: 'error', reason: 'spawn-failed' }));
@@ -593,11 +667,21 @@ export async function handlePtyConnection(
         return;
       }
     }
+    // Routing is an ENRICHMENT of the spawn, never a precondition for it: a roster this daemon cannot
+    // build must cost the terminal its `--model` flag, not its existence. So it is resolved outside the
+    // fail-closed block below and swallowed to null. The effort cap does not depend on it.
+    if (routingAgentId) {
+      try {
+        routing = ctx.resolveAgentRouting(ctx.repoRoot, routingAgentId);
+      } catch {
+        routing = null;
+      }
+    }
     // Resolving `claude` to an absolute path is the LAST thing before the spawn, and it can fail: the
     // CLI may not be on the child's PATH at all. Fail CLOSED and NAMED — one `claude-not-found-on-path`
     // row an operator can act on, never node-pty's empty `File not found: `.
     try {
-      command = buildSpawnCommand(spawnParams.spawn, primingFile, ctx.resolveClaudeFile);
+      command = buildSpawnCommand(spawnParams.spawn, primingFile, ctx.resolveClaudeFile, routing);
     } catch (err) {
       if (err instanceof CommandNotFoundError) {
         await audit('claude-not-found-on-path', owner, { command: err.command, searchedDirs: err.searchedDirs });
@@ -735,6 +819,17 @@ export async function handlePtyConnection(
       spawn: spawnParams.spawn?.mode ?? 'shell',
       ...(spawnParams.spawn?.agentId ? { agentId: spawnParams.spawn.agentId } : {}),
       ...(spawnParams.spawn?.workflowRef ? { workflowRef: spawnParams.spawn.workflowRef } : {}),
+      // WHAT WE ACTUALLY RAN. Recorded for claude spawns only (a login shell takes no such flags), and
+      // computed from the same rule the argv was built with — never re-derived, so the row cannot claim a
+      // model the process was not given. `model` is absent exactly when no `--model` rode the argv: an
+      // unresolved routing, or a resolved NON-CLAUDE runtime, which is also worth recording as such.
+      ...(spawnParams.spawn
+        ? {
+            effort: SPAWN_EFFORT,
+            ...(claudeModelArg(routing) ? { model: claudeModelArg(routing) } : {}),
+            ...(routing && !claudeModelArg(routing) ? { modelSkippedForRuntime: routing.runtime } : {}),
+          }
+        : {}),
       // Ties this row to the durable record it opened, so the audit log and the session-run list can be
       // read against each other without guessing from timestamps.
       ...(sessionRunRef ? { sessionRunRef } : {}),
