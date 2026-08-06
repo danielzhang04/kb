@@ -373,15 +373,13 @@
    "files": [
     "assets/scenes/L19.png"
    ],
-   "technique": "(c) character-free / environment gen",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
+   "technique": "(a) reuse — human-restored archived pre-reset frame, $0, no provider call",
+   "seeds": [],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L19.png (sha256 c6a5d6eac1174df2). Attempt 2 — attempt 1 failed on a transient provider HTTP 503.",
+   "notes": "Daniel 2026-08-06 in-session ruling — restored as-is from the pre-reset run's archive at `assets/_archive-pre-reset/scenes/L19.png` (the 214-shot pre-reset file's hero 'raking it in' frame), replacing the Phase 6B candidate. Held still across both L19 and L20 slots — the VO '...were quietly / raking it in. They were' spans both, and L20.png is byte-identical to this file (sha256 6c957638418ba0889d). Measured: ink hue 14.7deg, R-B +17.8 (WARM), median saturation 0.2588; 2752x1536 (2K), downscaled at render per precedent R2. No batch spec exists for this restore (manual ruling, not a `batch` run) — C-11 provenance counters STATED as root values (parent_depth 0 / lineage 0), same treatment as the L05 archive-restore precedent (board-v2 ruling R5). Superseded frame preserved at `assets/_archive-pre-restore-2026-08-06/L19.png` (sha256 c6a5d6eac1174df2).",
    "parent_depth": 0,
    "lineage": 0
   },
@@ -391,18 +389,15 @@
    "files": [
     "assets/scenes/L20.png"
    ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "_staging/L19.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
+   "technique": "(a) reuse — human-restored archived pre-reset frame, $0, no provider call",
+   "seeds": [],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L20.png (sha256 b2d40d258064e64d). Attempt 2 — attempt 1 failed on a transient provider HTTP 503.",
-   "parent_depth": 1,
-   "lineage": 1
+   "notes": "Daniel 2026-08-06 in-session ruling — restored as-is from the pre-reset run's archive at `assets/_archive-pre-reset/scenes/L19.png` (the 214-shot pre-reset file's hero 'raking it in' frame — same source file as L19, this slot reuses it), replacing the Phase 6B candidate. SAME FRAME as L19.png — byte-identical (sha256 6c957638418ba0889d) — a held still across both slots; the VO '...were quietly / raking it in. They were' spans both. Measured: ink hue 14.7deg, R-B +17.8 (WARM), median saturation 0.2588; 2752x1536 (2K), downscaled at render per precedent R2. No batch spec exists for this restore (manual ruling, not a `batch` run) — C-11 provenance counters STATED as root values (parent_depth 0 / lineage 0), same treatment as the L05 archive-restore precedent (board-v2 ruling R5). Superseded frame preserved at `assets/_archive-pre-restore-2026-08-06/L20.png` (sha256 b2d40d258064e64d).",
+   "parent_depth": 0,
+   "lineage": 0
   },
   {
    "shot_id": "L21",
@@ -410,15 +405,13 @@
    "files": [
     "assets/scenes/L21.png"
    ],
-   "technique": "(c) character-free / environment gen",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
+   "technique": "(a) reuse — human-restored archived pre-reset frame, $0, no provider call",
+   "seeds": [],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L21.png (sha256 9152f5ca2bcdd3aa). Landed first attempt.",
+   "notes": "Daniel 2026-08-06 in-session ruling — restored as-is from the pre-reset run's archive at `assets/_archive-pre-reset/scenes/L20.png` (the 214-shot pre-reset file's deadpan 'gold rush' merchant frame), replacing the Phase 6B candidate. Measured: ink hue 14.5deg, R-B +35.1 (WARM), median saturation 0.4784; 2752x1536 (2K), downscaled at render per precedent R2. No batch spec exists for this restore (manual ruling, not a `batch` run) — C-11 provenance counters STATED as root values (parent_depth 0 / lineage 0), same treatment as the L05 archive-restore precedent (board-v2 ruling R5). Superseded frame preserved at `assets/_archive-pre-restore-2026-08-06/L21.png` (sha256 9152f5ca2bcdd3aa).",
    "parent_depth": 0,
    "lineage": 0
   },

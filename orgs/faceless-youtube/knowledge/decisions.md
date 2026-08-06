@@ -3956,3 +3956,28 @@ Worker caught the discrepancy against this file and did not silently reconcile �
 **Residue routed.** forge.py silently degrades a shot whose place plate is missing to a root plate
 (zero continuity, no error) — fail-silent defect queued for a fail-loud fix with tests, next
 doctrine-window (not mid-wave).
+
+## 2026-08-06 — bricks-fresh: L19/L20/L21 archive restore (Daniel ruling); crowd-expression wave opened
+
+**Decision.** Daniel reviewed the p6b first tenth and ruled: (1) the pre-reset run's "raking it in"
+hero frame and "gold rush" merchant frame are restored AS-IS — old-L19 now serves slots L19+L20 (held
+still), old-L20 serves L21; both measure in the current era register (ink 14.7deg/+17.8 and
+14.5deg/+35.1 WARM; sat 0.259/0.478; 2K, downscaled at render per the R2 1K precedent). Restore
+executed in worktree claude/bricks-expression-restoration, superseded frames archived to
+assets/_archive-pre-restore-2026-08-06/, manifest entries rewritten in place (one record per file,
+L05/R5 archive-restore precedent). NOTE: scene PNGs are gitignored (machine-local) — the pixel port
+to the main checkout is an explicit wave-close step, not automatic on merge. (2) Crowd-rig figures
+regain simple beat-fit expressions and poses via plain prompt words (the poyais mechanism; VPW rule-3
+ban re-scoped to cast/seeded figures — no new fields, no vocabulary, no simplicity rulebook).
+(3) Delta-chain cap tightens from <=3 to <=2 deltas per stage (boredom-driven, not degradation);
+homes: visual-grammar S1 chain logic + lint_shots stage_check + test pins. (4) Anonymous
+story-bearing individuals are staged as SEEDED EVERYMAN figures (base rig seeded via expr/action
+step-1 cards, always dressed in the shot's own era clothing authored in prose — the base template
+never renders as itself); crowd scale is reserved for genuine masses. (5) A four-lens authoring audit
+(comedy drain, literalism, run lengths, missing crowd emotion) gates Phase 6c. Spec:
+docs/superpowers/specs/2026-08-06-crowd-expression-restaging-design.md.
+**Alternatives rejected.** Re-minting the two restored frames under the current generator (rolls the
+dice on the acting Daniel picked); a declared crowd_mood field + forge injection (new function where
+a restoration suffices); a codified pose-simplicity bound (rulebook for a defect that never occurred);
+pixel-depth forge refusal (degradation is not the driver); hard authoring-run cap of 3 (kills
+legitimate multi-beat gags — audit judgment instead).
