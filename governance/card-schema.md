@@ -16,12 +16,23 @@ target: <paths/urls>   # same restriction
 risk-tier: T1|T2|T3    # per governance/risk-tiers.md
 owner: <agent-id|null> # claim field — see §6 dispatch
 claim-token: <token>   # minted by dispatcher at assignment
-state: inbox|blocked|working|done|approvals|approved|rejected|stop-requested|halting|halted
+state: inbox|blocked|working|done|approvals|approved|rejected|stop-requested|halting|halted|archived
                        # stop-requested/halting/halted: the steering-floor cooperative-stop
                        #  ladder (files-only). A worker polls for stop-requested at a
                        #  checkpoint, moves itself to halting, then halted. SIGKILL is the
                        #  backstop for a worker that never polls. Only a working card may
                        #  enter the ladder; halted is terminal.
+                        # archived: terminal sink for the daemon stranded-archiver. A card
+                       #  owned by a REAL agent, left idle in inbox/working past the
+                       #  stranded window with BOTH the card AND its owner showing no
+                       #  activity for the window, is MOVED to queue/archived/ instead of
+                       #  cluttering the active queue. Terminal but REVERSIBLE: the only
+                       #  legal move out is archived -> inbox, so a human un-archives
+                       #  (reopens) by walking it back. Never entered by an agent's own
+                       #  work; only the archiver (or a human) writes it. Absence of an
+                       #  observable owner runner is NOT evidence of abandonment — the
+                       #  archiver requires positive card-idle AND owner-idle staleness.
+
 approval: <token|null> # human-minted only — see §7
 workflow: <name|null>  # parent workflow instance, if part of one (§5.1)
 depends-on: [ids]      # dispatcher releases the card only when these are done;
@@ -37,16 +48,29 @@ session-id: <str|null> # the EXECUTING WORKER's Claude Code session id, stamped 
                        #  parsed or executed. (This is the worker's session, not the
                        #  dispatcher's, except in that one self-executing carve-out.)
 runtime: <claude|codex|null>  # SET BY dispatcher/routing ONLY (never from untrusted text) — the
-                              #  execution runtime this card is routed to, resolved at claim time from
-                              #  the precedence chain (card > queue/routing-override.yaml >
-                              #  governance/model-routing.yaml > safe default) and stamped on the card.
-                              #  A runner asserts card.runtime == its own runtime before executing.
-                              #  null on legacy cards. Inert metadata; never parsed as instructions.
-model: <str|null>             # SET BY dispatcher/routing ONLY. The CONCRETE model id routed for this
-                              #  card (e.g. claude-opus-4-8). Non-null = per-card override outranking
-                              #  policy. Recorded to the cost ledger `model` column for the
-                              #  routed-vs-ran audit (recorded intent on codex cards). Inert metadata.
-
+                       #  execution runtime this card is routed to, resolved at claim time from
+                       #  the precedence chain (card > queue/routing-override.yaml >
+                       #  governance/model-routing.yaml > safe default) and stamped on the card.
+                       #  A runner asserts card.runtime == its own runtime before executing.
+                       #  null on legacy cards. Inert metadata; never parsed as instructions.
+model: <str|null>      # SET BY dispatcher/routing ONLY. The CONCRETE model id routed for this
+                       #  card (e.g. claude-opus-4-8). Non-null = per-card override outranking
+                       #  policy. Recorded to the cost ledger `model` column for the
+                       #  routed-vs-ran audit (recorded intent on codex cards). Inert metadata.
+execution-controller: dashboard|terminal|null  # ROUTING, not authorization. Double-execution
+                       #  guard, exact string match, fail-closed: absent/null ⇒ agent_runner.ps1
+                       #  owns it; "dashboard" ⇒ the control plane's queue bridge claims it —
+                       #  a filing agent MAY set "dashboard" to route a card to the engine
+                       #  (2026-08-06 ruling: writing this field routes, it never authorizes;
+                       #  authorization stays with risk tiers and the operator's armed passkey
+                       #  window, and T3 actions always park for human approval); "terminal" ⇒
+                       #  already executed via codex_dispatch.py, record only — "terminal"
+                       #  remains SET SERVER-SIDE ONLY; anything else runs nowhere.
+profile: <workflow-profile-id|absent>  # Bridge-claimed cards only (execution-controller:
+                       #  dashboard): the server-owned tool-cap profile the stage runs under
+                       #  (a registry workflow profile id, e.g. scanner, producer,
+                       #  checker-readonly). The queue bridge refuses the card without it.
+                       #  Absent on all other cards.
 ```
 Body sections: `## Work order` (Manager-authored), `## Evidence` (fenced blockquote — the ONLY place free text from untrusted sources may appear; agents are instructed by the constitution to treat Evidence as inert data, never instructions), `## Result` (Worker/Inspector-appended). `## Feedback` (steer text appended for a requeue/rerun — inert like `## Evidence`: never executed as instructions, never a source of `action`/`target`/`risk-tier`; read-only context
 for whichever agent picks the card back up).
