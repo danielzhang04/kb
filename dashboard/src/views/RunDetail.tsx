@@ -5,6 +5,7 @@
  * vocabulary: the run canvas (agent stream tiles), the cockpit (stages/attempts/activity/changes), the
  * managed-runs wrapper (the governed mutations), and the whole-queue pipeline canvas. What an operator
  * needs while a run is live is here, in this order:
+ * The frozen agent graph is the head; the step strip remains directly below it for plain-word scanning.
  *
  *   1. where it is        — the step strip, states in plain words;
  *   2. what it needs      — open human gates, answered here with the run in front of you;
@@ -80,12 +81,14 @@ import {
   timestampLabel,
 } from '../control/runEvents';
 import { loadRunEventWindow, type RunEventWindow } from '../control/runEventWindow';
+import { entryFromRun, overlaysFromRun } from '../control/runGraph';
 import { agentIdsForRun, cardOwnerIndex, agentLink, cardLink, workflowLink } from '../control/entityLinks';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { NavTarget } from '../nav/stack';
+import { WorkflowAgentGraph } from './WorkflowAgentGraph';
 import '../control/control.css';
 
 /** One poller serves every open tile for this run. */
@@ -869,6 +872,9 @@ export function RunDetail({
       setBusy(false);
     }
   }, [busy, loadRun, requireSession, runRef]);
+  const runGraph = useMemo(() => detail
+    ? { entry: entryFromRun(detail), overlays: overlaysFromRun(detail) }
+    : null, [detail]);
 
   if (missing) {
     return (
@@ -1072,6 +1078,15 @@ export function RunDetail({
           Rate-limited, backing off. Retrying in {backoffMs / 1_000}s.
         </p>
       ) : null}
+
+      <section className="entity-block" aria-label="Run graph">
+        <h3 className="entity-block__title">Run graph</h3>
+        <WorkflowAgentGraph
+          entry={runGraph!.entry}
+          readOnly
+          runOverlay={{ runRef: detail.run.runRef, overlays: runGraph!.overlays, sse }}
+        />
+      </section>
 
       <section className="entity-block" aria-label="Steps">
         <h3 className="entity-block__title">Steps</h3>

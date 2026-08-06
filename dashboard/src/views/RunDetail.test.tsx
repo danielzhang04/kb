@@ -41,8 +41,10 @@ vi.mock('reactflow', async () => {
   return {
     Background: () => null,
     Controls: () => null,
-    Handle: () => null,
-    Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
+  Handle: () => null,
+  MarkerType: { ArrowClosed: 'arrowclosed' },
+  Panel: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
     ReactFlow: ({ nodes, edges, nodeTypes }: {
       nodes: MockNode[];
@@ -55,6 +57,10 @@ vi.mock('reactflow', async () => {
       })}
       {edges.map((edge) => <div key={edge.id} data-testid={`reactflow-edge-${edge.id}`} />)}
     </div>,
+    useNodesState: (initial: MockNode[]) => {
+      const [nodes, setNodes] = React.useState(initial);
+      return [nodes, setNodes, () => {}];
+    },
   };
 });
 
@@ -250,6 +256,17 @@ describe('the run own card graph', () => {
 });
 
 describe('the run surface', () => {
+  it('heads the run with its frozen agent graph and running state', () => {
+    const detail = makeDetail({
+      stages: [makeStage('idea', 'fyt-story', { state: 'running', currentAttemptRef: null })],
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
+    const graph = screen.getByTestId('workflow-agent-network');
+    const strip = screen.getByTestId('run-strip');
+    expect(screen.getByTestId('workflow-agent-node-fyt-story').textContent).toContain('running');
+    expect(graph.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it('leads with steps, gates and agents, and keeps the engine record in one fold', () => {
     const detail = makeDetail({
       humanRequests: [{

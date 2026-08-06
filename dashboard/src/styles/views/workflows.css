@@ -236,6 +236,7 @@
   align-items: baseline;
   justify-content: space-between;
 }
+.v-workflow-agent__head--open { cursor: pointer; }
 
 /* The agent's name is the loudest thing on the canvas — it is what the graph is now keyed by. */
 .v-workflow-agent__name {
@@ -311,6 +312,34 @@
 .v-workflow-agent__stage-index { color: var(--fg-faint); font-size: var(--type-section-size); }
 .v-workflow-agent__stage-title { min-width: 0; overflow-wrap: anywhere; }
 .v-workflow-agent__stages-empty { margin: 0; }
+
+.v-mini-tail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--fg-secondary);
+  font-size: var(--type-section-size);
+}
+.v-mini-tail__line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-mini-tail__meta { color: var(--fg-faint); }
+.v-mini-tail__live {
+  position: absolute;
+  top: var(--space-2);
+  right: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--mc-accent);
+}
+
+.v-agent-state--running { border-color: var(--mc-accent); color: var(--fg-primary); }
+.v-agent-state--waiting-human, .v-agent-state--gate { border-color: var(--warning); color: var(--warning); }
+.v-agent-state--failed { border-color: var(--error); color: var(--error); }
+.v-agent-state--ready, .v-agent-state--blocked, .v-agent-state--stopped,
+.v-agent-state--interrupted, .v-agent-state--succeeded { color: var(--fg-dim); }
 
 /* The override, folded away. It changes who runs a step, so it stays reachable — and quiet. */
 .v-workflow-agent__override > summary {

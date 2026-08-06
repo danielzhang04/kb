@@ -38,6 +38,13 @@ import {
   type WorkflowAssignmentOptions,
 } from './WorkflowAgentGraph';
 
+vi.mock('../components/AttemptMiniTail', async () => {
+  const React = await import('react');
+  return {
+    AttemptMiniTail: ({ attemptRef }: { attemptRef: string }) => React.createElement('div', { 'data-testid': `mini-tail-${attemptRef}` }),
+  };
+});
+
 vi.mock('reactflow', async () => {
   const React = await import('react');
   type MockNode = { id: string; type: string; position: { x: number; y: number }; data: unknown };
@@ -496,6 +503,40 @@ describe('what one agent card says', () => {
   it('states a manager that governs no step of its own rather than showing an empty list', () => {
     render(<WorkflowAgentGraph entry={entry({ manager: null, governedBy: 'fyt-runner' })} />);
     expect(screen.getByTestId('workflow-agent-node-fyt-runner').textContent).toContain('no steps of its own');
+  });
+});
+
+describe('the running overlay', () => {
+  it('adds state, gates, and only the active mini-tail without changing definition mode', () => {
+    const onOpenPanel = vi.fn();
+    render(<WorkflowAgentGraph
+      entry={entry()}
+      runOverlay={{
+        runRef: 'run-1',
+        sse: { last: null, count: 0 },
+        overlays: {
+          alpha: { state: 'running', openGate: true, attemptRef: 'attempt-alpha' },
+          beta: { state: 'blocked', openGate: false, attemptRef: null },
+        },
+        onOpenPanel,
+      }}
+    />);
+    const alpha = screen.getByTestId('workflow-agent-node-alpha');
+    expect(alpha.textContent).toContain('running');
+    expect(alpha.textContent).toContain('gate open');
+    expect(screen.getByTestId('mini-tail-attempt-alpha')).toBeTruthy();
+    expect(screen.queryByTestId('mini-tail-attempt-beta')).toBeNull();
+    expect(alpha.querySelector('[data-testid$="-override"]')).toBeNull();
+    fireEvent.click(alpha.querySelector('header')!);
+    expect(onOpenPanel).toHaveBeenCalledWith('alpha');
+  });
+
+  it('keeps the definition card output unchanged when no overlay is supplied', () => {
+    render(<WorkflowAgentGraph entry={entry()} />);
+    const alpha = screen.getByTestId('workflow-agent-node-alpha');
+    expect(alpha.textContent).not.toContain('gate open');
+    expect(alpha.querySelector('.v-agent-state')).toBeNull();
+    expect(alpha.querySelector('[data-testid$="-override"]')).toBeTruthy();
   });
 });
 

@@ -47,6 +47,9 @@ import {
   type XYPosition,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { AttemptMiniTail } from '../components/AttemptMiniTail';
+import type { AgentRunOverlay } from '../control/runGraph';
+import type { UseSseResult } from '../lib/sseClient';
 import type { WorkflowDefEntry } from './WorkflowDetail';
 
 /** Which part of the definition an edit addresses. Mirrors the governed route's own body. */
@@ -410,6 +413,10 @@ interface AgentNodeData {
   readOnly: boolean;
   onAssign?: (target: AssignTarget, assignment: Assignment | null) => void;
   onOpenAgent?: (agentId: string) => void;
+  overlay?: AgentRunOverlay;
+  runRef?: string;
+  sse?: UseSseResult;
+  onOpenPanel?: (agentId: string) => void;
 }
 
 /** One eligible-choice picker. Selecting a value IS the governed write; there is no separate apply. */
@@ -474,9 +481,15 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): React.JSX.Element {
         <Handle key={`source-${id}`} id={`source-${id}`} type="source" position={position} className="v-workflow-agent__handle" />,
       ])}
 
-      <header className="v-workflow-agent__head">
+      <header
+        className={`v-workflow-agent__head${data.onOpenPanel ? ' v-workflow-agent__head--open nodrag nopan' : ''}`}
+        onPointerDown={data.onOpenPanel ? (event) => event.stopPropagation() : undefined}
+        onClick={data.onOpenPanel ? () => data.onOpenPanel?.(group.agentId ?? '') : undefined}
+      >
         <strong className="v-workflow-agent__name">{agentGroupName(group)}</strong>
         {group.isManager ? <span className="entity-chip">runs the workflow</span> : null}
+        {data.overlay ? <span className={`entity-chip v-agent-state v-agent-state--${data.overlay.state}`}>{data.overlay.state}</span> : null}
+        {data.overlay?.openGate ? <span className="entity-chip v-agent-state--gate">gate open</span> : null}
       </header>
 
       {/* The second line, only when there is something true to put on it: an empty bordered strip
@@ -494,7 +507,10 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): React.JSX.Element {
               type="button"
               className="v-workflow-agent__open nodrag nopan"
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => data.onOpenAgent?.(group.agentId ?? '')}
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onOpenAgent?.(group.agentId ?? '');
+              }}
             >
               Open agent
             </button>
@@ -519,9 +535,13 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): React.JSX.Element {
         <p className="v-workflow-agent__stages-empty entity-note">no steps of its own</p>
       )}
 
+      {data.overlay?.attemptRef && data.runRef && data.sse ? (
+        <AttemptMiniTail runRef={data.runRef} attemptRef={data.overlay.attemptRef} sse={data.sse} />
+      ) : null}
+
       {/* The override, folded away: the node is a cast card first and an editor second. Choosing a
        *  value here is the same single governed write the caller has always owned. */}
-      <details className="v-workflow-agent__override nodrag nopan" data-testid={`${testId}-override`}>
+      {!data.overlay ? <details className="v-workflow-agent__override nodrag nopan" data-testid={`${testId}-override`}>
         <summary onPointerDown={(event) => event.stopPropagation()}>Change who runs these</summary>
         <div className="v-workflow-agent__override-body">
           {group.isManager ? (
@@ -549,7 +569,7 @@ function AgentNode({ data }: NodeProps<AgentNodeData>): React.JSX.Element {
             </label>
           ))}
         </div>
-      </details>
+      </details> : null}
     </article>
   );
 }
@@ -572,12 +592,19 @@ export function WorkflowAgentGraph({
   onAssign,
   onOpenAgent,
   readOnly = false,
+  runOverlay,
 }: {
   entry: WorkflowDefEntry;
   assignmentOptions?: WorkflowAssignmentOptions | null;
   onAssign?: (target: AssignTarget, assignment: Assignment | null) => void;
   onOpenAgent?: (agentId: string) => void;
   readOnly?: boolean;
+  runOverlay?: {
+    runRef: string;
+    overlays: Record<string, AgentRunOverlay>;
+    sse: UseSseResult;
+    onOpenPanel?: (agentId: string) => void;
+  };
 }): React.JSX.Element {
   const groups = useMemo(() => agentGroups(entry), [entry]);
   const defaultPositions = useMemo(() => agentNodePositions(entry), [entry]);
@@ -600,9 +627,13 @@ export function WorkflowAgentGraph({
         readOnly,
         onAssign,
         onOpenAgent,
+        overlay: runOverlay?.overlays[group.key],
+        runRef: runOverlay?.runRef,
+        sse: runOverlay?.sse,
+        onOpenPanel: runOverlay?.onOpenPanel,
       },
     };
-  }), [entry, groups, assignmentOptions, readOnly, onAssign, onOpenAgent, defaultPositions]);
+  }), [entry, groups, assignmentOptions, readOnly, onAssign, onOpenAgent, runOverlay, defaultPositions]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(projectedNodes);
   const routedEdges = useMemo(() => {
@@ -624,6 +655,10 @@ export function WorkflowAgentGraph({
         && (node.data as AgentNodeData).group === next.data.group
         && (node.data as AgentNodeData).readOnly === next.data.readOnly
         && (node.data as AgentNodeData).managerChoices === next.data.managerChoices
+        && (node.data as AgentNodeData).overlay === next.data.overlay
+        && (node.data as AgentNodeData).runRef === next.data.runRef
+        && (node.data as AgentNodeData).sse === next.data.sse
+        && (node.data as AgentNodeData).onOpenPanel === next.data.onOpenPanel
         && node.position.x === next.position.x && node.position.y === next.position.y;
     });
     return unchanged ? current : projectedNodes;
