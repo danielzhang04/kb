@@ -13,6 +13,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -25,13 +26,28 @@ import ledger      # noqa: E402
 import preamble    # noqa: E402
 import routing     # noqa: E402
 
-STATE_ROOT = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "kb-codex-dispatch"
 WRITER = "codex-direct"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_TIMEOUT = 2700  # 45 min — past this a dispatch is hung, not thinking
 DEFAULT_MODEL = "codex"  # applied post-parse: --model absent must stay distinguishable
 ORPHAN_SLACK = 600  # grace past a marker's own timeout before its dispatch is presumed dead
 SWEEP_BUDGET = 60  # seconds — the sweep serves a dead leg; the live dispatch comes first
+PROCESS_GROUP_GRACE = 2  # seconds to let a timed-out worker tree exit after SIGTERM
+PROCESS_START_TIME_TOLERANCE = 1  # /proc stat clock ticks
+
+
+def resolve_state_root(env=None, platform: str | None = None) -> Path:
+    """Return the sole state directory for logs, markers, spool, and sessions."""
+    env = os.environ if env is None else env
+    override = (env.get("KB_CODEX_DISPATCH_STATE") or "").strip()
+    if override:
+        return Path(override).expanduser()
+    if (platform or os.name) == "nt":
+        return Path(env.get("LOCALAPPDATA", str(Path.home()))) / "kb-codex-dispatch"
+    return Path.home() / ".local" / "state" / "kb-codex-dispatch"
+
+
+STATE_ROOT = resolve_state_root()
 
 
 def codex_bin() -> str:
@@ -95,6 +111,47 @@ def resolve_model(repo_root: Path, model_arg: str) -> str:
     return routed.model
 
 
+def process_start_time(pid: int) -> int | None:
+    """Linux /proc process start time (stat field 22), in clock ticks."""
+    try:
+        stat = Path(f"/proc/{int(pid)}/stat").read_text(encoding="utf-8")
+        fields = stat.rsplit(")", 1)[1].split()
+        return int(fields[19])  # field 3 starts at index 0; starttime is field 22
+    except (IndexError, OSError, ValueError):
+        return None
+
+
+def _terminate_worker_tree(proc, platform: str | None = None) -> None:
+    """Stop a timed-out worker and every process it started."""
+    if (platform or os.name) == "nt":
+        # WAVE-4-DELETE: transitional Windows taskkill until desktop cutover.
+        try:
+            kill = subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                                  capture_output=True, timeout=30)
+            if kill.returncode != 0:
+                print(f"taskkill exited {kill.returncode} for pid {proc.pid} — "
+                      "the worker tree may have outlived the dispatch", file=sys.stderr)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            proc.kill()
+        return
+
+    try:
+        pgid = os.getpgid(proc.pid)
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except OSError as err:
+        print(f"could not SIGTERM worker group for pid {proc.pid}: {err}", file=sys.stderr)
+        return
+    time.sleep(PROCESS_GROUP_GRACE)
+    try:
+        os.killpg(pgid, getattr(signal, "SIGKILL", 9))
+    except ProcessLookupError:
+        pass
+    except OSError as err:
+        print(f"could not SIGKILL worker group for pid {proc.pid}: {err}", file=sys.stderr)
+
+
 def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
           sandbox: str, out_file: Path, log_file: Path, follow_up: str | None = None,
           timeout: int = DEFAULT_TIMEOUT, marker: Path | None = None) -> tuple[int, bool]:
@@ -122,21 +179,16 @@ def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
     if effort:
         cmd += ["-c", f"model_reasoning_effort={effort}"]
     with open(log_file, "wb") as log:
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log,
+                                start_new_session=True)
         # The worker tree's own pid: a human killing a survivor needs it, but the
         # sweep probes the DISPATCH pid — a codex child outlives a killed parent.
-        update_marker(marker, codex_pid=proc.pid)
+        update_marker(marker, codex_pid=proc.pid,
+                      codex_start_time=process_start_time(proc.pid))
         try:
             proc.communicate(input=prompt_text.encode("utf-8"), timeout=timeout)
         except subprocess.TimeoutExpired:
-            try:  # /T kills the whole tree: codex spawns children that outlive it
-                kill = subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                                      capture_output=True, timeout=30)
-                if kill.returncode != 0:
-                    print(f"taskkill exited {kill.returncode} for pid {proc.pid} — "
-                          "the worker tree may have outlived the dispatch", file=sys.stderr)
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                proc.kill()  # no taskkill (non-Windows) or it wedged: kill what we own
+            _terminate_worker_tree(proc)
             try:
                 proc.wait(timeout=30)  # bounded: a wedged reap must not hang the dispatch
             except subprocess.TimeoutExpired:
@@ -355,10 +407,21 @@ def _spool_note(card: cards.Card, why: str) -> str:
     return f"FAILED ({why}) — card spooled at {dest}; re-publish it manually"
 
 
-def pid_alive(pid: int) -> bool:
-    """Dependency-free liveness probe (tasklist; no psutil). An unrunnable or
-    unparsable probe answers ALIVE — a sweep that cannot see must never
-    manufacture an orphan card for a dispatch that is still working."""
+def pid_alive(pid: int, expected_start_time: int | None = None,
+              platform: str | None = None) -> bool:
+    """Is this PID still the process that owned the marker?"""
+    if (platform or os.name) != "nt":
+        if expected_start_time is None:
+            return False
+        actual_start_time = process_start_time(pid)
+        try:
+            return (actual_start_time is not None
+                    and abs(actual_start_time - int(expected_start_time))
+                    <= PROCESS_START_TIME_TOLERANCE)
+        except (TypeError, ValueError):
+            return False
+
+    # Windows keeps its existing tasklist probe until the Wave 4 desktop cleanup.
     try:
         probe = subprocess.run(["tasklist", "/FI", f"PID eq {int(pid)}", "/FO", "CSV", "/NH"],
                                capture_output=True, text=True, timeout=30)
@@ -388,7 +451,9 @@ def is_orphan(marker: dict, now: float, alive=None) -> bool:
              > (marker.get("timeout") or DEFAULT_TIMEOUT) + ORPHAN_SLACK)
     pid = marker.get("pid")
     if pid and not stale:
-        return not (alive or pid_alive)(pid)
+        if alive:
+            return not alive(pid)
+        return not pid_alive(pid, marker.get("pid_start_time"))
     return stale
 
 
@@ -557,7 +622,8 @@ def main(argv: list[str] | None = None) -> int:
     # marker is the only thing that knows a leg is in flight. `pid` is THIS
     # process — the one whose death orphans the leg.
     write_marker(pending, {
-        "dispatch_id": dispatch_id, "pid": os.getpid(), "model": model,
+        "dispatch_id": dispatch_id, "pid": os.getpid(),
+        "pid_start_time": process_start_time(os.getpid()), "model": model,
         "effort": args.effort, "cwd": str(cwd), "sandbox": sandbox,
         "prompt_file": str(args.prompt_file), "log_file": str(log_file),
         "out_file": str(out_file), "follow_up": args.follow_up,
