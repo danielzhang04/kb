@@ -109,6 +109,14 @@ raised wash; colour is reserved for semantic status only (green/red/amber/tier/S
 Anti-patterns: (1) rainbow status/badge soup — new taxonomies get shape/label/mono differences, not new
 hues; (2) glassmorphism/gradients/glow — reads as generic AI-template; (3) cramming growth into Board.
 
+## Doctrine — governed-run surfaces (2026-08-06 ruling)
+
+Superseded: "governed RunDetail never hosts a terminal" (2026-08-05). Current law: a governed agent's
+expanded workings ARE interactive — a structured stream view (never a PTY/ConsolePane) with a composer
+whose input rides the session-gated agent-messages route and lands in the run journal as an audited
+event. "Chat sessions never look governed" stands unchanged; the governed panel keeps its own visual
+register. Design + full rationale: `docs/superpowers/specs/2026-08-06-live-run-graph-design.md`.
+
 ## Sources
 21st.dev sidebar + dark-mode community components (no live MCP inside subagents — pulled from public
 registry via web; live 21st.dev MCP IS connected at the boss seat for direct pulls during the view pass),
