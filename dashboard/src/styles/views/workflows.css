@@ -236,6 +236,7 @@
   align-items: baseline;
   justify-content: space-between;
 }
+.v-workflow-agent__head--open { cursor: pointer; }
 
 /* The agent's name is the loudest thing on the canvas — it is what the graph is now keyed by. */
 .v-workflow-agent__name {
@@ -311,6 +312,95 @@
 .v-workflow-agent__stage-index { color: var(--fg-faint); font-size: var(--type-section-size); }
 .v-workflow-agent__stage-title { min-width: 0; overflow-wrap: anywhere; }
 .v-workflow-agent__stages-empty { margin: 0; }
+
+.v-mini-tail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--fg-secondary);
+  font-size: var(--type-section-size);
+}
+.v-mini-tail__line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-mini-tail__meta { color: var(--fg-faint); }
+.v-mini-tail__live {
+  position: absolute;
+  top: var(--space-2);
+  right: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--mc-accent);
+}
+
+.v-agent-state--running { border-color: var(--mc-accent); color: var(--fg-primary); }
+.v-agent-state--waiting-human, .v-agent-state--gate { border-color: var(--warning); color: var(--warning); }
+.v-agent-state--failed { border-color: var(--error); color: var(--error); }
+.v-agent-state--ready, .v-agent-state--blocked, .v-agent-state--stopped,
+.v-agent-state--interrupted, .v-agent-state--succeeded { color: var(--fg-dim); }
+
+/* Expanded workings deliberately use the governed-stream register, not the chat-console one. Every
+ * color stays on the shared tokens, so light and dark themes carry the same hierarchy. */
+.v-agent-work-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--mc-accent);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+.v-agent-work-panel__head, .v-agent-work-panel__identity, .v-agent-work-panel__composer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.v-agent-work-panel__head { justify-content: space-between; }
+.v-agent-work-panel__identity { min-width: 0; flex-wrap: wrap; }
+.v-agent-work-panel__identity h3 { margin: 0; font-size: var(--type-title-size); }
+.v-agent-work-panel__live { color: var(--mc-accent); font-size: var(--type-section-size); }
+.v-agent-work-panel__close {
+  border: 0;
+  padding: 0.15rem 0.35rem;
+  color: var(--fg-dim);
+  background: transparent;
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.v-agent-work-panel__close:hover { color: var(--fg-primary); }
+.v-agent-work-panel__close:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.v-agent-work-panel__stream {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 24rem;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-secondary);
+  font-size: var(--type-meta-size);
+  line-height: 1.45;
+  list-style: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.v-agent-work-panel__line--in { color: var(--mc-accent); }
+.v-agent-work-panel__line--meta, .v-agent-work-panel__empty { color: var(--fg-faint); }
+.v-agent-work-panel__gates { display: flex; flex-direction: column; gap: var(--space-2); }
+.v-agent-work-panel__gates h4 { margin: 0; color: var(--fg-dim); font-size: var(--type-meta-size); }
+.v-agent-work-panel__composer { display: flex; flex-direction: column; gap: var(--space-2); }
+.v-agent-work-panel__composer textarea { width: 100%; resize: vertical; }
+.v-agent-work-panel__composer-actions { flex-wrap: wrap; }
+.v-agent-work-panel__delivery { margin: 0; color: var(--fg-dim); font-size: var(--type-meta-size); }
 
 /* The override, folded away. It changes who runs a step, so it stays reachable — and quiet. */
 .v-workflow-agent__override > summary {

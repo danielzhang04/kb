@@ -9,6 +9,7 @@ import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
+import { wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerStatic } from './static/routes.ts';
@@ -98,13 +99,22 @@ export function buildApp(): FastifyInstance {
   registerRoutingRead(app); // R2.1/R2.4: read-only effective-routing projection (GET /api/routing)
   registerAgents(app); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
   registerPanels(app); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
-  registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
+  const bus = registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
   // ONE surface context per process: its `sessionConfig` (HMAC secret) is resolved exactly once here and
   // SHARED with the PTY route below. Without this, the write surface and the PTY route each called
   // `resolveSessionSecret()` independently; with `DASHBOARD_SESSION_SECRET` unset that yields two DIFFERENT
   // random secrets, so a token minted at login (write-surface secret) can never verify at /api/pty (its own
   // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
-  const surfaceCtx = makeSurfaceContext();
+  const surfaceCtx = makeSurfaceContext({ hubBus: bus });
+  const controlStoreWatcher = wireControlStoreTick(bus, surfaceCtx.stateRoot);
+  app.addHook('onClose', async () => {
+    try {
+      const watcher = await controlStoreWatcher;
+      await watcher.close();
+    } catch {
+      // ignore â€” best-effort teardown
+    }
+  });
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
   // D15: workflow-definition registry (GET /api/workflows[/:id] read-only) + the governed one-step launch
   // (POST /api/workflows/:id/launch) in its OWN origin/rate-limit/session child scope. Shares surfaceCtx

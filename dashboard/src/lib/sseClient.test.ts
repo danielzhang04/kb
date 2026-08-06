@@ -63,4 +63,19 @@ describe('useSse', () => {
     unmount();
     expect(sources[0].closed).toBe(true);
   });
+
+  it('listens for control channel frames', () => {
+    const sources: FakeSource[] = [];
+    const { result } = renderHook(() => useSse('/events', (url) => {
+      const source = new FakeSource(url);
+      sources.push(source);
+      return source;
+    }));
+
+    act(() => {
+      sources[0].emit('control', JSON.stringify({ channel: 'control', kind: 'store-change' }));
+    });
+
+    expect(result.current.last).toEqual({ channel: 'control', kind: 'store-change' });
+  });
 });

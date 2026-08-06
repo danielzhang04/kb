@@ -1,10 +1,10 @@
-import { cpSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FSWatcher } from 'chokidar';
-import { createBus, publishTailDelta, wirePlaneA } from './bus.ts';
+import { createBus, publishAttemptIoSignal, publishControlTick, publishTailDelta, wireControlStoreTick, wirePlaneA } from './bus.ts';
 import type { HubEvent } from './bus.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
@@ -93,6 +93,67 @@ describe('publishTailDelta', () => {
     expect((seen[0].data as { nextOffset: number }).nextOffset).toBe(4096);
   });
 });
+
+describe('control channel', () => {
+  it('publishes an attempt-io signal without transcript content', () => {
+    const bus = createBus();
+    const seen: HubEvent[] = [];
+    bus.subscribe((event) => seen.push(event));
+
+    publishAttemptIoSignal(bus, { attemptRef: 'attempt-1', seq: 1 });
+
+    expect(seen).toEqual([{
+      channel: 'control',
+      kind: 'attempt-io',
+      data: { attemptRef: 'attempt-1', seq: 1 },
+    }]);
+    const serialized = JSON.stringify(seen[0]);
+    expect(serialized).not.toContain('"line"');
+    expect(serialized).not.toContain('"dir"');
+  });
+
+  it('publishes a payload-free store-change tick', () => {
+    const bus = createBus();
+    const seen: HubEvent[] = [];
+    bus.subscribe((event) => seen.push(event));
+
+    publishControlTick(bus);
+
+    expect(seen).toEqual([{ channel: 'control', kind: 'store-change' }]);
+  });
+
+  it('debounces control-plane file changes into one tick per settle window', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'hub-control-'));
+    const controlDir = join(stateRoot, 'control');
+    const controlPath = join(controlDir, 'control-plane.json');
+    mkdirSync(controlDir, { recursive: true });
+    writeFileSync(controlPath, '{}', 'utf-8');
+    const bus = createBus();
+    const seen: HubEvent[] = [];
+    bus.subscribe((event) => seen.push(event));
+    watcher = await wireControlStoreTick(bus, stateRoot, { debounceMs: 50 });
+
+    writeFileSync(controlPath, '{"version":1}', 'utf-8');
+    writeFileSync(controlPath, '{"version":2}', 'utf-8');
+    await waitFor(() => seen.length === 1);
+    expect(seen).toEqual([{ channel: 'control', kind: 'store-change' }]);
+
+    writeFileSync(controlPath, '{"version":3}', 'utf-8');
+    await waitFor(() => seen.length === 2);
+    expect(seen).toEqual([
+      { channel: 'control', kind: 'store-change' },
+      { channel: 'control', kind: 'store-change' },
+    ]);
+  }, 2_000);
+});
+
+async function waitFor(assertion: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const started = Date.now();
+  while (!assertion()) {
+    if (Date.now() - started >= timeoutMs) throw new Error('Timed out waiting for watcher event.');
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 describe('wirePlaneA', () => {
   it('bridges a Plane-A file-watch delta onto the bus', async () => {

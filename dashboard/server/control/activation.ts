@@ -43,6 +43,7 @@ import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
 import { createCodexExecAdapter } from './codexExecAdapter.ts';
 import { createAgentSessionChainStore } from './agentSessionChains.ts';
+import { createAttemptIoStore, type AttemptIoStore } from './attemptIo.ts';
 import { createAssignedAgentResolver } from './agentAssignmentResolver.ts';
 import {
   AutomaticExecutionEngine,
@@ -78,12 +79,13 @@ export class ActivationError extends Error {}
 export const DASHBOARD_EXECUTOR_SUBJECT = 'dashboard-engine';
 
 /**
- * Construct the sanctioned internal service caller for the dashboard executor. Constructible ONLY when the
- * activation gate is on (Daniel's flip) — it throws otherwise, so no gate-off code path can obtain one and
- * the bridge fails closed rather than launching unauthenticated. No HTTP route imports or calls it. The
- * result is an in-process principal (see `auth/session.ts#InternalServiceCaller`), never a bearer token, so
- * nothing replayable against an HTTP write route is ever minted. The principal is unforgeable by
- * construction: `brandInternalServiceCaller` is the sole brand primitive, so a value that satisfies
+ * Construct the sanctioned internal service caller for the dashboard executor. Constructible ONLY when
+ * either the headless/testing env override is on or a valid latch-minted {@link ExecutionUnlockGrant} is
+ * supplied. It throws otherwise, so no locked code path can obtain one and the bridge fails closed rather
+ * than launching unauthenticated. No HTTP route imports or calls it. The result is an in-process principal
+ * (see `auth/session.ts#InternalServiceCaller`), never a bearer token, so nothing replayable against an HTTP
+ * write route is ever minted. The principal remains unforgeable by construction:
+ * `brandInternalServiceCaller` is still called by this sole exported producer, so a value that satisfies
  * `isInternalServiceCaller` can ONLY originate here — a shape-matching JSON object can never pass. The queue
  * bridge presents it to `executeApprovedLaunch` in place of a WebAuthn session token to authorize the
  * daemon-internal launch of a run it already imported and approved under its own subject.
@@ -91,9 +93,11 @@ export const DASHBOARD_EXECUTOR_SUBJECT = 'dashboard-engine';
 export function createInternalServiceCaller(
   subject: string = DASHBOARD_EXECUTOR_SUBJECT,
   env: Record<string, string | undefined> = process.env,
+  unlockGrant?: unknown,
+  now: () => number = Date.now,
 ): InternalServiceCaller {
-  if (!isExecutionActivated(env)) {
-    throw new ActivationError('the internal service caller is only constructible with the activation gate on');
+  if (!isExecutionActivated(env) && !isExecutionUnlockGrant(unlockGrant, now)) {
+    throw new ActivationError('the internal service caller requires the activation gate or a valid unlock grant');
   }
   return brandInternalServiceCaller(subject);
 }
@@ -151,9 +155,13 @@ function mintExecutionUnlockGrant(subject: string, unlockedAt: number): Executio
 }
 
 /** True only for a grant this module minted. */
-export function isExecutionUnlockGrant(value: unknown): value is ExecutionUnlockGrant {
+export function isExecutionUnlockGrant(value: unknown, now: () => number = Date.now): value is ExecutionUnlockGrant {
   return typeof value === 'object' && value !== null
-    && (value as Record<symbol, unknown>)[EXECUTION_UNLOCK_BRAND] === true;
+    && (value as Record<symbol, unknown>)[EXECUTION_UNLOCK_BRAND] === true
+    && typeof (value as ExecutionUnlockGrant).subject === 'string'
+    && (value as ExecutionUnlockGrant).subject.length > 0
+    && typeof (value as ExecutionUnlockGrant).unlockedAt === 'number'
+    && now() - (value as ExecutionUnlockGrant).unlockedAt < 5_000;
 }
 
 export interface ActivationEngine {
@@ -164,6 +172,8 @@ export interface ActivationEngine {
 
 export interface ActivatedExecution {
   controlBroker: ManagedSessionBroker;
+  /** Redacted, capped per-attempt JSONL transcript store for live reads and future bus wiring. */
+  attemptIo: AttemptIoStore;
   /** Headless worker operator-message delivery; Claude may accept a live frame, Codex always queues. */
   agentMessages: {
     deliver(input: { runRef: string; agentId: string; runtime: 'claude' | 'codex'; message: string }): Promise<'live' | 'queued'>;
@@ -221,6 +231,8 @@ export interface BuildActivatedExecutionOptions {
    * fails closed on a forged value rather than opening on a truthy one.
    */
   unlockGrant?: unknown;
+  /** Clock used only to validate the short-lived unlock grant. */
+  now?: () => number;
   /** The app-local durable control-plane store the surface already resolved. */
   controlStore: ControlPlaneStore;
   /** Canonical ops worktree — used for policy load, worktree provisioning, and canonical integration. */
@@ -315,7 +327,7 @@ export function createProjectPolicyResolver(
  */
 export function buildActivatedExecution(options: BuildActivatedExecutionOptions): ActivatedExecution | null {
   const env = options.env ?? process.env;
-  if (!isExecutionActivated(env) && !isExecutionUnlockGrant(options.unlockGrant)) return null;
+  if (!isExecutionActivated(env) && !isExecutionUnlockGrant(options.unlockGrant, options.now)) return null;
 
   const deps = { ...defaultDeps(), ...options.deps };
   const subject = options.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
@@ -333,6 +345,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const resolvePolicy = createProjectPolicyResolver(repoRoot, deps.loadPolicy, project, policy);
   const assignedAgents = deps.createAssignedAgentResolver(repoRoot);
   const sessionChains = deps.createSessionChains(stateRoot);
+  const attemptIo = createAttemptIoStore({ root: join(stateRoot, 'control', 'attempt-io') });
 
   const resolveManagedLaunch = (spec: ManagedStartSpec): ClaudeSessionLaunch => {
     const profile = managedProfile(policy.profiles, spec);
@@ -440,6 +453,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
       runRef, agentId, { runtime: 'claude', sessionId },
     ),
     drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
+    attemptIo,
   });
   const codexWorkers = deps.createCodexWorkers({
     resolveThread: (runRef, agentId) => resolveChain('codex', runRef, agentId),
@@ -447,6 +461,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
       runRef, agentId, { runtime: 'codex', sessionId: threadId },
     ),
     drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
+    attemptIo,
   });
   const agentMessages: ActivatedExecution['agentMessages'] = {
     async deliver(input) {
@@ -543,6 +558,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
 
   return {
     controlBroker: broker,
+    attemptIo,
     agentMessages,
     paidActionService: paid.paidActionService,
     spendGrantStore: paid.spendGrantStore,
@@ -584,13 +600,17 @@ export interface ExecutionLatch {
 
 export interface ExecutionLatchOptions {
   /** Build inputs the latch holds until an unlock actually happens. */
-  buildOptions: Omit<BuildActivatedExecutionOptions, 'unlockGrant'>;
+  buildOptions: Omit<BuildActivatedExecutionOptions, 'unlockGrant' | 'now'>;
   /** Injectable for tests; defaults to the real builder. */
   build?: typeof buildActivatedExecution;
   env?: Record<string, string | undefined>;
   now?: () => number;
   /** Called on every transition so the surface context can bind/unbind the executor fields in place. */
-  onChange?: (execution: ActivatedExecution | null, state: ExecutionLatchState) => void;
+  onChange?: (
+    execution: ActivatedExecution | null,
+    state: ExecutionLatchState,
+    serviceCaller: InternalServiceCaller | null,
+  ) => void;
 }
 
 const LOCKED_STATE: ExecutionLatchState = { state: 'locked', source: null, unlockedAt: null, unlockedBy: null };
@@ -612,22 +632,28 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
   let execution: ActivatedExecution | null = null;
   let state: ExecutionLatchState = LOCKED_STATE;
 
-  const apply = (next: ActivatedExecution | null, nextState: ExecutionLatchState): void => {
+  const apply = (
+    next: ActivatedExecution | null,
+    nextState: ExecutionLatchState,
+    serviceCaller: InternalServiceCaller | null,
+  ): void => {
     execution = next;
     state = nextState;
-    options.onChange?.(next, nextState);
+    options.onChange?.(next, nextState, serviceCaller);
   };
 
   const construct = (subject: string, source: 'passkey' | 'env-override'): { ok: true; state: ExecutionLatchState } | { ok: false; reason: string } => {
     const at = now();
-    const built = build({ ...options.buildOptions, env, unlockGrant: mintExecutionUnlockGrant(subject, at) });
+    const grant = mintExecutionUnlockGrant(subject, at);
+    const built = build({ ...options.buildOptions, env, unlockGrant: grant, now });
     if (!built) return { ok: false, reason: 'execution-wiring-unavailable' };
+    const serviceCaller = createInternalServiceCaller(DASHBOARD_EXECUTOR_SUBJECT, env, grant, now);
     apply(built, {
       state: 'unlocked',
       source,
       unlockedAt: new Date(at).toISOString(),
       unlockedBy: subject,
-    });
+    }, serviceCaller);
     return { ok: true, state };
   };
 
@@ -645,7 +671,7 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
         return construct(input.subject, 'passkey');
       } catch (error) {
         // A construction failure must leave the daemon LOCKED, never half-wired.
-        apply(null, LOCKED_STATE);
+        apply(null, LOCKED_STATE, null);
         return { ok: false, reason: error instanceof Error ? error.message : 'execution wiring could not be constructed' };
       }
     },
@@ -656,7 +682,12 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
       } catch {
         /* best-effort: locking is a fail-safe direction */
       }
-      apply(null, LOCKED_STATE);
+      try {
+        execution.attemptIo.stop();
+      } catch {
+        /* best-effort: locking is a fail-safe direction */
+      }
+      apply(null, LOCKED_STATE, null);
       return state;
     },
   };

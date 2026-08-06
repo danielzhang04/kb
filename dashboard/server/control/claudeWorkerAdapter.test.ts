@@ -466,6 +466,47 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'Too late.')).toBe(false);
   });
 
+  it('taps stdout lines, injected messages, and exit disposition into attemptIo', async () => {
+    const fake = fakeProcess();
+    const taps: Array<{ ref: string; dir: string; line: string }> = [];
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      spawn: () => fake.proc,
+      drainMessages: async () => ['queued instruction'],
+      attemptIo: { append: (ref, dir, line) => taps.push({ ref, dir, line }) },
+    });
+    const pending = adapter.execute(executeInput({ attemptRef: 'a-1' }));
+    await Promise.resolve();
+    fake.emitStdout('{"type":"assistant"');
+    fake.emitStdout(',"x":1}\n{"type":"result","subtype":"success"}\n');
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'steer')).toBe(true);
+    fake.emitExit(0);
+    await pending;
+
+    expect(taps.some((tap) => tap.ref === 'a-1' && tap.dir === 'out' && tap.line.includes('"type":"assistant"'))).toBe(true);
+    expect(taps.some((tap) => tap.dir === 'in' && tap.line.includes('queued instruction'))).toBe(true);
+    expect(taps.some((tap) => tap.dir === 'in' && tap.line === 'steer')).toBe(true);
+    expect(taps.at(-1)).toMatchObject({ dir: 'meta' });
+  });
+
+  it('ignores stdout emitted after the worker has settled', async () => {
+    const fake = fakeProcess();
+    const taps: Array<{ dir: string; line: string }> = [];
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      spawn: () => fake.proc,
+      attemptIo: { append: (_ref, dir, line) => taps.push({ dir, line }) },
+    });
+    const pending = adapter.execute(executeInput());
+    fake.emitStdout(successLine('done'));
+    fake.emitExit(0);
+    await pending;
+    const settledTapCount = taps.length;
+
+    fake.emitStdout('late stdout must not be tapped\n');
+    expect(taps).toHaveLength(settledTapCount);
+  });
+
   it('prepends drained operator messages as inert data before a resumed work order', async () => {
     const fake = fakeProcess();
     const adapter = createClaudeWorkerAdapter({

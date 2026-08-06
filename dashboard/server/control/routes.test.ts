@@ -1,5 +1,8 @@
 import Fastify from 'fastify';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { createInMemoryComposerStore } from '../composer/store.ts';
@@ -15,6 +18,7 @@ import type { ExecuteRunInput } from './execution.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { authorizedFailedRunReconciliationGrant, authorizedFailedRunReconciliationRefusal } from './routes.ts';
 import { AuthorizedFailedRunPublishedUncommittedError } from './authorizedFailedRunReconciliation.ts';
+import { createAttemptIoStore } from './attemptIo.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -1968,7 +1972,7 @@ describe('control execution latch routes', () => {
       current: () => ({ agentMessages: { deliver: delivery } }),
       unlock: vi.fn(), lock: vi.fn(),
     };
-    const { app, token, store } = buildApp({ executionLatch: latch });
+    const { app, token, store, audit } = buildApp({ executionLatch: latch });
     const assignment = {
       agentId: 'fyt-codex', declarationPath: 'agents/fyt-codex.md', declarationHash: 'a'.repeat(64),
       profileId: 'worker:codex:gpt-5.6-sol', runtime: 'codex' as const, model: 'gpt-5.6-sol',
@@ -2007,11 +2011,91 @@ describe('control execution latch routes', () => {
       expect(delivery).toHaveBeenCalledWith({
         runRef: run.value.run.runRef, agentId: 'fyt-codex', runtime: 'codex', message: 'Queue this.',
       });
+      const events = store.listEvents('operator', run.value.run.runRef, 0, 200);
+      expect(events).toMatchObject({
+        ok: true,
+        value: [expect.objectContaining({
+          kind: 'message', source: 'human', stageRef: run.value.stages[0].stageRef,
+          summary: expect.stringContaining('operator → fyt-codex (queued): Queue this.'),
+        })],
+      });
+      vi.spyOn(store, 'appendEvent').mockReturnValue({ ok: false, reason: 'limit', detail: 'event limit reached' } as never);
+      const droppedAudit = await app.inject({
+        method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/fyt-codex/messages`, headers: headers(token), payload: { message: 'Still queue this.' },
+      });
+      expect(droppedAudit.statusCode, droppedAudit.body).toBe(202);
+      expect(audit).toContainEqual(expect.objectContaining({
+        action: 'control-agent-message-audit-dropped', result: 'dropped:limit', target: run.value.run.runRef,
+      }));
       const oversized = await app.inject({
         method: 'POST', url: `/api/control/runs/${run.value.run.runRef}/agents/fyt-codex/messages`, headers: headers(token), payload: { message: 'x'.repeat(64 * 1024 + 1) },
       });
       expect(oversized.statusCode).toBe(400);
     } finally { await app.close(); }
+  });
+
+  it('reads an attempt-io window only for attempts belonging to the subject-scoped run, and refuses when unavailable', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'attempt-io-route-'));
+    const io = createAttemptIoStore({ root, flushMs: 0 });
+    const latch = {
+      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      current: () => ({ attemptIo: io }), unlock: vi.fn(), lock: vi.fn(),
+    };
+    const { app, token, store } = buildApp({ executionLatch: latch });
+    try {
+      const runRef = seedRun(store, 'attempt-io');
+      const detail = store.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      const attempt = store.createAttempt('operator', detail.value.stages[0].stageRef, {
+        expectedStageVersion: detail.value.stages[0].version, runtime: 'codex', model: 'gpt-5.6-sol',
+      });
+      if (!attempt.ok) throw new Error(attempt.detail);
+      io.append(attempt.value.attemptRef, 'out', 'first');
+      io.append(attempt.value.attemptRef, 'out', 'second');
+
+      const read = await app.inject({
+        method: 'GET', url: `/api/control/runs/${runRef}/attempts/${attempt.value.attemptRef}/io?after=1&limit=500`, headers: headers(token),
+      });
+      expect(read.statusCode, read.body).toBe(200);
+      expect(read.json()).toEqual({ entries: [expect.objectContaining({ seq: 2, dir: 'out', line: 'second' })] });
+
+      const otherRun = seedRun(store, 'attempt-io-other');
+      const otherDetail = store.getRun('operator', otherRun);
+      if (!otherDetail.ok) throw new Error(otherDetail.detail);
+      const otherAttempt = store.createAttempt('operator', otherDetail.value.stages[0].stageRef, {
+        expectedStageVersion: otherDetail.value.stages[0].version, runtime: 'codex', model: 'gpt-5.6-sol',
+      });
+      if (!otherAttempt.ok) throw new Error(otherAttempt.detail);
+      const foreign = await app.inject({
+        method: 'GET', url: `/api/control/runs/${runRef}/attempts/${otherAttempt.value.attemptRef}/io`, headers: headers(token),
+      });
+      expect(foreign.statusCode).toBe(404);
+    } finally {
+      io.stop();
+      await app.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+
+    const unavailable = buildApp({
+      executionLatch: {
+        snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+        current: () => null, unlock: vi.fn(), lock: vi.fn(),
+      },
+    });
+    try {
+      const runRef = seedRun(unavailable.store, 'attempt-io-unavailable');
+      const detail = unavailable.store.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      const attempt = unavailable.store.createAttempt('operator', detail.value.stages[0].stageRef, {
+        expectedStageVersion: detail.value.stages[0].version, runtime: 'codex', model: 'gpt-5.6-sol',
+      });
+      if (!attempt.ok) throw new Error(attempt.detail);
+      const response = await unavailable.app.inject({
+        method: 'GET', url: `/api/control/runs/${runRef}/attempts/${attempt.value.attemptRef}/io`, headers: headers(unavailable.token),
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({ error: 'attempt-io-unavailable' });
+    } finally { await unavailable.app.close(); }
   });
 
   it('boots LOCKED and reports the posture with the unlock route to call', async () => {

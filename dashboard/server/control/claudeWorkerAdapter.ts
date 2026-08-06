@@ -25,6 +25,7 @@
 import { spawn as spawnChildProcess } from 'node:child_process';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from '../pty/host.ts';
+import type { AttemptIoSink } from './attemptIo.ts';
 import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles } from './environment.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';
 import { parseReviewOutcome, type ReviewContract } from './reviewOutcome.ts';
@@ -211,6 +212,8 @@ export interface ClaudeWorkerAdapterOptions {
   recordSession?: (runRef: string, agentId: string, sessionId: string) => void;
   /** Atomically consumes operator messages that were queued while this worker had no live turn. */
   drainMessages?: (runRef: string, agentId: string) => Promise<string[]>;
+  /** Optional live transcript sink. Adapter taps must never affect worker execution. */
+  attemptIo?: AttemptIoSink;
 }
 
 const ZERO_USAGE: ExecutionUsage = { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 };
@@ -681,17 +684,18 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         writeScope: input.writeScope,
         ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
       });
-      const bindingStdin = !resumeSessionId && input.instructionMarkdown !== undefined
-        ? encodeStreamJsonUserMessage(buildAgentBindingPrompt(input.instructionMarkdown)) : '';
-      const workOrderStdin = encodeStreamJsonUserMessage(prompt);
+      const bindingPrompt = !resumeSessionId && input.instructionMarkdown !== undefined
+        ? buildAgentBindingPrompt(input.instructionMarkdown) : null;
 
       const start = (queuedMessages: string[]): Promise<WorkerExecutionResult> => {
-        const stdin = bindingStdin
-          + (queuedMessages.length > 0 ? encodeStreamJsonUserMessage(buildQueuedOperatorMessagePrompt(queuedMessages)) : '')
-          + workOrderStdin;
+        const queuedPrompt = queuedMessages.length > 0 ? buildQueuedOperatorMessagePrompt(queuedMessages) : null;
+        const tap = (dir: 'out' | 'in' | 'meta', text: string): void => {
+          try { options.attemptIo?.append(input.attemptRef, dir, text); } catch { /* transcript tap is failure-isolated */ }
+        };
         return new Promise<WorkerExecutionResult>((resolvePromise) => {
         const proc = spawner({ args, cwd: input.worktreePath, env });
         const stdoutChunks: string[] = [];
+        let lineBuffer = '';
         let bytes = 0;
         let stderrTail = '';
         let settled = false;
@@ -714,6 +718,10 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           if (liveWorkers.get(key) === liveWorker) liveWorkers.delete(key);
           clearTimeout(timer);
           options.deregisterCancellation?.(input.operationKey);
+          if (lineBuffer.length > 0) {
+            tap('out', lineBuffer);
+            lineBuffer = '';
+          }
           const stdout = stdoutChunks.join('');
           void (async () => {
             const sessionId = extractClaudeSessionId(stdout);
@@ -723,6 +731,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
                 // also preserves the public void-compatible callback seam used by older callers.
                 await Promise.resolve(recordSession(input.runRef, agentId, sessionId));
               } catch (error) {
+                tap('meta', `exit code=${code} disposition=failed`);
                 resolvePromise(failedResult(
                   `claude worker could not record its emitted session: ${error instanceof Error ? error.message : String(error)}`,
                   ZERO_USAGE,
@@ -731,7 +740,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
                 return;
               }
             }
-            resolvePromise(parseWorkerStream(stdout, stderrTail, code, {
+            const result = parseWorkerStream(stdout, stderrTail, code, {
               timedOut,
               exceeded,
               cancelled,
@@ -740,8 +749,13 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
               stderrTailChars,
               summaryMaxChars,
               ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
-            }));
+            });
+            const disposition = timedOut ? 'timeout' : exceeded ? 'output-cap' : cancelled ? 'cancelled'
+              : result.state === 'succeeded' ? 'succeeded' : 'failed';
+            tap('meta', `exit code=${code} disposition=${disposition}`);
+            resolvePromise(result);
           })().catch((error) => {
+            tap('meta', `exit code=${code} disposition=failed`);
             resolvePromise(failedResult(
               `claude worker session finalization failed: ${error instanceof Error ? error.message : String(error)}`,
               ZERO_USAGE,
@@ -771,6 +785,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
             if (settled) return false;
             try {
               proc.writeStdin(encodeStreamJsonUserMessage(text));
+              tap('in', text);
               return true;
             } catch {
               return false;
@@ -785,10 +800,19 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           if (liveWorkers.get(key) === liveWorker) liveWorkers.delete(key);
           clearTimeout(timer);
           options.deregisterCancellation?.(input.operationKey);
+          tap('meta', 'exit code=null disposition=failed');
           resolvePromise(failedResult(`claude worker process error: ${error instanceof Error ? error.message : String(error)}`, ZERO_USAGE, summaryMaxChars));
         });
 
         proc.onStdout((chunk) => {
+          if (settled) return;
+          lineBuffer += chunk;
+          let newline = lineBuffer.indexOf('\n');
+          while (newline !== -1) {
+            tap('out', lineBuffer.slice(0, newline));
+            lineBuffer = lineBuffer.slice(newline + 1);
+            newline = lineBuffer.indexOf('\n');
+          }
           bytes += Buffer.byteLength(chunk, 'utf8');
           if (bytes > maxOutputBytes) {
             exceeded = true;
@@ -802,7 +826,13 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         proc.onExit((code) => finalize(code));
 
         try {
-          proc.writeStdin(stdin);
+          const writeFrame = (promptText: string): void => {
+            proc.writeStdin(encodeStreamJsonUserMessage(promptText));
+            tap('in', promptText);
+          };
+          if (bindingPrompt !== null) writeFrame(bindingPrompt);
+          if (queuedPrompt !== null) writeFrame(queuedPrompt);
+          writeFrame(prompt);
           // Stream-json accepts additional user frames while a turn is live. EOF would close that channel.
           if (!settled) liveWorkers.set(workerKey(input.runRef, agentId), liveWorker);
         } catch {

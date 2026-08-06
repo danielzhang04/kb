@@ -35,6 +35,8 @@ import { createFileControlPlaneStore } from '../control/store.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
+import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
+import { publishAttemptIoSignal } from '../hub/bus.ts';
 import { createPtyHost } from '../pty/host.ts';
 import type { PtyHost } from '../pty/host.ts';
 import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
@@ -63,7 +65,11 @@ export function resolveDurableRepoRoot(): string {
 export interface SurfaceActivationSeam {
   build?: typeof buildActivatedExecution;
   env?: Record<string, string | undefined>;
+  createQueueBridge?: typeof createQueueBridge;
+  dispatchClaimedCard?: typeof dispatchClaimedCard;
 }
+
+const QUEUE_BRIDGE_INTERVAL_MS = 15_000;
 
 /** Stable, detail-free refusal for manual Terminal PTY opens at the host boundary. */
 export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
@@ -119,6 +125,8 @@ export function makeSurfaceContext(
     || overrides.containManagerStart !== undefined
     || overrides.verifyCanonicalResult !== undefined;
   const build = activation.build ?? buildActivatedExecution;
+  const buildQueueBridge = activation.createQueueBridge ?? createQueueBridge;
+  const dispatchQueueCard = activation.dispatchClaimedCard ?? dispatchClaimedCard;
   // The daemon's PTY stack belongs exclusively to `/api/pty` browser terminals. Constructing a host
   // spawns nothing; only `open` does.
   const underlyingPtyHost = overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' });
@@ -135,9 +143,12 @@ export function makeSurfaceContext(
   const ptySessionRuns = overrides.ptySessionRuns ?? createSessionRunStore(stateRoot);
   const ptyTranscripts = overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot });
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
+  let offAttemptIo: (() => void) | null = null;
+  let stopQueueBridge: (() => void) | undefined;
   const ctx: SurfaceContext = {
     repoRoot,
     stateRoot,
+    hubBus: overrides.hubBus,
     definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
@@ -204,7 +215,12 @@ export function makeSurfaceContext(
       build,
       env: activation.env,
       buildOptions: { controlStore, repoRoot, stateRoot },
-      onChange: (execution) => {
+      onChange: (execution, state, serviceCaller) => {
+        stopQueueBridge?.();
+        stopQueueBridge = undefined;
+        ctx.stopQueueBridge = undefined;
+        offAttemptIo?.();
+        offAttemptIo = null;
         ctx.controlBroker = execution?.controlBroker;
         ctx.runAutomatic = execution?.runAutomatic;
         ctx.cancelAutomatic = execution?.cancelAutomatic;
@@ -212,6 +228,44 @@ export function makeSurfaceContext(
         ctx.verifyCanonicalResult = execution?.verifyCanonicalResult;
         ctx.paidActionService = execution?.paidActionService;
         ctx.spendGrantStore = execution?.spendGrantStore;
+        if (execution && ctx.hubBus) {
+          const bus = ctx.hubBus;
+          offAttemptIo = execution.attemptIo.onAppend((event) => publishAttemptIoSignal(bus, {
+            attemptRef: event.attemptRef,
+            seq: event.entry.seq,
+          }));
+        }
+        if (execution && state.source === 'passkey' && serviceCaller) {
+          const bridge = buildQueueBridge({
+            repoRoot: ctx.repoRoot,
+            runPy: ctx.runPy,
+            runPreamble: ctx.runPreamble,
+            dispatch: async (card) => {
+              if (ctx.executionLatch?.current() !== execution) {
+                throw new Error('queue bridge dispatch refused outside the armed execution window');
+              }
+              const result = await dispatchQueueCard(ctx, card, {
+                isArmed: () => ctx.executionLatch?.current() === execution,
+                internalCaller: (subject) => {
+                  if (subject !== serviceCaller.subject) {
+                    throw new Error('queue bridge requested an unexpected internal service subject');
+                  }
+                  if (ctx.executionLatch?.current() !== execution) {
+                    throw new Error('internal service caller unavailable outside the armed execution window');
+                  }
+                  return serviceCaller;
+                },
+              });
+              if (result.outcome !== 'launched' && result.outcome !== 'replayed') {
+                console.error('queue bridge dispatch did not launch', result);
+              }
+            },
+            onError: (error) => console.error('queue bridge tick failed', error),
+          });
+          stopQueueBridge = () => bridge.stop();
+          ctx.stopQueueBridge = stopQueueBridge;
+          bridge.start(QUEUE_BRIDGE_INTERVAL_MS);
+        }
       },
     });
   }
@@ -223,6 +277,8 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
   // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
   app.addHook('preClose', async () => {
+    ctx.stopQueueBridge?.();
+    ctx.stopQueueBridge = undefined;
     ctx.controlBroker?.drain();
     drainVibeProcesses();
     // Kill any in-flight (possibly network-stalled) coordination git/gh child so shutdown never blocks

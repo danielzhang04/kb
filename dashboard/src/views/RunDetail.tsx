@@ -5,6 +5,7 @@
  * vocabulary: the run canvas (agent stream tiles), the cockpit (stages/attempts/activity/changes), the
  * managed-runs wrapper (the governed mutations), and the whole-queue pipeline canvas. What an operator
  * needs while a run is live is here, in this order:
+ * The frozen agent graph is the head; the step strip remains directly below it for plain-word scanning.
  *
  *   1. where it is        — the step strip, states in plain words;
  *   2. what it needs      — open human gates, answered here with the run in front of you;
@@ -33,6 +34,7 @@ import {
 import 'reactflow/dist/style.css';
 import type { Dag, DagNodeData } from '../../server/dag/graph';
 import { useSession } from '../lib/sessionContext';
+import { useSse } from '../lib/sseClient';
 import {
   activateRun,
   archiveRun,
@@ -67,7 +69,8 @@ import {
   type RunDetailDto,
   type StageDto,
 } from '../control/controlClient';
-import { canResumePublishedRun, decisionsForHumanRequest } from '../control/humanBoundaries';
+import { canResumePublishedRun } from '../control/humanBoundaries';
+import { postAgentMessage } from '../control/agentMessages';
 import {
   changeEvents,
   checkpointInfo,
@@ -79,16 +82,22 @@ import {
   timestampLabel,
 } from '../control/runEvents';
 import { loadRunEventWindow, type RunEventWindow } from '../control/runEventWindow';
+import { entryFromRun, overlaysFromRun } from '../control/runGraph';
 import { agentIdsForRun, cardOwnerIndex, agentLink, cardLink, workflowLink } from '../control/entityLinks';
 import { EntityName } from '../components/EntityName';
+import { AgentWorkPanel } from '../components/AgentWorkPanel';
+import { HumanRequestCard } from '../components/HumanRequestCard';
 import { entityRowProps } from '../components/entityRow';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { NavTarget } from '../nav/stack';
+import { WorkflowAgentGraph } from './WorkflowAgentGraph';
 import '../control/control.css';
 
 /** One poller serves every open tile for this run. */
 export const RUN_POLL_MS = 5_000;
+export const RUN_SSE_POLL_MS = 30_000;
+export const RUN_SSE_FRESH_MS = 60_000;
 export const RUN_MAX_POLL_MS = 60_000;
 
 /* ============================================================================
@@ -273,25 +282,6 @@ function humanIdempotencyKey(request: HumanRequestDto, decision: HumanRequestDec
 /* ============================================================================
  * Section bodies.
  * ========================================================================= */
-
-type AgentMessageResult = { delivery: 'live' | 'queued' } | { offline: true };
-
-/** The route intentionally accepts only the operator's text; delivery is server-decided. */
-async function postAgentMessage(
-  runRef: string, agentId: string, message: string, token: string, fetchImpl?: FetchLike,
-): Promise<AgentMessageResult> {
-  const request = fetchImpl ?? fetch;
-  const response = await request(`/api/control/runs/${encodeURIComponent(runRef)}/agents/${encodeURIComponent(agentId)}/messages`, {
-    method: 'POST',
-    headers: { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify({ message }),
-  });
-  const body = await response.json().catch(() => ({})) as { delivery?: unknown; error?: unknown };
-  if (response.status === 409 && body.error === 'agent-message-delivery-unavailable') return { offline: true };
-  if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : 'The message was refused.');
-  if (body.delivery === 'live' || body.delivery === 'queued') return { delivery: body.delivery };
-  throw new Error('The message response did not say whether it was delivered.');
-}
 
 export interface AgentTileProps {
   agentId: string;
@@ -701,6 +691,7 @@ export function RunDetail({
   fetchImpl,
 }: RunDetailProps): React.JSX.Element {
   const { session, requireSession } = useSession();
+  const sse = useSse('/events');
   const token = session?.token;
   const [detail, setDetail] = useState<RunDetailDto | null>(injectedDetail ?? null);
   const [events, setEvents] = useState<OperationalEventDto[]>(injectedEvents ?? []);
@@ -712,6 +703,7 @@ export function RunDetail({
   const [error, setError] = useState<string | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const [backoffMs, setBackoffMs] = useState<number | null>(null);
+  const [lastControlFrameAt, setLastControlFrameAt] = useState<number | null>(null);
   /**
    * The runRef the server says does not exist. Distinct from `error` on purpose: a missing run is not a
    * transient failure to retry, it is a permanent answer the operator needs stated.
@@ -720,12 +712,12 @@ export function RunDetail({
   const [message, setMessage] = useState('');
   const [checkpoint, setCheckpoint] = useState('');
   const [instruction, setInstruction] = useState('');
-  const [responses, setResponses] = useState<Record<string, string>>({});
   const [routingDrafts, setRoutingDrafts] = useState<Record<string, { runtime: string; model: string }>>({});
   /** The operator's own words for WHY a dead run is being dismissed; carried into the T3 audit row. */
   const [archiveReason, setArchiveReason] = useState('');
   const [quarantinePlan, setQuarantinePlan] = useState<QuarantinePlanDto | null>(null);
   const [quarantineNotice, setQuarantineNotice] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const live = injectedDetail === undefined;
 
   /**
@@ -771,12 +763,31 @@ export function RunDetail({
     return () => { alive = false; };
   }, [live, loadRun, runRef, token]);
 
+  // Control ticks carry no state payload. They only say the operator's run view is stale, so reuse the
+  // normal read path immediately and let the existing rate-limit/backoff discipline govern every fetch.
+  useEffect(() => {
+    if (!live || !token || missing || sse.last?.channel !== 'control' || sse.last.kind !== 'store-change') return;
+    let alive = true;
+    setLastControlFrameAt(Date.now());
+    setBackoffMs(null);
+    setPollError(null);
+    loadRun(token, runRef).catch((cause: unknown) => {
+      if (!alive) return;
+      if (cause instanceof ControlApiError && cause.status === 404) setMissing(true);
+      else setPollError(cause instanceof Error ? cause.message : 'Could not refresh this run.');
+    });
+    return () => { alive = false; };
+  }, [live, loadRun, missing, runRef, sse.last, token]);
+
   // The live stream. One poller for every tile, with backoff on a rate limit rather than a tighter loop.
   useEffect(() => {
     if (!live || !token || missing) return;
     let alive = true;
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    let nextPollMs = RUN_POLL_MS;
+    const basePollMs = (): number => lastControlFrameAt !== null && Date.now() - lastControlFrameAt < RUN_SSE_FRESH_MS
+      ? RUN_SSE_POLL_MS
+      : RUN_POLL_MS;
+    let nextPollMs = basePollMs();
     const poll = async (): Promise<void> => {
       try {
         const window = await loadRunEventWindow(runRef, token,
@@ -785,7 +796,7 @@ export function RunDetail({
         setEvents(window.events);
         setEventWindow(window);
         setPollError(null);
-        nextPollMs = RUN_POLL_MS;
+        nextPollMs = basePollMs();
         setBackoffMs(null);
       } catch (cause) {
         if (!alive) return;
@@ -798,9 +809,9 @@ export function RunDetail({
       }
       if (alive) timeout = setTimeout(() => { void poll(); }, nextPollMs);
     };
-    timeout = setTimeout(() => { void poll(); }, RUN_POLL_MS);
+    timeout = setTimeout(() => { void poll(); }, basePollMs());
     return () => { alive = false; if (timeout !== undefined) clearTimeout(timeout); };
-  }, [fetchImpl, live, missing, runRef, token]);
+  }, [fetchImpl, lastControlFrameAt, live, missing, runRef, token]);
 
   /**
    * The card graph and the card owner index are LINK/PROJECTION decoration: both swallow failure, because
@@ -845,6 +856,18 @@ export function RunDetail({
       setBusy(false);
     }
   }, [busy, loadRun, requireSession, runRef]);
+  const runGraph = useMemo(() => detail
+    ? { entry: entryFromRun(detail), overlays: overlaysFromRun(detail) }
+    : null, [detail]);
+
+  useEffect(() => {
+    if (selectedAgentId === null) return;
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setSelectedAgentId(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [selectedAgentId]);
 
   if (missing) {
     return (
@@ -1049,6 +1072,20 @@ export function RunDetail({
         </p>
       ) : null}
 
+      <section className="entity-block" aria-label="Run graph">
+        <h3 className="entity-block__title">Run graph</h3>
+        <WorkflowAgentGraph
+          entry={runGraph!.entry}
+          readOnly
+          runOverlay={{ runRef: detail.run.runRef, overlays: runGraph!.overlays, sse, onOpenPanel: setSelectedAgentId }}
+        />
+        {selectedAgentId !== null ? (
+          <AgentWorkPanel runRef={detail.run.runRef} agentId={selectedAgentId} run={detail}
+            overlay={runGraph!.overlays[selectedAgentId]} sse={sse} onClose={() => setSelectedAgentId(null)} busy={busy}
+            onRespondRequest={(request, decision, response) => respond(request, decision, response)} />
+        ) : null}
+      </section>
+
       <section className="entity-block" aria-label="Steps">
         <h3 className="entity-block__title">Steps</h3>
         <ol className="run-strip" data-testid="run-strip">
@@ -1067,39 +1104,9 @@ export function RunDetail({
         <section className="entity-block" aria-label="Waiting on you" data-testid="run-gates">
           <h3 className="entity-block__title">Waiting on you</h3>
           {openRequests.map((request) => (
-            <article key={request.requestRef} className="control-request" data-testid={`run-gate-${request.requestRef}`}>
-              {/* spec §3b — the ASK leads: what happened and what you can do, in the server's one plain
-                * sentence. The machine's own words (traceback, refusal code) are a fold below it, never
-                * the thing the operator is asked to answer. */}
-              <h4>{request.ask}</h4>
-              {completionRequestRefs.has(request.requestRef) ? <p>{request.prompt}</p> : null}
-              {request.technicalDetail ? (
-                <details className="entity-fold" data-testid={`run-gate-technical-${request.requestRef}`}>
-                  <summary>Technical details</summary>
-                  <pre className="entity-fold__body run-gate__technical">{request.technicalDetail}</pre>
-                </details>
-              ) : null}
-              <label htmlFor={`response-${request.requestRef}`}>Your answer</label>
-              <textarea
-                id={`response-${request.requestRef}`}
-                value={responses[request.requestRef] ?? ''}
-                onChange={(event) => setResponses((current) => ({ ...current, [request.requestRef]: event.target.value }))}
-                disabled={busy}
-              />
-              <div className="control-actions">
-                {decisionsForHumanRequest(request.kind).map((decision) => (
-                  <button
-                    key={decision}
-                    type="button"
-                    className={decision === 'approved' ? 'mc-btn mc-btn--primary' : 'mc-btn'}
-                    disabled={busy}
-                    onClick={() => respond(request, decision, responses[request.requestRef]?.trim() ?? '')}
-                  >
-                    {decision === 'changes-requested' ? 'Request changes' : decision[0].toUpperCase() + decision.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </article>
+            <HumanRequestCard key={request.requestRef} request={request} busy={busy}
+              onRespond={(decision, response) => respond(request, decision, response)}
+              showPrompt={completionRequestRefs.has(request.requestRef)} />
           ))}
         </section>
       ) : null}

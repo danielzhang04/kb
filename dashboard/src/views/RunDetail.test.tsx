@@ -8,7 +8,7 @@
  * that died with the surfaces themselves.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import {
   AgentStreams,
@@ -25,8 +25,16 @@ import {
 } from './RunDetail';
 import type { Dag } from '../../server/dag/graph';
 import type { OperationalEventDto, RunDetailDto } from '../control/controlClient';
+import * as controlClient from '../control/controlClient';
 import { SessionProvider } from '../lib/sessionContext';
 import { clearStoredSession, persistSession } from '../lib/authClient';
+import type { UseSseResult } from '../lib/sseClient';
+
+const sseState = vi.hoisted((): { current: UseSseResult } => ({ current: { last: null, count: 0 } }));
+vi.mock('../lib/sseClient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../lib/sseClient')>(),
+  useSse: () => sseState.current,
+}));
 
 vi.mock('reactflow', async () => {
   const React = await import('react');
@@ -34,8 +42,10 @@ vi.mock('reactflow', async () => {
   return {
     Background: () => null,
     Controls: () => null,
-    Handle: () => null,
-    Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
+  Handle: () => null,
+  MarkerType: { ArrowClosed: 'arrowclosed' },
+  Panel: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
     ReactFlow: ({ nodes, edges, nodeTypes }: {
       nodes: MockNode[];
@@ -48,6 +58,10 @@ vi.mock('reactflow', async () => {
       })}
       {edges.map((edge) => <div key={edge.id} data-testid={`reactflow-edge-${edge.id}`} />)}
     </div>,
+    useNodesState: (initial: MockNode[]) => {
+      const [nodes, setNodes] = React.useState(initial);
+      return [nodes, setNodes, () => {}];
+    },
   };
 });
 
@@ -71,6 +85,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.useRealTimers();
+  sseState.current = { last: null, count: 0 };
 });
 
 function makeStage(stageId: string, agentId: string | null, over: Partial<RunDetailDto['stages'][number]> = {}) {
@@ -242,6 +257,56 @@ describe('the run own card graph', () => {
 });
 
 describe('the run surface', () => {
+  it('heads the run with its frozen agent graph and running state', () => {
+    const detail = makeDetail({
+      stages: [makeStage('idea', 'fyt-story', { state: 'running', currentAttemptRef: null })],
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
+    const graph = screen.getByTestId('workflow-agent-network');
+    const strip = screen.getByTestId('run-strip');
+    expect(screen.getByTestId('workflow-agent-node-fyt-story').textContent).toContain('running');
+    expect(graph.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('opens one selected agent panel from the graph, swaps it, closes it, and delegates its gate response', async () => {
+    const detail = makeDetail({
+      stages: [
+        makeStage('idea', 'fyt-story', { state: 'running', currentAttemptRef: 'attempt-story' }),
+        makeStage('visual-plan', 'fyt-visuals', { state: 'ready', currentAttemptRef: 'attempt-visual' }),
+      ],
+      humanRequests: [{
+        requestRef: 'request-story', runRef: 'run-1', displayName: 'headless run', shortRef: 1, stageRef: 'ref-idea',
+        kind: 'approval', revision: 1, state: 'open', title: 'Approve', prompt: 'Approve', ask: 'Approve the story.',
+        technicalDetail: null, response: null, createdAt: '', updatedAt: '',
+      }],
+    });
+    const respond = vi.spyOn(controlClient, 'respondToHumanRequest').mockResolvedValue(detail.humanRequests[0]!);
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/attempts/')) return new Response(JSON.stringify({ entries: [] }), { status: 200 });
+      if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+
+    fireEvent.click(screen.getByTestId('workflow-agent-node-fyt-story').querySelector('header')!);
+    expect(screen.getByTestId('agent-work-panel-fyt-story')).toBeTruthy();
+    const panel = screen.getByTestId('agent-work-panel-fyt-story');
+    expect(within(panel).getByTestId('run-gate-request-story')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Rejected' }));
+    await waitFor(() => expect(respond).toHaveBeenCalledWith('request-story', expect.objectContaining({ decision: 'rejected' }), 'tok', fetchImpl));
+
+    fireEvent.click(screen.getByTestId('workflow-agent-node-fyt-visuals').querySelector('header')!);
+    expect(screen.getByTestId('agent-work-panel-fyt-visuals')).toBeTruthy();
+    expect(screen.queryByTestId('agent-work-panel-fyt-story')).toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('agent-work-panel-fyt-visuals')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('workflow-agent-node-fyt-story').querySelector('header')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
+    expect(screen.queryByTestId('agent-work-panel-fyt-story')).toBeNull();
+    respond.mockRestore();
+  });
+
   it('leads with steps, gates and agents, and keeps the engine record in one fold', () => {
     const detail = makeDetail({
       humanRequests: [{
@@ -335,6 +400,29 @@ describe('the run surface', () => {
 });
 
 describe('the live poller', () => {
+  it('refetches immediately on a control store-change and stretches the fallback poll while control frames flow', async () => {
+    vi.useFakeTimers();
+    const detail = makeDetail();
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
+    });
+    const eventRequests = (): number => fetchImpl.mock.calls.filter(([url]) => typeof url === 'string' && url.includes('/events?')).length;
+    const view = render(unlocked(<RunDetail runRef="run-1" dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(eventRequests()).toBe(1);
+
+    sseState.current = { last: { channel: 'control', kind: 'store-change' }, count: 1 };
+    view.rerender(unlocked(<RunDetail runRef="run-1" dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(eventRequests()).toBe(2);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(29_999); });
+    expect(eventRequests()).toBe(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(eventRequests()).toBe(3);
+  });
+
   it('serves every tile from ONE event request and keeps per-agent filtering', async () => {
     vi.useFakeTimers();
     const detail = makeDetail({

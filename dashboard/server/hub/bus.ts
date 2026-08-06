@@ -6,6 +6,8 @@
 import { watchPlaneA } from '../planeA/indexer.ts';
 import type { PlaneADelta } from '../planeA/indexer.ts';
 import type { TranscriptRecord } from '../planeB/tailer.ts';
+import { join } from 'node:path';
+import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
 
 /**
@@ -14,7 +16,7 @@ import type { FSWatcher } from 'chokidar';
  * - `planeB` events carry a session `path` plus a `data` summary of the tail delta.
  */
 export interface HubEvent {
-  channel: 'planeA' | 'planeB';
+  channel: 'planeA' | 'planeB' | 'control';
   kind: string;
   path?: string;
   data?: unknown;
@@ -89,5 +91,47 @@ export function publishTailDelta(
     kind: 'tail',
     path: args.sessionPath,
     data: { count: args.records.length, nextOffset: args.nextOffset },
+  });
+}
+
+/**
+ * Signal that session-gated attempt I/O has advanced. `/events` has no session gate, so transcript
+ * content deliberately stays out of this frame; consumers re-read after `seq` through the authed API.
+ */
+export function publishAttemptIoSignal(bus: EventBus, args: { attemptRef: string; seq: number }): void {
+  bus.publish({ channel: 'control', kind: 'attempt-io', data: args });
+}
+
+/** Publish a payload-free notification that the control-plane state changed. */
+export function publishControlTick(bus: EventBus): void {
+  bus.publish({ channel: 'control', kind: 'store-change' });
+}
+
+/**
+ * Watch the control-plane document for coarse state changes. The store has no subscription seam;
+ * this intentionally reads nothing and collapses burst writes into a single trailing-edge tick.
+ */
+export function wireControlStoreTick(
+  bus: EventBus,
+  stateRoot: string,
+  opts: { debounceMs?: number } = {},
+): Promise<FSWatcher> {
+  const watcher = watch(join(stateRoot, 'control', 'control-plane.json'), {
+    ignoreInitial: true,
+    persistent: true,
+  });
+  const debounceMs = opts.debounceMs ?? 250;
+  let timer: NodeJS.Timeout | undefined;
+  const onEvent = (): void => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = undefined;
+      publishControlTick(bus);
+    }, debounceMs);
+  };
+  watcher.on('add', onEvent);
+  watcher.on('change', onEvent);
+  return new Promise<FSWatcher>((resolve) => {
+    watcher.on('ready', () => resolve(watcher));
   });
 }
