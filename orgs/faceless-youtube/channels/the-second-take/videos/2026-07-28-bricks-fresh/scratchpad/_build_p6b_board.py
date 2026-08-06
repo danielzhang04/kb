@@ -74,6 +74,10 @@ NOTE = {
 
 # A parked frame's repair lineage, in generation order. Each successor is a separate card that
 # follows its predecessor on the board so the whole run reads together.
+ROUND_OF = {"L06-retry1": "2", "L07-retry1": "2", "L16-retry1": "2", "L18-retry1": "2",
+            "L10-retry1": "3", "L23-retry1": "3", "L24-retry1": "3", "L25-retry1": "3",
+            "L16-remint1": "3"}
+
 SUCCESSORS = {
     "L06": ["L06-retry1"],
     "L07": ["L07-retry1"],
@@ -356,18 +360,20 @@ for sid in GENERATED:
                           for r in (ritem.get("seed_roles") or [])) or "ROOT-TEXT (zero-seed)"
         rme = MANIFEST.get(rid, {})
         rstatus = rme.get("review_status", "unreviewed")
+        rnd = ROUND_OF.get(rid, "?")
         stamped = ""
         if rstatus == "parked":
-            stamped = ("ALREADY RULED — PARKED by fresh-eyes round 2. VERIFIER'S REASONS "
-                       "(verbatim): " + " | ".join(rme.get("parked_reasons") or []) + "  ||  ")
-            rlabel = "successor frame — ALREADY PARKED in round 2 (context for the card that follows)"
+            stamped = ("FINAL VERDICT — PARKED by fresh-eyes round %s. VERIFIER'S REASONS "
+                       "(verbatim): %s  ||  "
+                       % (rnd, " | ".join(rme.get("parked_reasons") or [])))
+            rlabel = "correction frame — PARKED (final, round %s)" % rnd
         elif rstatus == "verified":
-            stamped = "ALREADY RULED — VERIFIED by fresh-eyes round 2 and promoted.  ||  "
-            rlabel = "successor frame — ALREADY VERIFIED (context, do not re-rule)"
+            stamped = ("FINAL VERDICT — VERIFIED by fresh-eyes round %s and PROMOTED to %s.  ||  "
+                       % (rnd, rme.get("file")))
+            rlabel = "correction frame — VERIFIED + PROMOTED (final, round %s)" % rnd
         else:
-            rlabel = ("ROUND-3 frame — unreviewed, NO stamp, verdict EMPTY; rule it against the "
-                      "cards above")
-            counts["retry"] += 1
+            rlabel = "correction frame — unreviewed, verdict EMPTY"
+        counts["retry"] += 1
         cards.append(dict(
             sid=rid, label=rlabel,
             path=rpath, cls=s.get("shot_class") or "", vo=s.get("vo_text") or "",
