@@ -67,7 +67,7 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
      interactions only.
    - **Expression frames** are authored **moderate**: the scene gen copies their eye/brow/mouth shape directly, so a
      frame flat on its own lands flat in the scene; the big end is for a real comedic peak.
-   - **Prop / group / plate:** `--mode environment`/`style`; a new root uses forge's hardened scene descriptor,
+   - **Prop / group / plate:** `--mode environment`/`style`; a new root uses the bible's §2b descriptor,
      while any established identity/continuity input stays seeded (Pass 2's seed law). Kebab-case
      names; batch what you can (`--batch <file.json>`, items `{name, character, mode, delta, aspect, seed?, figures?,
      stage_role?, image_size?}`);
@@ -105,7 +105,7 @@ every seeded composite, including a direct spec, must carry ordered `{path, role
 | **Cap: ≤4 seeds per gen** | canonical + ONE pose primitive + ONE expression frame + one anchor/exemplar. Past four, dilution weakens every prior; a `base.png` added as an Nth "rig anchor" pins nothing. A figure that needs the base rig spends one of the four on it. |
 | **Attribute routing** | Base-derived seeds are bald, cream, neutral-faced and hoodied, so **any attribute not sourced from the CHARACTER seed bleeds a base trait**. CHARACTER seed → identity, head/skin tone, hair + facial hair, costume, face. POSE / interaction-template seed (geometry only) → body pose, hands, clasp geometry, placement, eye-line. EXPRESSION seed (shape only) → eye/brow/mouth shape, never tone, hairline or identity. Every skin patch, **including both hands**, renders in the CHARACTER's head tone. Expression is the SOFTEST seed and can land weak — the review checks register per beat. |
 | **Exposed hands are seeded, never free-drawn** | A salute, wave, open palm or point is the five-finger drift point: seed the matching pose frame AND state the digit fact in the delta. No library pose covers it → that was a Pass-1 gate item, not an ad-hoc scene invention. |
-| **Place/plate seed law; image seeds are continuity only** | Forge appends ONE hardened flat-cel/palette block to every scene request. Zero-seed is legal ONLY for a derived place plate (the first-in-file generated shot of a qualifying place with no named cast — forge skips any shot whose `source` is outside `ai-gen`\|`hybrid` before picking it, same as lint's `place_groups`) or a no-place root — symbolic/abstract/standalone-object-insert shot classes, a short's `first_frame`, and the thumbnail never declare `place`. Every OTHER in-place shot seeds its own place's first approved frame; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. **Cross-place image seeding is a hard refusal**, never an authoring option: a `place_anchor` (or derived place seed) whose source shot's `place` differs from the consuming shot's is the probe-refuted style-anchor failure under another name (2026-08-04, probes F/G). No OTHER image style anchor exists: hardened descriptor text was the probe winner over a rendered-scene anchor. **"Plate" here is the PLACE plate — a whole shot, the place's first approved frame. The layered-shot plate (`plates/<id>.png`, §Layered shots) is a different object: a subtraction from one scene, not a place's establishing frame.** |
+| **Place/plate seed law; image seeds are continuity only** | Forge states the LOOK in exactly TWO voices per scene request — the bible's §2b descriptor at the HEAD and the file's `global_prompt_suffix` at the TAIL — and generates no third. Zero-seed is legal ONLY for a derived place plate (the first-in-file generated shot of a qualifying place with no named cast — forge skips any shot whose `source` is outside `ai-gen`\|`hybrid` before picking it, same as lint's `place_groups`) or a no-place root — symbolic/abstract/standalone-object-insert shot classes, a short's `first_frame`, and the thumbnail never declare `place`. Every OTHER in-place shot seeds its own place's first approved frame; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. **Cross-place image seeding is a hard refusal**, never an authoring option: a `place_anchor` (or derived place seed) whose source shot's `place` differs from the consuming shot's is the probe-refuted style-anchor failure under another name (2026-08-04, probes F/G). The §5 scene style tile is the ONE registered image style anchor (a content-thin register exemplar, derived by forge onto cast-free gens); no other exists, and a narrative scene from another place is the probe-refuted failure. **"Plate" here is the PLACE plate — a whole shot, the place's first approved frame. The layered-shot plate (`plates/<id>.png`, §Layered shots) is a different object: a subtraction from one scene, not a place's establishing frame.** |
 | **Never seed off a downstream derivative** | Trace back to the exact frame the human approved; an "improved" copy can carry silent drift that then propagates as the lock. Exceptions: a delta-chain frame seeding its in-chain parent, and a re-base in the SAME location seeding the prior stage's base frame. |
 | **A rig FIX never seeds the defective frame** | Regen FRESH from canonicals off a re-authored prompt — the defect lives in the strongest seed and rides it back about half the time. The only defective-seed exceptions are an authored delta-chain parent and a human-ordered framing hold, and BOTH are re-ruled by the next fresh-eyes pass at ordinary viewing scale, like every other frame. **`crop_battery.py` is RETIRED** — no review procedure calls it and no verdict depends on it (2026-08-03 ruling: "I don't need a super crazy review process… it just burns time"). The file stays on disk as a historical tool only. |
 | **Match-prop** | A prop in more than one shot seeds its **first approved frame** as the prop canonical; later shots seed that exact frame and never re-describe the design in words. |
@@ -123,9 +123,12 @@ refused (same-place law, above); a cross-video environment frame is never accept
 16:9` on every scene/plate gen — forget it and the scene generates portrait, silently mis-framed. A **CUTOUT is the
 opposite**: wide squashes the object, so cutouts use `2:3` (or `4:3`/`3:2` for a naturally wide object); `forge.py
 cutout` HARD-ERRORS on width/height ≥ 1.5 unless `--allow-wide`. **Resolution is the other engine dial:** `forge.py`
-requests `imageSize: 2K` and takes `--image-size 1K|2K|4K` (or per-batch-item `image_size`). Leaving it unset — the
-state of every gen before 2026-07-29 — takes the engine default **1K**, which is *below* the 1920×1080 delivery frame,
-so full scenes were upscaled at render and the then-live crop battery zoomed into interpolated pixels (that battery is retired — §Seed law). **4K is the top tier at
+requests `imageSize: 1K` and takes `--image-size 1K|2K|4K` (or per-batch-item `image_size`). **1K is the DEFAULT
+because it is the ERA REGISTER:** the poyais board this channel is judged against sent no `imageSize` at all (= 1K),
+and at 2K the same "medium-thick" outline instruction renders a proportionally FINER stroke while the model spends
+the extra budget on detail the era never had room for — a 2K run is not the same instrument. The cost is real and
+accepted: 1K at 16:9 is ~1344×768, *below* the 1920×1080 delivery frame, so full scenes are upscaled at render
+(the battery that zoomed into those pixels is retired — §Seed law). **4K is the top tier at
 ~6× the 1K price**, so it is a per-run spend call raised at the Pass-1 gate, never a silent default.
 
 **Scope.** Generate stills only for `source: ai-gen` or the generated half of `hybrid`;
@@ -133,6 +136,11 @@ so full scenes were upscaled at render and the then-live crop battery zoomed int
 stage fields and any unknown key. **ALL in-video text is diegetic**, quoted verbatim from the `still_prompt`, 1–4
 words; **every text-bearing gen seeds the lettering exemplar** (`refs/env/lettering-marker-italic.png`), and every
 stamp/seal/mark gen seeds the stamp exemplar **plus its destination plate** for scale and palette (§5).
+**Every CAST-FREE gen seeds the scene style tile** (`refs/env/scene-style-tile.png`, §5) — forge DERIVES this and
+the lettering exemplar from the frame itself (no figure in frame; a quoted literal), never from an authored field.
+The tile is the pixel anchor for line register and palette on a frame with no cast to carry it, and its seed-role
+prose grants it **nothing else** — not content, not layout, not the place it depicts. A figure-bearing gen does not
+take it: its cast seeds already draw the register.
 
 **Provider-text order is policy first, authored text last:** **[bible descriptor + generated seed-role/crowd/rig
 policy] + [the shot's authored identity → scene → payload]**. The payload or exact replacement is literal final
@@ -206,7 +214,7 @@ Per shot, pick the **cheapest technique that holds the locked elements**:
 | --- | --- | --- |
 | **(a) Reuse / reframe** | an on-disk frame already IS this shot | copy it to `scenes/<shot-id>.png`; manifest notes source + intended framing. No gen. |
 | **(b) Seeded composition** (default with characters) | locked character(s) in a composed environment | ONE gen, `--mode environment`, multi-seeding the shot's tagged figure frames plus any true continuity/place input. Delta = the `still_prompt`'s scene/placement facts only; pose, expression, hands and tone route by seed |
-| **(c) Character-free scene** | a map, an empty plate, an object | ONE `--mode environment`/`style` gen; a root may be zero-seed under the hardened descriptor, while a chain/anchored request keeps its continuity seed |
+| **(c) Character-free scene** | a map, an empty plate, an object | ONE `--mode environment`/`style` gen; a root may be zero-seed under the bible descriptor + style suffix, while a chain/anchored request keeps its continuity seed |
 | **(d) One-shot single-character** | a simple shot, one prominent character | single gen `--mode identity` seeding that character's canonical (+ its expression/pose frames); full rig check still applies |
 | **(e) Seeded delta-chain** (a held STAGE) | consecutive shots sharing a `stage` id where the change is INTEGRATIVE | the `base` uses (b)/(c)/(d); each `delta` seeds the PREVIOUS in-stage frame and changes ONLY that shot's `changed_elements`; **≤3 deltas**, then re-base or hard-cut |
 
@@ -350,7 +358,7 @@ The pass rules three axes together, per shot, at **ordinary viewing scale**:
    pass|fail|skipped, note}]`; **`stamp_review.py` parks any shot carrying a failed item even when the axis
    severities came back clean**.
 3. **Style/taste** — does it read as its `shot_class` at a glance, on-recipe per §5 **AND rich — committed scene
-   palette, fore/mid/background depth, light/atmosphere, filled edge-to-edge** — or is it slop: generic, cluttered,
+   palette, layered depth by overlap and scale (§5), light/atmosphere, filled edge-to-edge** — or is it slop: generic, cluttered,
    off-register, drifting to the detailed middle, thin, sparse? **Check expression register per beat** (§3).
 
 Returns a **flagged list keyed by shot id**, one sentence per defect quoting the offending fact. A frame no axis
@@ -410,7 +418,7 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
 1. `lookup` the registry — a hit means hand back the file, done.
 2. Pick the seed: existing character → its canonical; **"iterate on THIS"** → that exact approved frame, changing ONLY
    the one requested variable; new character → the template base + a new head tone (§4); environment/prop → style-only
-   mode with the hardened scene descriptor, seeding only a real canonical/continuity input; a pose/expression primitive
+   mode with the bible's §2b descriptor + the style suffix, seeding only a real canonical/continuity input; a pose/expression primitive
    → the base, neutral face, `2:3`.
 3. `gen` into staging → **check bible §3** by looking at it → **ONE re-authored retry**, then flag + surface. Record
    the round (seed, mode, delta, settings, verdict) in a notes file beside the frames, then `register` what passed

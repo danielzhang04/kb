@@ -254,6 +254,33 @@ def test_flat_cel_hazard_fires_on_every_shot_whose_pixels_are_generated():
         assert not any(s == "flat-cel-hazard" for s, _ in rows), reused
 
 
+def test_line_register_fires_wherever_flat_cel_hazard_does_and_nowhere_else():
+    """The 2026-08 line-register axis. It rides the SAME generated-pixels predicate as
+    `flat-cel-hazard` because it is the same risk asked about differently: that axis rules on
+    SHADING technique, this one on LINE WEIGHT — a frame can be perfectly flat-cel and still be
+    drawn a whole register thinner than its own cast, which had no row to fail on."""
+    for generated in ({"source": "ai-gen"}, {"source": "hybrid"}, {}):
+        rows = bra.applicable_invariants(generated, "Q01", ["zeta"], set())
+        assert any(s == "line-register" for s, _ in rows), generated
+    for reused in ("stock", "chart", "screencap", "archival"):
+        rows = bra.applicable_invariants({"source": reused}, "Q01", [], set())
+        assert not any(s == "line-register" for s, _ in rows), reused
+
+
+def test_insertability_fires_only_on_a_generated_cast_free_plate():
+    """A plate's one job is to be STOOD ON, so the axis is scoped to the tier that has no cast:
+    a figure-bearing or crowd-bearing frame already answers the question in pixels."""
+    plate = bra.applicable_invariants({"source": "ai-gen"}, "Q01", [], set())
+    assert any(s == "insertability" for s, _ in plate), plate
+    cast = bra.applicable_invariants({"source": "ai-gen"}, "Q01", ["zeta-clerk"], set())
+    assert not any(s == "insertability" for s, _ in cast), cast
+    crowd = bra.applicable_invariants({"source": "ai-gen", "figures": {"crowd": True}},
+                                      "Q01", [], set())
+    assert not any(s == "insertability" for s, _ in crowd), crowd
+    reused = bra.applicable_invariants({"source": "stock"}, "Q01", [], set())
+    assert not any(s == "insertability" for s, _ in reused), reused
+
+
 def test_no_applicable_invariants_returns_empty_list():
     assert bra.applicable_invariants({"source": "stock"}, "Q01", [], set()) == []
 
@@ -296,7 +323,10 @@ def test_collect_wires_invariants_and_canon_into_cards_generically():
         by_sid = {c["sid"]: c for c in cards}
 
         q01_slugs = {s for s, _ in by_sid["Q01"]["invariants"]}
-        assert q01_slugs == {"support-contact", "place-owner", "flat-cel-hazard"}, q01_slugs
+        # Q01 names cast, so it takes `line-register` (every generated frame) but not
+        # `insertability` (plate tier only).
+        assert q01_slugs == {"support-contact", "place-owner", "flat-cel-hazard",
+                             "line-register"}, q01_slugs
         assert ("place-owner", "owner cue 'Widget Hall' legible in frame per L-1?") in \
             by_sid["Q01"]["invariants"], by_sid["Q01"]["invariants"]
         assert by_sid["Q01"]["canon"] == [("zeta-clerk", str(canon_path))], by_sid["Q01"]["canon"]
@@ -374,7 +404,7 @@ def test_collect_degrades_gracefully_with_no_library_manifest_at_all():
 
         cards = bra.collect(str(video), None)
         slugs = {s for s, _ in cards[0]["invariants"]}
-        assert slugs == {"flat-cel-hazard", "crowd"}, slugs
+        assert slugs == {"flat-cel-hazard", "crowd", "line-register"}, slugs
         assert cards[0]["canon"] == [], cards[0]["canon"]
 
 

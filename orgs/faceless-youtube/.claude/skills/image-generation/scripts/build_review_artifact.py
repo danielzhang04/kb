@@ -201,6 +201,11 @@ INVARIANTS = {
     "relative-scale": "Two named cast: plane / eye line / relative head scale stated (C-8)",
     "crowd": "Crowd reads as background rig, not named cast",
     "flat-cel-hazard": "One-voice flat-cel style holds (no gradient/gloss/bloom/etc., C-2)",
+    "line-register": "Every line reads at the rig outline weight or heavier — nothing finer, no "
+                     "hairline/micro-pattern field (slats, lattice, grille, fine grain); skin one "
+                     "flat fill (bible §3)",
+    "insertability": "Cast-free plate offers a flat open floor plane in fore/midground at figure "
+                     "scale — a rig figure could be stood on it (bible §3/§5)",
 }
 # `place-owner` is not in this static table: its question embeds the place's own
 # declared literal (`owner cue '<LITERAL>' legible in frame per L-1?`), built per shot
@@ -231,6 +236,16 @@ def applicable_invariants(shot, sid, named, seated, owner_of=None):
                            only checks legibility of a declaration that exists.
       * crowd           -> `figures.crowd` is true
       * flat-cel-hazard -> the shot's pixels are generated or composited (forge's own predicate)
+      * line-register   -> same generated-pixels predicate as flat-cel-hazard. The two ask
+                           different questions about the same risk: flat-cel-hazard rules on
+                           SHADING technique (gradient/gloss/bloom), line-register on LINE WEIGHT
+                           — a frame can be perfectly flat-cel and still be drawn a whole register
+                           thinner than its own cast, which is exactly the 2026-08 drift that had
+                           no row to fail on.
+      * insertability   -> a generated CAST-FREE frame (no named figure, no declared crowd) — i.e.
+                           the plate tier, whose only job is to be stood on. Read from the same
+                           `named`/`figures.crowd` facts the rows above use rather than from
+                           forge's derived `plate` flag, which this board never sees.
     Returns an ordered list of `(slug, question)` pairs, `INVARIANTS`-order, empty when none apply.
     """
     owner_of = owner_of or {}
@@ -251,6 +266,9 @@ def applicable_invariants(shot, sid, named, seated, owner_of=None):
         rows.append(("crowd", INVARIANTS["crowd"]))
     if shot.get("source", "ai-gen") in GENERATED_SOURCES:
         rows.append(("flat-cel-hazard", INVARIANTS["flat-cel-hazard"]))
+        rows.append(("line-register", INVARIANTS["line-register"]))
+        if not named and not fig.get("crowd"):
+            rows.append(("insertability", INVARIANTS["insertability"]))
     return rows
 
 

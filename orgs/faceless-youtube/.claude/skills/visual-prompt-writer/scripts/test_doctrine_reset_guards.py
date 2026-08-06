@@ -18,15 +18,34 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import lint_shots as L  # noqa: E402
 
-# The post-reset legal suffix: LETTERING ONLY. The flat-cel recipe lives in
-# style-bible.md §2b and nowhere else, so the suffix states no style at all.
+# A stand-in suffix for the checks that merely need SOME suffix value.
 SUFFIX = "hand-lettered marker capitals for any in-world text"
-# The suffix this wave replaces (visual-grammar.md's pre-reset header blockquote) — kept
-# verbatim as the regression fixture the one-voice guard must never let back in.
-OLD_SUFFIX = (
-    "clean flat cel-shaded cartoon style, an even medium-thick dark warm brown-black "
-    "#241a12 outline on everything, flat colours with gentle soft cel shading, rounded "
-    "friendly shapes, no realistic detail, hand-lettered marker capitals for any in-world text")
+# The poyais-era suffix restored 2026-08-05 (`ff36f63:videos/2026-07-04-poyais/shots.json`) —
+# the channel's TAIL style voice. It is dense with recipe vocabulary BY DESIGN, so it is the
+# calibration case the retargeted one-voice guard must stay silent on.
+ERA_SUFFIX = (
+    "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm "
+    "brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, "
+    "rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient "
+    "sky/ground + minimal geometry + one foreground depth prop); any in-world lettering "
+    "hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus "
+    "the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the "
+    "last punch element); no photorealism, no on-screen narrator or host face, no unrequested "
+    "text, no logos; 16:9.")
+
+
+def _kit_with_suffix(text):
+    """A throwaway <channel>/videos/<slug> dir whose ../../visual-kit/visual-grammar.md
+    carries `text` as the channel's authored suffix. Returns the video dir."""
+    root = Path(tempfile.mkdtemp())
+    vdir = root / "videos" / "slug"
+    vdir.mkdir(parents=True)
+    kit = root / "visual-kit"
+    kit.mkdir()
+    (kit / "visual-grammar.md").write_text(
+        "# grammar\n\n**`global_prompt_suffix`** - fixed channel data:\n\n> "
+        + text + "\n\nProse after the blockquote.\n", encoding="utf-8")
+    return vdir
 
 
 def _p(prompt, pid="L01", field="still_prompt"):
@@ -88,68 +107,56 @@ def test_c2_thumbnail_and_suffix_are_covered():
 # =============================================================================
 # C-2(a) — suffix one-voice
 # =============================================================================
-def test_c2a_plant_the_deleted_phrase():
-    """The exact string style-bible.md's C-1 rewrite deletes: 'flat colours with
-    gentle soft cel shading'."""
+def test_c2a_an_empty_suffix_hard_fails():
+    """The suffix is the TAIL half of the two style voices forge injects; an empty one
+    silently deletes half the LOOK from every generation in the file."""
     hard = []
-    L.suffix_one_voice_check(
-        "clean flat cel-shaded cartoon style, flat colours with gentle soft cel shading, "
-        "rounded friendly shapes", hard)
-    msgs = " ".join(hard)
-    assert "gentle" in msgs and "soft" in msgs, hard
+    L.suffix_one_voice_check("", hard)
+    assert len(hard) == 1 and "EMPTY" in hard[0], hard
 
 
-def test_c2a_blended_and_feathered_fire():
+def test_c2a_the_era_style_suffix_is_silent():
+    """RETARGETED 2026-08-05. Style vocabulary in the suffix used to hard-fail under the
+    lettering-only doctrine; the era restoration makes it the suffix's JOB. The restored
+    643-char suffix — recipe wording, a hex outline colour, a hex accent, `gentle soft
+    shading`, `flat gradient sky/ground`, `no photorealism` — must lint CLEAN, and it is
+    the acceptance case for the visual-grammar.md header."""
     hard = []
-    L.suffix_one_voice_check("no blended or feathered transitions ever, wait this suffix "
-                              "itself uses blended and feathered wording", hard)
-    msgs = " ".join(hard)
-    assert "blended" in msgs and "feathered" in msgs, hard
-
-
-def test_c2a_the_new_lettering_only_suffix_is_silent():
-    """The post-reset suffix — LETTERING ONLY — is the one legal shape, and it must lint
-    clean. This is the acceptance check for the visual-grammar.md rewrite."""
-    hard = []
-    L.suffix_one_voice_check(SUFFIX, hard)
+    L.suffix_one_voice_check(ERA_SUFFIX, hard, _kit_with_suffix(ERA_SUFFIX))
     assert hard == [], hard
 
 
-def test_c2a_the_old_style_bearing_suffix_hard_fails():
-    """visual-grammar.md's pre-reset blockquote, verbatim: it carries the deleted
-    'gentle soft cel shading' AND the recipe's own vocabulary. Both classes must report."""
+def test_c2a_a_suffix_that_diverges_from_its_channel_home_hard_fails():
+    """The one-voice law, moved to where it is mechanically decidable: the suffix has ONE
+    home (`visual-grammar.md`) and shots.json carries a verbatim COPY. Two texts differing
+    by a word are two voices."""
     hard = []
-    L.suffix_one_voice_check(OLD_SUFFIX, hard)
-    msgs = " ".join(hard)
-    assert "gentle" in msgs and "soft" in msgs, hard
-    assert "style-recipe wording" in msgs, hard
+    L.suffix_one_voice_check(ERA_SUFFIX.replace("gentle soft shading", "smooth shading"),
+                             hard, _kit_with_suffix(ERA_SUFFIX))
+    assert len(hard) == 1 and "does not match the channel's authored suffix" in hard[0], hard
 
 
-def test_c2a_even_the_correct_c1_recipe_is_not_a_legal_suffix():
-    """The architecture, not a taste call: the C-1 recipe is CORRECT text living in the
-    WRONG file. style-bible.md §2b owns the recipe and forge assembles it onto every gen;
-    a suffix that restates it is a second copy of a living document — the drift mechanism
-    the one-voice law exists to remove. So the recipe's own wording hard-fails HERE while
-    being the required wording THERE."""
+def test_c2a_an_unreachable_kit_downgrades_to_non_empty_rather_than_inventing_a_canonical():
+    """A fixture or a detached shots.json has no visual-kit to compare against. The check
+    must not fabricate a canonical and fail correct text."""
     hard = []
-    L.suffix_one_voice_check(
-        "medium-thick dark warm brown-black #241a12 outline on everything, flat colour "
-        "fills, one flat base colour per surface plus at most one hard-edged single-step "
-        "shadow shape, no feathered or blended transitions, uniform highlight-free "
-        "surfaces, rounded friendly shapes, no realistic detail. No text, no words, no "
-        "labels.", hard)
-    assert any("style-recipe wording" in h for h in hard), hard
-    # every reported span is a distinct term — one defect never reports twice
-    assert len(hard) == len({h.split(": ", 1)[1] for h in hard}), hard
-
-
-def test_c2a_soft_focus_is_not_double_reported():
-    """`soft focus` is already the C-2 banned PHRASE; the bare-'soft' suffix guard
-    must not also fire on the same span - one report, not two, for one defect."""
+    L.suffix_one_voice_check(ERA_SUFFIX, hard)          # vdir=None
+    assert hard == [], hard
     hard = []
-    L.suffix_one_voice_check("the corridor falls into soft focus at the edges", hard)
-    assert len(hard) == 1, hard
-    assert "banned render-technique term 'soft focus'" in hard[0], hard
+    L.suffix_one_voice_check(SUFFIX, hard, Path(tempfile.mkdtemp()) / "videos" / "slug")
+    assert hard == [], hard
+
+
+def test_c2a_the_render_technique_ban_still_owns_authored_prose():
+    """The C-2 ban no longer runs on the suffix (it guards AUTHORED per-shot prose, and the
+    channel suffix legitimately names `flat gradient sky/ground` and `no photorealism`).
+    That ownership move must not weaken the prose side."""
+    hard = []
+    L.render_technique_check("long-form", _p("the corridor falls into soft focus at the edges"), hard)
+    assert len(hard) == 1 and "'soft focus'" in hard[0], hard
+    hard = []
+    L.render_technique_check("long-form", _p("an airbrushed sky over the yard"), hard)
+    assert len(hard) == 1 and "airbrush" in hard[0].lower(), hard
 
 
 # =============================================================================
@@ -1035,9 +1042,15 @@ def test_e2e_a_placeless_shot_class_with_place_fails():
     assert rc == 1        # shot_class stays symbolic-stand-in-object, which is exempt
 
 
-def test_e2e_a_suffix_soft_word_fails():
+def test_e2e_an_empty_suffix_fails_while_a_style_bearing_one_passes():
+    """main() wiring for the RETARGETED C-2(a): the suffix is the TAIL style voice, so style
+    wording in it exits 0; deleting it removes half the LOOK from every gen and exits 1."""
     data = _file()
     data["global_prompt_suffix"] = "flat colours with gentle soft cel shading"
+    rc, _ = _main(data)
+    assert rc == 0
+    data = _file()
+    data["global_prompt_suffix"] = ""
     rc, _ = _main(data)
     assert rc == 1
 

@@ -311,8 +311,8 @@ sentence, and both halves stay inside the 1.5–3 s band.
 - **L07 (R-7).** Re-authored from a `store-1983` delta to the BASE of a new `store-rush` chain. A
   room-filling crowd was arriving on a parent frame with no people in it — the dominant input contradicted
   the payload. It now seeds the L05 place-first frame, stages the queue as a positive arrangement in a
-  stated zone, and takes a new vantage (down on the floor at counter height). The window card is behind
-  camera at that vantage, so no literal is carried and the payload slot stays with the crowd.
+  stated zone, and stays on the house eye-level frontal. The window card is outside that
+  framing, so no literal is carried and the payload slot stays with the crowd.
 - **L08 (R-8).** Re-authored: the delta no longer DELETES the parent's dominant seeded mass (three bays
   of boxed machines). Its change is now an addition — every buyer carrying a boxed machine — which is also
   what its own line says ("Anybody with money was buying one"). The shelves running bare lands where the
@@ -335,7 +335,7 @@ sentence, and both halves stay inside the 1.5–3 s band.
 - **L29 / L31 / L32 (R-4).** Three of the act's four figure reveals ran one face and one composition.
   Split across the dial and across scale: L29 `expr-deadpan`, medium, off-centre in the doorway (a flat
   identification beat); L31 keeps `expr-delighted` (the founder's warm intro — the beat that warrants it)
-  but pushes in to a medium; L32 goes `expr-greedy` on a low wide angle from floor level (the boom).
+  but pushes in to a medium; L32 goes `expr-greedy` on a wide (the boom).
   STEP-1 card count is unchanged at 8.
 - **L42 (R-3).** The carton is no longer empty. Three shots taught that these boxes hold one red clay
   brick filling the box exactly; an empty one reads as a continuity error, and it is the wrong fraud.
@@ -383,8 +383,8 @@ half of N-1's declare-or-restage. Figure-bearing frames 26 to 28 of 47 (60%).
     the declared number must never disagree with the render.
 12. **A repeated CLASS is not the monotony risk; a repeated WORLD is.** The money block's four shots
     carried four different `shot_class` values and still rendered as one image, because all four reached
-    for the same nouns (cartons, apron, pale sky). Vary the world and the vantage per shot, not just the
-    class.
+    for the same nouns (cartons, apron, pale sky). Vary the WORLD per shot — the nouns, the set, the
+    palette — not the vantage; the vantage is fixed house eye-level.
 
 ---
 

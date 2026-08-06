@@ -40,10 +40,9 @@ tone follows the character's registry `head_tone`). The delta overrides it on ex
 
 ## 2b. STYLE-ONLY descriptor (verbatim — for new characters & environments/props)
 
-> MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colour fills — one flat
-> base colour per surface plus at most ONE hard-edged single-step shadow shape, no feathered or
-> blended transitions, uniform highlight-free surfaces — rounded friendly shapes, no realistic
-> detail. No text, no words, no labels.
+> Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even
+> MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle
+> soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.
 
 For a **new character** the delta supplies only identity-VARYING traits (hair / facial hair, a flat head tone
 (§4), build + outfit) and §2c holds the rig. For an **environment/prop**: describe the scene, palette free.
@@ -95,9 +94,15 @@ Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never 
   any ear-shaped hole or notch drawn INTO the hair are FAILs.
 - **Hands — four digits** (three fingers + a thumb), never five, six, or a mitten. **Open / spread / raised
   hands are the drift point**, and a two-hand gesture requires **both hands the SAME size**.
-- **Outline** — even medium-thick dark warm brown-black (`#241a12`), not pure black, not thin. **Render** —
-  clean flat cel, even line weight, flat tones. **Head tone** — one uniform flat tone, no gradient, no realistic
-  skin. **Count** — exactly the characters the scene declares.
+- **Outline** — even medium-thick dark warm brown-black (`#241a12`), not pure black, not thin; this weight is the
+  frame's FLOOR, not just the figure's (see `line-register`). **Render** — clean flat cel, even line weight, flat
+  tones. **Head tone** — one uniform flat tone (no gradient, no realistic skin, no blush).
+- **`line-register` — judged frame-wide, on EVERY generated frame:** every line in the image reads at the rig's
+  outline weight or heavier. Any element drawn FINER than the rig outline, and any hairline or micro-pattern field
+  (blind slats, lattices, grilles, railings, distant filigree, fine grain, repeated thin stripes), is a **FAIL** —
+  the drift is a whole frame quietly rendering a register thinner than its own cast. Furniture, foliage and props
+  read chunky and simplified; skin/head patches stay one flat uniform fill (airbrushed or gradient skin FAILs).
+- **Count** — exactly the characters the scene declares.
 - **Identity match vs canonical** — a seeded character's head tone AND hair must MATCH its canonical; a
   base-cream bald head on a haired/toned character is an **identity FAIL even when every form invariant
   passes**. **Costume** — the pinned canonical costume is identity; a wrong outfit fails unless authored.
@@ -135,10 +140,14 @@ the channel color family. Neutral-grey-only is not a palette.
 - **Cast:** the locked 2.5D rig (§1) — flat cel characters + money objects, never photoreal, never the uncanny
   middle. Emotion reads in a legible mouth + brow, restrained by default; **posture is the acting**.
   **Personified institutions** carry ONE identity tag (a flag necktie, a hat, a uniform).
-- **Environments:** *built* but flat — a real setting per scene, composed **edge-to-edge with a fore/mid/
-  background depth read**, a **committed warm scene palette**, and **light/atmosphere**. **Rich, not sparse:**
-  name the real furniture of the place; no dead air, no parallaxed realism. **Diegetic art / artifacts** (a
-  painting, poster, brochure vista, map) render in OUR flat-cel look with the `#241a12` outline.
+- **Environments:** *built* but flat — a real setting per scene, composed **edge-to-edge, depth read by
+  overlap and scale, eye-level frontal**, a **committed warm scene palette**, and **light/atmosphere**.
+  **Rich, not sparse:** name the real furniture of the place; no dead air, no parallaxed realism.
+  **Diegetic art / artifacts** (a painting, poster, brochure vista, map) render in OUR flat-cel look with
+  the `#241a12` outline.
+- **`refs/env/scene-style-tile.png` seeds every cast-free plate/scene gen** — it contributes **line
+  register and palette discipline ONLY, never content, layout, or the place it depicts**; a figure-bearing
+  gen carries its own register in the cast seeds and does NOT take the tile.
 - **Charts / diegetic lettering:** a hand-drawn **marker / sketch family**, deliberately crude, never corporate
   infographic; no title cards (a chapter turn is a hard cut / palette turn). **Lettering is LOCKED: relaxed
   hand-lettered MARKER CAPITALS with a slight lean and baseline bounce — quick confident handwriting, no letter
@@ -156,7 +165,9 @@ the channel color family. Neutral-grey-only is not a palette.
 costume) and **`assets`** (expressions, actions, props, plates — canonical file + seed frame). **No cross-video
 environment plate exists** — a video mints its own (a `plate: true` candidate batch, human-picked once per
 place); the standing **style-anchor register frames** locked in `refs/env/` are `assets` with `kind:
-environment`, and hold only the lettering + stamp hands (`lettering-marker-italic`, `stamp-block-outlined`).
+environment`, and hold only REGISTERS, never places: the lettering + stamp hands
+(`lettering-marker-italic`, `stamp-block-outlined`) and the scene line/palette register
+(`scene-style-tile`, §5 — a style anchor, not a reusable place).
 Canonical frames live under `refs/` and **the `refs/` copy is what every later seed references**; a per-video
 recurring prop lives only in that video's `assets/library/`. VPW reads this file as the channel's asset
 vocabulary; `image-generation` registers each new verified recurring asset back.

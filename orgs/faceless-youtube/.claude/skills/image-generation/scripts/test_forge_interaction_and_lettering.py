@@ -218,15 +218,21 @@ def test_a_text_bearing_shot_derives_the_lettering_exemplar_with_no_assets_block
                     "still_prompt": "A stack of flat drive cartons; the fourth carton up is "
                                     "lettered '125 MILLION' across its face."}])
     roles = [(e["role"], _stem(e["path"])) for e in reqs["L31"]["seed_roles"]]
-    assert roles == [("environment", "lettering-marker-italic")], roles
-    assert "LETTERING" in reqs["L31"]["why"]
+    # cast-free too, so the §5 style tile derives alongside it — two independent routes,
+    # one derivation block.
+    assert roles == [("environment", "lettering-marker-italic"),
+                     ("style-anchor", "scene-style-tile")], roles
+    assert "LETTERING" in reqs["L31"]["why"] and "STYLE TILE" in reqs["L31"]["why"]
 
 
-def test_a_figure_free_textless_shot_derives_nothing_and_stays_a_plate():
+def test_a_figure_free_textless_shot_derives_only_the_style_tile_and_stays_a_plate():
     reqs = _batch([{"id": "L03", "still_prompt": "A rented warehouse interior at night, "
                                                  "cast-free. Every wall face stands completely "
                                                  "blank and unlettered."}])
-    assert reqs["L03"]["seed"] == [] and reqs["L03"]["plate"] is True
+    # No lettering (textless) and no cast seed — but a cast-free frame always takes the §5
+    # style tile, and `plate` reads CONTENT seeds, so the frame still mints its own place.
+    assert [_stem(s) for s in reqs["L03"]["seed"]] == ["scene-style-tile"], reqs["L03"]["seed"]
+    assert reqs["L03"]["plate"] is True
 
 
 def test_a_backticked_registry_prop_is_derived_even_with_no_assets_block():
@@ -243,7 +249,7 @@ def test_assets_omitted_still_suppresses_the_derived_exemplar():
     silently re-add one."""
     reqs = _batch([{"id": "L31", "assets_omitted": ["lettering-marker-italic"],
                     "still_prompt": "A carton lettered '125 MILLION' across its face."}])
-    assert reqs["L31"]["seed"] == [], reqs["L31"]["seed"]
+    assert [_stem(s) for s in reqs["L31"]["seed"]] == ["scene-style-tile"], reqs["L31"]["seed"]
 
 
 def test_an_explicit_assets_tag_is_not_duplicated_by_the_derivation():
@@ -252,4 +258,5 @@ def test_an_explicit_assets_tag_is_not_duplicated_by_the_derivation():
                                "channels/the-second-take/visual-kit/refs/env/"
                                "lettering-marker-italic.png"},
                     "still_prompt": "A carton lettered '125 MILLION' across its face."}])
-    assert [_stem(s) for s in reqs["L31"]["seed"]] == ["lettering-marker-italic"]
+    assert [_stem(s) for s in reqs["L31"]["seed"]] == ["lettering-marker-italic",
+                                                       "scene-style-tile"]

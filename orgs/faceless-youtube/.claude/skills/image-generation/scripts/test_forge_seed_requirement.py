@@ -17,6 +17,7 @@ from forge import (Kit, cmd_batch, cmd_gen, figure_frame_name, merge_vocabulary,
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
 ROOT = KIT_DIR.parents[2]
+TILE = "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
 
 
 def _real_kit():
@@ -95,12 +96,12 @@ def test_a_derived_place_plate_may_run_unseeded_but_delta_and_anchor_may_not():
             assert False, f"continuity request accepted with no seed: {request}"
 
 
-def test_cmd_gen_classifies_root_chain_and_anchored_requests_as_scenes_but_not_step1():
+def test_cmd_gen_passes_each_requests_own_style_suffix_and_never_invents_one():
     root = tempfile.mkdtemp(); staging = os.path.join(root, "staging"); os.makedirs(staging)
     seed = os.path.join(root, "seed.png"); open(seed, "wb").write(b"seed")
     seen = []
     def prompt_for(mode, delta, **kwargs):
-        seen.append((delta, kwargs.get("scene")))
+        seen.append((delta, kwargs.get("suffix")))
         return delta
     k = SimpleNamespace(staging=staging, root=root, reg=REG, resolve_seed=lambda value: value,
                         prompt_for=prompt_for)
@@ -111,15 +112,17 @@ def test_cmd_gen_classifies_root_chain_and_anchored_requests_as_scenes_but_not_s
                 "seed_roles": roles, **extra}
     reqs = [
         {"name": "root", "mode": "environment", "delta": "root authored", "seed": [],
-         "plate": True},
-        composite("chain", "environment", "chain authored", plate=False),
+         "plate": True, "prompt_suffix": "TAIL VOICE"},
+        composite("chain", "environment", "chain authored", plate=False,
+                  prompt_suffix="TAIL VOICE"),
         composite("anchored", "style", "anchor authored", plate=False,
-                  place_anchor="assets/scenes/L00.png"),
+                  place_anchor="assets/scenes/L00.png", prompt_suffix="TAIL VOICE"),
+        # a STEP-1 identity card carries no suffix: `cmd_batch` does not put one on it
         composite("fig-reference", "environment", "STEP-1 authored"),
     ]
     with contextlib.redirect_stdout(io.StringIO()):
         cmd_gen(k, reqs, True, dry=True)
-    assert [scene for _, scene in seen] == [True, True, True, False], seen
+    assert [suffix for _, suffix in seen] == ["TAIL VOICE", "TAIL VOICE", "TAIL VOICE", ""], seen
     assert seen[0][0] == "root authored"
     assert [delta.rsplit("\n\n", 1)[-1] for delta, _ in seen[1:]] == [
         "chain authored", "anchor authored", "STEP-1 authored"], seen
@@ -369,8 +372,10 @@ def test_explicit_nonfigure_tags_route_without_duplicating_figure_or_crowd_seeds
     assert [Path(s).stem for s in scene["seed"]] == [
         figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug"),
         "crowd-exemplar", "prop-beige-pc"], scene["seed"]
+    # T01 carries figures, so it does NOT take the §5 style tile (its cast seeds draw the
+    # register); T04 is CAST-FREE, so the tile is derived onto it beside its authored exemplar.
     assert [Path(s).stem for s in next(i for i in spec if i["name"] == "T04")["seed"]] == \
-        ["stamp-block-outlined"]
+        ["stamp-block-outlined", "scene-style-tile"]
 
 
 def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
@@ -397,7 +402,10 @@ def test_explicit_tags_over_cap_still_hard_error_instead_of_truncating():
     assert not os.path.exists(out), err
 
 
-def test_character_free_place_plate_emits_with_no_image_seed():
+def test_character_free_place_plate_carries_only_the_style_tile_and_stays_a_plate():
+    """The §5 scene style tile is the ONE seed a cast-free place plate carries. It contributes
+    register and palette, never content, so `plate` — derived from CONTENT seeds — stays True and
+    the frame still mints its own place."""
     _, shots, out = _scope_fixture()
     doc = json.load(open(shots, encoding="utf-8"))
     doc["long_form"]["shots"] = [{"id": "T00", "source": "ai-gen", "stage": "new-place",
@@ -405,14 +413,18 @@ def test_character_free_place_plate_emits_with_no_image_seed():
     json.dump(doc, open(shots, "w", encoding="utf-8"))
     spec, err = _batch(shots, out, ["T00"])
     assert err is None, err
+    payload = "A warm records room with a bare central table."
+    roles = [{"path": TILE, "role": "style-anchor", "character": "scene-style-tile"}]
     assert spec == [{"name": "T00", "mode": "environment", "aspect": "16:9",
-                     "delta": "A warm records room with a bare central table.",
-                     "payload": "A warm records room with a bare central table.",
-                     "seed": [], "seed_roles": [],
+                     "delta": forge_module.placement_delta(payload, roles),
+                     "payload": payload, "prompt_suffix": None,
+                     "seed": [TILE], "seed_roles": roles,
                      "figures": None, "stage_role": None, "assets_omitted": None,
                      "plate": True, "delta_primitives": None, "expression_change": None,
                      "parent_depth": 0, "lineage": 0,
-                     "why": "PLATE — place-first frame, hardened descriptor, no image anchor"}], spec
+                     "why": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived "
+                            "(line register + palette only); PLATE — place-first frame, bible "
+                            "descriptor + style suffix, no content anchor"}], spec
 
 
 def _stem_ok(seed, char):

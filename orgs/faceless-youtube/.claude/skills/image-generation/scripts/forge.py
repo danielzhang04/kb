@@ -43,13 +43,17 @@ def ctx():
         return ssl.create_default_context()
 
 # Engine resolution tiers (`imageConfig.imageSize`): "1K" | "2K" | "4K". UNSET means 1K, which is
-# what every generation before 2026-07-29 silently got — below the 1920x1080 long-form delivery
-# frame (1K at 16:9 is ~1344x768), so full-frame scenes were being upscaled at render and the crop
-# battery zoomed 3-4x into interpolated pixels. 2K is the first tier that clears delivery with
-# headroom to zoom; 4K is the top tier at ~6x the 1K price, so it is a per-run spend decision
-# (`--image-size 4K`), never a silent default.
+# what the poyais era sent (no `imageSize` key at all) and what every generation before 2026-07-29
+# silently got. 1K is the DEFAULT again as of the 2026-08-05 era restoration: the whole poyais board
+# — the register this channel is judged against — was rendered at 1K, and at 2K the same
+# "medium-thick" instruction renders a proportionally FINER stroke while the model spends the extra
+# budget on detail the era never had room for (archaeology D6). A line-weight comparison against
+# poyais that runs at 2K is not comparing the same instrument. 2K/4K remain available as a per-run
+# spend-and-register decision (`--image-size 2K`), never a silent default; 1K at 16:9 is ~1344x768,
+# below the 1920x1080 delivery frame, so a full-frame scene is upscaled at render and the crop
+# battery zooms into interpolated pixels — that is the accepted cost of the era register.
 IMAGE_SIZES = ("1K", "2K", "4K")
-IMAGE_SIZE_DEFAULT = "2K"
+IMAGE_SIZE_DEFAULT = "1K"
 
 
 def nano(url, parts, aspect, context, image_size=IMAGE_SIZE_DEFAULT):
@@ -266,28 +270,24 @@ def figures_expansion(figures, crowd_rig):
     return crowd_rig if _fig_declared(figures)[1] and crowd_rig else ""
 
 
-def assemble_prompt(descriptor, payload, figures_text="", righold=""):
-    """Provider zones, ONE place: descriptor -> generated figure/rig policy -> authored payload.
+def assemble_prompt(descriptor, payload, figures_text="", righold="", suffix=""):
+    """Provider zones, ONE place: descriptor -> generated figure/rig policy -> authored payload
+    -> the file's `global_prompt_suffix`.
 
-    The payload (or its exact surgical replacement) is literal final provider text. Crowd policy
-    still precedes RIG-HOLD so the hold's crowd exemption refers to a clause already stated.
+    THE LOOK IS STATED IN EXACTLY TWO VOICES, at the two ends of the prompt: the bible's §2b
+    STYLE-ONLY descriptor at the HEAD and the video's `global_prompt_suffix` at the TAIL. That is
+    the poyais-era shape, restored 2026-08-05: the era stated style twice, at both ends, on 87% of
+    its 117 shots (98% carried `#241a12` inline, 99% carried "flat-cel"/"house style"), and this
+    provider weights the LAST instruction hardest — so the tail is where line weight, the 2-3 colour
+    palette rule and the single-red-accent law actually land. Between 2026-07-30 and 2026-08-04 the
+    tail voice shrank to 46 lettering-only characters and style became head-only; the register drift
+    under investigation dates from exactly there.
+
+    The payload (or its exact surgical replacement) is literal final provider text; the suffix is
+    fixed channel data that follows it. Crowd policy still precedes RIG-HOLD so the hold's crowd
+    exemption refers to a clause already stated.
     """
-    return "\n\n".join(p for p in (descriptor, figures_text, righold, payload) if p)
-
-
-# ONE VOICE. This block REINFORCES the bible's STYLE-ONLY recipe in the bible's own terms and may
-# never state a second one: two descriptions of the same style, differing by a word, is the drift
-# mechanism the 2026-08-04 audit named first ("gentle soft cel shading" in one place, "NO gradients"
-# in another — the engine obliged the softer one). Positive terms here are the recipe's; the NO list
-# is the render-technique ban lint enforces on prompts.
-HARDENED_SCENE_STYLE = (
-    "HARDENED SCENE STYLE. Enforce the STYLE-ONLY descriptor exactly: flat colour fills — one flat "
-    "base colour per surface plus at most ONE hard-edged single-step shadow shape — no feathered or "
-    "blended transitions, uniform highlight-free surfaces, and even medium-thick dark warm "
-    "brown-black outlines on everything. NO gradient; NO gloss or specular highlight; NO bloom; "
-    "NO depth-of-field blur or soft focus; NO subsurface or rim light; NO photorealistic texture. "
-    "Commit the authored scene palette; it is never neutral grey alone."
-)
+    return "\n\n".join(p for p in (descriptor, figures_text, righold, payload, suffix) if p)
 
 
 class Kit:
@@ -307,7 +307,6 @@ class Kit:
         md = open(self.bible, encoding="utf-8").read()
         self.desc_identity = blockquote_after(md, "LOCKED STYLE descriptor")
         self.desc_style = blockquote_after(md, "STYLE-ONLY descriptor")
-        self.desc_scene = assemble_prompt(self.desc_style, HARDENED_SCENE_STYLE)
         self.desc_righold = blockquote_after(md, "RIG-HOLD descriptor")
         self.desc_crowdrig = blockquote_after(md, "CROWD-RIG clause")   # §2d, expanded from `figures`
         self.reg = json.load(open(self.reg_path, encoding="utf-8"))
@@ -348,19 +347,18 @@ class Kit:
             if os.path.exists(cand): return cand
         raise SystemExit(f"seed frame not found: {s}")
 
-    def prompt_for(self, mode, delta, hold=False, figures=None, scene=None):
+    def prompt_for(self, mode, delta, hold=False, figures=None, suffix=""):
         if mode == "identity":
             descriptor = self.desc_identity
-        elif mode == "new_character":
+        elif mode in ("new_character", "environment", "style"):
             descriptor = self.desc_style
-        elif mode in ("environment", "style"):
-            descriptor = self.desc_style if scene is False else self.desc_scene
         else:
             raise SystemExit(f"unknown mode '{mode}'")
         return assemble_prompt(
             descriptor, delta,
             figures_expansion(figures, self.desc_crowdrig),
-            self.desc_righold if hold else "")
+            self.desc_righold if hold else "",
+            suffix or "")
 
 # --- THE SEEDING LAW -----------------------------------------------------------------------
 # A gen that cannot inherit a figure's rig from an existing frame DOES NOT RUN. Ears, ear-holes,
@@ -388,6 +386,21 @@ _BACKTICK_RE = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._-]*)`")
 # gen". The registry vocabulary key, copied not imported — the bible is prose with no parseable
 # list, and the name is also the registry `assets[]` row this routes through.
 LETTERING_EXEMPLAR = "lettering-marker-italic"
+
+# style-bible.md §5 (LOCKED): `refs/env/scene-style-tile.png` "seeds every cast-free plate/scene
+# gen". Same mechanism as the lettering exemplar above — a standing `assets` row of `kind:
+# environment` in `refs/env/`, derived here rather than authored per shot — and the same reason:
+# a route that depends on an author remembering a field is a route that silently seeds 0 frames.
+#
+# WHY it is scoped to CAST-FREE gens: a figure-bearing gen already carries the channel's line
+# register in pixels, in its cast seeds (a STEP-1 card / canonical draws the rig's own outline
+# weight, which §2b now pegs the whole frame to). A cast-free plate carries NO such anchor, so the
+# register survives only as prose — and prose alone is exactly how the 2026-08 drift happened: thin
+# uniform linework, hairline blind slats, and deep two-point corners on plates whose prompts said
+# none of it. The tile is that missing pixel anchor, and NOTHING else: it is never a place, never a
+# layout, never content (see `seed_roles_text`'s `style-anchor` role prose).
+STYLE_TILE = "scene-style-tile"
+STYLE_ANCHOR_ROLE = "style-anchor"
 
 # A prompt DRAWS in-world text when it supplies a quoted literal. Deliberately the same notion
 # `lint_shots.py`'s `_QUOTED` uses (copied, one regex per side, same precedent as the shot-class
@@ -529,7 +542,7 @@ def _is_canonical(reg, path, character):
 
 
 _SEED_ROLES = {"place", "figure", "canonical", "parent", "pose", "expression", "crowd",
-               "interaction", "prop", "environment", "reference"}
+               "interaction", "prop", "environment", "reference", STYLE_ANCHOR_ROLE}
 
 
 def seed_role_violations(k, r):
@@ -577,6 +590,12 @@ def seed_role_violations(k, r):
             # Scene-level, so it carries NO character: a role naming one would be the very
             # single-figure binding this role exists to remove.
             truthful = character is None and asset_kinds.get(_stem(path)) == "interaction"
+        elif role == STYLE_ANCHOR_ROLE:
+            # Exactly ONE asset may wear this role: the §5 scene style tile. Any other path
+            # claiming "register only" would be a place reference smuggled in under prose that
+            # tells the engine to ignore its content — the truthful-roles failure, inverted.
+            truthful = (_stem(path) == STYLE_TILE
+                        and asset_kinds.get(STYLE_TILE) == "environment")
         elif role in ("prop", "environment"):
             truthful = asset_kinds.get(_stem(path)) == role
         if not truthful:
@@ -675,8 +694,8 @@ def seeding_law_violations(k, r, seeds):
             bad.append(f"{name}: {len(seeds)} seeds over the cap of {SEED_CAP} after every legal "
                        f"displacement (crowd exemplar, interaction template, tagged prop) has "
                        f"already been dropped where present — {n_cast} named-cast seed(s) plus the "
-                       f"place plate/chain parent and, if text-bearing, the locked §5 lettering "
-                       f"exemplar are what remain. Nothing is truncated and no locked seed is "
+                       f"place plate/chain parent and, where they apply, the locked §5 lettering "
+                       f"exemplar and scene style tile are what remain. Nothing is truncated and no locked seed is "
                        f"dropped: the true bind is cast count against `SEED_CAP`, not a misfit seed.")
         else:
             bad.append(f"{name}: {len(seeds)} seeds over the cap of {SEED_CAP} — "
@@ -1029,9 +1048,13 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
             report(name, "skip (exists in staging)"); continue
         figures = r.get("figures")
         hold = should_hold(mode, seeds, r["delta"], figures)
+        # `prompt_suffix` rides the request exactly as `delta`/`payload` do — it is the video's
+        # `global_prompt_suffix`, carried from shots.json by `cmd_batch`. A STEP-1 figure card does
+        # not carry one (it is a 2:3 identity card on a plain ground; the suffix's `16:9`,
+        # built-but-flat ENVIRONMENT recipe and "no on-screen narrator or host face" are scene
+        # facts that would fight it), and an ad-hoc `forge gen` request carries none either.
         text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
-                            scene=(mode in ("environment", "style")
-                                   and not name.startswith(FIGURE_PREFIX)))
+                            suffix=r.get("prompt_suffix") or "")
         aspect = r.get("aspect", "2:3")
         size = r.get("image_size") or image_size
         if size not in IMAGE_SIZES:
@@ -1136,6 +1159,16 @@ def seed_roles_text(seed_roles):
                       "costume or expression")
         elif role == "prop":
             detail = f"the `{character}` prop canonical — preserve that object's design"
+        elif role == STYLE_ANCHOR_ROLE:
+            # The era's own words for what a `refs/env/` register anchor grants, restored
+            # 2026-08-05 from `ff36f63:.../refs/env/README.md`: "the anchor pins line weight,
+            # outline color (#241a12), flat-cel render, and palette discipline, not the content".
+            detail = ("the channel's SCENE STYLE TILE — a register sample ONLY. It pins LINE "
+                      "WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE "
+                      "DISCIPLINE, and nothing else. Take NOTHING else "
+                      "from it — not its content, not its objects, not its layout or camera, and "
+                      "NOT the place it depicts. This image is not a location and never appears "
+                      "in the frame you draw")
         elif role == "environment":
             detail = f"the `{character}` environment reference — preserve its authored place facts"
         else:
@@ -1383,6 +1416,10 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
     roots inside sets the video had already established (L89-L91): the same room, re-invented per
     chain. One map, one key, so a place's first frame is the plate every later shot inherits."""
     doc = json.load(open(shots_path, encoding="utf-8"))
+    # The TAIL style voice (`assemble_prompt`): fixed channel data the file carries once, copied
+    # onto every scene request so `cmd_gen` appends it after the authored payload. Read here, with
+    # `still_prompt`, so the two halves of one prompt travel together through the same spec file.
+    prompt_suffix = (doc.get("global_prompt_suffix") or "").strip()
     video = os.path.abspath(video_dir) if video_dir else video_root_for(shots_path, k.root)
     k.use_video(video)          # this video's own cast resolves alongside the channel's
     lib, scenes = os.path.join(video, "assets", "library"), os.path.join(video, "assets", "scenes")
@@ -1548,7 +1585,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         place_frame = place_anchor or ((emitted.get(parent) or
                                         on_disk(os.path.join(scenes, (parent or "") + ".png")))
                                        if parent else None)
-        crowd = _fig_declared(shot.get("figures"))[1]
+        anon_declared, crowd = _fig_declared(shot.get("figures"))
         # Non-figure seeds are DERIVED from what the frame contains, then unioned with Pass 1's
         # explicit tags — the same content-first move as `depicts_figures`, and for the same
         # reason. Reading the `assets` block alone made two LOCKED routes depend on an author
@@ -1566,7 +1603,35 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                 and LETTERING_EXEMPLAR not in omitted and reg_assets.get(LETTERING_EXEMPLAR)):
             tagged_names.append(LETTERING_EXEMPLAR)
             why.append(f"LETTERING — text-bearing prompt; §5 exemplar `{LETTERING_EXEMPLAR}` derived")
-        tagged_roles = [_seed_role(vfile(n), _kind(n), n) for n in tagged_names if n not in omitted]
+        # The §5 SCENE STYLE TILE, on the same derived route: a property of the frame decides it,
+        # never an authored field. The property is "this gen carries NO cast seed", read off the
+        # RESOLVED recipe — the named cast the walk just staged, plus the `figures` declaration.
+        # Not `_is_char_seed`, which mid-walk sees a STEP-1 frame as the unresolved string
+        # `_staging/fig-*.png` and calls it non-figure; and NOT `depicts_figures`, whose ASYMMETRY
+        # runs the wrong way for this route. That predicate exists for the §2c rig-hold block,
+        # where a false positive costs one inert paragraph, so it fires broadly ("cast", "face",
+        # "hand", "banker"). Here a false positive WITHHOLDS the register anchor from the exact
+        # frame that needs it: measured over bricks-fresh it excluded 12 of 23 plates, including
+        # L63 — the run's own drift exemplar — because the prompt contains the phrase "cast-free".
+        # The cheap failure here is the opposite one: the tile on a frame that turns out to hold
+        # people costs one seed slot and contributes register only, and it can never contradict a
+        # cast seed, because its role prose grants it nothing but line weight and palette.
+        # The place/parent seed is deliberately NOT a cast signal either — a cast-free scene
+        # chained onto a plate is still cast-free, and inheriting a parent that already drifted is
+        # precisely the case that needs the register re-anchored.
+        cast_free = not (fig_roles or canon_roles or crowd or anon_declared)
+        if (cast_free and STYLE_TILE not in tagged_names and STYLE_TILE not in omitted
+                and reg_assets.get(STYLE_TILE)):
+            tagged_names.append(STYLE_TILE)
+            why.append(f"STYLE TILE — cast-free frame; §5 anchor `{STYLE_TILE}` derived "
+                       f"(line register + palette only)")
+
+        def _role_of(n):
+            # The tile is registered `kind: environment` like every other standing `refs/env/`
+            # anchor, but its ROLE is not "preserve this place's authored facts" — it is the exact
+            # opposite. One override here keeps ONE derivation block and ONE role list.
+            return STYLE_ANCHOR_ROLE if n == STYLE_TILE else _kind(n)
+        tagged_roles = [_seed_role(vfile(n), _role_of(n), n) for n in tagged_names if n not in omitted]
         interaction_roles = [_seed_role(vfile(n), "interaction")
                              for n in _interaction_primitives(k.reg, cast_recipe, omitted)]
         place_role = _seed_role(place_frame, "parent" if delta_beat else "place") if place_frame else None
@@ -1585,8 +1650,9 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         # 2026-08-05, the seed-cap exercise in `fix-G2-report.md`): step through the priority
         # order below and drop one seed at a time UNTIL the slate fits, never all at once and
         # never past what the overage requires. NEVER droppable, at any step: the place
-        # plate/chain parent, the derived §5 lettering exemplar (LOCKED), or any character
-        # STEP-1 — dropping one of those to make room is the exact failure this displaces:
+        # plate/chain parent, the derived §5 lettering exemplar and §5 scene style tile (both
+        # LOCKED), or any character STEP-1 — dropping one of those to make room is the exact
+        # failure this displaces:
         # forge naming a locked seed "did not fit" and a refusal advising fewer cast, a
         # mechanism steering a casting decision. Every drop is recorded in both `why` and
         # `assets_omitted` — the SAME bookkeeping the single-step version already used, just
@@ -1627,23 +1693,28 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                            "already names it, and forge's seed is a reinforcement, not its only "
                            "carrier")
         seeds = [role["path"] for role in seed_roles]
-        # C-4: the PLATE marker is DERIVED, never authored. A scene carrying no image seed at all is
+        # C-4: the PLATE marker is DERIVED, never authored. A scene carrying no CONTENT seed is
         # the frame that establishes its own place — a place-first shot with no cast, a single-use
         # place, or a shot class the schema exempts from `place`. It is the one zero-seed exception
         # `resolve_request_seeds` honours — derived from the walk, never a flag a request can set.
-        plate = not seeds
+        # The §5 style tile is excluded from that read BY ROLE: it carries no content, no layout and
+        # no place, so a plate that takes it is still the frame that mints its own place. Counting
+        # it would silently un-mark every plate in the channel the day the tile was registered.
+        plate = not [role for role in seed_roles if role["role"] != STYLE_ANCHOR_ROLE]
         text = placement_delta(prompt, seed_roles)
         if place_anchor:
             why.append(f"PLACE-ANCHOR = {shot['place_anchor']}")
         elif plate:
-            why.append("PLATE — place-first frame, hardened descriptor, no image anchor")
+            why.append("PLATE — place-first frame, bible descriptor + style suffix, "
+                       "no content anchor")
         why_text = "; ".join(why) or "no cast — the scene composes from the place"
         in_batch_parent = (provenance.get(parent)
                            if place_frame and place_frame == emitted.get(parent) else None)
         depth, lineage = _scene_provenance(video, k.root, name, place_frame, in_batch_parent,
                                            refuse_parked=not retry_rebuild)
         item = {"name": name, "mode": "environment", "aspect": aspect, "delta": text,
-                "payload": prompt, "seed": seeds, "seed_roles": seed_roles,
+                "payload": prompt, "prompt_suffix": prompt_suffix or None,
+                "seed": seeds, "seed_roles": seed_roles,
                 "figures": shot.get("figures"), "stage_role": shot.get("stage_role"),
                 "assets_omitted": sorted(set(omitted) | set(displaced)) or None, "plate": plate,
                 "delta_primitives": declared_delta_primitives or None,

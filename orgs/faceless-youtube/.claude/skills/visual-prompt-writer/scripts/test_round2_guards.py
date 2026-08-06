@@ -157,11 +157,11 @@ def test_plant_the_buried_payload_on_the_shapes_the_fresh_fifth_used():
     shots = [
         {"id": "L21", "still_prompt":
             "The rented warehouse again, lamp-lit and cast-free. A tally card propped against "
-            "the front pallet carries '26,000'. Framing: wide static from floor level. Palette: "
+            "the front pallet carries '26,000'. Framing: wide static eye-level. Palette: "
             "cold concrete grey, warm lamp amber, brown board."},
         {"id": "L31", "still_prompt":
             "A stack of flat drive cartons rises off a plain concrete apron. The fourth carton "
-            "up is lettered '125 MILLION' across its face. Framing: low wide angle. Palette "
+            "up is lettered '125 MILLION' across its face. Framing: medium eye-level. Palette "
             "brown board, pale blue sky, grey concrete."},
     ]
     hard = []

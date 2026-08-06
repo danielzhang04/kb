@@ -9,19 +9,18 @@ shot every 1.5–3s; up to 4s only where the beat earns it** — so a shot list 
 `Estimated runtime ÷ 4s` shots (lint-enforced), and a gap closes by densifying, never by lengthening
 a hold.
 
-**`global_prompt_suffix`** — fixed channel data, copied verbatim into `shots.json`, appended to every prompt:
+**`global_prompt_suffix`** — fixed channel data, copied verbatim into `shots.json`, appended by `forge.py`
+at the TAIL of every scene generation prompt:
 
-> hand-lettered marker capitals for any in-world text
+> Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.
 
-The suffix carries ONLY the lettering register — a reminder that any in-world text renders hand-lettered,
-never a clean digital font (the full lettering law is `style-bible.md` §5). Texture, line weight, and art
-style are stated ONCE, in `style-bible.md` §2b (the single style source), and reach every request through
-`forge.py`'s descriptor, never through this suffix. A `still_prompt` describes **CONTENT and nothing else**:
-layout, orientation, the action, the committed scene palette, light, era, and depth. Never write art-style,
-texture, line-weight, or lettering words into a prompt (no "flat cel", "clean vector", "even outline",
-"hand-lettered marker style") — the suffix and the bible descriptor already inject them, and repeating them
-spends the prompt's weight on the look instead of on the scene. **The suffix states the lettering register
-so your prompt never has to** — it is not an exemption from the rule it sits above, it is the reason the
+The LOOK is stated in exactly TWO voices and nowhere else: `style-bible.md` §2b at the HEAD of the prompt
+and this suffix at its TAIL. `forge.py` injects both. A `still_prompt` describes **CONTENT and nothing
+else**: layout, orientation, the action, the committed scene palette, light, era, and depth. Never write
+art-style, texture, line-weight, or lettering words into a prompt (no "flat cel", "clean vector", "even
+outline", "hand-lettered marker style") — the two voices already inject them, and repeating them spends
+the prompt's weight on the look instead of on the scene. **The suffix states the lettering register so
+your prompt never has to** — it is not an exemption from the rule it sits above, it is the reason the
 rule can exist: one voice, one home.
 
 **Author absence as a positive STATE of the surface, never as a "no X" list.** "Every surface blank and
@@ -133,8 +132,8 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   shot authors a change; an unnamed role carries 1–2 unmistakable signifiers — a role the viewer must
   deduce is a staging failure.
 - **A character reveal lands on the naming moment** — the entrance anchors to the VO line that names
-  them, staged sized to the beat (a big reveal: spotlight / low angle / arrival; a minor one: a clean
-  introduction), in its canonical expression unless the beat authors otherwise.
+  them, staged sized to the beat (a big reveal: spotlight / scale / arrival into a held scene; a minor
+  one: a clean introduction), in its canonical expression unless the beat authors otherwise.
   **Where the naming line is also a branded place's establishing beat**, the plate law and this one
   want the same frame. The resolution: the plate is the place's first CAST-FREE frame, the reveal is
   the place's first CAST-BEARING frame, and disclosure order decides which comes first. Both can land
@@ -194,14 +193,14 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   identity and reads the closing instruction most literally, so leading with boilerplate costs identity
   and burying the payload mid-prompt costs the payload.
   **Lint-enforced, HARD, on the lettering half:** a non-delta shot carrying a quoted literal ends on
-  that literal's clause. A trailing "Framing: … Palette: …" after the payload is the commonest way to
-  break it — put those facts BEFORE the lettered element, not after. A literal the shot merely carries
+  that literal's clause. Any trailing scene-fact clause after the payload breaks it — state scene facts
+  BEFORE the lettered element, never after. A literal the shot merely carries
   under L-1 (a place's owner sign, redrawn) is not that shot's payload and is exempt.
 
 ## 3. Composition — a decision, driven by the payload
 
-Framing, scale, and angle are a choice driven by the one thing the viewer must see (the payload) and
-the shot's class. Unchosen, it defaults to a centered eye-level medium — fine once, deadly on repeat:
+Framing and scale are a choice driven by the one thing the viewer must see (the payload) and the
+shot's class. The vantage is not a choice — it is the house eye-level frontal (`style-bible.md` §5).
 - **No hand/extremity close-ups — framing stays at body scale.** The rig's schematic 4-digit hands do
   not survive macro framing; show a document/signature/object detail at desk scale, the hand incidental.
 

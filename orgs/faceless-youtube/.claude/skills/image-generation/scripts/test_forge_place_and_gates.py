@@ -24,6 +24,7 @@ KIT_DIR = (Path(__file__).resolve().parents[4]
 ROOT = KIT_DIR.parents[2]
 PNG = b"\x89PNG\r\n\x1a\n"
 REFS = "channels/the-second-take/visual-kit/refs/"
+TILE = REFS + "env/scene-style-tile.png"    # §5 style anchor, derived onto every cast-free gen
 CAST = "`miniscribe-rep`, `expr-smug`, `action-powerstance`,"
 
 
@@ -89,11 +90,13 @@ def test_a_place_holds_across_its_stage_chains_and_only_its_first_frame_is_a_pla
         {"id": "P3", "place": "records-room", "stage": "records-b", "stage_role": "base",
          "still_prompt": "The same records room from the doorway, a filing drawer standing open."}))
     assert err is None, err
-    assert _by_name(spec, "P1")["plate"] is True and _by_name(spec, "P1")["seed"] == [], spec[0]
-    assert _by_name(spec, "P2")["seed"] == ["_staging/P1.png"], spec[1]
+    # The place plate is still the frame that MINTS its place — `plate` reads content seeds only,
+    # so the §5 style tile (register/palette, no content) rides along without un-marking it.
+    assert _by_name(spec, "P1")["plate"] is True and _by_name(spec, "P1")["seed"] == [TILE], spec[0]
+    assert _by_name(spec, "P2")["seed"] == ["_staging/P1.png", TILE], spec[1]
     # a NEW stage chain in an ESTABLISHED place still seeds that place's first frame
     p3 = _by_name(spec, "P3")
-    assert p3["plate"] is False and p3["seed"] == ["_staging/P1.png"], p3
+    assert p3["plate"] is False and p3["seed"] == ["_staging/P1.png", TILE], p3
 
 
 def test_a_shot_declaring_no_place_keys_on_its_stage_then_on_its_own_id():
@@ -105,8 +108,8 @@ def test_a_shot_declaring_no_place_keys_on_its_stage_then_on_its_own_id():
          "still_prompt": "The same brickyard, unchanged, except the gate now stands open."},
         {"id": "S3", "still_prompt": "A single clay brick on its end against a flat backdrop."}))
     assert err is None, err
-    assert _by_name(spec, "S2")["seed"] == ["_staging/S1.png"], spec
-    assert _by_name(spec, "S3")["plate"] is True and _by_name(spec, "S3")["seed"] == [], spec
+    assert _by_name(spec, "S2")["seed"] == ["_staging/S1.png", TILE], spec
+    assert _by_name(spec, "S3")["plate"] is True and _by_name(spec, "S3")["seed"] == [TILE], spec
 
 
 def test_the_zero_seed_exception_keys_on_the_derived_plate_not_an_authored_flag():

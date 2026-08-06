@@ -105,10 +105,12 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    — the true bind is cast count against the cap, never a dropped lettering exemplar or place plate.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
-   of South America", not "the continent"), framing + scale, the committed scene palette,
-   light/atmosphere, and depth (fore/mid/background, filled edge-to-edge). Name concrete elements, not
+   of South America", not "the continent"), subject scale and stage position (stage-left / centre /
+   stage-right), the committed scene palette, light/atmosphere, and layered depth (fore/mid/background by
+   overlap and scale, filled edge-to-edge). Name concrete elements, not
    categories; a thin, palette-less prompt renders thin. **Never art style, texture, or line weight** —
-   the `global_prompt_suffix` and the style bible's forge descriptors inject those on every gen, and
+   `forge.py` prepends the style bible's §2b descriptor at the HEAD of every scene gen and appends this
+   file's `global_prompt_suffix` at its TAIL, so both reach every gen without you, and
    restating them spends the prompt on the look instead of the scene.
    **Stage poses that hold** — a tableau, never a freeze of mid-motion. A load-bearing named face states its
    orientation and what keeps it unobscured; do not let a crowd or foreground object own that face's sightline.
@@ -136,8 +138,8 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
 ## Step 3 (staged) — plan the video, then author act by act
 
 A shot list is authored in ACTS, never in one continuous pass. Depiction register decays across a long
-pass: the back half of a one-pass file drifts literal, reuses the same two or three classes, and settles
-into the centered eye-level medium. The plan-first / re-read-between-acts shape is what holds the last act
+pass: the back half of a one-pass file drifts literal, reuses the same two or three classes, and reaches
+for the same nouns and the same staging. The plan-first / re-read-between-acts shape is what holds the last act
 at the first act's level.
 
 ### 3a — Split + plan (before authoring a single shot)

@@ -3,24 +3,24 @@
   "engine": "gemini-3-pro-image",
   "characters": {
     "base": {
-      "role": "BASE TEMPLATE / rig anchor \u2014 not an on-screen character; seeds the cast for form.",
+      "role": "BASE TEMPLATE / rig anchor — not an on-screen character; seeds the cast for form.",
       "head_tone": "#f5ead6",
       "base": "channels/the-second-take/visual-kit/refs/base/base.png"
     },
     "macgregor": {
-      "role": "Gregor MacGregor \u2014 the con-man 'Cazique of Poyais'; recurring lead antagonist.",
+      "role": "Gregor MacGregor — the con-man 'Cazique of Poyais'; recurring lead antagonist.",
       "head_tone": "#d9ac82",
       "costume": "PINNED canonical outfit: deep crimson hussar coat with gold frogging, gold fringed epaulettes, silver-ribboned gold order-star medal (his self-awarded-decorations identity tag), dark trousers, dark boots; swept dark-brown hair + mutton-chop sideburns. Every appearance renders in this unless the shot deliberately authors a change (e.g. prince regalia over it).",
       "base": "channels/the-second-take/visual-kit/refs/macgregor/macgregor-base.png"
     },
     "bolivar": {
-      "role": "Sim\u00f3n Bol\u00edvar \u2014 the South-American liberator general; MacGregor's celebrated comrade-in-arms (appears L18).",
+      "role": "Simón Bolívar — the South-American liberator general; MacGregor's celebrated comrade-in-arms (appears L18).",
       "head_tone": "#b39a63",
       "costume": "PINNED canonical outfit: dark navy-blue liberator general's military coat with gold epaulettes and gold trim, a single bright red ceremonial sash worn diagonally across the chest, a black liberator's bicorne hat worn corner-forward, dark trousers and boots; short dark curly hair with prominent dark sideburns. Every appearance renders in this unless the shot deliberately authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/bolivar/bolivar.png"
     },
     "mosquito-king": {
-      "role": "The Miskito Coast king who granted MacGregor the Poyais land in 1820 (appears L19\u2013L20).",
+      "role": "The Miskito Coast king who granted MacGregor the Poyais land in 1820 (appears L19–L20).",
       "head_tone": "#8a5a3c",
       "costume": "PINNED canonical outfit: a tall gold crown and a full-length ornate red-and-gold patterned ceremonial robe with British-influenced regalia (gold braiding, epaulettes, a red-and-gold patterned mantle over the shoulders); short dark hair. Every appearance renders in this unless the shot deliberately authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/mosquito-king/mosquito-king.png"
@@ -28,29 +28,29 @@
     "strangeways": {
       "base": "channels/the-second-take/visual-kit/refs/strangeways/strangeways.png",
       "head_tone": "#f5ead6",
-      "role": "Captain Thomas Strangeways \u2014 the fictitious 'author' of the Poyais guidebook (invented by MacGregor to sell the con); a bookish naval author-captain. Appears L35/L43/L44.",
+      "role": "Captain Thomas Strangeways — the fictitious 'author' of the Poyais guidebook (invented by MacGregor to sell the con); a bookish naval author-captain. Appears L35/L43/L44.",
       "costume": "PINNED canonical outfit: plain dark navy double-breasted captain coat with a high collar and two rows of small brass buttons, thin round wire spectacles, short neat dark-brown hair combed down over the sides, dark trousers and boots. Renders in this unless a shot authors a change."
     },
     "hastie": {
       "base": "channels/the-second-take/visual-kit/refs/hastie/hastie.png",
       "head_tone": "#f5ead6",
-      "role": "James Hastie \u2014 a weary Scottish sawyer and a leader of the Poyais settler survivors; signs the sworn statement exposing the fraud. Appears L104/L106.",
+      "role": "James Hastie — a weary Scottish sawyer and a leader of the Poyais settler survivors; signs the sworn statement exposing the fraud. Appears L104/L106.",
       "costume": "PINNED canonical outfit: worn brown working-man coat over a tan waistcoat and dark neckcloth, tousled greying-brown hair, sturdy build, plain trousers and boots. Renders in this unless a shot authors a change."
     },
     "hastie-wife": {
       "base": "channels/the-second-take/visual-kit/refs/hastie-wife/hastie-wife.png",
       "head_tone": "#f5ead6",
-      "role": "The wife of James Hastie \u2014 a Poyais settler survivor at his side; quiet grief on the grey British quay. Appears L104.",
+      "role": "The wife of James Hastie — a Poyais settler survivor at his side; quiet grief on the grey British quay. Appears L104.",
       "costume": "PINNED canonical outfit (human-picked cand-1, 2026-07-16): long muted-earth wool dress, dark shawl, apron, worn boots, cream linen mob cap, front-facing neutral. Renders in this unless a shot authors a change."
     },
     "miniscribe-rep": {
-      "role": "MiniScribe personified \u2014 the disk-drive company as an actor; the bricks story's lead. Appears L26-L35, L39, L40.",
+      "role": "MiniScribe personified — the disk-drive company as an actor; the bricks story's lead. Appears L26-L35, L39, L40.",
       "head_tone": "#e2b78c",
       "costume": "PINNED canonical outfit: boxy tan blazer worn open over a brown open-collar shirt (chest and lapels plain — no badge, pin, or logo), plain dark trousers and dark shoes; short dark-brown side-parted hair, stocky build. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
     },
     "ibm-suit": {
-      "role": "IBM personified \u2014 the customer institution as an actor; MiniScribe's PC/XT contract buyer. Appears L30, L39.",
+      "role": "IBM personified — the customer institution as an actor; MiniScribe's PC/XT contract buyer. Appears L30, L39.",
       "head_tone": "#7a4f33",
       "costume": "PINNED canonical outfit: crisp navy pinstripe three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a plain dark tie, ONE plain white pocket square folded at the breast pocket (its single identity tag), polished dark shoes; close-cropped grey hair, broad heavy mass on the squat base proportion. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png"
@@ -62,15 +62,15 @@
       "base": "channels/the-second-take/visual-kit/refs/rifenburgh-ceo/rifenburgh-ceo.png"
     },
     "terry-johnson": {
-      "role": "Terry Johnson \u2014 MiniScribe's founder; depicted at work and at his late-1984 departure. Appears L28, L42.",
+      "role": "Terry Johnson — MiniScribe's founder; depicted at work and at his late-1984 departure. Appears L28, L42.",
       "head_tone": "#f5ead6",
       "costume": "PINNED canonical outfit: white business shirt in shirtsleeves with both cuffs turned back to the forearm, a thin dark tie, plain dark trousers and dark shoes, no jacket; thinning fair hair combed back with the side hair filling the ear gap, one small trimmed fair moustache, lean build. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png"
     },
     "pc-boxy": {
-      "role": "Personified beige boxy 1980s home computer \u2014 a FACED machine character (not a human). The cast's cartoon eyes and mouth sit in its front panel; short stubby arms and legs, NO hands. Appears L01-L04, L16.",
+      "role": "Personified beige boxy 1980s home computer — a FACED machine character (not a human). The cast's cartoon eyes and mouth sit in its front panel; short stubby arms and legs, NO hands. Appears L01-L04, L16.",
       "head_tone": "#e8dcc0",
-      "costume": "PINNED canonical form: beige boxy home-computer case with the cast's cartoon eyes and mouth set into the front panel, short stubby arms and legs. NOTE: a personified OBJECT \u2014 never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
+      "costume": "PINNED canonical form: beige boxy home-computer case with the cast's cartoon eyes and mouth set into the front panel, short stubby arms and legs. NOTE: a personified OBJECT — never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
       "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
       "no_hands": true
     }
@@ -99,7 +99,7 @@
       "kind": "crowd-anchor",
       "tag": "crowd",
       "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png",
-      "note": "Human-gated 2026-07-16 (candidate C). The CROWD-RIG anchor: seeded into EVERY crowd-bearing generation so anonymous background figures inherit the exact squat base proportion + dot-eye simple-mouth face (bible \u00a72d)."
+      "note": "Human-gated 2026-07-16 (candidate C). The CROWD-RIG anchor: seeded into EVERY crowd-bearing generation so anonymous background figures inherit the exact squat base proportion + dot-eye simple-mouth face (bible §2d)."
     },
     {
       "name": "expr-deadpan",
@@ -569,7 +569,7 @@
       "character": null,
       "kind": "prop",
       "tag": "prop-beige-pc",
-      "note": "Recurring PROP canonical minted at Pass 1 for the bricks story; every later appearance seeds this exact frame (match-prop). Lives under refs/env/ because it is character-free and tracked there; `_is_char_seed` excludes both refs/env/ and the prop- prefix, so seeding it never triggers the \u00a72c rig-hold."
+      "note": "Recurring PROP canonical minted at Pass 1 for the bricks story; every later appearance seeds this exact frame (match-prop). Lives under refs/env/ because it is character-free and tracked there; `_is_char_seed` excludes both refs/env/ and the prop- prefix, so seeding it never triggers the §2c rig-hold."
     },
     {
       "name": "prop-drive",
@@ -577,7 +577,7 @@
       "character": null,
       "kind": "prop",
       "tag": "prop-drive",
-      "note": "Recurring PROP canonical minted at Pass 1 for the bricks story; every later appearance seeds this exact frame (match-prop). Lives under refs/env/ because it is character-free and tracked there; `_is_char_seed` excludes both refs/env/ and the prop- prefix, so seeding it never triggers the \u00a72c rig-hold."
+      "note": "Recurring PROP canonical minted at Pass 1 for the bricks story; every later appearance seeds this exact frame (match-prop). Lives under refs/env/ because it is character-free and tracked there; `_is_char_seed` excludes both refs/env/ and the prop- prefix, so seeding it never triggers the §2c rig-hold."
     },
     {
       "name": "pc-boxy",
@@ -594,6 +594,14 @@
       "kind": "identity",
       "tag": "base",
       "seed_frame": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png"
+    },
+    {
+      "name": "scene-style-tile",
+      "file": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+      "character": null,
+      "kind": "environment",
+      "tag": "style anchor",
+      "note": "Era-mechanism env register anchor (the archived first-pass computer-shop frame Daniel picked 2026-08-05). Seeded into every CAST-FREE plate/scene gen; contributes ONLY line register + palette discipline, never content, layout, or the depicted place."
     }
   ]
 }

@@ -1381,40 +1381,20 @@ _BANNED_RENDER_TERMS = re.compile(
     r"|\bsoft\s+focus\b"
     r"|\bphotoreal\w*\b"
     r"|\bsubsurface\b"
-    r"|\brim\s+light\b",
+    r"|\brim\s+light\b"
+    # `airbrush*` joins the list with the 2026-08 line-register hardening (style-bible §2b): it is
+    # the exact technique word for the soft-skin-shading drift, and unlike a content NOUN (blind
+    # slats, lattice, filigree — which §2b bans as prose, because they are legitimate things a
+    # scene may contain, just never at hairline weight) it has no correct use in a shot prompt.
+    r"|\bairbrush\w*\b",
     re.IGNORECASE)
 
-# The suffix's own extra vocabulary the C-1 recipe deleted ("gentle soft cel
-# shading", "no feathered or blended transitions") — narrower than the prompt
-# ban above because the suffix is boilerplate, not scene content, so a stricter
-# list is cheap here without the false-positive risk a prompt-wide ban on
-# "gentle"/"soft"/"blend" would carry over 214 shots of ordinary prose. Bare
-# "soft" is included (the deleted phrase paired it with "gentle") but excludes
-# "soft focus" — that exact phrase is already the C-2 banned term above, and
-# without the exclusion the same span would report twice.
-_SUFFIX_SOFT = re.compile(
-    r"\bgentle\b|\bblend(?:ed|ing)?\b|\bfeather(?:ed|ing)?\b|\bsoft\b(?!\s+focus)",
-    re.IGNORECASE)
-
-# The style RECIPE's own vocabulary — positive half included. The one-voice
-# architecture is: the recipe lives in `style-bible.md` §2b (ONE voice, assembled by
-# forge onto every gen), and `global_prompt_suffix` carries LETTERING ONLY ("hand-
-# lettered marker capitals for any in-world text"). A suffix that re-states any part
-# of the recipe — even the CORRECT C-1 wording — is a second voice by construction:
-# it is a copy that drifts the moment the bible is edited, which is audit mechanism 1
-# (the suffix and the bible descriptor disagreeing) reintroduced with better prose.
-# So this list bans the recipe's terms in the suffix, not just the deleted ones; the
-# spans _SUFFIX_SOFT already owns (gentle/soft/blend/feather) are deliberately absent
-# here so one word can never report twice.
-_SUFFIX_STYLE_VOCAB = re.compile(
-    r"\bcel[- ]?shad(?:ed|ing|e)?\b"
-    r"|\bflat\s+colou?rs?\b|\bcolou?r\s+fills?\b|\bflat\s+fills?\b"
-    r"|\bhard[- ]edged\b|\bsingle[- ]step\b|\bshadow\s+shapes?\b"
-    r"|\bhighlight[- ]free\b|\boutlines?\b|\bline\s+weight\b"
-    r"|\bshading\b|\bpainterly\b|\bmatte\b|\btexture[sd]?\b|\bpalettes?\b"
-    r"|\bart\s+style\b|\bcartoon\s+style\b|\brounded\s+friendly\s+shapes?\b"
-    r"|\bno\s+realistic\s+detail\b|#[0-9A-Fa-f]{6}\b",
-    re.IGNORECASE)
+# NOTE (2026-08-05, era restoration): the two suffix VOCABULARY bans that lived here —
+# `_SUFFIX_SOFT` (gentle/soft/blend/feather) and `_SUFFIX_STYLE_VOCAB` (the recipe's own
+# terms) — are DELETED. They enforced "the suffix carries LETTERING ONLY", which is the
+# doctrine the poyais-era restoration reverses: the suffix IS the channel's TAIL style
+# voice, so recipe wording in it is required, not banned. The one-voice law survives in
+# `suffix_one_voice_check` as a verbatim-copy check against `visual-grammar.md`.
 
 
 def render_technique_check(label, prompts, hard):
@@ -1435,43 +1415,67 @@ def render_technique_check(label, prompts, hard):
                 f"never this — only the render-TECHNIQUE word is banned.")
 
 
-def suffix_one_voice_check(suffix, hard):
-    """C-2(a) HARD, one-voice. `global_prompt_suffix` carries NO style vocabulary at all
-    — it is the lettering clause and nothing else ("hand-lettered marker capitals for any
-    in-world text"). Three ways to break that, one refusal each: a banned render-technique
-    term (shares render_technique_check's own list, so the two checks cannot disagree),
-    soft/gradient-permissive wording, or the style RECIPE's own terms restated here.
+def channel_suffix(vdir):
+    """The CHANNEL's authored `global_prompt_suffix` — the blockquote under
+    `visual-grammar.md`'s `**global_prompt_suffix**` header. "" when the kit is not
+    reachable (a fixture, a detached shots.json), which downgrades the check below to
+    "non-empty" rather than inventing a canonical."""
+    if not vdir:
+        return ""
+    try:
+        md = (Path(vdir).parent.parent / "visual-kit" / "visual-grammar.md"
+              ).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    lines, out, seeking = md.splitlines(), [], False
+    for ln in lines:
+        if not seeking:
+            if ln.lstrip("*").startswith("`global_prompt_suffix`"):
+                seeking = True
+            continue
+        if ln.strip().startswith(">"):
+            out.append(ln.strip()[1:].strip())
+        elif out:
+            break
+    return " ".join(out).strip()
 
-    The last one is the architecture, not a taste call: the recipe has exactly one home
-    (`style-bible.md` §2b, assembled onto every gen by forge). A suffix that also carries
-    it — even verbatim-correct C-1 text — is a SECOND COPY of a living document, and a
-    second copy is a second voice the moment either side is edited. That divergence is
-    audit mechanism 1 (the global smooth/glossy drift traced to the suffix and the bible
-    descriptor disagreeing with the hardened scene style)."""
-    render_technique_check("suffix", [("global_prompt_suffix", "global_prompt_suffix", suffix or "")], hard)
-    seen = set()
-    for m in _SUFFIX_SOFT.finditer(suffix or ""):
-        t = m.group().lower()
-        if t in seen:
-            continue
-        seen.add(t)
+
+def suffix_one_voice_check(suffix, hard, vdir=None):
+    """C-2(a) HARD, one-voice — RETARGETED 2026-08-05 by the era restoration.
+
+    The LOOK is stated in exactly TWO voices, at the two ends of every generation prompt:
+    `style-bible.md` §2b at the HEAD and `global_prompt_suffix` at the TAIL. `forge.py`
+    injects both (`assemble_prompt`). That is the poyais-era shape, where style sat at the
+    tail of 87% of shots and this provider weights the LAST instruction hardest. So style
+    vocabulary in the suffix is no longer a defect — it is the suffix's JOB, and the
+    previous vocabulary bans here (lettering-only, no recipe terms, no soft wording) were
+    the enforcement arm of a doctrine that has been reverted.
+
+    What survives is the ONE-VOICE law itself, moved to where it is mechanically decidable:
+    the suffix has exactly one HOME — the channel's `visual-grammar.md` header blockquote —
+    and a video's shots.json carries a VERBATIM COPY of it. Byte-drift between the two is
+    the second-voice mechanism under another name, and unlike a word list it cannot produce
+    a false positive on correct text.
+
+    The C-2 render-technique ban no longer runs on the suffix: it guards AUTHORED per-shot
+    prose, and the channel suffix legitimately names "flat gradient sky/ground" and
+    "no photorealism" as fixed, human-approved channel data."""
+    suffix = (suffix or "").strip()
+    if not suffix:
         hard.append(
-            f"[suffix] global_prompt_suffix: soft/gradient-permissive wording {m.group()!r} "
-            f"contradicts the C-1 one-voice recipe (flat fills, one hard-edged shadow, no "
-            f"feathered or blended transitions) — style-bible.md's own text deleted this wording; "
-            f"the suffix must not reintroduce it.")
-    seen = set()
-    for m in _SUFFIX_STYLE_VOCAB.finditer(suffix or ""):
-        t = m.group().lower()
-        if t in seen:
-            continue
-        seen.add(t)
+            "[suffix] global_prompt_suffix is EMPTY - it is the TAIL half of the channel's two "
+            "style voices (style-bible.md section 2b is the HEAD) and forge appends it to every "
+            "scene generation; copy the channel's suffix verbatim from visual-grammar.md.")
+        return
+    canonical = channel_suffix(vdir)
+    if canonical and suffix != canonical:
         hard.append(
-            f"[suffix] global_prompt_suffix: style-recipe wording {m.group()!r} - the suffix "
-            f"states LETTERING ONLY ('hand-lettered marker capitals for any in-world text'). "
-            f"The flat-cel recipe has one home, style-bible.md section 2b, which forge assembles "
-            f"onto every generation; restating any of it here - even the correct C-1 wording - "
-            f"is a second copy that drifts the moment the bible is edited. Delete the clause.")
+            "[suffix] global_prompt_suffix does not match the channel's authored suffix in "
+            "visual-grammar.md, verbatim. The suffix has ONE home and this file carries a COPY; "
+            "two texts that differ by a word are two style voices, which is the drift mechanism "
+            "the one-voice law exists to remove. Copy the blockquote across unchanged.\n"
+            f"      file:    {suffix}\n"
+            f"      channel: {canonical}")
 
 
 # --- C-3/C-5: place --------------------------------------------------------
@@ -1525,7 +1529,7 @@ def place_context_exempt_check(label, objs, hard):
     for pid, sh in objs:
         if isinstance(sh, dict) and "place" in sh:
             hard.append(f"[{label}] {pid}: declares `place` {sh['place']!r} - thumbnail/"
-                        "first_frame never do (C-3); they run seedless under the hardened "
+                        "first_frame never do (C-3); they run seedless under the bible "
                         "descriptor unconditionally.")
 
 
@@ -2440,7 +2444,7 @@ def main(argv):
     stage_check("long-form", lf_shots, hard, soft,
                 require_stage=strict_schema and len(lf_shots) >= 40)
     suffix = data.get("global_prompt_suffix") or ""
-    suffix_one_voice_check(suffix, hard)     # C-2(a): the suffix's own one-voice check, once
+    suffix_one_voice_check(suffix, hard, vdir)   # C-2(a): the TAIL voice matches its channel home
     lf_prompts = _shot_prompts(lf_shots)
     lf_vocab = script_vocab(script_md)
     lf_objs = [(sh.get("id", "?"), sh) for sh in lf_shots]

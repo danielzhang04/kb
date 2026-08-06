@@ -3897,3 +3897,29 @@ in multi-figure shots (targets the drawn-nose leak reproduced in the L35 probe r
 veto point: the next artifact board.
 **Alternatives rejected.** Uniform bald/cream crowds — solves a problem the record says we don't
 have, and reads as cloned filler against the channel's originality bar.
+
+## 2026-08-05 — era restoration: the poyais mechanism replaces reset-era style prose (Daniel: "lean towards how poyais did it"; boss adjudicated per-item)
+
+**Decision.** Archaeology (scratchpad/poyais-mechanism-archaeology.md) showed poyais's look was structural,
+not adjectival: two style voices (era §2b head + 643-char global_prompt_suffix at prompt TAIL), a pixel
+anchor on EVERY gen (character canonicals; a mandatory refs/env register exemplar on cast-free shots),
+per-shot warm palettes, 1K renders, zero negation lists. Restored: era §2b verbatim; era suffix verbatim
+at tail (forge now actually appends it — the SKILL's claim was stale); HARDENED_SCENE_STYLE deleted
+(3rd voice; 6/9 clauses had no era ancestor; provider drifted DESPITE it); IMAGE_SIZE_DEFAULT 2K→1K (the
+era instrument — 2K made the same stroke read thinner); style tile = archived first-pass computer-shop
+frame as the era-style env register anchor for cast-free gens. Deleted as no-ancestor/contradiction:
+"one flat base colour per surface", "single-step shadow shape", "no feathered transitions", "uniform
+highlight-free surfaces" (contradicted era's "gentle soft cel shading"), 4 NO-negations.
+**Kept on merit (boss judgment under Daniel's "don't delete good stuff")**: line-register review row
+(the axis whose absence let the drift ship), airbrush in the banned-PROSE lint, §2d crowd bounds,
+two-voice drift-lock test (retargeted to era text), style-tile plumbing + tests.
+**Perspective**: poyais had NO camera slot; the reset made Framing: mandatory + stigmatized eye-level →
+27 invented vantages. Fix = removal only (template, mandate, stigma, log lessons); NO whitelist, NO
+vantage lint (G-route: taste patterns go to exemplar+critic, never self-checked prohibitions). 17 Tier-A
+camera-move shots re-authored (vantage clauses deleted, not replaced); 10 aisle one-points kept per
+Daniel; ~20 recession-verb prompts kept — renders judge them.
+**Alternatives rejected.** Banned-vantage regex + legal-framing whitelist (mirror-image bloat);
+measurement teardown of poyais pixels (Daniel: analyze the MECHANISM, not the output); full VPW regen
+(content survives; style is carried at gen time).
+**Open risk (named, banked).** Era palettes were authored warm per shot (93% "warm"); the fresh file's
+palette prose is cooler — board v2 renders are the evidence gate for a palette pass.
