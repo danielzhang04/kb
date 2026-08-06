@@ -15,7 +15,7 @@
  * The gate-ON *daemon* boot under real env is the human-supervised T7 acceptance (the real daemon, gate on,
  * watched); this smoke proves the construction chain hermetically so a boot break is caught in CI.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -103,5 +103,28 @@ describe('T6 gated boot smoke', () => {
     expect(activated?.controlBroker).toBeDefined();
     expect(typeof activated?.runAutomatic).toBe('function');
     expect(typeof activated?.cancelAutomatic).toBe('function');
+  });
+
+  it('GATE ON: exposes one attemptIo store and threads it to both worker factories', () => {
+    process.env.DASHBOARD_EXECUTION_ACTIVATED = '1';
+    const createWorkers = vi.fn().mockReturnValue({ execute: vi.fn(), postMessage: () => false });
+    const createCodexWorkers = vi.fn().mockReturnValue({ execute: vi.fn() });
+    const activated = buildActivatedExecution({
+      env: process.env,
+      controlStore: createFileControlPlaneStore(tempStateRoot),
+      repoRoot: process.cwd(),
+      stateRoot: tempStateRoot,
+      deps: {
+        resolveBaseCommit: () => 'f'.repeat(40),
+        loadPolicy: () => ({ profiles: [], curatedSkills: new Set<string>(), contractText: '', governanceContents: {} }) as never,
+        createWorkers: createWorkers as never,
+        createCodexWorkers: createCodexWorkers as never,
+      },
+    });
+    expect(activated?.attemptIo).toEqual(expect.objectContaining({
+      append: expect.any(Function), read: expect.any(Function), onAppend: expect.any(Function),
+    }));
+    expect(createWorkers).toHaveBeenCalledWith(expect.objectContaining({ attemptIo: activated?.attemptIo }));
+    expect(createCodexWorkers).toHaveBeenCalledWith(expect.objectContaining({ attemptIo: activated?.attemptIo }));
   });
 });

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
+import { boundSummary } from './claudeWorkerAdapter.ts';
 import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { setCardRouting } from '../write/cardRouting.ts';
@@ -606,6 +607,25 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     });
   });
 
+  scope.get('/api/control/runs/:runRef/attempts/:attemptRef/io', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const { runRef, attemptRef } = req.params as { runRef: string; attemptRef: string };
+    const detail = ctx.controlStore.getRun(sub, runRef);
+    if (!detail.ok) return sendResult(reply, detail);
+    if (!detail.value.attempts.some((attempt) => attempt.attemptRef === attemptRef)) {
+      return reply.code(404).send({ error: 'attempt-not-found' });
+    }
+    const attemptIo = ctx.executionLatch?.current()?.attemptIo;
+    if (!attemptIo) return reply.code(409).send({ error: 'attempt-io-unavailable' });
+    const query = req.query as { after?: string; limit?: string };
+    const candidateAfter = Number(query.after ?? 0);
+    const after = Number.isFinite(candidateAfter) ? Math.max(0, Math.floor(candidateAfter)) : 0;
+    const candidateLimit = Number(query.limit ?? 500);
+    const limit = Number.isFinite(candidateLimit) ? Math.min(2_000, Math.max(1, Math.floor(candidateLimit))) : 500;
+    return reply.send({ entries: attemptIo.read(attemptRef, after, limit) });
+  });
+
   scope.get('/api/control/runs/:runRef/events', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -961,7 +981,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const { runRef, agentId } = req.params as { runRef: string; agentId: string };
     const detail = ctx.controlStore.getRun(sub, runRef);
     if (!detail.ok) return sendResult(reply, detail);
-    const assignment = detail.value.stages.find((stage) => stage.assignment?.agentId === agentId)?.assignment;
+    const stageOfAssignment = detail.value.stages.find((stage) => stage.assignment?.agentId === agentId);
+    const assignment = stageOfAssignment?.assignment;
     if (!assignment) return reply.code(404).send({ error: 'agent-not-found' });
     const message = string(record(req.body).message).trim();
     if (!message || message.length > MAX_OPERATOR_MESSAGE_CHARS || message.includes('\0')) {
@@ -970,9 +991,29 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const delivery = ctx.executionLatch?.current()?.agentMessages;
     if (!delivery) return reply.code(409).send({ error: 'agent-message-delivery-unavailable' });
     try {
-      return reply.code(202).send({ delivery: await delivery.deliver({
+      const delivered = await delivery.deliver({
         runRef, agentId, runtime: assignment.runtime, message,
-      }) });
+      });
+      try {
+        const appended = ctx.controlStore.appendEvent(sub, runRef, {
+          kind: 'message', source: 'human', stageRef: stageOfAssignment.stageRef, status: null,
+          summary: boundSummary(`operator → ${agentId} (${delivered}): ${message}`),
+        });
+        if (!appended.ok) {
+          try {
+            await auditFn(ctx)(ctx.repoRoot, {
+              action: 'control-agent-message-audit-dropped', owner: sub, target: runRef, riskTier: 'T1',
+              result: `dropped:${appended.reason}`,
+              detail: { runRef, agentId, stageRef: stageOfAssignment.stageRef, reason: appended.reason },
+            }, { runGit: ctx.opsGit, now: ctx.now });
+          } catch {
+            // The delivery already succeeded; a secondary audit must not change the operator response.
+          }
+        }
+      } catch {
+        // The delivery already succeeded; audit persistence must not change the operator response.
+      }
+      return reply.code(202).send({ delivery: delivered });
     } catch {
       return reply.code(409).send({ error: 'agent-message-delivery-unavailable' });
     }

@@ -43,6 +43,7 @@ import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
 import { createCodexExecAdapter } from './codexExecAdapter.ts';
 import { createAgentSessionChainStore } from './agentSessionChains.ts';
+import { createAttemptIoStore, type AttemptIoStore } from './attemptIo.ts';
 import { createAssignedAgentResolver } from './agentAssignmentResolver.ts';
 import {
   AutomaticExecutionEngine,
@@ -164,6 +165,8 @@ export interface ActivationEngine {
 
 export interface ActivatedExecution {
   controlBroker: ManagedSessionBroker;
+  /** Redacted, capped per-attempt JSONL transcript store for live reads and future bus wiring. */
+  attemptIo: AttemptIoStore;
   /** Headless worker operator-message delivery; Claude may accept a live frame, Codex always queues. */
   agentMessages: {
     deliver(input: { runRef: string; agentId: string; runtime: 'claude' | 'codex'; message: string }): Promise<'live' | 'queued'>;
@@ -333,6 +336,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const resolvePolicy = createProjectPolicyResolver(repoRoot, deps.loadPolicy, project, policy);
   const assignedAgents = deps.createAssignedAgentResolver(repoRoot);
   const sessionChains = deps.createSessionChains(stateRoot);
+  const attemptIo = createAttemptIoStore({ root: join(stateRoot, 'control', 'attempt-io') });
 
   const resolveManagedLaunch = (spec: ManagedStartSpec): ClaudeSessionLaunch => {
     const profile = managedProfile(policy.profiles, spec);
@@ -440,6 +444,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
       runRef, agentId, { runtime: 'claude', sessionId },
     ),
     drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
+    attemptIo,
   });
   const codexWorkers = deps.createCodexWorkers({
     resolveThread: (runRef, agentId) => resolveChain('codex', runRef, agentId),
@@ -447,6 +452,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
       runRef, agentId, { runtime: 'codex', sessionId: threadId },
     ),
     drainMessages: (runRef, agentId) => sessionChains.drainMessages(runRef, agentId),
+    attemptIo,
   });
   const agentMessages: ActivatedExecution['agentMessages'] = {
     async deliver(input) {
@@ -543,6 +549,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
 
   return {
     controlBroker: broker,
+    attemptIo,
     agentMessages,
     paidActionService: paid.paidActionService,
     spendGrantStore: paid.spendGrantStore,
@@ -653,6 +660,11 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
       if (!execution) return state;
       try {
         execution.controlBroker.drain();
+      } catch {
+        /* best-effort: locking is a fail-safe direction */
+      }
+      try {
+        execution.attemptIo.stop();
       } catch {
         /* best-effort: locking is a fail-safe direction */
       }

@@ -145,6 +145,45 @@ describe('createCodexExecAdapter.execute', () => {
     expect(fake.proc.endStdin).toHaveBeenCalledOnce();
   });
 
+  it('taps stdout lines, queued messages, the work order, and exit disposition into attemptIo', async () => {
+    const fake = fakeProcess();
+    const taps: Array<{ ref: string; dir: string; line: string }> = [];
+    const adapter = createCodexExecAdapter({
+      spawner: () => fake.proc,
+      drainMessages: async () => ['queued instruction'],
+      attemptIo: { append: (ref, dir, line) => taps.push({ ref, dir, line }) },
+    });
+    const pending = adapter.execute(executeInput({ attemptRef: 'a-1' }));
+    await Promise.resolve();
+    const stream = probeEvents();
+    fake.emitStdout(stream.slice(0, 17));
+    fake.emitStdout(stream.slice(17));
+    fake.emitExit(0);
+    await pending;
+
+    expect(taps.some((tap) => tap.ref === 'a-1' && tap.dir === 'out' && tap.line.includes('"type":"thread.started"'))).toBe(true);
+    expect(taps.some((tap) => tap.dir === 'in' && tap.line.includes('queued instruction'))).toBe(true);
+    expect(taps.some((tap) => tap.dir === 'in' && tap.line.includes('AUTHORITATIVE WORK ORDER'))).toBe(true);
+    expect(taps.at(-1)).toMatchObject({ dir: 'meta' });
+  });
+
+  it('ignores stdout emitted after the worker has settled', async () => {
+    const fake = fakeProcess();
+    const taps: Array<{ dir: string; line: string }> = [];
+    const adapter = createCodexExecAdapter({
+      spawner: () => fake.proc,
+      attemptIo: { append: (_ref, dir, line) => taps.push({ dir, line }) },
+    });
+    const pending = adapter.execute(executeInput());
+    fake.emitStdout(probeEvents());
+    fake.emitExit(0);
+    await pending;
+    const settledTapCount = taps.length;
+
+    fake.emitStdout('late stdout must not be tapped\n');
+    expect(taps).toHaveLength(settledTapCount);
+  });
+
   it('resumes a recorded thread with the resume-compatible pinned flags', async () => {
     const fake = fakeProcess();
     let captured: CodexExecSpawnRequest | null = null;

@@ -15,6 +15,7 @@ import {
   defaultKillTree,
   type KillTree,
 } from './claudeWorkerAdapter.ts';
+import type { AttemptIoSink } from './attemptIo.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
@@ -106,6 +107,8 @@ export interface CodexExecAdapterOptions {
   recordThread?: (runRef: string, agentId: string, threadId: string) => void;
   /** Atomically consumes operator messages queued for this non-interruptible runtime. */
   drainMessages?: (runRef: string, agentId: string) => Promise<string[]>;
+  /** Optional live transcript sink. Adapter taps must never affect worker execution. */
+  attemptIo?: AttemptIoSink;
 }
 
 /** Clamp an untrusted usage value to the `ExecutionUsage` integer envelope. */
@@ -260,10 +263,15 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
       });
 
       const start = (queuedMessages: string[]): Promise<WorkerExecutionResult> => {
-        const stdin = (queuedMessages.length > 0 ? `${buildQueuedOperatorMessagePrompt(queuedMessages)}\n\n` : '') + prompt;
+        const queuedPrompt = queuedMessages.length > 0 ? buildQueuedOperatorMessagePrompt(queuedMessages) : null;
+        const stdin = (queuedPrompt !== null ? `${queuedPrompt}\n\n` : '') + prompt;
+        const tap = (dir: 'out' | 'in' | 'meta', text: string): void => {
+          try { options.attemptIo?.append(input.attemptRef, dir, text); } catch { /* transcript tap is failure-isolated */ }
+        };
         return new Promise<WorkerExecutionResult>((resolvePromise) => {
         const proc = spawner({ args, cwd: input.worktreePath, env: buildWorkerEnv() });
         const stdoutChunks: string[] = [];
+        let lineBuffer = '';
         let stdoutBytes = 0;
         let stderrTail = '';
         let settled = false;
@@ -280,6 +288,10 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          if (lineBuffer.length > 0) {
+            tap('out', lineBuffer);
+            lineBuffer = '';
+          }
           const parsed = parseCodexStream(stdoutChunks.join(''));
           void (async () => {
             if (parsed.threadId) {
@@ -287,6 +299,7 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
                 // The callback is void-compatible, while activation supplies the chain store's Promise.
                 await Promise.resolve(recordThread(input.runRef, agentId, parsed.threadId));
               } catch (error) {
+                tap('meta', `exit code=${code} disposition=failed`);
                 resolvePromise(failedResult(
                   `codex worker could not record its emitted thread: ${error instanceof Error ? error.message : String(error)}`,
                   ZERO_USAGE,
@@ -297,22 +310,27 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
             }
             const tail = stderrTail.trim();
             if (timedOut) {
+              tap('meta', `exit code=${code} disposition=timeout`);
               resolvePromise(failedResult(`codex worker timed out after ${timeoutMs}ms and was killed. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
               return;
             }
             if (exceeded) {
+              tap('meta', `exit code=${code} disposition=output-cap`);
               resolvePromise(failedResult(`codex worker output exceeded the ${maxOutputBytes}-byte cap and was killed. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
               return;
             }
             const usage = parsed.terminalEvent ? extractUsage(parsed.terminalEvent) : ZERO_USAGE;
             if (code !== 0) {
+              tap('meta', `exit code=${code} disposition=failed`);
               resolvePromise(failedResult(`codex worker exited with code ${code ?? 'null'}. ${tail}`, usage, DEFAULT_SUMMARY_MAX_CHARS));
               return;
             }
             if (!parsed.terminalEvent) {
+              tap('meta', `exit code=${code} disposition=failed`);
               resolvePromise(failedResult(`codex worker produced no turn.completed terminal event. ${tail}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
               return;
             }
+            tap('meta', `exit code=${code} disposition=succeeded`);
             resolvePromise({
               state: 'succeeded',
               summary: boundSummary(parsed.finalMessage || 'codex worker completed without a final agent message.', DEFAULT_SUMMARY_MAX_CHARS),
@@ -321,6 +339,7 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
               checkpoints: [],
             });
           })().catch((error) => {
+            tap('meta', `exit code=${code} disposition=failed`);
             resolvePromise(failedResult(
               `codex worker thread finalization failed: ${error instanceof Error ? error.message : String(error)}`,
               ZERO_USAGE,
@@ -339,9 +358,18 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          tap('meta', 'exit code=null disposition=failed');
           resolvePromise(failedResult(`codex worker process error: ${error instanceof Error ? error.message : String(error)}`, ZERO_USAGE, DEFAULT_SUMMARY_MAX_CHARS));
         });
         proc.onStdout((chunk) => {
+          if (settled) return;
+          lineBuffer += chunk;
+          let newline = lineBuffer.indexOf('\n');
+          while (newline !== -1) {
+            tap('out', lineBuffer.slice(0, newline));
+            lineBuffer = lineBuffer.slice(newline + 1);
+            newline = lineBuffer.indexOf('\n');
+          }
           stdoutBytes += Buffer.byteLength(chunk, 'utf8');
           if (stdoutBytes > maxOutputBytes) {
             exceeded = true;
@@ -355,6 +383,8 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
         proc.onExit((code) => finalize(code));
         try {
           proc.writeStdin(stdin);
+          if (queuedPrompt !== null) tap('in', queuedPrompt);
+          tap('in', prompt);
           proc.endStdin();
         } catch {
           terminate();
