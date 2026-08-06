@@ -36,6 +36,7 @@
  * injected clock (`now`) and an injected `kill` function (no test ever sends a real OS signal).
  */
 import { execFileSync } from 'node:child_process';
+import { pythonInvocation } from '../platform/python.ts';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { verifySession } from '../auth/session.ts';
@@ -72,14 +73,15 @@ export interface PyRunResult {
   stderr: string;
 }
 
-/** Runs `py -3 -c <code> <jsonArg>` under `repoRoot` and returns its exit code + stdio. Injected for
+/** Runs the configured Python interpreter under `repoRoot` and returns its exit code + stdio. Injected for
  *  hermetic tests — no test ever shells a real Python interpreter or touches a real `queue/` tree. */
 export type PyRunner = (repoRoot: string, code: string, jsonArg: string) => PyRunResult;
 
-/** Default runner: shells `py -3 -c <code> <jsonArg>`, matching `write/launch.ts#defaultPyRunner`. */
+/** Default runner: shells the configured Python interpreter, matching `write/launch.ts#defaultPyRunner`. */
 export const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
   try {
-    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], {
+    const python = pythonInvocation();
+    const stdout = execFileSync(python.command, [...python.baseArgs, '-c', code, jsonArg], {
       cwd: repoRoot,
       encoding: 'utf-8',
     });

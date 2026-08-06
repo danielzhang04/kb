@@ -20,7 +20,7 @@
  *     mirror — replacing the `origin` that `git clone` set to the REAL repo. So the canonical `## Result`
  *     writeback and `defaultReconcileTriggerCard` push land in the throwaway mirror and PROVABLY cannot
  *     reach real state. `assertCoordinationRemoteIsolated` is a belt-and-braces guard: it refuses to run
- *     if the coordination remote ever resolves back to the real repo path. `DASHBOARD_STATE_ROOT` points
+ *     if the coordination remote ever resolves back to the real repo path. `KB_STATE_DIR` points
  *     at a separate temp dir, so the control-plane state, worktrees, and fleet ledger are throwaway too.
  *   - The synthetic work order is a no-op single-file write with NO web/tool/spend/publish intent.
  *
@@ -224,7 +224,7 @@ export async function main(): Promise<number> {
   const stateRoot = mkdtempSync(join(tmpdir(), 'wave-a-accept-state-'));
   // Point THIS process (never the live daemon) at the throwaway roots, gate already on.
   process.env.DASHBOARD_REPO_ROOT = repoRoot;
-  process.env.DASHBOARD_STATE_ROOT = stateRoot;
+  process.env.KB_STATE_DIR = stateRoot;
 
   const checks: Check[] = [];
   let keepArtifacts = true;

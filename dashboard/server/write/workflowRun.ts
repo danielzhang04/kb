@@ -6,6 +6,7 @@
  * Every card is prepared and published by one fixed Python subprocess through scripts/cards.py.
  */
 import { execFileSync } from 'node:child_process';
+import { pythonInvocation } from '../platform/python.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -478,7 +479,8 @@ print(json.dumps({"runId": op["runId"], "cards": results}))
 
 const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
   try {
-    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], { cwd: repoRoot, encoding: 'utf-8' });
+    const python = pythonInvocation();
+    const stdout = execFileSync(python.command, [...python.baseArgs, '-c', code, jsonArg], { cwd: repoRoot, encoding: 'utf-8' });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (error) {
     const err = error as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };

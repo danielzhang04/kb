@@ -16,6 +16,7 @@
  * budget ledger state is ever touched by the test suite.
  */
 import { execFileSync } from 'node:child_process';
+import { pythonInvocation } from '../platform/python.ts';
 
 /** Raw result of one preamble-check subprocess run. */
 export interface PreambleRunResult {
@@ -27,10 +28,11 @@ export interface PreambleRunResult {
 /** Runs `scripts/preamble.py` under `repoRoot` and returns its exit code + stdio. Injected for tests. */
 export type PreambleRunner = (repoRoot: string) => PreambleRunResult;
 
-/** Default runner: shells the real `py -3 scripts/preamble.py` (the fleet's single source of truth). */
+/** Default runner: shells the configured Python interpreter (the fleet's single source of truth). */
 export const defaultPreambleRunner: PreambleRunner = (repoRoot) => {
   try {
-    const stdout = execFileSync('py', ['-3', 'scripts/preamble.py'], {
+    const python = pythonInvocation();
+    const stdout = execFileSync(python.command, [...python.baseArgs, 'scripts/preamble.py'], {
       cwd: repoRoot,
       encoding: 'utf-8',
     });

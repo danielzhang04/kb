@@ -262,7 +262,9 @@ role_default: { runtime: claude, model: sonnet }
     expect(payload).toMatchObject({ managed: true });
     expect(WORKFLOW_CARD_OP_SCRIPT).toContain('if op["managed"] or card.meta["depends-on"]');
     const runnerSource = readFileSync(fileURLToPath(new URL('../../../scripts/agent_runner.ps1', import.meta.url)), 'utf8');
-    expect(runnerSource).toContain('card.meta.get("execution-controller") != "dashboard"');
+    // agent_runner skips ANY controller-routed card, not just dashboard-controlled ones:
+    // execution-controller is a routing field (governance/card-schema.md, 2026-08-06).
+    expect(runnerSource).toContain('if (not card.meta.get("execution-controller")');
     const dispatchSource = readFileSync(fileURLToPath(new URL('../../../scripts/dispatch.py', import.meta.url)), 'utf8');
     expect(dispatchSource).toMatch(/deps = child\.meta\.get\("depends-on"\) or \[\][\s\S]*if not deps:[\s\S]*continue/);
   });

@@ -31,6 +31,7 @@
  * asserts against `## Feedback`, with this note inline.
  */
 import { execFileSync } from 'node:child_process';
+import { pythonInvocation } from '../platform/python.ts';
 import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
@@ -79,7 +80,7 @@ export interface SessionInput {
   config: SessionConfig;
 }
 
-/** Raw result of one `py -3 -c ...` subprocess run. */
+/** Raw result of one Python subprocess run. */
 export interface PyRunResult {
   exitCode: number;
   stdout: string;
@@ -87,19 +88,20 @@ export interface PyRunResult {
 }
 
 /**
- * Runs `py -3 -c <code> <jsonArg>` under `repoRoot` and returns its exit code + stdio. Injected for
+ * Runs `python -c <code> <jsonArg>` under `repoRoot` and returns its exit code + stdio. Injected for
  * hermetic tests — no test ever shells a real Python interpreter or touches a real `queue/` tree.
  */
 export type PyRunner = (repoRoot: string, code: string, jsonArg: string) => PyRunResult;
 
 /**
- * Default runner: shells `py -3 -c <code> <jsonArg>`. `code` is a fixed, non-interpolated script
+ * Default runner: shells the configured Python interpreter. `code` is a fixed, non-interpolated script
  * (see `CARD_OP_SCRIPT` below) — the ONLY untrusted-shaped input, the JSON operation payload, travels
  * as a separate argv element (`sys.argv[1]`), never concatenated into the script text itself.
  */
 export const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
   try {
-    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], {
+    const python = pythonInvocation();
+    const stdout = execFileSync(python.command, [...python.baseArgs, '-c', code, jsonArg], {
       cwd: repoRoot,
       encoding: 'utf-8',
     });

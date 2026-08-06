@@ -6,7 +6,6 @@ import { createProviderIdProtector } from './protector.ts';
 import {
   createFileComposerStore,
   createInMemoryComposerStore,
-  resolveDashboardStateRoot,
 } from './store.ts';
 
 const SECRET = Buffer.from('composer-store-secret-0123456789');
@@ -197,8 +196,4 @@ describe('file-backed ComposerWorkspaceStore', () => {
     expect(restarted.acquireWriter('alice', workspace.composerRef).ok).toBe(true);
   });
 
-  it('resolves explicit state root before LOCALAPPDATA', () => {
-    expect(resolveDashboardStateRoot({ DASHBOARD_STATE_ROOT: 'D:\\state', LOCALAPPDATA: 'C:\\Local' })).toBe('D:\\state');
-    expect(resolveDashboardStateRoot({ LOCALAPPDATA: 'C:\\Local' })).toBe(join('C:\\Local', 'kb', 'dashboard'));
-  });
 });

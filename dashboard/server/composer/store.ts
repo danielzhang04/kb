@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { TimelineModel } from '../../src/lib/timelineModel.ts';
 import type { ProviderIdProtector } from './protector.ts';
 import { publicTimeline, redactSensitiveText } from './publicTimeline.ts';
+import { kbStateDir } from '../platform/stateDir.ts';
 
 export type ComposerWorkspaceState = 'open' | 'archived';
 export type ComposerTurnStatus = 'running' | 'complete' | 'failed' | 'stopped' | 'interrupted';
@@ -111,13 +111,9 @@ interface StoreOptions {
   newId?: () => string;
 }
 
-/** Resolve local daemon state outside the repo; explicit configuration always wins. */
-export function resolveDashboardStateRoot(env: Record<string, string | undefined> = process.env): string {
-  const configured = env.DASHBOARD_STATE_ROOT?.trim();
-  if (configured) return configured;
-  const localAppData = env.LOCALAPPDATA?.trim();
-  if (localAppData) return join(localAppData, 'kb', 'dashboard');
-  return join(homedir(), '.kb', 'dashboard');
+/** Resolve dashboard state outside the repo. */
+export function resolveDashboardStateRoot(): string {
+  return kbStateDir('kb-dashboard');
 }
 
 function visibleModel(model: TimelineModel | null): TimelineModel | null {

@@ -36,9 +36,9 @@ describe('T6 gated boot smoke', () => {
   let tempStateRoot: string;
 
   beforeEach(() => {
-    for (const key of ['DASHBOARD_EXECUTION_ACTIVATED', 'DASHBOARD_STATE_ROOT']) savedEnv[key] = process.env[key];
+    for (const key of ['DASHBOARD_EXECUTION_ACTIVATED', 'KB_STATE_DIR']) savedEnv[key] = process.env[key];
     tempStateRoot = mkdtempSync(join(tmpdir(), 'wave-a-boot-'));
-    process.env.DASHBOARD_STATE_ROOT = tempStateRoot;
+    process.env.KB_STATE_DIR = tempStateRoot;
   });
 
   afterEach(() => {
