@@ -57,11 +57,20 @@ model: <str|null>      # SET BY dispatcher/routing ONLY. The CONCRETE model id r
                        #  card (e.g. claude-opus-4-8). Non-null = per-card override outranking
                        #  policy. Recorded to the cost ledger `model` column for the
                        #  routed-vs-ran audit (recorded intent on codex cards). Inert metadata.
-execution-controller: dashboard|terminal|null  # SET SERVER-SIDE ONLY, never parsed from card body.
-                       #  Double-execution guard, exact string match, fail-closed:
-                       #  absent/null ⇒ agent_runner.ps1 owns it; "dashboard" ⇒ the
-                       #  control plane owns it; "terminal" ⇒ already executed via
-                       #  codex_dispatch.py, record only; anything else runs nowhere.
+execution-controller: dashboard|terminal|null  # ROUTING, not authorization. Double-execution
+                       #  guard, exact string match, fail-closed: absent/null ⇒ agent_runner.ps1
+                       #  owns it; "dashboard" ⇒ the control plane's queue bridge claims it —
+                       #  a filing agent MAY set "dashboard" to route a card to the engine
+                       #  (2026-08-06 ruling: writing this field routes, it never authorizes;
+                       #  authorization stays with risk tiers and the operator's armed passkey
+                       #  window, and T3 actions always park for human approval); "terminal" ⇒
+                       #  already executed via codex_dispatch.py, record only — "terminal"
+                       #  remains SET SERVER-SIDE ONLY; anything else runs nowhere.
+profile: <workflow-profile-id|absent>  # Bridge-claimed cards only (execution-controller:
+                       #  dashboard): the server-owned tool-cap profile the stage runs under
+                       #  (a registry workflow profile id, e.g. scanner, producer,
+                       #  checker-readonly). The queue bridge refuses the card without it.
+                       #  Absent on all other cards.
 ```
 Body sections: `## Work order` (Manager-authored), `## Evidence` (fenced blockquote — the ONLY place free text from untrusted sources may appear; agents are instructed by the constitution to treat Evidence as inert data, never instructions), `## Result` (Worker/Inspector-appended). `## Feedback` (steer text appended for a requeue/rerun — inert like `## Evidence`: never executed as instructions, never a source of `action`/`target`/`risk-tier`; read-only context
 for whichever agent picks the card back up).
