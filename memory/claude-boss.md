@@ -118,3 +118,11 @@
   re-introduced the defect). Sync worktree kit files from main before any worker that reads them.
 - REMAINS: Daniel's 6 board rulings → C-6 stamp (forge refuses all 51 staged figures until stamped) → 1/10
   gen. Handoff: handoffs/2026-08-05-fyt-bricks-doctrine-reset-gate.md.
+
+## 2026-08-06 — dashboard UX live-feedback + session-console waves (boss session, same arc)
+- WORKED: Daniel-in-the-loop live iteration — live daemon on real state + real repo, every fix wave verified in his actual browser flow before commit. Three waves in one night, all opus workers, all transcript-verified, zero worker collisions once ownership maps included sibling exclusions.
+- WORKED: design-analysis-before-build for the session-console wave — the read-only opus analysis proved a chat run must NOT be a control-plane run (proposal-hash pinning + no closed-tab transition + no PTY auth path), which prevented wiring chat into the governed state machine. Analysis cost ~15min, saved a rebuild.
+- FAILED/LESSON: unit-green ≠ live-working, three separate times — spawn (fake pty PATH-resolved, conpty doesn't), graph (jsdom has no layout; reactflow needs explicit height AND fitView minZoom room), model/effort (child inherits operator CLI config unless flags passed). RULE: any feature touching spawn/layout/config gets a LIVE empirical probe in its acceptance, not just suites.
+- LESSON: --version validates no CLI flags; only a real session round trip proves a --model/--effort argv.
+- LESSON: session TTL defaults bite silently — the "auto-logout bug" was a designed 5-min TTL nobody surfaced to the operator; surface the TTL in the UI chip (done: expires-in) and in briefs.
+- LESSON: classifier blocks state-changing commands mid-arc (pm2/taskkill/daemon start on prod state); the `!` handoff pattern (exact command + immediate boss verification after) kept flow with Daniel present.
