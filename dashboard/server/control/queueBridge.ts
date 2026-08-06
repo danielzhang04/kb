@@ -19,13 +19,15 @@
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with explicit `.ts` specifiers.
  */
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { assertFleetRunnable, type PreambleRunner } from '../write/preambleGate.ts';
 import { DASHBOARD_EXECUTOR_SUBJECT, createInternalServiceCaller } from './activation.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
-import { parseWorkflowDef, type WorkflowDef } from '../workflows/defs.ts';
+import { MAX_DEFINITION_BYTES, instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef } from '../workflows/defs.ts';
 import { compileWorkflowDef } from '../workflows/compile.ts';
 import { loadRuntimeSkillRegistry, workflowProfileIds, type RuntimeSkillRegistry } from './environment.ts';
-import { validatePlanProposal } from './proposal.ts';
+import { validateServerCompiledPlanProposal, type ProposalRiskTier } from './proposal.ts';
 import { proposalSnapshotHash, type ControlPlaneStore } from './store.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from './launch.ts';
 import type { JsonObject, RunDetail } from './types.ts';
@@ -187,7 +189,11 @@ export function createQueueBridge(options: QueueBridgeOptions): QueueBridge {
       );
       let dispatched = 0;
       for (const card of owned) {
-        await dispatch(card);
+        try {
+          await dispatch(card);
+        } catch (error) {
+          try { onError(error); } catch { /* an error reporter cannot wedge the remaining cards */ }
+        }
         dispatched += 1;
       }
       return { ran: true, blocked: false, discovered: owned.length, dispatched };
@@ -213,7 +219,7 @@ export function createQueueBridge(options: QueueBridgeOptions): QueueBridge {
 // T4 — card -> run mapping (inert-context work order) + run creation via the launch machinery (D0-A).
 //
 // A claimed fleet trigger card is a SIGNAL. The bridge maps it to a one-stage workflow DEFINITION, drives
-// it through the EXISTING launch body (compileWorkflowDef -> validatePlanProposal -> import+approve ->
+// it through the EXISTING launch body (compileWorkflowDef -> validateServerCompiledPlanProposal -> import+approve ->
 // executeApprovedLaunch), which MINTS the canonical card workflowCardId(runRef, stageId) and (gate on)
 // fires runAutomatic. The trigger card is then reconciled (transitioned out of inbox/working with a
 // pointer to the run) so it is never re-claimed. canonicalResultIntegrator.ts is untouched — the engine
@@ -245,6 +251,8 @@ export interface ParsedCard {
     target?: string;
     'risk-tier'?: string;
     profile?: string;
+    'workflow-def'?: unknown;
+    parameters?: unknown;
     owner?: string | null;
     state?: string | null;
     'execution-controller'?: string | null;
@@ -285,6 +293,113 @@ function requireMetaString(value: unknown, field: string): string {
 export interface CardToWorkflowOptions {
   /** When supplied, the card's `profile` must name a server-owned execution profile (fail-closed). */
   knownProfiles?: ReadonlySet<string>;
+  /** Required only for a card naming a registered workflow definition. */
+  repoRoot?: string;
+  /** File-read seam used only after the definition's lstat size cap passes. */
+  readDefinitionFile?: (path: string) => string;
+}
+
+const SAFE_WORKFLOW_SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const RISK_TIER_RANK: Record<ProposalRiskTier, number> = { T1: 1, T2: 2, T3: 3 };
+
+function highestRiskTier(stages: readonly { riskTier: ProposalRiskTier }[]): ProposalRiskTier {
+  return stages.reduce<ProposalRiskTier>(
+    (highest, stage) => RISK_TIER_RANK[stage.riskTier] > RISK_TIER_RANK[highest] ? stage.riskTier : highest,
+    'T1',
+  );
+}
+
+function isWithin(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+function registeredWorkflowRequest(
+  card: ParsedCard,
+  id: string,
+  project: string,
+  options: CardToWorkflowOptions,
+): CardWorkflowRequest {
+  const workflowId = card.meta['workflow-def'];
+  if (typeof workflowId !== 'string' || !SAFE_WORKFLOW_SEGMENT_RE.test(workflowId)) {
+    throw new QueueBridgeError(`card '${id}' workflow-def must be a safe identifier`);
+  }
+  if (!SAFE_WORKFLOW_SEGMENT_RE.test(project)) {
+    throw new QueueBridgeError(`card '${id}' project must be a safe identifier`);
+  }
+  if (typeof options.repoRoot !== 'string' || options.repoRoot.trim() === '') {
+    throw new QueueBridgeError(`card '${id}' names workflow-def '${workflowId}' but no repository root was supplied`);
+  }
+
+  let source: string;
+  try {
+    const rootReal = realpathSync(resolve(options.repoRoot));
+    const projectDir = join(rootReal, 'orgs', project);
+    if (!lstatSync(projectDir).isDirectory() || lstatSync(projectDir).isSymbolicLink()) {
+      throw new QueueBridgeError(`registered workflow definition '${workflowId}' was not found in project '${project}'`);
+    }
+    const projectReal = realpathSync(projectDir);
+    const workflowsDir = join(projectReal, 'workflows');
+    if (!isWithin(rootReal, projectReal)
+      || !lstatSync(workflowsDir).isDirectory()
+      || lstatSync(workflowsDir).isSymbolicLink()) {
+      throw new QueueBridgeError(`registered workflow definition '${workflowId}' was not found in project '${project}'`);
+    }
+    const workflowsReal = realpathSync(workflowsDir);
+    if (!isWithin(projectReal, workflowsReal)) {
+      throw new QueueBridgeError(`registered workflow definition '${workflowId}' escapes project '${project}'`);
+    }
+    const candidate = join(workflowsReal, `${workflowId}.md`);
+    const candidateStat = lstatSync(candidate);
+    if (!candidateStat.isFile() || candidateStat.isSymbolicLink()) {
+      throw new QueueBridgeError(`registered workflow definition '${workflowId}' was not found in project '${project}'`);
+    }
+    if (candidateStat.size > MAX_DEFINITION_BYTES) {
+      throw new QueueBridgeError(`registered workflow definition '${workflowId}' is invalid: definition must be at most ${MAX_DEFINITION_BYTES} bytes`);
+    }
+    const fileReal = realpathSync(candidate);
+    if (!isWithin(workflowsReal, fileReal)) {
+      throw new QueueBridgeError(`registered workflow definition '${workflowId}' escapes project '${project}'`);
+    }
+    source = options.readDefinitionFile?.(fileReal) ?? readFileSync(fileReal, 'utf8');
+  } catch (error) {
+    if (error instanceof QueueBridgeError) throw error;
+    throw new QueueBridgeError(`registered workflow definition '${workflowId}' was not found in project '${project}'`);
+  }
+
+  const parsed = parseWorkflowDef(source, { knownProfiles: options.knownProfiles });
+  if (!parsed.ok) {
+    console.error(`queue bridge definition '${workflowId}' failed to parse`, parsed.detail);
+    throw new QueueBridgeError(`registered workflow definition '${workflowId}' failed to parse`);
+  }
+  if (parsed.value.id !== workflowId) {
+    throw new QueueBridgeError(`registered workflow definition id '${parsed.value.id}' does not match requested id '${workflowId}'`);
+  }
+  if (parsed.value.project !== project) {
+    throw new QueueBridgeError(`registered workflow definition project '${parsed.value.project}' does not match card project '${project}'`);
+  }
+
+  const rawParameters = card.meta.parameters;
+  if (rawParameters !== undefined && (rawParameters === null || typeof rawParameters !== 'object' || Array.isArray(rawParameters))) {
+    throw new QueueBridgeError(`card '${id}' parameters must be a YAML mapping`);
+  }
+  const instantiated = instantiateWorkflowDef(
+    parsed.value,
+    (rawParameters ?? {}) as Record<string, string>,
+  );
+  if (!instantiated.ok) {
+    throw new QueueBridgeError(`card '${id}' cannot instantiate workflow-def '${workflowId}': ${instantiated.detail}`);
+  }
+  const requiredTier = highestRiskTier(instantiated.value.stages);
+  const cardTier = card.meta['risk-tier'];
+  if ((cardTier !== 'T1' && cardTier !== 'T2' && cardTier !== 'T3')
+    || RISK_TIER_RANK[cardTier] < RISK_TIER_RANK[requiredTier]) {
+    throw new QueueBridgeError(`card '${id}' risk-tier is below the workflow definition's required tier ${requiredTier}`);
+  }
+
+  // The existing launch shape has no run-level context slot. The trigger card's Work order therefore
+  // remains advisory for a registered definition; its parsed per-stage workOrders are authoritative.
+  return { def: instantiated.value };
 }
 
 /**
@@ -300,6 +415,10 @@ export interface CardToWorkflowOptions {
 export function cardToWorkflowRequest(card: ParsedCard, options: CardToWorkflowOptions = {}): CardWorkflowRequest {
   const id = requireMetaString(card.meta.id, 'id');
   const project = requireMetaString(card.meta.project, 'project');
+  // `workflow-def: null` is an invalid declaration and is rejected; only an absent key uses synthesis.
+  if (card.meta['workflow-def'] !== undefined) {
+    return registeredWorkflowRequest(card, id, project, options);
+  }
   const action = requireMetaString(card.meta.action, 'action');
   const target = requireMetaString(card.meta.target, 'target');
   const profile = requireMetaString(card.meta.profile, 'profile');
@@ -389,7 +508,7 @@ export interface DispatchCardDeps {
   loadRegistry?: (repoRoot: string) => RuntimeSkillRegistry;
   knownProfiles?: () => ReadonlySet<string>;
   compile?: typeof compileWorkflowDef;
-  validate?: typeof validatePlanProposal;
+  validate?: typeof validateServerCompiledPlanProposal;
   snapshotHash?: (snapshot: JsonObject) => string;
   launch?: (ctx: SurfaceContext, sub: string, input: ApprovedLaunchArgs) => Promise<LaunchOutcome>;
   readCard?: (ctx: SurfaceContext, cardPath: string) => ParsedCard;
@@ -448,7 +567,7 @@ export async function dispatchClaimedCard(
   const loadRegistry = deps.loadRegistry ?? loadRuntimeSkillRegistry;
   const knownProfiles = deps.knownProfiles ?? workflowProfileIds;
   const compile = deps.compile ?? compileWorkflowDef;
-  const validate = deps.validate ?? validatePlanProposal;
+  const validate = deps.validate ?? validateServerCompiledPlanProposal;
   const snapshotHash = deps.snapshotHash ?? proposalSnapshotHash;
   const launch = deps.launch ?? executeApprovedLaunch;
   const reconcile = deps.reconcile ?? defaultReconcileTriggerCard;
@@ -462,15 +581,16 @@ export async function dispatchClaimedCard(
     return { cardId: card.id, outcome: 'blocked', status: 0, reconciled: false, detail: preamble.problems[0] ?? 'preamble refused dispatch' };
   }
 
-  // Re-assert the claim on the card's CURRENT meta: it may have changed between scan and dispatch.
-  const parsed = readCard(ctx, card.path);
-  if (!bridgeClaimsCard(parsed.meta, subject)) {
-    return { cardId: card.id, outcome: 'skipped', status: 0, reconciled: false, detail: 'card no longer claimed by the bridge' };
-  }
+  try {
+    // Re-assert the claim on the card's CURRENT meta: it may have changed between scan and dispatch.
+    const parsed = readCard(ctx, card.path);
+    if (!bridgeClaimsCard(parsed.meta, subject)) {
+      return { cardId: card.id, outcome: 'skipped', status: 0, reconciled: false, detail: 'card no longer claimed by the bridge' };
+    }
 
   let mapped: CardWorkflowRequest;
   try {
-    mapped = cardToWorkflowRequest(parsed, { knownProfiles: knownProfiles() });
+    mapped = cardToWorkflowRequest(parsed, { knownProfiles: knownProfiles(), repoRoot: ctx.repoRoot });
   } catch (error) {
     return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: String(error) };
   }
@@ -491,7 +611,7 @@ export async function dispatchClaimedCard(
   // revision every re-dispatch and leaks an unbounded pile of them. The audit + idempotent decide below
   // then run against whichever revision (fresh or reused-undecided) we settled on. A revision the bridge
   // created is only ever approved by the bridge, so an undecided one is always safe to re-drive to approved.
-  const sourceTurnId = mapped.def.id;
+  const sourceTurnId = `bridge:${mapped.def.id}`;
   const idempotencyKey = `queue-bridge:${card.id}`;
   const matching = ctx.controlStore
     .listProposalRevisionsForComposer(subject, 'workflow-registry')
@@ -588,7 +708,10 @@ export async function dispatchClaimedCard(
     // still awaits Daniel's gate release.
     return { cardId: card.id, outcome: 'gated', status: 202, runRef, reconciled: false, detail: 'activationGated' };
   }
-  return { cardId: card.id, outcome: 'failed', status: result.status, runRef, reconciled: false, detail: JSON.stringify(result.body) };
+    return { cardId: card.id, outcome: 'failed', status: result.status, runRef, reconciled: false, detail: JSON.stringify(result.body) };
+  } catch (error) {
+    return { cardId: card.id, outcome: 'failed', status: 500, reconciled: false, detail: String(error) };
+  }
 }
 
 /**
