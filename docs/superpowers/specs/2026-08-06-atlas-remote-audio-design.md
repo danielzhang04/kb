@@ -34,7 +34,13 @@ frames both ways.
 
 - Uplink: tab captures mic via `getUserMedia` (works on `http://localhost` — it
   is a secure context), encodes fixed-size PCM16 mono 16 kHz frames (~20–60 ms),
-  sends binary WS messages. No client-side VAD/wake-word; the brain's existing
+  sends binary WS messages.
+- **Background-tab requirement (Daniel ruling 2026-08-06): open ⇒ listening.**
+  The tab must keep capturing/playing while unfocused, behind other windows, or
+  minimized. Therefore the capture/encode path runs on an AudioWorklet (never
+  setInterval/setTimeout, which background tabs throttle); the active mic stream
+  exempts the tab from throttling. Desktop asleep or browser closed ⇒ Atlas deaf
+  until wake — accepted (nobody is at the desk to hear). No client-side VAD/wake-word; the brain's existing
   pipeline decides what is speech (confirm at read-time — see Unknowns).
 - Downlink: brain sends TTS audio as binary frames + small JSON control messages
   (`speaking-start/stop`, transcript echo for the UI); tab plays via Web Audio.
