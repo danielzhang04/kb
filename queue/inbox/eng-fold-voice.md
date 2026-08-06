@@ -6,7 +6,7 @@ target: orgs/faceless-youtube/docs/deltas
 risk-tier: T2
 profile: scanner
 owner: dashboard-engine
-state: inbox
+state: blocked
 execution-controller: dashboard
 ---
 
