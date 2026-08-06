@@ -268,15 +268,20 @@ describe('the not-declared empty state', () => {
    */
   it('offers "Run agent" only for a declared agent, and lands it on this page', () => {
     const onSectionChange = vi.fn();
+    const onRunAgent = vi.fn();
     const { rerender } = render(
-      <AgentDetail agent={agent({ id: 'fyt-runner', declared: true })} onSectionChange={onSectionChange} />,
+      <AgentDetail
+        agent={agent({ id: 'fyt-runner', declared: true })}
+        onSectionChange={onSectionChange}
+        onRunAgent={onRunAgent}
+      />,
     );
 
     fireEvent.click(screen.getByTestId('agent-run'));
-    // It shows the Runs tab (where the session lives) and tells any controlling nav stack to follow.
+    // It starts the governed agent-launch flow and tells any controlling nav stack to follow.
     expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
     expect(onSectionChange).toHaveBeenCalledWith('runs');
-    expect(screen.getByLabelText('Live session for this agent')).toBeTruthy();
+    expect(onRunAgent).toHaveBeenCalledWith({ id: 'fyt-runner' });
 
     // No declaration = nothing to prime a session with, so the action is not offered at all.
     rerender(<AgentDetail agent={agent({ id: 'observed-only', declared: false })} onSectionChange={onSectionChange} />);

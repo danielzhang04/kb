@@ -7,7 +7,8 @@ Usage:
 Why this exists: the dispatcher can never know a worker's Claude Code /
 Codex session id (that session is spawned later, by the runner). The only
 place the real value is known is the WORKER RUNNER itself, right after it
-starts executing a claimed card -- so scripts/agent_runner.ps1 shells out to
+starts executing a claimed card -- so scripts/agent_runner.py's
+``execute_card()`` shells out to
 this tiny shim, after the card is selected and BEFORE it transitions to
 `working`, rather than embedding Python logic inline in PowerShell.
 

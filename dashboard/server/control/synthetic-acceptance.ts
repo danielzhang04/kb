@@ -12,7 +12,7 @@
  *     guard at the bottom calls `main()`.
  *   - REFUSES unless the gate is ALREADY on in this process (`DASHBOARD_EXECUTION_ACTIVATED === '1'`) AND
  *     `--confirm-live` is passed. It NEVER sets the activation gate itself, and never touches the live
- *     daemon / pm2 env — Daniel sets the gate in his watched session; the harness only reads it.
+ *     daemon / systemd environment — Daniel sets the gate in his watched session; the harness only reads it.
  *   - CANNOT MUTATE REAL PROJECT STATE, enforced by code (not by git defaults). `setUpThrowawayRepo`
  *     `git clone --local`s the current repo into a throwaway temp dir, creates a local `ops` branch (the
  *     coordination seam in write/branch.ts refuses any coordination write unless HEAD is exactly `ops`

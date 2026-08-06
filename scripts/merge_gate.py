@@ -3,7 +3,7 @@
 Every path that hands a branch/PR to a human for merging files a card that the
 dashboard Inbox already surfaces (predicate #4: ``action: approve:merge:<target>``,
 ``owner: human-operator``). This module is that single producer so the runner
-(``agent_runner.ps1``), the dispatcher (``stage_approval.open_pr``), terminals,
+(``scripts/agent_runner.py``), the dispatcher (``stage_approval.open_pr``), terminals,
 and skills all register/close gates through ONE dedup-safe implementation.
 
 Dedup invariant (branch_hygiene N1 lesson): a gate is "live" per its PARSED

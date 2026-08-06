@@ -60,7 +60,6 @@ import { Quartermaster } from './views/panels/Quartermaster';
 import { FlightRecorder } from './views/panels/FlightRecorder';
 import { Atlas } from './views/Atlas';
 import { AtlasMiniOrb } from './components/AtlasMiniOrb';
-import { Terminal } from './views/Terminal';
 import { ExecutionArmingProvider } from './control/ExecutionUnlock';
 import { DeployOutcome } from './composer/DeployOutcome';
 import { WorkspaceTabs } from './composer/WorkspaceTabs';
@@ -298,7 +297,7 @@ const DEST_BY_ID: Record<string, NavDestination> = Object.fromEntries(
 );
 
 /** Placeholder body for a destination whose real view has not been built yet. Every current destination
- *  now maps to a real view (Atlas went live in Atlas V1, Terminal in D3.2); this case is kept only to
+ *  now maps to a real view (Atlas went live in Atlas V1); this case is kept only to
  *  keep the switch total against the DestinationId union. */
 function ComingSoon({ id }: { id: DestinationId }): React.JSX.Element {
   const dest = DEST_BY_ID[id];
@@ -398,7 +397,6 @@ function ViewBody({
   onBack,
   onSectionChange,
   onNavigateTarget,
-  onRunAgent,
 }: {
   view: DestinationId;
   onNavigate: (id: DestinationId) => void;
@@ -410,7 +408,6 @@ function ViewBody({
   onBack: () => void;
   onSectionChange: (id: string) => void;
   onNavigateTarget: (target: NavTarget) => void;
-  onRunAgent: (agent: { id: string }) => void;
 }): React.JSX.Element {
   switch (view) {
     case 'home':
@@ -459,7 +456,6 @@ function ViewBody({
           activeSectionId={entry.section}
           onSectionChange={onSectionChange}
           onNavigate={onNavigateTarget}
-          onRunAgent={onRunAgent}
         />
       );
     case 'tasks':
@@ -475,10 +471,6 @@ function ViewBody({
     case 'sentinel':
       // D3.5 — the layer-panel set (Sentinel / Quartermaster / Flight Recorder / Atlas) behind sub-tabs.
       return <LayerPanels />;
-    case 'terminal':
-      // The PTY pane is owned by App's persistent surface below, outside this replace-on-navigation switch.
-      // This case is therefore intentionally empty: rendering it here as well would create duplicate shells.
-      return <></>;
     case 'connectors':
       return <Connectors />;
     case 'files':
@@ -547,12 +539,7 @@ function AppShell(): React.JSX.Element {
   const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
   // Card id a card click-through (a run's card graph, a step's canonical card) wants opened in Tasks.
   const [openCardId, setOpenCardId] = useState<string | undefined>(undefined);
-  // The agent a "Run agent" click asked for. Handed to the persistent Terminal, which consumes it once.
-  const [runAgentId, setRunAgentId] = useState<string | null>(null);
   const approvalsCount = useApprovalsCount();
-  // Unlike ordinary destination bodies, Terminal is a long-lived workspace: navigating away hides it but
-  // must not unmount its xterm instances or close their WebSockets. Composer behaves like another overlay.
-  const terminalVisible = view === 'terminal' && activeComposerRef === null;
 
   useEffect(() => persistOpenComposerRefs(openComposerRefs), [openComposerRefs]);
 
@@ -661,21 +648,6 @@ function AppShell(): React.JSX.Element {
     });
   };
 
-  /**
-   * "Run agent" FROM THE ROSTER: hand the agent id to the persistent terminal surface and go there. The
-   * Terminal opens a shell running claude primed as that agent (the server validates the id against its
-   * own roster and resolves the file — nothing here builds a path), then reports the target consumed so a
-   * later visit does not respawn it.
-   *
-   * The agent DETAIL no longer comes through here. It has its own embedded console, so running an agent
-   * from its page keeps the operator on that page instead of throwing them at the Terminal destination.
-   * This path remains for surfaces that have nowhere of their own to land — the roster's row action.
-   */
-  const runAgent = (agent: { id: string }): void => {
-    setRunAgentId(agent.id);
-    goTo('terminal');
-  };
-
   const closeComposerTab = (composerRef: string): void => {
     if (runningComposerRefs.has(composerRef)) return;
     setOpenComposerRefs((current) => {
@@ -760,7 +732,7 @@ function AppShell(): React.JSX.Element {
           <span aria-hidden="true">{theme === 'dark' ? '☾' : '☀'}</span>
         </button>
       </header>
-      <main className={terminalVisible ? 'mc-main mc-main--terminal' : 'mc-main'}>
+      <main className="mc-main">
         <WorkspaceTabs
           open={openWorkspaces}
           recent={recentWorkspaces}
@@ -777,18 +749,6 @@ function AppShell(): React.JSX.Element {
           onRestore={restoreComposer}
         />
         {workspaceError ? <p className="composer-workspace-error" role="alert">{workspaceError}</p> : null}
-        <div
-          className="persistent-terminal-surface"
-          hidden={!terminalVisible}
-          aria-hidden={!terminalVisible}
-          data-testid="persistent-terminal-surface"
-        >
-          <Terminal
-            visible={terminalVisible}
-            agentTarget={runAgentId}
-            onAgentTargetConsumed={() => setRunAgentId(null)}
-          />
-        </div>
         {openWorkspaces.map((workspace) => (
           <div
             key={workspace.composerRef}
@@ -805,7 +765,7 @@ function AppShell(): React.JSX.Element {
             />
           </div>
         ))}
-        {activeComposerRef === null && view !== 'terminal' ? (
+        {activeComposerRef === null ? (
           <ViewBody
             view={view}
             onNavigate={goTo}
@@ -815,7 +775,6 @@ function AppShell(): React.JSX.Element {
             onBack={back}
             onSectionChange={setSection}
             onNavigateTarget={navigateTo}
-            onRunAgent={runAgent}
           />
         ) : null}
       </main>

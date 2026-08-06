@@ -21,8 +21,6 @@ describe('paletteModel — command set', () => {
     expect(byId.get('atlas')?.disabled).toBe(false);
     expect(byId.get('atlas')?.hint).toBeUndefined();
     // Terminal went live in D3.2 — actionable, no greyed hint.
-    expect(byId.get('terminal')?.disabled).toBe(false);
-    expect(byId.get('terminal')?.hint).toBeUndefined();
   });
 
   it('act commands are shortcuts to a governed SURFACE, never an endpoint', () => {

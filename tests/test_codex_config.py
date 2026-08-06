@@ -168,7 +168,7 @@ def test_env_var_passthrough_excludes_telegram_bot_token():
     text = _text()
 
     # The desktop poll cadence's ambient bot-token env var name
-    # (scripts/desktop_poll.ps1) must never be allowed to pass through to a
+    # (the retired desktop poll launcher) must never be allowed to pass through to a
     # spawned Codex subprocess.
     assert "KB_TELEGRAM_BOT_TOKEN" in text, (
         "KB_TELEGRAM_BOT_TOKEN must be named in an env exclusion rule"

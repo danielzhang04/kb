@@ -5,13 +5,12 @@ This module extends NOTHING in ``telegram_send.py``; it composes a <=400-char
 summary of a rendered brief and, ONLY when invoked with ``--send``, hands it to
 the existing ``telegram_send`` machinery.
 
-Token custody (unchanged from ``telegram_send`` / ``desktop_poll.ps1``): this
-script NEVER reads Windows Credential Manager. The real send path uses
-``telegram_send.HTTPTransport``, whose ``default_token_loader`` reads the ambient
-``KB_TELEGRAM_BOT_TOKEN`` env var that the desktop launcher injects from
-Credential Manager outside this process. ``--send`` refuses to run unless that
-launcher-injected env var is present, so an agent invocation without the
-launcher can never send.
+Token custody: this script NEVER reads Windows Credential Manager. The real send
+path uses ``telegram_send.HTTPTransport``, whose ``default_token_loader`` reads
+the ambient ``KB_TELEGRAM_BOT_TOKEN`` env var supplied by the current launcher
+(the systemd unit environment or the dispatcher) outside this process. ``--send``
+refuses to run unless that launcher-injected env var is present, so an agent
+invocation without the launcher can never send.
 
 Default (no ``--send``): the summary is printed; no transport is touched.
 
@@ -29,8 +28,8 @@ import ledger
 import preamble
 import telegram_send
 
-# The launcher-injected ambient env vars (populated by desktop_poll.ps1's
-# pattern from Windows Credential Manager / config — never read here directly).
+# The launcher-injected ambient env vars (currently supplied by the systemd unit
+# environment or dispatcher — never read here directly).
 TOKEN_ENV = "KB_TELEGRAM_BOT_TOKEN"
 CHAT_ID_ENV = "KB_TELEGRAM_CHAT_ID"
 

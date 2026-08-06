@@ -1,9 +1,11 @@
 /**
  * Wave A — the queue -> governed-engine bridge (T3: discovery + inverse filter predicate; NO dispatch).
  *
- * The bridge is the counterpart of the legacy `scripts/agent_runner.ps1` runner. Each executor claims a
+ * The bridge is the counterpart of `scripts/agent_runner.py`'s `owned_cards()` selector; the
+ * retired PowerShell runner supplied the original predicate. Each executor claims a
  * disjoint slice of the queue, arbitrated by ONE frontmatter flag, `execution-controller`:
- *   - legacy runner claims iff `execution-controller != "dashboard"` (absent/null included) — ps1 step 6;
+ *   - legacy-compatible runner claims cards without the dashboard controller — see
+ *     `scripts/agent_runner.py`'s `owned_cards()`;
  *   - this bridge claims iff `execution-controller === "dashboard"` (the exact literal) AND
  *     `owner === <dashboard subject>` AND `state ∈ {inbox, working}`.
  * The two predicates partition the owner/state-matched card space with no overlap and no gap — that is
@@ -51,7 +53,8 @@ export const CLAIMABLE_STATES: readonly string[] = ['inbox', 'working'];
 
 /**
  * The bridge side of the double-execution guard: true iff the dashboard engine (not the legacy runner)
- * owns this card. The exact inverse, on the `execution-controller` axis, of `agent_runner.ps1` step 6.
+ * owns this card. The exact inverse, on the `execution-controller` axis, of
+ * `agent_runner.py`'s `owned_cards()` selector.
  * `subject` defaults to the single dashboard executor identity (D1); T4 re-asserts this on the full card
  * meta read at dispatch time, so a card the Python selector returned is never dispatched on stale state.
  */
@@ -266,7 +269,8 @@ export interface CardWorkflowRequest {
 }
 
 /**
- * Extract a `## <name>` section body, mirroring agent_runner.ps1's section() exactly: the text from the
+ * Extract a `## <name>` section body, mirroring `agent_runner.py`'s `prepare_card()` / `section()`:
+ * the text from the
  * first `## <name>` heading up to the next `## ` heading, trimmed. Returns '' when absent.
  */
 function extractSection(body: string, name: string): string {

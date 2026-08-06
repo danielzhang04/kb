@@ -4,7 +4,7 @@
  * ── Shape (UX overhaul §4): identity, then what it is DOING, then ONE technical fold ──
  *
  * Primary UI answers an operator's three questions in order: who is this agent, what is it doing right
- * now, and can I talk to it (the "Run agent" action, one click into a live primed session). Everything
+ * now, and which governed work it owns. Everything
  * that is machinery rather than status — the declaration file and its instructions, declared runtime /
  * model / execution profiles, the runner flag, roster provenance, governed workflows and stages, ledger
  * rollups, and the effective-routing control — lives behind a SINGLE "Technical details" fold. There is
@@ -27,15 +27,9 @@ import { cardsForAgent, runLink } from '../control/entityLinks';
 import { relativeAge } from '../control/runEvents';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
-import { ConsolePane } from '../console/ConsolePane';
-import type { ConsoleControl } from '../console/ConsolePane';
-import { useAttachableSession } from '../console/useAttachableSession';
-import { SessionRunRow, useSessionRuns } from '../console/sessionRuns';
 import { EntityDetail, type DetailSection, type EntityLink } from '../entity/EntityDetail';
 import type { AgentDetailDto } from '../lib/agentClient';
 import { renderMarkdown } from '../lib/markdown';
-import { useOptionalSession } from '../lib/sessionContext';
-import type { PtySocketFactory, SessionRunsClient, TerminalSessionsClient } from '../lib/terminalClient';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/entity.css';
 import '../styles/views/agents.css';
@@ -86,14 +80,10 @@ export interface AgentDetailProps {
   detail?: AgentDetailDto | null;
   /** Distinguishes a request still in flight from a detail that has no optional relationships. */
   detailState?: 'loading' | 'ready' | 'unavailable';
-  /** Injected in tests so no component test opens a real WebSocket. Defaults to the real `/api/pty`. */
-  socketFactory?: PtySocketFactory;
-  /** Injected in tests so no component test hits the network. Defaults to the real session REST client. */
-  sessionsClient?: TerminalSessionsClient;
-  /** Injected in tests; defaults to the real `/api/pty/session-runs` client. */
-  sessionRunsClient?: SessionRunsClient;
   activeSectionId?: string;
   onSectionChange?: (id: string) => void;
+  /** Starts this agent's governed launch flow in the owning surface. */
+  onRunAgent?: (agent: { id: string }) => void;
   onNavigate?: (target: NavTarget) => void;
   onBack?: () => void;
   backLabel?: string;
@@ -158,155 +148,6 @@ export function NotDeclaredPanel({ agent }: { agent: AgentDetailRow }): React.JS
   );
 }
 
-/**
- * The agent's OWN console — a live shell, primed as this agent, inside its detail.
- *
- * "Run agent" used to throw the operator across the app to the Terminal destination, where a tab
- * appeared named after an agent whose page they had just left. The session belongs to the agent, so it
- * renders on the agent, and `useAttachableSession` is what lets it: because the daemon records what each
- * session was opened as, coming back to this tab REATTACHES to the shell that is already running (the
- * server replays its 512 KB output ring, so the scrollback comes back too) instead of spawning a second.
- *
- * The order below is load-bearing. Until the live-session lookup settles (`status === 'loading'`) NO
- * console is rendered — rendering the spawn target early is exactly how a remount becomes a respawn, and
- * every leaked shell is one the operator's Terminal tabs can no longer open, since the daemon's
- * 8-terminal cap is shared across every console in the app.
- */
-export function AgentConsole({
-  agentId,
-  declared,
-  started,
-  onStop,
-  socketFactory,
-  sessionsClient,
-}: {
-  agentId: string;
-  /** An undeclared agent has no file to prime a session with, so it is never offered one. */
-  declared: boolean;
-  /** The operator has asked for a session here (the "Run agent" action above). */
-  started: boolean;
-  /** The session ended (shell exit, or the operator closed it) — clears the started request. */
-  onStop: () => void;
-  socketFactory?: PtySocketFactory;
-  sessionsClient?: TerminalSessionsClient;
-}): React.JSX.Element {
-  const sessionContext = useOptionalSession();
-  const [signingIn, setSigningIn] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [control, setControl] = useState<ConsoleControl | null>(null);
-  const attachable = useAttachableSession(declared ? { kind: 'agent', ref: agentId } : null, {
-    ...(sessionsClient ? { sessionsClient } : {}),
-  });
-
-  // An already-running shell WINS over a fresh spawn request: if this agent has a live session, that is
-  // the session the operator means, whatever they just clicked.
-  const target = attachable.attach ?? (started ? attachable.spawn : null);
-
-  async function handleUnlock(): Promise<void> {
-    if (signingIn || !sessionContext) return;
-    setSigningIn(true);
-    try {
-      await sessionContext.requireSession();
-    } finally {
-      setSigningIn(false);
-    }
-  }
-
-  const stop = (): void => {
-    setNotice(null);
-    attachable.release();
-    onStop();
-  };
-
-  let body: React.ReactNode;
-  if (!declared) {
-    body = (
-      <p className="entity-note" data-testid="agent-console-undeclared">
-        This agent has no definition file, so there is nothing to prime a session with.
-      </p>
-    );
-  } else if (!attachable.unlocked) {
-    body = sessionContext ? (
-      <button
-        type="button"
-        className="mc-btn agent-console__unlock"
-        onClick={() => void handleUnlock()}
-        disabled={signingIn}
-        data-testid="agent-console-locked"
-      >
-        {signingIn ? 'Unlocking…' : 'Locked — unlock to open a session'}
-      </button>
-    ) : (
-      <p className="entity-note" data-testid="agent-console-locked">
-        Locked — opening a session needs an unlocked passkey session.
-      </p>
-    );
-  } else if (attachable.status === 'loading') {
-    body = (
-      <p className="entity-note" data-testid="agent-console-loading">
-        Checking whether this agent already has a live session…
-      </p>
-    );
-  } else if (!target) {
-    body = (
-      <p className="entity-note" data-testid="agent-console-idle">
-        No live session. Use <strong>Run agent</strong> above to start one you can type into.
-      </p>
-    );
-  } else {
-    body = (
-      <>
-        <div className="agent-console__bar">
-          <span className="agent-console__state mc-mono" data-testid="agent-console-mode">
-            {target.mode === 'attach' ? 'attached' : 'starting'}
-          </span>
-          <button
-            type="button"
-            className="agent-console__close"
-            onClick={() => (control ? control.requestClose() : stop())}
-            data-testid="agent-console-close"
-          >
-            End session
-          </button>
-        </div>
-        {/* The pane is ALWAYS visible here — an embedded console has no hidden position of its own; the
-            whole section unmounts when the operator leaves this tab. */}
-        <ConsolePane
-          target={target}
-          visible
-          {...(socketFactory ? { socketFactory } : {})}
-          {...(sessionsClient ? { sessionsClient } : {})}
-          onError={(reason) =>
-            setNotice(
-              reason === 'too-many-terminals'
-                ? 'The fleet already has the maximum number of terminals open. Close one — here or in the Terminal — and try again.'
-                : null,
-            )
-          }
-          onExit={stop}
-          registerControl={setControl}
-          testIdSuffix="-agent"
-          ariaLabel={`Live session as ${agentId}`}
-        />
-      </>
-    );
-  }
-
-  return (
-    <section className="entity-block agent-console" aria-label="Live session for this agent">
-      <h3 className="entity-block__title">Session</h3>
-      {/* The cap refusal renders HERE, in the console the operator opened, and never as a navigation to
-          somewhere else: they share the daemon's one 8-terminal cap with the Terminal view's tabs. */}
-      {notice ? (
-        <p className="agent-console__notice" role="status" data-testid="agent-console-notice">
-          {notice}
-        </p>
-      ) : null}
-      {body}
-    </section>
-  );
-}
-
 export function AgentDetail({
   agent,
   index,
@@ -315,30 +156,14 @@ export function AgentDetail({
   routing,
   detail,
   detailState,
-  socketFactory,
-  sessionsClient,
-  sessionRunsClient,
   activeSectionId,
   onSectionChange,
+  onRunAgent,
   onNavigate,
   onBack,
   backLabel,
 }: AgentDetailProps): React.JSX.Element {
-  // Whether the operator has asked for a session on THIS agent. It lives here, not in the section body,
-  // because the body unmounts on every tab switch — and the request must survive that, exactly as the
-  // shell it started does.
-  const [consoleStarted, setConsoleStarted] = useState(false);
-  const [expandedSessionRef, setExpandedSessionRef] = useState<string | null>(null);
-  // This agent's own session runs — the record of every terminal session primed as it. A DIFFERENT kind
-  // of record from the governed runs below, and labelled as one on every row.
-  const sessionRuns = useSessionRuns(
-    { kind: 'agent', ref: agent.id },
-    { ...(sessionRunsClient ? { client: sessionRunsClient } : {}) },
-  );
-  // The section is mirrored here so "Run agent" can SHOW the tab it just started a session on. When the
-  // nav stack supplies `activeSectionId` it still wins (back-navigation must restore the operator's tab);
-  // the local copy only carries the uncontrolled case, which is otherwise a button that does nothing
-  // visible.
+  // The nav stack's controlled section wins; the local copy supports an uncontrolled detail view.
   const [localSection, setLocalSection] = useState<string | undefined>(undefined);
   const selectedSection = activeSectionId ?? localSection;
   const selectSection = (id: string): void => {
@@ -668,18 +493,6 @@ export function AgentDetail({
    */
   const runsSection = (
     <>
-      <AgentConsole
-        agentId={agent.id}
-        declared={agent.declared}
-        started={consoleStarted}
-        onStop={() => {
-          setConsoleStarted(false);
-          // The session just became a PAST session; re-read so the list below stops calling it live.
-          sessionRuns.refresh();
-        }}
-        {...(socketFactory ? { socketFactory } : {})}
-        {...(sessionsClient ? { sessionsClient } : {})}
-      />
       <section className="entity-block" aria-label="Runs this agent is working">
         <h3 className="entity-block__title">Runs</h3>
       {runs === undefined ? (
@@ -718,43 +531,6 @@ export function AgentDetail({
       </p>
       </section>
 
-      {/*
-        * Past CHAT SESSIONS. Kept as its own list rather than merged into the governed runs above,
-        * because on an agent the two answer different questions — "what governed work is this agent
-        * doing" and "what have I talked to it about" — and the console for the live one is right at the
-        * top of this tab. Every row still says which kind of record it is.
-        */}
-      <section className="entity-block" aria-label="Past sessions with this agent">
-        <h3 className="entity-block__title">Past sessions</h3>
-        {sessionRuns.error ? (
-          <p className="entity-note" role="status" data-testid="agent-session-runs-error">{sessionRuns.error}</p>
-        ) : null}
-        {sessionRuns.runs === undefined ? (
-          <p className="entity-note" data-testid="agent-session-runs-unloaded">
-            Not loaded — reading past sessions needs an unlocked session.
-          </p>
-        ) : sessionRuns.runs.length === 0 ? (
-          <p className="entity-note" data-testid="agent-session-runs-empty">
-            Nobody has opened a session with this agent yet.
-          </p>
-        ) : (
-          <ol className="entity-list" data-testid="agent-session-runs">
-            {sessionRuns.runs.map((run) => (
-              <li key={run.sessionRunRef}>
-                <SessionRunRow
-                  run={run}
-                  expanded={expandedSessionRef === run.sessionRunRef}
-                  onToggle={() => setExpandedSessionRef((current) =>
-                    current === run.sessionRunRef ? null : run.sessionRunRef)}
-                  onArchive={() => void sessionRuns.archive(run.sessionRunRef)}
-                  archiving={sessionRuns.archivingRef === run.sessionRunRef}
-                  {...(sessionRunsClient ? { client: sessionRunsClient } : {})}
-                />
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
     </>
   );
 
@@ -796,8 +572,6 @@ export function AgentDetail({
       onNavigate={onNavigate}
       onBack={onBack}
       backLabel={backLabel}
-      // "Run agent" now lands IN THIS PAGE: it asks the Runs tab for a session and shows the tab, instead
-      // of navigating the operator to the Terminal destination and leaving the agent they were reading.
       actions={agent.declared ? (
         <div>
           <button
@@ -805,13 +579,13 @@ export function AgentDetail({
             className="mc-btn mc-btn--primary"
             data-testid="agent-run"
             onClick={() => {
-              setConsoleStarted(true);
+              onRunAgent?.({ id: agent.id });
               selectSection('runs');
             }}
           >
             Run agent
           </button>
-          <p className="entity-note">Opens a session you can type into, set up as this agent, under Runs.</p>
+          <p className="entity-note">Starts governed work for this agent under Runs.</p>
         </div>
       ) : undefined}
     />

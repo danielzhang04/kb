@@ -37,15 +37,8 @@ import { registerControlRoutes } from '../control/routes.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
 import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
-import { createPtyHost } from '../pty/host.ts';
-import type { PtyHost } from '../pty/host.ts';
-import { createPersistentSessionRegistry } from '../pty/persistentSessions.ts';
-import { createSessionRunStore } from '../pty/sessionRuns.ts';
-import { createTranscriptRecorder } from '../pty/transcripts.ts';
 import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
-import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
-import type { PreambleRunner } from '../write/preambleGate.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -71,39 +64,6 @@ export interface SurfaceActivationSeam {
 
 const QUEUE_BRIDGE_INTERVAL_MS = 15_000;
 
-/** Stable, detail-free refusal for manual Terminal PTY opens at the host boundary. */
-export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
-
-/**
- * Put the fleet preamble on the shared host itself, not only on one HTTP route. The browser route may
- * deliberately check twice; the second check closes the gap for session-registry callers that
- * reach `PtyHost.open` without traversing that route. Construction stays inert: no preamble runs and no
- * shell opens until `open` is actually invoked.
- */
-function fleetGatedPtyHost(host: PtyHost, repoRoot: string, runPreamble: PreambleRunner): PtyHost {
-  return {
-    open(request) {
-      try {
-        if (!assertFleetRunnable(repoRoot, runPreamble).ok) throw new Error(PTY_OPEN_FLEET_FROZEN);
-      } catch {
-        // Preamble stdout/stderr can name environment or credential problems. Never surface those details
-        // through a PTY spawn error, audit row, or WebSocket close reason.
-        throw new Error(PTY_OPEN_FLEET_FROZEN);
-      }
-      return host.open(request);
-    },
-    stop(sessionId) {
-      return host.stop(sessionId);
-    },
-    stopAll() {
-      host.stopAll();
-    },
-    sessions() {
-      return host.sessions();
-    },
-  };
-}
-
 /** Build a full {@link SurfaceContext}, filling every field not supplied in `overrides` with its real
  *  default. `sessionConfig`'s secret is resolved exactly once (see module doc). */
 export function makeSurfaceContext(
@@ -127,21 +87,6 @@ export function makeSurfaceContext(
   const build = activation.build ?? buildActivatedExecution;
   const buildQueueBridge = activation.createQueueBridge ?? createQueueBridge;
   const dispatchQueueCard = activation.dispatchClaimedCard ?? dispatchClaimedCard;
-  // The daemon's PTY stack belongs exclusively to `/api/pty` browser terminals. Constructing a host
-  // spawns nothing; only `open` does.
-  const underlyingPtyHost = overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' });
-  const ptyHost = fleetGatedPtyHost(
-    underlyingPtyHost,
-    repoRoot,
-    overrides.runPreamble ?? defaultPreambleRunner,
-  );
-  const ptySessions = overrides.ptySessions ?? createPersistentSessionRegistry();
-  // Session runs + transcripts (leg 2). Construction is INERT: the store's JSON document is created
-  // lazily and the recorder only touches disk once a session is actually taped, so building a context
-  // — which every server test does — writes nothing. The `live` → `abandoned` boot sweep runs at ROUTE
-  // REGISTRATION instead, the one moment that happens exactly once per daemon boot.
-  const ptySessionRuns = overrides.ptySessionRuns ?? createSessionRunStore(stateRoot);
-  const ptyTranscripts = overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot });
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   let offAttemptIo: (() => void) | null = null;
   let stopQueueBridge: (() => void) | undefined;
@@ -179,10 +124,6 @@ export function makeSurfaceContext(
         protector: createProviderIdProtector(sessionConfig.secret),
       }),
     controlStore,
-    ptyHost,
-    ptySessions,
-    ptySessionRuns,
-    ptyTranscripts,
     // Executor fields start UNBOUND: with the latch locked (the boot posture) nothing is constructed, so
     // every control route observes exactly the pre-activation refusals. The latch below rebinds them in
     // place on unlock and clears them on lock.

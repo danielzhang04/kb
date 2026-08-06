@@ -13,9 +13,6 @@ import { wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerStatic } from './static/routes.ts';
-import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
-import { registerSessionRunRoutes } from './pty/sessionRunRoutes.ts';
-import { originPlugin } from './security/origin.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 import { startStrandedArchiver } from './write/strandedArchiver.ts';
@@ -100,11 +97,8 @@ export function buildApp(): FastifyInstance {
   registerAgents(app); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
   registerPanels(app); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
   const bus = registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
-  // ONE surface context per process: its `sessionConfig` (HMAC secret) is resolved exactly once here and
-  // SHARED with the PTY route below. Without this, the write surface and the PTY route each called
-  // `resolveSessionSecret()` independently; with `DASHBOARD_SESSION_SECRET` unset that yields two DIFFERENT
-  // random secrets, so a token minted at login (write-surface secret) can never verify at /api/pty (its own
-  // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
+  // ONE surface context per process: its `sessionConfig` (HMAC secret) is resolved exactly once so a token
+  // minted by the write surface remains valid for every governed route in this daemon.
   const surfaceCtx = makeSurfaceContext({ hubBus: bus });
   const controlStoreWatcher = wireControlStoreTick(bus, surfaceCtx.stateRoot);
   app.addHook('onClose', async () => {
@@ -120,44 +114,6 @@ export function buildApp(): FastifyInstance {
   // (POST /api/workflows/:id/launch) in its OWN origin/rate-limit/session child scope. Shares surfaceCtx
   // so the launch route mints/verifies against the same session secret as the write surface.
   registerWorkflows(app, surfaceCtx);
-  // D3.1 temporary in-process PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
-  // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request shaped
-  // and fits a long-lived WS upgrade poorly. The route runs the fleet preamble BEFORE session validation,
-  // enforces the max-concurrent cap, and writes exactly one audit row per allowed-origin attempt. Its child
-  // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
-  // cross-user host/Factor-C path is a future hardening milestone, not an active control.
-  {
-    // ONE pty host + session registry for the whole daemon, resolved on the surface context. Manual
-    // Terminal sessions persist across browser reconnects without coupling them to worker execution.
-    // N4 (fail-closed host, 2026-08-03): the host is passed UNCONDITIONALLY. `makeSurfaceContext` always
-    // builds the fleet-gated host, so `surfaceCtx.ptyHost` is present in production; if it were ever absent,
-    // `makePtyRouteContext` THROWS (no ungated fallback) and the daemon refuses to start — the old
-    // conditional spread would instead have let the route fabricate a raw, ungated shell host.
-    const ptyCtx = makePtyRouteContext({
-      sessionConfig: surfaceCtx.sessionConfig,
-      ptyHost: surfaceCtx.ptyHost,
-      ...(surfaceCtx.ptySessions ? { registry: surfaceCtx.ptySessions } : {}),
-      // Leg 2: the daemon records the entity-primed sessions it spawns (agent / workflow), and tapes
-      // their output. Both are owned by the surface context so there is exactly one of each per process.
-      ...(surfaceCtx.ptySessionRuns ? { sessionRuns: surfaceCtx.ptySessionRuns } : {}),
-      ...(surfaceCtx.ptyTranscripts ? { transcripts: surfaceCtx.ptyTranscripts } : {}),
-    });
-    app.register(async (scope) => {
-      await registerPtyRoute(scope, ptyCtx);
-      // The session-run REST surface sits BESIDE /api/pty inside the same origin-guarded scope, and is
-      // registered here rather than from the pty route so neither module has to import the other. Its
-      // registration also runs the boot sweep that corrects any `live` record left by the last process.
-      if (surfaceCtx.ptySessionRuns) {
-        await registerSessionRunRoutes(scope, {
-          repoRoot: ptyCtx.repoRoot,
-          sessionConfig: ptyCtx.sessionConfig,
-          sessionRuns: surfaceCtx.ptySessionRuns,
-          ...(surfaceCtx.ptyTranscripts ? { transcripts: surfaceCtx.ptyTranscripts } : {}),
-        });
-      }
-      originPlugin(scope, { allowedOrigins: ptyCtx.allowedOrigins ?? [] });
-    });
-  }
   // G1 — daemon-side merge-gate reconciler (inbox-gates). Wired here but only ticks AFTER Daniel's
   // deliberate daemon restart (nothing in this wave restarts the live daemon). It reads the canonical ops
   // worktree, asks gh (ambient auth) whether each open `approve:merge:<pr>` gate's PR is merged/closed,

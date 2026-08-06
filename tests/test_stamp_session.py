@@ -3,7 +3,7 @@ Plane-B (session transcript) join-key CLI shim.
 
 These invoke the REAL CLI via subprocess (sys.executable), not a direct
 function import, because the shim's job is to be a stable command-line
-surface scripts/agent_runner.ps1 shells out to -- exercising it any other
+surface scripts/agent_runner.py's ``execute_card()`` shells out to -- exercising it any other
 way would not prove the CLI contract holds.
 """
 import subprocess

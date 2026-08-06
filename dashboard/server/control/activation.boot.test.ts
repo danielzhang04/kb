@@ -2,7 +2,7 @@
  * T6 — the gated real-daemon boot smoke.
  *
  * Vitest-green is NOT sufficient to call Wave A done: the daemon boot path has broken twice while the unit
- * suite stayed green. This smoke boots the REAL Fastify app (the same `buildApp` the daemon and pm2 entry
+ * suite stayed green. This smoke boots the REAL Fastify app (the same `buildApp` the daemon and service entry
  * use) and asserts:
  *   - GATE OFF (production default): the daemon listens and is byte-for-byte inert — no broker, no engine,
  *     no `runAutomatic`; and the Wave-A bridge/observer modules, which are wired NOWHERE in the boot path,

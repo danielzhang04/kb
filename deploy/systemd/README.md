@@ -7,7 +7,8 @@ the canonical ops worktree at `~/kb-dashboard-ops`, and secrets/configuration in
 `DASHBOARD_REPO_ROOT` / `DASHBOARD_DURABLE_REPO_ROOT` paths; do not put them in
 unit files.
 
-The service runs the same daemon entry PM2 used (`dashboard/server/pm2Entry.ts`).
+The service starts the dashboard daemon through its dedicated entry
+(`dashboard/server/serviceEntry.ts`).
 Build the SPA before enabling it:
 
 ```sh

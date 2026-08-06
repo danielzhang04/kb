@@ -1,7 +1,7 @@
 """Functional test for scripts/queue_bridge_select.py — the dashboard-engine bridge selector.
 
 Proves the selector is the EXACT inverse (on the execution-controller axis) of
-agent_runner.ps1's owner scan: it claims a card iff execution-controller == "dashboard"
+agent_runner.py's ``owned_cards()`` owner scan: it claims a card iff execution-controller == "dashboard"
 AND owner == subject AND state in (inbox, working). Absent-controller cards — which the
 legacy runner owns — are excluded, and vice versa, so the two predicates partition the
 card space with no overlap and no gap (the double-execution guard).
@@ -62,7 +62,7 @@ def test_absent_controller_belongs_to_the_legacy_runner_not_the_bridge(tmp_path)
 def test_predicate_partitions_with_no_overlap_or_gap(tmp_path):
     # For an owner/state-matched card, exactly one of {bridge, legacy} claims it, for every
     # controller value — this is the guarantee the double-execution guard rests on.
-    def legacy_claims(meta, agent):  # mirror of agent_runner.ps1 step 6
+    def legacy_claims(meta, agent):  # compatibility mirror of agent_runner.py's owned_cards()
         return (meta.get("execution-controller") != "dashboard"
                 and meta.get("owner") == agent
                 and meta.get("state") in ("inbox", "working"))

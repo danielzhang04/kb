@@ -12,11 +12,12 @@
  * then maps the final `result` event to a `WorkerExecutionResult`.
  *
  * Invariants held unchanged:
- *   - Billing/preamble: the child env is built by the SAME allowlist+denylist the PTY host established
- *     (`pty/host.ts`), so `ANTHROPIC_API_KEY` and every credential-named var are stripped. Subscription
+ *   - Billing/preamble: the child env is built by the shared allowlist+denylist, so `ANTHROPIC_API_KEY`
+ *     and every credential-named var are stripped. Subscription
  *     auth flows through the on-disk credential store reached via the allowlisted HOME/USERPROFILE.
  *   - Prompt discipline: the work order is authoritative; dependency results / operator feedback appear
- *     only inside an explicit INERT CONTEXT BOUNDARY (mirroring scripts/agent_runner.ps1:330-343); card
+ *     only inside an explicit INERT CONTEXT BOUNDARY (mirroring `scripts/agent_runner.py`'s
+ *     `prepare_card()` boundary); card
  *     Evidence is never a parameter and can never enter the prompt.
  *
  * Strip-only floor (Node runs this `.ts` directly under --experimental-strip-types): no TS enums,
@@ -24,7 +25,7 @@
  */
 import { spawn as spawnChildProcess } from 'node:child_process';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
-import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from '../pty/host.ts';
+import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from './childEnv.ts';
 import type { AttemptIoSink } from './attemptIo.ts';
 import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles } from './environment.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';
@@ -257,7 +258,7 @@ function scopeLines(label: string, paths: readonly string[]): string {
 /**
  * Build the worker prompt. The work order is authoritative and leads. A read/write scope statement
  * always follows. Dependency results and operator feedback — and ONLY those — are wrapped in an
- * explicit INERT CONTEXT BOUNDARY (mirroring agent_runner.ps1:330-343); the boundary is emitted only
+ * explicit INERT CONTEXT BOUNDARY (mirroring `scripts/agent_runner.py`'s `prepare_card()` boundary); the boundary is emitted only
  * when such data exists. Card Evidence is not a parameter, so it can never enter the prompt.
  */
 export function buildWorkerPrompt(input: WorkerPromptInput): string {

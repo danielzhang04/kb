@@ -30,8 +30,9 @@ function pyReturning(rows: unknown): { runPy: (r: string, c: string, a: string) 
 
 // --- bridgeClaimsCard: the owner x execution-controller x state matrix (double-execution guard) --------
 
-describe('bridgeClaimsCard — inverse of agent_runner.ps1 step 6', () => {
-  // Legacy-runner predicate, transcribed verbatim from scripts/agent_runner.ps1 step 6, to prove the
+describe('bridgeClaimsCard — inverse of agent_runner.py owned_cards()', () => {
+  // Historical predicate, transcribed from the retired PowerShell runner and retained as
+  // the compatibility expectation for agent_runner.py's owned_cards(), to prove the
   // two sides partition the space with no overlap and no gap.
   const legacyClaims = (meta: Record<string, unknown>, agent: string): boolean =>
     meta['execution-controller'] !== 'dashboard'

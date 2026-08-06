@@ -311,7 +311,7 @@ def _emit_unknown_tier_wake(repo_root: Path, project: str, cadence: dict) -> Pat
 #   * a cadence that pins `agent:` whose registered runtime disagrees with the
 #     resolved runtime -> wake-me:owner-runtime-mismatch, and skip -- rather than
 #     mis-owning the card to a runner that would then fail its own pre-exec
-#     runtime assertion (agent_runner.ps1 / scripts/assert_runtime.py).
+#     runtime assertion (agent_runner.py's execute_card() / scripts/assert_runtime.py).
 # Everything here is additive to run(): with no policy file committed yet (gate
 # R1.0), routing.resolve returns the safe default and default_worker_for returns
 # None, so owner selection collapses to the pre-R1 behaviour (dispatcher/pinned
@@ -380,7 +380,7 @@ def _emit_owner_runtime_mismatch_wake(repo_root: Path, project: str, cadence: di
 # A card already at the TOP tier (or an off-ladder single-tier runtime like codex)
 # is retried at the SAME tier -- no bump -- but the attempt still counts against
 # the cap. This is a library entry point: wiring it into the worker runner's
-# failure path (agent_runner.ps1) is a separate, out-of-scope change.
+# failure path (agent_runner.py's execute_card()) is a separate, out-of-scope change.
 RETRY_CAP = 2
 DEAD_LETTER_STATE = "rejected"
 DEAD_LETTER_ACTION = "wake-me:dead-letter"

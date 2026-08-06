@@ -1,4 +1,4 @@
-"""Queue -> dashboard-engine bridge selector: the exact inverse of agent_runner.ps1's owner scan.
+"""Queue -> dashboard-engine bridge selector: the exact inverse of agent_runner.py's owned_cards().
 
 A card belongs to the governed dashboard executor **iff** all three hold:
 
@@ -7,15 +7,15 @@ A card belongs to the governed dashboard executor **iff** all three hold:
   * ``owner`` equals the dashboard executor subject, and
   * ``state`` is ``inbox`` or ``working``.
 
-This is the complement, on the ``execution-controller`` axis, of the legacy runner's
-filter in ``scripts/agent_runner.ps1`` (step 6), which claims a card iff
+This is the complement, on the ``execution-controller`` axis, of the legacy-compatible
+runner's filter in ``scripts/agent_runner.py`` (``owned_cards()``), which claims a card iff
 ``execution-controller != "dashboard" and owner == agent and state in (inbox, working)``.
 The two predicates PARTITION the owner/state-matched card space with no overlap and no
 gap: ``!= "dashboard"`` -> legacy runner, ``== "dashboard"`` -> this bridge. That single
 frontmatter flag is the double-execution guard; keeping this selector's controller test
 an EXACT string equality (never a truthiness or "not legacy" test) is what preserves it.
 
-Parse semantics are identical to the legacy runner's: both enumerate ``queue/inbox`` and
+Parse semantics are identical to the legacy-compatible runner's: both enumerate ``queue/inbox`` and
 ``queue/working``, parse each ``*.md`` with ``cards.parse`` (skipping unparseable files),
 and filter on the parsed ``meta`` -- so a ``blocked`` card physically sitting in the
 ``inbox/`` directory is excluded on both sides (its ``state`` meta is ``blocked``).
@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, "scripts")
-import cards  # noqa: E402  (path insert must precede the fleet import, mirroring agent_runner.ps1)
+import cards  # noqa: E402  (path insert must precede the fleet import, mirroring agent_runner.py)
 
 DASHBOARD_CONTROLLER = "dashboard"
 CLAIMABLE_STATES = ("inbox", "working")

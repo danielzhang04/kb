@@ -12,7 +12,7 @@ import {
   type ClaudeSpawnRequest,
   type ClaudeToolPolicy,
 } from './claudeWorkerAdapter.ts';
-import { DENIED_ENV_FRAGMENTS } from '../pty/host.ts';
+import { DENIED_ENV_FRAGMENTS } from './childEnv.ts';
 import type { ExecutionProfile } from './policy.ts';
 
 const WORKER_PROFILE: ExecutionProfile = {

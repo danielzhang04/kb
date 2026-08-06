@@ -11,7 +11,7 @@
  * ~220px) and every §E/§F visual rule remain authoritative.
  *
  *   ── (divider, below the [+ New] menu) ──
- *   Home · Approvals(n) · Activity · Atlas(live — Atlas V1) · Terminal(live — D3.2)
+ *   Home · Approvals(n) · Activity · Atlas(live — Atlas V1)
  *   ── (divider) ──
  *   Workflows · Agents · Tasks · Projects · Files
  *   ── (divider) ──
@@ -22,7 +22,7 @@
  *
  * Live day-one views: Home, Approvals, Activity, Workflows, Files, Connectors. Agents/Tasks/Projects/
  * Ledgers are reachable nav items that land on a U3 placeholder (the nav skeleton is real; the view
- * lands next wave). Terminal is LIVE as of D3.2 (the PTY pane); Atlas is LIVE as of Atlas V1 (the voice
+ * lands next wave). Atlas is LIVE as of Atlas V1 (the voice
  * worker mirror — big orb + live transcript + activity history), amending the locked entity-first IA
  * per Daniel's 2026-07-20 call (the old greyed "soon" stub is promoted, not moved).
  *
@@ -41,7 +41,6 @@ export type DestinationId =
   | 'approvals'
   | 'activity'
   | 'atlas'
-  | 'terminal'
   | 'workflows'
   | 'agents'
   | 'tasks'
@@ -84,7 +83,6 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'approvals', label: 'Inbox', icon: '✓', status: 'live' },
       { id: 'activity', label: 'Activity', icon: '≡', status: 'live' },
       { id: 'atlas', label: 'Atlas', icon: '◈', status: 'live' },
-      { id: 'terminal', label: 'Terminal', icon: '⌨', status: 'live' },
     ],
   },
   {

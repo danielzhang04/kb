@@ -211,14 +211,12 @@ describe('Agents view', () => {
       expect(dw.textContent).toContain('queue-addressable');
     });
 
-    it('shows last activity as an age and offers a one-click Run agent per row', () => {
-      const onRunAgent = vi.fn();
+    it('shows last activity as an age', () => {
       render(
         unlocked(
           <Agents
             roster={[entry({ id: 'composer-scribe', declared: true, ledger: { dispatches: 0, steps: 0, days: 1, lastActive: '2026-07-18' } })]}
             routing={ROUTING as never}
-            onRunAgent={onRunAgent}
             now={Date.parse('2026-07-20T00:00:00Z')}
           />,
         ),
@@ -227,9 +225,6 @@ describe('Agents view', () => {
       // A raw date is a record; an age is a status.
       expect(within(row).getByText('2d ago')).toBeTruthy();
       expect(within(row).queryByText('2026-07-18')).toBeNull();
-
-      fireEvent.click(within(row).getByTestId('agent-run-composer-scribe'));
-      expect(onRunAgent).toHaveBeenCalledWith({ id: 'composer-scribe' });
     });
 
     it('deep-links the task an agent is working from its row', () => {

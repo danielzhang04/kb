@@ -12,7 +12,7 @@ Environment=NODE_ENV=production
 Environment=DASHBOARD_PORT=5317
 Environment=DASHBOARD_RP_ORIGIN=http://localhost:5317
 Environment=DASHBOARD_SESSION_TTL_MS=28800000
-ExecStart=/usr/bin/env node dashboard/server/pm2Entry.ts
+ExecStart=/usr/bin/env node dashboard/server/serviceEntry.ts
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

@@ -34,7 +34,6 @@ describe('nav/config', () => {
       'approvals',
       'activity',
       'atlas',
-      'terminal',
     ]);
     expect(NAV_SECTIONS[1].items.map((d) => d.id)).toEqual([
       'workflows',
@@ -120,8 +119,6 @@ describe('nav/config', () => {
     ] as const) {
       expect(status(id)).toBe('live');
     }
-    // Terminal is LIVE as of D3.2 (the PTY pane).
-    expect(status('terminal')).toBe('live');
     // Atlas is LIVE as of Atlas V1 — the old greyed "soon" stub is promoted to the full voice-worker view.
     expect(status('atlas')).toBe('live');
   });

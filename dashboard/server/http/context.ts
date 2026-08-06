@@ -37,10 +37,6 @@ import type { RunControlTransactions } from '../control/runTransactions.ts';
 import type { ExecutionLatch } from '../control/activation.ts';
 import type { PaidActionExecutor } from '../control/paidActionWiring.ts';
 import type { SpendGrant } from '../control/spendGrant.ts';
-import type { PtyHost } from '../pty/host.ts';
-import type { PersistentSessionRegistry } from '../pty/persistentSessions.ts';
-import type { SessionRunStore } from '../pty/sessionRuns.ts';
-import type { TranscriptRecorder } from '../pty/transcripts.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import type { activateManagedRootCards } from '../write/workflowRun.ts';
 import type { EventBus } from '../hub/bus.ts';
@@ -121,17 +117,6 @@ export interface SurfaceContext {
   /** The durable spend-grant resolver the paid-action route validates a worker's bearer token against.
    *  Bound with {@link paidActionService}; the raw token never leaves the worker, only its hash is stored. */
   spendGrantStore?: { resolve(token: string, now?: Date): SpendGrant | null };
-  /** The daemon's node-pty host and persistent session registry, owned by the manual Terminal view. */
-  ptyHost?: PtyHost;
-  ptySessions?: PersistentSessionRegistry;
-  /**
-   * The durable record of entity-primed terminal sessions, and their transcripts. Deliberately NOT
-   * control-plane objects: a session run has no proposal hash, no executor, and no closed-tab exit (see
-   * `server/pty/sessionRuns.ts`). Both are inert to construct — no file is touched until a session is
-   * actually recorded.
-   */
-  ptySessionRuns?: SessionRunStore;
-  ptyTranscripts?: TranscriptRecorder;
   /** Optional server-owned automatic executor; never supplied by the browser. */
   runAutomatic?: (input: ExecuteRunInput) => Promise<ExecutionOutcome>;
   /** Optional executor-owned cancellation boundary for Manager and Worker processes. */

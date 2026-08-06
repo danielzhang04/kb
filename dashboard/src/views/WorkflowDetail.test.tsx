@@ -126,20 +126,21 @@ describe('reaching a workflow detail and coming back', () => {
  */
 describe('one Run workflow button', () => {
   it('offers exactly one primary action, and it lands IN THIS PAGE on the Runs tab', () => {
+    const onLaunch = vi.fn();
     render(<WorkflowDetail
       entry={def({ ref: 'kb~video.md', parameters: ['channel', 'slug'] })}
       compiled={null}
-      onLaunch={vi.fn()}
+      onLaunch={onLaunch}
     />);
 
     const actions = screen.getByTestId('entity-detail-workflow').querySelector('.entity-detail__actions');
     const buttons = actions?.querySelectorAll('button') ?? [];
     expect([...buttons].map((button) => button.textContent)).toEqual(['Run workflow']);
 
-    // Leg 2: no navigation away. The click selects this detail's own Runs tab, where the session opens.
+    // Leg 2: no navigation away. The click starts a governed run on this detail's own Runs tab.
     fireEvent.click(screen.getByRole('button', { name: 'Run workflow' }));
     expect(screen.getByTestId('entity-tab-runs').getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByLabelText('Live session for this workflow')).toBeTruthy();
+    expect(onLaunch).toHaveBeenCalledTimes(1);
   });
 
   it('moves the inputs and the direct Launch into the technical fold, still working', () => {

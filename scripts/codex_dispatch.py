@@ -84,7 +84,7 @@ def update_marker(path: Path | None, **fields) -> None:
 
 
 def billing_guard(env: dict, login_check: bool = True) -> list[str]:
-    """Same law as agent_runner.ps1 step 5: subscription only, never metered."""
+    """Same law as agent_runner.py's main() billing guard: subscription only, never metered."""
     problems = [f"{k} is set in the environment — metered billing risk; unset it"
                 for k in ("OPENAI_API_KEY", "CODEX_API_KEY") if env.get(k)]
     if login_check and not problems:

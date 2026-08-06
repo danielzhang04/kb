@@ -42,7 +42,6 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Inbox',
       'Activity',
       'Atlas',
-      'Terminal',
       'Workflows',
       'Agents',
       'Tasks',
@@ -236,37 +235,6 @@ describe('App shell — entity-first sidebar navigation', () => {
     // "built in U3" placeholder.
     const view = screen.getByLabelText('Atlas view');
     expect(view.textContent ?? '').not.toMatch(/built in U3/i);
-  });
-
-  it('routes the live Terminal destination (D3.2 PTY pane) to its real view', () => {
-    render(<App />);
-    const btn = screen.getByRole('button', { name: /^Terminal/ }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
-    expect(btn.getAttribute('aria-current')).toBe('page');
-    // The real Terminal view mounts (session-gated: it shows the calm locked line, not the U3 placeholder).
-    const view = screen.getByLabelText('Terminal view');
-    expect(view.textContent ?? '').not.toMatch(/built in U3/i);
-    expect(within(view).getByTestId('terminal-locked')).toBeTruthy();
-  });
-
-  it('keeps the Terminal workspace mounted across navigation', () => {
-    render(<App />);
-    const terminalButton = screen.getByRole('button', { name: /^Terminal/ });
-    fireEvent.click(terminalButton);
-
-    const surface = screen.getByTestId('persistent-terminal-surface') as HTMLDivElement;
-    const terminal = screen.getByLabelText('Terminal view');
-    expect(surface.hidden).toBe(false);
-
-    // Destination navigation hides the same mounted node; returning reveals it rather than remounting it.
-    fireEvent.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(surface.hidden).toBe(true);
-    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
-    fireEvent.click(terminalButton);
-    expect(surface.hidden).toBe(false);
-    expect(screen.getByLabelText('Terminal view')).toBe(terminal);
-
   });
 
   it('the sidebar-wide collapse toggle switches the shell into rail mode and back', () => {

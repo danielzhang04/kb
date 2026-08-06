@@ -1,5 +1,7 @@
 # kb Mission Control — Design Brief
 
+On 2026-08-06, Daniel retired the dashboard's embedded interactive PTY terminal rather than porting it. The sole dashboard interaction surface is now the governed-run model: RunDetail graph, AgentWorkPanel stream, and typed gate responses; interactive shells are reached over SSH outside the dashboard.
+
 Desktop-only, single-operator fleet control plane. Aesthetic: **warm Claude-desktop dark**
 (warm charcoal base + terracotta accent), sleek/calm/refined, NOT cold-blue terminal, NOT
 over-engineered. Scalable IA with room to grow (Atlas, Sentinel, more agents/workflows/skills).

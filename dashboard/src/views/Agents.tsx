@@ -4,9 +4,8 @@
  * ── What a row says (UX overhaul §4) ──
  *
  * Five things an operator actually scans for: WHO the agent is, its role, the model it will run on, what
- * it is doing right now (a deep link into that task), and when it was last active — plus the one action
- * that matters, "Run agent", which lands the operator in a live terminal session already primed as that
- * agent. Declaration/runner/provenance chips are terms of art and have moved into the single technical
+ * it is doing right now (a deep link into that task), and when it was last active. Declaration/runner/
+ * provenance chips are terms of art and have moved into the single technical
  * fold on the agent's detail; a roster is for finding an agent, not for auditing its metadata.
  *
  * ── Where the data comes from ──
@@ -243,14 +242,12 @@ function AgentRosterTable({
   rows,
   onOpenAgent,
   onNavigate,
-  onRunAgent,
   renderRouting,
   now,
 }: {
   rows: AgentRow[];
   onOpenAgent: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
-  onRunAgent?: (agent: { id: string }) => void;
   renderRouting: (agent: AgentRow) => React.JSX.Element;
   now: number;
 }): React.JSX.Element {
@@ -298,18 +295,6 @@ function AgentRosterTable({
               <td className="mc-mono v-agents__last-active">
                 {agent.lastActive ? relativeAge(agent.lastActive, now) : <span className="v-agents__idle">never</span>}
               </td>
-              <td>
-                {onRunAgent ? (
-                  <button
-                    type="button"
-                    className="mc-btn v-agents__run"
-                    data-testid={`agent-run-${agent.id}`}
-                    onClick={() => onRunAgent({ id: agent.id })}
-                  >
-                    Run agent
-                  </button>
-                ) : null}
-              </td>
             </tr>
           ))}
         </tbody>
@@ -348,7 +333,6 @@ export function Agents({
   activeSectionId,
   onSectionChange,
   onNavigate,
-  onRunAgent,
   agentRuns,
   now = Date.now(),
 }: {
@@ -366,11 +350,6 @@ export function Agents({
   activeSectionId?: string;
   onSectionChange?: (id: string) => void;
   onNavigate?: (target: NavTarget) => void;
-  /**
-   * Start an interactive session as this agent — the caller navigates to the terminal and opens a shell
-   * running claude primed with the agent's own file. One click from a roster row or the detail header.
-   */
-  onRunAgent?: (agent: { id: string }) => void;
   /** Runs joined to this agent by the caller. `undefined` = not loaded, which the detail says out loud. */
   agentRuns?: RunMetadataDto[];
   /** Clock for the relative "last active" column. Injected so the rendering is deterministic in tests. */
@@ -631,9 +610,6 @@ export function Agents({
           routing={routingControlFor(openAgentRow)}
           detail={detail}
           detailState={detailState === 'idle' ? undefined : detailState}
-          // No `onRunAgent` here: the detail runs its agent in its OWN embedded console now, so this
-          // surface never routes that click to the Terminal destination. The ROSTER row action below
-          // still does — a row has no console of its own to land in.
           activeSectionId={activeSectionId}
           onSectionChange={onSectionChange}
           onNavigate={onNavigate}
@@ -662,7 +638,6 @@ export function Agents({
                 rows={declaredRows}
                 onOpenAgent={openAgent}
                 onNavigate={onNavigate}
-                onRunAgent={onRunAgent}
                 renderRouting={routingControlFor}
                 now={now}
               />
