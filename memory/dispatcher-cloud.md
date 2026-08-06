@@ -351,3 +351,19 @@
 - Halted card 6a6bc3dd STILL in working/ (now 5 days). Record-only, resolved by boss (PR #103);
   wants a desk sweep to done — left it (archival is outside the nightly carve-out).
 - Push path: recorded in the run summary.
+
+## 2026-08-06 nightly run (dispatcher-cloud, opus-4-8)
+- Clean run: preamble PASS, pyyaml importable, sync_skills --check clean (exit 0), dashboards
+  regenerated. $0 API-billed today (2 codex-dispatch cards 6a74076b/6a742062, subscription
+  gpt-5.6-sol/terra usd 0.0). Trailing-24h real spend was 08-05's $3.94 gemini-3-pro-image
+  (bricks-fresh) — under the $30 cap.
+- step 2b drift UNCHANGED from 08-04 again: sync_daemon_dirs --check (origin/main copy,
+  refs-fallback; script still ABSENT on ops) = byte-identical 10-file set card 6a718533 records.
+  Applied the dedupe rule: NO new wake-me card; surfaced in dashboard Anomalies + summary. Standing
+  cards 6a718533/6a6c3d8e/6a605ebb fully cover it.
+- dispatch.py emitted nightly-review card 6a74262f-b725d54c; self-executed (owner dispatcher-cloud):
+  ->working, ran work order, wrote Result, ->done. Note: dispatcher left the card in queue/inbox/
+  dir (state field carried it), unlike 08-05 which landed in working/ dir — counted by directory.
+- Halted card 6a6bc3dd STILL in working/ (now 7 days). Record-only, resolved by boss (PR #103);
+  wants a desk sweep to done — left it (archival outside the nightly carve-out).
+- Push path: recorded in the run summary.

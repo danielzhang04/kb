@@ -1,5 +1,5 @@
 # Executive Dashboard
-_Generated: 2026-08-05 06:21 UTC by dispatcher-cloud_
+_Generated: 2026-08-06 06:15 UTC by dispatcher-cloud_
 
 ## Action required
 No cards in `queue/approvals/` (0). Items owned by / addressed to a human that cannot move
@@ -28,22 +28,24 @@ go/no-go.
 ## Queue
 | state (by directory) | count |
 |----------------------|-------|
-| inbox | 16 |
-| working | 2 |
+| inbox | 17 |
+| working | 1 |
 | approvals | 0 |
-| done | 256 |
+| done | 259 |
 
-(`queue/working/` holds two cards: `6a6bc3dd-5494006b` at `state:halted` — terminal, see
-Anomalies — and this run's own nightly card `6a72d607-c1b57318`, which completes to
-`queue/done/` before this cycle ends, leaving working at one halted card.)
+(This run's nightly card `6a74262f-b725d54c` sits in `queue/inbox/` at `state:working` — the
+17th inbox file — and completes to `queue/done/` before this cycle ends. `queue/working/` holds
+one card, `6a6bc3dd-5494006b` at `state:halted` — terminal, see Anomalies.)
 
 ## Last 24h
-- **Cadences:** `nightly-review` dispatched + self-executed tonight (2026-08-05, card
-  `6a72d607-c1b57318`, dispatcher-cloud). Prior run 2026-08-04: `nightly-review`
-  (`6a718488-42339b3e`).
-- **Cost:** $0.00 API-billed today vs **$30.00/day** limit → **$30.00 remaining**. Yesterday
-  (2026-08-04) logged 49 cost rows, all subscription-billed at `usd: 0.0` (codex model
-  gpt-5.6-terra) — $0.00 real spend.
+- **Cadences:** `nightly-review` dispatched + self-executed tonight (2026-08-06, card
+  `6a74262f-b725d54c`, dispatcher-cloud). Prior run's card `6a72d607-c1b57318` (2026-08-05)
+  completed to `queue/done/`. Two `codex-dispatch` cards (`6a74076b-f46c82fa`,
+  `6a742062-146aef86`, kb-ops) also completed, subscription-billed.
+- **Cost:** $0.00 API-billed today (both codex steps `gpt-5.6-sol` / `gpt-5.6-terra` logged
+  `usd: 0.0`) vs the **$30.00/day** limit → **$30.00 remaining today**. The trailing 24h window
+  also captures 2026-08-05's real spend of **$3.94** (five `gemini-3-pro-image` image-gen steps,
+  `bricks-fresh` remint/sweep work) — well under budget.
 - **Notable results:** preamble passed; `sync_skills --check` clean (no skill drift). The
   main→ops daemon-dir check still reports 10 out-of-sync daemon-read files — **unchanged** from
   the 2026-08-04 report (card `6a718533`), so no new wake-me card was filed this run (the
@@ -75,7 +77,7 @@ Anomalies — and this run's own nightly card `6a72d607-c1b57318`, which complet
   the nightly routine's literal step-2b command file-not-founds; this run extracted the `main` copy
   and ran it in refs-fallback mode (as designed). Standing card `6a605ebb`.
 - **Stale working card.** `6a6bc3dd-5494006b` (kb-ops `iter-smoke-t2`, codex-worker) has sat in
-  `queue/working/` at `state:halted` for 5 days (since 2026-07-30). Its `## Result` shows it was
+  `queue/working/` at `state:halted` for 7 days (since 2026-07-30). Its `## Result` shows it was
   already resolved by the boss (known `codex exec resume --cd` defect, fixed in PR #103); terminal
   — wants a one-time desk sweep to `queue/done/`.
 - **No preamble failures; no skill drift; no budget breach.**
