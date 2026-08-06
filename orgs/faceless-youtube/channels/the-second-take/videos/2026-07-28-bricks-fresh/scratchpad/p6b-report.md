@@ -320,7 +320,7 @@ entry added for any retry or new frame.
 - **R1 tripwire: not tripped.** The one condition-met event (L22/L23) is governed by the NIGHT-SHOT
   RULE and documented above and in the genlog.
 
-## Owed next
+## Owed next (finisher pass — SUPERSEDED by the corrections pass below)
 
 1. **Fresh-eyes verifier** over the 4 retry frames + 5 new frames on `p6b-board.html` (9 empty
    verdicts), then stamp. Point it at L16-retry1's oblique-shelf regression and L25's ink depth.
@@ -329,3 +329,103 @@ entry added for any retry or new frame.
 4. Still open from earlier passes: the `knowledge/decisions.md` entry, and surfacing the
    silent-plate-miss / parked-parent fallback as a forge defect (a missing or parked PLACE plate
    should hard-error at $0, not silently downgrade to a root plate).
+
+---
+
+# CORRECTIONS PASS 2026-08-06 (round 3) — 2 ready retries fired, 2 chain re-bases built, 1 re-mint
+
+## Weaknesses first
+
+1. **The R1 cool-ink inversion recurred on a FRESH frame.** `L10-retry1` measures **223.3deg /
+   R-B -1.1 (COOL)** against the parked original's 14.4deg / +13.6. It holds at every sampling depth
+   (3%/1%/0.5% -> 223.3 / 223.7 / 228.9deg), so it is not a night-frame artifact. This is the second
+   cool inversion in the video after L16's cyan, and **the first to appear after the R1
+   generator-side fix landed — so that fix is not total.**
+2. **Two of the five authored corrections did not take.** L10-retry1 still stages the overnight queue
+   INSIDE the shop with the camera in the room — unmoved by a correction span four times longer and
+   fully explicit. L25-retry1 still letters 'HARD DRIVE' exactly three times, once per pallet, on the
+   film-wrapped lower courses rather than on each open carton's face. Prose emphasis is not reliably
+   moving either attribute; both wanted a different mechanism, not a longer sentence.
+3. **The scenes manifest now has a duplicate `file` key.** `shot_id: L18` (parked) and
+   `shot_id: L18-retry1` (verified) both point at `assets/scenes/L18.png`. Forge's
+   `_scene_manifest_entry` returns the FIRST match, which is the PARKED record — so any future shot
+   seeding that path inherits a parked lineage or hits the parked refusal, while the bytes on disk are
+   the verified frame. Not repaired here: `stamp_review.py` owns that file and is not this pass's tool.
+4. **Forge silently dropped L24's parent.** `batch --shots L24,L25` emitted `L24: [crowd-exemplar,
+   lettering-marker-italic]`, `parent_depth=0 lineage=0`, for a `delta` beat — because `on_disk()`
+   reads only `assets/scenes/` and parked L23 was never promoted. Same silent-fallback class recorded
+   earlier against L08. Both round-3 chain frames therefore carry an explicitly authored parent.
+5. **L23-retry1's scale correction only half-landed**, and L24/L25 inherit that. The brick fills much
+   more of the opening than before, but the opened carton still reads wider than the ranked cartons
+   beside it. The verifier's measured test (carton width vs the parent's ~78px ranked cartons) is
+   still the one to run.
+
+## What landed
+
+| frame | authority | outcome (measurement, not verdict) | median sat | ink hue / R-B |
+| --- | --- | --- | --- | --- |
+| L10-retry1 | one exact replace, changed_spans=1 | correction NOT taken; **ink inverted COOL** | 0.2471 | **223.3deg / -1.1** |
+| L23-retry1 | one exact replace, changed_spans=1; re-based onto promoted verified `scenes/L22.png` | brick much larger in the opening; carton still oversized | 0.0980 | 24.9deg / +3.8 |
+| L24-retry1 | re-base + one exact replace (slate) | **wardrobe correction LANDED**; row scale much closer; centre box still inherited oversized | 0.1059 | 19.5deg / +3.6 |
+| L25-retry1 | re-base + one exact replace (slate) | lettering correction NOT taken (3 instances, wrong surface); wardrobe held | 0.1176 | 10.8deg / +2.5 |
+| L16-remint1 | changed-mechanism re-mint of the ORIGINAL slate entry | **clean recovery**: warmest ink in the batch, authored square-to-frame frieze restored | 0.1294 | **16.5deg / +18.4** |
+
+`L16-remint1` is the pass's one unambiguous win and it validates the verifier's own prescription:
+the parking defect was generator-side cyan ink, the R1 fix has since landed, so re-running the
+ORIGINAL staging under the corrected mechanism recovered both the palette AND the frieze that the
+round-1 prose retry had traded away. **Zero words were spent on colour.**
+
+## Why L24/L25 are slates rather than overlay entries — a forge gap
+
+`_retry_scene` permits **exactly one** surgical authority per entry
+(`if bool(replacement) == has_seed_change: raise`). A second-round repair naturally needs **two**:
+re-base onto the corrected parent AND correct the content. Both frames were therefore built from
+forge's OWN native request (`p6b-native-L2425.json`), with the content edit performed in the same
+surgical form the overlay uses — one occurrence, bytes outside the span asserted byte-identical
+(`_build_p6b_r3.py:surgical`) — and the parent seed set explicitly; seed roles and delta prose come
+from forge's `_seed_role` / `_dedupe_seed_roles` / `placement_delta`. **Worth closing in forge:**
+"re-base and correct" is the shape of most round-2+ repairs and the tool cannot express it.
+
+## Board
+
+`p6b-board.html` rebuilt: **33 cards.** Each parked frame is now followed by its full repair lineage
+in generation order (original -> round-1 retry -> round-3 re-issue / re-mint), so L16 reads as a run
+of three. Frames already ruled in round 1 or 2 carry their verdict verbatim and are marked
+"context, do not re-rule". The **5 round-3 frames carry NO stamp and EMPTY verdicts**. Both anomalies
+are stated in the board header so a fresh verifier meets them first.
+
+| group | count | verdicts |
+| --- | --- | --- |
+| promoted place plates (L03, L05) — continuity context | 2 | already approved |
+| verified candidates (incl. promoted L18-retry1) | 14 | stamped |
+| parked frames, each followed by its repair lineage | 8 | parked, verbatim reasons |
+| **round-3 correction frames** | **5** | **EMPTY** |
+
+`p6b-figures.json` re-emitted through the tool's own schema (still empty — this slice minted no
+STEP-1 figures). **Nothing was stamped**; `stamp_review.py` was not run and the scenes manifest is
+untouched at 23 verified / 11 parked.
+
+## Ledger
+
+- **This pass: 5 provider calls, 5 successes, 0 failures, 0 re-issues, 0 stalls. $0.195.**
+- **Phase total: $1.872 conservative** against the $3.00 ceiling — **62% consumed, $1.128 left.**
+- **R1 saturation tripwire: NOT tripped.** No frame this pass below 0.10; the night chain climbs
+  0.0980 -> 0.1059 -> 0.1176, the opposite of a grey drain.
+- **Collateral class (unauthored duplicate of an established element): no NEW in-frame occurrence.**
+  It did recur, once, in the MANIFEST (the duplicate `assets/scenes/L18.png` key, weakness 3). Nothing
+  extra was spent on it.
+
+## Owed next
+
+1. **Fresh-eyes verifier** over the 5 round-3 frames on `p6b-board.html` (5 empty verdicts), then
+   stamp. Point it at: L10-retry1's cool ink AND unmoved zone inversion; L23-retry1's carton width
+   measured against L22's ranked cartons; L25-retry1's lettering count and surface; and
+   L16-remint1 against BOTH its predecessors.
+2. **Repair the manifest duplicate** — one record should own `assets/scenes/L18.png`. Boss-owned
+   (`stamp_review.py`).
+3. **L10 and L25 need a mechanism change, not another prose retry.** Two rounds of increasingly
+   explicit prose failed to move either attribute; a third is predicted waste.
+4. **L08** — still doctrine-blocked; generate only after L07 is verified and promoted.
+5. **Forge defects to file**: (a) the one-authority limit blocking "re-base + correct";
+   (b) `on_disk()` reading only `assets/scenes/`, which silently drops a delta beat's parent
+   instead of hard-erroring at $0.

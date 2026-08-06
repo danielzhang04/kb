@@ -396,3 +396,86 @@ verifier's eye on L25 specifically, where the ink is nearest to pure black.
 - **All 5: 1376x768 (16:9 @1K), PIL-valid, 1106-1270KB (all > 300KB).**
 - **NOT stamped.** All 5 return to the fresh-eyes verifier with verdicts EMPTY, as do the 4 retry frames.
 - **L08 remains the ONLY undelivered shot in the slice**, doctrine-blocked on its parked parent L07.
+
+---
+
+# CORRECTIONS PASS 2026-08-06 (round 3) — 5/5 delivered, 0 failures, 0 re-issues
+
+Fired the two ready round-2 retries, then built and fired two chain re-bases and one
+changed-mechanism re-mint. `p6b-dryrun5.txt` holds the $0 pre-flights: **`changed_spans: 1` on both
+ready retries**, and L23-retry1's parent confirmed resolving to the PROMOTED VERIFIED
+`assets/scenes/L22.png` (round 2 had seeded the unreviewed `_staging` copy). Strict order held —
+L10-retry1 as canary, verified on disk, then L23-retry1 -> L24-retry1 -> L25-retry1 down the chain,
+each verified on disk before the next; L16-remint1 last.
+
+| timestamp | frame | status | median sat | ink hue / R-B | cost |
+| --- | --- | --- | --- | --- | --- |
+| 2026-08-06 | L10-retry1 | **OK on disk, TWO ANOMALIES** — 1376x768, PIL-valid; seeds promoted `scenes/L05.png`. See below. | 0.2471 | **223.3deg / -1.1 (COOL/INVERTED)** | $0.039 |
+| 2026-08-06 | L23-retry1 | **OK** — 1376x768, PIL-valid; RE-BASED onto promoted verified `scenes/L22.png`. Brick now fills far more of the opening; opened carton still reads wider than the ranked cartons flanking it. Night rule: 0.0980 > L03's 0.0902. | 0.0980 | 24.9deg / +3.8 (WARM) | $0.039 |
+| 2026-08-06 | L24-retry1 | **OK** — 1376x768, PIL-valid; seeds `_staging/L23-retry1.png`. **Wardrobe correction LANDED** — four bare-headed packers in the parent's clothing; round 2's gained head coverings, collar and tie are gone. Row scale much closer (several separate small open cartons across left and right pallets); oversized centre box inherited from the parent persists. | 0.1059 | 19.5deg / +3.6 (WARM) | $0.039 |
+| 2026-08-06 | L25-retry1 | **OK, correction did NOT take** — 1376x768, PIL-valid; seeds `_staging/L24-retry1.png`. 'HARD DRIVE' renders exactly THREE times, once per pallet, lettered across the FILM-WRAPPED LOWER COURSES rather than on each open carton's front face — same count, same wrong surface as the parked round-2 frame. Wardrobe held. | 0.1176 | 10.8deg / +2.5 (WARM) | $0.039 |
+| 2026-08-06 | L16-remint1 | **OK — the clean recovery of this pass.** 1376x768, PIL-valid; zero-seed style-tile plate. Ink **16.5deg / +18.4**, the closest frame in the batch to the `#241a12` target (~19deg / +18), with NO prose spent on colour. Staging observed restored: shelf face square to frame, rank running off BOTH frame edges, centre bay lit from inside. | 0.1294 | 16.5deg / +18.4 (WARM) | $0.039 |
+
+## ANOMALY 1 — the R1 cool-ink inversion RECURRED, on a fresh frame
+
+`L10-retry1` measures **hue 223.3deg / R-B -1.1 — COOL/INVERTED**, against the parked original
+L10's 14.4deg / +13.6 (WARM) and against a batch otherwise running 8-36deg / +1.9 to +23.8. This is
+**not a night-frame sampling artifact**: it holds at every sampling depth —
+
+| darkest | hue | R-B | ink lum |
+| --- | --- | --- | --- |
+| 3% | 223.3deg | -1.1 | 12.9 |
+| 1% | 223.7deg | -3.1 | 9.2 |
+| 0.5% | 228.9deg | -2.7 | 7.4 |
+
+It is the **second cool inversion recorded in this video** after L16's cyan (174.2deg / -1.0), and
+the first to appear AFTER the R1 generator-side fix landed — so the fix is not total. Logged, not
+adjudicated, no re-roll spent. The same frame also failed its authored correction outright: the
+overnight queue with its folding chairs, sleeping bags, flasks and visible breath is STILL inside
+the shop, with a thin queue of plain figures outside, and the camera is still in the room — the exact
+zone inversion round 2 parked, unmoved by a 4x-longer, fully explicit correction span.
+
+## ANOMALY 2 — the scenes manifest holds a DUPLICATE `file` key
+
+Two records now point at the same path `assets/scenes/L18.png`: `shot_id: L18` (**parked**) and
+`shot_id: L18-retry1` (**verified**, the promoted retry). Forge's `_scene_manifest_entry` returns
+the FIRST record whose `file` matches, walking `shots` in order — so it returns the **PARKED** one.
+Any future shot seeding `assets/scenes/L18.png` will therefore hit `_scene_provenance`'s parked
+refusal, or inherit a parked lineage counter, even though the bytes on disk are the verified frame.
+This is the **unauthored-duplicate collateral class the pass was told to watch for, occurring in the
+MANIFEST rather than in a frame**. Not repaired here — `stamp_review.py` owns that file and is not
+this pass's tool. Reported for the boss.
+
+## ANOMALY 3 — forge's parent resolution silently dropped L24's parent
+
+Building L24 natively (`batch --shots L24,L25`) emitted **`L24: [crowd-exemplar,
+lettering-marker-italic]` — no parent at all**, `parent_depth=0 lineage=0`, for a shot whose
+`stage_role` is `delta`. Mechanism: `cmd_batch`'s `on_disk()` looks **only** in
+`<video>/assets/scenes/`, L23 is parked and so was never promoted, and the in-batch `emitted` map
+only carries shots inside `--shots` scope. `_scene_provenance`'s parked-parent refusal never fires,
+because that guard only runs when the parent file resolves. This is the **same silent-fallback
+defect class** the earlier pass recorded against L08 on the parked-parent path, now firing on the
+scoped-batch path. Both round-3 chain frames therefore carry an EXPLICITLY authored parent.
+
+## Mechanism note — why L24/L25 are slates, not overlay entries
+
+`_retry_scene` enforces **exactly one surgical authority per entry**
+(`if bool(replacement) == has_seed_change: raise`). L24 and L25 each need **two**: a parent re-base
+onto the fresh corrected frame AND a content correction pinning the verifier's failed attributes.
+No single overlay entry can express that. Both were therefore authored as slates built from
+**forge's own native request** for that shot (`p6b-native-L2425.json`), with the content edit
+performed in the same surgical form the overlay uses — exactly one occurrence, bytes outside the
+span asserted byte-identical (`_build_p6b_r3.py:surgical`) — and the parent seed set explicitly.
+Seed roles and delta prose come from forge's own `_seed_role` / `_dedupe_seed_roles` /
+`placement_delta`, not hand-written. **This is a forge gap worth closing:** "re-base and correct" is
+the natural shape of a second-round repair and the tool cannot say it.
+
+## Corrections-pass totals
+
+- **Generated: 5/5.** 0 provider failures, 0 re-issues, 0 stalls. Two consecutive failures: never reached.
+- **Spend this pass: $0.195** (5 x $0.039). Phase total **$1.677 + $0.195 = $1.872 conservative**
+  against the $3.00 ceiling — **62% consumed, $1.128 left**.
+- **All 5: 1376x768 (16:9 @1K), PIL-valid.**
+- **R1 saturation tripwire: NOT tripped.** No frame in this pass sits below 0.10; the night chain
+  (0.0980 -> 0.1059 -> 0.1176) climbs, the opposite of a grey drain.
+- **NOTHING STAMPED.** All 5 return to the fresh-eyes verifier on `p6b-board.html` with verdicts EMPTY.

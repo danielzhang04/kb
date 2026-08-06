@@ -1,0 +1,43 @@
+[
+  {
+    "name": "L24-retry1",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier. The THIRD image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\nThe same lamp-lit warehouse: pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the front carton on that row open on its red clay brick. Only this changes: every remaining carton along that unwrapped top row now stands with its flaps folded open too. Those cartons are THE RANKED CARTONS THE PARENT ALREADY DREW and each keeps EXACTLY THAT CARTON'S SIZE: the same small width, height and depth as every other sealed carton in its own row, roughly one third of its pallet's width, with the folded-open flaps staying inside that same small footprint. NO box grows to the width of a pallet, no box replaces or swallows the rest of its row, and each pallet keeps its own several small open cartons standing separately side by side across its top row. Inside each lies one red clay brick on crumpled paper, and that brick FILLS ITS CARTON EXACTLY: it spans the carton's opening corner to corner, its edges nearly touching the carton walls on all four sides, so each brick is plainly the same size as the box that holds it and only a little crumpled paper shows at the margins. The crew of packers is held EXACTLY as the parent draws it: the same people, the same number, the same poses and the same clothes, every one of them bare-headed as the parent draws them - no packer gains a hat, cap, head covering, hood, hair, collar or tie the parent does not already draw. Everything else exactly as established.",
+    "payload": "The same lamp-lit warehouse: pallets of sealed brown cartons receding toward the shut roller door, the film drawn hard round the lower courses and cut back clear of the whole unwrapped top row, the crew of packers at the far pallet, the tally card carrying '26,000' against the front pallet, the front carton on that row open on its red clay brick. Only this changes: every remaining carton along that unwrapped top row now stands with its flaps folded open too. Those cartons are THE RANKED CARTONS THE PARENT ALREADY DREW and each keeps EXACTLY THAT CARTON'S SIZE: the same small width, height and depth as every other sealed carton in its own row, roughly one third of its pallet's width, with the folded-open flaps staying inside that same small footprint. NO box grows to the width of a pallet, no box replaces or swallows the rest of its row, and each pallet keeps its own several small open cartons standing separately side by side across its top row. Inside each lies one red clay brick on crumpled paper, and that brick FILLS ITS CARTON EXACTLY: it spans the carton's opening corner to corner, its edges nearly touching the carton walls on all four sides, so each brick is plainly the same size as the box that holds it and only a little crumpled paper shows at the margins. The crew of packers is held EXACTLY as the parent draws it: the same people, the same number, the same poses and the same clothes, every one of them bare-headed as the parent draws them - no packer gains a hat, cap, head covering, hood, hair, collar or tie the parent does not already draw. Everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L23-retry1.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L23-retry1.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 3,
+    "lineage": 3,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; RE-BASE onto the fresh corrected parent L23-retry1 (forge's own walk resolved NO parent for L24: on_disk() looks only in assets/scenes/, and parked L23 was never promoted) + ONE exact replace pinning ranked-carton scale and the held crew wardrobe"
+  }
+]
