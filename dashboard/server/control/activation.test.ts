@@ -3,6 +3,7 @@ import {
   isExecutionActivated,
   isExecutionUnlockGrant,
   buildActivatedExecution,
+  createInternalServiceCaller,
   createExecutionLatch,
   createProjectPolicyResolver,
   DASHBOARD_EXECUTOR_SUBJECT,
@@ -10,6 +11,7 @@ import {
   type BuildActivatedExecutionOptions,
   type ExecutionLatchState,
 } from './activation.ts';
+import { isInternalServiceCaller } from '../auth/session.ts';
 
 describe('isExecutionActivated (the whole gate)', () => {
   it('is true only for the exact literal "1"', () => {
@@ -95,6 +97,31 @@ describe('buildActivatedExecution — gate OFF (core inert invariant)', () => {
       expect(deps.createEngine).not.toHaveBeenCalled();
       expect(deps.resolveBaseCommit).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('createInternalServiceCaller — activation admission', () => {
+  it('accepts only the env override or a latch-minted unlock grant', () => {
+    let grant: unknown;
+    const deps = spyDeps();
+    const latch = createExecutionLatch({
+      env: {},
+      build: ((options) => {
+        grant = options.unlockGrant;
+        return buildActivatedExecution(options);
+      }) as typeof buildActivatedExecution,
+      buildOptions: { controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state', deps },
+    });
+    expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+
+    const grantCaller = createInternalServiceCaller(undefined, {}, grant);
+    expect(grantCaller.subject).toBe(DASHBOARD_EXECUTOR_SUBJECT);
+    expect(isInternalServiceCaller(grantCaller)).toBe(true);
+    expect(() => createInternalServiceCaller(undefined, {})).toThrow(/activation gate|unlock grant/);
+
+    const envCaller = createInternalServiceCaller(undefined, { DASHBOARD_EXECUTION_ACTIVATED: '1' });
+    expect(envCaller.subject).toBe(DASHBOARD_EXECUTOR_SUBJECT);
+    expect(isInternalServiceCaller(envCaller)).toBe(true);
   });
 });
 
@@ -411,6 +438,21 @@ describe('buildActivatedExecution — unlock grants and headless execution', () 
     });
     expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
     expect(real.createEngine).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a latch-minted grant after five seconds', () => {
+    const at = 1_700_000_000_000;
+    let grant: unknown;
+    const latch = createExecutionLatch({
+      env: {},
+      now: () => at,
+      build: ((options) => { grant = options.unlockGrant; return {} as never; }) as typeof buildActivatedExecution,
+      buildOptions: { controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state' },
+    });
+    expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+    expect(isExecutionUnlockGrant(grant, () => at)).toBe(true);
+    expect(isExecutionUnlockGrant(grant, () => at + 10_000)).toBe(false);
+    expect(() => createInternalServiceCaller(undefined, {}, grant, () => at + 10_000)).toThrow(/valid unlock grant/);
   });
 
   it('constructs the headless worker router without PTY inputs', () => {

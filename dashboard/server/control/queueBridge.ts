@@ -400,11 +400,13 @@ export interface DispatchCardDeps {
   /**
    * Construct the sanctioned internal service caller presented to `executeApprovedLaunch` in lieu of a
    * WebAuthn session token (the bridge is a daemon-internal dispatcher with no human session). Default: the
-   * activation-gated `createInternalServiceCaller`, which THROWS with the gate off — so a bridge ever driven
-   * gate-off fails closed instead of launching unauthenticated. Tests inject a stub to drive dispatch
-   * hermetically without the process-wide gate.
+   * `createInternalServiceCaller`, which requires either the headless env override or a fresh latch unlock
+   * grant — so a bridge ever driven outside an armed window fails closed instead of launching
+   * unauthenticated. Tests inject a stub to drive dispatch hermetically.
    */
   internalCaller?: (subject: string) => InternalServiceCaller;
+  /** Re-assert that this dispatch still belongs to the same armed execution window. */
+  isArmed?: () => boolean;
 }
 
 export interface DispatchCardResult {
@@ -466,7 +468,12 @@ export async function dispatchClaimedCard(
     return { cardId: card.id, outcome: 'skipped', status: 0, reconciled: false, detail: 'card no longer claimed by the bridge' };
   }
 
-  const mapped = cardToWorkflowRequest(parsed, { knownProfiles: knownProfiles() });
+  let mapped: CardWorkflowRequest;
+  try {
+    mapped = cardToWorkflowRequest(parsed, { knownProfiles: knownProfiles() });
+  } catch (error) {
+    return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: String(error) };
+  }
   const registry = loadRegistry(ctx.repoRoot);
   const compiled = compile(mapped.def, { registry });
   if (!compiled.ok) return { cardId: card.id, outcome: 'failed', status: 400, reconciled: false, detail: `${compiled.reason}: ${compiled.detail}` };
@@ -530,6 +537,10 @@ export async function dispatchClaimedCard(
     if (!decided.ok) return { cardId: card.id, outcome: 'failed', status: 409, reconciled: false, detail: `${decided.reason}: ${decided.detail}` };
   }
 
+  if (deps.isArmed && !deps.isArmed()) {
+    return { cardId: card.id, outcome: 'failed', status: 409, reconciled: false, detail: 'execution window changed' };
+  }
+  const serviceCaller = internalCaller(subject);
   const result = await launch(ctx, subject, {
     proposalRef,
     revision,
@@ -539,7 +550,7 @@ export async function dispatchClaimedCard(
     // approved under its OWN subject with a gated internal service caller (constructible only when the
     // activation gate is on), NOT a token. The HTTP launch surfaces still require a WebAuthn token.
     sessionToken: undefined,
-    internalService: internalCaller(subject),
+    internalService: serviceCaller,
     idempotencyKey,
     predecessorRunRef: null,
     expectedPredecessorVersion: -1,

@@ -37,7 +37,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeSurfaceContext } from '../http/surface.ts';
-import { isExecutionActivated, DASHBOARD_EXECUTOR_SUBJECT } from './activation.ts';
+import { createInternalServiceCaller, isExecutionActivated, DASHBOARD_EXECUTOR_SUBJECT } from './activation.ts';
 import { dispatchClaimedCard, type OwnedCard } from './queueBridge.ts';
 import { defaultPyRunner } from '../write/launch.ts';
 import type { SurfaceContext } from '../http/context.ts';
@@ -242,9 +242,19 @@ export async function main(): Promise<number> {
 
     const ctx = makeSurfaceContext();
     record(checks, 'gate ON: runAutomatic + controlBroker constructed', ctx.runAutomatic !== undefined && ctx.controlBroker !== undefined);
+    const execution = ctx.executionLatch?.current();
+    if (!execution) throw new AcceptanceRefusal('execution latch did not expose the armed harness window');
 
     const card: OwnedCard = { id, path, state: 'inbox' };
-    const res = await dispatchClaimedCard(ctx, card);
+    const res = await dispatchClaimedCard(ctx, card, {
+      isArmed: () => ctx.executionLatch?.current() === execution,
+      internalCaller: (subject) => {
+        if (ctx.executionLatch?.current() !== execution) {
+          throw new AcceptanceRefusal('synthetic dispatch escaped its armed execution window');
+        }
+        return createInternalServiceCaller(subject);
+      },
+    });
     record(checks, 'dispatchClaimedCard launched the run (real claude -p spawned)', res.outcome === 'launched', `outcome=${res.outcome} status=${res.status} ${res.detail ?? ''}`);
     keepArtifacts = res.outcome !== 'launched';
 

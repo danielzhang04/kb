@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   bridgeClaimsCard,
   scanOwnedDashboardCards,
@@ -11,6 +15,7 @@ import type { PyRunResult } from '../write/launch.ts';
 import type { PreambleRunResult } from '../write/preambleGate.ts';
 
 const SUBJECT = 'dashboard-engine';
+const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 const okPreamble = (): PreambleRunResult => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' });
 const stopPreamble = (): PreambleRunResult => ({ exitCode: 2, stdout: '', stderr: 'STOP file present' });
@@ -313,6 +318,71 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     ...over,
   });
 
+  it('bridge tick launches and reconciles one dashboard-owned card, then ignores it after its owner changes', async () => {
+    const queueRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-integration-'));
+    const inbox = join(queueRoot, 'inbox');
+    const cardPath = join(inbox, '6a5ed0b7-56cc254c.md');
+    const cardText = (owner: string) => [
+      '---',
+      'id: 6a5ed0b7-56cc254c',
+      'project: kb-ops',
+      'action: research:web-brief',
+      'target: orgs/kb-ops/output',
+      'risk-tier: T1',
+      'profile: research',
+      `owner: ${owner}`,
+      'state: inbox',
+      'execution-controller: dashboard',
+      '---',
+      '',
+      '## Work order',
+      '',
+      'Write the brief. Do exactly this.',
+      '',
+    ].join('\n');
+
+    try {
+      mkdirSync(inbox, { recursive: true });
+      writeFileSync(cardPath, cardText(SUBJECT), 'utf8');
+      const { ctx } = fakeCtx({ repoRoot: REPO_ROOT });
+      const caller = { kind: 'internal-service-caller' as const, subject: SUBJECT };
+      const internalCaller = vi.fn(() => caller);
+      const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-integration', cards: [] } });
+      const reconcile = vi.fn().mockResolvedValue(undefined);
+      let outcome: Awaited<ReturnType<typeof dispatchClaimedCard>> | undefined;
+      const deps = commonDeps({ launch: launch as never, reconcile, internalCaller });
+      delete (deps as Record<string, unknown>).readCard;
+      const dispatch = vi.fn(async (card: OwnedCard) => {
+        outcome = await dispatchClaimedCard(ctx, card, deps);
+      });
+      const bridge = createQueueBridge({
+        repoRoot: REPO_ROOT,
+        queueRoot,
+        runPreamble: okPreamble,
+        dispatch,
+      });
+
+      await expect(bridge.tick()).resolves.toEqual({
+        ran: true, blocked: false, discovered: 1, dispatched: 1,
+      });
+      expect(outcome).toMatchObject({ outcome: 'launched', runRef: 'run-integration', reconciled: true });
+      expect(launch).toHaveBeenCalledOnce();
+      expect(launch.mock.calls[0][2].internalService).toBe(caller);
+      expect(internalCaller).toHaveBeenCalledWith(SUBJECT);
+      expect(reconcile).toHaveBeenCalledOnce();
+
+      writeFileSync(cardPath, cardText('someone-else'), 'utf8');
+      await expect(bridge.tick()).resolves.toEqual({
+        ran: true, blocked: false, discovered: 0, dispatched: 0,
+      });
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(launch).toHaveBeenCalledOnce();
+      expect(reconcile).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(queueRoot, { recursive: true, force: true });
+    }
+  });
+
   it('blocks (no launch) when the preamble refuses immediately before dispatch (D7)', async () => {
     const { ctx } = fakeCtx();
     const launch = vi.fn();
@@ -335,6 +405,46 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
       launch: launch as never,
     }));
     expect(res.outcome).toBe('skipped');
+    expect(launch).not.toHaveBeenCalled();
+  });
+
+  it('returns a 400 mapping failure for a missing profile and the same tick continues to the next card', async () => {
+    const { ctx } = fakeCtx();
+    const cards: OwnedCard[] = [
+      { id: 'bad-card', path: 'bad', state: 'inbox' },
+      { id: 'good-card', path: 'good', state: 'inbox' },
+    ];
+    const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-good' } });
+    const outcomes: Awaited<ReturnType<typeof dispatchClaimedCard>>[] = [];
+    const deps = commonDeps({
+      readCard: (_ctx: SurfaceContext, path: string) => path === 'bad'
+        ? { ...baseCard(), meta: { ...baseCard().meta, id: 'bad-card', profile: undefined } }
+        : { ...baseCard(), meta: { ...baseCard().meta, id: 'good-card' } },
+      launch: launch as never,
+      reconcile: vi.fn().mockResolvedValue(undefined),
+    });
+    const bridge = createQueueBridge({
+      repoRoot: '/repo', runPreamble: okPreamble,
+      runPy: pyReturning(cards).runPy,
+      dispatch: async (card) => { outcomes.push(await dispatchClaimedCard(ctx, card, deps)); },
+    });
+    await expect(bridge.tick()).resolves.toMatchObject({ discovered: 2, dispatched: 2 });
+    expect(outcomes[0]).toMatchObject({ cardId: 'bad-card', outcome: 'failed', status: 400, reconciled: false });
+    expect(outcomes[1]).toMatchObject({ cardId: 'good-card', outcome: 'launched' });
+    expect(launch).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a changed execution window immediately before launch without evaluating its caller', async () => {
+    const { ctx } = fakeCtx();
+    const launch = vi.fn();
+    const internalCaller = vi.fn(stubCaller);
+    const res = await dispatchClaimedCard(ctx, owned, commonDeps({
+      launch: launch as never,
+      internalCaller,
+      isArmed: () => false,
+    }));
+    expect(res).toEqual({ cardId: owned.id, outcome: 'failed', status: 409, reconciled: false, detail: 'execution window changed' });
+    expect(internalCaller).not.toHaveBeenCalled();
     expect(launch).not.toHaveBeenCalled();
   });
 

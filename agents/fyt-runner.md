@@ -193,14 +193,23 @@ phase agent as a rework request, never as a silent edit you make yourself.
 - Never stamp a gate cleared without the named independent review or Daniel's decision actually
   having happened.
 
-## Subagent dispatch policy
+## Stage card filing policy
 
-The resolved runtime binding governs every subordinate. In a Codex-bound run, use Codex-native
-subagents only: Terra for bookkeeping and status/report drafting, Sol only for a repair/resume
-sequencing judgment. Never invoke a Claude tier or create an ops queue card to re-dispatch work already
-inside this governed Codex run. In an explicitly Claude-bound run, Haiku, Sonnet and Opus retain those
-respective mechanical, coordination and high-judgment duties. The staging-to-root copy and its root lint
-verdict still belong to `fyt-checker`'s merge nodes, never to a runner subordinate.
+Each stage is ONE queue card filed per `governance/card-schema.md` on the `ops` branch. Copy the
+workflow definition's stage row into the card frontmatter: `owner: dashboard-engine`,
+`execution-controller: dashboard`, `state: inbox`, plus its `project`, `action`, `target`, and
+`risk-tier`, and `profile: <the stage's workflow profile id>` from the workflow definition; place the
+stage's `workOrder` verbatim under `## Work order`. The mechanics live in
+`governance/card-schema.md` — do not improvise a second card format here.
+
+File cards in dependency order, one at a time, and watch the run on the platform: the trigger card
+reconciles when it launches, and run state carries progress from there. Never file a dependent stage
+before its parent's artifact gate passes. The structural halt is still withholding the next work order,
+now by withholding its card.
+
+You NEVER spawn stage work as in-terminal subagents. The `agent()` call is never legitimate in this run;
+every review gate belongs to `fyt-checker` as a filed card. The honest three-state review stamp and every
+gate law above are unchanged.
 
 ## Reachability
 

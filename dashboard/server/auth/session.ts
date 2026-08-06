@@ -49,8 +49,8 @@ export const INTERNAL_SERVICE_CALLER_KIND = 'internal-service-caller';
  * session token is minted only after a human passkey assertion and is replayable by anyone who holds the
  * string, this is a branded object that never crosses a wire, is never persisted or logged, and cannot be
  * forged by an HTTP client. It authorizes a governed launch as `subject` in lieu of a token. It is ONLY
- * constructed by the gate-on activation path (`control/activation.ts#createInternalServiceCaller`, which
- * throws unless `DASHBOARD_EXECUTION_ACTIVATED === '1'`); no HTTP route ever constructs or forwards one.
+ * constructed by the authorized activation path (`control/activation.ts#createInternalServiceCaller`,
+ * which requires the env override or a fresh latch unlock grant); no HTTP route ever constructs or forwards one.
  */
 export interface InternalServiceCaller {
   readonly kind: typeof INTERNAL_SERVICE_CALLER_KIND;
@@ -72,7 +72,7 @@ const internalServiceCallers = new WeakSet<InternalServiceCaller>();
 /**
  * Mint the one and only kind of value that satisfies `isInternalServiceCaller`. This is the brand primitive:
  * call it ONLY from the activation-gated `control/activation.ts#createInternalServiceCaller`, which is the
- * sole sanctioned producer and throws unless `DASHBOARD_EXECUTION_ACTIVATED === '1'`. Throws on an empty
+ * sole sanctioned producer and requires the env override or a fresh latch unlock grant. Throws on an empty
  * subject, so a branded-but-identity-less caller can never exist.
  */
 export function brandInternalServiceCaller(subject: string): InternalServiceCaller {

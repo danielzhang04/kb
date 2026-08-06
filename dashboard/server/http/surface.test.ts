@@ -25,6 +25,7 @@ import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { HostOpenRequest, PtyHost, PtySession } from '../pty/host.ts';
 import type { EventBus } from '../hub/bus.ts';
 import type { AttemptIoAppend } from '../control/attemptIo.ts';
+import type { OwnedCard, QueueBridgeOptions } from '../control/queueBridge.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
@@ -903,6 +904,103 @@ describe('surface — Wave-A executor activation wiring (env-gated, default OFF)
     emit?.({ attemptRef: 'attempt-1', entry: { seq: 2, t: '2026-08-06T00:00:01.000Z', dir: 'out', line: 'after lock' } });
     expect(off).toHaveBeenCalledOnce();
     expect(bus.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts the queue bridge on unlock, binds dispatch to the armed principal, and stops it once on lock', async () => {
+    const triple = activatedTriple();
+    const start = vi.fn();
+    const stop = vi.fn();
+    const bridge = { tick: vi.fn(), start, stop };
+    let bridgeOptions: QueueBridgeOptions | undefined;
+    const createBridge = vi.fn((options: QueueBridgeOptions) => {
+      bridgeOptions = options;
+      return bridge;
+    });
+    const dispatch = vi.fn().mockResolvedValue({ outcome: 'launched' });
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], runPreamble: okPreamble, runPy: okPy },
+      { build: vi.fn().mockReturnValue(triple) as never, env: {}, createQueueBridge: createBridge, dispatchClaimedCard: dispatch as never },
+    );
+
+    expect(createBridge).not.toHaveBeenCalled();
+    expect(ctx.executionLatch?.unlock({ subject: 'operator' }).ok).toBe(true);
+    expect(createBridge).toHaveBeenCalledWith(expect.objectContaining({
+      repoRoot: REPO_A,
+      runPreamble: okPreamble,
+      runPy: okPy,
+    }));
+    expect(start).toHaveBeenCalledOnce();
+    expect(start).toHaveBeenCalledWith(15_000);
+
+    const card: OwnedCard = { id: 'card-1', path: 'queue/inbox/card-1.md', state: 'inbox' };
+    await bridgeOptions?.dispatch?.(card);
+    expect(dispatch).toHaveBeenCalledWith(ctx, card, expect.objectContaining({ internalCaller: expect.any(Function) }));
+    const internalCaller = dispatch.mock.calls[0][2].internalCaller as (subject: string) => unknown;
+    expect(internalCaller('dashboard-engine')).toMatchObject({ subject: 'dashboard-engine' });
+    expect(() => internalCaller('other-subject')).toThrow(/unexpected internal service subject/);
+
+    ctx.executionLatch?.lock({ subject: 'operator' });
+    expect(stop).toHaveBeenCalledOnce();
+    expect(ctx.stopQueueBridge).toBeUndefined();
+    expect(() => internalCaller('dashboard-engine')).toThrow(/armed execution window/);
+    await expect(bridgeOptions?.dispatch?.(card)).rejects.toThrow(/armed execution window/);
+    expect(dispatch).toHaveBeenCalledOnce();
+  });
+
+  it('constructs no queue bridge while boot-locked', () => {
+    const createBridge = vi.fn();
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
+      { env: {}, createQueueBridge: createBridge },
+    );
+    expect(ctx.executionLatch?.snapshot().state).toBe('locked');
+    expect(createBridge).not.toHaveBeenCalled();
+    expect(ctx.stopQueueBridge).toBeUndefined();
+  });
+
+  it('does not construct the queue bridge for a headless env-override arm', () => {
+    const createBridge = vi.fn();
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
+      { build: vi.fn().mockReturnValue(activatedTriple()) as never, env: { DASHBOARD_EXECUTION_ACTIVATED: '1' }, createQueueBridge: createBridge },
+    );
+    expect(ctx.executionLatch?.snapshot().source).toBe('env-override');
+    expect(createBridge).not.toHaveBeenCalled();
+    expect(ctx.stopQueueBridge).toBeUndefined();
+  });
+
+  it('logs a non-launched dispatch outcome once', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let bridgeOptions: QueueBridgeOptions | undefined;
+    const createBridge = vi.fn((options: QueueBridgeOptions) => {
+      bridgeOptions = options;
+      return { tick: vi.fn(), start: vi.fn(), stop: vi.fn() };
+    });
+    const dispatch = vi.fn().mockResolvedValue({ cardId: 'card-1', outcome: 'blocked', status: 0, reconciled: false });
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
+      { build: vi.fn().mockReturnValue(activatedTriple()) as never, env: {}, createQueueBridge: createBridge, dispatchClaimedCard: dispatch as never },
+    );
+    expect(ctx.executionLatch?.unlock({ subject: 'operator' }).ok).toBe(true);
+    await bridgeOptions?.dispatch?.({ id: 'card-1', path: 'queue/inbox/card-1.md', state: 'inbox' });
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+  });
+
+  it('stops an armed queue bridge during app close', async () => {
+    const stop = vi.fn();
+    const createBridge = vi.fn(() => ({ tick: vi.fn(), start: vi.fn(), stop }));
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN] },
+      { build: vi.fn().mockReturnValue(activatedTriple()) as never, env: {}, createQueueBridge: createBridge },
+    );
+    expect(ctx.executionLatch?.unlock({ subject: 'operator' }).ok).toBe(true);
+    app = Fastify({ logger: false });
+    registerWriteSurface(app, ctx);
+    await app.close();
+    app = undefined;
+    expect(stop).toHaveBeenCalledOnce();
+    expect(ctx.stopQueueBridge).toBeUndefined();
   });
 });
 

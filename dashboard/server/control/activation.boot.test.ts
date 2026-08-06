@@ -23,7 +23,8 @@ import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../index.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
-import { buildActivatedExecution, isExecutionActivated, type ActivationDeps } from './activation.ts';
+import { buildActivatedExecution, createExecutionLatch, isExecutionActivated, type ActivationDeps } from './activation.ts';
+import { isInternalServiceCaller, type InternalServiceCaller } from '../auth/session.ts';
 import { createFileControlPlaneStore } from './store.ts';
 import { createQueueBridge, settleFleetLedgerForRun } from './queueBridge.ts';
 
@@ -103,6 +104,25 @@ describe('T6 gated boot smoke', () => {
     expect(activated?.controlBroker).toBeDefined();
     expect(typeof activated?.runAutomatic).toBe('function');
     expect(typeof activated?.cancelAutomatic).toBe('function');
+  });
+
+  it('PASSKEY LATCH: mints the internal service caller only through the armed latch path', () => {
+    let caller: InternalServiceCaller | null = null;
+    const latch = createExecutionLatch({
+      env: {},
+      buildOptions: {
+        controlStore: createFileControlPlaneStore(tempStateRoot),
+        repoRoot: process.cwd(),
+        stateRoot: tempStateRoot,
+        deps: {
+          resolveBaseCommit: () => 'f'.repeat(40),
+          loadPolicy: () => ({ profiles: [], curatedSkills: new Set<string>(), contractText: '', governanceContents: {} }) as never,
+        },
+      },
+      onChange: (_execution, _state, nextCaller) => { caller = nextCaller; },
+    });
+    expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+    expect(isInternalServiceCaller(caller)).toBe(true);
   });
 
   it('GATE ON: exposes one attemptIo store and threads it to both worker factories', () => {

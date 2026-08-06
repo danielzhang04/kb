@@ -112,6 +112,8 @@ export interface SurfaceContext {
    * the current posture without a second lookup path. Absent only when a test injects the executor.
    */
   executionLatch?: ExecutionLatch;
+  /** Stop the closure-owned queue poller during preClose; never exposes tick/dispatch to routes. */
+  stopQueueBridge?: () => void;
   /** FYT paid-action executor (server-owned spend). Bound ONLY behind the activation gate (with the
    *  executor fields above), so it is `undefined` while the daemon is locked/inert and the paid-action
    *  route fails closed. Never supplied by the browser. */
