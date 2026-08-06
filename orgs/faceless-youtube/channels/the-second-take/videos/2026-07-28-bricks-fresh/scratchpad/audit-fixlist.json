@@ -1,0 +1,682 @@
+[
+ {
+  "id": "L45",
+  "lens": "comedy",
+  "severity": "high",
+  "proposal": "Restore a face at the LIP, not a body at the bottom: miniscribe-rep, expr-fear, action-recoil at the cliff edge, with the plant's assembly conveyor running out over the rock and ending dead in mid-air on its last roller. Keeps the aftermath below; the gore objection in the current note is a false dichotomy.",
+  "old_ref": "L40",
+  "doctrine_flag": false
+ },
+ {
+  "id": "L194",
+  "lens": "comedy",
+  "severity": "high",
+  "proposal": "'Out for blood' - author the crowd FURIOUS: mouths open, fists up on the rail, bodies pressed at the shut door. The note's claim that faces would cross the gore line is wrong; anger on a face is not gore.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L211",
+  "lens": "comedy",
+  "severity": "high",
+  "proposal": "The gag is that the cheering does not stop when the prize goes. Author the crowd's faces jubilant on L210 and carry that jubilation verbatim into the L211 restatement - identical faces, empty easels.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L221",
+  "lens": "comedy",
+  "severity": "high",
+  "proposal": "'Karma for being a dick' - the file's one vindication beat, and the laid-off crowd behind the foreman has no expression. Author them satisfied, leaning in, the folded newspaper the thing they are pleased about.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L68",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "Chopping block: put a body in the frame that is not on the block - a figure standing a pace off in expr-worried looking at the waiting chair, or the crowd queued down the corridor behind it. The gore rule bans the head, not the witness.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L09",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "'Flying off the shelves' - one winged box is the weak version. Rank FIVE winged machines along the bare top shelf all facing the same way, with one clean gap and a dust outline where a sixth sat.",
+  "old_ref": "L09",
+  "doctrine_flag": false
+ },
+ {
+  "id": "L112",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "The wire shopping basket on a trade counter is the best gag in act 3 and nobody is holding it. Cast a figure at the counter presenting the basket, or move the basket to the yard hands' side so the crowd is transacting with it.",
+  "old_ref": null,
+  "doctrine_flag": true
+ },
+ {
+  "id": "L160",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "'Bring your kid to work' needs the child's FACE, not the child's throughput. Drop 'at the same steady rate as the adults' and author the kid's expression (dutiful/bored) with the lunch box and satchel at their feet.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L59",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "The risotto pass: the cooks work the range facing away. Turn one section of the crew to the pass so the plate the ledger is about to land on is being watched.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L60",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "When the ledger sheet lands on the risotto, the crowd's reaction is the punchline. Author the range crew's faces turning to it, appalled.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L146",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "'It's the TSA' - the pallet rides the scanner belt and not one traveller looks at it. Author the queue watching it go through, bored, exactly as a real screening line watches.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L206",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "The verdict card lying face-up on the corridor floor is a strong image with a packed gallery authored only as 'turned toward the open door'. Give that gallery outraged faces - the throw-out is the beat the room reacts to.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L210",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "Prize-giving: 'a crowd with their arms up' has no faces. Author them jubilant so the L211 punchline has something to leave unchanged.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L241",
+  "lens": "comedy",
+  "severity": "med",
+  "proposal": "The brick on the presentation podium is the video's running joke paying off, and the crowd beyond the rope line is given nothing. Author them applauding the brick, straight-faced.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L125",
+  "lens": "comedy",
+  "severity": "low",
+  "proposal": "'Next level' - the forklift does the gag and the packers guide from behind the block. Turn one packer to watch the pallet go up; the pun reads better with somebody registering it.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L199",
+  "lens": "comedy",
+  "severity": "low",
+  "proposal": "'Fork up' is nearly there - the men are on the shaft. Author strain on them (heaving, faces set, feet braced) so the money's immovability lands as effort rather than as arrangement.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L097",
+  "lens": "comedy",
+  "severity": "low",
+  "proposal": "The typo excuse: one raised typewriter key foreground, the counters a doorway away. Bring the counters' heads round to the doorway so the excuse is being made TO somebody.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L243",
+  "lens": "comedy",
+  "severity": "low",
+  "proposal": "The set trap that never went off is a fine closing gag; the clerks step over it with 'every head turned toward the door'. Have one head turned DOWN at the trap and away again - the near-miss is the joke.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L111",
+  "lens": "literal",
+  "severity": "high",
+  "proposal": "Stretch A opener. 'They rented a warehouse near headquarters' drawn as a rented warehouse. Restage non-literally: the lease and keys changing hands, or the plant and the shell in one frame with a walkable strip of scrub between them and nothing else.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L114",
+  "lens": "literal",
+  "severity": "high",
+  "proposal": "Stretch A. 'Bought 26,000 bricks' as a wide of men loading bricks. Either merge with L115 (same yard, same labour) or restage as number-glued-to-object on the weighbridge ticket alone, freeing a beat for invention.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L115",
+  "lens": "literal",
+  "severity": "high",
+  "proposal": "Stretch A. 'Handpicked to match the weight and size' drawn as men picking bricks. Restage as physicalized-imbalance: a brick and a drive on a two-pan balance in a worker's hands, the reject heap growing behind - the comparison, not the labour.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L117",
+  "lens": "literal",
+  "severity": "high",
+  "proposal": "Stretch A. 'Put the bricks in boxes' drawn as putting bricks in boxes, immediately after L115/L116 already showed a brick going into a carton. Merge into L118 (one frame: bricks going in, tickets going on) and free a beat.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L120",
+  "lens": "literal",
+  "severity": "high",
+  "proposal": "Stretch A. 'Shrink wrapped them onto pallets' drawn as shrink wrapping. Merge with L121 - the film going round and the floor finished is one transformation stated as two - and spend the recovered beat on the L122 ledger frame, which is the thesis.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L153",
+  "lens": "literal",
+  "severity": "high",
+  "proposal": "Stretch B. The junk-padding chain enumerates the sentence noun by noun. Restage the base non-literally: the inventory ledger's line item against what the carton actually holds, or the hopper of cracked castings weighed against a single real drive.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L086",
+  "lens": "literal",
+  "severity": "high",
+  "proposal": "The discovery is stated three consecutive times (L086 hold-up, L087 bare shelf, L088 room stares) in one bay, 8.5s. Keep L086 and L087; see the chain entry on L088.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L081",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'Outside accountants came in' drawn as accountants walking in a door. Restage outside the plant entirely - deed boxes coming out of a car boot, or the engagement letter arriving - which also splits the L81-L84 plant run.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L084",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'Everybody started counting' drawn as everybody counting, two shots after L082 already set up the count. Restage as the count's residue (a wall of tally sheets multiplying) or cut and give the time to L083/L085.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L16",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'Every computer needs one' drawn as a shelf of computers each holding a drive. Restage: one drive with a queue of machines waiting for it, or a machine with its bay standing conspicuously empty.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L37",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'At their peak in 1988' drawn as a busy factory floor - the peak is asserted by business. Restage as the peak's artefact (the order book that cannot shut, the dispatch board full to its last slot).",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L107",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'Something an auditor could walk up to and put his hands on' drawn as an auditor walking up to it. Restage as the WANT: a bare aisle with one lit pallet and a pair of gloves waiting on it, or the auditor's tick-sheet with one line that cannot be ticked.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L143",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'They pull a sample, count it' drawn as pulling a sample and counting it, one shot after L142's schematic already explained the procedure. Cut one of L142/L143 - the schematic is the better frame and the two-cast trestle is the more expensive one.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L168",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'Cut a batch of employees loose' drawn as a man handing out notices. Restage: the time-clock rack with a block of cards pulled out, or the paper chain still up over a rank of emptied lockers.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L171",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'Went home, picked up the phone' drawn as a man on a phone. Stretch D is 8 shots with 2 inventions; this is the cheapest to convert - the receiver off the hook and the coat still on, seen from the newsroom end of the line.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L172",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'Called the Denver newspapers' drawn as a newsroom. Redundant with L174 (the same newsroom two shots later). Cut it and let L171's phone cut straight to L174's bundles.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L181",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'Go back and redo the books' drawn as clerks redoing books. Restage: the spike from L085/L103 being emptied sheet by sheet, which is a callback the file already owns.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L187",
+  "lens": "literal",
+  "severity": "med",
+  "proposal": "'By the time the accountants finished redoing the books' drawn as trolleys of books leaving. Third book-work frame in seven shots (L181, L182, L187). Cut or merge into L182.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L131",
+  "lens": "literal",
+  "severity": "low",
+  "proposal": "'Customers who had agreed in advance' - four docks with four untouched pallets is one of three 'lots of pallets' frames in the fifth (L131, L138, L145). Keep one; L132's roped-off pallet already carries the agreement better than any of them.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L145",
+  "lens": "literal",
+  "severity": "low",
+  "proposal": "'Everything else in the building gets a pass' - another wide of ranked pallets. Restage as the pass itself: three ticks on a sheet against a building-sized stack, or cut and give the time to L146's TSA gag.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L11",
+  "lens": "literal",
+  "severity": "low",
+  "proposal": "Object-study bench frame on an explainer beat, near-duplicate of L34's world 23 cuts later. Restage one of the two as a non-literal read (a drive being fed a stack of paper, a machine whose memory is drawn as a filing drawer).",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L231",
+  "lens": "literal",
+  "severity": "low",
+  "proposal": "Stretch E. Courthouse corridor with a queue beyond a brass rail - and L232 is the same corridor again. Merge the two; the immunity door is the payload and only needs one frame of queue.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L239",
+  "lens": "literal",
+  "severity": "low",
+  "proposal": "Stretch E. Payout window with a crowd beyond glass, then L240 is a payout trestle with a crowd beyond it. Two frames of the same pro-rata idea in the same institutional world - merge and spend the beat on a non-institutional read of the shortfall.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L15",
+  "lens": "chain",
+  "severity": "high",
+  "proposal": "drive-vault runs base+3 deltas, over the new <=2 cap. Re-base L15: the curtain across the bottom shelf is a new punchline idea, so author it as a fresh stage base tightened onto the bottom shelf with the curtain already drawn. Chain becomes 1+2 / 1+0.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L24",
+  "lens": "chain",
+  "severity": "high",
+  "proposal": "brick-tease runs base+3 deltas. Merge L24 into L23 - opening the front carton and opening the rest of the row is one reveal at two scales - and give the recovered 1.7s to L25, the lettering payload. Chain becomes 1+2.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L154",
+  "lens": "chain",
+  "severity": "high",
+  "proposal": "junk-padding runs base+3 deltas. Merge L154 into L155: offcuts/swarf and slats/banding/reels are one 'more junk goes in' transformation stated twice. Chain becomes 1+2, and it also fixes the enumeration defect in Stretch B.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L88",
+  "lens": "chain",
+  "severity": "high",
+  "proposal": "miniscribe-plant L86-L091 is 6 consecutive shots / 14.8s on one set restating the discovery three times. Cut L088 and give its 2.9s to L089 (the face, currently 1.8s); L090's shuttered pay hatch already carries the aftermath.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L30",
+  "lens": "chain",
+  "severity": "med",
+  "proposal": "miniscribe-plant L28-L33 is 6 consecutive openers on one set. Re-derive L30 ('founded in 1980') outside the plant - a founding document, a garage, a first order - which splits the run 2/3 and buys a non-industrial world in a fifth that has none.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L10",
+  "lens": "chain",
+  "severity": "med",
+  "proposal": "computer-shop L05-L10 is 6 consecutive shots on one set. L10 is a transplanted modern launch queue that borrows only a counter from the shop - drop its place: computer-shop and author a generic shopfront interior. Run splits 5/1.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L099",
+  "lens": "chain",
+  "severity": "med",
+  "proposal": "miniscribe-plant L093-L096 is 4 consecutive literal shots on one trestle. Move L099 (the two-item tool roll on the baize card table) to sit between L095 and L096 - it lands better on 'Allen wrenches and paper clips' than on 'not exactly Ocean's Eleven', and it breaks the run.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L113",
+  "lens": "chain",
+  "severity": "low",
+  "proposal": "brick-company-yard L113-L116 is 4 consecutive shots on one set; the L114/L115 merge proposed under literal reduces it to 3. No separate action needed if that lands.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L100",
+  "lens": "chain",
+  "severity": "high",
+  "proposal": "[DOCTRINE] L81-L100 is 46 consecutive seconds with 16 of 20 shots in miniscribe-plant, and no rule in visual-grammar.md caps consecutive shots or total time on one place - only deltas within one stage. Either re-derive 3-4 beats in this span into non-plant worlds (see L081, L084, L088, L107), or add a place-run cap to doctrine so lint catches this class.",
+  "old_ref": null,
+  "doctrine_flag": true
+ },
+ {
+  "id": "L17",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'entertained' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L18",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'entertained' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L32",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'elated' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L46",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'downcast' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L52",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'apprehensive' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L54",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'amused' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L67",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'hopeful' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L70",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'exhausted' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L71",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'uneasy' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L72",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'afraid' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L76",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'dismayed' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L88",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'alarmed' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L090",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'anxious' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L109",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'conspiratorial' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L138",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'daunted' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L158",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'weary' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L159",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'weary' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L163",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'admiring' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L167",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'stunned' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L168",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'grim' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L169",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'grim' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L174",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'excited' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L183",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'sceptical' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L192",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'worried' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L194",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'furious' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L197",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'grave' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L206",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'outraged' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L210",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'jubilant' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L211",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'jubilant' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L217",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'implacable' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L221",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'satisfied' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L239",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'disappointed' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L240",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'disappointed' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L242",
+  "lens": "crowd-emotion",
+  "severity": "med",
+  "proposal": "Author the crowd 'cheerful' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ },
+ {
+  "id": "L247",
+  "lens": "crowd-emotion",
+  "severity": "high",
+  "proposal": "Author the crowd 'glum' in the crowd's own primary-scene clause (prose, not an expr- slug - crowd has no canonical). The frame currently states position and activity only.",
+  "old_ref": null,
+  "doctrine_flag": false
+ }
+]
