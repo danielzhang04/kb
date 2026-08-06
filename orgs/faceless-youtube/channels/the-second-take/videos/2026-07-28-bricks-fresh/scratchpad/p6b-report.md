@@ -208,3 +208,124 @@ Seeds are right: L06/L07-retry1 seed promoted `scenes/L05.png`; **L18-retry1 see
 | L08 | 1 | DOCTRINE: parked parent L07 — needs L07-retry1 reviewed + verified + promoted FIRST |
 
 Retry frames get NO stamp — they return to fresh-eyes. The 4 parked manifest entries stay parked.
+
+
+---
+
+# FINISHER PASS 2026-08-06 — reconcile the retries, mint the last 5
+
+A prior worker generated 4 surgical retry frames but stopped before logging 3 of them and before
+minting the 5 owed resume shots. This pass reconciled its disk state and finished the work. **Nothing
+new was authored** — every prompt, slate and helper already existed.
+
+## Weaknesses first
+
+**1. L16-retry1 fixed its two flagged attributes and BROKE a third that was passing.** The ink
+inversion is genuinely repaired — hue **19.7deg / R-B +23.1 (WARM)** against the parked original's
+**172.2deg / -1.4 (cyan)**, landing on the `#241a12` target (~19deg / +18) — and the cases are warm
+beige. But the authored square-to-frame shelf is now drawn as a **deep oblique**, a regression in an
+attribute the parked original PASSED. This is the surgical-retry failure mode showing its teeth: a
+single exact-replace span still re-rolls the whole frame. The verifier must weigh a fixed palette
+against broken framing; the generator does not adjudicate that.
+
+**2. L06-retry1 drifted on its passing half too.** Primary fix landed (exactly ONE '1983', on the
+window card), but the crate moved from the floor at the counter's near end to ON the counter. Same
+mechanism as (1), milder. Logged for fresh eyes; no retry spent.
+
+**3. Ink darkens monotonically down the L22->L25 delta chain.** Mean ink luminance 5.9 -> 4.3 -> 2.9
+-> 1.7, ink R-B +4.1 -> +3.9 -> +3.1 -> +1.9. Every frame stays WARM, so this is NOT the R1 cool
+inversion, and no frame is out of register alone — but the trend is generational, each delta
+re-seeding its predecessor compounding a slight darkening. Flagged for the verifier's eye on L25.
+Not adjudicated, no retry spent.
+
+**4. The R1 tripwire's literal condition occurred and was deliberately not honoured.** L22 (0.0902)
+and L23 (0.0980) are two CONSECUTIVE sub-0.10 frames. Both are night-warehouse shots inheriting the
+human-approved L03 plate whose own median saturation is 0.0902, and both sit AT or ABOVE it — the
+exact case the NIGHT-SHOT RULE governs. Saturation then climbs monotonically (0.0902 -> 0.0980 ->
+0.1059 -> 0.1176), the opposite of a grey-drain, which drifts DOWN. Recording it plainly because
+"tripwire condition met, did not halt" is precisely the call a later reader should be able to audit.
+
+**5. A spend figure disagrees by one call.** The dispatch stated $1.25 conservative already spent;
+the genlog totals to **$1.287** ($1.131 through the continuation + L06-retry1's logged $0.039 + the 3
+unlogged retries at $0.117). The $0.039 gap is whether L06-retry1's successful call was counted. Not
+silently reconciled — flagged, and the higher figure used throughout below.
+
+## Reconciliation — 4 retry frames verified and logged
+
+All four were on disk from 03:24-03:33, PIL-valid, **1376x768**, all **> 300KB**. None regenerated.
+Measured with the existing `p6b_sat.py` / `p6b_ink.py` helpers; three missing genlog rows appended.
+
+| retry | size | median sat | ink hue / R-B | logged before? |
+| --- | --- | --- | --- | --- |
+| L06-retry1 | 1239KB | 0.2353 | 22.8deg / +18.3 WARM | yes (with measurements) |
+| L16-retry1 | 1193KB | 0.1255 | **19.7deg / +23.1 WARM** | **no — appended** |
+| L07-retry1 | 1458KB | 0.2510 | 23.9deg / +23.8 WARM | **no — appended** |
+| L18-retry1 | 1432KB | 0.2824 | 23.1deg / +14.4 WARM | **no — appended** |
+
+**All four measure WARM** — the R1 generator-side fix holding across the entire retry set. The stale
+`_staging/L10.png.lock` (02:16, dead PID 41096 from the pre-cooldown 503 wave) was deleted.
+
+## The 5 owed shots — 5/5 delivered, zero failures
+
+Slate `p6b-slate4.json` = `p6b-slate3.json` **minus L08**. Dry-run `p6b-dryrun4.txt` confirmed every
+shot resolved a real parent *before* any call fired, and all five `_staging` slots were confirmed
+EMPTY beforehand so nothing could seed a stale pre-reset frame. Fired one call at a time in strict
+chain order, each verified on disk before the next.
+
+| shot | seed resolved | depth/lineage | size | median sat |
+| --- | --- | --- | --- | --- |
+| L10 | `scenes/L05.png` | 1 / 1 | 1199KB | 0.4431 (resume canary) |
+| L22 | `scenes/L03.png` | 1 / 1 | 1106KB | **0.0902** — night, == L03 baseline |
+| L23 | `_staging/L22.png` | 2 / 2 | 1186KB | 0.0980 — night |
+| L24 | `_staging/L23.png` | 3 / 3 | 1234KB | 0.1059 — night |
+| L25 | `_staging/L24.png` | 4 / 4 | 1270KB | 0.1176 — night |
+
+**0 provider failures, 0 re-issues** — the provider is fully recovered. All 5 are 1376x768 @1K/16:9,
+PIL-valid, 1106-1270KB. L22's median saturation matching the L03 plate to four decimals, and its ink
+R-B (+4.1) matching L03's own (+3.8), is strong evidence the place-plate inheritance is working.
+
+## L08 — still doctrine-blocked, deliberately not generated
+
+L08 is the **only** shot in the L01-L25 slice still undelivered. Its in-chain parent **L07 is
+parked**, so it was never promoted, `assets/scenes/L07.png` does not exist, `place_frame` resolves to
+`None`, and forge's parked-parent refusal never fires because that guard only triggers when the
+parent file resolves — the shot would silently fall back to a rootish gen with no continuity.
+**L08 unblocks only when L07-retry1 is reviewed, verified and promoted.** It was excluded from the
+slate rather than worked around.
+
+## Board
+
+`p6b-board.html` rebuilt through `build_review_artifact`'s own `build()` — **28 cards**:
+
+| group | count | verdicts |
+| --- | --- | --- |
+| promoted place plates (L03, L05) — continuity context | 2 | already approved, not re-ruled |
+| verified candidates | 13 | stamped 2026-08-06 |
+| parked originals, each IMMEDIATELY followed by its retry frame | 4 | parked, verbatim reasons |
+| retry frames (L06/L07/L16/L18-retry1) | 4 | **EMPTY** |
+| newly minted frames (L10, L22-L25) | 5 | **EMPTY** |
+
+Each parked original and its retry sit adjacent so the pair reads side by side, and the retry card
+carries the parked original as its first reference image. The L03 context card states the night
+baseline so a verifier meeting L22-L25 has it in hand. **Nothing was stamped** — `stamp_review.py`
+was not run, and the scenes manifest is unchanged at 21 verified / 4 parked / 25 entries, with no
+entry added for any retry or new frame.
+
+## Ledger
+
+- **This pass: 5 provider calls, 5 successes, $0.195.**
+- **Phase total: $1.482 conservative** (every provider-touching call billed, 503s included) /
+  **$1.014 realistic** (26 successful gens x $0.039). Ceiling $3.00 — **at most 49% consumed.**
+- **Slice delivered: 22 of 23 generable shots** (L01-L25 minus the 2 reused plates, minus L08).
+- **R1 tripwire: not tripped.** The one condition-met event (L22/L23) is governed by the NIGHT-SHOT
+  RULE and documented above and in the genlog.
+
+## Owed next
+
+1. **Fresh-eyes verifier** over the 4 retry frames + 5 new frames on `p6b-board.html` (9 empty
+   verdicts), then stamp. Point it at L16-retry1's oblique-shelf regression and L25's ink depth.
+2. **L08** — generate only after L07 is verified and promoted.
+3. **Record + promote** the 5 new frames (and any retry that passes) into `assets/scenes/`.
+4. Still open from earlier passes: the `knowledge/decisions.md` entry, and surfacing the
+   silent-plate-miss / parked-parent fallback as a forge defect (a missing or parked PLACE plate
+   should hard-error at $0, not silently downgrade to a root plate).

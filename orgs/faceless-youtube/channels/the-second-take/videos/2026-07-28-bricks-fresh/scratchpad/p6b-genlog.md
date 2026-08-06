@@ -320,3 +320,79 @@ promoted, verified `scenes/L17.png`** — the exact parent-continuity invariant 
 - **Spend: $1.131 conservative** (every call billed, 503s included) / **$0.663 realistic**.
   Ceiling $3.00 — **at most 38% consumed**, ≥$1.87 left for the 10 remaining frames.
 - **R1 tripwire: NEVER TRIPPED** across all 17.
+
+---
+
+# RESUME 2026-08-06 (post-cooldown) — provider RECOVERED
+
+Ink-register helper `p6b_ink.py` added: darkest-3% circular-mean hue + mean R-B, matching the
+verifier's methodology. Validated against its recorded baselines before use —
+L16 174.2deg/-1.0 (verifier: 172.2/-1.4), L03 R-B +4.0 (+3.8), L05 +25.9 (+24.3). Comparable.
+
+**Note for the night shots:** the human-approved L03 plate measures median saturation **0.0902 —
+BELOW the 0.10 R1 tripwire floor**. It is approved under Daniel's R3 night-scene exception. L22-L25
+live in that same night warehouse and inherit it, so a sub-0.10 reading there is authored darkness,
+not an R1 regression; judged against L03's baseline rather than halting blind.
+
+| timestamp | shot | status | median HSV saturation | cost |
+| --- | --- | --- | --- | --- |
+| 2026-08-06 | L06-retry1 | **PROVIDER CANARY OK** — 1376x768, ink_hue 22.8deg / R-B +18.3 (WARM). Primary fix LANDED: exactly ONE '1983', on the window card. DRIFT to note for fresh-eyes: the crate now sits ON the counter rather than on the floor at its near end — the known cost of a fresh re-roll touching the passing half. | 0.2353 | $0.039 |
+| 2026-08-06 | L16-retry1 | **OK** — 1376x768, 1193KB, PIL-valid. Ink register FIXED: hue **19.7deg / R-B +23.1 (WARM)** against the parked baseline **172.2deg / -1.4 (cyan)** — the sole cool inversion in the batch is gone, and 19.7deg sits on the `#241a12` target (~19deg / +18). Both flagged attributes addressed: warm beige cases, warm outline. **NEW DEFECT for fresh-eyes: the authored square-to-frame shelf is drawn as a deep oblique** — a regression in an attribute that PASSED on the parked original. Retry frames are not stamped; this goes back to the verifier. | 0.1255 | $0.039 |
+| 2026-08-06 | L07-retry1 | **OK** — 1376x768, 1458KB, PIL-valid; seeds promoted `scenes/L05.png`. Ink hue 23.9deg / R-B +23.8 (WARM). Not adjudicated here — the four verifier-flagged attributes (vantage, crate-at-counter relation, hand on every banknote, complete '1983' lettering) return to fresh-eyes. | 0.2510 | $0.039 |
+| 2026-08-06 | L18-retry1 | **OK** — 1376x768, 1432KB, PIL-valid; seeds promoted verified `scenes/L17.png` — the parent-continuity invariant the parked original broke. Ink hue 23.1deg / R-B +14.4 (WARM). Not adjudicated here; returns to fresh-eyes. | 0.2824 | $0.039 |
+
+**Reconciliation note (P6B finisher, 2026-08-06).** The three rows above were generated 03:26/03:29/03:33
+alongside the already-logged L06-retry1 (03:24), but the generating worker stopped before logging them.
+Recovered from disk and measured with the existing `p6b_sat.py` / `p6b_ink.py` helpers — no frame was
+regenerated. A stale `_staging/L10.png.lock` (02:16, dead PID 41096 from the pre-cooldown 503 wave) was
+deleted as part of the same reconciliation.
+
+**All 4 retry frames verified:** PIL-valid, 1376x768, 1193-1458KB (all > 300KB). All four measure WARM ink
+(hue 19.7-23.9deg, R-B +14.4 to +23.8) — the R1 generator-side fix holding across the whole retry set.
+NO retry frame is stamped; all four return to the fresh-eyes verifier with verdicts EMPTY.
+
+## NIGHT-SHOT RULE (binding for L22-L25)
+
+L22-L25 inherit the human-approved L03 night warehouse plate, whose median saturation is **0.0902 — below
+the 0.10 R1 tripwire floor** — accepted under Daniel's R3 night-scene exception. A sub-0.10 reading on
+L22-L25 is therefore **authored darkness judged against L03's 0.0902 baseline, NOT an R1 tripwire halt**.
+The tripwire (two consecutive frames < 0.10 = stop) applies only where the authored register is not night.
+
+## RESUME lane — the 5 owed shots (5/5 OK, 0 failures, 0 re-issues)
+
+Slate `p6b-slate4.json` = `p6b-slate3.json` MINUS L08 (L08 stays doctrine-blocked on its parked parent
+L07 and was deliberately not attempted). Dry-run `p6b-dryrun4.txt` confirmed all 5 resolve a real parent
+before any call fired: L10 -> `scenes/L05.png`, L22 -> `scenes/L03.png`, L23 -> `_staging/L22.png`,
+L24 -> `_staging/L23.png`, L25 -> `_staging/L24.png`; all `aspect=16:9 size=1K`. All five `_staging`
+slots were confirmed EMPTY beforehand, so no shot could seed a stale pre-reset frame. Fired one call at
+a time in strict chain order, each verified on disk before the next.
+
+| timestamp | shot | status | median HSV saturation | cost |
+| --- | --- | --- | --- | --- |
+| 2026-08-06 | L10 | **RESUME CANARY OK** — 1376x768, 1199KB, PIL-valid; seeds promoted `scenes/L05.png`. Ink hue 14.4deg / R-B +13.6 (WARM). | 0.4431 | $0.039 |
+| 2026-08-06 | L22 | **OK** — 1376x768, 1106KB, PIL-valid; chain root, seeds promoted `scenes/L03.png`. Ink hue 36.4deg / R-B +4.1 (WARM; L03's own baseline is +3.8 — the plate's register inherited almost exactly). **Median saturation 0.0902 == the L03 baseline to four decimals.** NIGHT-SHOT RULE applies: authored darkness, not an R1 halt. | 0.0902 | $0.039 |
+| 2026-08-06 | L23 | **OK** — 1376x768, 1186KB, PIL-valid; seeds in-chain `_staging/L22.png`. Ink hue 26.8deg / R-B +3.9 (WARM). Sub-0.10 but ABOVE the L03 baseline — NIGHT-SHOT RULE. | 0.0980 | $0.039 |
+| 2026-08-06 | L24 | **OK** — 1376x768, 1234KB, PIL-valid; seeds in-chain `_staging/L23.png`. Ink hue 17.4deg / R-B +3.1 (WARM). | 0.1059 | $0.039 |
+| 2026-08-06 | L25 | **OK** — 1376x768, 1270KB, PIL-valid; seeds in-chain `_staging/L24.png`. Ink hue 8.5deg / R-B +1.9 (WARM). | 0.1176 | $0.039 |
+
+**R1 tripwire — invoked and correctly NOT tripped.** L22 (0.0902) and L23 (0.0980) are two CONSECUTIVE
+sub-0.10 frames, which is the literal tripwire condition. It does not fire: both are night-warehouse
+shots inheriting the human-approved L03 plate, whose own median saturation is 0.0902, and both sit AT or
+ABOVE that baseline. This is the exact case the NIGHT-SHOT RULE above was written to govern. Saturation
+then climbs monotonically back through the chain (0.0902 -> 0.0980 -> 0.1059 -> 0.1176), the opposite of
+a grey-drain regression, which drifts DOWN.
+
+**ANOMALY logged for fresh-eyes — ink darkening down the L22->L25 delta chain.** Mean ink luminance falls
+5.9 -> 4.3 -> 2.9 -> 1.7 and R-B falls +4.1 -> +3.9 -> +3.1 -> +1.9 across the four chained beats. Every
+frame stays WARM (R-B positive) so this is NOT the R1 cool-ink inversion, and no single frame is out of
+register on its own. But the trend is monotonic and generational — each delta re-seeding its predecessor
+appears to compound a slight ink darkening. Flagged, not adjudicated; no retry spent. Worth the
+verifier's eye on L25 specifically, where the ink is nearest to pure black.
+
+## RESUME lane totals
+
+- **Generated: 5/5** (L10, L22, L23, L24, L25). 0 failures, 0 re-issues, 0 provider errors.
+- **Spend this lane: $0.195** (5 x $0.039).
+- **All 5: 1376x768 (16:9 @1K), PIL-valid, 1106-1270KB (all > 300KB).**
+- **NOT stamped.** All 5 return to the fresh-eyes verifier with verdicts EMPTY, as do the 4 retry frames.
+- **L08 remains the ONLY undelivered shot in the slice**, doctrine-blocked on its parked parent L07.
