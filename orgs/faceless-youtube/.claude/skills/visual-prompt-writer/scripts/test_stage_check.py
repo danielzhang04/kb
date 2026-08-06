@@ -1,8 +1,8 @@
 """Plain-assert test for lint_shots.stage_check — the delta-chain structural caps (HARD).
 Run: py -3 .claude/skills/visual-prompt-writer/scripts/test_stage_check.py
 
-The ≤3-delta cap and the ONE-base-first rule are the mechanical shadow of the shots-schema
-delta-chain contract (base + ≤3 deltas, then re-base or hard-cut). These caps were prose-only
+The ≤2-delta cap and the ONE-base-first rule are the mechanical shadow of the shots-schema
+delta-chain contract (base + ≤2 deltas, then re-base or hard-cut). These caps were prose-only
 until made HARD in stage_check; this file pins them so they can't silently regress."""
 import lint_shots
 
@@ -21,15 +21,15 @@ def _delta(sid, stage):
     return {"id": sid, "stage": stage, "stage_role": "delta", "changed_elements": ["+ x"]}
 
 
-# Check 4 — MORE than 3 consecutive deltas after a base is HARD.
-over = [_base("L01", "g")] + [_delta(f"L0{i}", "g") for i in range(2, 6)]  # base + 4 deltas
+# Check 4 — MORE than 2 consecutive deltas after a base is HARD.
+over = [_base("L01", "g")] + [_delta(f"L0{i}", "g") for i in range(2, 5)]  # base + 3 deltas
 hard, _ = caps(over)
-assert any(">3" in h and "delta" in h for h in hard), "should flag the >3-delta chain: %r" % hard
+assert any(">2" in h and "delta" in h for h in hard), "should flag the >2-delta chain: %r" % hard
 
-# The cap is exactly 3 — base + 3 deltas passes clean.
-ok3 = [_base("L01", "g")] + [_delta(f"L0{i}", "g") for i in range(2, 5)]  # base + 3 deltas
-hard, _ = caps(ok3)
-assert hard == [], "base + 3 deltas is at the cap, not over it: %r" % hard
+# The cap is exactly 2 — base + 2 deltas passes clean.
+ok2 = [_base("L01", "g")] + [_delta(f"L0{i}", "g") for i in range(2, 4)]  # base + 2 deltas
+hard, _ = caps(ok2)
+assert hard == [], "base + 2 deltas is at the cap, not over it: %r" % hard
 
 # Check 5 — an orphan delta (a stage run with no preceding base) is HARD.
 orphan = [_delta("L07", "g")]
@@ -46,9 +46,9 @@ two_base = [_base("L01", "g"), _delta("L02", "g"), _base("L03", "g")]
 hard, _ = caps(two_base)
 assert any("base" in h for h in hard), "a non-first base should flag: %r" % hard
 
-# The delta count RESETS on a new stage: two separate 3-delta chains are both clean.
-two_chains = ([_base("A1", "a")] + [_delta(f"A{i}", "a") for i in range(2, 5)]
-              + [_base("B1", "b")] + [_delta(f"B{i}", "b") for i in range(2, 5)])
+# The delta count RESETS on a new stage: two separate 2-delta chains are both clean.
+two_chains = ([_base("A1", "a")] + [_delta(f"A{i}", "a") for i in range(2, 4)]
+              + [_base("B1", "b")] + [_delta(f"B{i}", "b") for i in range(2, 4)])
 hard, _ = caps(two_chains)
 assert hard == [], "delta count resets per stage: %r" % hard
 

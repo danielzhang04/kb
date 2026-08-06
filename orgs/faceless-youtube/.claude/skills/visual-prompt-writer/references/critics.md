@@ -50,8 +50,10 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 > 3. **Prompt construction.** Does every backticked name exist in `registry.json`? Flag each one that does
 >    not — not automatically an error (image-gen's Pass-1 gate can approve a new asset), but an unflagged
 >    typo or a silently invented slug is. Then: is body pose, finger mechanics, or facial expression
->    written as PROSE where a registry name is the authoring act? Is absence positive? Is crowd-rig text
->    left in the prompt?
+>    written as PROSE on a SEEDED figure, where the registry name is the authoring act? (A crowd-rig
+>    figure is the opposite case — prose is its ONLY expression channel, so beat-fit expression and group
+>    attitude there are correct, and their ABSENCE on a crowd beat whose energy lives in the VO is the
+>    finding.) Is absence positive? Is crowd-rig text left in the prompt?
 >    **FORCED ROW — payload ordering, on every shot, stated even when clean.** Lint proves only the
 >    lettering half (a non-delta shot with a quoted literal ends on that literal's clause). Name THIS
 >    shot's payload — the one thing the viewer must take away, lettered or not — and say whether the
@@ -107,7 +109,7 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 > reveal, legibility, or gravity reason, a run of conspicuously equal-duration holds, or cuts so rapid the
 > payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 4 floor). **Stage
 > grouping** — the **SEMANTIC call only**: *are these really one held set?* A long-form plan revisiting a setting
-> with zero stage chains is a finding; never demand an arbitrary number. The mechanical caps (one `base`, ≤3 `delta`s,
+> with zero stage chains is a finding; never demand an arbitrary number. The mechanical caps (one `base`, ≤2 `delta`s,
 > contiguity, delta timing, order) are `lint_shots.py`'s job; do not re-flag them.
 >
 > **NEVER flag these — over-triggering is the failure mode:**

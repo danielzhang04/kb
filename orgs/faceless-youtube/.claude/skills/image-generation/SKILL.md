@@ -216,7 +216,7 @@ Per shot, pick the **cheapest technique that holds the locked elements**:
 | **(b) Seeded composition** (default with characters) | locked character(s) in a composed environment | ONE gen, `--mode environment`, multi-seeding the shot's tagged figure frames plus any true continuity/place input. Delta = the `still_prompt`'s scene/placement facts only; pose, expression, hands and tone route by seed |
 | **(c) Character-free scene** | a map, an empty plate, an object | ONE `--mode environment`/`style` gen; a root may be zero-seed under the bible descriptor + style suffix, while a chain/anchored request keeps its continuity seed |
 | **(d) One-shot single-character** | a simple shot, one prominent character | single gen `--mode identity` seeding that character's canonical (+ its expression/pose frames); full rig check still applies |
-| **(e) Seeded delta-chain** (a held STAGE) | consecutive shots sharing a `stage` id where the change is INTEGRATIVE | the `base` uses (b)/(c)/(d); each `delta` seeds the PREVIOUS in-stage frame and changes ONLY that shot's `changed_elements`; **≤3 deltas**, then re-base or hard-cut |
+| **(e) Seeded delta-chain** (a held STAGE) | consecutive shots sharing a `stage` id where the change is INTEGRATIVE | the `base` uses (b)/(c)/(d); each `delta` seeds the PREVIOUS in-stage frame and changes ONLY that shot's `changed_elements`; **≤2 deltas**, then re-base or hard-cut |
 
 **The BOUNDARY rule.** **DELTA-CHAIN when the change is INTEGRATIVE** (the element joins the scene's architecture):
 technique (e), one element per delta, the carry-over holding the set. A **re-base inside the SAME location** seeds the

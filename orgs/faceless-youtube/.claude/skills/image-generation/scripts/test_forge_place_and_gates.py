@@ -81,7 +81,7 @@ def _by_name(spec, name):
 
 def test_a_place_holds_across_its_stage_chains_and_only_its_first_frame_is_a_plate():
     """L89-L91's mechanism: shots on one set ran as independent seedless roots because `stage` —
-    a chain capped at 1 base + 3 deltas — was the only place forge knew."""
+    a chain capped at 1 base + 2 deltas — was the only place forge knew."""
     spec, err, _ = _run(_doc(
         {"id": "P1", "place": "records-room", "stage": "records-a", "stage_role": "base",
          "still_prompt": "A warm records room with a bare central table."},

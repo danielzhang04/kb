@@ -9,9 +9,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent))
 import forge as forge_module
-from forge import (Kit, cmd_batch, cmd_gen, figure_frame_name, merge_vocabulary, preflight_batch,
-                   resolve_request_seeds, seeding_law_violations, shot_cast,
-                   place_anchor_for, video_root_for,
+from forge import (BASE_TEMPLATE, Kit, cmd_batch, cmd_gen, figure_frame_name, merge_vocabulary,
+                   preflight_batch, resolve_request_seeds, seed_roles_text, seeding_law_violations,
+                   shot_cast, place_anchor_for, video_root_for,
                    cmd_retry_batch, RETRY_OVERLAY_SCHEMA)
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
@@ -165,6 +165,70 @@ def test_the_abolished_tier_and_an_unseeded_crowd_hard_error():
     assert seeding_law_violations(
         K, _req(delta="A dock at dawn.", figures={"crowd": True}),
         [PLATE, REFS + "base/crowd-exemplar.png"]) == []
+
+
+# --- THE SEEDED EVERYMAN (visual-grammar §2, executable 2026-08-06) ------------------------------
+# `base` is the shared RIG. `shot_cast` used to exclude it outright, so a prompt naming `` `base` ``
+# plus its cards resolved to `[]`: no step-1 card, no seed, no warning — and the shot then measured
+# `cast_free`, so §5's style tile was derived onto a figure-bearing frame. The exclusion's real
+# intent (the bare template must never render as itself) is kept, moved onto two LOUD laws.
+
+EVERYMAN = ("A brick-yard clerk in a 1980s back office, `base`, `expr-deadpan`, "
+            "`action-armscrossed`, stage-left behind the counter.")
+EVERYMAN_CARD = "fig-base--action-armscrossed--expr-deadpan"
+
+
+def test_the_everyman_resolves_base_as_a_figure_with_its_step1_recipe():
+    assert shot_cast(REG, EVERYMAN) == [("base", ["expr-deadpan", "action-armscrossed"])]
+    assert figure_frame_name("base", "action-armscrossed", "expr-deadpan") == EVERYMAN_CARD
+    # the pre-fix behaviour, pinned OUT: this exact prompt used to resolve to a silent []
+    assert shot_cast(REG, EVERYMAN) != [], "the `base` exclusion is back — the everyman seeds nothing"
+
+
+def test_an_everyman_shot_owes_its_step1_card_exactly_like_named_cast():
+    fresh = _req(delta=EVERYMAN)
+    bad = seeding_law_violations(K, fresh, [PLATE])
+    assert len(bad) == 1 and "staged FRESH with no STEP-1 figure frame" in bad[0], bad
+    assert EVERYMAN_CARD in bad[0], bad
+    assert seeding_law_violations(K, fresh, ["_staging/" + EVERYMAN_CARD + ".png", PLATE]) == []
+
+
+def test_a_delta_everyman_inherits_from_the_rig_template_plus_its_parent():
+    delta = _req(name="L12", stage_role="delta",
+                 delta="The same office, unchanged, except `base`, `expr-deadpan` now sits.")
+    canon = REFS + "base/base.png"
+    assert seeding_law_violations(K, delta, [canon, PLATE]) == []
+    assert "no canonical" in seeding_law_violations(K, delta, [PLATE])[0]
+
+
+def test_a_bare_base_with_no_card_is_refused_as_the_rig_template():
+    """The guard the old exclusion enforced in silence, now decidable and named: with no
+    `expr-`/`action-` card the step-1 recipe is just the bare canonical, i.e. the template
+    rendering as itself (style-bible §1: 'it never appears in videos')."""
+    bad = seeding_law_violations(
+        K, _req(delta="A clerk, `base`, stands behind the counter."), [PLATE])
+    assert len(bad) == 1 and "RIG TEMPLATE" in bad[0], bad
+    assert "expr-" in bad[0] and BASE_TEMPLATE in bad[0], bad
+    # and it is refused on a delta beat too, where the bare canonical would enter the scene
+    assert any("RIG TEMPLATE" in b for b in seeding_law_violations(
+        K, _req(stage_role="delta", delta="The same office, except `base` is now seated."),
+        [REFS + "base/base.png", PLATE])), "a bare base slipped through on a delta"
+
+
+def test_the_rig_templates_seed_prose_claims_no_identity_and_no_costume():
+    """The other half of the same guard. A base seed grants FORM; a cast canonical's 'identity,
+    head tone, hair and the pinned costume come from this image only' would order the provider to
+    keep the template's default hoodie in a shot whose prose dresses the everyman for its era."""
+    text = seed_roles_text([
+        {"path": "_staging/" + EVERYMAN_CARD + ".png", "role": "figure", "character": "base"},
+        {"path": REFS + "base/base.png", "role": "canonical", "character": "base"}])
+    assert "pinned costume" not in text, text
+    assert "seeded EVERYMAN" in text and "ANONYMOUS figure" in text, text
+    assert "shared BASE RIG template" in text and "NOT an identity" in text, text
+    # a named cast member's prose is untouched
+    cast_text = seed_roles_text(
+        [{"path": CANON, "role": "canonical", "character": "hq-banker"}])
+    assert "pinned costume come from this image only" in cast_text, cast_text
 
 
 def test_over_cap_names_the_seed_that_did_not_fit_and_never_truncates():
@@ -425,6 +489,34 @@ def test_character_free_place_plate_carries_only_the_style_tile_and_stays_a_plat
                      "why": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived "
                             "(line register + palette only); PLATE — place-first frame, bible "
                             "descriptor + style suffix, no content anchor"}], spec
+
+
+def test_an_everyman_batch_mints_its_step1_card_and_is_never_cast_free():
+    """End to end over the REAL registry: the everyman's card is generated from
+    [base canonical + expression + action], the scene seeds that card — and the shot no longer
+    measures `cast_free`, so §5's scene style tile is NOT derived onto a figure-bearing frame
+    (which is what the silent `[]` produced before the fix)."""
+    _, shots, out = _scope_fixture()
+    doc = json.load(open(shots, encoding="utf-8"))
+    doc["long_form"]["shots"] = [{
+        "id": "E01", "source": "ai-gen", "stage": "back-office",
+        "still_prompt": ("A brick-yard clerk in a 1980s back office, `base`, `expr-worried`, "
+                         "`action-slump`, stage-left behind a counter of ledgers.")}]
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["E01"])
+    assert err is None, err
+    card = figure_frame_name("base", "action-slump", "expr-worried")
+    assert [i["name"] for i in spec] == [card, "E01"], [i["name"] for i in spec]
+    step1 = spec[0]
+    assert [Path(s).stem for s in step1["seed"]] == ["base", "expr-worried", "action-slump"], \
+        step1["seed"]
+    assert [r["role"] for r in step1["seed_roles"]] == ["canonical", "expression", "pose"], step1
+    scene = spec[1]
+    assert [Path(s).stem for s in scene["seed"]] == [card], scene["seed"]
+    assert "scene-style-tile" not in [Path(s).stem for s in scene["seed"]], scene["seed"]
+    assert "STYLE TILE" not in scene["why"], scene["why"]
+    assert scene["seed_roles"][0]["character"] == "base", scene["seed_roles"]
+    assert "never the card's own default outfit" in scene["delta"], scene["delta"]
 
 
 def _stem_ok(seed, char):

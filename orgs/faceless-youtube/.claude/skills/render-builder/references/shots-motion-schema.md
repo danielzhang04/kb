@@ -7,7 +7,7 @@ image-generation and build_motion consume. Validated by `scripts/motion_plan.py:
 **The boundary this spec serves:** DELTA-CHAIN an INTEGRATIVE change (the element becomes part of the
 scene's architecture) — regenerate seeded off the prior frame; LAYER a DISCRETE change (the element
 sits on the scene without fusing into it) — keep the plate, composite a seeded animated cutout. Full
-law, including the ≤3-delta cap and the same-location re-base:
+law, including the ≤2-delta cap and the same-location re-base:
 `knowledge/research/niche-playbooks/universal.md` §13a-ii.
 
 ## Animation vocabulary

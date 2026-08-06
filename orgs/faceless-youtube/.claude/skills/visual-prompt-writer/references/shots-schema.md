@@ -56,7 +56,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   means *densify*.
 - **`place` — a recurring diegetic SET identity, distinct from `stage`.** `place` names the SET
   (`miniscribe-boardroom`, `brick-co-yard`); `stage` is a continuity CHAIN *within* one place (still capped
-  1 base + ≤3 deltas). A place can host many stage chains — the boardroom's fear beat, firing beat, and
+  1 base + ≤2 deltas). A place can host many stage chains — the boardroom's fear beat, firing beat, and
   planning beat are three `stage`s inside one `place`. **The plate of a place is the FIRST-IN-FILE GENERATED
   shot declaring that place** (`source: ai-gen | hybrid`, absent defaults to `ai-gen`) — one definition,
   decidable from the authored file alone (`lint_shots.py`'s `place_groups`). A stock/chart/screencap/archival
@@ -122,7 +122,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   with its own verbatim `vo_ref`. **Delta-vs-layer boundary:** an INTEGRATIVE change (the element joins
   the scene's architecture) stays a delta frame; a DISCRETE one (a character enters, a stamp slams onto a
   page) is promoted downstream by `motion-planner` to a moving cutout LAYER. Lint enforces exactly one
-  `base`, first, per stage · **≤3 deltas** per chain · contiguity.
+  `base`, first, per stage · **≤2 deltas** per chain · contiguity.
 - **Delta character-entrance law (lint-enforced, HARD).** A named figure's FIRST appearance on a set is
   never a `delta`. The delta seeding path supplies [in-chain parent + canonical] and nothing else, so a
   figure absent from the parent FRAME has no pixels to inherit: its pose and expression become prose

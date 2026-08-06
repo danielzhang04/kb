@@ -1356,7 +1356,7 @@ at a stage start.
 - **Structural breaths** every ~30–90s: a hard cut to a new stage, a palette turn, or a VO gap
   with a music dip.
 - **Continuity, cheapest first:** move a layer (zero drift) > a seeded delta-chain (a held STAGE:
-  `base` + ≤3 `delta` frames, each moving ONE element) > a hard cut to a new stage. No fades,
+  `base` + ≤2 `delta` frames, each moving ONE element) > a hard cut to a new stage. No fades,
   ever.
 - **Layer-vs-delta boundary:** a LAYER is discrete and non-integrated on a persistent plate (a
   seeded cutout that slides/pops over an unchanged background); a DELTA-CHAIN is integrative

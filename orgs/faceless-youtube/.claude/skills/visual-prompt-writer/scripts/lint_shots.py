@@ -288,7 +288,7 @@ def _dur(sh):
 
 def stage_check(label, shots, hard, soft, require_stage=False):
     """Held-stage field checks. Q4: the structural caps of the delta-chain contract — exactly
-    one base FIRST and at most 3 deltas — are HARD (they bound drift; lint owns the mechanical
+    one base FIRST and at most 2 deltas — are HARD (they bound drift; lint owns the mechanical
     caps). Timing/changed_elements/contiguity remain SOFT heads-ups. Never touches the vo_ref
     matcher — stage fields are optional metadata layered on top of the anchor contract. Strict v2
     long-form plans at the configured size get only a zero-stage guard, never a stage quota."""
@@ -311,8 +311,8 @@ def stage_check(label, shots, hard, soft, require_stage=False):
             continue
         seen[sid] = seen.get(sid, 0) + 1
         deltas = len(grp) - 1
-        if deltas > 3:
-            hard.append(f"[{label}] stage '{sid}': {deltas} delta frames (>3) — cap the chain at 3, then re-base or hard-cut.")
+        if deltas > 2:
+            hard.append(f"[{label}] stage '{sid}': {deltas} delta frames (>2) — cap the chain at 2, then re-base or hard-cut.")
         roles = [s.get("stage_role") for s in grp]
         if roles[0] not in (None, "base"):
             hard.append(f"[{label}] stage '{sid}': first frame role '{roles[0]}', expected 'base' — a chain is ONE base first.")
@@ -1253,7 +1253,9 @@ def figures_check(label, objs, hard, soft):
             hard.append(
                 f"[{label}] {pid}: `figures.anon_foreground` is abolished — forge.py hard-rejects "
                 f"it by name (SystemExit, forge.py:557): name the figure in the video's cast "
-                f"(seeded) or stage the people at crowd scale (crowd exemplar).")
+                f"(seeded), author a story-bearing anonymous one as a seeded everyman (`base` "
+                f"plus its `expr-`/`action-` cards), or stage the people at crowd scale (crowd "
+                f"exemplar).")
             unknown = [k for k in unknown if k != "anon_foreground"]
         if unknown:
             hard.append(f"[{label}] {pid}: `figures` has unknown key(s) {unknown!r}. The field is "

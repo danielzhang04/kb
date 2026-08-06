@@ -19,7 +19,7 @@ canonical, or from the plate it lands on, for CONTINUITY: the plate carries plac
 it is not a style anchor, and no cross-video `refs/env/` style-anchor plate exists (fix 2). Style comes
 from the hardened bible descriptor (`style-bible.md` §2b), never from a seed, on every gen alike — since
 an unseeded cutout invents its own register and lands off-style against a flat-cel plate (forge
-hard-errors an unseeded environment/style gen). Full law, incl. the ≤3-delta cap and the same-location
+hard-errors an unseeded environment/style gen). Full law, incl. the ≤2-delta cap and the same-location
 re-base:
 `knowledge/research/niche-playbooks/universal.md` §13a-ii.
 

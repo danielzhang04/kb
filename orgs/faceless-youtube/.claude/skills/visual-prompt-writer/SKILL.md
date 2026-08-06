@@ -67,18 +67,26 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    "the people selling picks and shovels" staged as an unattended stall has deleted the line's subject.
    Full law + the >~10s self-audit flag: `visual-grammar.md §1`.
 3. **Reference figures, poses, and expressions by registry vocabulary NAME, backticked, inline** in the
-   prompt prose ("MacGregor, `expr-smug`, `action-salute`, stage-left, facing right"). Never describe
-   body pose, finger mechanics, or facial expression in words — naming the asset IS the authoring act. A
+   prompt prose ("MacGregor, `expr-smug`, `action-salute`, stage-left, facing right"). **On a
+   registry-backed (cast or seeded) figure, never describe body pose, finger mechanics, or facial
+   expression in words** — that figure's seed carries them, and naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
    human's pre-gen approval, and a veto comes back to you as a restage.
+   **A crowd-rig figure has no seeded pose or expression, so plain scene prose is its ONLY expression
+   channel** — write the beat's simple expression ("grinning", "worried", "deadpan") and the group's
+   whole-body attitude, exactly as any other scene fact. An unauthored crowd renders uniformly neutral,
+   which is how a comic beat arrives dead.
    **An `interaction` slug is two-figure geometry, not a pose:** author it only on a fresh two-cast stage
    BASE, never on a solo shot and never on a delta (`visual-grammar.md §2` cast-cap table; lint and forge
    both HARD-refuse the other shapes).
    **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** A crowd needs a positive rear
    zone in the PRIMARY scene clause — the far side of a table/shelving, behind glass or a divider, through a
-   doorway — never a co-planar gathering later called "background-scale". An anonymous person with an individual
-   count, action, or face requirement is CAST, or the beat restages as mass action; people without a
-   story-bearing identity are staged at crowd scale.
+   doorway — never a co-planar gathering later called "background-scale". **Crowd is for genuine MASSES.**
+   An anonymous individual who BEARS the beat — performs the gag, reacts, decides — is staged as a **seeded
+   everyman** (the `base` rig named with the `expr-`/`action-` slugs the beat needs, dressed in the shot's
+   own era in prose), not demoted to the rear zone; a person with a locked identity is CAST; only people
+   with no story-bearing part are staged at crowd scale. Tier law + the current engine gate on the everyman
+   route: `visual-grammar.md §2`.
    The style-bible §2d rig-clause TEXT never appears in a prompt — you declare, and `forge.py` expands it at
    gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
    high-risk case in `notes`. Field spec: `shots-schema.md §2`.
@@ -123,7 +131,7 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    header block).
 5. **Group into stages/chains per the grammar's chain logic** — consecutive shots on one set share a
    `stage`, one `base` first, each `delta` changing exactly ONE physically feasible semantic transformation in
-   `changed_elements`, ≤3 deltas, then a re-base or a hard cut. **A figure's ENTRANCE is never a delta**
+   `changed_elements`, ≤2 deltas, then a re-base or a hard cut. **A figure's ENTRANCE is never a delta**
    (a delta seeds parent + canonical only, so a figure the parent frame does not contain has nothing to
    inherit): stage it as a `base`, or open a new stage on that shot. A place anchor is figure-free or already compatible
    with the later count/scale demand. Completion states quantify the end state (`all`, `entirely`, or what
@@ -151,7 +159,7 @@ at the first act's level.
 - **Places, stages + environments:** decide now which sets recur and carry held `stage` chains and which
   are one-frame standalones. A **`place`** is a recurring diegetic set identity (kebab-case, e.g.
   `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +
-  ≤3 deltas). **A set is a PLACE when the file REVISITS it after leaving** — two or more non-contiguous
+  ≤2 deltas). **A set is a PLACE when the file REVISITS it after leaving** — two or more non-contiguous
   runs; an unbroken single visit is a `stage`, whose base already anchors every shot of the run. Declare
   `place` on every shot of a revisited set. Symbolic/abstract/standalone object-insert `shot_class`es, a
   short's `first_frame`, and the thumbnail block declare no `place` and run as seedless roots. The

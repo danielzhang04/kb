@@ -67,7 +67,9 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
   EARNS its absence.** A beat naming a person, a party, a decision, or an act ("they were raking it
   in", "the people selling picks and shovels") is staged with the bodies doing it. A symbolic or
   prop-only frame on such a beat is legal only when the absence is itself the argument, or the
-  subject genuinely is a thing/place/mechanism — and then say so in `notes`. The failure this
+  subject genuinely is a thing/place/mechanism — and then say so in `notes`. **Figure bias is satisfied
+  by PERFORMANCE, not by population:** the body doing it stands where the beat is, on the seeded tier
+  (§2) — a rear-zone crowd behind an unmanned prop does not stage the line. The failure this
   corrects is measured, not theoretical: the reset's first fifth ran 29 of 41 frames with no figure
   of any kind and deleted the sellers from "the people selling picks and shovels", on a channel
   whose identity is "no on-screen narrator — the SCREEN is a CAST" (`style-bible.md §1`). **A
@@ -75,7 +77,7 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
   the human's call and no rule will ever make it.
 
 **Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
-it, each `delta` changes exactly ONE physically feasible semantic transformation, **≤3 deltas**, then a re-base or a hard cut. A world,
+it, each `delta` changes exactly ONE physically feasible semantic transformation, **≤2 deltas**, then a re-base or a hard cut. A world,
 setting, subject, or register change is a **hard cut**, never a delta. **A delta PROMPT is a compact
 restatement of the held scene, then the change as its FINAL clause** — the base's identity and
 load-bearing facts carried over tightened, never re-invented or paraphrased into different nouns, closing
@@ -114,7 +116,9 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   more than it buys. Author from the inventory; if no pose fits, restage the beat.
   A named asset is the authoring act, and the prompt may not narrate what the seed already carries — no
   eyelid, brow, nose, ear, finger, palm, or proportion prose next to a named pose or expression. Prose
-  competing with a seed is how one figure's attributes bleed onto another.
+  competing with a seed is how one figure's attributes bleed onto another. **This is a rule about
+  SEEDED figures only:** a crowd-rig figure names no asset and carries no seeded pose or expression, so
+  its expression and attitude are authored in plain prose (below).
 - **Props follow the same rule ONLY once they exist.** A prop that recurs across the video and already
   has a library entry is named by that entry (`registry.json` `assets[]` takes a `kind: "prop"` row like
   any other vocabulary). A prop making its FIRST appearance has no name to use: describe it in prose,
@@ -141,29 +145,41 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   Worked example: SKILL step 3a.
 - **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance. A group
   member acting alone is staged as an individual.
-- **Every human in frame is either NAMED CAST or CROWD — no third tier, no promotion path.** NAMED CAST
-  has a backticked slug and a canonical, and it is seeded; CROWD is declared `"crowd": true`
-  (`shots-schema.md §2`) and seeded from the crowd exemplar. **A story-bearing foreground individual
-  belongs in the planned cast and must not be replaced with an empty object merely to avoid a figure.**
-  An anonymous foreground human does not exist; an anonymous person with an individual count, action, or
-  face requirement is CAST or the beat becomes mass action. Crowd belongs in a positive rear zone in the
+- **Every human in frame is SEEDED or CROWD, decided by IDENTITY — and there is no promotion path:
+  a figure is authored in its tier from its first frame.** **NAMED CAST** carries a locked identity —
+  a backticked slug, a canonical, a pinned costume — and is seeded from it. **A SEEDED EVERYMAN** is
+  the anonymous but STORY-BEARING individual: the one who performs the gag, the reaction, the decision.
+  It claims no identity and mints no canonical; it is seeded off the shared `base` rig through the
+  `expr-`/`action-` vocabulary the beat needs, backticked inline like any other named asset, and it is
+  **always dressed in the shot's own era and setting in prose** — the base template never renders as
+  itself (style-bible §2c/§2d: a seed contributes head/face/hand FORM, never its own clothing).
+  **CROWD** is declared `"crowd": true` (`shots-schema.md §2`), seeded from the crowd exemplar, and
+  reserved for genuine MASSES.
+  **A story-bearing foreground individual must not be replaced with an empty object, nor demoted to
+  rear-zone crowd, to avoid spending a figure** — that demotion is the measured way a joke becomes
+  wallpaper (`videos/2026-07-28-bricks-fresh/scratchpad/authoring-audit.md` §1: 19 of 26 idiom-puns
+  staged their performer as background crowd). Crowd scale is never the fallback for ONE anonymous
+  performer; the seeded everyman is. Both seeded forms spend a foreground slot against the ≤2 cap below.
+  Crowd belongs in a positive rear zone in the
   PRIMARY scene clause — far side of the real table/shelving, behind a divider, through a doorway — never a
-  co-planar gathering renamed "background-scale" later. People without a story-bearing identity are staged at
-  crowd scale. The prose still stages crowd figures — where they stand, what they do, what they wear,
-  dressed for the scene's own era and setting, never the exemplar's period dress — but the RIG wording
-  is `forge.py`'s: it expands the `crowd` declaration into the
+  co-planar gathering renamed "background-scale" later. The prose still stages crowd figures — where they
+  stand, what they do, what they wear, dressed for the scene's own era and setting, never the exemplar's
+  period dress, **and the simple beat-fit expression and group attitude they hold** ("grinning",
+  "worried", "deadpan"); that prose is a crowd's only expression channel, and an unauthored crowd renders
+  uniformly neutral. The RIG wording is `forge.py`'s: it expands the `crowd` declaration into the
   style-bible §2d clause at gen time. **Never write that clause text into a `still_prompt`** (lint
   HARD-fails its fingerprint): the reference frames already carry the rig, ~600–1,100 chars of
   boilerplate per shot pushes the prompt into measured adherence decay, and generic figure wording
   sitting ahead of a named character is what bleeds one figure's attributes onto another.
 
-  **Scope law: two-step seeding applies to named-cast FRESH stage-base gens only.** Crowd has no
+  **Scope law: two-step seeding applies to SEEDED figures on FRESH stage-base gens only** — named cast
+  and the seeded everyman alike, each getting its own step-1 card. Crowd has no
   canonical, so isolating a step-1 gen buys it nothing — crowd, environment, and prop shots stay
   single-step (crowd exemplar + plate + prose), and delta beats stay single-step too, unchanged.
-  Combined with this tier law and the ≤2-cast cap below, no other shot shape exists that a step-1
+  Combined with this tier law and the ≤2-figure cap below, no other shot shape exists that a step-1
   figure applies to.
-- **The cast cap — at most 2 named cast per shot**, with the slate stated so the cost is visible
-  rather than argued:
+- **The foreground cap — at most 2 SEEDED figures per shot** (named cast or seeded everyman, in any
+  mix; each spends one step-1 card), with the slate stated so the cost is visible rather than argued:
 
   | Shot shape | STEP 2's slots (step 1 already ran per figure) | What it gives up |
   | --- | --- | --- |

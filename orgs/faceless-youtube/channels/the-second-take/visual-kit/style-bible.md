@@ -21,11 +21,15 @@ every reference frame was generated against it, so `image-generation` proposes c
 - **VARIES per character:** hair and hairstyle, facial hair, head tone, outfit, body build (proportions stay,
   mass changes), age/reaction linework — never enough to break the layout; costume always comes from the
   generation delta.
-- **Two tiers of figure — by IDENTITY, per figure per shot:** named/recurring cast → seeded from its
-  canonical, §2c auto-appends the form · crowd → the **§2d CROWD RIG** (simplified features — dot eyes +
-  one mouth — because fine features drift into noses on tiny faces). Crowd is DECLARED per shot, never
-  described in rig prose (`visual-grammar.md §2`); it is never a locked identity, while a recurring
-  identifiable GROUP is cast.
+- **Figures are SEEDED or CROWD — by IDENTITY, per figure per shot.** SEEDED splits on whether the
+  identity is locked: named/recurring cast → seeded from its own canonical · a **seeded everyman** (an
+  anonymous but story-bearing individual) → seeded from this base template through the `expr-`/`action-`
+  cards the beat names, wearing the shot's own era clothing from the prompt and never the template's
+  default hoodie — which is how "the base never appears in videos" and "the everyman is on the rig" hold
+  at once. §2c auto-appends the form to both. CROWD → the **§2d CROWD RIG** (simplified features — dot
+  eyes + one mouth — because fine features drift into noses on tiny faces), reserved for genuine masses.
+  Crowd is DECLARED per shot, never described in rig prose (`visual-grammar.md §2`); it is never a locked
+  identity, while a recurring identifiable GROUP is cast. Tier routing law: `visual-grammar.md §2`.
 
 ## 2. LOCKED STYLE descriptor (verbatim — prepend to every generation)
 

@@ -379,6 +379,13 @@ class Kit:
 # seed is the crowd exemplar.
 SEED_CAP = 4                    # the Pass-2 seed law: past four, dilution weakens every prior
 FIGURE_PREFIX = "fig-"          # STEP 1's output: one portable frame per (char, pose, expression)
+# `characters.base` is the shared RIG, not an on-screen character (registry `role`: "BASE TEMPLATE /
+# rig anchor — not an on-screen character"; style-bible §1: "it never appears in videos"). It is
+# nonetheless the SEED of the everyman tier (visual-grammar §2), so it resolves as a figure and is
+# held to two template-specific laws stated where each belongs: it must author at least one
+# `expr-`/`action-` card (`seeding_law_violations`, so the bare template can never render as
+# itself), and its seeds grant FORM only, never an identity or a pinned costume (`seed_roles_text`).
+BASE_TEMPLATE = "base"
 _PRIMITIVE_KINDS = ("pose", "action", "interaction", "expression")
 _BACKTICK_RE = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._-]*)`")
 
@@ -461,12 +468,22 @@ def backticked(text):
 def shot_cast(reg, text):
     """`[(character, [primitive names authored for it]), ...]` in authoring order. A primitive
     binds to the most recently named character, which is how a shot is written (```hq-banker` ...
-    stands `expr-deadpan`, `action-armscrossed```)."""
+    stands `expr-deadpan`, `action-armscrossed```).
+
+    `base` resolves like any other character, because the SEEDED EVERYMAN — the anonymous but
+    story-bearing individual (visual-grammar §2) — is authored as `` `base` `` plus the
+    `expr-`/`action-` cards the beat needs, and its step-1 card is minted from exactly that recipe.
+    It was excluded here until 2026-08-06, when the everyman tier was ratified: under the abolished
+    two-tier law `base` named in a prompt could only mean the bare rig template, and excluding it
+    kept `refs/base/base.png` from entering a scene as a cast identity. That intent is preserved,
+    but where it is decidable and LOUD rather than here, where the drop was silent — naming `base`
+    resolved to `[]`, so the everyman minted no card, seeded nothing, raised nothing, and then
+    measured `cast_free`. See `BASE_TEMPLATE` for the two laws that now carry the guard."""
     chars = reg.get("characters", {})
     assets = {a["name"]: a for a in reg.get("assets", [])}
     cast = []
     for n in backticked(text):
-        if n in chars and n != "base":
+        if n in chars:
             cast.append((n, []))
         elif cast and assets.get(n, {}).get("kind") in _PRIMITIVE_KINDS:
             cast[-1][1].append(n)
@@ -659,7 +676,9 @@ def seeding_law_violations(k, r, seeds):
     if anon:
         bad.append(f"{name}: `figures.anon_foreground` — the one tier the pipeline cannot seed "
                    f"({'; '.join(anon)}). It is abolished: name the figure in the video's cast "
-                   f"(seeded) or stage the people at crowd scale (crowd exemplar).")
+                   f"(seeded), author a story-bearing anonymous one as a seeded everyman "
+                   f"(`base` plus its `expr-`/`action-` cards), or stage the people at crowd "
+                   f"scale (crowd exemplar).")
     if (crowd and not any(_stem(s).startswith("crowd-exemplar") for s in seeds)
             and not any(str(o).startswith("crowd-exemplar") for o in omitted)):
         bad.append(f"{name}: `figures.crowd` is declared but the slate carries no crowd exemplar "
@@ -758,6 +777,19 @@ def seeding_law_violations(k, r, seeds):
                        f"{', '.join(undeclared)}. Use parent + canonical by default; declare only "
                        "a proved necessary primitive.")
     for c, prims in cast:
+        if c == BASE_TEMPLATE and not any(_split_primitives(k.reg, prims, omitted)):
+            # THE TEMPLATE MAY NOT RENDER AS ITSELF. `base` is the shared rig, and the everyman
+            # tier is "seeded off the shared `base` rig THROUGH the `expr-`/`action-` vocabulary
+            # the beat needs" (visual-grammar §2). With no card authored, the step-1 recipe
+            # collapses to the bare canonical — a bald cream figure in the template's default
+            # hoodie, dropped into the shot's own era — which is exactly what style-bible §1's
+            # "it never appears in videos" forbids. Refused here, at $0, naming the shot: the
+            # exclusion this replaced enforced the same thing by dropping the name in silence.
+            bad.append(f"{name}: `{BASE_TEMPLATE}` is the shared RIG TEMPLATE, not a character — a "
+                       f"seeded everyman authors it WITH the `expr-`/`action-` card(s) the beat "
+                       f"needs. With none named the frame renders the bare base template "
+                       f"(style-bible §1); name a card, or cast a named character.")
+            continue
         if chars.get(c, {}).get("no_hands"):     # personified object: canonical IS the whole rig
             if not any(_is_canonical(k.reg, s, c) for s in seeds):
                 bad.append(f"{name}: `{c}` (no_hands) carries no seed — seed its canonical.")
@@ -1136,9 +1168,29 @@ def seed_roles_text(seed_roles):
         character = entry.get("character") or _stem(path)
         if role == "place":
             detail = "the destination place — preserve its set, palette, outline weight and lighting"
+        elif role == "figure" and character == BASE_TEMPLATE:
+            # The SEEDED EVERYMAN's card. Same rig authority as a cast figure, minus the two
+            # things the base template does not own: an identity and a costume. Saying "carry
+            # that figure's identity and costume exactly" of a base card would order the
+            # provider to keep the template's bald-cream-and-brown-hoodie default in a shot
+            # whose own prose dresses it for its era — the base rendering as itself, which
+            # style-bible §1 forbids and visual-grammar §2 resolves the other way round.
+            detail = ("the seeded EVERYMAN's STEP-1 rig card — carry its head/face/hand form, "
+                      "proportion, pose and expression exactly. It is an ANONYMOUS figure, not a "
+                      "recurring identity, and it wears what THIS prompt authors for the era and "
+                      "setting, never the card's own default outfit")
         elif role == "figure":
             detail = (f"`{character}`'s complete STEP-1 figure — carry that figure's identity, "
                       "costume, pose, hands and expression exactly")
+        elif role == "canonical" and character == BASE_TEMPLATE:
+            # Reached on a delta beat staging an everyman (canonical + chain parent) and on the
+            # step-1 card build itself. The clothing clause is written to be true in BOTH: the
+            # card's payload authors no costume, so the template's plain default stands there;
+            # a scene's prose does author one, and it wins.
+            detail = ("the shared BASE RIG template — head/face/hand form, proportion and head "
+                      "tone come from this image. It is the channel's rig anchor, NOT an identity "
+                      "and not a costume: the figure wears what this prompt authors, and the "
+                      "template's plain default outfit only where the prompt authors none")
         elif role == "canonical":
             detail = (f"`{character}`'s character canonical — identity, head tone, hair and the "
                       "pinned costume come from this image only")
@@ -1421,7 +1473,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
     and the seed that did not fit, and that list is the re-authoring input.
 
     The seeding identity is the shot's `place` — the recurring diegetic SET — and only then its
-    `stage` (a continuity chain WITHIN a place, capped at 1 base + 3 deltas) and finally its own id.
+    `stage` (a continuity chain WITHIN a place, capped at 1 base + 2 deltas) and finally its own id.
     Keying on `stage` alone is what let 74 of the audited 214 shots run as independent seedless
     roots inside sets the video had already established (L89-L91): the same room, re-invented per
     chain. One map, one key, so a place's first frame is the plate every later shot inherits."""
