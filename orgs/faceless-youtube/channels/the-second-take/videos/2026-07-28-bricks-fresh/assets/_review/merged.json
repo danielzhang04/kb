@@ -103,5 +103,15 @@
   "id": "L49",
   "worst": "clean",
   "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L38",
+  "worst": "clean",
+  "why": "wave-2 verification round 2 (final round) pass per scratchpad/6c2-w2verify-r2.json#L38: fresh root, first verification, all axes pass (composition_staging/figures/ink_law/register_flatcel), only minor/trivial defects noted (costume hue drift, prose-approximate scale)"
+ },
+ {
+  "id": "L45",
+  "worst": "clean",
+  "why": "wave-2 verification round 2 (final round) pass per scratchpad/6c2-w2verify-r2.json#L45-fix: corrective re-roll of the L45 rejected prior (_staging/_rejected-6c2-w2r1/L45.png), both named correctives (4-digit hands, no boot over the void) landed, ship-it verdict; ink_law flagged non-blocking (warm, no cool inversion, above batch ceiling — batch-level note, not a per-frame defect)"
  }
 ]

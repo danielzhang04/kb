@@ -1,16 +1,7 @@
   [1/3] L39-fix: START provider call
-  [1/3] L39-fix: ERR HTTP 503: {
-  "error": {
-    "code": 503,
-    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [1/3] L39-fix: OK -> _staging/L39-fix.png
   [2/3] L45-fix: START provider call
-  [2/3] L45-fix: ERR HTTP 503: {
-  "error": {
-    "code": 503,
-    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [2/3] L45-fix: OK -> _staging/L45-fix.png
   [3/3] L38: START provider call
-  [3/3] L38: ERR HTTP 503: {
-  "error": {
-    "code": 503,
-    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
-  == 0 generated, 3 failed, 0 skipped ==
+  [3/3] L38: OK -> _staging/L38.png
+  == 3 generated, 0 failed, 0 skipped ==

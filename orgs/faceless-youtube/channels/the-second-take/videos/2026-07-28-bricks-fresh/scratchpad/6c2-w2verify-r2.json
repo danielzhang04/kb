@@ -1,0 +1,317 @@
+{
+  "worker": "fresh-eyes verifier, 6c2 wave-2 retry round 2",
+  "wave": "6c2-w2 r2",
+  "scope": ["L34", "L38", "L39-fix", "L45-fix"],
+  "note": "VERIFICATION ONLY. No verdict written to review.json; stamp_review.py remains the sole writer. Nothing promoted, nothing moved, nothing minted.",
+  "ink_method": "scratchpad/p6b_ink.py — darkest-3% circular-mean hue + mean R-B + ink_lum + median HSV sat. Warm target ~19deg / R-B +18. R-B <= 0 (cool inversion) is the hard fail. p6b batch R-B ceiling for reference = +31.3.",
+  "authorities": {
+    "prose": "shots.json long_form still_prompt, with the 6c2-w2retry.overlay.json span substituted for L39 and L45",
+    "L34_spec": "scratchpad/6c2-w2retry-l34.spec.json (parent = assets/scenes/L33.png + ibm-suit and miniscribe-rep canonicals)",
+    "rig": "visual-kit/style-bible.md S3 rig checklist + S5 recipe; visual-kit/visual-grammar.md",
+    "priors": "6c2-w2verify-a.json (L34 r1), 6c2-w2verify-b.json (L39/L45 r1), rejected frames in _staging/_rejected-6c2-w2r1/"
+  },
+  "records": [
+    {
+      "shot_id": "L34",
+      "file": "visual-kit/_staging/L34.png",
+      "sha256": "c004fcb6b35d583208dd6db600994992a7e2a66d97110a681d134011a2a94e91",
+      "size": "1376x768",
+      "verdict": "fail",
+      "role": "delta on assets/scenes/L33.png (promoted L33-fix)",
+      "vo_text": "hard drives for their PCs,",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "fail",
+        "ink_law": "pass",
+        "continuity_place": "pass",
+        "continuity_figure": "fail",
+        "register_flatcel": "pass",
+        "delta_discipline": "fail"
+      },
+      "measurements": {
+        "ink_hue_deg": 123.5,
+        "ink_r_minus_b": 0.6,
+        "ink_lum": 4.9,
+        "median_sat": 0.1294,
+        "deg_from_cool_inversion": 99.5,
+        "parent_diff_pct_full_frame_over_40": 1.95,
+        "parent_diff_pct_full_frame_over_20": 2.83,
+        "region_diff_pct_over_40": {
+          "miniscribe_face_interior_745_255_845_365": 29.79,
+          "miniscribe_hair_core_735_230_855_285": 37.58,
+          "miniscribe_head_box_725_225_860_375": 35.36,
+          "ibm_face_interior_505_260_615_370": 4.62,
+          "ibm_head_hair_core_505_240_620_300": 0.0,
+          "ibm_suit_core_500_400_610_560": 0.6,
+          "miniscribe_torso_blazer": 0.0,
+          "miniscribe_legs_shoes": 0.01,
+          "ibm_legs_shoes": 0.0,
+          "tote_rack_stage_left": 0.01,
+          "bench_end_lower_right": 0.0,
+          "MINISCRIBE_fascia": 0.0,
+          "strip_lights_row": 0.11,
+          "handshake_zone_615_440_720_510": 10.12
+        },
+        "handshake_zone_note": "the 10.12% is entirely the background swapped behind the clasp (door slats -> pallet queue); the clasp itself, both cuffs and both hands are pixel-identical to the parent at 5x"
+      },
+      "authored_delta": "queue of loaded pallets nose to tail out through the now-open roller door — LANDED, and landed well: the door is rolled up on its drum, a receding line of loaded, shrink-strapped pallets runs out into the yard against flat blue sky, drawn in house ink and palette.",
+      "delta_count": {
+        "authored": 1,
+        "unauthored": 2,
+        "total": 3,
+        "cap": 2
+      },
+      "defects": [
+        {
+          "severity": "major",
+          "axis": "figures / delta-discipline",
+          "element": "miniscribe-rep face",
+          "location": "head box x725-860 y225-375",
+          "detail": "The prompt says 'everything else exactly as established' and the face was re-drawn anyway. Two register features move at once: (a) EXPRESSION — parent L33 carries expr-delighted (closed happy-arc eyes, wide open teeth grin); L34 renders wide open round eyes with small pupils and a small closed line-smile, i.e. the canonical NEUTRAL face. (b) HAIR SILHOUETTE — parent's tall swept quiff is gone, replaced by the canonical's low close-cropped cap. Measured: 37.58% of the hair core and 29.79% of the face interior changed against the parent, while the miniscribe torso, legs and shoes changed 0.00-0.01%. The head was replaced and nothing else on the figure was touched."
+        },
+        {
+          "severity": "trivial",
+          "axis": "text",
+          "element": "carton labels on the pallet queue",
+          "location": "x600-720 y340-440",
+          "detail": "shipping-label glyph blobs printed on the cartons. Illegible at 8x and invisible at play scale, so not a lettering violation — logged only so a later pass does not re-discover it."
+        }
+      ],
+      "held": [
+        "ibm-suit COMPLETELY held: head+hair core 0.00% changed, suit core 0.60%, expr-smug (heavy lids, closed smirk) intact, dark brown skin, grey temples, navy chalk-stripe three-piece, blue tie, white pocket square, black oxfords",
+        "handshake plane, contact geometry, eye line and relative head scale pixel-identical to the parent",
+        "MINISCRIBE fascia board 0.00% changed — correct spelling, marker-italic red on cream, the only legible lettering in the frame",
+        "place seed absolute: tote rack stage-left 0.01%, benches, tray shelves, strip lights 0.11%, wall split, floor, cropped bench end lower-right 0.00%",
+        "cool grey-teal-cream palette held; median_sat 0.1294 identical to the parent's 0.1294",
+        "flat cel render, even house-ink outline, no photorealism, no duplicates, no stray props",
+        "every visible hand is 3 fingers + thumb, pair-matched on each figure"
+      ],
+      "root_cause_read": "The L34 spec seeds the parent AND both character canonicals. ibm-suit resolved that correctly — it took identity and costume from its canonical and its EXPRESSION from the parent (the canonical ibm-suit is flat-mouthed deadpan; the frame renders the parent's smirk). miniscribe-rep resolved it wrongly — it took the canonical's whole head, expression included. Same spec, same seed roles, opposite behaviour on the two figures. The leak is expression bleeding out of the canonical seed, not a place failure: place is perfect.",
+      "next_move": "Cheapest fix is a targeted retry with the canonical seed's authority explicitly narrowed for miniscribe-rep — 'identity, head tone, hair COLOUR and costume from the canonical; expression, hair SILHOUETTE and head outline from the parent, which shows him mid-laugh with closed arc eyes and an open teeth grin'. Do not re-roll the whole frame: place, ibm-suit and the authored pallet delta are all correct and a fresh roll risks all three."
+    },
+    {
+      "shot_id": "L38",
+      "file": "visual-kit/_staging/L38.png",
+      "sha256": "59d4619e5d92e81ef3cd9cada11a1dfc8ca6c2419ba23a8e32b2ff5b6202a095",
+      "size": "1376x768",
+      "verdict": "pass",
+      "role": "fresh root (parent_depth 0), first verification — L38 was outside the L26-L37 and L39-L50 slices",
+      "vo_text": "they were selling to giants like Compaq and",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "pass",
+        "ink_law": "pass",
+        "continuity": "n/a (root)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 15.9,
+        "ink_r_minus_b": 24.7,
+        "ink_lum": 17.1,
+        "median_sat": 0.1922,
+        "deg_from_cool_inversion": 207.1,
+        "miniscribe_height_px": 496,
+        "miniscribe_bbox": "x260-499 y204-700 (shadow to y751)",
+        "giant_knee_height_above_ground_px": "~375 (knee y~315, shoe sole y~690)",
+        "miniscribe_to_giant_knee_ratio": 1.32,
+        "giant_to_miniscribe_shoe_length_ratio": "~3.9x"
+      },
+      "prose_check": {
+        "seeded performer base, oversized charcoal three-piece, seated, legs+torso only": "yes — head cropped above the frame top, arms crossed, waistcoat with three buttons visible, seated square on a plain concrete block",
+        "colossal and dominant across the right two-thirds": "yes — giant + block occupy x~530-1376, 61% of frame width, hard right",
+        "miniscribe-rep knee-high lower-left on the same plane": "scale approximate — he reads mid-thigh rather than knee-high (1.32x knee height); the imbalance still lands hard",
+        "expr-pleading": "yes — raised inner brows, big up-rolled eyes, small downturned mouth; matches fig-miniscribe-rep--action-offering--expr-pleading exactly",
+        "action-offering, one flat carton raised": "carton present and held out toward the giant, but at chest height rather than raised up",
+        "eye line past frame top": "yes — pupils rolled hard up, sightline clears the border",
+        "flat cream ground and backdrop": "yes",
+        "cropped shoe edge lower-left": "yes — a giant-scale dark brown shoe on a teal trouser leg, cropped by the left and bottom edges, functioning as the near-camera depth prop"
+      },
+      "defects": [
+        {
+          "severity": "minor",
+          "axis": "figures / costume",
+          "element": "base performer's tie and suit hue",
+          "location": "tie x890-940 y0-30; suit whole",
+          "detail": "The STEP-1 card fig-base--action-armscrossed--expr-deadpan--l38-3412012a draws a warm charcoal-BROWN three-piece with a near-BLACK tie. The frame renders a slate grey-green suit with a TEAL tie. Reads as the scene palette (charcoal-cream-teal) pulling the costume rather than a re-invention: cut, waistcoat, button count, shirt, shoe colour and pale skin tone all carry from the card."
+        },
+        {
+          "severity": "trivial",
+          "axis": "composition_staging",
+          "element": "relative scale",
+          "location": "whole frame",
+          "detail": "'knee-high to him' measures 1.32x the giant's knee height — miniscribe tops out at the giant's mid-thigh. Internally consistent (shoe-length ratio 3.9x matches the figure ratio), so this is prose approximation, not a broken figure."
+        },
+        {
+          "severity": "trivial",
+          "axis": "composition_staging",
+          "element": "carton height",
+          "location": "x430-620 y430-500",
+          "detail": "'holding one flat carton UP toward the giant' — carton is held level at his chest, extended but not raised."
+        }
+      ],
+      "held": [
+        "rig: no nose, no ears (the flesh notch in miniscribe's hair at x275-330 y275-330 is a hair-lock cut-out, NOT an ear — no helix, no cartilage, matches the card's hair silhouette)",
+        "4-digit hands: miniscribe's visible hand under the carton = thumb + 3 fingers; the giant's visible crossed hand = 3 finger lobes with the thumb tucked behind the arm; miniscribe's far hand and the giant's other hand are occluded, not malformed",
+        "uniform head tone on miniscribe; the giant's head is cropped so head-tone does not apply",
+        "identity + costume: miniscribe-rep carries the canonical exactly — tan blazer, brown open-collar shirt, dark trousers, dark shoes, brown swept hair",
+        "flat cel fills throughout, even medium-thick warm brown-black outline, no sub-outline stroke fields, no photorealism",
+        "NO lettering anywhere in the frame",
+        "no unauthored duplicates; the cropped giant shoe lower-left is the authored depth prop, not a stray figure",
+        "single red accent unused — correct, nothing in this shot is semantically red"
+      ],
+      "next_move": "None. Best ink in the slice (hue 15.9deg / R-B +24.7 against a target of ~19deg / +18) and the only frame in this round whose median_sat 0.1922 sits on the ~0.19 era prior."
+    },
+    {
+      "shot_id": "L39-fix",
+      "file": "visual-kit/_staging/L39-fix.png",
+      "sha256": "272b616e0dd15dbcb0d5717c1aaeda158174ec763305cb2e6b5ddf202e3e33ab",
+      "size": "1376x768",
+      "verdict": "fail",
+      "role": "corrective re-roll; prior rejected at _staging/_rejected-6c2-w2r1/L39.png (sha 0ee2aab2...)",
+      "vo_text": "making over 600 million dollars a year.",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "fail",
+        "ink_law": "pass",
+        "continuity": "n/a (root)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 31.6,
+        "ink_r_minus_b": 16.8,
+        "ink_lum": 19.8,
+        "median_sat": 0.1176,
+        "deg_from_cool_inversion": 191.4,
+        "prior_ink": "hue 22.5deg / R-B +19.9 / ink_lum 16.0 / median_sat 0.0902"
+      },
+      "correctives": {
+        "600_MILLION_on_the_rear_door_panel_and_nowhere_else": "LANDED — the truck is now drawn from the rear three-quarter; the stencil sits on the LEFT leaf of the twin rear doors (x640-800 y320-450), hinge straps and door window visible. The side panel is bare, the roof is bare, and there is no other lettering in the frame. Nuance: the overlay said 'the very panel his hands are pressed against'; his hands are on the RIGHT leaf. Same rear door pair, other leaf. shots.json's own wording ('Across the truck's rear panel') is satisfied.",
+        "notes_bulge_out_of_the_load_bed_between_the_doors": "LANDED — a wall of banded, strapped note bricks bulges out of the load bed in the gap between the two rear doors, forced against his hands. Prior's loose bills on the roof are gone; these read as banded bricks.",
+        "roof_bare": "LANDED — completely bare, no money at all.",
+        "base_card_closed_smirk": "NOT LANDED — see defect."
+      },
+      "defects": [
+        {
+          "severity": "major",
+          "axis": "figures / rig",
+          "element": "miniscribe-rep NOSE",
+          "location": "x995-1030 y330-360",
+          "detail": "A full nose is drawn: bridge line off the inner eye corner, a hooked nostril, and a nasolabial fold. The rig law is NO NOSE. Neither the STEP-1 card fig-miniscribe-rep--hold-both-hands--expr-greedy nor the canonical draws one. COLLATERAL REGRESSION: the rejected prior L39 was explicitly logged clean on 'no nose/no ears' — the re-roll introduced this."
+        },
+        {
+          "severity": "major",
+          "axis": "figures / rig",
+          "element": "miniscribe-rep EAR",
+          "location": "x1075-1100 y335-370",
+          "detail": "A drawn ear with an inner helix curl sits at the right of his head, outlined against the hair. The rig law is NO EARS. Also absent from the card, the canonical and the rejected prior. Same collateral regression as the nose."
+        },
+        {
+          "severity": "major",
+          "axis": "figures / expression register",
+          "element": "miniscribe-rep expression",
+          "location": "head x950-1110 y265-410",
+          "detail": "This was corrective item 4 and it did not land. The card's expr-greedy is a CLOSED-mouth smirk under half-lidded angled eyes. The prior failed with a wide teeth-bared grin; this retry renders a clenched teeth-bared effort grimace with hard angry brows. Different wrong answer, still off-card — the register has moved from greedy to strain."
+        }
+      ],
+      "held": [
+        "4-digit hands on BOTH, verified at native-pixel zoom: raised hand against the door = 3 finger lobes + thumb (x910-985 y310-390); lower hand on the door edge = 3 curled fingers + thumb (x890-975 y385-450); the two hands are the same size",
+        "identity + costume otherwise correct: tan blazer, brown open-collar shirt, dark trousers, dark shoes, dark brown swept hair, uniform head tone",
+        "depot yard reads as authored: chain-link fence behind, a second (charcoal) truck parked beyond it, low cream warehouse roofs on the skyline, cropped bollard lower-left",
+        "charcoal-green-cream palette under flat overcast light",
+        "the prior's door-seam-over-the-wrist layering error is GONE",
+        "marker-italic letterform consistent with the lettering-marker-italic exemplar; '600 MILLION' spelled correctly and legible",
+        "single red accent = one red note band inside the load bed, used semantically (the money); nothing else red",
+        "flat cel fills, no sub-outline stroke fields, no unauthored duplicates"
+      ],
+      "next_move": "Do NOT re-roll the whole frame — 3 of 4 correctives landed and the staging is now exactly what the shot wants; a fresh roll puts the stencil surface and the roof back at risk. Issue a face-only corrective on top of the current staging prose: restate the staging verbatim and append the rig law explicitly ('his face carries NO nose and NO ear of any kind, exactly as his reference sheet draws it, and his mouth is CLOSED in a small smirk with no teeth showing, under half-lidded angled eyes'). If a third attempt also drifts, the finding is that expr-greedy under a physical-effort action reliably pulls the mouth open, and the fix belongs in the figure card/critic layer rather than in this frame's prose."
+    },
+    {
+      "shot_id": "L45-fix",
+      "file": "visual-kit/_staging/L45-fix.png",
+      "sha256": "d7195187dc9cefcfab102e345eaab8df41908288e23055a330a3bd28a50ae0a2",
+      "size": "1376x768",
+      "verdict": "pass",
+      "role": "corrective re-roll; prior rejected at _staging/_rejected-6c2-w2r1/L45.png (sha d3a3cb3a...)",
+      "vo_text": "and MiniScribe fell off a cliff.",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "pass",
+        "ink_law": "flag (warm, no inversion, but over the p6b batch ceiling)",
+        "continuity": "n/a (root)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 22.4,
+        "ink_r_minus_b": 47.4,
+        "ink_lum": 41.0,
+        "median_sat": 0.1098,
+        "deg_from_cool_inversion": 200.6,
+        "prior_ink": "hue 23.4deg / R-B +51.4 / ink_lum 39.4 / median_sat 0.2588",
+        "p6b_batch_rb_ceiling": 31.3,
+        "raised_hand_bbox": "x615-685 y185-245",
+        "chest_hand_bbox": "x705-775 y195-255"
+      },
+      "correctives": {
+        "both_hands_4_digit_matched": "LANDED — verified at native-pixel zoom. Raised hand: thumb + 3 fingers, 4 protrusions, no fifth. Chest hand: thumb + 3 fingers. The two hands are within ~10% of each other in bounding size. The prior's five-digit raised hand is gone.",
+        "no_boot_over_the_void_tableau_not_fall": "SUBSTANTIALLY LANDED — no part of him hangs over open air, both feet are down, and he reads as a man recoiling at the lip rather than a freeze-frame of falling. See the residual in defects.",
+        "gap_in_front_of_the_boots": "PARTIAL — the calved bite sits under and just forward of his lead toe rather than clearly ahead of both boots."
+      },
+      "defects": [
+        {
+          "severity": "minor",
+          "axis": "composition_staging",
+          "element": "forward (stage-left) boot footing",
+          "location": "boot x665-720 y355-400; block x640-720 y375-435",
+          "detail": "The corrective asked for BOTH boots 'planted flat and whole on solid rock BEHIND the lip'. The rear boot is flat on solid plateau. The forward boot has its heel on the plateau edge and its TOE on a rock block that is itself visibly calving — the block is outlined all round with a gap and shadow separating it from the cliff. So the boot is supported, but on the piece that is breaking away, and it is angled toe-down rather than flat. The prior defect (boot over open void, reading mid-fall) does NOT recur; this is a softer residual."
+        },
+        {
+          "severity": "minor",
+          "axis": "ink_law",
+          "element": "global ink register",
+          "location": "darkest 3% of pixels",
+          "detail": "Warm and nowhere near inversion, but still drifted the same way the prior did: R-B +47.4 against a p6b batch ceiling of +31.3, and ink_lum 41.0 — the highest of any frame in this round — meaning the frame still has no true near-black linework; outlines read as saturated rust-brown on ochre. Barely moved from the prior (+51.4 / 39.4). Carried, not fixed."
+        },
+        {
+          "severity": "minor",
+          "axis": "register",
+          "element": "overall saturation",
+          "location": "whole frame",
+          "detail": "median_sat fell from 0.2588 to 0.1098 — now well under the ~0.19 era prior. The sky went from warm cream with cloud forms to a near-white void and the far plateau was dropped. Authored prose does say 'pale sky', and the style suffix does ask for a flat gradient sky plus minimal geometry, so this reads as compliance rather than wash — but it is the most bleached frame in the round."
+        },
+        {
+          "severity": "trivial",
+          "axis": "composition_staging",
+          "element": "light",
+          "location": "whole frame",
+          "detail": "'hard high sun' authored; the frame is evenly flat-lit with no cast shadow off the figure or the lip. Unchanged from the prior."
+        }
+      ],
+      "held": [
+        "IMPROVED over the prior: 'cropped rock spur at the lower-left' is now a real near-field boulder cropped by the left and bottom edges, instead of the prior's hazed opposing plateau sitting in mid-ground",
+        "IMPROVED over the prior: the break edge now reads as one clean calved bite with a few falling fragments, instead of the prior's ragged arch/hole",
+        "rig: no nose, no ears, uniform head tone",
+        "expr-shock exact to the card — wide round eyes, open mouth with tongue",
+        "action-recoil body line held: weight back, knees bent, both hands up",
+        "identity + costume match card and canonical: tan blazer over brown open-collar shirt, dark trousers, dark shoes, dark brown swept hair",
+        "high ochre plateau with grey strata in the cliff face, ochre-grey-cream palette",
+        "flat cel fills, no sub-outline stroke fields, no text anywhere, no unauthored duplicates"
+      ],
+      "next_move": "Ship it. If a later pass wants the ink tightened, that is a batch-level ochre-scene problem (this frame and its prior are the only two in the slice above the +31.3 ceiling), not a reason to re-roll a frame whose two named correctives both landed."
+    }
+  ],
+  "summary": {
+    "pass": 2,
+    "fail": 2,
+    "passed": ["L38", "L45-fix"],
+    "failed": ["L34", "L39-fix"],
+    "ink_verdict": "All four WARM, no cool inversion anywhere. Closest approach to the 223deg cool pole is L34 at 123.5deg — 99.5deg clear. L38 is the most on-target frame (15.9deg / +24.7). L45-fix is the outlier the other way (+47.4, ink_lum 41.0), carried unimproved from its prior. L34's +0.6 is the thinnest positive margin in the entire slice, but it is the same green-neutral register the whole L28/L33 interior family measures at, where the darkest 3% is structural steel mass rather than outline — sign correct, frame not inverted.",
+    "collateral": "One real collateral regression: L39's re-roll fixed three staging defects and BROKE two rig axes (nose, ear) that the rejected prior held clean. L45's re-roll broke nothing and improved two axes beyond its correctives. L34's re-roll broke nothing outside miniscribe-rep's head — place, fascia and ibm-suit are pixel-identical to the parent."
+  },
+  "systemic_signals": [
+    "PLACE-NOT-FACE, precisely measured: on L34 the place seed is perfect (tote rack 0.01%, bench end 0.00%, fascia 0.00%, strip lights 0.11%) and the failure is 100% confined to one head (hair core 37.58%, face interior 29.79%). Chain deltas in this pipeline hold geometry and lose faces.",
+    "CANONICAL EXPRESSION LEAK: the same L34 spec produced correct behaviour on ibm-suit (identity+costume from canonical, EXPRESSION from parent — head+hair core 0.00% changed) and incorrect behaviour on miniscribe-rep (whole head including expression from canonical). The seed_roles wording does not say which authority owns expression, so the model picks per figure. That is a spec gap, not a generator lottery, and it is fixable in the delta preamble.",
+    "RE-ROLL COLLATERAL: two of three retried frames this round changed something nobody asked about. L39 gained a nose and an ear on a face that was previously rig-clean. Corrective prose that names only the staging defect leaves the rest of the frame free to drift — targeted correctives should restate the rig law even when the rig was not the failure.",
+    "EXPRESSION UNDER PHYSICAL EFFORT: L39's miniscribe-rep has now drifted off expr-greedy twice in a row, both times toward an open mouth (r1 gloating grin, r2 clenched grimace), while the action is 'shoving doors shut'. If a third attempt drifts the same way, the lesson belongs in the figure card / critic layer — physical-effort actions pull closed-mouth expression tokens open — not in this frame's prose.",
+    "OCHRE SCENES AND INK: L45 in both rolls is the only frame family above the p6b R-B ceiling with no true near-black linework (ink_lum ~40 vs 5-20 elsewhere). Warm ochre environments appear to pull the darkest 3% into the rock rather than the outline. Worth a batch-level look, not a per-frame retry."
+  ]
+}

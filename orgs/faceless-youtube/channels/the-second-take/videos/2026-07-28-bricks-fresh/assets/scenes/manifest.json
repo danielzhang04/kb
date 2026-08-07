@@ -493,53 +493,103 @@
    "shot_id": "L34",
    "file": null,
    "technique": "(e) Seeded delta-chain — in-chain parent + held figure canonical(s)",
-   "seeds": [],
+   "seeds": [
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L33.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+     "role": "canonical",
+     "character": "ibm-suit"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+     "role": "canonical",
+     "character": "miniscribe-rep"
+    }
+   ],
    "flagged": false,
-   "review_status": "unreviewed",
-   "parked_reasons": [],
+   "review_status": "parked",
+   "parked_reasons": [
+    "figures / continuity_figure / delta_discipline: canonical-expression-leak — miniscribe-rep's whole head (hair silhouette + expression) was redrawn off the canonical seed instead of held from the parent (37.58% hair-core / 29.79% face-interior changed vs parent); ibm-suit resolved the identical spec correctly (identity+costume from canonical, expression from parent, head+hair core 0.00% changed) — a spec gap in seed_roles expression authority, not a place or generator failure (place seed 0.00-0.11% across every region, MINISCRIBE fascia 0.00%, authored pallet-queue delta landed clean)"
+   ],
    "retry_cause": null,
    "parent_depth": 2,
-   "lineage": 2,
-   "notes": "OPEN — chain delta on L33 (stage ibm-deal, place miniscribe-floor). A prior mint (sha256 5ce59e5a51e7379c959e9b41aa3554a4e1ae6537533d9a8daa981268bd643f06, evidence in scratchpad/6c2-w2verify-a.json#L34) FAILED fresh-eyes review: both ibm-suit and miniscribe-rep re-drawn off-card because its parent L33 itself carried a drifted identity. That parent is now fixed and promoted verified (assets/scenes/L33.png), which unblocks a fresh delta mint per the chain-parent resolution law (forge resolves the L33 in-chain parent at _staging/L33.png or assets/scenes/L33.png — the latter now exists verified). The stale pre-fix L34 frame was never promoted and is discarded, not carried forward as a defective canonical. Re-mint is this pass's Stage 2; the new frame is NOT fresh-eyes reviewed here per instruction — left unreviewed for a later pass."
+   "lineage": 1,
+   "notes": "PARKED — candidate at visual-kit/_staging/L34.png (sha256 c004fcb6b35d583208dd6db600994992a7e2a66d97110a681d134011a2a94e91), NOT promoted, left in place per instruction. Verdict FAIL per scratchpad/6c2-w2verify-r2.json#L34 (wave-2 retry round 2, final round) — re-mint against the now-verified assets/scenes/L33.png parent (chain-parent resolution law; lineage reset 2→1 confirms C-11 under a verified parent). Diagnosed next move: spec gap — seed_roles lacks expression authority; fix preamble in a doctrine window, do NOT re-roll — place, ibm-suit and the authored delta are all correct and a fresh roll risks all three."
   },
   {
    "shot_id": "L38",
-   "file": null,
-   "technique": "unknown — never generated",
-   "seeds": [],
+   "file": "assets/scenes/L38.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+     "role": "figure",
+     "character": "base"
+    },
+    {
+     "path": "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    }
+   ],
    "flagged": false,
-   "review_status": "unreviewed",
+   "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "OPEN — never minted. Original wave-2 pass hit HTTP 503 (\"experiencing high demand\") on this item; a 503 returns no image and bills nothing, so this is a transport failure, not a content failure (scratchpad/6c2-w2verify-a.json note). A background transport-resilient re-driver (scratchpad/6c2-w2retry2-*, prefix 6c2-w2retry2) is currently chasing this item alongside L39/L45; as of this promotion pass its passes are producing nothing (\"provider is down\") and no frame exists on disk yet. Out of this worker's scope per brief — not touched."
+   "notes": "`base` STEP-1 fig-base--action-armscrossed--expr-deadpan--l38-3412012a GENERATE; `miniscribe-rep` STEP-1 fig-miniscribe-rep--action-offering--expr-pleading GENERATE; promoted from _staging/L38.png (sha256 59d4619e5d92e81ef3cd9cada11a1dfc8ca6c2419ba23a8e32b2ff5b6202a095, verified match on copy: True); verify record scratchpad/6c2-w2verify-r2.json#L38 (wave-2 retry round 2 / final round, pass — fresh root, first verification, outside the L26-L37 and L39-L50 slices)"
   },
   {
    "shot_id": "L39",
    "file": null,
    "technique": "(b) Seeded composition — locked character(s) in composed environment",
-   "seeds": [],
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+     "role": "environment",
+     "character": "lettering-marker-italic"
+    }
+   ],
    "flagged": false,
-   "review_status": "unreviewed",
-   "parked_reasons": [],
-   "retry_cause": null,
+   "review_status": "parked",
+   "parked_reasons": [
+    "figures / rig: miniscribe-rep NOSE drawn (bridge line, hooked nostril, nasolabial fold) — rig law is NO NOSE; collateral regression vs the rejected prior, which held this clean",
+    "figures / rig: miniscribe-rep EAR drawn with an inner helix curl — rig law is NO EARS; same collateral regression",
+    "figures / expression register: expr-greedy corrective did not land — card is a closed-mouth smirk under half-lidded eyes, frame renders a teeth-bared effort grimace with hard angry brows"
+   ],
+   "retry_cause": "r1 defect (stencil on wrong panel, notes staged on roof) targeted by exact overlay replace — from: \"Across the truck's rear panel runs the stencilled figure '600 MILLION'.\" -> to: \"The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut...\"; 3 of 4 correctives landed (stencil placement, notes bulge, bare roof) but the 4th (closed-mouth smirk) did not, and the re-roll introduced 2 new rig regressions (nose, ear) on a face the rejected prior held clean",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "OPEN — reviewed and FAILED (scratchpad/6c2-w2verify-b.json#L39, sha256 0ee2aab2c54b3e9217512924fc32c580e930b275e1af5c96d62223e0776de932): '600 MILLION' stencil on the wrong truck panel, and the banded-notes bulge staged on the roof instead of at the shut rear doors. That reviewed frame has since been removed from _staging/ (no file on disk as of this promotion pass) pending a corrected retry — an L39-fix item is in the same background re-driver queue as L38/L45 (scratchpad/6c2-w2retry2-*), currently blocked by the same provider outage (an in-flight L39-fix.png.lock is on disk with no completed frame behind it). Left `unreviewed` rather than `parked` because no file currently exists for the status to describe; the ruling above is preserved here for context, not written as a manifest-level parked verdict against a nonexistent asset. Out of this worker's scope — not touched."
+   "notes": "PARKED — candidate at visual-kit/_staging/L39-fix.png (sha256 272b616e0dd15dbcb0d5717c1aaeda158174ec763305cb2e6b5ddf202e3e33ab), NOT promoted, left in place per instruction. Verdict FAIL per scratchpad/6c2-w2verify-r2.json#L39-fix (wave-2 retry round 2, final round), superseding the original FAIL at scratchpad/6c2-w2verify-b.json#L39 (stencil on wrong panel + notes on roof — now fixed). Diagnosed next move: face-only corrective on the CURRENT staging prose — restate the staging verbatim and append the rig law explicitly ('his face carries NO nose and NO ear of any kind ... mouth CLOSED in a small smirk with no teeth showing, under half-lidded angled eyes'). Do NOT re-roll the whole frame — the stencil surface and load-bed staging are now exactly right and a fresh whole re-roll risks both. Systemic signal (flagged, not actioned this pass): if a third attempt also drifts the mouth open, expr-greedy under physical-effort action reliably pulls the mouth open, and the fix belongs in the figure card/critic layer, not this frame's prose."
   },
   {
    "shot_id": "L45",
-   "file": null,
+   "file": "assets/scenes/L45.png",
    "technique": "(b) Seeded composition — locked character(s) in composed environment",
-   "seeds": [],
+   "seeds": [
+    {
+     "path": "_staging/fig-miniscribe-rep--action-recoil--expr-shock.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    }
+   ],
    "flagged": false,
-   "review_status": "unreviewed",
+   "review_status": "verified",
    "parked_reasons": [],
-   "retry_cause": null,
+   "retry_cause": "r1 defect fixed by exact replace — corrective: both hands drawn as matched 4-digit rig hands (thumb + 3 fingers, never five digits), both boots planted flat and whole on solid rock behind the lip with the ground-gone bite in front of them, neither boot over the void and no part of him falling",
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "OPEN — reviewed and FAILED (scratchpad/6c2-w2verify-b.json#L45, sha256 d3a3cb3ae6097dff932f950521b32326efb0b8cb567ae58b474af946016455cf): five-digit raised hand (rig law violation) and the forward boot staged out over the void instead of both boots planted on solid rock. That reviewed frame has since been removed from _staging/ (no file on disk as of this promotion pass) pending a corrected retry — an L45-fix item is in the same background re-driver queue as L38/L39 (scratchpad/6c2-w2retry2-*), currently blocked by the same provider outage. Left `unreviewed` rather than `parked` for the same reason as L39 — no file exists for a `parked` status to describe. Out of this worker's scope — not touched."
+   "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-recoil--expr-shock REUSED; RETRY overlay from `L45`; promoted from _staging/L45-fix.png (sha256 d7195187dc9cefcfab102e345eaab8df41908288e23055a330a3bd28a50ae0a2, verified match on copy: True) to canonical assets/scenes/L45.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r2.json#L45-fix (wave-2 retry round 2 / final round, pass — corrective re-roll of the L45 rejected prior at _staging/_rejected-6c2-w2r1/L45.png, sha256 d3a3cb3a..., ship-it verdict; ink_law flagged non-blocking, a batch-level ochre-scene note not a per-frame defect)"
   }
  ]
 }

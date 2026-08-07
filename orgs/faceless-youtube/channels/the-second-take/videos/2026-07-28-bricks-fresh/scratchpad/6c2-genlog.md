@@ -661,3 +661,39 @@ design, and did not touch the `L38`/`L39`/`L45` items or logs per scope.
 
 **$2.145 / $5.00.** No billable mint happened (L34's one attempt was a 503 — no image, no charge,
 per provider billing on transport failures). Prior total from STAGE 2 above stands unmoved.
+
+## STAGE 6 — final stamping + board refresh (this worker)
+
+**(a) Background re-driver reconcile.** Read (not touched) `6c2-w2retry2-pass*.log`,
+`6c2-w2retry2-bg.log`, `6c2-w2retry-l34b-pass1.log`. `6c2-w2retry2-bg.log` shows four dead passes
+(`+0 minted, 3 still missing`, "provider is down") then one live pass at cycle 5: `6c2-w2retry2-
+pass1.log` landed all three in one call — `L39-fix` (03:17), `L45-fix` (03:19), `L38` (03:20).
+`6c2-w2retry-l34b-pass1.log` landed `L34` separately at 03:21 (the `a`/first `l34-pass1.log` had
+also hit the same 503 outage noted in STAGE 5 above; the `b` pass is the one that cleared). Four
+billable mints total this cycle — `L39-fix`, `L45-fix`, `L38`, `L34` — at $0.039 each =
+**$0.156**. **Running total: $2.145 + $0.156 = $2.301 / $5.00.**
+
+**(b) r2 verification summary.** `scratchpad/6c2-w2verify-r2.json` split 2/2: **PASS** `L38`
+(fresh root, best ink in the slice at 15.9°/+24.7) and `L45-fix` (both named correctives landed,
+ink flagged non-blocking); **FAIL** `L34` (canonical-expression-leak) and `L39-fix` (3/4
+correctives landed, re-roll drew a nose+ear on a previously rig-clean face plus continued
+expression drift). Four systemic findings logged in the record's `systemic_signals`: (1)
+**PLACE-NOT-FACE, precisely measured** — on `L34` place seed diff is 0.00–0.11% across every
+region while the failure is 100% confined to one head (hair core 37.58%, face interior 29.79%
+changed vs parent); (2) **CANONICAL EXPRESSION LEAK** — same `L34` spec produced correct
+per-figure behaviour on `ibm-suit` (expression from parent, 0.00% head change) and incorrect on
+`miniscribe-rep` (whole head from canonical) because `seed_roles` never states which seed owns
+expression — a spec gap, not a generator lottery; (3) **RE-ROLL COLLATERAL** — `L39`'s re-roll
+fixed three staging defects and introduced two new rig regressions (nose, ear) on a face the
+rejected prior held clean; (4) **EXPRESSION UNDER PHYSICAL EFFORT** — `L39`'s miniscribe-rep has
+now drifted off `expr-greedy` twice in a row toward an open mouth under a "shoving doors shut"
+action, flagged as a figure-card/critic-layer question if a third attempt repeats it. All four
+frames measured WARM, zero cool inversions.
+
+**(c) Closing line.** Machine tier CLOSED for 6c2 — **23/25 verified, 2 parked with mechanism
+diagnoses**, all retry budgets respected. `L38` and `L45` promoted to `assets/scenes/` this pass
+(sha-verified); `L34` and `L39` parked honestly with their candidate file, sha, fail cause, and
+diagnosed next move on record in `assets/scenes/manifest.json` — neither re-rolled, neither
+_staging_ file moved or deleted. No further machine-tier action is owed on this wave; both
+open items need a doctrine-window fix (the `L34` seed_roles expression-authority gap) or a
+targeted human-reviewed corrective (`L39`'s face-only prose) before either is worth another spend.
