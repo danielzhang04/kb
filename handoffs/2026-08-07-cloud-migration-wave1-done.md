@@ -69,6 +69,21 @@ Daniel schedules the quiescent cutover window → task #3: execute
 `claude/cloud-migration` → main. Then Wave 4 decommission (kills the Wave-1a nt branch, frees local
 5317, sweeps stale VS Code sessions), then the Atlas plan.
 
+## Daniel rulings after the handoff was first written (2026-08-07 late, this session)
+- **Quiescent = kb-only**: no other kb terminals mid-work (the bricks terminal in the main checkout
+  is the live one), no codex dispatches in flight, daemon/cadences idle. Non-kb activity on the
+  desktop is irrelevant. Bricks' uncommitted tree may SIT during the window — it just can't run.
+- **Full-kb migration scope confirmed**: the entire kb (all projects incl. faceless-youtube) moves.
+  Size is a non-issue (repo 258M already mirrored on the VM; 141G free). The three non-git state
+  classes: (1) coordination/runtime state — already in the cutover runbook copy list; (2) gitignored
+  machine-local scratch (fyt `visual-kit/_staging/`, `review.json`) — regenerable, DEFAULT LEAVE on
+  the desktop; if bricks is mid-flight at cutover its terminal finishes or hands off first;
+  (3) the fyt image-gen spend-capped provider key — credentials are human-only: when fyt generation
+  first runs on the VM, Daniel places the key himself (same shape as Wave-0 auth steps). Not needed
+  for cutover itself.
+- Pilot watch-item: ffmpeg renders on 4 dedicated vCPU vs the desktop — pilot load measurements
+  decide whether the durable box must be CCX33 (8 vCPU) for render-heavy weeks.
+
 ## Load list
 1. This handoff.
 2. `docs/superpowers/plans/2026-08-06-cloud-migration.md` (branch — Wave 0 section now carries the
