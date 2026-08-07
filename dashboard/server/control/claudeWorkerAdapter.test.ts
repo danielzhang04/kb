@@ -448,7 +448,33 @@ describe('createClaudeWorkerAdapter.execute', () => {
     const stdinPayload = JSON.parse(fake.stdin.join('').trim());
     expect(stdinPayload.message.content[0].text).toContain('AUTHORITATIVE WORK ORDER');
     expect(captured!.args.join(' ')).not.toContain('AUTHORITATIVE WORK ORDER');
-    expect(fake.proc.endStdin).not.toHaveBeenCalled();
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends stdin once when a terminal result arrives, even if more output follows', async () => {
+    const fake = fakeProcess();
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc });
+    const promise = adapter.execute(executeInput());
+
+    fake.emitStdout(successLine('done'));
+    fake.emitStdout('{"type":"assistant","text":"late diagnostic"}\n');
+    fake.emitStdout(successLine('duplicate result'));
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
+
+    fake.emitExit(0);
+    await expect(promise).resolves.toMatchObject({ state: 'succeeded', summary: 'duplicate result' });
+  });
+
+  it('settles a result when the CLI exits only after stdin is ended', async () => {
+    const fake = fakeProcess();
+    fake.proc.endStdin = vi.fn(() => fake.emitExit(0));
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc });
+
+    const promise = adapter.execute(executeInput());
+    fake.emitStdout(successLine('finished after EOF'));
+
+    await expect(promise).resolves.toMatchObject({ state: 'succeeded', summary: 'finished after EOF' });
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
   });
 
   it('injects an encoded operator frame only while the assigned child is live', async () => {

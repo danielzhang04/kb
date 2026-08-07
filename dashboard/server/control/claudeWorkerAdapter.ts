@@ -703,6 +703,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         let timedOut = false;
         let exceeded = false;
         let cancelled = false;
+        let stdinEnded = false;
 
         // Reap the whole process tree, not just the direct child. `killTree` is invoked at most once.
         const terminate = (): void => {
@@ -807,10 +808,21 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
 
         proc.onStdout((chunk) => {
           if (settled) return;
+          stdoutChunks.push(chunk);
           lineBuffer += chunk;
           let newline = lineBuffer.indexOf('\n');
           while (newline !== -1) {
-            tap('out', lineBuffer.slice(0, newline));
+            const line = lineBuffer.slice(0, newline);
+            tap('out', line);
+            try {
+              const event: unknown = JSON.parse(line);
+              if (!stdinEnded && event && typeof event === 'object' && (event as Record<string, unknown>).type === 'result') {
+                stdinEnded = true;
+                try { proc.endStdin(); } catch { /* stdin may already be closed */ }
+              }
+            } catch {
+              // Malformed diagnostic lines are ignored; the terminal result parser remains authoritative.
+            }
             lineBuffer = lineBuffer.slice(newline + 1);
             newline = lineBuffer.indexOf('\n');
           }
@@ -821,7 +833,6 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
             finalize(null);
             return;
           }
-          stdoutChunks.push(chunk);
         });
         proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-stderrTailChars); });
         proc.onExit((code) => finalize(code));
@@ -834,7 +845,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           if (bindingPrompt !== null) writeFrame(bindingPrompt);
           if (queuedPrompt !== null) writeFrame(queuedPrompt);
           writeFrame(prompt);
-          // Stream-json accepts additional user frames while a turn is live. EOF would close that channel.
+          // Stream-json accepts additional user frames until its terminal result event. On result, the adapter sends EOF so newer CLIs exit.
           if (!settled) liveWorkers.set(workerKey(input.runRef, agentId), liveWorker);
         } catch {
           terminate();
