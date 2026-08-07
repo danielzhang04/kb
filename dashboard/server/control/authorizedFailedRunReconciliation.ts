@@ -5,7 +5,7 @@
  */
 import { createHash } from 'node:crypto';
 import { AUDIT_REL_PATH, type AuditEvent } from '../audit/log.ts';
-import { openNoReparseFileTree, type NoReparseFileTree } from '../win32/noReparseFiles.ts';
+import { openNoReparseFileTree, type NoReparseFileTree } from '../platform/noReparseFiles.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import {
   createPreparedCoordinationCommit,
