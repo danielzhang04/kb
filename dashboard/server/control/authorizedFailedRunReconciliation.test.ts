@@ -699,8 +699,12 @@ print(yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, width=10**9), en
     rmSync(destination, { recursive: true });
     symlinkSync(external, destination, 'junction');
 
+    // Which guard refuses first is platform-dependent: git status cannot see a Windows junction,
+    // so the noReparse guard trips ('unsafe-path'); on POSIX the symlink IS a workspace change and
+    // the dirty-workspace refusal fires earlier. Both fail closed; the guard-level symlink property
+    // is proven directly in platform/noReparseFiles.posix.test.ts.
     await expect(reconcileAuthorized20260801FailedRun(deps(f)))
-      .rejects.toThrow('unsafe-path');
+      .rejects.toThrow(/unsafe-path|changed path outside the fixed settlement/);
     expect(readdirSync(external)).toEqual([]);
     expect(f.gitCalls.some((args) => args[0] === 'commit' || args[0] === 'push')).toBe(false);
     expect(f.storeImpl.phase).toBe('claimed');
