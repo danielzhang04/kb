@@ -189,3 +189,25 @@
   API-key relaxation IN PRINCIPLE for capped glue (subscription stays primary — 5-20x cheaper);
   Atlas included via browser-tab audio (open tab ⇒ listening, AudioWorklet not timers);
   PTY retired for good; platform verdict = keep homegrown (memo in docs/research/).
+
+## 2026-08-07 — Cloud Waves 0+1-final executed on the pilot VM (boss session, Fable 5)
+- WORKED: probe-before-dispatch on live-system bugs — a 15-line spawn probe on the VM proved the
+  claude-CLI stdin-EOF root cause in one shot after two harness reruns only narrowed it; the fix
+  brief then took a terra worker 174s. Same pattern found the kbStateDir path drift (snapshot a
+  harness's throwaway dirs DURING the run when its failure path deletes evidence).
+- WORKED: Tailscale SSH (`tailscale set --ssh`) gives the boss keyless VM access with no key files
+  and nothing credential-shaped handled — the enabler for "go do it yourself" on cloud boxes.
+- NEAR-MISS (rule already in memory, almost violated anyway): dispatched a WRITING follow-up with
+  --follow-up; it resumed at REPO ROOT beside another terminal's live uncommitted bricks work.
+  Killed via the pending-marker pid (pending/*.json names parent + codex pids) and redispatched
+  fresh with --cwd. MSYS bash mangles `taskkill /PID` — kill through PowerShell.
+- LEARNED: worker sandboxes can't validate everything — codex workers hit NTSTATUS ACCESS_DENIED
+  on native-handle tests and blocked SSH; their "unverified here, not falsely green" reports were
+  GOOD outcomes. The boss owns the real-Windows and VM verification loops; both worker diffs were
+  clean on real hardware.
+- LEARNED: acceptance harnesses rot where resolvers evolve — the Wave-1b state-dir resolver append
+  and the CLI 2.1.224 stream-json EOF contract both broke assumptions the desktop never tested.
+  Green desktop Wave-A is not evidence for Linux; run the harness ON the target.
+- LEARNED: the governed-worker child env denylists the subscription token variable BY DESIGN — a VM
+  needs the CLI's persistent home-dir login (human runs /login once); vm_verify passing a direct
+  `claude -p` does NOT prove spawned workers can authenticate.
