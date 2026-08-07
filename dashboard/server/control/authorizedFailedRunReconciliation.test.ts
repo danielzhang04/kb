@@ -164,7 +164,7 @@ import cards
 for spec in json.loads(sys.argv[1]):
     cards.save(cards.Card(meta=spec["meta"], body=spec["body"]), Path("queue"))
 `;
-  execFileSync('python', ['-c', script, JSON.stringify(cardSpecs(workflow))], {
+  execFileSync(PYTHON.command, [...PYTHON.baseArgs, '-c', script, JSON.stringify(cardSpecs(workflow))], {
     cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
@@ -178,7 +178,7 @@ import cards
 card = cards.parse(Path(sys.argv[1]))
 print(json.dumps({"meta": card.meta, "body": card.body}))
 `;
-  return JSON.parse(execFileSync('python', ['-c', script, relpath], {
+  return JSON.parse(execFileSync(PYTHON.command, [...PYTHON.baseArgs, '-c', script, relpath], {
     cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   }).trim()) as { meta: Record<string, unknown>; body: string };
 }
