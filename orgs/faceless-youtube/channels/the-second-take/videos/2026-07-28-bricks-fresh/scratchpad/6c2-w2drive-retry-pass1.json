@@ -1,0 +1,36 @@
+[
+ {
+  "name": "L38",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card — carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit. The SECOND image is `miniscribe-rep`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly.\n\nOne seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+  "payload": "One seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+   "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+    "role": "figure",
+    "character": "base"
+   },
+   {
+    "path": "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png",
+    "role": "figure",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "figures": null,
+  "stage_role": null,
+  "costume_key": "l38-3412012a",
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "why": "`base` STEP-1 fig-base--action-armscrossed--expr-deadpan--l38-3412012a GENERATE; `miniscribe-rep` STEP-1 fig-miniscribe-rep--action-offering--expr-pleading GENERATE"
+ }
+]

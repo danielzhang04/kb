@@ -1,0 +1,312 @@
+[
+ {
+  "name": "L39-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the `lettering-marker-italic` environment reference — preserve its authored place facts.\n\n`miniscribe-rep`, `expr-greedy`, `hold-both-hands`, stage-right, shoving the rear doors of an armoured cash truck shut against a wall of banded notes bulging out of the load bed. A depot yard: chain-link fence behind, a second truck parked beyond it, low warehouse roofs on the skyline. Charcoal-green-cream palette, flat overcast light, foreground depth from a cropped bollard at the lower-left. The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut, the very panel his hands are pressed against, and it appears nowhere else - no lettering on the truck's side, none on its roof, none anywhere else in the frame. The banded notes bulge OUT OF THE OPEN LOAD BED behind those rear doors, forced between them at his hands; the truck's roof is bare and carries no money at all.",
+  "payload": "`miniscribe-rep`, `expr-greedy`, `hold-both-hands`, stage-right, shoving the rear doors of an armoured cash truck shut against a wall of banded notes bulging out of the load bed. A depot yard: chain-link fence behind, a second truck parked beyond it, low warehouse roofs on the skyline. Charcoal-green-cream palette, flat overcast light, foreground depth from a cropped bollard at the lower-left. The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut, the very panel his hands are pressed against, and it appears nowhere else - no lettering on the truck's side, none on its roof, none anywhere else in the frame. The banded notes bulge OUT OF THE OPEN LOAD BED behind those rear doors, forced between them at his hands; the truck's roof is bare and carries no money at all.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png",
+    "role": "figure",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "role": "environment",
+    "character": "lettering-marker-italic"
+   }
+  ],
+  "figures": null,
+  "stage_role": null,
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--hold-both-hands--expr-greedy REUSED; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; RETRY overlay from `L39`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "Across the truck's rear panel runs the stencilled figure '600 MILLION'.",
+   "to": "The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut, the very panel his hands are pressed against, and it appears nowhere else - no lettering on the truck's side, none on its roof, none anywhere else in the frame. The banded notes bulge OUT OF THE OPEN LOAD BED behind those rear doors, forced between them at his hands; the truck's roof is bare and carries no money at all."
+  }
+ },
+ {
+  "name": "L44-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place — preserve its set, palette, outline weight and lighting.\n\n`ibm-suit`, `expr-annoyed`, `action-thumbsdown`, planted centre on the assembly floor with one lone flat carton on the concrete at his feet where a loaded pallet stood. The floor behind him runs back into the depth: benches bare, the tote rack stage-left now VISIBLY HALF EMPTY and plainly different from the full rack of the seeded plate - its upper shelves stripped down to bare metal, tote bins left only on the lower shelves - and the roller door shut. The painted MINISCRIBE board still hangs over the entrance at the back of the floor exactly as the seeded plate draws it. Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line, however cold the palette goes. Cool grey-teal-cream palette gone colder, flat strip light with the far end of the floor unlit, foreground depth from a cropped bench end at the lower-right.",
+  "payload": "`ibm-suit`, `expr-annoyed`, `action-thumbsdown`, planted centre on the assembly floor with one lone flat carton on the concrete at his feet where a loaded pallet stood. The floor behind him runs back into the depth: benches bare, the tote rack stage-left now VISIBLY HALF EMPTY and plainly different from the full rack of the seeded plate - its upper shelves stripped down to bare metal, tote bins left only on the lower shelves - and the roller door shut. The painted MINISCRIBE board still hangs over the entrance at the back of the floor exactly as the seeded plate draws it. Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line, however cold the palette goes. Cool grey-teal-cream palette gone colder, flat strip light with the far end of the floor unlit, foreground depth from a cropped bench end at the lower-right.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--action-thumbsdown--expr-annoyed.png",
+   "_staging/L28.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--action-thumbsdown--expr-annoyed.png",
+    "role": "figure",
+    "character": "ibm-suit"
+   },
+   {
+    "path": "_staging/L28.png",
+    "role": "place",
+    "character": null
+   }
+  ],
+  "figures": null,
+  "stage_role": "base",
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 1,
+  "lineage": 1,
+  "why": "`ibm-suit` STEP-1 fig-ibm-suit--action-thumbsdown--expr-annoyed REUSED; RETRY overlay from `L44`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "the tote rack stage-left half empty, the roller door shut",
+   "to": "the tote rack stage-left now VISIBLY HALF EMPTY and plainly different from the full rack of the seeded plate - its upper shelves stripped down to bare metal, tote bins left only on the lower shelves - and the roller door shut. The painted MINISCRIBE board still hangs over the entrance at the back of the floor exactly as the seeded plate draws it. Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line, however cold the palette goes"
+  }
+ },
+ {
+  "name": "L45-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly.\n\n`miniscribe-rep`, `expr-shock`, `action-recoil`, on his back foot at the crumbling lip of a sheer cliff, the ground gone in one clean bite IN FRONT OF his boots - BOTH boots planted flat and whole on solid rock behind the lip, neither boot over the void and no part of him falling - with the drop of bare rock beginning beyond that edge and falling away below it. Both of his hands are full rig hands drawn alike: three fingers plus one thumb on each, never five digits on either, and the two hands the same size as each other. A high ochre plateau under a pale sky, ochre-grey-cream palette, hard high sun, foreground depth from a cropped rock spur at the lower-left.",
+  "payload": "`miniscribe-rep`, `expr-shock`, `action-recoil`, on his back foot at the crumbling lip of a sheer cliff, the ground gone in one clean bite IN FRONT OF his boots - BOTH boots planted flat and whole on solid rock behind the lip, neither boot over the void and no part of him falling - with the drop of bare rock beginning beyond that edge and falling away below it. Both of his hands are full rig hands drawn alike: three fingers plus one thumb on each, never five digits on either, and the two hands the same size as each other. A high ochre plateau under a pale sky, ochre-grey-cream palette, hard high sun, foreground depth from a cropped rock spur at the lower-left.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-recoil--expr-shock.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-recoil--expr-shock.png",
+    "role": "figure",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "figures": null,
+  "stage_role": null,
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-recoil--expr-shock REUSED; RETRY overlay from `L45`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "the ground gone in one clean bite in front of his boots and a drop of bare rock falling away below him",
+   "to": "the ground gone in one clean bite IN FRONT OF his boots - BOTH boots planted flat and whole on solid rock behind the lip, neither boot over the void and no part of him falling - with the drop of bare rock beginning beyond that edge and falling away below it. Both of his hands are full rig hands drawn alike: three fingers plus one thumb on each, never five digits on either, and the two hands the same size as each other"
+  }
+ },
+ {
+  "name": "L46-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card — carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit. The SECOND image is the destination place — preserve its set, palette, outline weight and lighting. The THIRD image is the crowd exemplar — use only its anonymous crowd proportion and face tier.\n\nOne seeded performer, `base`, `expr-crestfallen`, `hold-both-hands`, in a grey work coat, over at the stage-LEFT side of the floor and walking AWAY from the camera, straight DOWN the length of the assembly floor toward the roller door at the far end, his back three-quarters to us and the door ahead of him - not walking across the frame sideways - carrying a cardboard box of desk things held up at chest height in BOTH hands, arms bent and raised, never hanging at his sides. The painted MINISCRIBE board still hangs over the entrance at the back of the floor exactly as the seeded plate draws it, and every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line. On the far side of the far bench a subdued crowd stands and watches him go, arms down, faces flat and tired. Cool grey-teal palette drained toward grey, flat strip light with every fourth ceiling fitting dark, foreground depth from a cropped bench end at the lower-right.",
+  "payload": "One seeded performer, `base`, `expr-crestfallen`, `hold-both-hands`, in a grey work coat, over at the stage-LEFT side of the floor and walking AWAY from the camera, straight DOWN the length of the assembly floor toward the roller door at the far end, his back three-quarters to us and the door ahead of him - not walking across the frame sideways - carrying a cardboard box of desk things held up at chest height in BOTH hands, arms bent and raised, never hanging at his sides. The painted MINISCRIBE board still hangs over the entrance at the back of the floor exactly as the seeded plate draws it, and every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line. On the far side of the far bench a subdued crowd stands and watches him go, arms down, faces flat and tired. Cool grey-teal palette drained toward grey, flat strip light with every fourth ceiling fitting dark, foreground depth from a cropped bench end at the lower-right.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718.png",
+   "_staging/L28.png",
+   "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718.png",
+    "role": "figure",
+    "character": "base"
+   },
+   {
+    "path": "_staging/L28.png",
+    "role": "place",
+    "character": null
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   }
+  ],
+  "figures": {
+   "crowd": true
+  },
+  "stage_role": "base",
+  "costume_key": "miniscribe-floor-4bd17718",
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 1,
+  "lineage": 1,
+  "why": "`base` STEP-1 fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718 REUSED; RETRY overlay from `L46`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door",
+   "to": "over at the stage-LEFT side of the floor and walking AWAY from the camera, straight DOWN the length of the assembly floor toward the roller door at the far end, his back three-quarters to us and the door ahead of him - not walking across the frame sideways - carrying a cardboard box of desk things held up at chest height in BOTH hands, arms bent and raised, never hanging at his sides. The painted MINISCRIBE board still hangs over the entrance at the back of the floor exactly as the seeded plate draws it, and every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line"
+  }
+ },
+ {
+  "name": "L47-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place — preserve its set, palette, outline weight and lighting.\n\n`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stage-right, already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He stands on outdoor tarmac under flat exterior daylight, with painted parking bays and a parked car behind him and open grey sky above; the assembly floor with its bare benches is visible only INSIDE, through the glass door behind him. Grey-cream-teal palette, flat overcast daylight outside against the warm strip light seen through the glass, foreground depth from a real cropped concrete kerb - a low kerb stone at the edge of the tarmac, never a bench or a table - cutting the lower-left corner.",
+  "payload": "`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stage-right, already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He stands on outdoor tarmac under flat exterior daylight, with painted parking bays and a parked car behind him and open grey sky above; the assembly floor with its bare benches is visible only INSIDE, through the glass door behind him. Grey-cream-teal palette, flat overcast daylight outside against the warm strip light seen through the glass, foreground depth from a real cropped concrete kerb - a low kerb stone at the edge of the tarmac, never a bench or a table - cutting the lower-left corner.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+   "_staging/L28.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+    "role": "figure",
+    "character": "terry-johnson"
+   },
+   {
+    "path": "_staging/L28.png",
+    "role": "place",
+    "character": null
+   }
+  ],
+  "figures": null,
+  "stage_role": "base",
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 1,
+  "lineage": 1,
+  "why": "`terry-johnson` STEP-1 fig-terry-johnson--carry-by-handle--expr-crestfallen REUSED; RETRY overlay from `L47`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "stepping out through a glass door onto a car park apron with a document case at his side, his back half turned to the floor behind him. Through the glass the assembly floor runs away into the depth with its benches bare. Grey-cream-teal palette, flat overcast light outside against warm strip light inside, foreground depth from a cropped kerb at the lower-left.",
+   "to": "already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He stands on outdoor tarmac under flat exterior daylight, with painted parking bays and a parked car behind him and open grey sky above; the assembly floor with its bare benches is visible only INSIDE, through the glass door behind him. Grey-cream-teal palette, flat overcast daylight outside against the warm strip light seen through the glass, foreground depth from a real cropped concrete kerb - a low kerb stone at the edge of the tarmac, never a bench or a table - cutting the lower-left corner."
+  }
+ },
+ {
+  "name": "L48-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place — preserve its set, palette, outline weight and lighting.\n\n`miniscribe-rep`, `expr-worried`, `action-slump`, alone stage-centre on the assembly floor in a real SLUMP that the drawing must execute, not an upright stand: his shoulders visibly DROPPED and rounded well below their normal line, his head hanging forward and down with his chin toward his chest, his back curved over and his arms hanging loose at his sides. The benches around him are cleared to bare steel and the tote racks are VISIBLY EMPTIED - every shelf stripped to bare metal, no tote bins and no cartons left on any rack, plainly different from the full racks of the seeded plate. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the empty concrete BESIDE him, landing on the floor to one side of him and not on his body. Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line, however cold the palette goes. Grey-teal-cream palette turned cold, foreground depth from a cropped empty tote bin at the lower-right.",
+  "payload": "`miniscribe-rep`, `expr-worried`, `action-slump`, alone stage-centre on the assembly floor in a real SLUMP that the drawing must execute, not an upright stand: his shoulders visibly DROPPED and rounded well below their normal line, his head hanging forward and down with his chin toward his chest, his back curved over and his arms hanging loose at his sides. The benches around him are cleared to bare steel and the tote racks are VISIBLY EMPTIED - every shelf stripped to bare metal, no tote bins and no cartons left on any rack, plainly different from the full racks of the seeded plate. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the empty concrete BESIDE him, landing on the floor to one side of him and not on his body. Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line, however cold the palette goes. Grey-teal-cream palette turned cold, foreground depth from a cropped empty tote bin at the lower-right.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-slump--expr-worried.png",
+   "_staging/L28.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-slump--expr-worried.png",
+    "role": "figure",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "_staging/L28.png",
+    "role": "place",
+    "character": null
+   }
+  ],
+  "figures": null,
+  "stage_role": "base",
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 1,
+  "lineage": 1,
+  "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-slump--expr-worried REUSED; RETRY overlay from `L48`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "alone stage-centre on the assembly floor with his shoulders down, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the concrete beside him.",
+   "to": "alone stage-centre on the assembly floor in a real SLUMP that the drawing must execute, not an upright stand: his shoulders visibly DROPPED and rounded well below their normal line, his head hanging forward and down with his chin toward his chest, his back curved over and his arms hanging loose at his sides. The benches around him are cleared to bare steel and the tote racks are VISIBLY EMPTIED - every shelf stripped to bare metal, no tote bins and no cartons left on any rack, plainly different from the full racks of the seeded plate. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the empty concrete BESIDE him, landing on the floor to one side of him and not on his body. Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line, however cold the palette goes."
+  }
+ },
+ {
+  "name": "L49-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `hq-banker`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly.\n\n`hq-banker`, `expr-skeptical`, `action-armscrossed`, standing centre in a panelled bank office and appraising the room: a brown chalk-stripe three-piece suit with a gold watch chain across the waistcoat, swept grey hair, heavy build. This is the SAME office as the following shot and every surface must match it: a plain oak plank floor with no carpet of any colour, walls of oak raised-and-fielded paneling behind him, oak drawer cabinets standing against that paneling, and a partners' desk stage-right whose top is PLAIN OAK with no green leather inset, under a green shaded banker's lamp. Tall sash windows stage-left onto grey city rooftops. Oak-brown-green-cream palette, one warm desk lamp against cool window light, foreground depth from a cropped visitor chair back at the lower-right.",
+  "payload": "`hq-banker`, `expr-skeptical`, `action-armscrossed`, standing centre in a panelled bank office and appraising the room: a brown chalk-stripe three-piece suit with a gold watch chain across the waistcoat, swept grey hair, heavy build. This is the SAME office as the following shot and every surface must match it: a plain oak plank floor with no carpet of any colour, walls of oak raised-and-fielded paneling behind him, oak drawer cabinets standing against that paneling, and a partners' desk stage-right whose top is PLAIN OAK with no green leather inset, under a green shaded banker's lamp. Tall sash windows stage-left onto grey city rooftops. Oak-brown-green-cream palette, one warm desk lamp against cool window light, foreground depth from a cropped visitor chair back at the lower-right.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-hq-banker--action-armscrossed--expr-skeptical.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-hq-banker--action-armscrossed--expr-skeptical.png",
+    "role": "figure",
+    "character": "hq-banker"
+   }
+  ],
+  "figures": null,
+  "stage_role": "base",
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "why": "`hq-banker` STEP-1 fig-hq-banker--action-armscrossed--expr-skeptical REUSED; RETRY overlay from `L49`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "A partners' desk stage-right under a green shaded lamp, a wall of oak drawer cabinets behind, tall sash windows stage-left onto grey city rooftops.",
+   "to": "This is the SAME office as the following shot and every surface must match it: a plain oak plank floor with no carpet of any colour, walls of oak raised-and-fielded paneling behind him, oak drawer cabinets standing against that paneling, and a partners' desk stage-right whose top is PLAIN OAK with no green leather inset, under a green shaded banker's lamp. Tall sash windows stage-left onto grey city rooftops."
+  }
+ },
+ {
+  "name": "L38",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card — carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit. The SECOND image is `miniscribe-rep`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly.\n\nOne seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+  "payload": "One seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+   "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+    "role": "figure",
+    "character": "base"
+   },
+   {
+    "path": "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png",
+    "role": "figure",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "figures": null,
+  "stage_role": null,
+  "costume_key": "l38-3412012a",
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "why": "`base` STEP-1 fig-base--action-armscrossed--expr-deadpan--l38-3412012a GENERATE; `miniscribe-rep` STEP-1 fig-miniscribe-rep--action-offering--expr-pleading GENERATE"
+ }
+]

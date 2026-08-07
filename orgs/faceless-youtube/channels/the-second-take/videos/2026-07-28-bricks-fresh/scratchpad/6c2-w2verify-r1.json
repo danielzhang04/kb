@@ -1,0 +1,601 @@
+{
+  "worker": "fresh-eyes-verify-retry-r1",
+  "wave": "6c2-wave2-retry-round-1",
+  "scope": "8 surgical scene retries: L33-fix, L27-fix, L32-fix, L44-fix, L46-fix, L47-fix, L48-fix, L49-fix",
+  "note": "VERIFICATION ONLY. This file is evidence for the stamping pass; it is not a verdict write. No mint, no git, no writes to review.json or assets/scenes/.",
+  "ink_method": "scratchpad/p6b_ink.py - darkest-3% circular-mean hue, mean R-B, median HSV saturation. Warm target ~19deg / R-B +18. Cool inversion (R-B <= 0) = hard fail.",
+  "authorities": {
+    "prose": "shots.json still_prompt with the overlay span substituted (scratchpad/6c2-w2retry.overlay.json)",
+    "L49_note": "shots.json L49 prose was edited navy->brown BEFORE the retry; L49-fix judged against the EDITED prose."
+  },
+  "records": [
+    {
+      "shot_id": "L33-fix",
+      "file": "visual-kit/_staging/L33-fix.png",
+      "sha256": "77ea9d2d1fbf5b864b7c9f5df5ebdfb610a6c12500951835b33c9a864726a2e0",
+      "verdict": "pass",
+      "gates": "CHAIN PARENT of L34 - a pass here unblocks the L34 mint",
+      "corrected_defect": {
+        "r1_defect": "miniscribe-rep identity drift: (1) hair warm dark brown -> jet black, (2) side-parted quiff with sideburn -> fuller rounder mass over the ear, (3) expr-delighted closed-teeth grin -> open laughing mouth with tongue",
+        "overlay_span": "'...is drawn exactly as his own reference sheet draws him...: warm dark BROWN hair, never black, side-parted into a quiff with a visible sideburn and the ear left clear, the same compact head outline as the sheet, and his mouth closed with no tongue showing'",
+        "fixed": true,
+        "evidence": "Hair now warm dark brown (patch mean RGB 110,65,41 vs canonical 91,66,53 and card 90,65,51 - same warm-brown family, r1 was a jet-black mass). Hair is side-parted and swept up off the brow with the side of the head left clear. Mouth is a closed-lip-corner teeth grin over closed-arc eyes - the card's expr-delighted register exactly; the r1 open laughing mouth with visible tongue/inner-mouth pink is GONE."
+      },
+      "axes": {
+        "composition_staging": "pass-with-deviation",
+        "figures": "pass",
+        "ink_law": "pass",
+        "continuity": "pass (improved)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 100.8,
+        "ink_r_minus_b": 2.1,
+        "ink_lum": 8.8,
+        "median_sat": 0.1294,
+        "deg_from_cool_inversion": 122.2,
+        "r1_ink": {"hue": 75.1, "rb": 2.5},
+        "hair_rgb_fix": [110.1, 64.5, 41.0],
+        "hair_rgb_card_delighted": [90.0, 64.8, 50.6],
+        "hair_rgb_canonical": [91.1, 66.3, 52.5]
+      },
+      "collateral_sweep": {
+        "ibm_suit_figure": "HELD - dark brown skin, grey hair at the temples, navy chalk-stripe three-piece, blue tie, white pocket square, black oxfords, no nose, no ears, uniform head tone, expr-smug (heavy lids + closed smirk). No drift from r1.",
+        "interaction_template": "HELD - single handshake clasp, both figures on the same ground plane, eye lines within a few px, head scales effectively equal, no spare hands, no duplicated figure.",
+        "hands": "HELD - 4 digits on every visible hand (clasp reads 3 fingers + thumb wrap; both free hands 3+1), both hands on each figure the same size, cuffs drawn.",
+        "place_geometry": "HELD vs L28 seed - tote rack stage-left full, twin bench runs, tray shelves, overhead strip-light rig, wall dado split, floor sheen, cropped bench end lower-right.",
+        "lettering": "only the seeded MINISCRIBE board; correctly spelled, marker-italic red on cream, on the authored surface. No stray text.",
+        "flat_cel": "HELD - flat fills, uniform outline weight, no sub-outline stroke fields.",
+        "duplicates": "none"
+      },
+      "defects": [
+        {
+          "axis": "figures",
+          "severity": "trivial",
+          "element": "miniscribe-rep hair volume",
+          "detail": "The quiff is drawn taller and more pompadour-like than either the card or the canonical, which carry a lower side-swept mass. Introduced by the overlay's own wording ('side-parted into a quiff'), not by the generator. Colour, part, silhouette family and head outline all now read as the same man; the volume is a stylistic overshoot, not an identity change."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "roller door state",
+          "location": "back centre",
+          "detail": "L33's own prose stages 'the roller door up on flat grey daylight'. The fix draws it SHUT with its slats and drum fully rendered - i.e. it obeys the L28 place seed (which authors the door shut) over its own line. r1 drew a flat grey panel there that could read as an open door. Seed-consistent, prose-inconsistent; flagged as a place-seed-vs-prose conflict for the stamping pass rather than a generator miss."
+        }
+      ],
+      "continuity": {
+        "seed": "L28 (in _staging, verified pass)",
+        "verdict": "improved over r1",
+        "detail": "The MINISCRIBE painted board is PRESENT and correct in L33-fix - it was ABSENT in r1 and that absence was the r1 continuity note. The L28 family's identifying prop is restored in this child."
+      },
+      "chain_ruling": "L34 MAY PROCEED. The identity that L34 deltas off is now the canonical man; regenerating L34 on this parent will not re-inherit the black-hair/tongue drift."
+    },
+    {
+      "shot_id": "L27-fix",
+      "file": "visual-kit/_staging/L27-fix.png",
+      "sha256": "c11fd5449906392c2ed4538ab730e9d2066125d42c9077f1cb25b32bca9640cb",
+      "verdict": "pass",
+      "corrected_defect": {
+        "r1_defect": "base performer's viewer-left hand drawn as a fingerless mitten stub with a single thumb-like protrusion, no digit separation, visibly smaller than the correctly-articulated right hand, sleeve terminating without a cuff so the hand read as laid on the sheet rather than closed on it",
+        "overlay_span": "'BOTH of his hands closed on the sheet's leading edge and BOTH drawn as full rig hands - three fingers plus one thumb on each, the two hands the same size as each other, each wrist ending in a drawn coat cuff...'",
+        "fixed": true,
+        "evidence": "Both hands are now closed fists gripping the sheet's leading edge. Upper hand (~x845-890, y345-390): thumb wrapped over the top plus three finger segments = 4 digits. Lower hand (~x885-935, y415-455): thumb over the top plus three knuckle bumps = 4 digits. Measured extents 45x46 px and 43x42 px - same size within 5%. Both wrists terminate in a drawn brown coat cuff. Neither hand is a mitten, a stub, a fingerless shape, or laid flat on the sheet."
+      },
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "pass",
+        "ink_law": "pass",
+        "continuity": "n/a (no chain parent, no place seed)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 24.2,
+        "ink_r_minus_b": 27.7,
+        "ink_lum": 22.5,
+        "median_sat": 0.1216,
+        "deg_from_cool_inversion": 198.8,
+        "r1_ink": {"hue": 30.0, "rb": 37.9, "lum": 42.5},
+        "hand_bbox_upper_px": [45, 46],
+        "hand_bbox_lower_px": [43, 42]
+      },
+      "collateral_sweep": {
+        "note": "This retry re-rolled the whole composition, not just the hands - camera moved in, the stack grew, the haul became a real pull. Every axis re-checked from scratch.",
+        "figure_identity": "HELD vs fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce: bald dome, NO NOSE (the pale rounded shape under the mouth is the card's own lower-lip/chin highlight, present identically on the card), no ears, uniform head tone with the same side shade, heavy-lidded deadpan with a flat line mouth. Costume held: brown patch-pocket warehouse coat over grey-olive tee, brown trousers, brown shoes.",
+        "staging_vs_prose": "IMPROVED. stage-right OK; sheet hauled off the FRONT FACE with the wrap now exposed in flat planes; half the sheet still draped across the top of the stack; the stack genuinely towers over him (r1's read flatter); empty concrete bay running back to a shuttered door; warm bulb over the shutter; cold skylight shaft from above; cropped forklift tine at the lower-left (now a grey steel fork, r1 drew it timber-coloured).",
+        "text": "none anywhere",
+        "flat_cel": "HELD - flat fills, uniform outline weight, gradient confined to the sheet's fabric shading as elsewhere in the batch",
+        "duplicates": "none - one stack, one forklift, one figure"
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "back wall",
+          "detail": "prose says the bay's 'walls bare'; faint vertical grime streaks are drawn on the left wall. Texture, not an object."
+        }
+      ],
+      "ink_note": "Improved on both counts: R-B fell from +37.9 (above the p6b batch ceiling of +31.3) to +27.7 (inside it), and ink_lum halved from 42.5 to 22.5, so the frame now has true dark linework instead of low-contrast brown. Hue 24.2deg sits near the ~19deg target."
+    },
+    {
+      "shot_id": "L32-fix",
+      "file": "visual-kit/_staging/L32-fix.png",
+      "sha256": "13f8c5fce2eec7d2acfed72d309253a080ba3254a0c83ce53e96d150648ceece",
+      "verdict": "pass",
+      "corrected_defect": {
+        "r1_defect": "the word 'FIRE' stencilled on the fire bucket - unauthored text, and drawn in a plain upright sans that is not the house letterform (the p6b bled-lettering class)",
+        "overlay_span": "'one small unmarked fire bucket ... drawn completely BLANK - no stencilled word, no letter, no number, no label and no marking of any kind on it, and no lettering anywhere else in the frame - and kept small and muted in tone so the cherry-red glow of the drive stays the single dominant red mass'",
+        "fixed": true,
+        "evidence": "The bucket is completely blank - no word, letter, number, label or marking. Full-frame sweep finds no lettering anywhere: the peg rail carries unlabelled tools, the drive casing is bare, the bench and walls are clean. The text-law defect is closed."
+      },
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "pass",
+        "ink_law": "pass",
+        "continuity": "n/a (no chain parent, no place seed)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 23.6,
+        "ink_r_minus_b": 36.3,
+        "ink_lum": 33.9,
+        "median_sat": 0.0431,
+        "deg_from_cool_inversion": 199.4,
+        "r1_ink": {"hue": 19.4, "rb": 47.7, "lum": 37.3, "median_sat": 0.0745},
+        "red_mass_px": {
+          "fix_bucket": 9186, "fix_drive": 28523,
+          "r1_bucket": 9720, "r1_drive": 28519
+        },
+        "red_mean_sat": {"fix_bucket": 0.71, "fix_drive": 0.55, "r1_bucket": 0.65, "r1_drive": 0.61}
+      },
+      "collateral_sweep": {
+        "gloves_rig": "HELD, checked at 4x - each quilted oven glove draws thumb + three fingers = 4 digits, both gloves the same size, both with a drawn quilted cuff.",
+        "figure_identity": "HELD vs fig-base--action-recoil--expr-shock--l32-36f3a4e9: bald dome, no nose, no ears, uniform head tone; expr-shock register correct (wide round eyes, open mouth with tongue); action-recoil body line held (weight on the back foot, torso pulled away, forward leg lifted).",
+        "staging_vs_prose": "HELD or improved. Peg RAIL of hand tools behind (r1 drew a full pegboard - the fix matches the prose better); drive on the bench glowing cherry-red with exactly two thin smoke wisps; one hard work lamp from above throwing a single cone; stage-left on his back foot.",
+        "text": "none anywhere - the whole point of the retry",
+        "flat_cel": "HELD",
+        "duplicates": "none"
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "fire-bucket chroma",
+          "detail": "The overlay's 'kept small and muted' clause did NOT execute. Measured saturated-red pixel area: bucket 9720 -> 9186 (-5.5%), drive 28519 -> 28523 (unchanged); the bucket's mean red saturation actually ROSE, 0.65 -> 0.71. The drive is still ~3.1x the bucket's red area in both frames, so the gag does read as dominant, but the r1 minor about a competing second red mass is unresolved rather than fixed. Not grounds to fail - the r1 FAIL was the lettering, which is closed - but the clause is evidence that chroma/scale instructions are weaker levers than object-content instructions."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "foreground depth object",
+          "detail": "prose authors 'a cropped stool back'; the frame again draws a complete backless wooden stool, cropped by the edge. Identical to the r1 trivial - carried over unchanged."
+        },
+        {
+          "axis": "register_flatcel",
+          "severity": "minor",
+          "element": "global saturation",
+          "detail": "median_sat fell 0.0745 -> 0.0431, the lowest reading anywhere in the 6c2 slice and roughly a quarter of the ~0.19 era prior. The retry replaced r1's cream walls with a large flat mid-grey field, so the authored 'grey-cream-red' palette lost most of its cream. Individually defensible (the prose leads with grey) but it deepens the act-level flatness the round-1 verifier logged as S3."
+        }
+      ]
+    },
+    {
+      "shot_id": "L44-fix",
+      "file": "visual-kit/_staging/L44-fix.png",
+      "sha256": "14e0d54990d900623072f58e920d49631b0d726f2a09756a367b4ebb7ff6adf2",
+      "verdict": "pass",
+      "corrected_defect": {
+        "r1_defects": [
+          "tote rack stage-left rendered completely FULL and pixel-identical to the L28 seed, where the prose authors it half empty - the depletion IS the beat",
+          "MINISCRIBE fascia board absent (r1 continuity note)",
+          "ink neutral/green-cast at R-B +0.1"
+        ],
+        "overlay_span": "'the tote rack stage-left now VISIBLY HALF EMPTY ... its upper shelves stripped down to bare metal, tote bins left only on the lower shelves ... The painted MINISCRIBE board still hangs over the entrance ... Every outline in the frame is drawn in the warm dark brown house ink'",
+        "fixed": "2 of 3",
+        "evidence": "RACK: verified by side-by-side crop against the L28 seed at 3x. Seed carries bins on all three rows; L44-fix strips the TOP row to bare metal and leaves bins on the middle and bottom rows only. Exactly the authored half-empty, and unmistakably different from the seed. FIXED. BOARD: the cream fascia with red marker-italic 'MINISCRIBE' hangs at x515-865 / y30-140, matching the seed's position and letterform. FIXED. INK: R-B moved +0.1 -> +1.1. Still on the zero line. NOT FIXED."
+      },
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "pass",
+        "ink_law": "flag (no hard fail; clause did not execute)",
+        "continuity": "pass",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 117.4,
+        "ink_r_minus_b": 1.1,
+        "ink_lum": 15.2,
+        "median_sat": 0.1255,
+        "deg_from_cool_inversion": 105.6,
+        "r1_ink": {"hue": 122.0, "rb": 0.1, "lum": 11.6, "median_sat": 0.1255},
+        "seed_L28_ink": {"hue": 78.6, "rb": 3.0},
+        "figure_card_ink_rb": 19.5,
+        "canonical_ibm_suit_ink_rb": 22.6,
+        "rear_central_lit_px": {"fix": 3119, "r1": 5290, "seed_L28": 13604},
+        "rear_central_mean_lum": {"fix": 80.7, "r1": 98.5, "seed_L28": 144.6}
+      },
+      "collateral_sweep": {
+        "figure": "HELD vs fig-ibm-suit--action-thumbsdown--expr-annoyed and the canonical: dark brown skin, swept grey hair, heavy squat build, no nose, no ears, uniform head tone; navy chalk-stripe three-piece, blue tie, white pocket square, black oxfords. action-thumbsdown on the left hand, right hand 4-digit (3 fingers + thumb), both hands the same size. expr-annoyed register unchanged.",
+        "staging": "planted centre as authored; one lone flat carton on the concrete at his feet; roller door shut; benches carrying the seed's anti-static mats; cropped bench end lower-right.",
+        "place_geometry": "HELD vs L28 - bench runs, tray shelves, ceiling rig, wall dado split, floor sheen all register.",
+        "text": "only the seeded MINISCRIBE board",
+        "flat_cel": "HELD",
+        "duplicates": "none"
+      },
+      "collateral_improvements": [
+        "the r1 minor 'far end of the floor unlit - not staged' is partly resolved: rear-central lit-pixel area fell 5290 -> 3119 and that band's mean luminance fell 98.5 -> 80.7 (seed reads 13604 / 144.6). The back of the floor now genuinely darkens."
+      ],
+      "defects": [
+        {
+          "axis": "ink_law",
+          "severity": "major",
+          "element": "global ink register",
+          "detail": "The overlay's explicit warm-ink clause is a NO-OP. R-B moved from +0.1 to +1.1 - one part in a target of +18 - and the hue stayed green-neutral (122.0deg -> 117.4deg). No cool inversion, so no hard fail, but the frame still has no warm brown-black line. Root cause is unchanged from r1 and is now proven by three frames: the ink is INHERITED FROM THE L28 PLACE SEED (+3.0), not from the figure (card +19.5, canonical +22.6). Prose cannot override a seeded ink register. The fix belongs at L28, not in the children."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "palette",
+          "detail": "prose asks the grey-teal-cream palette to have 'gone colder' relative to the seed. median_sat is 0.1255 in BOTH r1 and the fix - bit-identical to two decimal places - so no cooling delta was applied in either. r1 minor persists unchanged. The overlay did not address it."
+        }
+      ],
+      "continuity": {
+        "seed": "L28",
+        "verdict": "pass - MINISCRIBE board restored, place geometry holds"
+      }
+    },
+    {
+      "shot_id": "L46-fix",
+      "file": "visual-kit/_staging/L46-fix.png",
+      "sha256": "a9ffb5cc70e5248ace3be1cf224f175e2c8dd556aca226b2ff88affd066592d7",
+      "verdict": "pass",
+      "corrected_defect": {
+        "r1_defects": [
+          "hero planted dead centre and walking LATERALLY to stage-right with the roller door behind his back - both authored placement and authored direction-of-travel inverted",
+          "MINISCRIBE fascia board absent",
+          "ink neutral/green-cast at R-B +1.0"
+        ],
+        "overlay_span": "'over at the stage-LEFT side of the floor and walking AWAY from the camera, straight DOWN the length of the assembly floor toward the roller door at the far end, his back three-quarters to us and the door ahead of him - not walking across the frame sideways - carrying a cardboard box ... held up at chest height in BOTH hands, arms bent and raised ... The painted MINISCRIBE board still hangs ... warm dark brown house ink'",
+        "fixed": "2 of 3 (travel vector fully; board fully; ink not at all)",
+        "evidence": "TRAVEL VECTOR: fully executed. He is drawn from behind, back three-quarters to camera, striding straight down the floor's axis with the shut roller door directly ahead of him. The lateral cross-frame walk is gone. BOARD: cream fascia with red marker-italic 'MINISCRIBE' restored at the seed's position. INK: R-B +1.0 -> +2.1, still on the zero line."
+      },
+      "axes": {
+        "composition_staging": "pass-with-deviation",
+        "figures": "pass",
+        "ink_law": "flag (no hard fail; clause did not execute)",
+        "continuity": "pass",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 101.9,
+        "ink_r_minus_b": 2.1,
+        "ink_lum": 13.6,
+        "median_sat": 0.1059,
+        "deg_from_cool_inversion": 121.1,
+        "r1_ink": {"hue": 114.3, "rb": 1.0, "lum": 15.2, "median_sat": 0.1059},
+        "seed_L28_ink": {"hue": 78.6, "rb": 3.0},
+        "figure_card_ink_rb": 41.8,
+        "side_ceiling_lit_px": {"fix": 8312, "r1": 8297, "seed_L28": 55135},
+        "hero_centre_x": 580,
+        "frame_centre_x": 688
+      },
+      "collateral_sweep": {
+        "figure": "HELD vs fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718: bald dome, no nose, no ears, uniform head tone; grey work coat with patch pocket, brown trousers, brown shoes. The head is turned enough for a three-quarter-rear read of the face - angled sad brow, half-lidded eye, downturned mouth - so expr-crestfallen still reads from behind.",
+        "carry": "box held in front at chest-to-upper-waist height with the visible arm bent and raised across it; the far arm is occluded by the torso, which is physically consistent with the rear view. Neither arm hangs at his side. The card's own arms-at-sides drift is again NOT inherited.",
+        "hands": "visible hand 4-digit on the box rim",
+        "crowd": "HELD and clean - ~11 base figures, bald domes, no nose, no ears, simple beat-fit register (angled sad brows + flat downturned mouths), arms down, 4-digit hands, garment colour varied, no crowd figure competing with the hero. Scale/baseline correct for depth.",
+        "place_geometry": "HELD vs L28 - tote rack stage-left full (L46 authors no depletion), bench runs, tray shelves, ceiling rig, wall dado, cropped bench end lower-right.",
+        "text": "only the seeded MINISCRIBE board",
+        "flat_cel": "HELD",
+        "duplicates": "none"
+      },
+      "defects": [
+        {
+          "axis": "ink_law",
+          "severity": "major",
+          "element": "global ink register",
+          "detail": "Warm-ink clause is a NO-OP. R-B +1.0 -> +2.1 against a +18 target; hue still green-neutral at 101.9deg. Positive, so no hard fail. Same inherited-from-L28 root cause as L44-fix and L48-fix - the figure card here measures +41.8 and still does not carry warmth into the frame."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "hero lateral placement",
+          "detail": "The overlay asks for the stage-LEFT side of the floor. His centre of mass sits at x~580 against a frame centre of 688 - left of centre by only 8% of frame width, so he reads near-centre rather than genuinely stage-left. The direction-of-travel half of the corrective landed cleanly; the placement half only partly."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "ceiling strip lights",
+          "detail": "prose authors 'every fourth ceiling fitting dark' (~3/4 still lit). Side-ceiling lit-pixel area measures 8297 (r1) vs 8312 (fix) - unchanged - against 55135 in the L28 seed. The over-drain flagged in r1 carries over exactly."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "crowd depth",
+          "detail": "authored 'on the far side of the far bench'. The mass is again ranked along the stage-right aisle beside/behind the right bench rather than beyond the deepest one. r1 minor persists; the overlay did not address it."
+        }
+      ],
+      "continuity": {
+        "seed": "L28",
+        "verdict": "pass - MINISCRIBE board restored, place geometry and palette hold"
+      }
+    },
+    {
+      "shot_id": "L47-fix",
+      "file": "visual-kit/_staging/L47-fix.png",
+      "sha256": "f018b80791bfc4816c797fa6fc2ada4f5f12ae72882ea99027274645baccf0c8",
+      "verdict": "pass",
+      "note": "The strongest retry of the eight. A whole-beat inversion reversed cleanly with no collateral loss, plus two unasked-for r1 minors fixed.",
+      "corrected_defect": {
+        "r1_defects": [
+          "MAJOR: no exterior at all - authored 'stepping out onto a car park apron', staged entirely inside on factory concrete with more factory beyond the glazing (the p6b 'authored outside, staged inside' class)",
+          "MAJOR: foreground was the L28 workbench, not the authored kerb",
+          "MAJOR: no interior/exterior light contrast",
+          "MINOR: body facing INTO the floor rather than turned away",
+          "MINOR: document case drawn as a brown leather satchel where the STEP-1 card carries a grey hard case"
+        ],
+        "overlay_span": "'already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door ... outdoor tarmac under flat exterior daylight, with painted parking bays and a parked car behind him and open grey sky above; the assembly floor ... visible only INSIDE, through the glass door behind him ... a real cropped concrete kerb - a low kerb stone at the edge of the tarmac, never a bench or a table'",
+        "fixed": true,
+        "evidence": "He is unambiguously OUTSIDE: standing on tarmac with painted white parking bays, a parked car stage-right, open grey sky above, one pace clear of the glass door. The assembly floor - racks, benches, roller door, strip light - is visible ONLY through the glazing behind him. Two-zone lighting now reads: cool flat grey daylight outside against warm cream strip light seen through the glass. A real concrete kerb is drawn at the tarmac edge (the workbench is gone). Body is turned away from the door, facing out. The beat - a departure staged as a threshold already past - now lands."
+      },
+      "axes": {
+        "composition_staging": "pass-with-deviation",
+        "figures": "pass",
+        "ink_law": "pass (weak)",
+        "continuity": "pass (see note)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 59.4,
+        "ink_r_minus_b": 8.9,
+        "ink_lum": 25.4,
+        "median_sat": 0.1098,
+        "deg_from_cool_inversion": 163.6,
+        "r1_ink": {"hue": 47.7, "rb": 11.0, "lum": 26.9, "median_sat": 0.0902}
+      },
+      "collateral_sweep": {
+        "figure": "HELD vs the reused fig-terry-johnson--carry-by-handle--expr-crestfallen card: blond comb-over over a high bald crown, moustache, NO NOSE (checked at 4x - the pale shape under the mouth is the rig's lower-lip highlight), no ears, uniform head tone, white shirt, black tie, dark trousers, black shoes. expr-crestfallen register identical (angled inner brows, half-lidded eyes, small downturned mouth). carry-by-handle rig held.",
+        "hands": "4 digits on BOTH - free hand 3 fingers + thumb, case hand 3 fingers over the handle + thumb; same size",
+        "interior_through_glass": "L28 palette and props survive the re-frame - teal dado over cream, grey benches with blue mats, tote racks, timber tray shelves, shut roller door, warm strip light",
+        "text": "none anywhere",
+        "flat_cel": "HELD",
+        "duplicates": "none - one car, one door, one figure"
+      },
+      "collateral_improvements": [
+        "DOCUMENT CASE: now a GREY HARD CASE matching the STEP-1 card. The r1 carried-prop drift (brown leather satchel with strap and buckle) is fixed, though the overlay never mentioned it.",
+        "median_sat rose 0.0902 -> 0.1098, moving toward rather than away from the era prior."
+      ],
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "kerb placement",
+          "detail": "The overlay asked for the kerb 'cutting the lower-left corner'. Object type is correct now - a real low concrete kerb stone at the tarmac edge, not a bench - but it runs across the lower-CENTRE, rising from about x560; the lower-left corner is occupied by the building's glazing and wall base. Right object, wrong corner."
+        },
+        {
+          "axis": "ink_law",
+          "severity": "minor",
+          "element": "global ink register",
+          "detail": "R-B fell 11.0 -> 8.9 and hue drifted 47.7deg -> 59.4deg, i.e. slightly LESS warm than r1. Still comfortably positive and 164deg from the cool pole, and still the warmest of the four L28 children - but this frame's overlay carried no ink clause, so nothing was promised and nothing broke."
+        }
+      ],
+      "continuity": {
+        "seed": "L28",
+        "verdict": "pass",
+        "miniscribe_board": "NOT VISIBLE, and this is defensible rather than a defect. The retry legitimately moved the camera outside; the slice of interior seen through the glazing is bounded by the door head, and the board hangs high over the entrance, above that cut. L47's overlay did not carry the board clause (only L44's and L46's did). Flagged so the stamping pass knows the L28 family is board-present in L33-fix/L44-fix/L46-fix and board-absent in L47-fix and L48-fix, for two different reasons."
+      }
+    },
+    {
+      "shot_id": "L48-fix",
+      "file": "visual-kit/_staging/L48-fix.png",
+      "sha256": "bcd28e1eefe5841e0f04b27768861f896ed03f23e7cd2782a7f13da8b7b68f7e",
+      "verdict": "pass",
+      "special_case_ruling": {
+        "question": "brief asks: if the performer is upright again (card drift reasserting), fail it and declare a mechanism fix needed",
+        "answer": "NOT TRIGGERED. The mechanism fix is NOT needed. The slump is executed.",
+        "evidence": "Compared side by side at 4x against the r1 frame and against fig-miniscribe-rep--action-slump--expr-worried. The card and r1 both draw a bolt-upright stand: level shoulders, a visible neck gap, symmetric arms. L48-fix draws a genuine slump - the head hangs forward and down until the jaw sits on the collar with NO neck visible, the shoulders are dropped and visibly ASYMMETRIC (the viewer-right shoulder slopes away), the back curves over, and both arms hang loose. Overall figure height compressed ~4% against r1 (290px vs 303px) for the same character at the same distance, which is what a slumped stance does. The card's upright drift was NOT inherited this time."
+      },
+      "corrected_defect": {
+        "r1_defects": [
+          "MAJOR: action-slump rendered as an upright arms-at-sides stand, inherited from the STEP-1 card",
+          "MAJOR: tote racks unchanged from the L28 seed where the prose authors them empty",
+          "MAJOR: ink flat at R-B +0.028, effectively ON the inversion boundary",
+          "MINOR: the single cold roof-light shaft centred ON him instead of beside him"
+        ],
+        "overlay_span": "'a real SLUMP that the drawing must execute, not an upright stand ... The benches ... cleared to bare steel and the tote racks are VISIBLY EMPTIED - every shelf stripped to bare metal, no tote bins and no cartons left on any rack ... one cold shaft onto the empty concrete BESIDE him, landing on the floor to one side of him and not on his body ... warm dark brown house ink'",
+        "fixed": "2 of 4",
+        "evidence": "SLUMP: fixed, see special_case_ruling. TOTE RACKS: fixed against the shot prose - both tote racks (far stage-left and far stage-right) are now stripped to bare metal with no bins at all, plainly different from the L28 seed's three full rows. LIGHT SHAFT: NOT fixed - measured floor luminance across the pool gives a bright band at x~480-900 (lum 185-209) and his shoes occupy x640-733, dead inside it. He is still standing in the middle of the light. INK: NOT fixed, R-B +0.028 -> +1.9."
+      },
+      "axes": {
+        "composition_staging": "pass-with-deviation",
+        "figures": "pass",
+        "ink_law": "flag (no hard fail; clause did not execute)",
+        "continuity": "pass-with-note",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 116.3,
+        "ink_r_minus_b": 1.9,
+        "ink_lum": 16.6,
+        "median_sat": 0.1333,
+        "deg_from_cool_inversion": 106.7,
+        "r1_ink": {"hue": 141.7, "rb": 0.0283, "lum": 18.5, "median_sat": 0.1412},
+        "seed_L28_ink": {"hue": 78.6, "rb": 3.0},
+        "figure_card_ink_rb": 39.3,
+        "figure_height_px": {"fix": 290, "r1": 303},
+        "floor_pool_lum_by_x": {"500-550": 208.9, "550-600": 185.4, "600-700": "shoes/shadow", "750-900": 208.9},
+        "shoe_x_range": [640, 733],
+        "rear_central_lit_px": {"fix": 0, "r1": 1251, "seed_L28": 13604}
+      },
+      "collateral_sweep": {
+        "figure": "HELD vs card and canonical: warm dark brown hair sweep, tan blazer over brown open-collar shirt, dark trousers, dark shoes, no nose, no ears, uniform head tone. expr-worried register matches the card (raised inner brows, wide eyes, tight gritted mouth). 4-digit hands, both the same size, hanging loose.",
+        "staging": "alone stage-centre as authored, no other figure; half the ceiling fittings dark and the far end in deep shadow, both executed (rear-central lit-pixel area is now literally zero); cropped empty bin at the lower-right for foreground depth.",
+        "place_geometry": "HELD vs L28 - bench runs, tray shelves, ceiling rig, wall dado, roller door.",
+        "text": "none",
+        "flat_cel": "HELD",
+        "duplicates": "none"
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "the cold roof-light shaft",
+          "detail": "Re-authored in the overlay with explicit emphasis ('landing on the floor to one side of him and not on his body') and STILL not executed. Measured: the bright floor pool runs x~480-900 at luminance 185-209 and his shoes sit at x640-733, in its middle. The authored isolation reads as a spotlight on the subject - emphasis rather than abandonment. This is the clearest case in the round of a spatial-relation clause that the generator would not honour even on a second, heavily emphasised pass."
+        },
+        {
+          "axis": "ink_law",
+          "severity": "major",
+          "element": "global ink register",
+          "detail": "Warm-ink clause is a NO-OP. R-B +0.028 -> +1.9, hue 141.7deg -> 116.3deg. It has stepped off the exact inversion boundary but is nowhere near the +18 warm target. Same inherited-from-L28 root cause; the figure card measures +39.3."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "mid tray racks",
+          "detail": "The overlay demanded 'no tote bins and no cartons left on ANY rack'. The two mid tray racks still carry their pale timber tray stacks. Judged against the SHOT PROSE ('the tote racks empty'), which is the authority, this is satisfied - the tote racks are bare. Logged only because the overlay's stricter wording was not honoured."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "foreground depth object",
+          "detail": "prose authors 'a cropped empty tote bin'. The fix draws a large pale timber open crate rather than the grey tote bin of the seed's family, and it occupies more of the lower-right than r1's did. Reads correctly as an empty bin; wrong material."
+        }
+      ],
+      "continuity": {
+        "seed": "L28",
+        "verdict": "pass-with-note",
+        "miniscribe_board": "ABSENT. L48's overlay did NOT carry the board clause (only L44's and L46's did), so this is unfixed rather than regressed. The board's authored position (x515-860, y30-140) falls inside the region the prose sends into deep shadow, which makes it arguable - but visually the L28 family's identifying prop is simply not there."
+      }
+    },
+    {
+      "shot_id": "L49-fix",
+      "file": "visual-kit/_staging/L49-fix.png",
+      "sha256": "b3f1965df42d35c4356a1e5b9ab0986e51d40fc77ae3ce3e05452a153f9f79ff",
+      "verdict": "pass",
+      "authority_note": "Judged against the EDITED shots.json prose, which now reads 'a brown chalk-stripe three-piece suit with a gold watch chain across the waistcoat, swept grey hair, heavy build' - the navy->brown correction was made upstream in shots.json before this retry, per the canonical-authority ruling. Plus the overlay's room-match span.",
+      "corrected_defect": {
+        "r1_defects": [
+          "BLOCKER: hq-banker dressed in NAVY chalk-stripe, within noise of the ibm-suit canonical, collapsing identity-by-costume between two named cast members five shots apart",
+          "root cause: the shots.json prose itself pinned the wrong outfit",
+          "MINOR: two cropped visitor chairs where one was authored",
+          "MINOR: unauthored red-topped spiral desk calendar",
+          "cross-shot: room disagreed with L50 on floor, back wall and desk top"
+        ],
+        "overlay_span": "'This is the SAME office as the following shot and every surface must match it: a plain oak plank floor with no carpet of any colour, walls of oak raised-and-fielded paneling behind him, oak drawer cabinets standing against that paneling, and a partners' desk stage-right whose top is PLAIN OAK with no green leather inset, under a green shaded banker's lamp.'",
+        "fixed": true,
+        "evidence": "SUIT: measured torso mean RGB (94.0, 59.7, 42.1) and trouser (110.0, 69.8, 45.9) against L50's torso (93.1, 58.1, 40.3), the STEP-1 card (101.4, 66.3, 50.2) and the hq-banker canonical (92.8, 56.5, 41.6). r1 measured (58.5, 54.4, 60.3) - navy, within noise of the ibm-suit canonical (55.2, 54.8, 72.2). The fix lands on L50 within ~1 unit per channel. Identity-by-costume between hq-banker and ibm-suit is restored and the character's introduction shot now agrees with his second appearance. ROOM: plain oak plank floor with no carpet; oak raised-and-fielded paneling behind; oak drawer cabinets against it with the same drawer-pull family as L50; partners' desk stage-right with a PLAIN OAK top and no green leather inset; the same green shaded banker's lamp. Tall sash windows stage-left onto grey city rooftops retained."
+      },
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "pass",
+        "ink_law": "pass",
+        "continuity": "pass (room-match-to-L50 judged as a staging axis; not seedable, mechanism limit)",
+        "register_flatcel": "pass-with-deviation"
+      },
+      "measurements": {
+        "ink_hue_deg": 16.0,
+        "ink_r_minus_b": 54.1,
+        "ink_lum": 23.1,
+        "median_sat": 0.6392,
+        "deg_from_cool_inversion": 207.0,
+        "r1_ink": {"hue": 13.4, "rb": 40.2, "lum": 17.2, "median_sat": 0.6235},
+        "L50_ink": {"hue": 15.2, "rb": 46.7, "median_sat": 0.6627},
+        "suit_rgb_fix_torso": [94.0, 59.7, 42.1],
+        "suit_rgb_fix_trouser": [110.0, 69.8, 45.9],
+        "suit_rgb_r1_torso": [58.5, 54.4, 60.3],
+        "suit_rgb_L50_torso": [93.1, 58.1, 40.3],
+        "suit_rgb_step1_card": [101.4, 66.3, 50.2],
+        "suit_rgb_canonical_hq_banker": [92.8, 56.5, 41.6],
+        "suit_rgb_canonical_ibm_suit": [55.2, 54.8, 72.2]
+      },
+      "room_match_to_L50": {
+        "oak_plank_floor": "MATCH (r1 had green carpet)",
+        "raised_and_fielded_paneling": "MATCH (r1 had a wall of drawer cabinets instead)",
+        "oak_drawer_cabinets_against_paneling": "MATCH - same drawer-pull family",
+        "partners_desk_plain_oak_top": "MATCH (r1 had a green leather inset)",
+        "green_shaded_bankers_lamp": "MATCH - same brass stem, same green shade",
+        "verdict": "reads as the same room. Tolerance met with room to spare; the two frames could cut against each other."
+      },
+      "collateral_sweep": {
+        "figure": "HELD vs fig-hq-banker--action-armscrossed--expr-skeptical and the canonical: swept grey hair, heavy squat build, no nose, no ears, uniform head tone; white shirt, dark tie, waistcoat with the gold watch chain across it. expr-skeptical register matches the card (one raised brow, one flattened brow, half-lidded eyes, flat mouth). action-armscrossed rig held; the visible hand tucked at the elbow draws 3 fingers + thumb.",
+        "staging": "standing centre in a panelled bank office as authored; partners' desk stage-right under the green shaded lamp; sash windows stage-left onto grey rooftops; cropped visitor chair back at the lower-right.",
+        "text": "NONE anywhere - correct, L49 authors no lettering",
+        "flat_cel": "HELD",
+        "duplicates": "none"
+      },
+      "collateral_improvements": [
+        "VISITOR CHAIRS: exactly ONE cropped chair back at the lower-right, as authored. r1's second chair is gone.",
+        "DESK CALENDAR: the unauthored red-topped spiral desk calendar - flagged in r1 as the same object family as the p6b '1983 tent card' bleed - is GONE. The desk now carries only the authored lamp."
+      ],
+      "defects": [
+        {
+          "axis": "register_flatcel",
+          "severity": "minor",
+          "element": "global saturation",
+          "detail": "median_sat 0.6235 -> 0.6392, still ~3.4x the ~0.19 era prior. The oak panelling and floor are rendered at a hot orange-brown chroma above the channel's muted register. Unchanged in kind from r1, and consistent with its sibling L50 (0.6627), which passed - so this is a paired L49/L50 property of the bank-office set, not a new L49 defect."
+        },
+        {
+          "axis": "ink_law",
+          "severity": "minor",
+          "element": "global ink register",
+          "detail": "hue 16.0deg sits right on the ~19deg warm target, but R-B rose 40.2 -> 54.1, the highest reading in the whole retry set and well above the p6b batch ceiling of +31.3. Warm to the point of rust rather than warm brown-black. L50 measures +46.7 and passed, so L49-fix is in family but now the outer edge of it. Driven by the oak-dominated palette, same as L45's over-warm reading."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "lamp-vs-window contrast",
+          "detail": "prose authors 'one warm desk lamp against cool window light'. Both zones are present and correctly coloured, but the whole room is now bathed in warm orange, so the two-zone contrast reads weaker than in r1."
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "pass": 8,
+    "fail": 0,
+    "passed": ["L33-fix", "L27-fix", "L32-fix", "L44-fix", "L46-fix", "L47-fix", "L48-fix", "L49-fix"],
+    "failed": [],
+    "chain_ruling": "L33-fix PASSES. The L34 mint is unblocked.",
+    "l48_mechanism_ruling": "NOT NEEDED. The performer is not upright; the slump executed. No third prose attempt and no mechanism change is required for L48's pose."
+  },
+  "systemic_signals": [
+    {
+      "id": "R1",
+      "severity": "mechanism",
+      "frames": ["L44-fix", "L46-fix", "L48-fix"],
+      "title": "The warm-ink clause is a proven no-op; the ink is seeded, not prompted",
+      "detail": "All three frames carried an explicit, emphatic warm-ink instruction ('Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line'). Measured movement: L44 +0.1 -> +1.1, L46 +1.0 -> +2.1, L48 +0.03 -> +1.9. Against a +18 target that is noise. All three still read green-neutral (hue 117/102/116deg). Meanwhile every figure card feeding these frames is properly warm (+19.5, +41.8, +39.3) and the L28 place seed measures +3.0. The children track the SEED, not the cards and not the prose. Conclusion: ink register is inherited through the place-seed mechanism and prose cannot override it. The fix is to re-mint L28 with warm ink and re-seed its five children - not to keep adding ink language. Three frames is now enough evidence to stop trying the prose route."
+    },
+    {
+      "id": "R2",
+      "severity": "clear",
+      "frames": [],
+      "title": "The p6b re-roll-collateral class did NOT recur - 0 of 8",
+      "detail": "The stated risk was that surgical retries break a passing attribute (3 of 4 in the first p6b round did). Swept every axis fresh on all eight: not one previously-passing attribute regressed. Figures, rig, flat-cel, text-freedom, place geometry and palette all held wherever they held in r1. Seed preservation is doing its job."
+    },
+    {
+      "id": "R3",
+      "severity": "positive",
+      "frames": ["L47-fix", "L49-fix", "L44-fix", "L27-fix"],
+      "title": "Retries fixed r1 minors nobody asked them to fix",
+      "detail": "L47-fix redrew the document case as the card's GREY HARD CASE (r1 drew a brown satchel). L49-fix dropped the second visitor chair and deleted the unauthored spiral desk calendar. L44-fix darkened the rear of the floor (rear-central lit px 5290 -> 3119). L27-fix halved ink_lum, giving the frame real dark linework. Re-rolling on a corrected span appears to re-resolve nearby small errors as a side effect."
+    },
+    {
+      "id": "R4",
+      "severity": "mechanism",
+      "frames": ["L32-fix", "L44-fix", "L46-fix", "L48-fix"],
+      "title": "Content instructions land; chroma, scale and spatial-relation instructions do not",
+      "detail": "Clean split across the round. LANDED (all object-content): strip the rack to bare metal, draw the bucket blank, hang the fascia board, draw four digits, put him outside on tarmac, dress him in brown, match the room's surfaces, execute a slump. DID NOT LAND: 'kept small and muted in tone' (L32 bucket - red area moved 5%, saturation went UP), 'warm dark brown house ink' (x3, noise), 'palette gone colder' (L44 - median_sat bit-identical), 'the shaft BESIDE him, not on his body' (L48 - he is dead centre in the pool on a second, emphasised attempt), 'stage-LEFT' (L46 - 8% left of centre). Actionable: express correctives as objects and their states, never as tone, scale or relative position. Where a relative position is the beat, it needs a mechanism, not a stronger adjective."
+    },
+    {
+      "id": "R5",
+      "severity": "continuity",
+      "frames": ["L33-fix", "L44-fix", "L46-fix", "L47-fix", "L48-fix"],
+      "title": "The MINISCRIBE fascia board is now present in 3 of 5 L28 children - still not uniform",
+      "detail": "PRESENT: L33-fix, L44-fix, L46-fix (the three whose overlays carried the clause; it worked every time it was asked for, including L33 where it was not the named corrective). ABSENT: L47-fix, defensibly - the retry moved the camera outside and the board hangs above the slice of interior the glazing shows. ABSENT: L48-fix, not defensibly - the entrance region is in frame and the overlay simply did not carry the clause. One more clause on L48 would close the family. The sign still flickers across the act as it stands."
+    },
+    {
+      "id": "R6",
+      "severity": "advisory",
+      "frames": ["L32-fix", "L46-fix", "L44-fix", "L49-fix"],
+      "title": "The act's saturation split widened, not narrowed",
+      "detail": "The factory interiors sit at 0.043-0.133 against the ~0.19 era prior, and L32-fix set a new low for the whole slice at 0.0431 (down from 0.0745) by trading cream walls for flat grey. The bank office sits at 0.639 (L49-fix) and 0.663 (L50), 3.4x the prior. Each frame is individually compliant with its own authored palette; as a body the act will read as two disconnected colour worlds. Act-level colour budget, not a per-frame defect - carried forward from r1's S3, now measurably wider."
+    }
+  ]
+}

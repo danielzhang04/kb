@@ -1,0 +1,47 @@
+  [1/11] L27-fix: START provider call
+  [1/11] L27-fix: OK -> _staging/L27-fix.png
+  [2/11] L32-fix: START provider call
+  [2/11] L32-fix: OK -> _staging/L32-fix.png
+  [3/11] L33-fix: START provider call
+  [3/11] L33-fix: OK -> _staging/L33-fix.png
+  [4/11] L39-fix: START provider call
+  [4/11] L39-fix: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [5/11] L44-fix: START provider call
+  [5/11] L44-fix: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [6/11] L45-fix: START provider call
+  [6/11] L45-fix: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [7/11] L46-fix: START provider call
+  [7/11] L46-fix: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [8/11] L47-fix: START provider call
+  [8/11] L47-fix: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [9/11] L48-fix: START provider call
+  [9/11] L48-fix: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [10/11] L49-fix: START provider call
+  [10/11] L49-fix: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [11/11] L38: START provider call
+  [11/11] L38: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  == 3 generated, 8 failed, 0 skipped ==

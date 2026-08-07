@@ -1,0 +1,34 @@
+[
+ {
+  "name": "fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce",
+  "mode": "environment",
+  "aspect": "2:3",
+  "image_size": "1K",
+  "stage_role": "base",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+   "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+    "role": "canonical",
+    "character": "base"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+    "role": "expression",
+    "character": "base"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+    "role": "pose",
+    "character": "base"
+   }
+  ],
+  "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a brown warehouse coat, stage-right, hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him. Take from that description ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+  "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template — head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-deadpan` expression reference for `base` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `hold-one-hand` pose reference for `base` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a brown warehouse coat, stage-right, hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him. Take from that description ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+  "why": "STEP 1 for `base` (hold-one-hand / expr-deadpan / dressed for `l27-d4b1f2ce`)"
+ }
+]

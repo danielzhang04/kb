@@ -1,0 +1,40 @@
+[
+ {
+  "name": "fig-base--action-recoil--expr-shock--l32-36f3a4e9",
+  "mode": "environment",
+  "aspect": "2:3",
+  "image_size": "1K",
+  "stage_role": "base",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+   "channels/the-second-take/visual-kit/refs/base/action-recoil.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+    "role": "canonical",
+    "character": "base"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+    "role": "expression",
+    "character": "base"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-recoil.png",
+    "role": "pose",
+    "character": "base"
+   }
+  ],
+  "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a white lab coat and oven gloves, stage-left on his back foot, backing off from a standing on a bench that glows cherry-red through its casing with two thin wisps of smoke curling off it. Take from that description ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nLINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The oven gloves are ONE FLAT UNIFORM colour fill with only the rig-weight outline around them - draw NO quilting, NO crosshatch, NO diamond lattice, NO stitching, NO seam hatching and NO texture strokes on the gloves or anywhere else. No hairline, no micro-pattern, no fine repeated strokes on any garment.",
+  "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template — head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-shock` expression reference for `base` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-recoil` pose reference for `base` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a white lab coat and oven gloves, stage-left on his back foot, backing off from a standing on a bench that glows cherry-red through its casing with two thin wisps of smoke curling off it. Take from that description ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nLINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The oven gloves are ONE FLAT UNIFORM colour fill with only the rig-weight outline around them - draw NO quilting, NO crosshatch, NO diamond lattice, NO stitching, NO seam hatching and NO texture strokes on the gloves or anywhere else. No hairline, no micro-pattern, no fine repeated strokes on any garment.",
+  "retry_authority": {
+   "kind": "step1-remint",
+   "changed_spans": 1,
+   "defect": "rig",
+   "character": "base"
+  },
+  "why": "STEP-1-only retry for `base` from `L32`"
+ }
+]

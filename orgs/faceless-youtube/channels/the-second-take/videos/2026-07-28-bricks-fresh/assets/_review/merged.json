@@ -1,110 +1,107 @@
 [
  {
-  "id": "L16-remint1",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
+  "id": "L26",
   "worst": "clean",
-  "reviewer": "fresh-eyes verifier round 3 (phase-6b, uninvolved in generation)",
-  "date": "2026-08-06",
-  "basis": "Judged against shots.json still_prompt AND notes for L16 (which pin the R-16 frieze restaging and the TIER-A vantage repair), against BOTH parked frames _staging/L16.png (round-1 park, cool ink) and _staging/L16-retry1.png (round-2 park, broken frieze), plus the era global_prompt_suffix. Ink measured independently at 16.8deg / R-B +18.0 (warm); median saturation 0.1294; lit-bay contrast measured at +24.5 luminance over immediate neighbours.",
-  "ruling": "VERIFY, and SUPERSEDE both parked frames. This is the clean recovery of the phase: the round-1 defect (cool blue-black ink) and ALL FOUR round-2 defects (oblique shelf, rank terminating inside the frame, undone Tier-A vantage repair, diluted lit bay) are closed simultaneously, and nothing that either parked frame held has regressed. Ink measures 16.8deg / +18.0 - the closest frame in the batch to the #241a12 target (~19deg / +18) - against the parked original's 176.6deg / -1.4, and it got there with NO prose spent on colour, via the changed-mechanism zero-seed style-tile plate. The shelf face is square to the frame with a level front rail and no convergence; the rank is cut by BOTH frame edges (verified at crop on each margin); the camera is frontal eye-level with no camera language. Round 2's board note asked for 'a re-issue that keeps the parked original's staging and inherits the R1 warmth' - this is exactly that frame. Weaknesses named and NOT charged: (1) the lit centre bay runs +24.5 lum over its neighbours where the parked original ran +32.4, so it reads slightly more as a warm wash than a hard-edged lit bay - but it is materially stronger than L16-retry1 and the authored clause plus 'the rest of the rank sits in even shadow' are both met; (2) median saturation 0.1294 sits below the parked original's 0.1686, but the authored palette is explicitly the two-colour low-chroma 'beige on grey', the R1 tripwire of 0.10 is cleared, and the SUBJECT's chroma went the right way - the cases render beige for the first time, where the parked original's read grey-green because the ink was inverted; (3) rack geometry is loose at 4x crop (one crossbrace runs past its upright, the column doubles), invisible at viewing scale. SUPERSEDES _staging/L16.png and _staging/L16-retry1.png.",
-  "why": "",
-  "dsg": [
-   {"id": "e1", "parent": null, "q": "Does a long plain shelf run the full width of a grey stockroom?", "verdict": "pass", "note": "Full-width shelf run in a grey stockroom, with a second shelf level below carrying the cardboard sleeves."},
-   {"id": "a1", "parent": "e1", "q": "Is the shelf face SQUARE TO THE FRAME (the R-16 frieze restaging)?", "verdict": "pass", "note": "FIXED. The shelf's front rail is a level horizontal across the full frame width with no convergence and no vanishing point; the cases stand nose-out in a flat frieze. This is the exact geometry the R-16 restaging was written for and the exact attribute L16-retry1 destroyed with a deep one-point oblique."},
-   {"id": "e2", "parent": null, "q": "Are identical cases ranked edge to edge nose-out, the row carrying on past BOTH frame edges?", "verdict": "pass", "note": "FIXED. Cases are ranked edge to edge nose-out; verified at crop on both margins, the leftmost case is cut by x=0 and the rightmost by x=1375. L16-retry1 terminated the rank in depth at right; this does not. Multiplication reads from the rank, as authored."},
-   {"id": "a2", "parent": "e2", "q": "Does each case have an identical drive seated in its front bay?", "verdict": "pass", "note": "Walked at 3x crop across the whole visible run: same drive bay, same floppy slot, same power dot, same vertical seam on every case. Genuinely identical, not merely similar."},
-   {"id": "a3", "parent": "e2", "q": "Does the case at centre have its bay lit from inside, with the rest of the rank in even shadow?", "verdict": "pass", "note": "Delivered, at the low end of the range. The centre case measures +24.5 luminance over its immediate neighbours (191.3 vs 166.7 / 167.1) against the parked original's +32.4 (183.5 vs 149.8 / 152.1); at 4x crop the bay panel is the brightest element in frame with a warm halo spilling onto the wall behind. The rest of the rank sits in even shadow as authored. Materially stronger than L16-retry1, modestly softer than the parked original - named as a weakness, not charged."},
-   {"id": "e3", "parent": null, "q": "Do steel uprights and crossbraces stand at intervals along the run, with flat cardboard sleeves stacked on the shelf below?", "verdict": "pass", "note": "Both present. Weakness named not charged: at 4x crop one diagonal crossbrace runs past its upright without terminating on it and the column doubles - loose geometry, invisible at viewing scale, and the authored clause is met."},
-   {"id": "s1", "parent": null, "q": "Era register: warm even outline on the #241a12 target, flat cel, frontal eye-level, no camera language (Tier-A vantage repair held)?", "verdict": "pass", "note": "FIXED, and the strongest ink reading in the batch. 16.8deg / R-B +18.0 against the parked original's 176.6deg / -1.4 - the sole round-1 inversion is gone and sits on the #241a12 target (~19deg / +18). Flat cel with gentle soft shading; camera frontal and eye-level with NO camera language of any kind, so the Tier-A vantage repair that deleted this shot's off-eye-level clause is held, where L16-retry1 undid it."},
-   {"id": "s2", "parent": null, "q": "Is the locked 2-colour 'beige on grey' palette delivered, with no red accent spent?", "verdict": "pass", "note": "Beige cases against a grey room - the authored two-colour palette reads correctly for the first time across the three L16 attempts. No red accent spent, correctly (nothing here is alarm / prohibition / ownership / the punch element). Median saturation 0.1294 is below the parked original's 0.1686 but above the 0.10 R1 tripwire, and on a deliberately low-chroma two-colour scene median saturation is a poor proxy - named as a weakness, not charged."},
-   {"id": "g1", "parent": null, "q": "Figure integrity: is the frame cast-free as authored?", "verdict": "pass", "note": "Cast-free."},
-   {"id": "t1", "parent": null, "q": "Is the frame free of ALL drawn text, including the label rectangles on the cardboard sleeves?", "verdict": "pass", "note": "No lettering drawn anywhere. The label rectangles on the three cardboard-sleeve stacks were checked at 4x crop and are BLANK - no glyphs, no garbling. This was the one surface where unrequested text could plausibly have crept in."}
-  ]
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
  },
  {
-  "id": "L23-retry1",
-  "f": "MEDIUM",
-  "s": "clean",
-  "r": "clean",
-  "worst": "MEDIUM",
-  "reviewer": "fresh-eyes verifier round 3 (phase-6b, uninvolved in generation)",
-  "date": "2026-08-06",
-  "basis": "Judged against shots.json still_prompt + changed_elements + notes for L23, against the parked round-2 frame _staging/L23.png and its two findings, held against the PROMOTED VERIFIED chain root assets/scenes/L22.png (this retry was correctly re-based onto the promoted plate, where round 2 had seeded the unreviewed _staging copy), plus the era global_prompt_suffix. Ink measured at 25.4deg / R-B +3.0 (warm), median saturation 0.0980. Box and carton widths measured in pixels against the parent; chain delta measured by pixel diff (3.63% of pixels, confined to x 565-830).",
-  "ruling": "PARK, and the closest call of the round. ONE of the two round-2 charges is substantially FIXED: the brick now spans ~135px inside a ~183px opening (~74% of the width) against round 2's ~36%, and since the authored clause itself requires the brick to lie 'on crumpled paper', a literal 100% fill is in tension with the prompt's own wording - at viewing scale the brick plainly belongs to that box, and I score that attribute delivered. The other charge is UNCHANGED and it is the one the next beat depends on: the open box body measures x 565-812 = 247px with flaps spanning 297px, against the verified parent's ranked top-row cartons at ~72px each - so the single open box is ~3.4x a ranked carton, is WIDER than the 215px pallet it stands on, overhangs it on both sides, and no carton of that authored row survives. Continuity is otherwise outstanding: the pixel diff confirms the change is confined to x 565-830, and lamp, tripod, cable, roller door, shelving, high windows, all four packers in identical poses and clothing, both flanking pallets with their film, the tally card and the lit pool hold frame-for-frame against scenes/L22.png. BOARD NOTE: on the whole-frame test this is clearly better than the frame it replaces and the scale residual is a defensible HUMAN waiver - but not a defensible machine 'verified', because the authored clause is explicit, repeated across two consecutive shots, measurable in-frame against its own neighbours, and contradicted by the next beat's narration ('little boxes'). Cheapest path to three verified frames: one re-roll of L23 at correct carton scale, re-based and re-chained, would very likely close L23/L24/L25 together - the defect originates here and is only inherited downstream.",
-  "why": "The authored delta names 'the front carton on that unwrapped top row' - one carton among the ranked cartons the verified parent drew. What renders is a new crate-scale object 247px wide (~3.4x a ranked carton, wider than its own pallet) that consumed the whole top row, so the held set was eaten by the delta and 'filling the box exactly' cannot be satisfied by any brick at believable scale.",
-  "dsg": [
-   {"id": "e1", "parent": null, "q": "Is the lamp-lit warehouse held off scenes/L22.png: shoulder-high pallets receding to the shut roller door, film hard round the lower courses, crew of packers at the far pallet, work lamp on its tripod, empty shelving down the right wall, tally card carrying '26,000'?", "verdict": "pass", "note": "OUTSTANDING hold, the best in the video. Pixel diff shows only 3.63% of pixels move, all confined to x 565-830 (the centre pallet). Lamp, tripod, trailing cable, roller door, right-wall shelving, high blue windows, all four packers in identical poses AND identical clothing, both flanking pallets with their film, the tally card, the lit pool and the concrete all hold frame-for-frame. The re-base onto the PROMOTED verified plate worked exactly as intended."},
-   {"id": "e2", "parent": null, "q": "Does the FRONT CARTON on that unwrapped top row now stand with its flaps folded open - i.e. one carton among the ranked cartons the parent drew?", "verdict": "fail", "note": "FAIL, and this is round 2's charge #1 unchanged in the box dimension. Measured against the verified parent: in scenes/L22.png the centre pallet spans x 578-793 and its unwrapped top row holds THREE cartons across at ~72px each. Here the open box body spans x 565-812 = 247px with its flaps spanning x 540-837 = 297px - the box is ~3.4x a ranked carton, is WIDER than the 215px pallet it stands on and overhangs it on both sides, and not one carton of that row survives. The delta consumed the held set instead of acting on a member of it."},
-   {"id": "a1", "parent": "e2", "q": "Is one red clay brick lying inside it on crumpled paper, FILLING THE BOX EXACTLY?", "verdict": "fail", "note": "The fill fraction is substantially FIXED - the brick spans ~135px inside a ~183px interior opening, ~74% of the width, against round 2's ~36% (95px in 265px), and crumpled paper is visible as a margin left, right and behind, which the authored clause itself requires. At viewing scale the brick now plainly reads as belonging to that box, and on its own I would score this attribute delivered. It fails only as a consequence of e2: 'exactly' is a relation between the brick and a CARTON-sized box, and the box rendered is crate-sized, so the clause cannot be met while e2 fails. Charged here for accuracy of the dependency, not as an independent craft defect."},
-   {"id": "a2", "parent": "e2", "q": "Are the flaps folded open, the brick red clay, and the reveal landing on this beat?", "verdict": "pass", "note": "Flaps folded open, brick unmistakably red clay, on crumpled paper, reveal lands on the line that gives it away. The brick is also the frame's only red - a correct semantic use of #d7402b, since the reveal IS the punch element."},
-   {"id": "s1", "parent": null, "q": "Era register: warm even outline, flat cel, frontal eye-level, night-scene saturation within the R3 exception?", "verdict": "pass", "note": "Ink 25.4deg / R-B +3.0 (warm), flat cel, frontal eye-level. Median saturation 0.0980, ABOVE the approved L03 plate's 0.0902 - authored night darkness under the R3 night-scene exception, not a chroma drain."},
-   {"id": "g1", "parent": null, "q": "Figure integrity: are the four packers unchanged from the verified parent, with no amputations, fused limbs or floating props?", "verdict": "pass", "note": "Unchanged from scenes/L22.png - cream blank ovals with dot eyes, same poses, same clothing, 2 arms / 2 legs where visible, every carried carton gripped by a visible hand."},
-   {"id": "t1", "parent": null, "q": "Is '26,000' re-quoted verbatim and legible, with no other text in frame?", "verdict": "pass", "note": "'26,000' re-quoted verbatim on the tally card - marker capitals, comma correct, fully legible. No other text anywhere, on any carton face, wall or shelf."}
-  ]
+  "id": "L28",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
  },
  {
-  "id": "L24-retry1",
-  "f": "MEDIUM",
-  "s": "clean",
-  "r": "clean",
-  "worst": "MEDIUM",
-  "reviewer": "fresh-eyes verifier round 3 (phase-6b, uninvolved in generation)",
-  "date": "2026-08-06",
-  "basis": "Judged against shots.json still_prompt + changed_elements + notes for L24 (RE-AUTHORED in round 3), against the parked round-2 frame _staging/L24.png and its two findings, held against its explicit parent _staging/L23-retry1.png and the chain root assets/scenes/L22.png, plus the era global_prompt_suffix. Ink measured at 21.3deg / R-B +2.8 (warm), median saturation 0.1059. Top rows examined at 4x crop on both flanking pallets; crew compared at 3x crop against both L23-retry1 and L22; chain delta measured by pixel diff (3.26%, confined to x 400-550 and x 900-1050).",
-  "ruling": "PARK - but the wardrobe correction LANDED and is a real win. Round 2's weakness 2 is CLOSED: compared at 3x crop against both L23-retry1 and scenes/L22.png, all four packers are bare cream ovals in the parent's exact clothing, same poses, same hands; the white head covering, collar and tie, and the grey head covering round 2 charged are gone, and they stay gone into L25. What did NOT close is the enumeration/scale defect, which changed shape rather than resolving. At 4x crop, each of the left and right pallets renders as ONE pallet-width open box with a single continuous front flap and a single back flap, containing THREE bricks side by side on crumpled paper - no carton walls between the bricks, only paper. The authored clause is 'every remaining CARTON along that unwrapped top row now stands with its flaps folded open too, one red clay brick lying inside EACH on crumpled paper and FILLING ITS BOX EXACTLY': neither half is delivered - they are not individual cartons, and no brick has a box of its own to fill. The centre pallet still carries the inherited single-brick crate from L23-retry1, so the frame is also internally inconsistent (one brick in a crate at centre, three in a crate on each flank). What genuinely improved and is not small: the BRICKS are now drawn at ~65px against the parent's ranked cartons at ~72px - believable, comparable objects where round 2's bricks were dwarfed - and three bricks per stack across three stacks plus more in depth delivers the PLURAL the beat needs, legibly, at viewing scale. Continuity is outstanding: the diff confirms the change is confined to exactly the two flanking pallets the delta names. BOARD NOTE: this frame is decisively better than the one it replaces and is waivable as part of the L23/L24/L25 set; the defect is inherited from L23, not re-committed here.",
-  "why": "Each top row renders as ONE pallet-width open box holding three bricks on crumpled paper rather than individual cartons each standing open on one brick that fills it, so the authored 'every remaining carton' and 'filling its box exactly' are both unmet - and this frame carries the narration 'red clay bricks into LITTLE boxes' over containers that overhang the pallets they stand on.",
-  "dsg": [
-   {"id": "e1", "parent": null, "q": "Is the lamp-lit warehouse held off L23-retry1: pallets receding to the shut roller door, film hard round the lower courses, crew at the far pallet, tally card carrying '26,000', the front carton of the top row open on its red clay brick?", "verdict": "pass", "note": "OUTSTANDING hold. Pixel diff shows 3.26% of pixels move, confined to x 400-550 and x 900-1050 - exactly the two flanking pallets the authored delta names, and nothing else. Lamp, tripod, cable, roller door, shelving, high windows, lit pool, tally card, concrete and the centre pallet's open box all hold."},
-   {"id": "e2", "parent": null, "q": "Does EVERY REMAINING CARTON along that unwrapped top row now stand with its flaps folded open - individual cartons, not a single container?", "verdict": "fail", "note": "FAIL. Examined at 4x crop on both flanking pallets: each renders as ONE pallet-width open box with a single continuous front flap and a single back flap. There are no carton walls anywhere along the row - between the bricks there is only crumpled paper. The authored quantifier presupposes the ranked cartons L22 drew; in this frame none of them survives on any of the three pallets."},
-   {"id": "a1", "parent": "e2", "q": "Is ONE red clay brick lying inside EACH on crumpled paper, FILLING ITS BOX EXACTLY?", "verdict": "fail", "note": "FAIL. Each flanking box holds THREE bricks side by side, so no brick has a box of its own to fill; the centre pallet holds ONE brick in a crate-scale box inherited from L23-retry1, so the frame is internally inconsistent as well. PARTIAL CREDIT, recorded honestly: the bricks themselves are now drawn at ~65px against the parent's ranked cartons at ~72px - believable, comparable objects where round 2's were dwarfed by their containers."},
-   {"id": "a2", "parent": null, "q": "Does the frame deliver the PLURAL the beat needs ('red clay bricks into little boxes')?", "verdict": "fail", "note": "Split verdict, charged on the second half. The plural of BRICKS lands well and legibly - three bricks per stack across three stacks, with more open cartons and bricks visible in depth behind. The plural of LITTLE BOXES does not: the containers rendered are pallet-width and overhang the pallets they stand on, which is the opposite of the word playing over this frame. The size comparison is made by the frame itself - ~72px ranked cartons sit immediately beside a 247px box - so it is legible at viewing scale, not a pedantic measurement."},
-   {"id": "s1", "parent": null, "q": "Era register: warm even outline, flat cel, night-scene saturation within the R3 exception?", "verdict": "pass", "note": "Ink 21.3deg / R-B +2.8 (warm), flat cel, frontal eye-level. Median saturation 0.1059, climbing above the approved L03 baseline of 0.0902 - the night chain is still not draining."},
-   {"id": "g1", "parent": null, "q": "Figure integrity AND identity: are the four packers unchanged from the parent in pose, clothing and headwear, with no amputations or fused limbs?", "verdict": "pass", "note": "FIXED - round 2's weakness 2 is CLOSED. Compared at 3x crop against both L23-retry1 and scenes/L22.png: all four packers are bare cream ovals in the parent's exact clothing (brown jacket and grey trousers, dark top, blue shirt, rear figure), same poses, same hands on the same cartons. The white head covering with hair, collared shirt and tie, and the grey head covering that round 2 charged are all gone. No amputations, no fused limbs, no floating props."},
-   {"id": "t1", "parent": null, "q": "Is '26,000' re-quoted and legible, with NO other text drawn (the lettering is L25's beat)?", "verdict": "pass", "note": "'26,000' re-quoted on the tally card, legible. Nothing else drawn anywhere - correct, the 'HARD DRIVE' lettering belongs to L25 and has not leaked forward."}
-  ]
+  "id": "L29",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
  },
  {
-  "id": "L25-retry1",
-  "f": "MEDIUM",
-  "s": "clean",
-  "r": "clean",
-  "worst": "MEDIUM",
-  "reviewer": "fresh-eyes verifier round 3 (phase-6b, uninvolved in generation)",
-  "date": "2026-08-06",
-  "basis": "Judged against shots.json still_prompt + changed_elements + notes for L25, against the parked round-2 frame _staging/L25.png and its three findings, held against its explicit parent _staging/L24-retry1.png, plus the era global_prompt_suffix. Ink measured at 13.2deg / R-B +1.7 (warm), median saturation 0.1176. All three lettering instances transcribed letter-by-letter at 3x crop; chain delta measured by pixel diff (1.13%, all in the lettering band).",
-  "ruling": "PARK. The authored clause is unmet for the SECOND consecutive round, and on a wrong surface that inverts the gag's own logic. Authored: 'the FRONT FACE OF EVERY ONE OF THOSE OPEN CARTONS now carries HARD DRIVE lettered across the middle of the board.' Rendered: 'HARD DRIVE' appears exactly THREE times, once per pallet, lettered across the SEALED, FILM-WRAPPED MIDDLE COURSES - the clear film's sheen runs visibly OVER the lettering at 3x crop, and on both flanking stacks the word SPANS THE SEAM between two adjacent cartons, so it is a legend painted across the stack rather than a label on a carton face. Not one of the open cartons carries any lettering at all. The box that says HARD DRIVE should be the box with the brick in it; here they are different boxes. The inherited container-scale defect from L23/L24 is also unchanged. THE DARKENING QUESTION, re-ruled independently on this round's numbers: ink luminance still falls down the chain (6.1 -> 3.9 -> 3.5 -> 2.1 against L03's 8.5) and R-B falls +3.5 -> +1.7, but (a) the measure samples the darkest 3% of a NIGHT frame so what compounds is the unlit background field, not the ink recipe; (b) R-B stays POSITIVE at every step - this is not the L16 inversion in slow motion; (c) median saturation CLIMBS monotonically 0.0902 -> 0.1176, the opposite of a chroma drain; (d) at viewing scale the lamp pool, pallets, bricks, crew, tally card and lettering all read cleanly and the right-wall shelving still separates from its wall. WITHIN REGISTER. Round 2's hard-depth-limit advice stands: any future night chain in this place must re-base off the L03 plate rather than extend. THE LETTERING CRAFT ITSELF IS CLEAN - the defect is placement, which is why the style and rig axes carry nothing.",
-  "why": "'HARD DRIVE' renders three times across the SEALED film-wrapped middle courses, spanning carton seams and drawn under the film, while not one of the open cartons the clause names carries any lettering - the authored surface is unmet a second time. The inherited crate-scale containers from L23/L24 persist under a narration that called them 'little boxes'.",
-  "dsg": [
-   {"id": "e1", "parent": null, "q": "Is the lamp-lit warehouse held off L24-retry1: pallets receding to the shut roller door, crew at the far pallet, tally card carrying '26,000', the whole top row standing open on red clay bricks?", "verdict": "pass", "note": "OUTSTANDING hold, the tightest delta in the chain. Pixel diff shows only 1.13% of pixels move, all in the lettering band. Lamp, tripod, cable, roller door, shelving, high windows, pallets, film, lit pool, tally card, all four packers and every brick hold frame-for-frame. The wardrobe fix that landed in L24 HELD here."},
-   {"id": "e2", "parent": null, "q": "Does the FRONT FACE OF EVERY ONE OF THOSE OPEN CARTONS carry 'HARD DRIVE' lettered across the middle of the board?", "verdict": "fail", "note": "FAIL, the second consecutive round on this clause and on a worse surface than the count alone suggests. 'HARD DRIVE' renders exactly THREE times, once per pallet, across the SEALED FILM-WRAPPED MIDDLE COURSES - at 3x crop the clear film's sheen runs visibly OVER the lettering, and on both flanking stacks the word spans the seam between two adjacent cartons, making it a legend painted across the stack rather than a label on any carton face. NOT ONE of the open cartons carries lettering. This inverts the gag's logic: the box labelled HARD DRIVE should be the box with the brick in it, and here they are different boxes."},
-   {"id": "e3", "parent": null, "q": "Is the whole top row standing open on one red clay brick each, at carton scale (inherited from L23/L24)?", "verdict": "fail", "note": "FAIL, inherited and unchanged - not re-committed here. Three crate-scale open boxes stand where the ranked cartons were; the flanking two hold three bricks each with no dividing walls, the centre one holds a single brick. Charged for accuracy of the chain record; the cause originates in L23-retry1 and a single successful re-roll there would close it in all three frames."},
-   {"id": "s1", "parent": null, "q": "Era register: warm even outline, flat cel, and is the chain darkening still within register at depth 3?", "verdict": "pass", "note": "WITHIN REGISTER, re-ruled independently. Ink 13.2deg / R-B +1.7 (warm), flat cel, frontal eye-level. Luminance falls down the chain (6.1 -> 3.9 -> 3.5 -> 2.1 vs L03's 8.5) but (a) the darkest-3% measure on a NIGHT frame samples the unlit background field, not the ink recipe; (b) R-B stays POSITIVE at every step, so this is not the L16 inversion in slow motion; (c) median saturation CLIMBS monotonically 0.0902 -> 0.1176; (d) at viewing scale lamp pool, pallets, bricks, crew, tally card and lettering all read and the right-wall shelving still separates from its wall. Treat as a hard depth limit: any future night chain here re-bases off L03 rather than extending."},
-   {"id": "g1", "parent": null, "q": "Figure integrity and identity: are the four packers unchanged from the parent, with no amputations or fused limbs?", "verdict": "pass", "note": "Unchanged from L24-retry1 - the wardrobe correction held. No amputations, no fused limbs, no floating props."},
-   {"id": "t1", "parent": null, "q": "Lettering REGISTER: is every drawn instance correctly spelled, in marker capitals, legible, ungarbled, with no unrequested text?", "verdict": "pass", "note": "CLEAN, and this was the highest-risk lettering surface in the set. Transcribed letter-by-letter at 3x crop on all three instances: H-A-R-D . D-R-I-V-E on each, correctly spelled, marker italic capitals matching the house register, no garbling, no partial render. '26,000' re-quoted correctly alongside. No unrequested text anywhere. The defect on this frame is WHERE the lettering sits (e2), not how it is drawn."}
-  ]
+  "id": "L30",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
  },
  {
-  "id": "L10-retry1",
-  "f": "HIGH",
-  "s": "HIGH",
-  "r": "clean",
-  "worst": "HIGH",
-  "reviewer": "fresh-eyes verifier round 3 (phase-6b, uninvolved in generation)",
-  "date": "2026-08-06",
-  "basis": "Judged against shots.json still_prompt + notes for L10 (which pin the crowd to the positive rear zone BEHIND the window glass and state the window card is out of frame), against the parked round-2 frame _staging/L10.png and its two findings, held against the promoted place plate assets/scenes/L05.png, plus the era global_prompt_suffix. Ink measured independently at 217.7deg / R-B -3.8 (COOL-INVERTED) against the parked original's 16.0deg / +11.5 (warm); median saturation 0.2471 against the parked original's 0.4431. Both zones examined at 3x crop.",
-  "ruling": "PARK, the clearest fail of the round and the weakest of the nine frames that entered round 2. THREE independent hard failures, one of them objective and measured, plus TWO regressions on attributes round 2 passed. (1) THE INK IS COOL-INVERTED: 217.7deg / R-B -3.8, against the parked original's 16.0deg / +11.5 and against every other frame in this round (13-25deg / +1.7 to +18.0). The era suffix names the outline colour explicitly ('even medium-thick dark WARM BROWN-BLACK (#241a12) outline on everything') and at crop the outlines on mullions, chairs and figures read cool blue-black. This is the same objective defect that parked L16 in round 1, recurring on a frame generated AFTER the R1 generator-side fix landed, and it is not a night-sampling artifact - the genlog's depth sweep holds the inversion at 3% / 1% / 0.5% and my own 3% sample reproduces it. Round 1 parked a frame on this measure alone; the same standard applies. (2) THE CORRECTION WAS NOT TAKEN: seven figures still sit camped INSIDE the shop on folding chairs, in sleeping bags, holding flasks, ranged along the bare shelf bays; the authored props are now drawn on BOTH sides of the glass, so the still-interior / packed-street opposition the beat exists to make is still absent, and breath is still drawn on the INDOOR figures - the same incoherence tell round 2 named. A 4x-longer, fully explicit correction span did not move it. (3) THE VANTAGE IS AGAIN NOT DELIVERED and this time it costs a literal: the camera sits in the room with the counter running along the right wall into depth - the L05 plate's own camera reproduced almost exactly (same door-side wide, same wall order, same sill), so against L05 this will cut as an identical camera; it also drags in the '1983' window card the notes say is out of frame here. REGRESSIONS on round-2 passes: the 'unlit warm brown inside' palette is now blue-grey throughout (sat 0.4431 -> 0.2471, monochromatically cold), and the frame that round 2 called strongest on palette is now its weakest axis. NOT charged: the '1983' card itself, which is a held place literal inherited from the seed, correctly spelled and drawn in the same position and style as the verified scenes/L05.png plate - round 2 declined to charge the same thing on L07 under the file's L-1 practice, and I hold to that standard; its presence is evidence for the vantage finding, not a separate lettering defect.",
-  "why": "The ink measures COOL-INVERTED at 217.7deg / R-B -3.8 against an era clause that names a warm brown-black outline; the overnight queue with its chairs, sleeping bags, flasks and visible breath is STILL inside the shop rather than beyond the window glass, so the shot's still-interior / packed-street device remains inverted; the authored 'wide from behind the counter' vantage is still the L05 plate's own camera; and the authored 'unlit warm brown inside' palette regressed to cold blue-grey throughout.",
-  "dsg": [
-   {"id": "e1", "parent": null, "q": "Is the computer shop held off scenes/L05.png, seen before dawn with the counter and the shelf bays unlit and BARE across the foreground?", "verdict": "pass", "note": "The L05 room holds - proportions, oak counter, till, ceiling panels, glazed shopfront, right-hand window sill. The shelf bays are correctly BARE as authored and the counter and till are unlit."},
-   {"id": "e2", "parent": null, "q": "Is the queue of overnight buyers BEYOND THE WINDOW GLASS, curling away down the pavement, with folding chairs, sleeping bags and flasks along the kerb?", "verdict": "fail", "note": "FAIL, and the correction this retry was authorised for was NOT taken. Seven figures sit camped INSIDE the shop on folding chairs, in sleeping bags, holding flasks, ranged along the bare shelf bays and up to the counter. Outside the glazing at left there is now ALSO a queue with chairs, bags and flasks, so the authored props are drawn on BOTH sides - the interior is the packed half. Confirmed at 3x crop on both zones. Breath is still drawn on the INDOOR figures, the same incoherence tell round 2 named: it is only coherent if the two zones have been merged."},
-   {"id": "a1", "parent": "e2", "q": "Does the glass split the STILL interior from the PACKED street - the shot's whole device?", "verdict": "fail", "note": "FAIL, inverted. The interior is the packed half and the street the thinner one. The ironic counterpoint the beat exists to make is not on screen."},
-   {"id": "a2", "parent": null, "q": "Is the framing WIDE FROM BEHIND THE COUNTER?", "verdict": "fail", "note": "FAIL, unchanged from round 2. The camera sits in the room with the counter running along the right wall into depth - the L05 plate's own camera reproduced almost exactly (same door-side wide, same wall order, same sill; compared side by side). Against L05 this will cut as an identical camera. It also drags the '1983' window card into frame, which the shot's notes place out of frame precisely because the vantage was meant to differ."},
-   {"id": "s1", "parent": null, "q": "Era register: is the outline the even WARM brown-black (#241a12) the suffix pins?", "verdict": "fail", "note": "FAIL, objective and measured. 217.7deg / R-B -3.8 (COOL-INVERTED), against the parked original's 16.0deg / +11.5 and a round otherwise running 13-25deg / +1.7 to +18.0. At crop the outlines on mullions, chairs and figures read cool blue-black. Not a night-sampling artifact: the inversion holds at 3% / 1% / 0.5% sampling depth. This is the second cool inversion recorded in this video after L16's cyan, and the FIRST to appear after the R1 generator-side fix - the fix is not total."},
-   {"id": "s2", "parent": null, "q": "Is the authored palette delivered - blue-grey dawn OUTSIDE, unlit WARM BROWN inside?", "verdict": "fail", "note": "FAIL, and a REGRESSION on an attribute round 2 passed. The street beyond the glazing reads blue dawn correctly, but the interior renders blue-grey throughout - ceiling, walls, floor, shelving - with only the counter carcass brown. Median saturation fell 0.4431 -> 0.2471 and the frame is monochromatically cold. Round 2 called the palette this shot's real strength; it is now its weakest axis."},
-   {"id": "g1", "parent": null, "q": "Figure integrity: cream blank-oval faces per the crowd convention, 2 arms / 2 legs where visible, no floating props?", "verdict": "pass", "note": "The one axis with nothing against it. Cream blank ovals with dot eyes and mouth line, consistent with the channel's crowd convention; 2 arms / 2 legs where visible; mittened hands on flasks; no floating props, no amputations, no fused limbs."},
-   {"id": "t1", "parent": null, "q": "Is any drawn text correctly lettered and free of garbling / unrequested additions?", "verdict": "pass", "note": "NOT CHARGED, deliberately. The '1983' card renders on the right-hand window sill, correctly spelled, legible, in the same position and the same style as the verified scenes/L05.png plate draws it - a held place literal inherited from the seed. Round 2 declined to charge exactly this on L07 under the file's own L-1 practice (re-quoting an established place literal verbatim), and I hold to that standard. Its presence is evidence for the vantage finding (a2), not a separate lettering defect. No other text; nothing garbled."}
-  ]
+  "id": "L31",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L35",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L36",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L37",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L40",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L41",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L42",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L43",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L50",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L27",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L32",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L33",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L44",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L46",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L47",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L48",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+ },
+ {
+  "id": "L49",
+  "worst": "clean",
+  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
  }
 ]

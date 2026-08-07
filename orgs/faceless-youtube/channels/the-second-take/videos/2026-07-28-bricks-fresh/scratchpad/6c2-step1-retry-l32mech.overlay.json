@@ -1,0 +1,14 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L32",
+      "character": "base",
+      "name": "fig-base--action-recoil--expr-shock--l32-36f3a4e9",
+      "defect": "rig",
+      "instruction": "LINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The oven gloves are ONE FLAT UNIFORM colour fill with only the rig-weight outline around them - draw NO quilting, NO crosshatch, NO diamond lattice, NO stitching, NO seam hatching and NO texture strokes on the gloves or anywhere else. No hairline, no micro-pattern, no fine repeated strokes on any garment."
+    }
+  ]
+}

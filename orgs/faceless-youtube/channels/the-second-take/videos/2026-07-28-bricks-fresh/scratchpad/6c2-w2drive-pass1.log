@@ -1,0 +1,62 @@
+  [1/25] L26: START provider call
+  [1/25] L26: OK -> _staging/L26.png
+  [2/25] L27: START provider call
+  [2/25] L27: OK -> _staging/L27.png
+  [3/25] L28: START provider call
+  [3/25] L28: OK -> _staging/L28.png
+  [4/25] L29: START provider call
+  [4/25] L29: OK -> _staging/L29.png
+  [5/25] L30: START provider call
+  [5/25] L30: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [6/25] L31: ERR [Errno 2] No such file or directory: 'C:\\Users\\danie\\kb\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\L30.png'
+  [7/25] L32: START provider call
+  [7/25] L32: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [8/25] L33: START provider call
+  [8/25] L33: OK -> _staging/L33.png
+  [9/25] L34: START provider call
+  [9/25] L34: OK -> _staging/L34.png
+  [10/25] L35: START provider call
+  [10/25] L35: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [11/25] L36: START provider call
+  [11/25] L36: OK -> _staging/L36.png
+  [12/25] L37: START provider call
+  [12/25] L37: OK -> _staging/L37.png
+  [13/25] L38: START provider call
+  [13/25] L38: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [14/25] L39: START provider call
+  [14/25] L39: OK -> _staging/L39.png
+  [15/25] L40: START provider call
+  [15/25] L40: OK -> _staging/L40.png
+  [16/25] L41: START provider call
+  [16/25] L41: OK -> _staging/L41.png
+  [17/25] L42: START provider call
+  [17/25] L42: OK -> _staging/L42.png
+  [18/25] L43: START provider call
+  [18/25] L43: OK -> _staging/L43.png
+  [19/25] L44: START provider call
+  [19/25] L44: OK -> _staging/L44.png
+  [20/25] L45: START provider call
+  [20/25] L45: OK -> _staging/L45.png
+  [21/25] L46: START provider call
+  [21/25] L46: OK -> _staging/L46.png
+  [22/25] L47: START provider call
+  [22/25] L47: OK -> _staging/L47.png
+  [23/25] L48: START provider call
+  [23/25] L48: OK -> _staging/L48.png
+  [24/25] L49: START provider call
+  [24/25] L49: OK -> _staging/L49.png
+  [25/25] L50: START provider call
+  [25/25] L50: OK -> _staging/L50.png
+  == 20 generated, 5 failed, 0 skipped ==

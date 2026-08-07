@@ -654,7 +654,7 @@
         "source": "ai-gen",
         "stage": "bank-office",
         "stage_role": "base",
-        "still_prompt": "`hq-banker`, `expr-skeptical`, `action-armscrossed`, standing centre in a panelled bank office and appraising the room: a navy chalk-stripe three-piece suit with a gold watch chain across the waistcoat, swept grey hair, heavy build. A partners' desk stage-right under a green shaded lamp, a wall of oak drawer cabinets behind, tall sash windows stage-left onto grey city rooftops. Oak-brown-green-cream palette, one warm desk lamp against cool window light, foreground depth from a cropped visitor chair back at the lower-right.",
+        "still_prompt": "`hq-banker`, `expr-skeptical`, `action-armscrossed`, standing centre in a panelled bank office and appraising the room: a brown chalk-stripe three-piece suit with a gold watch chain across the waistcoat, swept grey hair, heavy build. A partners' desk stage-right under a green shaded lamp, a wall of oak drawer cabinets behind, tall sash windows stage-left onto grey city rooftops. Oak-brown-green-cream palette, one warm desk lamp against cool window light, foreground depth from a cropped visitor chair back at the lower-right.",
         "notes": "New named cast, revealed on the line that names the firm; pinned outfit stated once here. [F-22]"
       },
       {

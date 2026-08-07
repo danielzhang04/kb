@@ -1,0 +1,16 @@
+  [1/5] L30: START provider call
+  [1/5] L30: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [2/5] L31: ERR [Errno 2] No such file or directory: 'C:\\Users\\danie\\kb\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\L30.png'
+  [3/5] L32: START provider call
+  [3/5] L32: OK -> _staging/L32.png
+  [4/5] L35: START provider call
+  [4/5] L35: OK -> _staging/L35.png
+  [5/5] L38: START provider call
+  [5/5] L38: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  == 2 generated, 3 failed, 0 skipped ==

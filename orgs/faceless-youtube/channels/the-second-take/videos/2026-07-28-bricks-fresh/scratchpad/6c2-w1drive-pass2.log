@@ -1,0 +1,12 @@
+  [1/4] fig-miniscribe-rep--expr-delighted: START provider call
+  [1/4] fig-miniscribe-rep--expr-delighted: OK -> _staging/fig-miniscribe-rep--expr-delighted.png
+  [2/4] fig-miniscribe-rep--action-celebrate--expr-delighted: START provider call
+  [2/4] fig-miniscribe-rep--action-celebrate--expr-delighted: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [3/4] fig-miniscribe-rep--action-powerstance--expr-greedy: START provider call
+  [3/4] fig-miniscribe-rep--action-powerstance--expr-greedy: OK -> _staging/fig-miniscribe-rep--action-powerstance--expr-greedy.png
+  [4/4] fig-miniscribe-rep--hold-both-hands--expr-greedy: START provider call
+  [4/4] fig-miniscribe-rep--hold-both-hands--expr-greedy: OK -> _staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png
+  == 3 generated, 1 failed, 0 skipped ==

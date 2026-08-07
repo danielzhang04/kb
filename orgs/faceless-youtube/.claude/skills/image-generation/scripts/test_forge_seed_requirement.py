@@ -645,6 +645,59 @@ def test_the_costume_clause_is_the_era_opener_plus_the_figures_own_sentence():
     assert "minted for reads" in forge_module.figure_card_payload("action-slump", clause)
 
 
+MICRO_PATTERN_PROSE = ("A 1985 test bench under strip light. `base`, `expr-shock`, in a white lab "
+                       "coat and quilted oven gloves, backs off from a board glowing cherry-red.")
+
+
+def test_a_micro_pattern_texture_adjective_never_reaches_a_derived_rig_card():
+    """`line-register` FAILS any hairline or micro-pattern field, and a NOUN PHRASE that authors one
+    ("quilted oven gloves") beats negative prose arguing against it — proved twice on L32, against
+    two escalating "ONE FLAT UNIFORM colour fill / NO quilting, NO crosshatch, NO diamond lattice"
+    instructions. So the derived clause LOSES the adjective at the card instead of arguing with it
+    there. The clause itself is untouched: it is also the performer's costume KEY, and re-hashing it
+    would silently re-mint every performer card already on disk."""
+    clause = forge_module.costume_clause(MICRO_PATTERN_PROSE, "base")
+    assert "quilted" in clause, clause                     # the KEY still hashes the prose as authored
+    payload = forge_module.figure_card_payload("action-recoil", clause)
+    assert "white lab coat and oven gloves" in payload, payload
+    assert "quilt" not in payload.lower(), payload
+    for word in ("crosshatched", "herringbone", "houndstooth", "pinstriped", "polka-dot",
+                 "corduroy", "tweed", "ribbed", "woven", "chequered", "plaid", "fishnet",
+                 "latticed", "argyle", "gingham", "seersucker", "checked", "tartan"):
+        p = forge_module.figure_card_payload("action-recoil", f"In a {word} coat and flat boots.")
+        assert word.split("-")[0] not in p.lower(), (word, p)
+        assert "In a coat and flat boots." in p, (word, p)
+
+
+def test_the_micro_pattern_strip_never_touches_a_cast_characters_pinned_costume():
+    """SCOPE GUARD. The strip belongs to the FROM-PROSE performer derivation and nowhere else. A
+    named character's costume is pinned in its canonical and carried verbatim in the video library's
+    vocabulary — `hq-banker`'s pinstripe suit is established, PASSING identity, so a re-mint of that
+    card must still say pinstripe."""
+    pinned = "a charcoal pinstriped three-piece suit with a woven silk tie"
+    assert forge_module.strip_micro_pattern_texture(pinned) != pinned   # the strip IS live on this text
+    video = tempfile.mkdtemp()
+    lib = os.path.join(video, "assets", "library")
+    os.makedirs(lib)
+    json.dump({"assets": [{"name": "hq-banker", "kind": "identity", "costume": pinned,
+                           "file": REFS + "hq-banker/hq-banker.png"}]},
+              open(os.path.join(lib, "manifest.json"), "w", encoding="utf-8"))
+    merged = merge_vocabulary({"characters": {}, "assets": []}, video)
+    assert merged["characters"]["hq-banker"]["costume"] == pinned, merged["characters"]["hq-banker"]
+
+    # ...and the cast retry route derives no dress clause at all, so no shot prose — stripped or
+    # not — can reach a named character's card and overwrite what its canonical pins.
+    reg = {"characters": {"hq-banker": {"base": "refs/hq-banker.png", "costume": pinned}},
+           "assets": [{"name": "expr-fear", "kind": "expression", "file": "refs/expr-fear.png"}]}
+    out = forge_module._retry_step1(
+        {"kind": "step1", "shot": "T01", "character": "hq-banker",
+         "name": "fig-hq-banker-remint", "defect": "expression"},
+        {"still_prompt": "`hq-banker`, `expr-fear`, in his quilted overcoat at the gate."},
+        SimpleNamespace(reg=reg), "retry entry 1")
+    assert "minted for reads" not in out["payload"], out["payload"]
+    assert "pinned costume come from this image only" in out["delta"], out["delta"]
+
+
 def _stem_ok(seed, char):
     return f"/refs/{char}/" in str(seed).replace("\\", "/")
 

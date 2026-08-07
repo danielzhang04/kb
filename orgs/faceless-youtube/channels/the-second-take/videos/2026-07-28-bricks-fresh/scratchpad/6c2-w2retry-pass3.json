@@ -1,0 +1,150 @@
+[
+ {
+  "name": "L39-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the `lettering-marker-italic` environment reference — preserve its authored place facts.\n\n`miniscribe-rep`, `expr-greedy`, `hold-both-hands`, stage-right, shoving the rear doors of an armoured cash truck shut against a wall of banded notes bulging out of the load bed. A depot yard: chain-link fence behind, a second truck parked beyond it, low warehouse roofs on the skyline. Charcoal-green-cream palette, flat overcast light, foreground depth from a cropped bollard at the lower-left. The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut, the very panel his hands are pressed against, and it appears nowhere else - no lettering on the truck's side, none on its roof, none anywhere else in the frame. The banded notes bulge OUT OF THE OPEN LOAD BED behind those rear doors, forced between them at his hands; the truck's roof is bare and carries no money at all.",
+  "payload": "`miniscribe-rep`, `expr-greedy`, `hold-both-hands`, stage-right, shoving the rear doors of an armoured cash truck shut against a wall of banded notes bulging out of the load bed. A depot yard: chain-link fence behind, a second truck parked beyond it, low warehouse roofs on the skyline. Charcoal-green-cream palette, flat overcast light, foreground depth from a cropped bollard at the lower-left. The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut, the very panel his hands are pressed against, and it appears nowhere else - no lettering on the truck's side, none on its roof, none anywhere else in the frame. The banded notes bulge OUT OF THE OPEN LOAD BED behind those rear doors, forced between them at his hands; the truck's roof is bare and carries no money at all.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png",
+   "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png",
+    "role": "figure",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "role": "environment",
+    "character": "lettering-marker-italic"
+   }
+  ],
+  "figures": null,
+  "stage_role": null,
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--hold-both-hands--expr-greedy REUSED; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; RETRY overlay from `L39`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "Across the truck's rear panel runs the stencilled figure '600 MILLION'.",
+   "to": "The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut, the very panel his hands are pressed against, and it appears nowhere else - no lettering on the truck's side, none on its roof, none anywhere else in the frame. The banded notes bulge OUT OF THE OPEN LOAD BED behind those rear doors, forced between them at his hands; the truck's roof is bare and carries no money at all."
+  }
+ },
+ {
+  "name": "L45-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly.\n\n`miniscribe-rep`, `expr-shock`, `action-recoil`, on his back foot at the crumbling lip of a sheer cliff, the ground gone in one clean bite IN FRONT OF his boots - BOTH boots planted flat and whole on solid rock behind the lip, neither boot over the void and no part of him falling - with the drop of bare rock beginning beyond that edge and falling away below it. Both of his hands are full rig hands drawn alike: three fingers plus one thumb on each, never five digits on either, and the two hands the same size as each other. A high ochre plateau under a pale sky, ochre-grey-cream palette, hard high sun, foreground depth from a cropped rock spur at the lower-left.",
+  "payload": "`miniscribe-rep`, `expr-shock`, `action-recoil`, on his back foot at the crumbling lip of a sheer cliff, the ground gone in one clean bite IN FRONT OF his boots - BOTH boots planted flat and whole on solid rock behind the lip, neither boot over the void and no part of him falling - with the drop of bare rock beginning beyond that edge and falling away below it. Both of his hands are full rig hands drawn alike: three fingers plus one thumb on each, never five digits on either, and the two hands the same size as each other. A high ochre plateau under a pale sky, ochre-grey-cream palette, hard high sun, foreground depth from a cropped rock spur at the lower-left.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-recoil--expr-shock.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-recoil--expr-shock.png",
+    "role": "figure",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "figures": null,
+  "stage_role": null,
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-recoil--expr-shock REUSED; RETRY overlay from `L45`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "the ground gone in one clean bite in front of his boots and a drop of bare rock falling away below him",
+   "to": "the ground gone in one clean bite IN FRONT OF his boots - BOTH boots planted flat and whole on solid rock behind the lip, neither boot over the void and no part of him falling - with the drop of bare rock beginning beyond that edge and falling away below it. Both of his hands are full rig hands drawn alike: three fingers plus one thumb on each, never five digits on either, and the two hands the same size as each other"
+  }
+ },
+ {
+  "name": "L47-fix",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place — preserve its set, palette, outline weight and lighting.\n\n`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stage-right, already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He stands on outdoor tarmac under flat exterior daylight, with painted parking bays and a parked car behind him and open grey sky above; the assembly floor with its bare benches is visible only INSIDE, through the glass door behind him. Grey-cream-teal palette, flat overcast daylight outside against the warm strip light seen through the glass, foreground depth from a real cropped concrete kerb - a low kerb stone at the edge of the tarmac, never a bench or a table - cutting the lower-left corner.",
+  "payload": "`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stage-right, already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He stands on outdoor tarmac under flat exterior daylight, with painted parking bays and a parked car behind him and open grey sky above; the assembly floor with its bare benches is visible only INSIDE, through the glass door behind him. Grey-cream-teal palette, flat overcast daylight outside against the warm strip light seen through the glass, foreground depth from a real cropped concrete kerb - a low kerb stone at the edge of the tarmac, never a bench or a table - cutting the lower-left corner.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+   "_staging/L28.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+    "role": "figure",
+    "character": "terry-johnson"
+   },
+   {
+    "path": "_staging/L28.png",
+    "role": "place",
+    "character": null
+   }
+  ],
+  "figures": null,
+  "stage_role": "base",
+  "costume_key": null,
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 1,
+  "lineage": 1,
+  "why": "`terry-johnson` STEP-1 fig-terry-johnson--carry-by-handle--expr-crestfallen REUSED; RETRY overlay from `L47`",
+  "retry_authority": {
+   "kind": "replace",
+   "changed_spans": 1,
+   "from": "stepping out through a glass door onto a car park apron with a document case at his side, his back half turned to the floor behind him. Through the glass the assembly floor runs away into the depth with its benches bare. Grey-cream-teal palette, flat overcast light outside against warm strip light inside, foreground depth from a cropped kerb at the lower-left.",
+   "to": "already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He stands on outdoor tarmac under flat exterior daylight, with painted parking bays and a parked car behind him and open grey sky above; the assembly floor with its bare benches is visible only INSIDE, through the glass door behind him. Grey-cream-teal palette, flat overcast daylight outside against the warm strip light seen through the glass, foreground depth from a real cropped concrete kerb - a low kerb stone at the edge of the tarmac, never a bench or a table - cutting the lower-left corner."
+  }
+ },
+ {
+  "name": "L38",
+  "mode": "environment",
+  "aspect": "16:9",
+  "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card — carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit. The SECOND image is `miniscribe-rep`'s complete STEP-1 figure — carry that figure's identity, costume, pose, hands and expression exactly.\n\nOne seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+  "payload": "One seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+  "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "seed": [
+   "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+   "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+    "role": "figure",
+    "character": "base"
+   },
+   {
+    "path": "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png",
+    "role": "figure",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "figures": null,
+  "stage_role": null,
+  "costume_key": "l38-3412012a",
+  "assets_omitted": null,
+  "plate": false,
+  "delta_primitives": null,
+  "expression_change": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "why": "`base` STEP-1 fig-base--action-armscrossed--expr-deadpan--l38-3412012a GENERATE; `miniscribe-rep` STEP-1 fig-miniscribe-rep--action-offering--expr-pleading GENERATE"
+ }
+]

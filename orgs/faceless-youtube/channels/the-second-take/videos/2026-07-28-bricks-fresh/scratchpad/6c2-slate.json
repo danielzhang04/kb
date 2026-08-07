@@ -1,0 +1,1432 @@
+[
+  {
+    "name": "L26",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA flat top-down world map laid out across a concrete floor, oceans in pale teal and landmasses in cream, every landmass left completely blank and unlettered. Nine small sealed brown cartons stand upright on it: one on the west coast of North America, two in western Europe, three across South East Asia, one on the eastern tip of South America, one in southern Africa and one on the east coast of Australia. A single red thread runs from one point in the middle of North America out to each carton in turn. Charcoal-teal-cream palette, flat even overhead light, the map filling the frame edge to edge.",
+    "payload": "A flat top-down world map laid out across a concrete floor, oceans in pale teal and landmasses in cream, every landmass left completely blank and unlettered. Nine small sealed brown cartons stand upright on it: one on the west coast of North America, two in western Europe, three across South East Asia, one on the eastern tip of South America, one in southern Africa and one on the east coast of Australia. A single red thread runs from one point in the middle of North America out to each carton in turn. Charcoal-teal-cream palette, flat even overhead light, the map filling the frame edge to edge.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor"
+  },
+  {
+    "name": "fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/base.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+        "role": "canonical",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+        "role": "pose",
+        "character": "base"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a brown warehouse coat, stage-right, hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template \u2014 head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-deadpan` expression reference for `base` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `hold-one-hand` pose reference for `base` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a brown warehouse coat, stage-right, hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `base` (hold-one-hand / expr-deadpan / dressed for `l27-d4b1f2ce`)"
+  },
+  {
+    "name": "L27",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card \u2014 carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit.\n\nOne seeded performer, `base`, `expr-deadpan`, `hold-one-hand`, in a brown warehouse coat, stage-right, hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him. Half the sheet still lies draped across the top of the stack; the exposed wrap catches the light in flat planes. An empty concrete bay runs back behind him to a shuttered door, its walls bare. Grey-cream-amber palette, one cold skylight shaft from above and a warm bulb over the shutter, foreground depth from a cropped forklift tine at the lower-left.",
+    "payload": "One seeded performer, `base`, `expr-deadpan`, `hold-one-hand`, in a brown warehouse coat, stage-right, hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him. Half the sheet still lies draped across the top of the stack; the exposed wrap catches the light in flat planes. An empty concrete bay runs back behind him to a shuttered door, its walls bare. Grey-cream-amber palette, one cold skylight shaft from above and a warm bulb over the shutter, foreground depth from a cropped forklift tine at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce.png",
+        "role": "figure",
+        "character": "base"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": "l27-d4b1f2ce",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`base` STEP-1 fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce GENERATE"
+  },
+  {
+    "name": "L28",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA single-storey assembly floor seen wide and head-on, entirely empty of people: two long steel benches running back into the depth with anti-static mats and part trays laid along them, a rack of empty tote bins stage-left, a roller door shut at the far end, strip lights in rows overhead. Cool grey-teal-cream palette, flat even industrial light, foreground depth from a cropped bench end cutting the lower-right corner. Over the entrance at the back of the floor hangs a plain painted board carrying one word: 'MINISCRIBE'.",
+    "payload": "A single-storey assembly floor seen wide and head-on, entirely empty of people: two long steel benches running back into the depth with anti-static mats and part trays laid along them, a rack of empty tote bins stage-left, a roller door shut at the far end, strip lights in rows overhead. Cool grey-teal-cream palette, flat even industrial light, foreground depth from a cropped bench end cutting the lower-right corner. Over the entrance at the back of the floor hangs a plain painted board carrying one word: 'MINISCRIBE'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-powerstance--expr-delighted",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-powerstance` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-powerstance / expr-delighted)"
+  },
+  {
+    "name": "L29",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u2014 preserve its set, palette, outline weight and lighting. The THIRD image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\n`miniscribe-rep`, `expr-delighted`, `action-powerstance`, planted centre in the entrance at the back of the assembly floor, the painted board 'MINISCRIBE' hanging over him. The floor as established: two long steel benches running back into the depth, the rack of tote bins stage-left, the roller door shut beyond. Cool grey-teal-cream palette, flat strip light, foreground depth from a cropped bench end at the lower-right.",
+    "payload": "`miniscribe-rep`, `expr-delighted`, `action-powerstance`, planted centre in the entrance at the back of the assembly floor, the painted board 'MINISCRIBE' hanging over him. The floor as established: two long steel benches running back into the depth, the rack of tote bins stage-left, the roller door shut beyond. Cool grey-teal-cream palette, flat strip light, foreground depth from a cropped bench end at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-powerstance--expr-delighted.png",
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-powerstance--expr-delighted.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-delighted GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "fig-terry-johnson--action-armscrossed--expr-thinking",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+        "role": "canonical",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+        "role": "expression",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+        "role": "pose",
+        "character": "terry-johnson"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-thinking` expression reference for `terry-johnson` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-armscrossed` pose reference for `terry-johnson` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `terry-johnson` (action-armscrossed / expr-thinking)"
+  },
+  {
+    "name": "L30",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly.\n\n`terry-johnson`, `expr-thinking`, `action-armscrossed`, alone stage-right in a bare rented unit: unpainted breeze-block walls, a concrete floor holding one trestle table and a single stool, cardboard cartons still flat and stacked against the wall, a roller shutter up on a strip of grey daylight beyond. Cool grey-cream palette with one warm bulb on a flex overhead, foreground depth from a cropped stack of flats at the lower-left.",
+    "payload": "`terry-johnson`, `expr-thinking`, `action-armscrossed`, alone stage-right in a bare rented unit: unpainted breeze-block walls, a concrete floor holding one trestle table and a single stool, cardboard cartons still flat and stacked against the wall, a roller shutter up on a strip of grey daylight beyond. Cool grey-cream palette with one warm bulb on a flex overhead, foreground depth from a cropped stack of flats at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-terry-johnson--action-armscrossed--expr-thinking.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-terry-johnson--action-armscrossed--expr-thinking.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`terry-johnson` STEP-1 fig-terry-johnson--action-armscrossed--expr-thinking GENERATE"
+  },
+  {
+    "name": "L31",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is `terry-johnson`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The THIRD image is the `prop-drive` prop canonical \u2014 preserve that object's design.\n\n`terry-johnson`, `expr-thinking`, `action-armscrossed`, stage-right in the bare rented unit, trestle table and stool, flat cartons stacked against the breeze-block wall, cool grey-cream palette under the warm overhead bulb. Only this changes: one finished `prop-drive` now stands upright on the trestle in front of him; everything else exactly as established.",
+    "payload": "`terry-johnson`, `expr-thinking`, `action-armscrossed`, stage-right in the bare rented unit, trestle table and stool, flat cartons stacked against the breeze-block wall, cool grey-cream palette under the warm overhead bulb. Only this changes: one finished `prop-drive` now stands upright on the trestle in front of him; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L30.png",
+      "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L30.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+        "role": "canonical",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`terry-johnson` delta -> parent + canonical"
+  },
+  {
+    "name": "fig-base--action-recoil--expr-shock--l32-36f3a4e9",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/base.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+      "channels/the-second-take/visual-kit/refs/base/action-recoil.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+        "role": "canonical",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+        "role": "expression",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-recoil.png",
+        "role": "pose",
+        "character": "base"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a white lab coat and quilted oven gloves, stage-left on his back foot, backing off from a standing on a bench that glows cherry-red through its casing with two thin wisps of smoke curling off it. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template \u2014 head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-shock` expression reference for `base` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-recoil` pose reference for `base` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a white lab coat and quilted oven gloves, stage-left on his back foot, backing off from a standing on a bench that glows cherry-red through its casing with two thin wisps of smoke curling off it. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `base` (action-recoil / expr-shock / dressed for `l32-36f3a4e9`)"
+  },
+  {
+    "name": "L32",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card \u2014 carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit. The SECOND image is the `prop-drive` prop canonical \u2014 preserve that object's design.\n\nOne seeded performer, `base`, `expr-shock`, `action-recoil`, in a white lab coat and quilted oven gloves, stage-left on his back foot, backing off from a `prop-drive` standing on a bench that glows cherry-red through its casing with two thin wisps of smoke curling off it. A small test bench: a peg rail of hand tools behind, a fire bucket on the floor stage-right. Grey-cream-red palette, one hard work lamp from above, foreground depth from a cropped stool back at the lower-left.",
+    "payload": "One seeded performer, `base`, `expr-shock`, `action-recoil`, in a white lab coat and quilted oven gloves, stage-left on his back foot, backing off from a `prop-drive` standing on a bench that glows cherry-red through its casing with two thin wisps of smoke curling off it. A small test bench: a peg rail of hand tools behind, a fire bucket on the floor stage-right. Grey-cream-red palette, one hard work lamp from above, foreground depth from a cropped stool back at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-base--action-recoil--expr-shock--l32-36f3a4e9.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-base--action-recoil--expr-shock--l32-36f3a4e9.png",
+        "role": "figure",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": "l32-36f3a4e9",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`base` STEP-1 fig-base--action-recoil--expr-shock--l32-36f3a4e9 GENERATE"
+  },
+  {
+    "name": "fig-ibm-suit--expr-smug",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+        "role": "canonical",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "ibm-suit"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-smug` expression reference for `ibm-suit` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `ibm-suit` (no pose / expr-smug)"
+  },
+  {
+    "name": "fig-miniscribe-rep--expr-delighted",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (no pose / expr-delighted)"
+  },
+  {
+    "name": "L33",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The THIRD image is the `handshake` interaction template \u2014 two blank mannequins holding the contact geometry for BOTH figures; copy only the clasp/limb geometry, relative placement and eye-line, and give it to neither figure's identity, costume or expression. The FOURTH image is the destination place \u2014 preserve its set, palette, outline weight and lighting.\n\n`ibm-suit`, `expr-smug`, and `miniscribe-rep`, `expr-delighted`, clasped in `handshake` at centre frame on the assembly floor, both holding the same plane at a matching eye line and an equal relative head scale. Behind them the floor runs back into the depth: steel benches, the tote rack stage-left, the roller door up on flat grey daylight. Cool grey-teal-cream palette, flat strip light, foreground depth from a cropped bench end at the lower-right.",
+    "payload": "`ibm-suit`, `expr-smug`, and `miniscribe-rep`, `expr-delighted`, clasped in `handshake` at centre frame on the assembly floor, both holding the same plane at a matching eye line and an equal relative head scale. Behind them the floor runs back into the depth: steel benches, the tote rack stage-left, the roller door up on flat grey daylight. Cool grey-teal-cream palette, flat strip light, foreground depth from a cropped bench end at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-ibm-suit--expr-smug.png",
+      "_staging/fig-miniscribe-rep--expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/handshake.png",
+      "_staging/L28.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-ibm-suit--expr-smug.png",
+        "role": "figure",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "_staging/fig-miniscribe-rep--expr-delighted.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/handshake.png",
+        "role": "interaction",
+        "character": null
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`ibm-suit` STEP-1 fig-ibm-suit--expr-smug GENERATE; `miniscribe-rep` STEP-1 fig-miniscribe-rep--expr-delighted GENERATE"
+  },
+  {
+    "name": "L34",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is `ibm-suit`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The THIRD image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only.\n\n`ibm-suit` and `miniscribe-rep` still hand-clasped at centre frame on the assembly floor, holding the same plane at a matching eye line and an equal relative head scale, benches running back into the depth, the tote rack stage-left, cool grey-teal-cream palette under flat strip light. Only this changes: through the open roller door behind them a queue of loaded pallets now waits nose to tail out into the yard; everything else exactly as established.",
+    "payload": "`ibm-suit` and `miniscribe-rep` still hand-clasped at centre frame on the assembly floor, holding the same plane at a matching eye line and an equal relative head scale, benches running back into the depth, the tote rack stage-left, cool grey-teal-cream palette under flat strip light. Only this changes: through the open roller door behind them a queue of loaded pallets now waits nose to tail out into the yard; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L33.png",
+      "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L33.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+        "role": "canonical",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "`ibm-suit` delta -> parent + canonical; `miniscribe-rep` delta -> parent + canonical"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-celebrate--expr-delighted",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/action-celebrate.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-celebrate.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-celebrate` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-celebrate / expr-delighted)"
+  },
+  {
+    "name": "L35",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly.\n\n`miniscribe-rep`, `expr-delighted`, `action-celebrate`, standing small on top of a four-tier tower of shrink-wrapped pallets that rises to the roof trusses, each tier stepped a little wider than the one below it. Below him a factory floor runs back into the depth with steel benches and a forklift parked stage-right. Cool grey-teal-cream palette, one shaft of daylight from a roof light landing on the top tier, foreground depth from a cropped forklift mast at the lower-left.",
+    "payload": "`miniscribe-rep`, `expr-delighted`, `action-celebrate`, standing small on top of a four-tier tower of shrink-wrapped pallets that rises to the roof trusses, each tier stepped a little wider than the one below it. Below him a factory floor runs back into the depth with steel benches and a forklift parked stage-right. Cool grey-teal-cream palette, one shaft of daylight from a roof light landing on the top tier, foreground depth from a cropped forklift mast at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-celebrate--expr-delighted.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-celebrate--expr-delighted.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-celebrate--expr-delighted GENERATE"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-powerstance--expr-greedy",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+      "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-greedy` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-powerstance` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-powerstance / expr-greedy)"
+  },
+  {
+    "name": "L36",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\n`miniscribe-rep`, `expr-greedy`, `action-powerstance`, planted on top of a banded bale of banknotes the size of a car that fills the centre of the frame. Two smaller bales sit stage-left and stage-right at half its height on a flat cream ground, charcoal-cream-green palette, even frontal light, foreground depth from a cropped bale corner across the bottom of the frame. The wide paper band strapping the big bale carries the stencilled figure '125 MILLION'.",
+    "payload": "`miniscribe-rep`, `expr-greedy`, `action-powerstance`, planted on top of a banded bale of banknotes the size of a car that fills the centre of the frame. Two smaller bales sit stage-left and stage-right at half its height on a flat cream ground, charcoal-cream-green palette, even frontal light, foreground depth from a cropped bale corner across the bottom of the frame. The wide paper band strapping the big bale carries the stencilled figure '125 MILLION'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-powerstance--expr-greedy.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-powerstance--expr-greedy.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-greedy GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-salute--expr-delighted",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/action-salute.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-salute.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-salute` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-salute / expr-delighted)"
+  },
+  {
+    "name": "L37",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly.\n\n`miniscribe-rep`, `expr-delighted`, `action-salute`, planted small at the very top of a steep summit built entirely out of stacked drive cartons, the carton slope falling away on both sides into low cloud. Pale blue sky filling the upper half, cream-teal-charcoal palette, hard high sun from stage-left, foreground depth from a cropped carton corner at the lower-right.",
+    "payload": "`miniscribe-rep`, `expr-delighted`, `action-salute`, planted small at the very top of a steep summit built entirely out of stacked drive cartons, the carton slope falling away on both sides into low cloud. Pale blue sky filling the upper half, cream-teal-charcoal palette, hard high sun from stage-left, foreground depth from a cropped carton corner at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-salute--expr-delighted.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-salute--expr-delighted.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-salute--expr-delighted GENERATE"
+  },
+  {
+    "name": "fig-base--action-armscrossed--expr-deadpan--l38-3412012a",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/base.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+        "role": "canonical",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+        "role": "pose",
+        "character": "base"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template \u2014 head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-deadpan` expression reference for `base` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-armscrossed` pose reference for `base` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `base` (action-armscrossed / expr-deadpan / dressed for `l38-3412012a`)"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-offering--expr-pleading",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
+      "channels/the-second-take/visual-kit/refs/base/action-offering.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-pleading` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-offering` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-offering / expr-pleading)"
+  },
+  {
+    "name": "L38",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card \u2014 carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit. The SECOND image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly.\n\nOne seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+    "payload": "One seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+      "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png",
+        "role": "figure",
+        "character": "base"
+      },
+      {
+        "path": "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": "l38-3412012a",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`base` STEP-1 fig-base--action-armscrossed--expr-deadpan--l38-3412012a GENERATE; `miniscribe-rep` STEP-1 fig-miniscribe-rep--action-offering--expr-pleading GENERATE"
+  },
+  {
+    "name": "fig-miniscribe-rep--hold-both-hands--expr-greedy",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-greedy` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `hold-both-hands` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (hold-both-hands / expr-greedy)"
+  },
+  {
+    "name": "L39",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\n`miniscribe-rep`, `expr-greedy`, `hold-both-hands`, stage-right, shoving the rear doors of an armoured cash truck shut against a wall of banded notes bulging out of the load bed. A depot yard: chain-link fence behind, a second truck parked beyond it, low warehouse roofs on the skyline. Charcoal-green-cream palette, flat overcast light, foreground depth from a cropped bollard at the lower-left. Across the truck's rear panel runs the stencilled figure '600 MILLION'.",
+    "payload": "`miniscribe-rep`, `expr-greedy`, `hold-both-hands`, stage-right, shoving the rear doors of an armoured cash truck shut against a wall of banded notes bulging out of the load bed. A depot yard: chain-link fence behind, a second truck parked beyond it, low warehouse roofs on the skyline. Charcoal-green-cream palette, flat overcast light, foreground depth from a cropped bollard at the lower-left. Across the truck's rear panel runs the stencilled figure '600 MILLION'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--hold-both-hands--expr-greedy GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  },
+  {
+    "name": "L40",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA heavy iron balance beam standing alone on a flat cream ground, a tall column of banded banknotes stacked on the left pan and a slightly taller column on the right pan, the beam still dead level between them. Charcoal-cream-green palette, even frontal light, the two columns filling the frame top to bottom, foreground depth from a cropped beam foot across the bottom.",
+    "payload": "A heavy iron balance beam standing alone on a flat cream ground, a tall column of banded banknotes stacked on the left pan and a slightly taller column on the right pan, the beam still dead level between them. Charcoal-cream-green palette, even frontal light, the two columns filling the frame top to bottom, foreground depth from a cropped beam foot across the bottom.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor"
+  },
+  {
+    "name": "L41",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nThe iron balance beam on the flat cream ground, a tall column of banded notes on the left pan and a slightly taller one on the right, charcoal-cream-green palette under even frontal light. Only this changes: the beam has settled and now tips down toward the right column, the left pan lifted clear; everything else exactly as established.",
+    "payload": "The iron balance beam on the flat cream ground, a tall column of banded notes on the left pan and a slightly taller one on the right, charcoal-cream-green palette under even frontal light. Only this changes: the beam has settled and now tips down toward the right column, the left pan lifted clear; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L40.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L40.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  },
+  {
+    "name": "L42",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nThe iron balance beam on the flat cream ground with the right column low and the left pan lifted, charcoal-cream-green palette under even frontal light. Only this changes: the left column's front face has fallen away to show it is a hollow painted shell with nothing stacked inside it; everything else exactly as established.",
+    "payload": "The iron balance beam on the flat cream ground with the right column low and the left pan lifted, charcoal-cream-green palette under even frontal light. Only this changes: the left column's front face has fallen away to show it is a hollow painted shell with nothing stacked inside it; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/L41.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/L41.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 2,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  },
+  {
+    "name": "fig-base--point-at-thing--expr-deadpan--l43-30b903d1",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/base.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/point-at-thing.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+        "role": "canonical",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
+        "role": "pose",
+        "character": "base"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a boxy grey suit, stage-left, pressing one big square key on a wall-sized video deck that fills the back of the frame, its two tape spools spinning backwards with the tape slack between them. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template \u2014 head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-deadpan` expression reference for `base` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `point-at-thing` pose reference for `base` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a boxy grey suit, stage-left, pressing one big square key on a wall-sized video deck that fills the back of the frame, its two tape spools spinning backwards with the tape slack between them. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `base` (point-at-thing / expr-deadpan / dressed for `l43-30b903d1`)"
+  },
+  {
+    "name": "L43",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card \u2014 carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit.\n\nOne seeded performer, `base`, `expr-deadpan`, `point-at-thing`, in a boxy grey suit, stage-left, pressing one big square key on a wall-sized video deck that fills the back of the frame, its two tape spools spinning backwards with the tape slack between them. A dim office: a swivel chair pushed aside stage-right, a rubber plant in the corner. Charcoal-teal-cream palette, one warm desk lamp from stage-right, foreground depth from a cropped chair back at the lower-right.",
+    "payload": "One seeded performer, `base`, `expr-deadpan`, `point-at-thing`, in a boxy grey suit, stage-left, pressing one big square key on a wall-sized video deck that fills the back of the frame, its two tape spools spinning backwards with the tape slack between them. A dim office: a swivel chair pushed aside stage-right, a rubber plant in the corner. Charcoal-teal-cream palette, one warm desk lamp from stage-right, foreground depth from a cropped chair back at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-base--point-at-thing--expr-deadpan--l43-30b903d1.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-base--point-at-thing--expr-deadpan--l43-30b903d1.png",
+        "role": "figure",
+        "character": "base"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": "l43-30b903d1",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`base` STEP-1 fig-base--point-at-thing--expr-deadpan--l43-30b903d1 GENERATE"
+  },
+  {
+    "name": "fig-ibm-suit--action-thumbsdown--expr-annoyed",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+      "channels/the-second-take/visual-kit/refs/base/action-thumbsdown.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+        "role": "canonical",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+        "role": "expression",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-thumbsdown.png",
+        "role": "pose",
+        "character": "ibm-suit"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-annoyed` expression reference for `ibm-suit` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-thumbsdown` pose reference for `ibm-suit` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `ibm-suit` (action-thumbsdown / expr-annoyed)"
+  },
+  {
+    "name": "L44",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `ibm-suit`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u2014 preserve its set, palette, outline weight and lighting.\n\n`ibm-suit`, `expr-annoyed`, `action-thumbsdown`, planted centre on the assembly floor with one lone flat carton on the concrete at his feet where a loaded pallet stood. The floor behind him runs back into the depth: benches bare, the tote rack stage-left half empty, the roller door shut. Cool grey-teal-cream palette gone colder, flat strip light with the far end of the floor unlit, foreground depth from a cropped bench end at the lower-right.",
+    "payload": "`ibm-suit`, `expr-annoyed`, `action-thumbsdown`, planted centre on the assembly floor with one lone flat carton on the concrete at his feet where a loaded pallet stood. The floor behind him runs back into the depth: benches bare, the tote rack stage-left half empty, the roller door shut. Cool grey-teal-cream palette gone colder, flat strip light with the far end of the floor unlit, foreground depth from a cropped bench end at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-ibm-suit--action-thumbsdown--expr-annoyed.png",
+      "_staging/L28.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-ibm-suit--action-thumbsdown--expr-annoyed.png",
+        "role": "figure",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`ibm-suit` STEP-1 fig-ibm-suit--action-thumbsdown--expr-annoyed GENERATE"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-recoil--expr-shock",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+      "channels/the-second-take/visual-kit/refs/base/action-recoil.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-recoil.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-shock` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-recoil` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-recoil / expr-shock)"
+  },
+  {
+    "name": "L45",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly.\n\n`miniscribe-rep`, `expr-shock`, `action-recoil`, on his back foot at the crumbling lip of a sheer cliff, the ground gone in one clean bite in front of his boots and a drop of bare rock falling away below him. A high ochre plateau under a pale sky, ochre-grey-cream palette, hard high sun, foreground depth from a cropped rock spur at the lower-left.",
+    "payload": "`miniscribe-rep`, `expr-shock`, `action-recoil`, on his back foot at the crumbling lip of a sheer cliff, the ground gone in one clean bite in front of his boots and a drop of bare rock falling away below him. A high ochre plateau under a pale sky, ochre-grey-cream palette, hard high sun, foreground depth from a cropped rock spur at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-recoil--expr-shock.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-recoil--expr-shock.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-recoil--expr-shock GENERATE"
+  },
+  {
+    "name": "fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/base/base.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+        "role": "canonical",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+        "role": "expression",
+        "character": "base"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+        "role": "pose",
+        "character": "base"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a grey work coat, stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template \u2014 head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-crestfallen` expression reference for `base` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `hold-both-hands` pose reference for `base` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a grey work coat, stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door. Take from that description ONLY the CLOTHING it implies \u2014 garments, headwear, footwear \u2014 and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `base` (hold-both-hands / expr-crestfallen / dressed for `miniscribe-floor-4bd17718`)"
+  },
+  {
+    "name": "L46",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the seeded PERFORMER's STEP-1 rig card \u2014 carry its head/face/hand form, proportion, pose, expression and the era costume it wears exactly. It is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere, but everything it wears comes from this card, never from the rig template's default outfit. The SECOND image is the destination place \u2014 preserve its set, palette, outline weight and lighting. The THIRD image is the crowd exemplar \u2014 use only its anonymous crowd proportion and face tier.\n\nOne seeded performer, `base`, `expr-crestfallen`, `hold-both-hands`, in a grey work coat, stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door. On the far side of the far bench a subdued crowd stands and watches him go, arms down, faces flat and tired. Cool grey-teal palette drained toward grey, flat strip light with every fourth ceiling fitting dark, foreground depth from a cropped bench end at the lower-right.",
+    "payload": "One seeded performer, `base`, `expr-crestfallen`, `hold-both-hands`, in a grey work coat, stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door. On the far side of the far bench a subdued crowd stands and watches him go, arms down, faces flat and tired. Cool grey-teal palette drained toward grey, flat strip light with every fourth ceiling fitting dark, foreground depth from a cropped bench end at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718.png",
+      "_staging/L28.png",
+      "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718.png",
+        "role": "figure",
+        "character": "base"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "costume_key": "miniscribe-floor-4bd17718",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`base` STEP-1 fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718 GENERATE"
+  },
+  {
+    "name": "L47",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u2014 preserve its set, palette, outline weight and lighting.\n\n`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stage-right, stepping out through a glass door onto a car park apron with a document case at his side, his back half turned to the floor behind him. Through the glass the assembly floor runs away into the depth with its benches bare. Grey-cream-teal palette, flat overcast light outside against warm strip light inside, foreground depth from a cropped kerb at the lower-left.",
+    "payload": "`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stage-right, stepping out through a glass door onto a car park apron with a document case at his side, his back half turned to the floor behind him. Through the glass the assembly floor runs away into the depth with its benches bare. Grey-cream-teal palette, flat overcast light outside against warm strip light inside, foreground depth from a cropped kerb at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+      "_staging/L28.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+        "role": "figure",
+        "character": "terry-johnson"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`terry-johnson` STEP-1 fig-terry-johnson--carry-by-handle--expr-crestfallen REUSED"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-slump--expr-worried",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+      "channels/the-second-take/visual-kit/refs/base/action-slump.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-slump.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-worried` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-slump` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-slump / expr-worried)"
+  },
+  {
+    "name": "L48",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the destination place \u2014 preserve its set, palette, outline weight and lighting.\n\n`miniscribe-rep`, `expr-worried`, `action-slump`, alone stage-centre on the assembly floor with his shoulders down, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the concrete beside him. Grey-teal-cream palette turned cold, foreground depth from a cropped empty tote bin at the lower-right.",
+    "payload": "`miniscribe-rep`, `expr-worried`, `action-slump`, alone stage-centre on the assembly floor with his shoulders down, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the concrete beside him. Grey-teal-cream palette turned cold, foreground depth from a cropped empty tote bin at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-miniscribe-rep--action-slump--expr-worried.png",
+      "_staging/L28.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-miniscribe-rep--action-slump--expr-worried.png",
+        "role": "figure",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "_staging/L28.png",
+        "role": "place",
+        "character": null
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-slump--expr-worried GENERATE"
+  },
+  {
+    "name": "fig-hq-banker--action-armscrossed--expr-skeptical",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+        "role": "canonical",
+        "character": "hq-banker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+        "role": "expression",
+        "character": "hq-banker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+        "role": "pose",
+        "character": "hq-banker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `hq-banker`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-skeptical` expression reference for `hq-banker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-armscrossed` pose reference for `hq-banker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `hq-banker` (action-armscrossed / expr-skeptical)"
+  },
+  {
+    "name": "L49",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `hq-banker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly.\n\n`hq-banker`, `expr-skeptical`, `action-armscrossed`, standing centre in a panelled bank office and appraising the room: a navy chalk-stripe three-piece suit with a gold watch chain across the waistcoat, swept grey hair, heavy build. A partners' desk stage-right under a green shaded lamp, a wall of oak drawer cabinets behind, tall sash windows stage-left onto grey city rooftops. Oak-brown-green-cream palette, one warm desk lamp against cool window light, foreground depth from a cropped visitor chair back at the lower-right.",
+    "payload": "`hq-banker`, `expr-skeptical`, `action-armscrossed`, standing centre in a panelled bank office and appraising the room: a navy chalk-stripe three-piece suit with a gold watch chain across the waistcoat, swept grey hair, heavy build. A partners' desk stage-right under a green shaded lamp, a wall of oak drawer cabinets behind, tall sash windows stage-left onto grey city rooftops. Oak-brown-green-cream palette, one warm desk lamp against cool window light, foreground depth from a cropped visitor chair back at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-hq-banker--action-armscrossed--expr-skeptical.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-hq-banker--action-armscrossed--expr-skeptical.png",
+        "role": "figure",
+        "character": "hq-banker"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`hq-banker` STEP-1 fig-hq-banker--action-armscrossed--expr-skeptical GENERATE"
+  },
+  {
+    "name": "fig-hq-banker--action-offering--expr-deadpan",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-offering.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+        "role": "canonical",
+        "character": "hq-banker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "hq-banker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
+        "role": "pose",
+        "character": "hq-banker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `hq-banker`'s character canonical \u2014 identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-deadpan` expression reference for `hq-banker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-offering` pose reference for `hq-banker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `hq-banker` (action-offering / expr-deadpan)"
+  },
+  {
+    "name": "L50",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `hq-banker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly. The SECOND image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts.\n\n`hq-banker`, `expr-deadpan`, `action-offering`, stage-left, pushing a banded block of banknotes the size of a suitcase across the partners' desk toward the viewer. The panelled office behind him with its oak drawer cabinets and green shaded lamp, oak-brown-green-cream palette, one warm desk lamp raking across the block from stage-right, foreground depth from a cropped inkstand at the lower-right. The paper band strapping the block carries the stencilled figure '20 MILLION'.",
+    "payload": "`hq-banker`, `expr-deadpan`, `action-offering`, stage-left, pushing a banded block of banknotes the size of a suitcase across the partners' desk toward the viewer. The panelled office behind him with its oak drawer cabinets and green shaded lamp, oak-brown-green-cream palette, one warm desk lamp raking across the block from stage-right, foreground depth from a cropped inkstand at the lower-right. The paper band strapping the block carries the stencilled figure '20 MILLION'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "_staging/fig-hq-banker--action-offering--expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "_staging/fig-hq-banker--action-offering--expr-deadpan.png",
+        "role": "figure",
+        "character": "hq-banker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "costume_key": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`hq-banker` STEP-1 fig-hq-banker--action-offering--expr-deadpan GENERATE; LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived"
+  }
+]

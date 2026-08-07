@@ -1,0 +1,116 @@
+[
+ {
+  "name": "fig-base--action-recoil--expr-shock--l32-36f3a4e9",
+  "mode": "environment",
+  "aspect": "2:3",
+  "image_size": "1K",
+  "stage_role": "base",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+   "channels/the-second-take/visual-kit/refs/base/action-recoil.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+    "role": "canonical",
+    "character": "base"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
+    "role": "expression",
+    "character": "base"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-recoil.png",
+    "role": "pose",
+    "character": "base"
+   }
+  ],
+  "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a white lab coat and quilted oven gloves, stage-left on his back foot, backing off from a standing on a bench that glows cherry-red through its casing with two thin wisps of smoke curling off it. Take from that description ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nLINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The oven gloves are ONE FLAT UNIFORM colour fill with only the rig-weight outline around them - draw NO quilting, NO crosshatch, NO diamond lattice, NO stitching, NO seam hatching and NO texture strokes on the gloves or anywhere else. No hairline, no micro-pattern, no fine repeated strokes on any garment.",
+  "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template — head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-shock` expression reference for `base` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-recoil` pose reference for `base` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a white lab coat and quilted oven gloves, stage-left on his back foot, backing off from a standing on a bench that glows cherry-red through its casing with two thin wisps of smoke curling off it. Take from that description ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nLINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The oven gloves are ONE FLAT UNIFORM colour fill with only the rig-weight outline around them - draw NO quilting, NO crosshatch, NO diamond lattice, NO stitching, NO seam hatching and NO texture strokes on the gloves or anywhere else. No hairline, no micro-pattern, no fine repeated strokes on any garment.",
+  "retry_authority": {
+   "kind": "step1-remint",
+   "changed_spans": 1,
+   "defect": "rig",
+   "character": "base"
+  },
+  "why": "STEP-1-only retry for `base` from `L32`"
+ },
+ {
+  "name": "fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718",
+  "mode": "environment",
+  "aspect": "2:3",
+  "image_size": "1K",
+  "stage_role": "base",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/base/base.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+   "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/base.png",
+    "role": "canonical",
+    "character": "base"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+    "role": "expression",
+    "character": "base"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+    "role": "pose",
+    "character": "base"
+   }
+  ],
+  "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a grey work coat, stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door. Take from that description ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nLINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The figure's hands are EMPTY - carry NO box, NO carton, NO papers, NO sheet, NO pen, NO plant and NO objects of any kind; the pose is the empty two-handed hold alone. Draw NO ruled lines, NO hairline strokes, NO pen clips, NO leaf veins and NO fine repeated marks anywhere in the frame.",
+  "delta": "SEED ROLES. The FIRST image is the shared BASE RIG template — head/face/hand form, proportion and head tone come from this image. It is the channel's rig anchor, NOT an identity and not a costume: the figure wears what this prompt authors, and the template's plain default outfit only where the prompt authors none. The SECOND image is the `expr-crestfallen` expression reference for `base` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `hold-both-hands` pose reference for `base` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: One seeded performer, in a grey work coat, stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door. Take from that description ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure in it for that era, work and setting, never the rig template's default hoodie; draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nLINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The figure's hands are EMPTY - carry NO box, NO carton, NO papers, NO sheet, NO pen, NO plant and NO objects of any kind; the pose is the empty two-handed hold alone. Draw NO ruled lines, NO hairline strokes, NO pen clips, NO leaf veins and NO fine repeated marks anywhere in the frame.",
+  "retry_authority": {
+   "kind": "step1-remint",
+   "changed_spans": 1,
+   "defect": "rig",
+   "character": "base"
+  },
+  "why": "STEP-1-only retry for `base` from `L46`"
+ },
+ {
+  "name": "fig-hq-banker--action-armscrossed--expr-skeptical",
+  "mode": "environment",
+  "aspect": "2:3",
+  "image_size": "1K",
+  "stage_role": "base",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+   "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+    "role": "canonical",
+    "character": "hq-banker"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+    "role": "expression",
+    "character": "hq-banker"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+    "role": "pose",
+    "character": "hq-banker"
+   }
+  ],
+  "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe face must read unmistakably SKEPTICAL and must NOT repeat this character's deadpan face. Draw the doubt in the geometry: ONE eyebrow raised clearly higher than the other in a visible asymmetric arch, the eyes narrowed to a doubting squint rather than open half-lids, and the mouth a flat line pulled to one side. Moderate strength - a restrained, unconvinced look, not a comedic peak.",
+  "delta": "SEED ROLES. The FIRST image is `hq-banker`'s character canonical — identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-skeptical` expression reference for `hq-banker` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-armscrossed` pose reference for `hq-banker` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe face must read unmistakably SKEPTICAL and must NOT repeat this character's deadpan face. Draw the doubt in the geometry: ONE eyebrow raised clearly higher than the other in a visible asymmetric arch, the eyes narrowed to a doubting squint rather than open half-lids, and the mouth a flat line pulled to one side. Moderate strength - a restrained, unconvinced look, not a comedic peak.",
+  "retry_authority": {
+   "kind": "step1-remint",
+   "changed_spans": 1,
+   "defect": "expression",
+   "character": "hq-banker"
+  },
+  "why": "STEP-1-only retry for `hq-banker` from `L49`"
+ }
+]

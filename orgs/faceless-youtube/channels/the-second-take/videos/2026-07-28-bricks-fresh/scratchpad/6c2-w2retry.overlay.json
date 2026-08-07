@@ -1,0 +1,116 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L28",
+      "name": "L28-scope-scaffold",
+      "defect": "content",
+      "replace": {
+        "from": "a roller door shut at the far end",
+        "to": "a roller door shut at the far end of the floor"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L27",
+      "name": "L27-fix",
+      "defect": "content",
+      "replace": {
+        "from": "hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him",
+        "to": "hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him, BOTH of his hands closed on the sheet's leading edge and BOTH drawn as full rig hands - three fingers plus one thumb on each, the two hands the same size as each other, each wrist ending in a drawn coat cuff. Neither hand is a mitten, a stub, a fingerless shape or a hand laid flat on top of the sheet"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L32",
+      "name": "L32-fix",
+      "defect": "content",
+      "replace": {
+        "from": "a fire bucket on the floor stage-right",
+        "to": "one small unmarked fire bucket set well back on the floor stage-right, drawn completely BLANK - no stencilled word, no letter, no number, no label and no marking of any kind on it, and no lettering anywhere else in the frame - and kept small and muted in tone so the cherry-red glow of the drive stays the single dominant red mass and the bucket only supports it"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L33",
+      "name": "L33-fix",
+      "defect": "content",
+      "replace": {
+        "from": "both holding the same plane at a matching eye line and an equal relative head scale",
+        "to": "both holding the same plane at a matching eye line and an equal relative head scale. The man in the tan blazer is drawn exactly as his own reference sheet draws him and is not re-invented for this frame: warm dark BROWN hair, never black, side-parted into a quiff with a visible sideburn and the ear left clear, the same compact head outline as the sheet, and his mouth closed with no tongue showing"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L39",
+      "name": "L39-fix",
+      "defect": "content",
+      "replace": {
+        "from": "Across the truck's rear panel runs the stencilled figure '600 MILLION'.",
+        "to": "The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut, the very panel his hands are pressed against, and it appears nowhere else - no lettering on the truck's side, none on its roof, none anywhere else in the frame. The banded notes bulge OUT OF THE OPEN LOAD BED behind those rear doors, forced between them at his hands; the truck's roof is bare and carries no money at all."
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L44",
+      "name": "L44-fix",
+      "defect": "content",
+      "replace": {
+        "from": "the tote rack stage-left half empty, the roller door shut",
+        "to": "the tote rack stage-left now VISIBLY HALF EMPTY and plainly different from the full rack of the seeded plate - its upper shelves stripped down to bare metal, tote bins left only on the lower shelves - and the roller door shut. The painted MINISCRIBE board still hangs over the entrance at the back of the floor exactly as the seeded plate draws it. Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line, however cold the palette goes"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L45",
+      "name": "L45-fix",
+      "defect": "content",
+      "replace": {
+        "from": "the ground gone in one clean bite in front of his boots and a drop of bare rock falling away below him",
+        "to": "the ground gone in one clean bite IN FRONT OF his boots - BOTH boots planted flat and whole on solid rock behind the lip, neither boot over the void and no part of him falling - with the drop of bare rock beginning beyond that edge and falling away below it. Both of his hands are full rig hands drawn alike: three fingers plus one thumb on each, never five digits on either, and the two hands the same size as each other"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L46",
+      "name": "L46-fix",
+      "defect": "content",
+      "replace": {
+        "from": "stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door",
+        "to": "over at the stage-LEFT side of the floor and walking AWAY from the camera, straight DOWN the length of the assembly floor toward the roller door at the far end, his back three-quarters to us and the door ahead of him - not walking across the frame sideways - carrying a cardboard box of desk things held up at chest height in BOTH hands, arms bent and raised, never hanging at his sides. The painted MINISCRIBE board still hangs over the entrance at the back of the floor exactly as the seeded plate draws it, and every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L47",
+      "name": "L47-fix",
+      "defect": "content",
+      "replace": {
+        "from": "stepping out through a glass door onto a car park apron with a document case at his side, his back half turned to the floor behind him. Through the glass the assembly floor runs away into the depth with its benches bare. Grey-cream-teal palette, flat overcast light outside against warm strip light inside, foreground depth from a cropped kerb at the lower-left.",
+        "to": "already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He stands on outdoor tarmac under flat exterior daylight, with painted parking bays and a parked car behind him and open grey sky above; the assembly floor with its bare benches is visible only INSIDE, through the glass door behind him. Grey-cream-teal palette, flat overcast daylight outside against the warm strip light seen through the glass, foreground depth from a real cropped concrete kerb - a low kerb stone at the edge of the tarmac, never a bench or a table - cutting the lower-left corner."
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L48",
+      "name": "L48-fix",
+      "defect": "content",
+      "replace": {
+        "from": "alone stage-centre on the assembly floor with his shoulders down, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the concrete beside him.",
+        "to": "alone stage-centre on the assembly floor in a real SLUMP that the drawing must execute, not an upright stand: his shoulders visibly DROPPED and rounded well below their normal line, his head hanging forward and down with his chin toward his chest, his back curved over and his arms hanging loose at his sides. The benches around him are cleared to bare steel and the tote racks are VISIBLY EMPTIED - every shelf stripped to bare metal, no tote bins and no cartons left on any rack, plainly different from the full racks of the seeded plate. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the empty concrete BESIDE him, landing on the floor to one side of him and not on his body. Every outline in the frame is drawn in the warm dark brown house ink, never a cool, grey-green or blue-black line, however cold the palette goes."
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L49",
+      "name": "L49-fix",
+      "defect": "content",
+      "replace": {
+        "from": "A partners' desk stage-right under a green shaded lamp, a wall of oak drawer cabinets behind, tall sash windows stage-left onto grey city rooftops.",
+        "to": "This is the SAME office as the following shot and every surface must match it: a plain oak plank floor with no carpet of any colour, walls of oak raised-and-fielded paneling behind him, oak drawer cabinets standing against that paneling, and a partners' desk stage-right whose top is PLAIN OAK with no green leather inset, under a green shaded banker's lamp. Tall sash windows stage-left onto grey city rooftops."
+      }
+    }
+  ]
+}

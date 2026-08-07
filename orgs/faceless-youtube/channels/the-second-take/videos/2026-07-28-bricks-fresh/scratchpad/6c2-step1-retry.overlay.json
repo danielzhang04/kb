@@ -1,0 +1,30 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L32",
+      "character": "base",
+      "name": "fig-base--action-recoil--expr-shock--l32-36f3a4e9",
+      "defect": "rig",
+      "instruction": "LINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The oven gloves are ONE FLAT UNIFORM colour fill with only the rig-weight outline around them - draw NO quilting, NO crosshatch, NO diamond lattice, NO stitching, NO seam hatching and NO texture strokes on the gloves or anywhere else. No hairline, no micro-pattern, no fine repeated strokes on any garment."
+    },
+    {
+      "kind": "step1",
+      "shot": "L46",
+      "character": "base",
+      "name": "fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718",
+      "defect": "rig",
+      "instruction": "LINE REGISTER, absolute: every line in this frame is drawn at the rig outline weight or heavier. The figure's hands are EMPTY - carry NO box, NO carton, NO papers, NO sheet, NO pen, NO plant and NO objects of any kind; the pose is the empty two-handed hold alone. Draw NO ruled lines, NO hairline strokes, NO pen clips, NO leaf veins and NO fine repeated marks anywhere in the frame."
+    },
+    {
+      "kind": "step1",
+      "shot": "L49",
+      "character": "hq-banker",
+      "name": "fig-hq-banker--action-armscrossed--expr-skeptical",
+      "defect": "expression",
+      "instruction": "The face must read unmistakably SKEPTICAL and must NOT repeat this character's deadpan face. Draw the doubt in the geometry: ONE eyebrow raised clearly higher than the other in a visible asymmetric arch, the eyes narrowed to a doubting squint rather than open half-lids, and the mouth a flat line pulled to one side. Moderate strength - a restrained, unconvinced look, not a comedic peak."
+    }
+  ]
+}

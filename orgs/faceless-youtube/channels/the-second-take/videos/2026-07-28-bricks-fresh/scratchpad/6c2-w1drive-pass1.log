@@ -1,0 +1,37 @@
+  [1/12] fig-miniscribe-rep--expr-delighted: START provider call
+  [1/12] fig-miniscribe-rep--expr-delighted: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [2/12] fig-miniscribe-rep--action-celebrate--expr-delighted: START provider call
+  [2/12] fig-miniscribe-rep--action-celebrate--expr-delighted: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [3/12] fig-miniscribe-rep--action-powerstance--expr-greedy: START provider call
+  [3/12] fig-miniscribe-rep--action-powerstance--expr-greedy: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [4/12] fig-miniscribe-rep--action-salute--expr-delighted: START provider call
+  [4/12] fig-miniscribe-rep--action-salute--expr-delighted: OK -> _staging/fig-miniscribe-rep--action-salute--expr-delighted.png
+  [5/12] fig-base--action-armscrossed--expr-deadpan--l38-3412012a: START provider call
+  [5/12] fig-base--action-armscrossed--expr-deadpan--l38-3412012a: OK -> _staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png
+  [6/12] fig-miniscribe-rep--action-offering--expr-pleading: START provider call
+  [6/12] fig-miniscribe-rep--action-offering--expr-pleading: OK -> _staging/fig-miniscribe-rep--action-offering--expr-pleading.png
+  [7/12] fig-miniscribe-rep--hold-both-hands--expr-greedy: START provider call
+  [7/12] fig-miniscribe-rep--hold-both-hands--expr-greedy: ERR HTTP 503: {
+  "error": {
+    "code": 503,
+    "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a
+  [8/12] fig-base--point-at-thing--expr-deadpan--l43-30b903d1: START provider call
+  [8/12] fig-base--point-at-thing--expr-deadpan--l43-30b903d1: OK -> _staging/fig-base--point-at-thing--expr-deadpan--l43-30b903d1.png
+  [9/12] fig-ibm-suit--action-thumbsdown--expr-annoyed: START provider call
+  [9/12] fig-ibm-suit--action-thumbsdown--expr-annoyed: OK -> _staging/fig-ibm-suit--action-thumbsdown--expr-annoyed.png
+  [10/12] fig-miniscribe-rep--action-recoil--expr-shock: START provider call
+  [10/12] fig-miniscribe-rep--action-recoil--expr-shock: OK -> _staging/fig-miniscribe-rep--action-recoil--expr-shock.png
+  [11/12] fig-miniscribe-rep--action-slump--expr-worried: START provider call
+  [11/12] fig-miniscribe-rep--action-slump--expr-worried: OK -> _staging/fig-miniscribe-rep--action-slump--expr-worried.png
+  [12/12] fig-hq-banker--action-offering--expr-deadpan: START provider call
+  [12/12] fig-hq-banker--action-offering--expr-deadpan: OK -> _staging/fig-hq-banker--action-offering--expr-deadpan.png
+  == 8 generated, 4 failed, 0 skipped ==

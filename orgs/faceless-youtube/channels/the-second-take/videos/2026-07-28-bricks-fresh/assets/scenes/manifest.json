@@ -1,17 +1,15 @@
 {
- "video_slug": "2026-07-28-bricks-fresh",
- "generated": "2026-08-06",
- "notes": "Phase 6B: 8 board-approved plates + 17 round-1 candidates + 9 round-2 frames + 5 round-3 correction frames (2 surgical retries, 2 two-authority chain re-bases, 1 changed-mechanism re-mint), recorded 2026-08-06. C-11 counters copied programmatically from the spec that derived each frame (p6b-slate.json / p6b-slate2.json / p6b-retry-slate.json / p6b-slate3.json / p6b-r2-L10-retry1.json / p6b-r2-L23-retry1.json / p6b-r3-L24-retry1.json / p6b-r3-L25-retry1.json / p6b-r3-L16-remint1.json), never re-derived by eye. review_status written only by stamp_review.py. NOTE: two records point at assets/scenes/L18.png (L18 parked, L18-retry1 verified) and two at assets/scenes/L16.png (L16 parked, L16-remint1 verified) — forge's _scene_manifest_entry returns the FIRST match, which is the parked record in both cases. Recorded, not repaired.",
  "shots": [
   {
-   "shot_id": "L03",
-   "file": "assets/scenes/L03.png",
-   "files": [
-    "assets/scenes/L03.png"
-   ],
-   "technique": "(c) character-free / environment gen — era remint",
+   "shot_id": "L26",
+   "file": "assets/scenes/L26.png",
+   "technique": "(c) Character-free scene — place plate root, zero-seed under bible descriptor + style suffix",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
    ],
    "flagged": false,
    "review_status": "verified",
@@ -19,52 +17,23 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Daniel board-v2 ruling R3 — night-scene exception granted; accepted as-is, no re-mint. Promoted from <kit>/_staging/L03.png (sha256 ffe78ce41033ecad). C-11 provenance: counters COPIED from remint-plates-slate.json item `L03`."
-  },
-  {
-   "shot_id": "L05",
-   "file": "assets/scenes/L05.png",
-   "files": [
-    "assets/scenes/L05.png"
-   ],
-   "technique": "(a) reuse — human-restored archived first-pass frame, $0, no provider call",
-   "seeds": [],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Daniel board-v2 ruling R5 — the staged style-tile-copy was REJECTED; this slot is the PREVIOUS computer-shop plate restored from `_staging/_pre-remint-archive-2026-08-05/L05.png`. Never went through `batch` (a $0 manual copy-in), so its C-11 counters are stated as root values (parent_depth 0 / lineage 0) rather than copied from a spec. Frame is 2K while the other seven are 1K — Daniel's taste call went to the prior frame over 1K tier consistency. Promoted from <kit>/_staging/L05.png (sha256 9447bfc1a479727b). C-11 provenance: no batch spec — counters STATED as root values (the `_scene_provenance` result for a frame with no place parent, identical to all 7 spec'd siblings)."
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; promoted from _staging/L26.png (sha256 14f29160fcfe45dbff5e122673292877d36fd19996c466e042d8f8187495d918, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L26 (round-1 pass, all-clean)"
   },
   {
    "shot_id": "L28",
    "file": "assets/scenes/L28.png",
-   "files": [
-    "assets/scenes/L28.png"
-   ],
-   "technique": "(c) character-free / environment gen — era remint",
+   "technique": "(c) Character-free scene — cast-free composition",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": "one surgical retry against camera elevation + outline line weight; changed_spans=1",
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Daniel board-v2 ruling R2 — L28-retry1 ACCEPTED for this video, with the line-weight question absorbed into the systemic R1 fix rather than a further per-plate retry. RESIDUAL, openly unresolved: ink luminance measures 44.5 vs the archived prior's 23.0 (#241a12 is 28.2) and ink coverage fell 11.43% -> 8.90%. The R1 fix (ea71f99) is a style-layer change to the GENERATOR and does not retroactively alter these pixels. Verified here on the human's explicit acceptance, not on a clean measurement. Live file is L28-retry1.png, promoted as L28.png. Promoted from <kit>/_staging/L28-retry1.png (sha256 6f59895098e3d5b6). C-11 provenance: counters COPIED from remint-L28-retry.json item `L28-retry1`."
-  },
-  {
-   "shot_id": "L63",
-   "file": "assets/scenes/L63.png",
-   "files": [
-    "assets/scenes/L63.png"
-   ],
-   "technique": "(c) character-free / environment gen — era remint",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+     "role": "environment",
+     "character": "lettering-marker-italic"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
    ],
    "flagged": false,
    "review_status": "verified",
@@ -72,757 +41,505 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "Daniel board-v2 plain pass — correct outline, camera, palette; vantage mildly high but reads as staged. Promoted from <kit>/_staging/L63.png (sha256 b47ffc190078b13a). C-11 provenance: counters COPIED from remint-plates-slate.json item `L63`."
+   "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); promoted from _staging/L28.png (sha256 426f7991d7a00e352756cdf8a385707ea549a7e5f29a8dbfdced6a68f28bde1b, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L28 (round-1 pass, all-clean)"
   },
   {
-   "shot_id": "L71",
-   "file": "assets/scenes/L71.png",
-   "files": [
-    "assets/scenes/L71.png"
-   ],
-   "technique": "(c) character-free / environment gen — era remint",
+   "shot_id": "L29",
+   "file": "assets/scenes/L29.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    {
+     "path": "_staging/fig-miniscribe-rep--action-powerstance--expr-delighted.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    },
+    {
+     "path": "_staging/L28.png",
+     "role": "place",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+     "role": "environment",
+     "character": "lettering-marker-italic"
+    }
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Daniel board-v2 plain pass — strongest line weight in the set; set the anonymous-extra convention for this video. Promoted from <kit>/_staging/L71.png (sha256 b27cbff21a629fa6). C-11 provenance: counters COPIED from remint-plates-slate.json item `L71`."
-  },
-  {
-   "shot_id": "L113",
-   "file": "assets/scenes/L113.png",
-   "files": [
-    "assets/scenes/L113.png"
-   ],
-   "technique": "(c) character-free / environment gen — era remint",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Daniel board-v2 plain pass — warmest frame in the set; correct on every criterion. Promoted from <kit>/_staging/L113.png (sha256 fe35be657761cd72). C-11 provenance: counters COPIED from remint-plates-slate.json item `L113`."
-  },
-  {
-   "shot_id": "L172",
-   "file": "assets/scenes/L172.png",
-   "files": [
-    "assets/scenes/L172.png"
-   ],
-   "technique": "(c) character-free / environment gen — era remint",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Daniel board-v2 ruling R4 — remint accepted (after > before). The three-tiers-of-face-finish observation was surfaced but deliberately not routed to a new rule. Promoted from <kit>/_staging/L172.png (sha256 a3c754d5507d98b6). C-11 provenance: counters COPIED from remint-plates-slate.json item `L172`."
-  },
-  {
-   "shot_id": "L196",
-   "file": "assets/scenes/L196.png",
-   "files": [
-    "assets/scenes/L196.png"
-   ],
-   "technique": "(c) character-free / environment gen — era remint",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Daniel board-v2 plain pass — correct on every criterion; empty room, no anatomy or identity to check. Promoted from <kit>/_staging/L196.png (sha256 bb56bf956f108ae4). C-11 provenance: counters COPIED from remint-plates-slate.json item `L196`."
-  },
-  {
-   "shot_id": "L01",
-   "file": "assets/scenes/L01.png",
-   "files": [
-    "assets/scenes/L01.png"
-   ],
-   "technique": "(c) character-free / environment gen",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L01.png (sha256 49d1dbb895057c13). Landed first attempt.",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L02",
-   "file": "assets/scenes/L02.png",
-   "files": [
-    "assets/scenes/L02.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "_staging/L01.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L02.png (sha256 5f4e9d875fd33e84). Landed first attempt.",
    "parent_depth": 1,
-   "lineage": 1
+   "lineage": 1,
+   "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-delighted GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; promoted from _staging/L29.png (sha256 374765b638907d2ab11e24c39ca4f78a793c11f202e027f1f760ec173eaf2c08, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L29 (round-1 pass, all-clean)"
   },
   {
-   "shot_id": "L04",
-   "file": "assets/scenes/L04.png",
-   "files": [
-    "assets/scenes/L04.png"
-   ],
-   "technique": "(c) character-free / environment gen",
+   "shot_id": "L30",
+   "file": "assets/scenes/L30.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    {
+     "path": "_staging/fig-terry-johnson--action-armscrossed--expr-thinking.png",
+     "role": "figure",
+     "character": "terry-johnson"
+    }
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L04.png (sha256 b18fc18639c1d130). Landed first attempt.",
    "parent_depth": 0,
-   "lineage": 0
+   "lineage": 0,
+   "notes": "`terry-johnson` STEP-1 fig-terry-johnson--action-armscrossed--expr-thinking GENERATE; promoted from _staging/L30.png (sha256 ca239f74e39782e4fe1a8c946550a87bf78d64816854bfb11a5c97fd62dcc25a, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L30 (round-1 pass, all-clean)"
   },
   {
-   "shot_id": "L11",
-   "file": "assets/scenes/L11.png",
-   "files": [
-    "assets/scenes/L11.png"
-   ],
-   "technique": "(c) character-free / environment gen",
+   "shot_id": "L31",
+   "file": "assets/scenes/L31.png",
+   "technique": "(e) Seeded delta-chain — in-chain parent + held figure canonical(s)",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-    "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
-    "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    {
+     "path": "_staging/L30.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+     "role": "canonical",
+     "character": "terry-johnson"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L11.png (sha256 a75e82cd16f64f36). Landed first attempt.",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L12",
-   "file": "assets/scenes/L12.png",
-   "files": [
-    "assets/scenes/L12.png"
-   ],
-   "technique": "(c) character-free scene — derived place plate, bible descriptor + style suffix",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L12.png (sha256 cecf482da8b3a7a9). Landed first attempt.",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L13",
-   "file": "assets/scenes/L13.png",
-   "files": [
-    "assets/scenes/L13.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "_staging/L12.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L13.png (sha256 c79fbf99e43ba8da). Landed first attempt.",
    "parent_depth": 1,
-   "lineage": 1
+   "lineage": 1,
+   "notes": "`terry-johnson` delta -> parent + canonical; promoted from _staging/L31.png (sha256 1870c3e36383e279120c304bead0a2eb3ec262b05a027273179dd2f4ace6904a, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L31 (round-1 pass, all-clean)"
   },
   {
-   "shot_id": "L14",
-   "file": "assets/scenes/L14.png",
-   "files": [
-    "assets/scenes/L14.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "shot_id": "L35",
+   "file": "assets/scenes/L35.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
    "seeds": [
-    "_staging/L13.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    {
+     "path": "_staging/fig-miniscribe-rep--action-celebrate--expr-delighted.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    }
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L14.png (sha256 fc01c53abdb5271c). Landed first attempt.",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-celebrate--expr-delighted GENERATE; promoted from _staging/L35.png (sha256 ea94d3b2000fe0035857d6e10bbad8af16ac136621bbd2937f282f451ac8967e, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L35 (round-1 pass, all-clean)"
+  },
+  {
+   "shot_id": "L36",
+   "file": "assets/scenes/L36.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/fig-miniscribe-rep--action-powerstance--expr-greedy.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+     "role": "environment",
+     "character": "lettering-marker-italic"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-greedy GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; promoted from _staging/L36.png (sha256 8ff7d98979d0fa6a12f53e14903072f4d4814810d57e58420242e8ff17105eb2, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L36 (round-1 pass, all-clean)"
+  },
+  {
+   "shot_id": "L37",
+   "file": "assets/scenes/L37.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/fig-miniscribe-rep--action-salute--expr-delighted.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-salute--expr-delighted GENERATE; promoted from _staging/L37.png (sha256 95b784cc553ceb5a091ce7e6dfe54b11de2913ef8755a4736c083e30f493b020, verified match on copy: True); verify record scratchpad/6c2-w2verify-a.json#L37 (round-1 pass, all-clean)"
+  },
+  {
+   "shot_id": "L40",
+   "file": "assets/scenes/L40.png",
+   "technique": "(c) Character-free scene — place plate root, zero-seed under bible descriptor + style suffix",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; promoted from _staging/L40.png (sha256 8035806635ac468e37a45a473277409832ac9e9325ec24398986916158423980, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L40 (round-1 pass, all-clean)"
+  },
+  {
+   "shot_id": "L41",
+   "file": "assets/scenes/L41.png",
+   "technique": "(e) Seeded delta-chain — in-chain parent + held figure canonical(s)",
+   "seeds": [
+    {
+     "path": "_staging/L40.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); promoted from _staging/L41.png (sha256 d69ea12a4d639f8595a19c6ccc7d5a7cd52a3939605388567919445e33a2aad3, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L41 (round-1 pass, all-clean)"
+  },
+  {
+   "shot_id": "L42",
+   "file": "assets/scenes/L42.png",
+   "technique": "(e) Seeded delta-chain — in-chain parent + held figure canonical(s)",
+   "seeds": [
+    {
+     "path": "_staging/L41.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
    "parent_depth": 2,
-   "lineage": 2
+   "lineage": 2,
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); promoted from _staging/L42.png (sha256 d081cef08f9c5d8f721ee81ee5e3588a49834d6bd0e68c03c274485f2f6e3268, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L42 (round-1 pass, all-clean)"
   },
   {
-   "shot_id": "L15",
-   "file": "assets/scenes/L15.png",
-   "files": [
-    "assets/scenes/L15.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "shot_id": "L43",
+   "file": "assets/scenes/L43.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
    "seeds": [
-    "_staging/L14.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    {
+     "path": "_staging/fig-base--point-at-thing--expr-deadpan--l43-30b903d1.png",
+     "role": "figure",
+     "character": "base"
+    }
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L15.png (sha256 d1227d8819d52edb). Landed first attempt.",
-   "parent_depth": 3,
-   "lineage": 3
-  },
-  {
-   "shot_id": "L16",
-   "file": "assets/scenes/L16.png",
-   "files": [
-    "assets/scenes/L16.png"
-   ],
-   "technique": "(c) character-free scene — derived place plate, bible descriptor + style suffix",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: LOW",
-    "style: MEDIUM",
-    "dsg a4: Do the computer cases render BEIGE, per the authored palette 'beige on grey'? — FAIL. The cases render a cool pale grey-green, so the authored two-colour palette collapses to one. The cases are the frame's entire subject; their beige is not decoration.",
-    "dsg s1: Era register: is the outline an even medium-thick WARM brown-black (#241a12)? — FAIL, measured. L16's ink sits at hue 172.2deg (cyan) with R-B -1.4. Every other frame in the batch runs 6-34deg with R-B between +3.4 and +31.3, as do both plates the human board accepted (L03 +3.8, L05 +24.3). L16 is the sole inversion in the set - a cool blue-black outline where the era clause names a warm brown-black.",
-    "The outline is a cool blue-black (measured ink hue 172deg, R-B -1.4) - the only inversion in a batch that otherwise runs 6-34deg with R-B +3.4 to +31.3, as do both human-accepted plates; and the authored 'beige on grey' palette collapsed to one colour because the beige computer cases rendered cool grey. Median saturation 0.1686 is the batch floor, and the frame cuts between the warm-oak L15 and the warm-spotlight L17."
-   ],
-   "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L16.png (sha256 332bdee0f293c8d4). Landed first attempt.",
    "parent_depth": 0,
-   "lineage": 0
+   "lineage": 0,
+   "notes": "`base` STEP-1 fig-base--point-at-thing--expr-deadpan--l43-30b903d1 GENERATE; promoted from _staging/L43.png (sha256 62988264a1663cbe0f408574fd5aba8f427070b31279d787f4b5043a9205a485, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L43 (round-1 pass, all-clean)"
   },
   {
-   "shot_id": "L17",
-   "file": "assets/scenes/L17.png",
-   "files": [
-    "assets/scenes/L17.png"
-   ],
-   "technique": "(c) character-free / environment gen",
+   "shot_id": "L50",
+   "file": "assets/scenes/L50.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
    "seeds": [
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    {
+     "path": "_staging/fig-hq-banker--action-offering--expr-deadpan.png",
+     "role": "figure",
+     "character": "hq-banker"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+     "role": "environment",
+     "character": "lettering-marker-italic"
+    }
    ],
    "flagged": false,
    "review_status": "verified",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L17.png (sha256 838076a09e97a569). Landed first attempt.",
    "parent_depth": 0,
-   "lineage": 0
+   "lineage": 0,
+   "notes": "`hq-banker` STEP-1 fig-hq-banker--action-offering--expr-deadpan GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; promoted from _staging/L50.png (sha256 e5973625da869a6b9e7a1e63c9861c83c2dffc2293182f1c7edbbd6f85fed192, verified match on copy: True); verify record scratchpad/6c2-w2verify-b.json#L50 (round-1 pass, all-clean)"
   },
   {
-   "shot_id": "L18",
-   "file": "assets/scenes/L18.png",
-   "files": [
-    "assets/scenes/L18.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
+   "shot_id": "L27",
+   "file": "assets/scenes/L27.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
    "seeds": [
-    "_staging/L17.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce.png",
+     "role": "figure",
+     "character": "base"
+    }
    ],
    "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: HIGH",
-    "style: MEDIUM",
-    "dsg a1: Do the slabs STAND UPRIGHT, butted face to face and shoved hard against each other, locked up like the two cases behind them? — FAIL, and it is the exact error R-12 was written to fix. The slabs LIE FLAT, splayed open like an opened book - not upright, not butted face to face, not locked up. Two phones lying face-up on a plinth read as display stock, so the mirrored fight that 'and Apple fight over the phone market' needs is simply not depicted. This is the shot's entire payload.",
-    "dsg r1: Is the rest of the display held exactly as established in L17 - plate glass, black platform with its red scuffed arc, spotlight, case proportions? — FAIL. Essentially nothing carried: the plate-glass side panels became a wooden proscenium frame; the red scuffed arc became faint pink scratches; the spotlight cone changed shape and the platform gained a large cream light pool; the cases changed proportion and gained scuff marks they did not have. A delta frame's whole contract is that only the authored change moves.",
-    "dsg r2: Is the crowd of passers-by held - same people, in coats and headscarves with shopping bags? — FAIL, twice over. A wholly different set of people, drawn smaller with a different face treatment and repositioned from the flanks to a band across the top - a continuity break; AND they wear short-sleeved t-shirts, contemporary casual wear and modern hairstyles - an ERA break. The frame's costume no longer reads 1983.",
-    "dsg s1: Era register: warm outline, flat cel, chromatic; and is red used semantically only? — Outline and cel are correct (ink hue 12.3deg, R-B +27.2; median saturation 0.2706) - but the red accent lost its semantics. In L17 red is the contact arc, the punch element; here it survives only as scattered scratch marks with no single semantic referent, which the era suffix licenses red for.",
-    "The two phone slabs lie FLAT on the platform splayed open like a book instead of standing upright butted face to face and locked up, so the mirrored fight the line needs is not depicted; the held set was re-invented (plate-glass panels became a wooden proscenium, the red scuffed arc became faint scratches, the spotlight and platform lighting changed, the cases changed proportion); and the crowd is a different crowd in contemporary short-sleeved dress rather than L17's 1980s coats and headscarves, which is an era break as well as a continuity break."
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "r1 defect fixed by exact replace — from: \"hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him\" -> to: \"hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack that towers over him, BOTH of his hands closed on the sheet's leading edge and BOTH drawn as full rig hands - three finger\"",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "`base` STEP-1 fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce REUSED; RETRY overlay from `L27`; promoted from _staging/L27-fix.png (sha256 c11fd5449906392c2ed4538ab730e9d2066125d42c9077f1cb25b32bca9640cb, verified match on copy: True) to canonical assets/scenes/L27.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L27-fix (retry round 1, pass)"
+  },
+  {
+   "shot_id": "L32",
+   "file": "assets/scenes/L32.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-base--action-recoil--expr-shock--l32-36f3a4e9.png",
+     "role": "figure",
+     "character": "base"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
    ],
-   "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L18.png (sha256 47bcb1ed3d5db4b4). Landed first attempt.",
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "r1 defect fixed by exact replace — from: \"a fire bucket on the floor stage-right\" -> to: \"one small unmarked fire bucket set well back on the floor stage-right, drawn completely BLANK - no stencilled word, no letter, no number, no label and no marking of any kind on it, and no lettering an\"",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "`base` STEP-1 fig-base--action-recoil--expr-shock--l32-36f3a4e9 REUSED; RETRY overlay from `L32`; promoted from _staging/L32-fix.png (sha256 13f8c5fce2eec7d2acfed72d309253a080ba3254a0c83ce53e96d150648ceece, verified match on copy: True) to canonical assets/scenes/L32.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L32-fix (retry round 1, pass)"
+  },
+  {
+   "shot_id": "L33",
+   "file": "assets/scenes/L33.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--expr-smug.png",
+     "role": "figure",
+     "character": "ibm-suit"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--expr-delighted.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/base/handshake.png",
+     "role": "interaction",
+     "character": null
+    },
+    {
+     "path": "_staging/L28.png",
+     "role": "place",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "r1 defect fixed by exact replace — from: \"both holding the same plane at a matching eye line and an equal relative head scale\" -> to: \"both holding the same plane at a matching eye line and an equal relative head scale. The man in the tan blazer is drawn exactly as his own reference sheet draws him and is not re-invented for this fra\"",
    "parent_depth": 1,
-   "lineage": 1
+   "lineage": 1,
+   "notes": "`ibm-suit` STEP-1 fig-ibm-suit--expr-smug REUSED; `miniscribe-rep` STEP-1 fig-miniscribe-rep--expr-delighted REUSED; RETRY overlay from `L33`; promoted from _staging/L33-fix.png (sha256 77ea9d2d1fbf5b864b7c9f5df5ebdfb610a6c12500951835b33c9a864726a2e0, verified match on copy: True) to canonical assets/scenes/L33.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L33-fix (retry round 1, pass)"
   },
   {
-   "shot_id": "L19",
-   "file": "assets/scenes/L19.png",
-   "files": [
-    "assets/scenes/L19.png"
+   "shot_id": "L44",
+   "file": "assets/scenes/L44.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-ibm-suit--action-thumbsdown--expr-annoyed.png",
+     "role": "figure",
+     "character": "ibm-suit"
+    },
+    {
+     "path": "_staging/L28.png",
+     "role": "place",
+     "character": null
+    }
    ],
-   "technique": "(a) reuse — human-restored archived pre-reset frame, $0, no provider call",
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "r1 defect fixed by exact replace — from: \"the tote rack stage-left half empty, the roller door shut\" -> to: \"the tote rack stage-left now VISIBLY HALF EMPTY and plainly different from the full rack of the seeded plate - its upper shelves stripped down to bare metal, tote bins left only on the lower shelves -\"",
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "`ibm-suit` STEP-1 fig-ibm-suit--action-thumbsdown--expr-annoyed REUSED; RETRY overlay from `L44`; promoted from _staging/L44-fix.png (sha256 14e0d54990d900623072f58e920d49631b0d726f2a09756a367b4ebb7ff6adf2, verified match on copy: True) to canonical assets/scenes/L44.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L44-fix (retry round 1, pass)"
+  },
+  {
+   "shot_id": "L46",
+   "file": "assets/scenes/L46.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718.png",
+     "role": "figure",
+     "character": "base"
+    },
+    {
+     "path": "_staging/L28.png",
+     "role": "place",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "r1 defect fixed by exact replace — from: \"stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door\" -> to: \"over at the stage-LEFT side of the floor and walking AWAY from the camera, straight DOWN the length of the assembly floor toward the roller door at the far end, his back three-quarters to us and the d\"",
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "`base` STEP-1 fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718 REUSED; RETRY overlay from `L46`; promoted from _staging/L46-fix.png (sha256 a9ffb5cc70e5248ace3be1cf224f175e2c8dd556aca226b2ff88affd066592d7, verified match on copy: True) to canonical assets/scenes/L46.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L46-fix (retry round 1, pass)"
+  },
+  {
+   "shot_id": "L47",
+   "file": "assets/scenes/L47.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png",
+     "role": "figure",
+     "character": "terry-johnson"
+    },
+    {
+     "path": "_staging/L28.png",
+     "role": "place",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "r1 defect fixed by exact replace — from: \"stepping out through a glass door onto a car park apron with a document case at his side, his back half turned to the floor behind him. Through the glass the as\" -> to: \"already OUTSIDE the building and standing on the open car-park apron, one pace clear of the glass door he has just come through, a document case at his side and his back half turned to the door. He st\"",
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "`terry-johnson` STEP-1 fig-terry-johnson--carry-by-handle--expr-crestfallen REUSED; RETRY overlay from `L47`; promoted from _staging/L47-fix.png (sha256 f018b80791bfc4816c797fa6fc2ada4f5f12ae72882ea99027274645baccf0c8, verified match on copy: True) to canonical assets/scenes/L47.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L47-fix (retry round 1, pass)"
+  },
+  {
+   "shot_id": "L48",
+   "file": "assets/scenes/L48.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-miniscribe-rep--action-slump--expr-worried.png",
+     "role": "figure",
+     "character": "miniscribe-rep"
+    },
+    {
+     "path": "_staging/L28.png",
+     "role": "place",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "r1 defect fixed by exact replace — from: \"alone stage-centre on the assembly floor with his shoulders down, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittin\" -> to: \"alone stage-centre on the assembly floor in a real SLUMP that the drawing must execute, not an upright stand: his shoulders visibly DROPPED and rounded well below their normal line, his head hanging f\"",
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-slump--expr-worried REUSED; RETRY overlay from `L48`; promoted from _staging/L48-fix.png (sha256 bcd28e1eefe5841e0f04b27768861f896ed03f23e7cd2782a7f13da8b7b68f7e, verified match on copy: True) to canonical assets/scenes/L48.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L48-fix (retry round 1, pass)"
+  },
+  {
+   "shot_id": "L49",
+   "file": "assets/scenes/L49.png",
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-hq-banker--action-armscrossed--expr-skeptical.png",
+     "role": "figure",
+     "character": "hq-banker"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "r1 defect fixed by exact replace — from: \"A partners' desk stage-right under a green shaded lamp, a wall of oak drawer cabinets behind, tall sash windows stage-left onto grey city rooftops.\" -> to: \"This is the SAME office as the following shot and every surface must match it: a plain oak plank floor with no carpet of any colour, walls of oak raised-and-fielded paneling behind him, oak drawer cab\"",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "`hq-banker` STEP-1 fig-hq-banker--action-armscrossed--expr-skeptical REUSED; RETRY overlay from `L49`; promoted from _staging/L49-fix.png (sha256 b3f1965df42d35c4356a1e5b9ab0986e51d40fc77ae3ce3e05452a153f9f79ff, verified match on copy: True) to canonical assets/scenes/L49.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r1.json#L49-fix (retry round 1, pass)"
+  },
+  {
+   "shot_id": "L34",
+   "file": null,
+   "technique": "(e) Seeded delta-chain — in-chain parent + held figure canonical(s)",
    "seeds": [],
    "flagged": false,
-   "review_status": "verified",
+   "review_status": "unreviewed",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Daniel 2026-08-06 in-session ruling — restored as-is from the pre-reset run's archive at `assets/_archive-pre-reset/scenes/L19.png` (the 214-shot pre-reset file's hero 'raking it in' frame), replacing the Phase 6B candidate. Held still across both L19 and L20 slots — the VO '...were quietly / raking it in. They were' spans both, and L20.png is byte-identical to this file (sha256 6c957638418ba0889d). Measured: ink hue 14.7deg, R-B +17.8 (WARM), median saturation 0.2588; 2752x1536 (2K), downscaled at render per precedent R2. No batch spec exists for this restore (manual ruling, not a `batch` run) — C-11 provenance counters STATED as root values (parent_depth 0 / lineage 0), same treatment as the L05 archive-restore precedent (board-v2 ruling R5). Superseded frame preserved at `assets/_archive-pre-restore-2026-08-06/L19.png` (sha256 c6a5d6eac1174df2).",
-   "parent_depth": 0,
-   "lineage": 0
+   "parent_depth": 2,
+   "lineage": 2,
+   "notes": "OPEN — chain delta on L33 (stage ibm-deal, place miniscribe-floor). A prior mint (sha256 5ce59e5a51e7379c959e9b41aa3554a4e1ae6537533d9a8daa981268bd643f06, evidence in scratchpad/6c2-w2verify-a.json#L34) FAILED fresh-eyes review: both ibm-suit and miniscribe-rep re-drawn off-card because its parent L33 itself carried a drifted identity. That parent is now fixed and promoted verified (assets/scenes/L33.png), which unblocks a fresh delta mint per the chain-parent resolution law (forge resolves the L33 in-chain parent at _staging/L33.png or assets/scenes/L33.png — the latter now exists verified). The stale pre-fix L34 frame was never promoted and is discarded, not carried forward as a defective canonical. Re-mint is this pass's Stage 2; the new frame is NOT fresh-eyes reviewed here per instruction — left unreviewed for a later pass."
   },
   {
-   "shot_id": "L20",
-   "file": "assets/scenes/L20.png",
-   "files": [
-    "assets/scenes/L20.png"
-   ],
-   "technique": "(a) reuse — human-restored archived pre-reset frame, $0, no provider call",
+   "shot_id": "L38",
+   "file": null,
+   "technique": "unknown — never generated",
    "seeds": [],
    "flagged": false,
-   "review_status": "verified",
+   "review_status": "unreviewed",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Daniel 2026-08-06 in-session ruling — restored as-is from the pre-reset run's archive at `assets/_archive-pre-reset/scenes/L19.png` (the 214-shot pre-reset file's hero 'raking it in' frame — same source file as L19, this slot reuses it), replacing the Phase 6B candidate. SAME FRAME as L19.png — byte-identical (sha256 6c957638418ba0889d) — a held still across both slots; the VO '...were quietly / raking it in. They were' spans both. Measured: ink hue 14.7deg, R-B +17.8 (WARM), median saturation 0.2588; 2752x1536 (2K), downscaled at render per precedent R2. No batch spec exists for this restore (manual ruling, not a `batch` run) — C-11 provenance counters STATED as root values (parent_depth 0 / lineage 0), same treatment as the L05 archive-restore precedent (board-v2 ruling R5). Superseded frame preserved at `assets/_archive-pre-restore-2026-08-06/L20.png` (sha256 b2d40d258064e64d).",
    "parent_depth": 0,
-   "lineage": 0
+   "lineage": 0,
+   "notes": "OPEN — never minted. Original wave-2 pass hit HTTP 503 (\"experiencing high demand\") on this item; a 503 returns no image and bills nothing, so this is a transport failure, not a content failure (scratchpad/6c2-w2verify-a.json note). A background transport-resilient re-driver (scratchpad/6c2-w2retry2-*, prefix 6c2-w2retry2) is currently chasing this item alongside L39/L45; as of this promotion pass its passes are producing nothing (\"provider is down\") and no frame exists on disk yet. Out of this worker's scope per brief — not touched."
   },
   {
-   "shot_id": "L21",
-   "file": "assets/scenes/L21.png",
-   "files": [
-    "assets/scenes/L21.png"
-   ],
-   "technique": "(a) reuse — human-restored archived pre-reset frame, $0, no provider call",
+   "shot_id": "L39",
+   "file": null,
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
    "seeds": [],
    "flagged": false,
-   "review_status": "verified",
+   "review_status": "unreviewed",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Daniel 2026-08-06 in-session ruling — restored as-is from the pre-reset run's archive at `assets/_archive-pre-reset/scenes/L20.png` (the 214-shot pre-reset file's deadpan 'gold rush' merchant frame), replacing the Phase 6B candidate. Measured: ink hue 14.5deg, R-B +35.1 (WARM), median saturation 0.4784; 2752x1536 (2K), downscaled at render per precedent R2. No batch spec exists for this restore (manual ruling, not a `batch` run) — C-11 provenance counters STATED as root values (parent_depth 0 / lineage 0), same treatment as the L05 archive-restore precedent (board-v2 ruling R5). Superseded frame preserved at `assets/_archive-pre-restore-2026-08-06/L21.png` (sha256 9152f5ca2bcdd3aa).",
    "parent_depth": 0,
-   "lineage": 0
+   "lineage": 0,
+   "notes": "OPEN — reviewed and FAILED (scratchpad/6c2-w2verify-b.json#L39, sha256 0ee2aab2c54b3e9217512924fc32c580e930b275e1af5c96d62223e0776de932): '600 MILLION' stencil on the wrong truck panel, and the banded-notes bulge staged on the roof instead of at the shut rear doors. That reviewed frame has since been removed from _staging/ (no file on disk as of this promotion pass) pending a corrected retry — an L39-fix item is in the same background re-driver queue as L38/L45 (scratchpad/6c2-w2retry2-*), currently blocked by the same provider outage (an in-flight L39-fix.png.lock is on disk with no completed frame behind it). Left `unreviewed` rather than `parked` because no file currently exists for the status to describe; the ruling above is preserved here for context, not written as a manifest-level parked verdict against a nonexistent asset. Out of this worker's scope — not touched."
   },
   {
-   "shot_id": "L06",
-   "file": "assets/scenes/L06.png",
-   "files": [
-    "assets/scenes/L06.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
+   "shot_id": "L45",
+   "file": null,
+   "technique": "(b) Seeded composition — locked character(s) in composed environment",
+   "seeds": [],
    "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MEDIUM",
-    "dsg t2: Is '1983' the ONLY drawn text, with no unauthored second instance? — FAIL. A second '1983' renders as an unauthored TENT CARD standing on the oak counter in the near foreground. The prompt authors only the window card and the era suffix forbids unrequested text. The register is right (marker capitals, correct wording) - the COUNT is wrong, and a dateline stops functioning as a dateline when the room states it twice.",
-    "An unauthored second '1983' tent card on the counter duplicates the established diegetic literal; the prompt authors only the window card and the era suffix forbids unrequested text."
-   ],
-   "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L06.png (sha256 c8773bc6a86f77fe). Landed first attempt. C-11 counters copied from p6b-slate2.json (parent_depth=1, lineage=1); seeds the promoted, verified place plate.",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L07",
-   "file": "assets/scenes/L07.png",
-   "files": [
-    "assets/scenes/L07.png"
-   ],
-   "technique": "(b) seeded composition — seeds the promoted place plate",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: HIGH",
-    "rig: MEDIUM",
-    "dsg r2: Is the vantage down on the shop floor at counter height, with the counter CROSSING THE FOREGROUND? — FAIL. The counter runs along the right wall into depth - i.e. L05's own door-side wide vantage, reproduced. The prompt authors 'from down on the shop floor... the varnished oak counter crosses the foreground', framed 'medium-wide at counter height, the counter edge across the foreground'. The shot's stated reason for existing (a new vantage so the cut reads against L05's door-side wide) is unmet; against L05 and L06 this cuts as the same camera.",
-    "dsg r3: Is the opened straw-filled crate at the counter's near end? — FAIL. The crate is present but sits on the floor at foreground-LEFT; counter and crate are at opposite sides of the frame, so the authored relation is broken.",
-    "dsg g1: Are the raised banknotes held up over the shoulders by visible hands? — FAIL. Four of the five raised notes have hands; one at approximately (907, 249) in the 1376x768 frame floats above a head with NO hand and NO arm attached. Confirmed at 2x crop.",
-    "dsg t1: Lettering: is any drawn text complete and correctly worded? — FAIL. The '1983' window card IS redrawn at this vantage and is occluded by the foreground buyer's head so only '83' reads. The shot's own notes state the card 'sits behind camera at this vantage, so no established literal is redrawn here'. A half-quoted dateline is a lettering defect, not a neutral crop.",
-    "The authored counter-height vantage was not delivered (L05's door-side wide is reproduced instead); one raised banknote floats with no hand or arm; the established '1983' card is redrawn occluded to a partial '83'; and the crate sits on the floor at foreground-left rather than at the counter's near end."
-   ],
-   "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L07.png (sha256 be48a0a66d8a17e1). Landed first attempt. C-11 counters copied from p6b-slate2.json (parent_depth=1, lineage=1); seeds the promoted, verified place plate.",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L09",
-   "file": "assets/scenes/L09.png",
-   "files": [
-    "assets/scenes/L09.png"
-   ],
-   "technique": "(b) seeded composition — seeds the promoted place plate",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
+   "review_status": "unreviewed",
    "parked_reasons": [],
    "retry_cause": null,
-   "notes": "Phase 6B candidate, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Staged at _staging/L09.png (sha256 2c8287fa191d1b5b). Landed first attempt. C-11 counters copied from p6b-slate2.json (parent_depth=1, lineage=1); seeds the promoted, verified place plate.",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L06-retry1",
-   "file": "assets/scenes/L06-retry1.png",
-   "files": [
-    "assets/scenes/L06-retry1.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: LOW",
-    "dsg e2: Does an opened wooden crate now stand at the counter's NEAR end? — FAIL. The crate stands ON the counter's top surface at its FAR end. L05's own still_prompt places the '1983' window card 'at the counter's far end', and the crate here sits immediately beside that card on the same sill. Round 1 scored this attribute a PASS on the parked original (crate at the counter's near end), so this is a regression on a passing attribute. It also crowds the frame's right third and buries most of the window; about a third of the crate is cropped by the frame edge.",
-    "The authored delta ('an opened wooden crate now stands at the counter's NEAR end') renders on the counter top at its FAR end, beside the window card that L05's own prose places at the far end - a regression on an attribute round 1 passed. The double-'1983' defect the retry was authorised for is fixed."
-   ],
-   "retry_cause": "round-1 fresh-eyes park on L06",
-   "notes": "Phase 6B SURGICAL RETRY of the parked original L06, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Authored as a forge-retry-overlay@2 manifest and $0-validated at changed_spans=1 (one exact-replace authority; every passing clause byte-identical). The parked original stays archived at _staging/L06.png and is NOT superseded unless this retry verifies. Staged at _staging/L06-retry1.png (sha256 4a31fab7cd611707). C-11 counters copied programmatically from p6b-retry-slate.json (parent_depth=1, lineage=1).",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L07-retry1",
-   "file": "assets/scenes/L07-retry1.png",
-   "files": [
-    "assets/scenes/L07-retry1.png"
-   ],
-   "technique": "(b) seeded composition — seeds the promoted place plate",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: HIGH",
-    "dsg e2: Does the varnished oak counter cross the foreground with ITS brass till - one counter, one till? — FAIL. Two counters and two brass tills render: a new foreground-left counter carrying a large brass till, plus the seeded L05 counter along the right wall carrying its own. The prompt authors one counter with one brass till and L05 establishes one. Unauthored duplication of an established place prop - the same defect class that parked L06 in round 1.",
-    "dsg a1: Is the vantage down on the shop floor, medium-wide AT COUNTER HEIGHT, with the counter edge across the foreground? — FAIL. A counter edge is now in the foreground, which the parked original lacked, but it occupies only the left third rather than crossing, and the camera looks DOWN onto both counter tops - at counter height a counter top reads as a near-edge-on line, not a fully visible surface. The flagged vantage is half-addressed, not delivered.",
-    "dsg t2: Is there any unrequested or garbled text in frame? — FAIL, blocking. The foreground till's display panel carries drawn glyphs reading approximately 'r9 8 3' mirrored/garbled (examined at 8x crop). Nothing in the prompt authors a till display legend, the era suffix forbids unrequested text, and DSG-lite makes a garbled render blocking regardless of axis severities.",
-    "The frame now draws TWO oak counters each carrying a brass till where the prompt and the L05 plate establish one; the foreground till's display panel carries garbled unauthored glyphs; and the authored 'medium-wide at counter height, the counter edge across the foreground' vantage is still not delivered - a counter edge occupies only the left third and the camera looks down onto both counter tops."
-   ],
-   "retry_cause": "round-1 fresh-eyes park on L07",
-   "notes": "Phase 6B SURGICAL RETRY of the parked original L07, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Authored as a forge-retry-overlay@2 manifest and $0-validated at changed_spans=1 (one exact-replace authority; every passing clause byte-identical). The parked original stays archived at _staging/L07.png and is NOT superseded unless this retry verifies. Staged at _staging/L07-retry1.png (sha256 272f903c6f49fcec). C-11 counters copied programmatically from p6b-retry-slate.json (parent_depth=1, lineage=1).",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L16-retry1",
-   "file": "assets/scenes/L16-retry1.png",
-   "files": [
-    "assets/scenes/L16-retry1.png"
-   ],
-   "technique": "(c) character-free / environment gen",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MEDIUM",
-    "style: MEDIUM",
-    "dsg a1: Is the shelf face SQUARE TO THE FRAME? — FAIL. The shelf runs in a deep one-point oblique to a vanishing point at right. The prompt pins 'its face square to the frame' and the shot's notes state why: 'Restaged as a frieze... Multiplication reads from the rank, NOT from a run converging away down its length.' This attribute was an explicit PASS in round 1. The retry restores the exact geometry the restaging removed.",
-    "dsg e2: Are identical cases ranked edge to edge nose-out, the row carrying on past BOTH frame edges? — FAIL. The rank runs past the LEFT edge only; at right it converges into depth and terminates inside the frame. Round 1 passed this attribute. The multiplication argument now reads as perspective recession rather than as an endless rank.",
-    "dsg a3: Is the centre case's bay lit from inside, with the rest of the rank in even shadow? — FAIL (weak). The centre case carries a soft warm wash across its face rather than the unmistakable amber-lit bay of the parked original. The payload contrast the 2.0s beat turns on is diluted to near-illegibility at cut speed.",
-    "dsg s2: Does the frame read on-recipe and rich - committed palette, filled edge to edge - rather than thin or off-register? — FAIL. The deep oblique is exactly the off-eye-level camera language this shot's TIER-A VANTAGE REPAIR deleted on the principle that the house vantage needs no camera language, so it is an era regression as well as a composition one. It also opened large flat grey wall and ceiling fields: median saturation FELL 0.1686 to 0.1255, and the frame reads less filled edge-to-edge than the frame it replaces.",
-    "The authored 'face square to the frame' shelf renders as a deep one-point oblique converging to a right-hand vanishing point - precisely the geometry the R-16 frieze restaging was written to eliminate ('multiplication reads from the rank, not from a run converging away down its length'); the rank no longer carries on past BOTH frame edges, terminating in depth at right; the Tier-A vantage repair that deleted this shot's camera language is undone; the lit centre bay is diluted to a soft wash; and median saturation FELL 0.1686 to 0.1255 as the oblique opened large flat grey wall and ceiling fields."
-   ],
-   "retry_cause": "round-1 fresh-eyes park on L16",
-   "notes": "Phase 6B SURGICAL RETRY of the parked original L16, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Authored as a forge-retry-overlay@2 manifest and $0-validated at changed_spans=1 (one exact-replace authority; every passing clause byte-identical). The parked original stays archived at _staging/L16.png and is NOT superseded unless this retry verifies. Staged at _staging/L16-retry1.png (sha256 6ed64518bd33a243). C-11 counters copied programmatically from p6b-retry-slate.json (parent_depth=0, lineage=0).",
    "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L18-retry1",
-   "file": "assets/scenes/L18.png",
-   "files": [
-    "assets/scenes/L18.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L17.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": "round-1 fresh-eyes park on L18",
-   "notes": "Phase 6B SURGICAL RETRY of the parked original L18, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt. Authored as a forge-retry-overlay@2 manifest and $0-validated at changed_spans=1 (one exact-replace authority; every passing clause byte-identical). The parked original stays archived at _staging/L18.png and is NOT superseded unless this retry verifies. Staged at _staging/L18-retry1.png (sha256 6442f49d2987ad5a). C-11 counters copied programmatically from p6b-retry-slate.json (parent_depth=1, lineage=1). PROMOTED 2026-08-06 to assets/scenes/L18.png (sha256 6442f49d2987ad5a) after the round-2 fresh-eyes PASS — this retry SUPERSEDES the parked original L18, which stays archived at _staging/L18.png and was NOT promoted. NOTE FOR THE RENDER GATE: the shot_id `L18` entry remains `parked` on its round-1 ruling, so the gate will still refuse shot L18 even though the verified pixels now sit at assets/scenes/L18.png. Resolving that requires a verdict on the shot id itself, which only stamp_review.py may write from a reviewer ruling — flagged, deliberately not hand-fixed.",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L10",
-   "file": "assets/scenes/L10.png",
-   "files": [
-    "assets/scenes/L10.png"
-   ],
-   "technique": "(b) seeded composition — seeds the promoted place plate",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: HIGH",
-    "dsg e2: Is the queue of overnight buyers BEYOND the window glass, curling away down the pavement, with folding chairs, sleeping bags and flasks along the kerb? — FAIL. The entire authored group - camp chairs, sleeping bag, flasks, breath puffs - is INSIDE the shop, sitting and standing on the shop floor against the bare bays and up against the counter. Outside, a thin secondary queue of plain standing figures is visible through the door and window carrying none of the authored props. The interior is the packed half and the street is the still one: the counterpoint is reversed. Breath drawn on indoor figures is the tell.",
-    "dsg a1: Does the framing read wide FROM BEHIND THE COUNTER, the glass splitting the still interior from the packed street? — FAIL. The camera sits in the room with the counter running along the right wall into depth - the L05 door-side vantage again. Against L05 this will cut as the same camera, the same failure round 1 charged on L07. And with the crowd indoors the glass splits nothing.",
-    "The authored crowd zone is inverted - the overnight queue with its folding chairs, sleeping bags and flasks is inside the shop instead of beyond the window glass on the pavement, so 'the glass splitting the still interior from the packed street' does not read; and the authored 'wide from behind the counter' vantage is not delivered - the camera sits in the room with the counter along the right wall, which is L05's own door-side vantage again."
-   ],
-   "retry_cause": null,
-   "notes": "Phase 6B resume-lane frame, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt, after the provider recovered from the sustained HTTP 503 outage. Landed first attempt, no re-issue. Staged at _staging/L10.png (sha256 b72d9f7bd35135bf). C-11 counters copied programmatically from p6b-slate3.json (parent_depth=1, lineage=1).",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L22",
-   "file": "assets/scenes/L22.png",
-   "files": [
-    "assets/scenes/L22.png"
-   ],
-   "technique": "(b) seeded composition — seeds the promoted place plate",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L03.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "Phase 6B resume-lane frame, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt, after the provider recovered from the sustained HTTP 503 outage. Landed first attempt, no re-issue. Staged at _staging/L22.png (sha256 1db6db57cbb15b8e). C-11 counters copied programmatically from p6b-slate3.json (parent_depth=1, lineage=1). PROMOTED 2026-08-06 to assets/scenes/L22.png (sha256 1db6db57cbb15b8e) after the round-2 fresh-eyes PASS; the _staging copy is retained. Now available as the verified in-chain parent for the L23 correction.",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L23",
-   "file": "assets/scenes/L23.png",
-   "files": [
-    "assets/scenes/L23.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "_staging/L22.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MEDIUM",
-    "dsg e2: Does THE FRONT CARTON on that unwrapped top row - one of the ranked cartons - stand with its flaps folded open? — FAIL, measured against the parent. In L22 the centre pallet spans x=565-800 and its top row holds THREE cartons across (~78px each). In L23 a SINGLE open box spans x=565-830, replacing the whole rank; its flaps alone are wider than any carton in the frame and overlap the neighbouring pallets. The held top row of that pallet is not held - it was consumed by the new element. The flaps ARE folded open, which is the half that landed.",
-    "dsg a1: Does one red clay brick lie inside on crumpled paper, FILLING THE BOX EXACTLY? — FAIL. The brick spans ~95px inside a ~265px opening - about a third of the width and much less of the area - sitting in a bed of crumpled paper. The authored fact is 'filling the box exactly'. The next beat's narration is 'red clay bricks into little boxes', so the oversized box contradicts the line it sets up and blunts the gag. The brick itself is correct: red clay, on crumpled paper.",
-    "The opened carton is roughly 3x the ranked carton the prompt authors ('the front carton on that unwrapped top row'), consuming the whole top row of the centre pallet rather than being one of it; and the brick fills about a third of the opening against an authored 'filling the box exactly', on a beat whose successor narrates 'little boxes'."
-   ],
-   "retry_cause": null,
-   "notes": "Phase 6B resume-lane frame, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt, after the provider recovered from the sustained HTTP 503 outage. Landed first attempt, no re-issue. Staged at _staging/L23.png (sha256 6f275297a92fd4a4). C-11 counters copied programmatically from p6b-slate3.json (parent_depth=2, lineage=2).",
-   "parent_depth": 2,
-   "lineage": 2
-  },
-  {
-   "shot_id": "L24",
-   "file": "assets/scenes/L24.png",
-   "files": [
-    "assets/scenes/L24.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "_staging/L23.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MEDIUM",
-    "rig: LOW",
-    "dsg e2: Does EVERY REMAINING CARTON along that unwrapped top row stand with its flaps folded open? — FAIL, same class as L23 and now three times over. The top row of each of the three pallets is replaced by ONE pallet-width open box rather than the ranked cartons the parent drew. Smaller open cartons with bricks do appear in depth behind, so the row-wide read partially lands - but on the wrong objects.",
-    "dsg a1: Does one red clay brick lie inside EACH on crumpled paper, FILLING ITS BOX EXACTLY? — FAIL. Each giant box holds one small brick on crumpled paper occupying a fraction of the opening, against an authored 'filling its box exactly'. The bricks themselves are correct - red clay, on crumpled paper.",
-    "dsg r1: Held set: are the crew identical to the parent in appearance and pose? — FAIL (LOW). Against L22/L23 the second packer from the left is now drawn with a white head covering, hair and a collared shirt with a tie where he was a bare cream oval in workwear; the fourth packer gains a grey head covering with hair. A delta's contract is that only the authored change moves. Small, rear-zone and unnamed figures - hence LOW - but it is a real drift, and it persists into L25.",
-    "The authored 'every remaining carton along that unwrapped top row' renders as one pallet-width box per pallet rather than as the ranked cartons, and no brick fills its box as authored; and two held crew members changed appearance against the parent (one gained a white head covering, hair and a collared shirt with tie; another gained a grey head covering with hair), which a delta's contract forbids."
-   ],
-   "retry_cause": null,
-   "notes": "Phase 6B resume-lane frame, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt, after the provider recovered from the sustained HTTP 503 outage. Landed first attempt, no re-issue. Staged at _staging/L24.png (sha256 5f33a5904e85b6d4). C-11 counters copied programmatically from p6b-slate3.json (parent_depth=3, lineage=3).",
-   "parent_depth": 3,
-   "lineage": 3
-  },
-  {
-   "shot_id": "L25",
-   "file": "assets/scenes/L25.png",
-   "files": [
-    "assets/scenes/L25.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "_staging/L24.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MEDIUM",
-    "rig: LOW",
-    "dsg e2: Are those open cartons the ranked cartons the chain authored, each brick filling its box exactly? — FAIL, inherited unchanged from L23/L24. Three pallet-width boxes stand in place of the ranked cartons, each holding one brick that fills a fraction of its opening. This frame carries the narration 'boxes labelled hard drive' against boxes nothing like the 'little boxes' the previous line names.",
-    "dsg a1: Does the front face of EVERY ONE of those open cartons carry 'HARD DRIVE' across the middle of the board? — FAIL (LOW). The three foreground boxes carry it; the smaller open cartons in depth behind them carry nothing. Lettering those at this scale would be illegible and the three that read do carry the beat - but the authored quantifier is not met.",
-    "dsg r1: Held set: are the crew identical to the chain root in appearance? — FAIL (LOW). The two crew appearance drifts introduced at L24 persist - a white head covering with hair and a collared shirt and tie on one packer, a grey head covering with hair on another, against the bare cream ovals in workwear of L22/L23.",
-    "The chain's scale defect is carried unchanged - three pallet-width boxes standing in place of the ranked cartons, each holding one brick that fills a fraction of its opening, against a narration of 'little boxes'; 'HARD DRIVE' renders on only the three front boxes rather than on every open carton as authored; and the two crew appearance drifts from L24 persist."
-   ],
-   "retry_cause": null,
-   "notes": "Phase 6B resume-lane frame, generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt, after the provider recovered from the sustained HTTP 503 outage. Landed first attempt, no re-issue. Staged at _staging/L25.png (sha256 081e21bfaf162dc5). C-11 counters copied programmatically from p6b-slate3.json (parent_depth=4, lineage=4).",
-   "parent_depth": 4,
-   "lineage": 4
-  },
-  {
-   "shot_id": "L10-retry1",
-   "file": "assets/scenes/L10-retry1.png",
-   "files": [
-    "assets/scenes/L10-retry1.png"
-   ],
-   "technique": "(b) seeded composition — seeds the promoted place plate",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L05.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: HIGH",
-    "style: HIGH",
-    "dsg e2: Is the queue of overnight buyers BEYOND THE WINDOW GLASS, curling away down the pavement, with folding chairs, sleeping bags and flasks along the kerb? — FAIL, and the correction this retry was authorised for was NOT taken. Seven figures sit camped INSIDE the shop on folding chairs, in sleeping bags, holding flasks, ranged along the bare shelf bays and up to the counter. Outside the glazing at left there is now ALSO a queue with chairs, bags and flasks, so the authored props are drawn on BOTH sides - the interior is the packed half. Confirmed at 3x crop on both zones. Breath is still drawn on the INDOOR figures, the same incoherence tell round 2 named: it is only coherent if the two zones have been merged.",
-    "dsg a1: Does the glass split the STILL interior from the PACKED street - the shot's whole device? — FAIL, inverted. The interior is the packed half and the street the thinner one. The ironic counterpoint the beat exists to make is not on screen.",
-    "dsg a2: Is the framing WIDE FROM BEHIND THE COUNTER? — FAIL, unchanged from round 2. The camera sits in the room with the counter running along the right wall into depth - the L05 plate's own camera reproduced almost exactly (same door-side wide, same wall order, same sill; compared side by side). Against L05 this will cut as an identical camera. It also drags the '1983' window card into frame, which the shot's notes place out of frame precisely because the vantage was meant to differ.",
-    "dsg s1: Era register: is the outline the even WARM brown-black (#241a12) the suffix pins? — FAIL, objective and measured. 217.7deg / R-B -3.8 (COOL-INVERTED), against the parked original's 16.0deg / +11.5 and a round otherwise running 13-25deg / +1.7 to +18.0. At crop the outlines on mullions, chairs and figures read cool blue-black. Not a night-sampling artifact: the inversion holds at 3% / 1% / 0.5% sampling depth. This is the second cool inversion recorded in this video after L16's cyan, and the FIRST to appear after the R1 generator-side fix - the fix is not total.",
-    "dsg s2: Is the authored palette delivered - blue-grey dawn OUTSIDE, unlit WARM BROWN inside? — FAIL, and a REGRESSION on an attribute round 2 passed. The street beyond the glazing reads blue dawn correctly, but the interior renders blue-grey throughout - ceiling, walls, floor, shelving - with only the counter carcass brown. Median saturation fell 0.4431 -> 0.2471 and the frame is monochromatically cold. Round 2 called the palette this shot's real strength; it is now its weakest axis.",
-    "The ink measures COOL-INVERTED at 217.7deg / R-B -3.8 against an era clause that names a warm brown-black outline; the overnight queue with its chairs, sleeping bags, flasks and visible breath is STILL inside the shop rather than beyond the window glass, so the shot's still-interior / packed-street device remains inverted; the authored 'wide from behind the counter' vantage is still the L05 plate's own camera; and the authored 'unlit warm brown inside' palette regressed to cold blue-grey throughout."
-   ],
-   "retry_cause": "round-2 fresh-eyes park on L10",
-   "notes": "ROUND-3 surgical retry of the parked L10, authored as a forge-retry-overlay@2 entry and $0-validated at changed_spans=1 (one exact-replace authority; every passing clause byte-identical). Seeds the promoted verified scenes/L05.png. Generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt; landed first attempt, no re-issue. Staged at _staging/L10-retry1.png (sha256 6f8b3aa4e9e0dd7f). C-11 counters copied programmatically from p6b-r2-L10-retry1.json (parent_depth=1, lineage=1).",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L23-retry1",
-   "file": "assets/scenes/L23-retry1.png",
-   "files": [
-    "assets/scenes/L23-retry1.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L22.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MEDIUM",
-    "dsg e2: Does the FRONT CARTON on that unwrapped top row now stand with its flaps folded open - i.e. one carton among the ranked cartons the parent drew? — FAIL, and this is round 2's charge #1 unchanged in the box dimension. Measured against the verified parent: in scenes/L22.png the centre pallet spans x 578-793 and its unwrapped top row holds THREE cartons across at ~72px each. Here the open box body spans x 565-812 = 247px with its flaps spanning x 540-837 = 297px - the box is ~3.4x a ranked carton, is WIDER than the 215px pallet it stands on and overhangs it on both sides, and not one carton of that row survives. The delta consumed the held set instead of acting on a member of it.",
-    "dsg a1: Is one red clay brick lying inside it on crumpled paper, FILLING THE BOX EXACTLY? — The fill fraction is substantially FIXED - the brick spans ~135px inside a ~183px interior opening, ~74% of the width, against round 2's ~36% (95px in 265px), and crumpled paper is visible as a margin left, right and behind, which the authored clause itself requires. At viewing scale the brick now plainly reads as belonging to that box, and on its own I would score this attribute delivered. It fails only as a consequence of e2: 'exactly' is a relation between the brick and a CARTON-sized box, and the box rendered is crate-sized, so the clause cannot be met while e2 fails. Charged here for accuracy of the dependency, not as an independent craft defect.",
-    "The authored delta names 'the front carton on that unwrapped top row' - one carton among the ranked cartons the verified parent drew. What renders is a new crate-scale object 247px wide (~3.4x a ranked carton, wider than its own pallet) that consumed the whole top row, so the held set was eaten by the delta and 'filling the box exactly' cannot be satisfied by any brick at believable scale."
-   ],
-   "retry_cause": "round-2 fresh-eyes park on L23",
-   "notes": "ROUND-3 surgical retry of the parked L23, authored as a forge-retry-overlay@2 entry and $0-validated at changed_spans=1. RE-BASED onto the promoted verified scenes/L22.png — round 2 had seeded the unreviewed _staging copy. Generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt; landed first attempt, no re-issue. Staged at _staging/L23-retry1.png (sha256 17f4dc9e537ca4f1). C-11 counters copied programmatically from p6b-r2-L23-retry1.json (parent_depth=2, lineage=1).",
-   "parent_depth": 2,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L24-retry1",
-   "file": "assets/scenes/L24-retry1.png",
-   "files": [
-    "assets/scenes/L24-retry1.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "_staging/L23-retry1.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MEDIUM",
-    "dsg e2: Does EVERY REMAINING CARTON along that unwrapped top row now stand with its flaps folded open - individual cartons, not a single container? — FAIL. Examined at 4x crop on both flanking pallets: each renders as ONE pallet-width open box with a single continuous front flap and a single back flap. There are no carton walls anywhere along the row - between the bricks there is only crumpled paper. The authored quantifier presupposes the ranked cartons L22 drew; in this frame none of them survives on any of the three pallets.",
-    "dsg a1: Is ONE red clay brick lying inside EACH on crumpled paper, FILLING ITS BOX EXACTLY? — FAIL. Each flanking box holds THREE bricks side by side, so no brick has a box of its own to fill; the centre pallet holds ONE brick in a crate-scale box inherited from L23-retry1, so the frame is internally inconsistent as well. PARTIAL CREDIT, recorded honestly: the bricks themselves are now drawn at ~65px against the parent's ranked cartons at ~72px - believable, comparable objects where round 2's were dwarfed by their containers.",
-    "dsg a2: Does the frame deliver the PLURAL the beat needs ('red clay bricks into little boxes')? — Split verdict, charged on the second half. The plural of BRICKS lands well and legibly - three bricks per stack across three stacks, with more open cartons and bricks visible in depth behind. The plural of LITTLE BOXES does not: the containers rendered are pallet-width and overhang the pallets they stand on, which is the opposite of the word playing over this frame. The size comparison is made by the frame itself - ~72px ranked cartons sit immediately beside a 247px box - so it is legible at viewing scale, not a pedantic measurement.",
-    "Each top row renders as ONE pallet-width open box holding three bricks on crumpled paper rather than individual cartons each standing open on one brick that fills it, so the authored 'every remaining carton' and 'filling its box exactly' are both unmet - and this frame carries the narration 'red clay bricks into LITTLE boxes' over containers that overhang the pallets they stand on."
-   ],
-   "retry_cause": "round-2 fresh-eyes park on L24",
-   "notes": "ROUND-3 re-issue of the parked L24, carrying TWO authorities that forge's retry overlay cannot express in one entry (`_retry_scene` permits exactly one): a parent RE-BASE onto _staging/L23-retry1.png plus one exact single-occurrence content replace with bytes outside the span asserted byte-identical. Built from forge's own native L24 request (p6b-native-L2425.json) by scratchpad/_build_p6b_r3.py; seed roles and delta prose from forge's own _seed_role / _dedupe_seed_roles / placement_delta. The explicit parent was required because forge's walk resolved NO parent for L24 at all — on_disk() reads only assets/scenes/ and the parked L23 was never promoted. Generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt; landed first attempt, no re-issue. Staged at _staging/L24-retry1.png (sha256 79cc9b7e4e543cd2). C-11 counters copied programmatically from p6b-r3-L24-retry1.json (parent_depth=3, lineage=3).",
-   "parent_depth": 3,
-   "lineage": 3
-  },
-  {
-   "shot_id": "L25-retry1",
-   "file": "assets/scenes/L25-retry1.png",
-   "files": [
-    "assets/scenes/L25-retry1.png"
-   ],
-   "technique": "(e) seeded delta-chain — seeds its in-chain parent",
-   "seeds": [
-    "_staging/L24-retry1.png",
-    "channels/the-second-take/visual-kit/refs/base/crowd-exemplar.png",
-    "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png"
-   ],
-   "flagged": false,
-   "review_status": "parked",
-   "parked_reasons": [
-    "fidelity: MEDIUM",
-    "dsg e2: Does the FRONT FACE OF EVERY ONE OF THOSE OPEN CARTONS carry 'HARD DRIVE' lettered across the middle of the board? — FAIL, the second consecutive round on this clause and on a worse surface than the count alone suggests. 'HARD DRIVE' renders exactly THREE times, once per pallet, across the SEALED FILM-WRAPPED MIDDLE COURSES - at 3x crop the clear film's sheen runs visibly OVER the lettering, and on both flanking stacks the word spans the seam between two adjacent cartons, making it a legend painted across the stack rather than a label on any carton face. NOT ONE of the open cartons carries lettering. This inverts the gag's logic: the box labelled HARD DRIVE should be the box with the brick in it, and here they are different boxes.",
-    "dsg e3: Is the whole top row standing open on one red clay brick each, at carton scale (inherited from L23/L24)? — FAIL, inherited and unchanged - not re-committed here. Three crate-scale open boxes stand where the ranked cartons were; the flanking two hold three bricks each with no dividing walls, the centre one holds a single brick. Charged for accuracy of the chain record; the cause originates in L23-retry1 and a single successful re-roll there would close it in all three frames.",
-    "'HARD DRIVE' renders three times across the SEALED film-wrapped middle courses, spanning carton seams and drawn under the film, while not one of the open cartons the clause names carries any lettering - the authored surface is unmet a second time. The inherited crate-scale containers from L23/L24 persist under a narration that called them 'little boxes'."
-   ],
-   "retry_cause": "round-2 fresh-eyes park on L25",
-   "notes": "ROUND-3 re-issue of the parked L25, same two-authority slate form as L24-retry1: parent RE-BASE onto _staging/L24-retry1.png plus one exact single-occurrence content replace. Generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt; landed first attempt, no re-issue. Staged at _staging/L25-retry1.png (sha256 3e0262a7a7010763). C-11 counters copied programmatically from p6b-r3-L25-retry1.json (parent_depth=4, lineage=4).",
-   "parent_depth": 4,
-   "lineage": 4
-  },
-  {
-   "shot_id": "L16-remint1",
-   "file": "assets/scenes/L16.png",
-   "files": [
-    "assets/scenes/L16.png"
-   ],
-   "technique": "(c) character-free scene — derived place plate, bible descriptor + style suffix",
-   "seeds": [
-    "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": "round-2 fresh-eyes park on L16, L16-retry1",
-   "notes": "ROUND-3 CHANGED-MECHANISM RE-MINT of the parked L16 — not a second retry. Built from L16's ORIGINAL p6b-slate.json entry, byte-identical in prose and seeds (square-to-frame frieze, rank carrying past both frame edges, Tier-A de-vantaged, style tile only); only the output name differs. Provenance: L16's parking defect was cyan ink (174.2deg / R-B -1.0), a GENERATOR-SIDE fault, and the R1 warm-ink fix has since landed, so the original staging was re-run under the corrected mechanism rather than re-argued in prose. Generated 2026-08-06 at 1K/16:9 under the era 2-voice prompt; landed first attempt, no re-issue. Staged at _staging/L16-remint1.png (sha256 ac2920584251363a). C-11 counters copied programmatically from p6b-r3-L16-remint1.json (parent_depth=0, lineage=0). SUPERSEDES the parked original L16 AND the parked round-1 retry L16-retry1: this frame is VERIFIED and is promoted to assets/scenes/L16.png, so it is the frame the render gate ships for shot L16. Both superseded frames stay archived in _staging (L16.png, L16-retry1.png) and neither is promoted. KNOWN MANIFEST TRAP, recorded not repaired (same shape as the L18 precedent from round 2): the parked entry `shot_id: L16` ALSO carries `file: assets/scenes/L16.png`, so two records now point at this one path. forge's `_scene_manifest_entry` returns the FIRST record whose `file` matches, walking `shots` in order — which is the PARKED one. Anything that seeds assets/scenes/L16.png will therefore read a parked status and hit `_scene_provenance`'s parked refusal, even though the bytes on disk are this verified re-mint. No forge change was attempted; the durable fix is one record per file path, and it is the boss's call.",
-   "parent_depth": 0,
-   "lineage": 0
+   "lineage": 0,
+   "notes": "OPEN — reviewed and FAILED (scratchpad/6c2-w2verify-b.json#L45, sha256 d3a3cb3ae6097dff932f950521b32326efb0b8cb567ae58b474af946016455cf): five-digit raised hand (rig law violation) and the forward boot staged out over the void instead of both boots planted on solid rock. That reviewed frame has since been removed from _staging/ (no file on disk as of this promotion pass) pending a corrected retry — an L45-fix item is in the same background re-driver queue as L38/L39 (scratchpad/6c2-w2retry2-*), currently blocked by the same provider outage. Left `unreviewed` rather than `parked` for the same reason as L39 — no file exists for a `parked` status to describe. Out of this worker's scope — not touched."
   }
  ]
 }

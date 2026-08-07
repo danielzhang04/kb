@@ -1,0 +1,34 @@
+[
+ {
+  "name": "fig-miniscribe-rep--action-celebrate--expr-delighted",
+  "mode": "environment",
+  "aspect": "2:3",
+  "image_size": "1K",
+  "stage_role": "base",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+   "channels/the-second-take/visual-kit/refs/base/action-celebrate.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+    "role": "canonical",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+    "role": "expression",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-celebrate.png",
+    "role": "pose",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+  "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical — identity, head tone, hair and the pinned costume come from this image only. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline. The THIRD image is the `action-celebrate` pose reference for `miniscribe-rep` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+  "why": "STEP 1 for `miniscribe-rep` (action-celebrate / expr-delighted)"
+ }
+]

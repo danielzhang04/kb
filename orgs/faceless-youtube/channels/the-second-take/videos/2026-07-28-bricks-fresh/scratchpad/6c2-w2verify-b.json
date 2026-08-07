@@ -1,0 +1,796 @@
+{
+  "worker": "fresh-eyes-verify-B",
+  "slice": "L39-L50",
+  "run": "6c2-wave2",
+  "records": [
+    {
+      "shot_id": "L39",
+      "verdict": "fail",
+      "vo_text": "making over 600 million dollars a year.",
+      "axes": {
+        "composition_staging": "fail",
+        "figures": "fail",
+        "ink_law": "pass",
+        "continuity": "n/a",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 22.5,
+        "ink_r_minus_b": 19.9,
+        "ink_lum": 16.0,
+        "median_sat": 0.0902,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 200.5
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "'600 MILLION' stencil",
+          "location": "truck long SIDE panel, frame centre (x~560-790, y~270-410)",
+          "detail": "still_prompt authors the figure 'Across the truck's rear panel'. The rear panel (twin doors, stage-right, where the performer is pushing) is bare; the lettering sits on the driver-side long panel instead. Known p6b class: lettering on the wrong surface."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "wall of banded notes",
+          "location": "truck roof, top of frame",
+          "detail": "prose stages notes 'bulging out of the load bed' with the performer 'shoving the rear doors shut against' them. Frame puts the money as a loose pile heaped on the ROOF; the rear doors are shut and empty, so the authored cause-and-effect (doors vs bulge) is decoupled. Also the notes read as loose green US bills, not banded bricks."
+        },
+        {
+          "axis": "figures",
+          "severity": "minor",
+          "element": "miniscribe-rep face",
+          "location": "stage-right, head x~1090-1230 y~260-400",
+          "detail": "STEP-1 card fig-miniscribe-rep--hold-both-hands--expr-greedy carries a CLOSED-mouth smirk with half-lidded angled eyes; frame renders a wide open teeth-bared grin. Expression register drifted off-card toward delighted/gloat."
+        },
+        {
+          "axis": "register_flatcel",
+          "severity": "minor",
+          "element": "truck door seam over left wrist",
+          "location": "x~1000-1010, y~415-450",
+          "detail": "the vertical rear-door seam line is drawn across the performer's wrist/cuff instead of terminating behind it â€” layering error, one stray stroke."
+        }
+      ],
+      "held": [
+        "identity + costume match miniscribe-rep canonical (tan blazer, dark trousers, dark hair, no nose/no ears, uniform head tone)",
+        "4-digit hands on BOTH hands, same size",
+        "flat cel fills, no sub-outline stroke fields",
+        "depot yard reads: chain-link fence, second (green) truck beyond, low warehouse roofs on skyline, cropped bollard lower-left",
+        "charcoal-green-cream palette under flat overcast light",
+        "no unauthored duplicate props; no stray '1983' card",
+        "marker-italic letterform consistent with lettering-marker-italic exemplar"
+      ],
+      "continuity": "n/a",
+      "notes": "median_sat 0.090 sits well under the ~0.19 era prior, but the frame is an authored flat-overcast grey depot; reads as intent, not wash.",
+      "sha256": "0ee2aab2c54b3e9217512924fc32c580e930b275e1af5c96d62223e0776de932",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L39.png"
+    },
+    {
+      "shot_id": "L40",
+      "verdict": "pass",
+      "vo_text": "Accounting for inflation, that's almost",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "n/a (cast-free plate by design)",
+        "ink_law": "pass",
+        "continuity": "n/a (chain root / plate)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 37.7,
+        "ink_r_minus_b": 23.1,
+        "ink_lum": 20.8,
+        "median_sat": 0.2157,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 185.3
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "note columns",
+          "location": "left x~110-460, right x~865-1250",
+          "detail": "prose asks the two columns to fill the frame 'top to bottom'; they occupy roughly y30-y520 with the beam and stand below. Reads as authored, just short of edge-to-edge."
+        }
+      ],
+      "held": [
+        "heavy iron balance beam standing alone on a flat cream ground",
+        "left column tall, right column slightly taller, beam DEAD LEVEL between them as authored",
+        "charcoal-cream-green palette, even frontal light, no cast shadows",
+        "cropped beam foot / pedestal across the bottom edge gives the authored foreground depth",
+        "flat cel fills, uniform outline weight, no sub-outline stroke fields",
+        "cast-free by design; NO text anywhere - banknote faces carry only abstract oval vignettes, no legible lettering and no bled-in '1983' card from the style tile",
+        "median_sat 0.216 sits on the ~0.19 era prior"
+      ],
+      "continuity": "n/a",
+      "notes": "This is the chain root (plate) for L41/L42. Style-tile anchor read as line-register + palette only, correctly - none of the tile's shop content bled in.",
+      "sha256": "8035806635ac468e37a45a473277409832ac9e9325ec24398986916158423980",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L40.png"
+    },
+    {
+      "shot_id": "L41",
+      "verdict": "pass",
+      "vo_text": "as much money as Reddit makes today.",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "n/a (cast-free)",
+        "ink_law": "pass",
+        "continuity": "ok",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 38.4,
+        "ink_r_minus_b": 22.8,
+        "ink_lum": 26.2,
+        "median_sat": 0.2275,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 184.6
+      },
+      "defects": [
+        {
+          "axis": "continuity",
+          "severity": "trivial",
+          "element": "banded-bundle count per column",
+          "location": "both stacks",
+          "detail": "bundle count drifts by ~1 per column vs parent L40 and the stacks are drawn marginally narrower / pulled inboard. Within delta-chain tolerance; the columns still read as the same two objects."
+        }
+      ],
+      "held": [
+        "single authored delta executed exactly: beam settled, tips DOWN toward the right column, left pan lifted clear",
+        "right column still the physically taller of the two (~480px vs ~360px), consistent with the parent's established fact",
+        "environment identical to parent L40: same iron stand, same pan dishes, same flat cream ground, same charcoal-cream-green palette, same even frontal light",
+        "cropped pedestal foot at the bottom edge preserved",
+        "flat cel, uniform outline, no text",
+        "no unauthored elements added"
+      ],
+      "continuity": "ok",
+      "notes": "Parent = L40 (in-slice, verified). Reads as a true delta, not a fresh root.",
+      "sha256": "d69ea12a4d639f8595a19c6ccc7d5a7cd52a3939605388567919445e33a2aad3",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L41.png"
+    },
+    {
+      "shot_id": "L42",
+      "verdict": "pass",
+      "vo_text": "Or so they said.",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "n/a (cast-free)",
+        "ink_law": "pass",
+        "continuity": "ok",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 37.4,
+        "ink_r_minus_b": 22.3,
+        "ink_lum": 22.4,
+        "median_sat": 0.2353,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 185.6
+      },
+      "defects": [
+        {
+          "axis": "register_flatcel",
+          "severity": "trivial",
+          "element": "hollow shell interior",
+          "location": "left pan, x~250-480 y~60-360",
+          "detail": "the revealed interior is a warm mid-brown/tan, a hue outside the authored charcoal-cream-green palette. Defensible as raw shell material and it reads as the unmasking beat, but it is a palette excursion."
+        }
+      ],
+      "held": [
+        "single authored delta executed exactly: left column's FRONT FACE has fallen away (leaning against the pan at lower-left) revealing a hollow painted shell with nothing stacked inside",
+        "shell's outer edge retains the banded-bundle striation, so the fake reads as painted-on rather than a different object",
+        "beam state inherited correctly from parent L41: right column LOW, left pan LIFTED - the delta did not reset the beam",
+        "right column intact, same bundle count and proportions as parent",
+        "same iron stand, same pan dishes, same flat cream ground, same even frontal light",
+        "cropped pedestal foot preserved at the bottom edge",
+        "flat cel, uniform outline, no text, no unauthored elements"
+      ],
+      "continuity": "ok",
+      "notes": "Parent = L41 (in-slice, verified). Chain L40 -> L41 -> L42 holds environment, palette and beam state across all three. The signature unmasking move lands.",
+      "sha256": "d081cef08f9c5d8f721ee81ee5e3588a49834d6bd0e68c03c274485f2f6e3268",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L42.png"
+    },
+    {
+      "shot_id": "L43",
+      "verdict": "pass",
+      "vo_text": "Now rewind four years.",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "pass",
+        "ink_law": "pass",
+        "continuity": "n/a (root, no chain parent / place seed)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 27.2,
+        "ink_r_minus_b": 18.3,
+        "ink_lum": 18.0,
+        "median_sat": 0.3451,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 195.8
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "the pressed key",
+          "location": "console lip, x~240-320 y~455-490",
+          "detail": "prose asks for 'one big square key'; the frame's key is a small pale rectangle on the console lip. The press reads, the emphasis does not."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "performer placement",
+          "location": "x~420-620",
+          "detail": "authored 'stage-left'; he stands centre-left and REACHES left to the key. Reads as intended but is nearer centre than the prose stages."
+        }
+      ],
+      "held": [
+        "seeded performer matches STEP-1 card fig-base--point-at-thing--expr-deadpan--l43-30b903d1 on identity (bald dome head, no nose, no ears, uniform head tone), costume (boxy grey suit, white shirt V, brown shoes) and expression (half-lidded deadpan, closed line mouth)",
+        "point-at-thing rig held; 4-digit hands, both the same size",
+        "wall-sized video deck fills the back of the frame; TWO tape spools with the tape hanging visibly SLACK between them - the authored rewind cue",
+        "dim office reads: swivel chair pushed aside stage-right, rubber plant in the far corner",
+        "charcoal-teal-cream palette, one warm desk lamp from stage-right throwing the only warm pool",
+        "cropped chair back at the lower-right gives the authored foreground depth",
+        "two chairs present but BOTH authored (swivel + cropped foreground) - not a duplicate-element defect",
+        "flat cel, uniform outline weight, no text anywhere"
+      ],
+      "continuity": "n/a",
+      "notes": "median_sat 0.345 runs well above the ~0.19 era prior - driven by a large saturated teal field on the deck body, not by a colour-grade error. Frame is the most saturated in the slice after L49/L50.",
+      "sha256": "62988264a1663cbe0f408574fd5aba8f427070b31279d787f4b5043a9205a485",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L43.png"
+    },
+    {
+      "shot_id": "L44",
+      "verdict": "fail",
+      "vo_text": "At the end of 1984, IBM slashed its orders,",
+      "axes": {
+        "composition_staging": "fail",
+        "figures": "pass",
+        "ink_law": "flag",
+        "continuity": "deferred",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 122.0,
+        "ink_r_minus_b": 0.1,
+        "ink_lum": 11.6,
+        "median_sat": 0.1255,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 101.0,
+        "reference_ink": {
+          "place_seed_L28": {
+            "hue": 78.6,
+            "rb": 3.0
+          },
+          "figure_card": {
+            "hue": 352.6,
+            "rb": 19.5
+          },
+          "canonical_ibm_suit": {
+            "hue": 357.8,
+            "rb": 22.6
+          }
+        }
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "tote rack stage-left",
+          "location": "x~0-260, y~250-560",
+          "detail": "still_prompt authors 'the tote rack stage-left HALF EMPTY'. Pixel-compared against the L28 place seed the rack is unchanged and completely full - every bin in all three rows present. The authored depletion, which is the whole point of the beat (IBM slashes orders, the floor empties), was not executed."
+        },
+        {
+          "axis": "ink_law",
+          "severity": "major",
+          "element": "global ink register",
+          "location": "darkest 3% of pixels",
+          "detail": "ink measures hue 122.0deg with R-B +0.1 - a NEUTRAL/green-cast black, not the era's warm brown-black (#241a12, hue ~19deg, R-B +18). Not a cool inversion (223deg pole is 101deg away, R-B is not negative) so it does not trip the hard FAIL, but it sits on the zero line. The ibm-suit card (+19.5) and canonical (+22.6) are both properly warm; the L28 place seed measures +3.0. The cold ink is INHERITED FROM THE PLACE SEED, not from the figure."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "strip lighting",
+          "location": "ceiling",
+          "detail": "prose asks for 'the far end of the floor unlit'. Every ceiling fitting is drawn lit; only the back wall/ceiling void reads dark. Partially staged."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "palette",
+          "location": "whole frame",
+          "detail": "prose asks the grey-teal-cream palette to have 'gone colder' relative to the seeded place. It is effectively identical to L28 - no cooling delta applied."
+        },
+        {
+          "axis": "continuity",
+          "severity": "note",
+          "element": "MINISCRIBE overhead sign",
+          "location": "rear wall centre, present in L28 at x~515-860 y~30-140",
+          "detail": "the seeded place's single most identifying persistent prop - the red MINISCRIBE fascia sign - is absent here. Not authored as removed by the still_prompt. Flagged only; the parent lies outside this slice."
+        }
+      ],
+      "held": [
+        "ibm-suit matches STEP-1 card fig-ibm-suit--action-thumbsdown--expr-annoyed AND the canonical on identity (dark brown skin, swept grey hair, heavy squat build, no nose, no ears, uniform head tone) and costume (navy chalk-stripe three-piece, blue tie, white pocket square, black oxfords)",
+        "action-thumbsdown rig held on the left hand; right hand 4-digit, both hands same size",
+        "expr-annoyed register correct (flat down-turned mouth, one angled brow, half-lidded eyes) - matches card, no drift",
+        "planted CENTRE as authored, one lone flat carton on the concrete at his feet",
+        "roller door shut; benches bare; cropped bench end at the lower-right for foreground depth",
+        "place geometry otherwise inherited from L28 with high fidelity (rack, benches, ceiling rig, wall band, floor sheen all register)",
+        "flat cel, uniform outline weight, no text, no unauthored duplicate props"
+      ],
+      "continuity": "deferred",
+      "notes": "Place seed L28 lies outside slice B - continuity DEFERRED per brief. Observed for the stamping pass: geometry holds tightly, but the MINISCRIBE sign is gone and neither authored depletion (rack) nor authored cooling (palette) was applied.",
+      "sha256": "386d9a6ab8fe823b1f714cc7888ff523d022ef8c5e2f7807cec8ef00768b466c",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L44.png"
+    },
+    {
+      "shot_id": "L45",
+      "verdict": "fail",
+      "vo_text": "and MiniScribe fell off a cliff.",
+      "axes": {
+        "composition_staging": "fail",
+        "figures": "fail",
+        "ink_law": "flag",
+        "continuity": "n/a (root)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 23.4,
+        "ink_r_minus_b": 51.4,
+        "ink_lum": 39.4,
+        "median_sat": 0.2588,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 199.6,
+        "darkest_0.5pct_mean_rgb": [
+          55.6,
+          20.8,
+          1.2
+        ],
+        "target_ink_rgb": [
+          36,
+          26,
+          18
+        ]
+      },
+      "defects": [
+        {
+          "axis": "figures",
+          "severity": "major",
+          "element": "raised (stage-left) hand of miniscribe-rep",
+          "location": "x~712-782, y~145-210",
+          "detail": "FIVE digits rendered - thumb plus four fingers. The rig law and the STEP-1 card fig-miniscribe-rep--action-recoil--expr-shock both carry 4-digit hands (3 fingers + thumb), which the figure's OTHER hand (chest height, x~795-855 y~195-250) correctly has. So the two hands also disagree with each other."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "forward boot vs the collapsed lip",
+          "location": "left boot x~690-765, y~330-370",
+          "detail": "still_prompt stages him 'on his BACK foot at the crumbling lip ... the ground gone in one clean bite IN FRONT OF HIS BOOTS'. The frame puts his forward boot out over the void, unsupported. The authored relationship (both boots on solid rock, gap ahead) is inverted, and the shot note's explicit direction - 'held as a tableau on the lip rather than a freeze of falling' - is contradicted: he reads mid-fall."
+        },
+        {
+          "axis": "ink_law",
+          "severity": "minor",
+          "element": "global ink register",
+          "location": "darkest 3% of pixels",
+          "detail": "warm and nowhere near inversion (hue 23.4deg, R-B +51.4) but drifted the OTHER way: the darkest 0.5% mean RGB is (56,21,1) - a saturated rust-brown, against the target #241a12 = (36,26,18). R-B +51.4 sits far above the p6b batch ceiling of +31.3. ink_lum 39.4 is the highest in the slice, i.e. the frame has no true near-black linework; outlines read low-contrast brown against ochre rock."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "the break edge",
+          "location": "x~560-880, y~280-420",
+          "detail": "prose asks for the ground gone 'in ONE CLEAN BITE'. The frame draws a ragged crumble with an arch/hole and scattered falling debris - readable, but not the clean single bite authored."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "foreground rock spur",
+          "location": "lower-left x~0-500 y~440-768",
+          "detail": "prose asks for 'a cropped rock spur at the lower-left' as FOREGROUND depth. What is drawn is a full opposing plateau across the gulf, sitting in mid-ground behind grey haze. It is cropped by the left edge but does not function as near-camera foreground."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "trivial",
+          "element": "light",
+          "location": "whole frame",
+          "detail": "'hard high sun' authored; the frame is evenly, flatly lit with no cast shadow off the figure or the cliff lip."
+        }
+      ],
+      "held": [
+        "miniscribe-rep identity + costume match the STEP-1 card and canonical (dark hair sweep, tan blazer over brown open-collar shirt, dark trousers, dark shoes, no nose, no ears, uniform head tone)",
+        "expr-shock register correct: wide round eyes, open mouth with tongue - matches the card exactly",
+        "action-recoil body line held (weight back, torso pulled away)",
+        "high ochre plateau under a pale sky; ochre-grey-cream palette as authored",
+        "flat cel fills, no sub-outline stroke fields, no text anywhere",
+        "no unauthored duplicate elements"
+      ],
+      "continuity": "n/a",
+      "sha256": "d3a3cb3ae6097dff932f950521b32326efb0b8cb567ae58b474af946016455cf",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L45.png"
+    },
+    {
+      "shot_id": "L46",
+      "verdict": "fail",
+      "vo_text": "They let a quarter of their people go,",
+      "axes": {
+        "composition_staging": "fail",
+        "figures": "pass",
+        "ink_law": "flag",
+        "continuity": "deferred",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 114.3,
+        "ink_r_minus_b": 1.0,
+        "ink_lum": 15.2,
+        "median_sat": 0.1059,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 108.7,
+        "reference_ink": {
+          "place_seed_L28": {
+            "hue": 78.6,
+            "rb": 3.0
+          },
+          "figure_card": {
+            "hue": 15.2,
+            "rb": 41.8
+          }
+        }
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "hero performer position + travel vector",
+          "location": "x~560-790 (frame centre), striding toward stage-right",
+          "detail": "still_prompt stages him 'stage-LEFT, carrying a cardboard box ... down the length of the assembly floor TOWARD THE ROLLER DOOR'. The frame plants him dead centre and walks him laterally across the frame to stage-right, with the roller door behind his back. Both the authored placement and the authored direction-of-travel are off; he moves away from the door rather than toward it. Known p6b class: elements the prose placed relative to each other, swapped."
+        },
+        {
+          "axis": "ink_law",
+          "severity": "major",
+          "element": "global ink register",
+          "location": "darkest 3% of pixels",
+          "detail": "hue 114.3deg, R-B +1.0 - a NEUTRAL black with a green cast, not the era's warm brown-black (target hue ~19deg, R-B +18). Not a cool inversion (223deg pole is 108.7deg away, R-B not negative) so no hard FAIL, but it sits on the zero line. The figure card measures +41.8; the L28 place seed measures +3.0 - the cold ink is inherited from the PLACE seed."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "ceiling strip lights",
+          "location": "ceiling rig, whole width",
+          "detail": "prose authors 'every fourth ceiling fitting dark' (i.e. ~3/4 still lit). The frame lights only 3 of ~11 fittings. The drain is over-executed relative to the authored beat."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "crowd placement",
+          "location": "x~890-1376, y~320-560",
+          "detail": "authored 'on the far side of the far bench'. The mass reads as ranked along the stage-right aisle rather than beyond the deepest bench - it is behind the right bench, so partially satisfied, but the depth the prose asks for is not there."
+        },
+        {
+          "axis": "continuity",
+          "severity": "note",
+          "element": "MINISCRIBE overhead sign",
+          "location": "rear wall centre (present in L28 at x~515-860 y~30-140)",
+          "detail": "the seeded place's identifying fascia sign is absent again, as in L44/L47/L48. Not authored as removed. Flagged only; parent outside slice."
+        }
+      ],
+      "held": [
+        "CARD DRIFT NOT INHERITED: the STEP-1 card fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718 renders arms-at-sides instead of a chest-height carry, but the SCENE correctly stages the authored carry - both hands on a cardboard box held at waist/chest with pens, files and a tape unit standing out of it. Explicitly checked; no inherited-from-card staging fail here.",
+        "seeded performer matches the card on identity (bald dome head, no nose, no ears, uniform head tone), costume (grey work coat with patch pockets, brown trousers, brown shoes) and expression (angled sad brows, half-lidded eyes, downturned mouth)",
+        "4-digit hands on both hands, same size, correctly gripping the box rim and underside",
+        "crowd handled per the poyais mechanism: ~13 base figures, simple beat-fit register (sad brows + flat downturned mouth), arms down, no nose/no ears, garment colour varied - within the delta cap, no crowd figure competing with the hero",
+        "crowd scale/baseline correct for depth: crowd ~227px tall on a higher floor line vs the hero at ~315px - reads properly behind him, no scale inversion",
+        "'cool grey-teal palette drained toward grey' executed - visibly desaturated against the L28 seed (median_sat 0.106)",
+        "cropped bench end at the lower-right for foreground depth",
+        "place geometry inherited from L28 with high fidelity",
+        "flat cel, uniform outline, no text, no unauthored duplicate props"
+      ],
+      "continuity": "deferred",
+      "notes": "Place seed L28 outside slice B - continuity DEFERRED. This is the best-executed human-cost frame in the slice on figure and crowd handling; the failure is purely staging geometry.",
+      "sha256": "a0c08a8ea4a10a1bc501b0064e4f70cd784648fd8f2b5316aac5118e29d4ff66",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L46.png"
+    },
+    {
+      "shot_id": "L47",
+      "verdict": "fail",
+      "vo_text": "and Terry Johnson was out the door.",
+      "axes": {
+        "composition_staging": "fail",
+        "figures": "pass",
+        "ink_law": "pass (weak)",
+        "continuity": "deferred",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 47.7,
+        "ink_r_minus_b": 11.0,
+        "ink_lum": 26.9,
+        "median_sat": 0.0902,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 175.3,
+        "reference_ink": {
+          "place_seed_L28": {
+            "hue": 78.6,
+            "rb": 3.0
+          },
+          "figure_card": {
+            "hue": 15.2,
+            "rb": 28.5
+          }
+        }
+      },
+      "defects": [
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "the car park apron / exterior",
+          "location": "stage-right third of the frame, x~930-1376",
+          "detail": "still_prompt stages him 'stepping OUT through a glass door ONTO A CAR PARK APRON ... his back half turned to the floor behind him'. There is NO exterior in the frame: he stands on the same interior grey concrete, and the space stage-right of the glazed partition shows the SAME interior wall band (teal dado over cream) - more factory, not a car park. No apron, no vehicles, no sky, no daylight ground. This is exactly the p6b 'authored outside, staged inside' class, and it kills the beat - a departure staged as a threshold he is already past."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "foreground element",
+          "location": "lower-left, x~0-520 y~600-768",
+          "detail": "prose authors 'a cropped KERB at the lower-left'. The frame instead crops in the L28 foreground WORKBENCH (grey slab with the blue inset mat). Wrong object, and an interior one - it reinforces the inside/outside inversion above."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "light contrast",
+          "location": "whole frame",
+          "detail": "prose authors 'flat overcast light OUTSIDE against warm strip light INSIDE'. The frame is lit entirely by interior strip light with no exterior/interior contrast at all - the authored two-zone lighting is absent, which is the second half of why the threshold does not read."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "body facing",
+          "location": "x~980-1180",
+          "detail": "'his back half turned to the floor behind him' - he is walking stage-LEFT with the floor on his left, i.e. facing INTO the floor rather than turned away from it."
+        },
+        {
+          "axis": "figures",
+          "severity": "minor",
+          "element": "document case",
+          "location": "x~965-1055, y~535-650",
+          "detail": "STEP-1 card fig-terry-johnson--carry-by-handle--expr-crestfallen carries a GREY hard case; the frame renders a brown leather satchel with a strap and buckle. Carried-prop drift off the REUSED card (still_prompt says only 'a document case', so this is a card mismatch, not a prose mismatch)."
+        }
+      ],
+      "held": [
+        "terry-johnson identity matches the reused STEP-1 card exactly: blond comb-over over a high bald crown, moustache, no nose, no ears, uniform head tone, white shirt, black tie, black belt, dark trousers, black shoes",
+        "expr-crestfallen register identical to the card (angled inner brows, half-lidded eyes, small downturned mouth)",
+        "carry-by-handle rig held; 4-digit hands both sides, same size",
+        "'through the glass the assembly floor runs away into the depth with its benches bare' - correctly staged, benches bare, roller door shut, glazing mullions read",
+        "MINISCRIBE fascia sign PRESENT here (unlike L44/L46/L48), so the place's identity prop survives in this one child",
+        "ink warm (R-B +11.0) - the only L28 child in the slice that keeps positive warmth in double digits, though still under the +18 target",
+        "flat cel, uniform outline, only authored text (the seeded MINISCRIBE sign)"
+      ],
+      "continuity": "deferred",
+      "notes": "Place seed L28 outside slice B - continuity DEFERRED. Worth surfacing to the stamping pass: the MINISCRIBE sign is PRESENT in L47 but ABSENT in L44/L46/L48, so the L28 family is internally inconsistent on its own identity prop.",
+      "sha256": "2698657a46530eb0f243d57a8b407d45cde0a186e62a03b19522891f868dd4c3",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L47.png"
+    },
+    {
+      "shot_id": "L48",
+      "verdict": "fail",
+      "vo_text": "By 1985 the company was in real trouble,",
+      "axes": {
+        "composition_staging": "fail",
+        "figures": "fail (inherited from card)",
+        "ink_law": "flag (boundary)",
+        "continuity": "deferred",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 141.698,
+        "ink_r_minus_b": 0.0283,
+        "ink_lum": 18.48,
+        "median_sat": 0.1412,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 81.3,
+        "reference_ink": {
+          "place_seed_L28": {
+            "hue": 78.6,
+            "rb": 3.0
+          },
+          "figure_card": {
+            "hue": 10.6,
+            "rb": 39.3
+          }
+        }
+      },
+      "defects": [
+        {
+          "axis": "ink_law",
+          "severity": "major",
+          "element": "global ink register",
+          "location": "darkest 3% of pixels",
+          "detail": "R-B = +0.028 - the flattest ink in the slice and effectively ON the inversion boundary (the hard-FAIL rule is R-B <= 0; this clears it by three hundredths). Hue 141.7deg is a green-neutral black, 81.3deg from the 223deg cool pole and 123deg off the warm ~19deg era prior. The figure card measures R-B +39.3, so the neutrality comes from the L28 place seed (+3.0), not the performer."
+        },
+        {
+          "axis": "figures",
+          "severity": "major",
+          "element": "action-slump posture, INHERITED FROM CARD",
+          "location": "figure x~630-760, y~285-580",
+          "detail": "still_prompt stages him 'action-slump ... with his SHOULDERS DOWN'. The frame renders him standing square and upright, arms straight at his sides, shoulders level - no slump. The STEP-1 card fig-miniscribe-rep--action-slump--expr-worried has the SAME defect (it is an upright arms-at-sides stand, not a slump), so this is INHERITED-FROM-CARD, the same failure mode flagged for L46's card - except here the scene did NOT recover it. Same class, opposite outcome."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "major",
+          "element": "tote racks / tray racks",
+          "location": "left rack x~0-260 y~250-560; tray racks x~280-560 and x~810-1120",
+          "detail": "prose authors 'the tote racks EMPTY' and the benches 'cleared'. The benches are bare, but the left tote rack is unchanged from the L28 seed (all bins in all three rows) and BOTH tray racks still carry their pale cartons. The authored stripping-out was applied only to the bench tops. Same miss class as L44's un-emptied rack."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "the cold roof-light shaft",
+          "location": "floor pool centred x~520-890, y~510-620",
+          "detail": "prose drops the single cold shaft 'onto the concrete BESIDE him'. The frame centres the pool ON him - he stands in the middle of it. The authored isolation (light next to, not on, the man) is inverted; a spotlight on the subject reads as emphasis rather than abandonment."
+        }
+      ],
+      "held": [
+        "miniscribe-rep identity + costume match the card and canonical (dark hair sweep, tan blazer over brown open-collar shirt, dark trousers, dark shoes, no nose, no ears, uniform head tone)",
+        "expr-worried register matches the card exactly (raised inner brows, wide eyes, gritted/tight mouth)",
+        "4-digit hands, both the same size, hanging at the sides",
+        "alone stage-centre as authored, no other figure in the frame",
+        "'half the ceiling fittings dark' and 'the far end of the floor sits in shadow' both executed - the back third goes properly black",
+        "'grey-teal-cream palette turned cold' executed - the clearest palette-delta application of the four L28 children",
+        "cropped EMPTY tote bin at the lower-right gives the authored foreground depth (correct object, unlike L47's mis-inherited bench)",
+        "flat cel, uniform outline weight, no text, no unauthored duplicate props"
+      ],
+      "continuity": "deferred",
+      "notes": "Place seed L28 outside slice B - continuity DEFERRED. MINISCRIBE fascia sign absent again (present only in L47 among the four children).",
+      "sha256": "9aedf7fe7eb2cc6f0adb84d9b28080a2c1915de5873d5328fbe97aafefad065e",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L48.png"
+    },
+    {
+      "shot_id": "L49",
+      "verdict": "fail",
+      "vo_text": "so their bankers at Hambrecht & Quist",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "fail",
+        "ink_law": "pass",
+        "continuity": "n/a (root)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 13.4,
+        "ink_r_minus_b": 40.2,
+        "ink_lum": 17.2,
+        "median_sat": 0.6235,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 209.6,
+        "suit_rgb_scene": [
+          64.1,
+          57.0,
+          60.2
+        ],
+        "suit_rgb_scene_trouser": [
+          53.5,
+          55.5,
+          66.5
+        ],
+        "suit_rgb_step1_card": [
+          91.3,
+          54.6,
+          39.9
+        ],
+        "suit_rgb_canonical_hq_banker": [
+          92.8,
+          56.5,
+          41.6
+        ],
+        "suit_rgb_canonical_ibm_suit": [
+          55.2,
+          54.8,
+          72.2
+        ]
+      },
+      "defects": [
+        {
+          "axis": "figures",
+          "severity": "blocker",
+          "element": "hq-banker suit colour",
+          "location": "whole figure, x~570-790 y~60-710",
+          "detail": "the scene dresses hq-banker in a NAVY chalk-stripe three-piece. His verified STEP-1 card (fig-hq-banker--action-armscrossed--expr-skeptical) and his refs/hq-banker canonical are both WARM BROWN chalk-stripe. Measured: scene torso (64,57,60) / trouser (54,56,67) vs card (91,55,40) and canonical (93,57,42). The rendered navy is within noise of the ibm-suit canonical (55,55,72), so hq-banker is now wearing IBM's costume signature - and ibm-suit appears five shots earlier in L44. Identity-by-costume collapses between two named cast members in the same act."
+        },
+        {
+          "axis": "figures",
+          "severity": "note-root-cause",
+          "element": "shots.json L49 still_prompt",
+          "location": "shots.json long_form shot L49",
+          "detail": "the prose itself pins the wrong outfit: 'a navy chalk-stripe three-piece suit with a gold watch chain across the waistcoat, swept grey hair, heavy build'. That is hq-banker's BUILD and CHAIN but ibm-suit's SUIT. The shot note says 'pinned outfit stated once here' - so this one line is the authoritative costume pin for the character and it contradicts the canonical. The generator obeyed the prose over the card. The fix belongs in shots.json (and any downstream costume pin), not only in the frame."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "visitor chairs",
+          "location": "stage-right, chair A x~1245-1376 y~305-560; chair B x~1045-1376 y~530-768",
+          "detail": "prose authors 'a cropped visitor chair back at the lower-right' (singular). Two green leather chairs are cropped in on the right. Reads as plausible office dressing rather than a clone, but it is one more object than authored."
+        },
+        {
+          "axis": "composition_staging",
+          "severity": "minor",
+          "element": "desk calendar",
+          "location": "partners' desk, x~1045-1145 y~350-435",
+          "detail": "unauthored prop: a red-topped spiral desk calendar with a red date mark. Text-FREE (grid only, no legible lettering) so it does not trip the lettering law, but it is a tent-card-shaped desk object of exactly the family the p6b '1983 tent card' bleed came from - worth watching."
+        },
+        {
+          "axis": "register_flatcel",
+          "severity": "minor",
+          "element": "global saturation",
+          "location": "whole frame",
+          "detail": "median_sat 0.6235 - over 3x the ~0.19 era prior and the highest in the slice alongside L50 (0.663). The oak panelling and cabinet wall are rendered at a candy-warm chroma well above the channel's muted register. Not washed; over-cooked."
+        }
+      ],
+      "held": [
+        "staging matches the prose closely: standing CENTRE in a panelled bank office; partners' desk stage-right under a GREEN shaded banker's lamp; a wall of oak drawer cabinets behind; tall sash windows stage-left onto grey city rooftops; cropped visitor chair back for lower-right foreground depth",
+        "'one warm desk lamp against cool window light' executed - warm pool stage-right, cool grey daylight stage-left",
+        "expr-skeptical register matches the card exactly (one raised brow, one flattened brow, half-lidded eyes, flat mouth)",
+        "action-armscrossed rig held; gold watch chain across the waistcoat present as authored; swept grey hair; heavy squat build; no nose, no ears, uniform head tone",
+        "4-digit hands (the visible hand tucked at the elbow)",
+        "ink warm and healthy (hue 13.4deg, R-B +40.2)",
+        "flat cel, uniform outline weight, NO lettering anywhere in the frame"
+      ],
+      "continuity": "n/a",
+      "notes": "This is the character's introduction shot ('new named cast, revealed on the line that names the firm'), so the costume error propagates - see L50, which inherits the same navy.",
+      "sha256": "be1d09e71fbb70d37bf54f25c56e1c306ae7cc867853e5d233c3f222bd3d8a62",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L49.png"
+    },
+    {
+      "shot_id": "L50",
+      "verdict": "pass",
+      "vo_text": "put about 20 million dollars in",
+      "axes": {
+        "composition_staging": "pass",
+        "figures": "pass",
+        "ink_law": "pass",
+        "continuity": "n/a (authored as a root; see cross-shot note)",
+        "register_flatcel": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 15.2,
+        "ink_r_minus_b": 46.7,
+        "ink_lum": 23.0,
+        "median_sat": 0.6627,
+        "size": "1376x768",
+        "delta_from_cool_inversion_deg": 207.8
+      },
+      "defects": [
+        {
+          "axis": "register_flatcel",
+          "severity": "minor",
+          "element": "global saturation",
+          "location": "whole frame",
+          "detail": "median_sat 0.6627 - the highest in the slice, 3.5x the ~0.19 era prior. The oak panelling, desk and floor are rendered at a hot orange-brown chroma above the channel's muted register. Same over-cook as L49; the two bank-office frames are the saturation outliers of the slice."
+        },
+        {
+          "axis": "continuity",
+          "severity": "note-cross-shot",
+          "element": "the bank office + hq-banker's suit vs L49",
+          "location": "whole frame",
+          "detail": "L49 and L50 are the SAME authored room one VO line apart, but neither declares a chain parent or place seed (both parent_depth 0 in 6c2-wave2-scenes.json), and they disagree: (a) SUIT - L50 is correctly BROWN chalk-stripe per card + canonical, L49 is NAVY; (b) FLOOR - L50 oak boards, L49 green carpet; (c) BACK WALL - L50 raised-panel wainscot, L49 a wall of oak drawer cabinets; (d) DESK - L50 plain oak top, L49 green leather inset. L50 is the correct one on the suit. Recorded here as a SPEC gap (two consecutive same-room shots left unchained) plus an L49 defect, not an L50 defect."
+        }
+      ],
+      "held": [
+        "LETTERING ON THE CORRECT SURFACE: '20 MILLION' is stencilled on the PAPER BAND strapping the block, exactly as authored - the direct counter-example to L39's wrong-surface miss",
+        "letterform matches the lettering-marker-italic exemplar (bold, slightly italic marker face); it is the ONLY text in the frame, no stray or duplicate lettering",
+        "hq-banker matches his STEP-1 card fig-hq-banker--action-offering--expr-deadpan AND the canonical: warm BROWN chalk-stripe three-piece, gold watch chain at the waistcoat, white shirt, dark tie, swept grey hair, heavy squat build, no nose, no ears, uniform head tone",
+        "expr-deadpan register correct (half-lidded eyes, small closed mouth) - no drift",
+        "4-digit hand (thumb + 3 fingers) on the pushing hand, matching the card",
+        "staging matches the prose: stage-LEFT, pushing a suitcase-sized banded block across the partners' desk TOWARD THE VIEWER",
+        "panelled office with oak drawer cabinets and the green shaded banker's lamp; one warm lamp raking the block from stage-right",
+        "cropped inkstand with quill at the lower-right for the authored foreground depth",
+        "ink warm and healthy (hue 15.2deg, R-B +46.7)",
+        "flat cel, uniform outline weight, no unauthored duplicate props"
+      ],
+      "continuity": "n/a",
+      "sha256": "e5973625da869a6b9e7a1e63c9861c83c2dffc2293182f1c7edbbd6f85fed192",
+      "file": "C:/Users/danie/kb/orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging/L50.png"
+    }
+  ]
+}

@@ -3981,3 +3981,26 @@ dice on the acting Daniel picked); a declared crowd_mood field + forge injection
 a restoration suffices); a codified pose-simplicity bound (rulebook for a defect that never occurred);
 pixel-depth forge refusal (degradation is not the driver); hard authoring-run cap of 3 (kills
 legitimate multi-beat gags — audit judgment instead).
+
+## 2026-08-07 — bricks-fresh L49: prose costume contradiction fixed to canonical (navy -> brown)
+
+**Decision.** Boss-session ruling during the 6c2 wave-2 retry pass. L49's `still_prompt` pinned
+`hq-banker` in "a navy chalk-stripe three-piece suit" under a shot note that makes that line the
+authoritative costume pin — but `refs/hq-banker/hq-banker.png` and every hq-banker STEP-1 card are
+warm BROWN chalk-stripe, and the rendered navy measured inside noise of the `ibm-suit` canonical
+(55,55,72), who appears five shots earlier at L44. Obeying the prose therefore put two named cast
+members in one costume signature inside a single act and collapsed identity-by-costume. The single
+word `navy` was changed to `brown` in that one phrase of L49's still_prompt; no other shot's prose
+was touched. L49's retry additionally carries a one-span room-continuity correction pinning it to the
+L50 render (oak board floor, raised-and-fielded oak panelling behind, plain oak desk top) — the
+forge retry path cannot express an image seed here (see below), so the continuity is carried in prose.
+**Mechanism finding.** `forge batch --retry` cannot seed L49 on L50: a seed/mechanism retry must
+REPLACE a named in-chain parent or reorder existing provider seeds, and `_is_scene_seed` recognises
+only `assets/scenes/` frames. Every frame in this run still lives in `visual-kit/_staging/`, so no
+scene-seed swap is expressible until frames are promoted and stamped `verified`. Same finding blocks
+re-seeding L34 on a repaired L33.
+**Alternatives rejected.** Fixing only the frame (a re-mint reproduces the navy straight from the
+prose — the verifier's own point); re-pinning the canonical to navy (would collide with ibm-suit);
+dropping the costume pin entirely (L50, which states no outfit, rendered correctly — but leaving the
+pin unstated removes the authoring record the shot note calls for). FLAGGED FOR DANIEL at the 6c2 gate:
+this edits authored shot prose, which is normally his call.

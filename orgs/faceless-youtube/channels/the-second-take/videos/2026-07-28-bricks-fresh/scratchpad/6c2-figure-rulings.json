@@ -1,0 +1,156 @@
+{
+  "figures": {
+    "fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-base--action-recoil--expr-shock--l32-36f3a4e9": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-base--action-armscrossed--expr-deadpan--l38-3412012a": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-base--point-at-thing--expr-deadpan--l43-30b903d1": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--action-powerstance--expr-delighted": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--expr-delighted": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--action-celebrate--expr-delighted": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--action-powerstance--expr-greedy": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--action-salute--expr-delighted": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--action-offering--expr-pleading": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--hold-both-hands--expr-greedy": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--action-recoil--expr-shock": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-miniscribe-rep--action-slump--expr-worried": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-terry-johnson--action-armscrossed--expr-thinking": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-ibm-suit--expr-smug": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-ibm-suit--action-thumbsdown--expr-annoyed": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-hq-banker--action-armscrossed--expr-skeptical": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    },
+    "fig-hq-banker--action-offering--expr-deadpan": {
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "why": ""
+    }
+  }
+}

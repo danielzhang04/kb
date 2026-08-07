@@ -1,0 +1,522 @@
+{
+  "worker": "fresh-eyes-scene-verify-A",
+  "wave": "6c2-wave2",
+  "slice": "L26-L37",
+  "note": "L38 unminted (transport 503) and out of scope. Verification only - this file is evidence for stamp_review.py, not a verdict write.",
+  "ink_method": "scratchpad/p6b_ink.py - darkest-3% circular-mean hue, mean R-B, median HSV saturation; era prior median_sat ~0.19; cool inversion = hue ~223 deg with R-B <= 0",
+  "frames": [
+    {
+      "shot_id": "L26",
+      "file": "visual-kit/_staging/L26.png",
+      "sha256": "14f29160fcfe45dbff5e122673292877d36fd19996c466e042d8f8187495d918",
+      "size": "1376x768",
+      "verdict": "pass",
+      "axes": {
+        "composition": "pass-with-deviation",
+        "figures": "n/a (figureless plate by law)",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 87.3,
+        "ink_r_minus_b": 6.5,
+        "ink_lum": 31.2,
+        "median_sat": 0.1843,
+        "deg_from_cool_inversion": 135.7
+      },
+      "defects": [
+        {
+          "severity": "minor",
+          "axis": "composition",
+          "element": "distribution cartons",
+          "location": "western Europe cluster and South-East Asia cluster",
+          "detail": "7 cartons rendered, 9 authored. Western Europe has 1 (spec 2); South-East Asia has 2 (spec 3). All other named regions correct: W-coast N.America 1, E-tip S.America 1, southern Africa 1, E-coast Australia 1. Verified on 3x crops, not by eye at full frame."
+        },
+        {
+          "severity": "trivial",
+          "axis": "composition",
+          "element": "map board",
+          "location": "whole frame",
+          "detail": "Map is a bordered board with concrete floor visible on all four sides rather than 'filling the frame edge to edge'; the concrete floor is itself authored, so the two prompt clauses were reconciled rather than one being missed."
+        }
+      ],
+      "continuity": "ok",
+      "continuity_basis": "no chain parent, no place seed; style-tile-anchored plate root"
+    },
+    {
+      "shot_id": "L27",
+      "file": "visual-kit/_staging/L27.png",
+      "sha256": "97511fbcd34ad8e9ff3220c8a432cb8b6872c78642da46a5690ec9e019d565b8",
+      "size": "1376x768",
+      "verdict": "fail",
+      "axes": {
+        "composition": "pass",
+        "figures": "fail",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 30.0,
+        "ink_r_minus_b": 37.9,
+        "ink_lum": 42.5,
+        "median_sat": 0.1333,
+        "deg_from_cool_inversion": 193.0
+      },
+      "defects": [
+        {
+          "severity": "major",
+          "axis": "figures/rig",
+          "element": "base performer, left hand (viewer-left)",
+          "location": "approx x915-950, y440-465 of 1376x768 - the contact point with the dust sheet's leading edge",
+          "detail": "Fingerless mitten stub with a single thumb-like protrusion, no digit separation, and visibly smaller than the correctly-articulated right hand at x990-1015 y465-495. Breaks two rig axes at once (4 digits; both hands same size). Sleeve terminates without a cuff so the hand reads as laid on the sheet rather than closed on it. Sits on the shot's single action, i.e. where the eye goes."
+        },
+        {
+          "severity": "trivial",
+          "axis": "figures",
+          "element": "action token",
+          "location": "n/a",
+          "detail": "Card action is hold-one-hand; frame stages a two-handed haul. The prose says 'hauling', so two hands is arguably the better read of intent - noted only because it is the same region as the failing defect, not as grounds."
+        }
+      ],
+      "figure_match": {
+        "base": "identity/costume match to fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce confirmed: bald dome, no nose, no ears, heavy-lidded deadpan, brown patch-pocket warehouse coat over grey-olive tee, brown trousers, brown shoes"
+      },
+      "continuity": "ok",
+      "continuity_basis": "no chain parent, no place seed"
+    },
+    {
+      "shot_id": "L28",
+      "file": "visual-kit/_staging/L28.png",
+      "sha256": "426f7991d7a00e352756cdf8a385707ea549a7e5f29a8dbfdced6a68f28bde1b",
+      "size": "1376x768",
+      "verdict": "pass",
+      "role": "PLACE PLATE - parent/place-seed for L29, L33, L44, L46, L47, L48",
+      "axes": {
+        "composition": "pass",
+        "figures": "n/a (cast-free by law; correctly empty of people)",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 78.6,
+        "ink_r_minus_b": 3.0,
+        "ink_lum": 14.7,
+        "median_sat": 0.1216,
+        "deg_from_cool_inversion": 144.4
+      },
+      "lettering_check": {
+        "authored": "one word 'MINISCRIBE' on a plain painted board over the entrance at the back of the floor",
+        "rendered": "'MINISCRIBE', correctly spelled, marker-italic red on a cream painted board hung over the back entrance",
+        "surface": "correct - the authored surface, not a wall/floor/bench",
+        "stray_text_elsewhere": "none"
+      },
+      "defects": [],
+      "notes": "Benches read as two runs per side (a corridor) rather than two runs total; treated as the natural staging of 'two long steel benches running back into the depth' in a head-on wide, not a multiplication defect. No bled '1983' card, no duplicate sign, no duplicate till-class object.",
+      "continuity": "ok",
+      "continuity_basis": "plate root, nothing upstream"
+    },
+    {
+      "shot_id": "L29",
+      "file": "visual-kit/_staging/L29.png",
+      "sha256": "374765b638907d2ab11e24c39ca4f78a793c11f202e027f1f760ec173eaf2c08",
+      "size": "1376x768",
+      "verdict": "pass",
+      "axes": {
+        "composition": "pass-with-deviation",
+        "figures": "pass",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 111.5,
+        "ink_r_minus_b": 1.2,
+        "ink_lum": 8.1,
+        "median_sat": 0.1255,
+        "deg_from_cool_inversion": 111.5
+      },
+      "figure_match": {
+        "miniscribe-rep": "identity + costume match to canonical and to fig-miniscribe-rep--action-powerstance--expr-delighted: dark brown side-parted hair with same forelock, tan blazer, brown open-collar shirt, charcoal trousers, dark brown shoes. action-powerstance staged correctly, both fists on hips, hands same size, no ears, uniform head tone, flat cel."
+      },
+      "defects": [
+        {
+          "severity": "minor",
+          "axis": "composition",
+          "element": "miniscribe-rep placement",
+          "location": "figure feet at approx y635 of 768; roller-door base at approx y430",
+          "detail": "Prose plants him 'centre in the entrance at the back of the assembly floor'. He is on the centreline with the board over him but stands well downstage of the roller door. Literal staging would make him a thumbnail on a naming/reveal beat; the authored relationship (board hanging over him, dead centre) survives."
+        },
+        {
+          "severity": "trivial",
+          "axis": "figures",
+          "element": "expression",
+          "location": "face",
+          "detail": "Card draws expr-delighted with eyes closed in happy arcs; frame draws open eyes with the same broad grin. Inside register, but a variance off the card."
+        }
+      ],
+      "continuity": "ok",
+      "continuity_basis": "vs L28 place seed: bin rack, bench geometry, tray shelves, full strip-light array, shut roller door, cream/teal wall split, floor tone and the cropped foreground bench end at lower-right all carried unchanged and in position; palette identical; MINISCRIBE board carried and still correctly spelled. No re-rooting, no drift."
+    },
+    {
+      "shot_id": "L30",
+      "file": "visual-kit/_staging/L30.png",
+      "sha256": "ca239f74e39782e4fe1a8c946550a87bf78d64816854bfb11a5c97fd62dcc25a",
+      "size": "1376x768",
+      "verdict": "pass",
+      "role": "CHAIN PARENT of L31",
+      "axes": {
+        "composition": "pass",
+        "figures": "pass",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 25.7,
+        "ink_r_minus_b": 29.8,
+        "ink_lum": 30.9,
+        "median_sat": 0.0941,
+        "deg_from_cool_inversion": 197.3,
+        "sat_note": "lowest median_sat in the slice, ~half the era prior 0.19; authored palette is 'cool grey-cream', so read as compliant not washed"
+      },
+      "figure_match": {
+        "terry-johnson": "matches fig-terry-johnson--action-armscrossed--expr-thinking on every axis: balding blond comb-over with same forelock, blond moustache, DARK BROWN eyebrows, eyes glancing up/viewer-left, small downturned mouth, white dress shirt, black tie, belted dark trousers, dark shoes. action-armscrossed reproduces the card geometry including the raised index finger on the upper hand. Hands same size, correctly articulated. No ears, uniform head tone, flat cel, no text."
+      },
+      "defects": [],
+      "notes": "One trestle table and one stool, as authored - no duplication. Roller shutter correctly UP on grey daylight. Cropped stack of flats at lower-left present.",
+      "continuity": "ok",
+      "continuity_basis": "chain root"
+    },
+    {
+      "shot_id": "L31",
+      "file": "visual-kit/_staging/L31.png",
+      "sha256": "1870c3e36383e279120c304bead0a2eb3ec262b05a027273179dd2f4ace6904a",
+      "size": "1376x768",
+      "verdict": "pass",
+      "role": "delta on L30",
+      "axes": {
+        "composition": "pass",
+        "figures": "pass-with-defect",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 25.6,
+        "ink_r_minus_b": 30.2,
+        "ink_lum": 24.3,
+        "median_sat": 0.1059,
+        "deg_from_cool_inversion": 197.4,
+        "parent_diff_pct_px_over_thresh40": 1.478
+      },
+      "authored_delta": "one finished prop-drive standing upright on the trestle in front of him - LANDED CORRECTLY; matches refs/env/prop-drive.png on casing form, recessed top plate, corner screw bosses, grey body with dark-brown outline",
+      "defects": [
+        {
+          "severity": "minor",
+          "axis": "figures/continuity",
+          "element": "terry-johnson face",
+          "location": "head, approx x910-1080 y230-380",
+          "detail": "Unauthored SECOND delta on a prompt that said 'everything else exactly as established': (a) eyeline snaps from the card's up-and-left thinking glance to straight-ahead on an otherwise held pose; (b) eyebrows change colour dark brown -> pale blond. Sits at the <=2 delta cap rather than over it; produces a face flicker across a hard cut between two adjacent VO lines.",
+          "ruling_wanted": "SOURCE CONFLICT, not a generation defect: refs/terry-johnson/terry-johnson.png draws PALE BLOND brows; fig-terry-johnson--action-armscrossed--expr-thinking draws DARK BROWN brows. L30 followed the card, L31 followed the canonical. Both defensible against their own source; the pair must be made to agree either way."
+        }
+      ],
+      "continuity": "ok",
+      "continuity_basis": "pixel diff vs L30 at threshold 40: 1.478% of px moved, change mask is the authored prop-drive plus hairline re-render jitter. Breeze-block courses, trestle, stool, wall-leaning flats, lower-left stack of flats (identical plank for plank at 2.5x), shutter, skyline strip, bulb and its light cone, floor mottling and palette all hold in position. Does not read as a fresh root."
+    },
+    {
+      "shot_id": "L32",
+      "file": "visual-kit/_staging/L32.png",
+      "sha256": "c0f3989d93fada2d3d261a288cb943591dbe5d6ad0bdac0a75b4d41f0002a88c",
+      "size": "1376x768",
+      "verdict": "fail",
+      "axes": {
+        "composition": "pass",
+        "figures": "pass",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "fail (unauthored text)"
+      },
+      "measurements": {
+        "ink_hue_deg": 19.4,
+        "ink_r_minus_b": 47.7,
+        "ink_lum": 37.3,
+        "median_sat": 0.0745,
+        "deg_from_cool_inversion": 203.6,
+        "note": "best ink reading in the slice - sits exactly on the ~19deg / +18 target hue; lowest median_sat in slice but authored (grey-cream room around one saturated accent)"
+      },
+      "figure_match": {
+        "base": "matches fig-base--action-recoil--expr-shock--l32-36f3a4e9 on identity (bald dome, no nose, no ears, uniform head tone) and expression/action. Costume is CLOSER TO THE PROSE THAN THE CARD IS: card gloves are plain, frame gloves are properly quilted with a cuff as authored. Both gloves same size and identically articulated. Flat cel, no sub-outline stroke fields."
+      },
+      "defects": [
+        {
+          "severity": "major",
+          "axis": "register/text-law",
+          "element": "fire bucket lettering",
+          "location": "x1080-1240, y500-700 - across the bucket front",
+          "detail": "The word 'FIRE' is stencilled on the bucket. No lettering was authored in this shot's prompt, and unlike L28/L29/L36 this item was NOT seeded with the lettering-marker-italic exemplar. So the frame invented text AND drew it in a plain upright sans that is not the house letterform. Same family as the p6b bled-'1983'-card defect. Correctly spelled, which is beside the point."
+        },
+        {
+          "severity": "trivial",
+          "axis": "composition",
+          "element": "foreground depth object",
+          "location": "lower-left",
+          "detail": "Prose authored 'a cropped stool back'; frame puts a complete backless wooden stool there. Cropped by the frame edge so the depth cue works, but it is not the object described."
+        },
+        {
+          "severity": "minor",
+          "axis": "composition/palette",
+          "element": "fire bucket chroma",
+          "location": "stage-right",
+          "detail": "Shot notes say 'the red accent is the whole joke'. The frame carries two red masses - the glowing drive and a large saturated fire bucket - and the bucket, nearer and larger in chroma area, competes with the gag it supports."
+        }
+      ],
+      "continuity": "ok",
+      "continuity_basis": "no chain parent, no place seed"
+    },
+    {
+      "shot_id": "L33",
+      "file": "visual-kit/_staging/L33.png",
+      "sha256": "0479e608abb44eb02a372a9c33536820283e615412eec0af6ac5bc88fa711d1b",
+      "size": "1376x768",
+      "verdict": "fail",
+      "role": "CHAIN PARENT of L34; place seed L28",
+      "axes": {
+        "composition": "pass",
+        "figures": "fail",
+        "ink": "pass",
+        "continuity": "ok-with-note",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 75.1,
+        "ink_r_minus_b": 2.5,
+        "ink_lum": 7.8,
+        "median_sat": 0.1294,
+        "deg_from_cool_inversion": 147.9,
+        "place_seed_diff_pct_px_over_thresh40": 16.14
+      },
+      "figure_match": {
+        "ibm-suit": "CLEAN - dark skin, grey hair at the temples, navy pinstripe three-piece, blue tie, white pocket square, black oxfords; matches canonical and fig-ibm-suit--expr-smug; expr-smug reads as heavy lids plus closed smirk",
+        "miniscribe-rep": "DRIFTED - see defect"
+      },
+      "interaction_check": "single handshake clasp, both figures on the same ground plane, eye lines within a few px, head scales effectively equal, no spare hands, no duplicated figure - the interaction template clause is obeyed",
+      "defects": [
+        {
+          "severity": "major",
+          "axis": "figures/identity",
+          "element": "miniscribe-rep",
+          "location": "stage-right figure, head",
+          "detail": "Three identity features move at once against BOTH the canonical and the seeded card fig-miniscribe-rep--expr-delighted: (1) hair colour warm dark brown -> jet black; (2) hair silhouette from a side-parted quiff with visible sideburn -> a fuller rounder mass sweeping over the viewer-right ear, changing the head outline at frame scale not just on a crop; (3) expr-delighted mouth register from a closed-teeth grin -> an open laughing mouth with tongue. Reads as a different man from the one L29 established four shots earlier, and L29 got him right. Propagates, because L34 is a delta on this frame."
+        },
+        {
+          "severity": "minor",
+          "axis": "continuity",
+          "element": "MINISCRIBE painted board",
+          "location": "top centre, where the board hangs in L28/L29",
+          "detail": "The board is gone; the diff mask against L28 shows a solid block of change there and plain ceiling in its place. L33's own payload does not name the sign, so this is not strictly disobedience - but six shots seed off the same L28 plate (L29, L33, L44, L46, L47, L48) and if the board is present in some and absent in others the assembly floor flickers its own signage across the act. Wants a ruling."
+        }
+      ],
+      "continuity": "ok",
+      "continuity_basis": "vs L28: change mask dominated by the two added figures and the authored opened roller door; racks, benches, tray shelves, strip lights, wall split, floor and the foreground bench end all hold position. Sign-drop noted as a defect above."
+    },
+    {
+      "shot_id": "L34",
+      "file": "visual-kit/_staging/L34.png",
+      "sha256": "5ce59e5a51e7379c959e9b41aa3554a4e1ae6537533d9a8daa981268bd643f06",
+      "size": "1376x768",
+      "verdict": "fail",
+      "role": "delta on L33",
+      "axes": {
+        "composition": "pass",
+        "figures": "fail",
+        "ink": "pass",
+        "continuity": "fail (figure continuity)",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 116.7,
+        "ink_r_minus_b": 0.9,
+        "ink_lum": 5.3,
+        "median_sat": 0.1255,
+        "deg_from_cool_inversion": 106.3,
+        "parent_diff_pct_px_over_thresh40": 3.67,
+        "note": "smallest positive R-B margin in the slice; sign still correct, frame not inverted. median_sat in line with parent L33 (0.1294), evidence the palette held."
+      },
+      "authored_delta": "queue of loaded pallets nose to tail out into the yard through the open roller door - LANDED CORRECTLY, confirmed on a 4x doorway crop (receding line of pallets plus one further out, blue sky above)",
+      "defects": [
+        {
+          "severity": "major",
+          "axis": "figures/delta-discipline",
+          "element": "both figures",
+          "location": "centre frame, heads at approx y230-400",
+          "detail": "Prompt said 'everything else exactly as established' and both figures were re-drawn. ibm-suit goes from the card's expr-smug (heavy lids, closed smirk) to wide open eyes and an open tooth-showing smile - a different expression token, not a variance within one. miniscribe-rep goes from L33's jet-black hair, closed happy-arc eyes and open laughing mouth to warm brown hair, open round eyes and a small open smile. Total changes = 3 (1 authored + 2 unauthored) against a <=2 delta cap. Across a hard cut on a held handshake between adjacent VO lines, two faces changing at once is the most legible defect in this slice."
+        }
+      ],
+      "paired_ruling_with_L33": "L34's miniscribe-rep is the CANONICAL-CORRECT one (brown hair and head silhouette match refs/miniscribe-rep/miniscribe-rep.png and the L29 rendering); L33's black-haired version is not. The chain contains one drifted frame and one corrected frame - whichever is kept, the other must move. Fixing L33's identity would also close L34's over-cap delta.",
+      "continuity": "fail",
+      "continuity_basis": "Place holds completely (racks, benches, tray shelves, strip lights, wall split, floor, foreground bench end, palette, handshake contact geometry all where L33 left them; only 3.67% of px moved). Figure continuity breaks - see defect."
+    },
+    {
+      "shot_id": "L35",
+      "file": "visual-kit/_staging/L35.png",
+      "sha256": "ea94d3b2000fe0035857d6e10bbad8af16ac136621bbd2937f282f451ac8967e",
+      "size": "1376x768",
+      "verdict": "pass",
+      "axes": {
+        "composition": "pass",
+        "figures": "pass",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 74.4,
+        "ink_r_minus_b": 5.4,
+        "ink_lum": 13.5,
+        "median_sat": 0.1686,
+        "deg_from_cool_inversion": 148.6
+      },
+      "figure_match": {
+        "miniscribe-rep": "small by design ('standing small'); at 6x still reads correctly - canonical-brown side-parted hair, tan blazer, brown open-collar shirt, dark trousers, dark shoes; the same man L29, L34 and the canonical draw. action-celebrate with both fists up, expr-delighted as closed arcs plus wide grin. No ears, uniform head tone, flat cel."
+      },
+      "defects": [],
+      "notes": "Tower is four tiers, each stepped visibly wider than the one above, rising to the roof trusses. Daylight shaft from the roof light lands on the TOP tier as authored. Steel benches both sides, forklift parked stage-right, cropped forklift mast lower-left - both forklift elements are authored, so not a duplication defect. No text anywhere in frame.",
+      "continuity": "ok",
+      "continuity_basis": "no chain parent, no place seed"
+    },
+    {
+      "shot_id": "L36",
+      "file": "visual-kit/_staging/L36.png",
+      "sha256": "8ff7d98979d0fa6a12f53e14903072f4d4814810d57e58420242e8ff17105eb2",
+      "size": "1376x768",
+      "verdict": "pass",
+      "axes": {
+        "composition": "pass",
+        "figures": "pass",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 30.8,
+        "ink_r_minus_b": 30.0,
+        "ink_lum": 19.3,
+        "median_sat": 0.1961,
+        "deg_from_cool_inversion": 192.2,
+        "note": "median_sat ON the era prior (~0.19); second-highest saturation in the slice"
+      },
+      "lettering_check": {
+        "authored": "the wide paper band strapping the big bale carries the stencilled figure '125 MILLION'",
+        "rendered": "'125 MILLION', correctly spelled, hand-drawn marker caps in dark-brown house ink",
+        "surface": "correct - on the band itself, not the bale face, not the ground",
+        "stray_text_elsewhere": "none"
+      },
+      "figure_match": {
+        "miniscribe-rep": "closest card match in the slice. Against fig-miniscribe-rep--action-powerstance--expr-greedy: angled dark brows, heavy lids over narrowed eyes, asymmetric closed smirk, brown hair and silhouette, tan blazer over brown open-collar shirt, dark trousers, hands-on-hips with viewer-right fist articulated. expr-greedy reads as authored rather than sliding into anger."
+      },
+      "defects": [
+        {
+          "severity": "trivial",
+          "axis": "composition",
+          "element": "foreground bales",
+          "location": "bottom-left and bottom-right corners",
+          "detail": "Prose asked for 'a cropped bale corner across the bottom of the frame' (singular); frame gives two cropped bales, one at each bottom corner. 'Across the bottom of the frame' makes two corners a defensible reading."
+        }
+      ],
+      "continuity": "ok",
+      "continuity_basis": "no chain parent, no place seed"
+    },
+    {
+      "shot_id": "L37",
+      "file": "visual-kit/_staging/L37.png",
+      "sha256": "95b784cc553ceb5a091ce7e6dfe54b11de2913ef8755a4736c083e30f493b020",
+      "size": "1376x768",
+      "verdict": "pass",
+      "axes": {
+        "composition": "pass-with-deviation",
+        "figures": "pass",
+        "ink": "pass",
+        "continuity": "ok",
+        "register": "pass"
+      },
+      "measurements": {
+        "ink_hue_deg": 30.3,
+        "ink_r_minus_b": 36.5,
+        "ink_lum": 32.3,
+        "median_sat": 0.2039,
+        "deg_from_cool_inversion": 192.7,
+        "note": "warmest-saturated frame in the slice and the only one above the era prior"
+      },
+      "figure_match": {
+        "miniscribe-rep": "matches fig-miniscribe-rep--action-salute--expr-delighted almost line for line: brown hair and silhouette, closed delighted arcs, wide toothed grin, tan blazer over brown shirt, dark trousers and shoes, salute hand at the brow drawn with the same three fingers plus thumb as the card, free hand at the side at the same scale. No ears, uniform head tone, flat cel, no text."
+      },
+      "defects": [
+        {
+          "severity": "minor",
+          "axis": "composition",
+          "element": "summit form and figure scale",
+          "location": "whole frame",
+          "detail": "Prose asks for a STEEP summit with the figure planted SMALL at the top. Rendered as a gentle stepped ziggurat with the figure at roughly a third of its height, so he reads large. The 'peak' idea survives; the vertigo the adjective was buying does not."
+        },
+        {
+          "severity": "trivial",
+          "axis": "composition/light",
+          "element": "key light",
+          "location": "whole frame",
+          "detail": "'Hard high sun from stage-left' is not staged - lighting is close to flat ambient, with carton shading reading as local occlusion rather than a directional key."
+        }
+      ],
+      "continuity": "ok",
+      "continuity_basis": "no chain parent, no place seed"
+    }
+  ],
+  "summary": {
+    "pass": 8,
+    "fail": 4,
+    "passed": ["L26", "L28", "L29", "L30", "L31", "L35", "L36", "L37"],
+    "failed": ["L27", "L32", "L33", "L34"],
+    "deferred_continuity": [],
+    "deferred_continuity_note": "None. Every chain parent and place seed in L26-L37 lies inside the slice (L28 seeds L29 and L33; L30 parents L31; L33 parents L34), so nothing was judged blind.",
+    "ink_verdict": "All 12 pass. R-B positive on every frame; closest approach to the 223deg cool-inversion hue is L34 at 116.7deg, still 106deg away - nothing to flag under the 30deg-proximity rule. Warmest/most on-target is L32 (hue 19.4deg, R-B +47.7). Thinnest positive margins: L34 (+0.9), L29 (+1.2), L33 (+2.5), L28 (+3.0) - all four are cool grey-teal interiors where the darkest 3% is structural mass rather than outline, a caveat about the proxy rather than about those frames."
+  },
+  "systemic_signals": [
+    {
+      "id": "S1",
+      "severity": "mechanism",
+      "frames": ["L29", "L31", "L34"],
+      "title": "The delta path holds the PLACE and does not hold the FACE",
+      "detail": "Three parent/child comparisons available: L28->L29 (place seed), L30->L31 (chain), L33->L34 (chain). Environment, palette, prop positions and foreground crops held in 3 of 3, tightly (1.48% px change on L30->L31, 3.67% on L33->L34, change masks confined to the authored addition plus outline jitter). Figures held in 0 of 3: L31 moved terry-johnson's eyeline and brow colour; L34 re-drew both ibm-suit and miniscribe-rep from scratch. Every face change was unauthored and every one lands across a hard cut between adjacent VO lines. Whatever the delta mechanism pins, it pins scenery and lets the cast float - a fixable seeding asymmetry, not independent accidents."
+    },
+    {
+      "id": "S2",
+      "severity": "identity",
+      "frames": ["L29", "L33", "L34", "L35", "L36", "L37"],
+      "title": "miniscribe-rep hair is the canary; L33 is the single outlier",
+      "detail": "Six frames in the slice carry him. Five draw warm dark-brown side-parted quiff hair matching the canonical (L29, L34, L35, L36, L37). ONLY L33 draws jet-black with a different head outline. So the identity problem is one bad frame, not a drifting cast, and re-minting L33 alone would also close L34's over-cap delta. The terry-johnson case is a different kind: the STEP-1 card (dark brows) and the canonical (pale brows) genuinely disagree, so L30 and L31 each obeyed a different authority - that one needs a SOURCE RULING before any re-mint or the next pass just flips the flicker."
+    },
+    {
+      "id": "S3",
+      "severity": "advisory",
+      "frames": ["L27", "L28", "L29", "L30", "L31", "L32", "L33", "L34", "L35"],
+      "title": "Median saturation sits below the era prior across most of the act",
+      "detail": "Nine of twelve frames measure 0.0745-0.1686 against a ~0.19 prior; only L26 (0.1843), L36 (0.1961) and L37 (0.2039) reach it. Every low frame has an explicitly grey or cool palette in its own prompt, so each is individually compliant - but frame-by-frame compliance is producing an act that will read flatter than the era prior taken as a body, and the three frames that do reach the prior are the three that authored a warm or coloured ground. Act-level colour-budget observation, not a per-frame defect; nothing failed on it."
+    },
+    {
+      "id": "S4",
+      "severity": "minor",
+      "frames": ["L26", "L28", "L36"],
+      "title": "Enumerated counts in prose are not reliably honoured, in either direction",
+      "detail": "L26 renders 7 of 9 cartons, undershooting exactly the two clusters the prose doubled and tripled; L36 renders two cropped foreground bales where one was named; L28 renders two bench runs per side where two total were named. No consistent direction - an enumerated multiplicity is being treated as a vague 'several'. Low stakes on these three, but it matters the moment a count is the point of a shot."
+    },
+    {
+      "id": "S5",
+      "severity": "clear",
+      "frames": [],
+      "title": "NOT systemic - stated explicitly",
+      "detail": "Unauthored text appeared in exactly one frame (L32), and lettering was correct on all three frames that seeded the lettering-marker-italic exemplar (L28, its L29 carry, and L36). The p6b duplicate-element class - second '1983' tent card, second till - did NOT recur anywhere in this slice, and no style-tile content bled into any frame."
+    }
+  ]
+}

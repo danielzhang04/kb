@@ -1,0 +1,213 @@
+{
+ "figures": {
+  "fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce": {
+   "canonical_sha256": "e51a005d59e309c9f994102c9162650acec9155df7ab808036c6131bc07f79b7",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-base--action-recoil--expr-shock--l32-36f3a4e9": {
+   "canonical_sha256": "57fe0ab97210577558ba2598dc6163201dcded68be96470d1ff4c37516fef91d",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes mech-retry verify (opus subagent a9dcea011462b98a4)",
+   "date": "2026-08-06"
+  },
+  "fig-base--action-armscrossed--expr-deadpan--l38-3412012a": {
+   "canonical_sha256": "22326448df5bdc97481cca27610b7135875241541ef4bd0063fa2d494f453855",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-base--point-at-thing--expr-deadpan--l43-30b903d1": {
+   "canonical_sha256": "3ebc9634588bfcf507c3ed26028f5f417a11babd5bb90fdbc8ce968ccc8f6a76",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718": {
+   "canonical_sha256": "7f91196f92ae6f5ddebd81a64e61a6d5a243a899ec55c3b7d68229f76ae74ba8",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes retry verify (opus subagent a7788b30)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--action-powerstance--expr-delighted": {
+   "canonical_sha256": "08709a3a1b907bda51d22c4646e6884c98de41cbaa1c2871fb9b8d039f5e8415",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--expr-delighted": {
+   "canonical_sha256": "fdf436e8920b7b22569b588403fb02cb608e28caf169a5d5e2728b6c11a94851",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--action-celebrate--expr-delighted": {
+   "canonical_sha256": "de955784dd09a06975c5a51f839cb2e505138a0346aebf9b21741a1e2541785c",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--action-powerstance--expr-greedy": {
+   "canonical_sha256": "af2d56f0c47546a6e2e0911fdc0ecac8d2a4949aad03cbbd3c7ad8cec9f576f0",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--action-salute--expr-delighted": {
+   "canonical_sha256": "1f042587e6a309de893943874ecdcd47de80a1dc650c0456b27ded294d764990",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--action-offering--expr-pleading": {
+   "canonical_sha256": "dfb44c4bba6eeb3ed539d142041abf6273a8a92df9398d6432ef1e8a8ebe4b3a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--hold-both-hands--expr-greedy": {
+   "canonical_sha256": "41382381741fbf021421b92754128d9f216cb6aa8e8eb7e2a2a8055b3a904e8c",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--action-recoil--expr-shock": {
+   "canonical_sha256": "497886e4623c37906716252fe523ad7706903ffd1a1eae3eba13fb852280087a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-miniscribe-rep--action-slump--expr-worried": {
+   "canonical_sha256": "08511d2499981ecb447b5232f210b3de94c874beffab93ae07f304390fbe8aaf",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-terry-johnson--action-armscrossed--expr-thinking": {
+   "canonical_sha256": "f5bdc8d022fe1f23a1d7f6192eee7c00a08181260aad4b0dc2e5a24e2c64f10a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-ibm-suit--expr-smug": {
+   "canonical_sha256": "881b72dd9d4562a26c6c466a9e3e3c9443bcd040aaad1d2e23a96cf5961e0f62",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-ibm-suit--action-thumbsdown--expr-annoyed": {
+   "canonical_sha256": "274667bf4f04768e7fa2e5e28e7727bc9923a6deaf5b9b870dc9d7ca1f667f3b",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  },
+  "fig-hq-banker--action-armscrossed--expr-skeptical": {
+   "canonical_sha256": "dfa7db911b025758aecd179e2af821e49ee33ff1f8bac504a3e10de9872448c4",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes retry verify (opus subagent a7788b30)",
+   "date": "2026-08-06"
+  },
+  "fig-hq-banker--action-offering--expr-deadpan": {
+   "canonical_sha256": "dddf808ee9007b97f5c25575c939312407830f889c2b8576c77b52e900b93af2",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (opus subagent acd947d0e2acccb63)",
+   "date": "2026-08-06"
+  }
+ }
+}

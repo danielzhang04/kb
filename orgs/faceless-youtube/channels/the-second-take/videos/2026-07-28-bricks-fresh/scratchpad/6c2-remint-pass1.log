@@ -1,0 +1,7 @@
+  [1/3] fig-base--action-recoil--expr-shock--l32-36f3a4e9: START provider call
+  [1/3] fig-base--action-recoil--expr-shock--l32-36f3a4e9: OK -> _staging/fig-base--action-recoil--expr-shock--l32-36f3a4e9.png
+  [2/3] fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718: START provider call
+  [2/3] fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718: OK -> _staging/fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718.png
+  [3/3] fig-hq-banker--action-armscrossed--expr-skeptical: START provider call
+  [3/3] fig-hq-banker--action-armscrossed--expr-skeptical: OK -> _staging/fig-hq-banker--action-armscrossed--expr-skeptical.png
+  == 3 generated, 0 failed, 0 skipped ==

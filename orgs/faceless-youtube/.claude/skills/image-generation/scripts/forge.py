@@ -527,6 +527,49 @@ def costume_clause(prompt, character):
     return text.rstrip(".") + "." if text else ""      # one clause, closed, so a payload can splice it
 
 
+# CONSTRAINT, stated once: RIG-REGISTER CARDS FORBID SUB-OUTLINE LINE FIELDS. `line-register`
+# (`style-bible.md` §rig invariants) FAILS any element drawn finer than the rig outline and any
+# hairline or micro-pattern field — lattices, grilles, slats, fine grain, repeated thin stripes.
+# These are the garment words that NAME such a field: each one asks the model, in a noun phrase, for
+# exactly the repeated sub-outline line/dot texture the register forbids. A noun phrase BEATS
+# negative prose (L32: "quilted oven gloves" survived two escalating "ONE FLAT UNIFORM colour fill /
+# NO quilting, NO crosshatch, NO diamond lattice" instructions and failed rig review twice), so the
+# word is removed where a derived clause becomes card text rather than argued with there.
+# Internal spaces match a hyphen or nothing too, so one entry covers `cross hatch`/`cross-hatch`/
+# `crosshatch`. Only verb-safe forms are listed: `hatched`, `spotted`, `studded`, `knit` are absent
+# because they carry common non-texture senses ("hatched a plan", "brow knit") that a strip would
+# corrupt.
+MICRO_PATTERN_TEXTURE_WORDS = (
+    "argyle", "basket weave", "brocade", "cable knit", "chain mail", "checked", "checkered",
+    "chequered", "corduroy", "cross hatch", "cross hatched", "damask", "dotted", "embroidered",
+    "filigreed", "fishnet", "flecked", "floral print", "gingham", "hand woven", "herringbone",
+    "houndstooth", "knitted", "lace", "lacy", "lattice", "latticed", "mesh", "netted", "paisley",
+    "patterned", "perforated", "pin stripe", "pin striped", "pin stripes", "plaid", "pleated",
+    "polka dot", "polka dotted", "quilted", "quilting", "ribbed", "seersucker", "speckled",
+    "striped", "stripy", "tartan", "textured", "tweed", "waffle", "waffle knit", "woven",
+)
+
+_MICRO_PATTERN_RE = re.compile(
+    r"\b(?:%s)\b[-\s]*" % "|".join(sorted((w.replace(" ", r"[-\s]*")
+                                           for w in MICRO_PATTERN_TEXTURE_WORDS),
+                                          key=len, reverse=True)), re.IGNORECASE)
+
+
+def strip_micro_pattern_texture(text):
+    """Remove every `MICRO_PATTERN_TEXTURE_WORDS` adjective from text bound for a RIG-REGISTER card.
+
+    Scope is the whole point: this is applied ONLY where shot prose is turned into a STEP-1 figure
+    card's dress clause (`figure_card_payload`'s `costume`, which only the seeded performer passes).
+    A named character's costume is pinned in its canonical and its registry text is never rewritten
+    — `hq-banker`'s pinstripe suit is established, passing identity, and a re-mint must still say
+    pinstripe. The derived clause is likewise left intact at its source (`costume_clause`), because
+    that same string is hashed into the performer's costume KEY; stripping there would rename, and
+    so silently re-mint, every performer card already on disk."""
+    out = _MICRO_PATTERN_RE.sub("", text or "")
+    out = re.sub(r"\s+([,.;:])", r"\1", out)      # a removed adjective strands its space
+    return re.sub(r"\s{2,}", " ", out).strip()
+
+
 def figure_frame_name(character, pose=None, expression=None, costume=None):
     """STEP 1's output name. The name IS the reuse key (reuse-before-regenerate) AND the law's
     evidence that the pose/expression the prompt names is the one the slate actually carries —
@@ -1325,9 +1368,15 @@ def figure_card_payload(pose=None, costume=""):
     a base trait, so the era clothing has to be IN the card, never loose prose over a bare `base`
     in the scene. A named character passes none — its canonical already pins its costume. The
     clause sits BEFORE the backdrop sentence deliberately: the scene fragment it quotes carries
-    the shot's setting too, and "no scenery, no props, no furniture" is the fence, stated last."""
+    the shot's setting too, and "no scenery, no props, no furniture" is the fence, stated last.
+
+    This is also the ONE point where a derived clause becomes rig-register card text, so it is where
+    `strip_micro_pattern_texture` applies: prose is free to dress a performer in quilted gloves, and
+    a card drawn at rig register may not draw the quilting (`line-register`). Nothing else routes
+    through here — a named character passes no costume at all."""
     stance = ("standing or seated exactly as the pose reference shows" if pose
               else "standing squarely at rest, arms relaxed at the sides, facing the viewer")
+    costume = strip_micro_pattern_texture(costume)
     dress = (f"The scene this card is minted for reads: {costume} Take from that description "
              "ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure "
              "in it for that era, work and setting, never the rig template's default hoodie; "
