@@ -1,83 +1,58 @@
 # Executive Dashboard
-_Generated: 2026-08-06 06:15 UTC by dispatcher-cloud_
+_Generated: 2026-08-07 06:11 UTC by dispatcher-cloud_
 
 ## Action required
-No cards in `queue/approvals/` (0). Items owned by / addressed to a human that cannot move
-without Daniel (currently parked in `queue/inbox/`):
-| id | project | action | risk-tier |
-|----|---------|--------|-----------|
-| 6a5e482a-3b8707b5 | kb-ops | decide:budget-gate-measures-nothing | T3 |
-| 6a5c7274-635d84bf | kb-ops | flip delivery-gate warn→block after clean soak | T2 |
-| 6a605ebb-d86dff79 | kb-ops | wake-me:daemon-dir-drift-and-missing-sync-script | T1 |
-| 6a6c3d8e-08b1da38 | kb-ops | wake-me:daemon-dir-drift-fyt-2026-07-31 | T1 |
-| 6a718533-aa7e5382 | kb-ops | wake-me:daemon-dir-drift-grew-thin-slice-2026-08-04 | T1 |
-| wake-daniel-2026-07-22-engagement-fold | faceless-youtube | wake:human-decision | T2 |
+- **wake-daniel-2026-07-22-engagement-fold** (faceless-youtube, wake:human-decision, T2) —
+  engagement doctrine fold STAGED; governed-worker leg parked on an infra gap. Pick option
+  1/2/3 in the card.
+- **6a5e482a-3b8707b5** (kb-ops, decide:budget-gate-measures-nothing, T3) — human decision owed.
+- **6a5c7274-635d84bf** (kb-ops, flip delivery-gate warn→block after clean soak, T2) — unowned;
+  awaiting go-ahead.
+- Standing wake-me cards (all T1, owner human-operator, daemon-dir sync owed on desktop):
+  `6a605ebb` (sync_daemon_dirs.py missing on ops), `6a6c3d8e` (daemon-dir drift 07-31),
+  `6a718533` (drift grew 08-04). Drift set unchanged since 08-04.
 
-**Unowned audit findings still needing a decision:** `6a6d8e1e-ed8c8bdf` (weekly-audit
-2026-08-01) and `6a645395-d5322124` (weekly-audit 2026-07-25). Root theme persists: the
-**desktop scheduler is down** — the desktop cadences (`grades-reconcile`, `daemon-dirs-sync`,
-`self-lint-report`) have produced nothing since 2026-07-22, and it is the root cause of the
-daemon-dir drift that re-reports every night. Two engine/worker-owned card sets are parked only
-because their runners are dark: six `eng-fold-*` drafts (owner `dashboard-engine`) and two
-`report:self-lint` cards (`wf-0f499ff9…`, `wf-d46c12d5…`, owner `worker-desktop`). Fix is
-Daniel's (HEARTBEAT.md is human-edited only). Project gates also open: faceless-youtube PR #109
-HELD (live 7/7 rerun after the Aug 1 cap reset), `claude/fyt-writer-grammar-slim` (UNMERGED,
-review-gated), PR #41 (READY, must merge with its dashboard companion), and Atlas V2 "Trust"
-go/no-go.
+No cards in `queue/approvals/`.
 
 ## Queue
-| state (by directory) | count |
-|----------------------|-------|
+| state | count |
+|-------|-------|
 | inbox | 17 |
-| working | 1 |
+| working | 2 |
 | approvals | 0 |
-| done | 259 |
+| done | 285 |
+| archived | 1 |
 
-(This run's nightly card `6a74262f-b725d54c` sits in `queue/inbox/` at `state:working` — the
-17th inbox file — and completes to `queue/done/` before this cycle ends. `queue/working/` holds
-one card, `6a6bc3dd-5494006b` at `state:halted` — terminal, see Anomalies.)
+_working/: `6a75768f` (this nightly-review card, active) and `6a6bc3dd` (halted — codex
+resume defect, resolved by operator via PR #103; record-only, no rerun)._
 
 ## Last 24h
-- **Cadences:** `nightly-review` dispatched + self-executed tonight (2026-08-06, card
-  `6a74262f-b725d54c`, dispatcher-cloud). Prior run's card `6a72d607-c1b57318` (2026-08-05)
-  completed to `queue/done/`. Two `codex-dispatch` cards (`6a74076b-f46c82fa`,
-  `6a742062-146aef86`, kb-ops) also completed, subscription-billed.
-- **Cost:** $0.00 API-billed today (both codex steps `gpt-5.6-sol` / `gpt-5.6-terra` logged
-  `usd: 0.0`) vs the **$30.00/day** limit → **$30.00 remaining today**. The trailing 24h window
-  also captures 2026-08-05's real spend of **$3.94** (five `gemini-3-pro-image` image-gen steps,
-  `bricks-fresh` remint/sweep work) — well under budget.
-- **Notable results:** preamble passed; `sync_skills --check` clean (no skill drift). The
-  main→ops daemon-dir check still reports 10 out-of-sync daemon-read files — **unchanged** from
-  the 2026-08-04 report (card `6a718533`), so no new wake-me card was filed this run (the
-  standing cards already record the current, complete state).
+- Cadence: nightly-review dispatched + executed (card `6a75768f`, this run). Yesterday's
+  nightly-review card `6a74262f` completed.
+- Cost vs budget ($30.00/day API-billed): **today ≈ $0.00** (5 codex-direct runs, all
+  subscription-billed $0). **Yesterday ≈ $0.05** — one Gemini image call (root, bricks-fresh
+  R1 style fix) + 21 codex-direct subscription runs ($0) + 4 dispatcher-cloud steps ($0).
+  Well under budget.
+- Health: preamble OK; pyyaml OK; sync_skills --check clean. sync_daemon_dirs.py absent on ops
+  (known — card `6a605ebb`); ran the origin/main copy in refs-fallback: 10 daemon-read files
+  drifted (5 main-only, 5 content-differs), **identical to the 08-04 report** — no new card filed.
 
 ## Projects
-- **atlas** — V1 "HANDS" wave COMPLETE (2026-07-21): all three gates passed, PR #44 merged +
-  prod rolled out; Atlas view live on 127.0.0.1:5317 with live worker passthrough. V2 "Trust"
-  awaits Daniel's go/no-go.
-- **faceless-youtube** — Gated multi-agent pipeline SHIPPED to `main` (2026-07-31). PR #109
-  OPEN/HELD at `claude/fyt-full-run`; only remaining action is the live 7/7 rerun after the
-  Aug 1 cap reset — do not merge before Daniel's gate. Scripting-doctrine branch
-  `claude/fyt-writer-grammar-slim` UNMERGED (review-gated); PR #41 READY (merge with its
-  dashboard companion).
-- **kb-ops** — Wave A COMPLETE (2026-07-21): governed executor proven live. Daemon returned to
-  inert; the daily `self-lint-report` cadence stays DORMANT (no scheduler enabled — launches are
-  manual from a watched desk session).
+- **atlas** — V1 "Hands" wave COMPLETE (2026-07-21): all three gates passed, PR #44 merged
+  (aa35b00), prod rolled out and LIVE on 127.0.0.1:5317 with live worker passthrough. V2
+  "Trust" planning awaits Daniel's go/no-go.
+- **faceless-youtube** — Active run **bricks-fresh** (`claude/bricks-doctrine-reset`, dd22f97);
+  era doctrine + R1 saturation fix live. Phase 6B first tenth: 18/25 slots verified, PAUSED at
+  the P1–P5 human gate. Resume via `handoffs/2026-08-06-fyt-bricks-p6b-gate.md`. Poyais
+  published; wells-fargo parked.
+- **kb-ops** — Wave A COMPLETE (2026-07-21): governed executor proven live (run-7b0b8de8, all 4
+  runbook checks). Daemon inert; gate off outside watched sessions. Daily `self-lint-report`
+  cadence exists but DORMANT (no scheduler; manual launch via dashboard Workflows UI).
 
 ## Anomalies
-- **Daemon-dir drift persists (unchanged).** `sync_daemon_dirs.py --check` reports 10 daemon-read
-  files out of sync main→ops: 5 main-only (`agents/fyt-audio-render.md`, `agents/fyt-publish.md`,
-  `agents/fyt-story.md`, `agents/fyt-visuals.md`, `orgs/faceless-youtube/workflows/thin-slice-run.md`)
-  and 5 content-differs (`agents/fyt-checker.md`, `agents/fyt-preproduction.md`,
-  `agents/fyt-production.md`, `agents/fyt-runner.md`, `orgs/faceless-youtube/workflows/video-run.md`).
-  Identical set to the 2026-08-04 report — no new card this run. Owed: a desktop
-  `python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops worktree. Root cause: the dark
-  desktop `daemon-dirs-sync` cadence.
-- **`sync_daemon_dirs.py` absent on `ops`.** The script lives on `origin/main` but not `ops`, so
-  the nightly routine's literal step-2b command file-not-founds; this run extracted the `main` copy
-  and ran it in refs-fallback mode (as designed). Standing card `6a605ebb`.
-- **Stale working card.** `6a6bc3dd-5494006b` (kb-ops `iter-smoke-t2`, codex-worker) has sat in
-  `queue/working/` at `state:halted` for 7 days (since 2026-07-30). Its `## Result` shows it was
-  already resolved by the boss (known `codex exec resume --cd` defect, fixed in PR #103); terminal
-  — wants a one-time desk sweep to `queue/done/`.
-- **No preamble failures; no skill drift; no budget breach.**
+- **sync_daemon_dirs.py missing on ops branch** (present on origin/main) — recurring; tracked by
+  standing card `6a605ebb`. Root cause: dark desktop `daemon-dirs-sync` cadence. Cloud routine
+  reports, cannot fix.
+- **main→ops daemon-dir drift**: 10 files out of sync (unchanged since 08-04). Owed: desktop
+  `python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops worktree.
+- `6a6bc3dd` sits in working/ as `halted` — terminal/resolved (PR #103), not a live stall.
