@@ -1,2 +1,3 @@
 R1 grayscale-drift fix probe: 1 billable call (2 503s uncharged), tile grant DISCIPLINE->SATURATION validated.	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh R1 style fix	0.050
 Phase 6b first tenth L01-L25: 22 shots + 4 surgical retries + 2 correction retries + 2 chain re-bases + 1 changed-mechanism re-mint; 48 provider calls, 503s billed conservative; genlog authoritative.	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh phase 6b first tenth	1.872
+6c2 STEP-1 wave 1 (prior terminal, reconstructed from genlog): 19 figure cards + 3 rig retries = 22 billable calls, 503s uncharged.	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh 6c2 wave1 figures	0.858
