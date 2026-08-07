@@ -210,6 +210,8 @@ export interface ActivationDeps {
   createWorkers: typeof createClaudeWorkerAdapter;
   createCodexWorkers: typeof createCodexExecAdapter;
   createSessionChains: typeof createAgentSessionChainStore;
+  createAttemptIo: typeof createAttemptIoStore;
+  createPaidActions: typeof buildPaidActionExecution;
   createRegistry: typeof createWorkerCancellationRegistry;
   createManagers: typeof createBrokerManagerAdapter;
   createCancellation: typeof createBrokerCancellationController;
@@ -291,6 +293,8 @@ function defaultDeps(): ActivationDeps {
     createWorkers: createClaudeWorkerAdapter,
     createCodexWorkers: createCodexExecAdapter,
     createSessionChains: createAgentSessionChainStore,
+    createAttemptIo: createAttemptIoStore,
+    createPaidActions: buildPaidActionExecution,
     createRegistry: createWorkerCancellationRegistry,
     createManagers: createBrokerManagerAdapter,
     createCancellation: createBrokerCancellationController,
@@ -345,7 +349,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const resolvePolicy = createProjectPolicyResolver(repoRoot, deps.loadPolicy, project, policy);
   const assignedAgents = deps.createAssignedAgentResolver(repoRoot);
   const sessionChains = deps.createSessionChains(stateRoot);
-  const attemptIo = createAttemptIoStore({ root: join(stateRoot, 'control', 'attempt-io') });
+  const attemptIo = deps.createAttemptIo({ root: join(stateRoot, 'control', 'attempt-io') });
 
   const resolveManagedLaunch = (spec: ManagedStartSpec): ClaudeSessionLaunch => {
     const profile = managedProfile(policy.profiles, spec);
@@ -489,7 +493,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   // The provisioner hook mints a stage's grant and writes its token file into the prepared attempt worktree
   // at launch; it is passed to the engine so a paid stage arms its worker before delivery. Provider keys are
   // resolved server-side from OUTSIDE any worktree — never written into one.
-  const paid = buildPaidActionExecution({ stateRoot, worktreeRoot });
+  const paid = deps.createPaidActions({ stateRoot, worktreeRoot });
   const paidActionRouteUrl = `${(env.DASHBOARD_RP_ORIGIN ?? env.DASHBOARD_DEV_ORIGIN ?? 'http://127.0.0.1:5317').replace(/\/+$/, '')}${PAID_ACTION_ROUTE_PATH}`;
   const provisionSpendGrant = createSpendGrantProvisioner({
     grantStore: paid.spendGrantStore,

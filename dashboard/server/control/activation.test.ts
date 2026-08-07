@@ -61,6 +61,14 @@ function spyDeps(): ActivationDeps {
     createWorkers: vi.fn().mockReturnValue({}) as never,
     createCodexWorkers: vi.fn().mockReturnValue({}) as never,
     createSessionChains: vi.fn().mockReturnValue({ get: vi.fn().mockReturnValue(null), record: vi.fn().mockResolvedValue(undefined) }) as never,
+    createAttemptIo: vi.fn().mockReturnValue({
+      append: vi.fn(), read: vi.fn().mockReturnValue([]), onAppend: vi.fn().mockReturnValue(() => {}),
+      stop: vi.fn(), bufferedAttemptCountForTest: vi.fn().mockReturnValue(0),
+    }) as never,
+    createPaidActions: vi.fn().mockReturnValue({
+      paidActionService: { execute: vi.fn(), snapshot: vi.fn().mockReturnValue([]) },
+      spendGrantStore: { resolve: vi.fn().mockReturnValue(null) },
+    }) as never,
     createRegistry: vi.fn().mockReturnValue({ register: vi.fn(), cancel: vi.fn(), clear: vi.fn() }) as never,
     createManagers: vi.fn().mockReturnValue({ ensure: vi.fn() }) as never,
     createCancellation: vi.fn().mockReturnValue({ cancelManager: vi.fn(), cancelWorker: vi.fn() }) as never,
@@ -155,6 +163,19 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(typeof result?.cancelAutomatic).toBe('function');
     expect(typeof result?.containManagerStart).toBe('function');
     expect(typeof result?.verifyCanonicalResult).toBe('function');
+    expect(result?.attemptIo).toBe((deps.createAttemptIo as ReturnType<typeof vi.fn>).mock.results[0].value);
+    expect(result?.paidActionService).toBe((deps.createPaidActions as ReturnType<typeof vi.fn>).mock.results[0].value.paidActionService);
+    expect(result?.spendGrantStore).toBe((deps.createPaidActions as ReturnType<typeof vi.fn>).mock.results[0].value.spendGrantStore);
+  });
+
+  it('constructs activation-owned state stores only through their injectable factories', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    expect(deps.createAttemptIo).toHaveBeenCalledWith({ root: expect.stringContaining('attempt-io') });
+    expect(deps.createPaidActions).toHaveBeenCalledWith({
+      stateRoot: '/state',
+      worktreeRoot: expect.stringContaining('worktrees'),
+    });
   });
 
   it('delegates terminal-root proof to the existing exact g1 canonical result lookup', async () => {

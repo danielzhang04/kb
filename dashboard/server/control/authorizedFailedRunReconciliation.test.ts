@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { pythonInvocation } from '../platform/python.ts';
 import { commitPreparedCoordination, type GitRunner } from '../write/branch.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { WorkflowRunRequest } from '../write/workflowRun.ts';
@@ -44,6 +45,7 @@ const HISTORICAL_PROPOSAL = JSON.parse(readFileSync(join(
   SOURCE_ROOT, 'dashboard', 'server', 'control', 'test-fixtures', 'authorized-20260801-fyt-proposal.json',
 ), 'utf8')) as JsonObject;
 const AUDIT_PATH = 'ledgers/audit/dashboard-audit.ndjson';
+const PYTHON = pythonInvocation();
 
 const CLAIM_TOKENS: Readonly<Record<string, string>> = {
   idea: '423acd3901711d91', story: '42dc12e28c9cfdb9', 'judge-gate': '9e26962980f35e51',
@@ -281,7 +283,10 @@ function fixture(): Fixture {
     return git(repoRoot, args);
   };
   const runPy: PyRunner = (_root, script, payload) => {
-    const result = spawnSync('python', ['-c', script, payload], { cwd: repoRoot, encoding: 'utf8' });
+    const result = spawnSync(PYTHON.command, [...PYTHON.baseArgs, '-c', script, payload], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    });
     return { exitCode: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
   };
   const storeImpl = new ReconciliationStore();
@@ -326,7 +331,7 @@ function assertTerminalCards(f: Fixture): void {
 
 describe('authorized failed FYT run reconciliation', () => {
   it('emits syntactically valid Python for the fixed card operation', () => {
-    const result = spawnSync('python', [
+    const result = spawnSync(PYTHON.command, [...PYTHON.baseArgs,
       '-c',
       'import sys; compile(sys.argv[1], "authorized-failed-run-card-script", "exec")',
       AUTHORIZED_FAILED_RUN_CARD_SCRIPT,
@@ -344,7 +349,7 @@ describe('authorized failed FYT run reconciliation', () => {
     expect(AUTHORIZED_FAILED_RUN_CARD_SCRIPT.match(/safe_dump\([^)]*width=10\*\*9\)/g)).toHaveLength(2);
     const target = `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice ${'and one more long segment '.repeat(4)}tail`;
     expect(target.length).toBeGreaterThan(120);
-    const dumped = spawnSync('python', ['-c', `
+    const dumped = spawnSync(PYTHON.command, [...PYTHON.baseArgs, '-c', `
 import json, sys, yaml
 meta = json.loads(sys.argv[1])
 print(yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, width=10**9), end="")

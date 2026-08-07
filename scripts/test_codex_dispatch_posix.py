@@ -44,6 +44,18 @@ def test_posix_liveness_rejects_a_reused_or_stale_pid(monkeypatch):
     assert not codex_dispatch.pid_alive(4242, expected_start_time=12340, platform="posix")
 
 
+def test_posix_liveness_accepts_a_matching_pid_and_start_time(monkeypatch):
+    monkeypatch.setattr(codex_dispatch, "process_start_time", lambda pid: 12345)
+
+    assert codex_dispatch.pid_alive(4242, expected_start_time=12345, platform="posix")
+
+
+def test_posix_liveness_rejects_a_dead_pid(monkeypatch):
+    monkeypatch.setattr(codex_dispatch, "process_start_time", lambda pid: None)
+
+    assert not codex_dispatch.pid_alive(4242, expected_start_time=12345, platform="posix")
+
+
 def test_state_root_resolution_env_and_platform_defaults():
     assert codex_dispatch.resolve_state_root(
         {"KB_CODEX_DISPATCH_STATE": "C:/override"}, platform="posix"
