@@ -31,33 +31,21 @@ else
   fail 'Claude subscription auth: claude -p failed'
 fi
 
+# Codex auth is file-backed (~/.codex/auth.json, mode 600) per Daniel's 2026-08-06
+# fallback ruling: headless gnome-keyring cannot create its login collection on
+# this box, and a blank-password keyring offers no real protection over a 600 file.
 codex_status=''
-if timed codex exec 'say ok' >/dev/null 2>&1; then
+codex_auth_mode=''
+if timed codex exec --skip-git-repo-check 'say ok' >/dev/null 2>&1; then
   codex_status="$(timed codex login status 2>&1)"
-  if [[ $? -eq 0 && ${codex_status,,} == *chatgpt* && ${codex_status,,} == *keyring* ]]; then
-    pass 'Codex auth: exec succeeded; login status reports ChatGPT keyring-backed auth'
+  codex_auth_mode="$(stat -c '%a' "$HOME/.codex/auth.json" 2>/dev/null)"
+  if [[ ${codex_status,,} == *chatgpt* && $codex_auth_mode == '600' ]]; then
+    pass 'Codex auth: exec succeeded; ChatGPT login file-backed (auth.json mode 600)'
   else
-    fail 'Codex auth: exec succeeded but login status is not ChatGPT keyring-backed'
+    fail "Codex auth: exec succeeded but status/auth.json unexpected (mode ${codex_auth_mode:-missing})"
   fi
 else
   fail 'Codex auth: codex exec failed'
-fi
-
-# A running user bus is insufficient: the default Secret Service collection must
-# exist and report Locked=false. Any query failure, missing collection, or lock is
-# a failure, so this remains fail-closed after a headless reboot.
-secret_collection=''
-secret_locked=''
-if timed busctl --user status org.freedesktop.secrets >/dev/null 2>&1; then
-  secret_collection="$(timed busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service ReadAlias s default 2>/dev/null | awk '{print $2}' | tr -d '"')"
-  if [[ -n $secret_collection && $secret_collection != / ]]; then
-    secret_locked="$(timed busctl --user get-property org.freedesktop.secrets "$secret_collection" org.freedesktop.Secret.Collection Locked 2>/dev/null)"
-  fi
-fi
-if [[ $secret_locked == 'b false' ]]; then
-  pass 'Secret Service: user D-Bus reachable and default collection unlocked'
-else
-  fail 'Secret Service: user D-Bus, default collection, or unlocked keyring check failed'
 fi
 
 linger="$(timed loginctl show-user "$USER" -p Linger 2>/dev/null)"

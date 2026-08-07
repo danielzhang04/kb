@@ -58,12 +58,13 @@ latency is real; pick the ~16 GB or ~32 GB CPX tier at order time). The durable 
    ```
 6. **Reboot the VM. Then the exit test** (script from step 7): `claude -p 'ok'` and
    `codex exec 'say ok'` succeed with no interactive login; `codex login status` shows
-   ChatGPT account keyring-backed; `env | grep -E 'ANTHROPIC|OPENAI'` empty;
-   `python3 -c 'import http.server'`-served placeholder on :5317 reachable from the
-   desktop browser at `http://localhost:5317`.
-   - **Known-risk step:** headless gnome-keyring unlock after reboot. If `codex login status`
-     fails post-reboot, STOP — that triggers the spec's fallback ruling (protected
-     `auth.json`), which is Daniel's explicit call, not a silent downgrade.
+   ChatGPT account with file-backed `~/.codex/auth.json` mode 600; `env | grep -E
+   'ANTHROPIC|OPENAI'` empty; `python3 -c 'import http.server'`-served placeholder on
+   :5317 reachable from the desktop browser at `http://localhost:5317`.
+   - **Ruling 2026-08-06 (Daniel, live during Wave 0):** headless gnome-keyring failed
+     the viability test (login collection cannot be created without a login session);
+     the spec's fallback — protected `auth.json` — is ACCEPTED. `vm_verify.sh` encodes
+     the file-backed check.
 7. Codex worker deliverable (only agent work this wave): `scripts/vm_verify.sh` encoding
    the exit test as one idempotent script with PASS/FAIL lines per check.
 
