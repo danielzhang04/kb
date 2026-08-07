@@ -211,3 +211,11 @@
 - LEARNED: the governed-worker child env denylists the subscription token variable BY DESIGN — a VM
   needs the CLI's persistent home-dir login (human runs /login once); vm_verify passing a direct
   `claude -p` does NOT prove spawned workers can authenticate.
+
+## 2026-08-07 — bricks 6c2 slice driven to machine limit (boss session)
+- WORKED: takeover-of-a-possibly-live-checkout protocol — an 8-min quiescence Monitor on _staging/scratchpad before seizing; the prior terminal had minted files 3 MINUTES before I looked. Never trust "the other terminal is probably dead" without watching writes stop.
+- WORKED (3rd confirmation): changed-mechanism re-mint beats prose retries — "quilted" noun beat two escalating negative clauses; stripping the adjective at derivation fixed it first-try. Worker's hash-churn catch (strip at figure_card_payload, not costume_clause which feeds costume_key) saved a silent full-cast re-mint; grade briefs should ask "what does this change invalidate?".
+- WORKED: two disjoint fresh-eyes verifiers writing per-worker files + ONE stamping pass as single writer of review.json/manifest — zero races across 4 verification rounds. Also: bounded background re-driver loop (cycle-and-check, exit-on-success) rode out a ~50min provider outage without burning worker context.
+- LEARNED: prompt-instruction taxonomy with numbers — CONTENT instructions (objects/states) landed 8/8; TONE/SCALE/SPATIAL ones measured no-op or wrong (warm-ink ×3 no-op, children track the SEED's ink not prose). Route correctives as objects+states; relative-position beats need mechanism, not adjectives.
+- LEARNED: assets/** is gitignored in faceless-youtube — scene PNGs are machine-local, manifests carry shas. My ede2f56 commit message wrongly claimed "21 PNGs promoted" as commit content; check `git check-ignore` before writing a commit message that names binaries.
+- LEARNED: verify-worker diagnoses can be worth more than verdicts — L34's fail proved a SPEC GAP (seed_roles lacks expression authority; same spec resolved it oppositely per figure, 0.00% vs 30-38% px). Ask verifiers for "your read on next move" explicitly; both parked shots shipped with no-re-roll diagnoses that save the next terminal money.
