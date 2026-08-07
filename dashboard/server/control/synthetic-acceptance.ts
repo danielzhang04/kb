@@ -37,6 +37,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeSurfaceContext } from '../http/surface.ts';
+import { kbStateDir } from '../platform/stateDir.ts';
 import { createInternalServiceCaller, isExecutionActivated, DASHBOARD_EXECUTOR_SUBJECT } from './activation.ts';
 import { dispatchClaimedCard, type OwnedCard } from './queueBridge.ts';
 import { defaultPyRunner } from '../write/launch.ts';
@@ -266,7 +267,9 @@ export async function main(): Promise<number> {
       // checkout. Verify the canonical record names exactly the approved file and that the isolated mirror
       // serves its exact content from the recorded integration branch.
       const integrationState = JSON.parse(readFileSync(
-        join(stateRoot, 'control', 'canonical-integration.json'),
+        // Resolved through the same seam the daemon uses: kbStateDir appends the app name under
+        // KB_STATE_DIR, so the raw mkdtemp root alone would miss the actual state tree.
+        join(kbStateDir('kb-dashboard'), 'control', 'canonical-integration.json'),
         'utf8',
       )) as {
         records?: Array<{
