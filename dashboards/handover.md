@@ -1,27 +1,25 @@
 # System Handover
-_Generated: 2026-08-07 06:11 UTC_
+_Generated: 2026-08-08T06:10Z_
 
-The nightly cloud dispatcher ran clean: preamble passed, skills are in sync, and the
-nightly-review card executed and dashboards were regenerated. Yesterday cost about five cents
-of API spend (one Gemini image call for the bricks-fresh style fix); everything else ran on
-subscription billing. You are far under the $30/day ceiling.
+**What happened.** The nightly cloud dispatcher ran cleanly: preamble passed, `sync_skills`
+is in sync, and it dispatched two standing cadences — `nightly-review` (this regeneration) and
+`weekly-audit`. Spend for the day is $0 against the $30 ceiling; everything is subscription-billed.
+The one recurring snag: `scripts/sync_daemon_dirs.py`, which the routine's step-2b health gate
+calls, is missing from the repo, so that check could not run. This has held since 07-22; three
+standing wake-me cards already track it, so per the dedupe rule no new card was filed — the run
+reports rather than blocks and continued normally.
 
-**Waiting on you.** Three real decisions sit in the inbox. The biggest is the faceless-youtube
-engagement fold (`wake-daniel-2026-07-22-engagement-fold`): the work is staged but the
-governed-worker path is blocked on an infrastructure gap, and the card lays out three ways
-forward. Two kb-ops items also want a call — whether the budget gate that "measures nothing"
-stays or goes (T3), and whether to flip the delivery-gate from warn to block after its clean
-soak. Separately, the faceless-youtube **bricks-fresh** video is paused at its P1–P5 shot-board
-gate (18 of 25 slots verified); resume from `handoffs/2026-08-06-fyt-bricks-p6b-gate.md`.
+**What is waiting on you.**
+1. **Restore `scripts/sync_daemon_dirs.py`** (or update the nightly routine if it was retired) —
+   see standing cards `6a605ebb` / `6a6c3d8e` / `6a718533` in `queue/inbox/`. Until then the
+   main→ops daemon-dir mirror check is blind (and a `--sync` is owed).
+2. **atlas V2 "Trust"** planning is parked on your go/no-go — V1 shipped and is live.
+3. **faceless-youtube bricks-fresh** is paused at the P1–P5 shot-board human gate; resume via
+   `handoffs/2026-08-06-fyt-bricks-p6b-gate.md` when you want it to proceed.
 
-**A recurring maintenance item.** The `sync_daemon_dirs.py` script still isn't on the ops
-branch (it lives on main), and 10 daemon-read files remain drifted between main and ops — the
-same set as the 08-04 report, so nothing new broke. The fix is a one-time desktop run of
-`python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops worktree. This keeps
-recurring because the desktop `daemon-dirs-sync` cadence is dark. The cloud routine can only
-report it; three standing wake-me cards already track it, so no new card was filed tonight.
-
-**What runs next unattended.** Only this nightly dispatcher on its schedule. The dashboard
-daemon and governed executor stay inert outside a watched session, and no worker will pick up
-the paused bricks-fresh run or the parked decisions until you act. Atlas V1 is live in
-production and idle pending your V2 go/no-go.
+**What the system will do next unattended.** The dispatcher will keep firing its declared cadences
+on schedule (nightly-review nightly, weekly-audit weekly) and regenerating these dashboards. No
+autonomous work touches atlas or faceless-youtube — both sit at their human gates. The kb-ops
+`self-lint-report` cadence stays dormant (no scheduler; manual launch only). A halted codex card is
+parked in `working/` awaiting the next sweep; it is terminal and harmless. Nothing is spending money
+and nothing needs you tonight beyond the items above.

@@ -380,3 +380,17 @@
   ->working (landed in queue/working/ dir this time), ran work order, wrote Result, ->done.
 - Halted card 6a6bc3dd STILL in working/ (now 8 days), record-only/resolved (PR #103) — left it;
   desk sweep to done still owed, outside the nightly carve-out.
+
+## 2026-08-08 nightly + weekly-audit run (dispatcher-cloud, opus-4-8)
+- Clean run: preamble PASS, pyyaml OK, sync_skills --check clean (exit 0). Dashboards regenerated.
+  $0 API-billed today; all steps subscription. Budget $30 fully intact.
+- WEEKLY-AUDIT (Sat) also fired this run. Coverage 08-02..08-08: nightly-review 7/7, weekly-audit
+  today; all 3 DESKTOP cadences produced NO run evidence (scheduler still down) — UNCHANGED vs 08-01.
+  Grades<->activity CLEAN (no new inspector rows since 07-21; historical rows match row-for-row).
+  Filed unowned findings card 6a76c8d8-42e01a54 cross-referencing 6a6d8e1e(08-01)/6a645395(07-25).
+  DELTA: P2 stranded done-in-inbox RESOLVED (4->0). P1/P3/P4/P5 carry unchanged.
+- step 2b: sync_daemon_dirs.py STILL absent on ops (recurring since 07-22). Applied dedupe rule again:
+  NO new wake-me card; standing 6a605ebb/6a6c3d8e/6a718533 cover it; surfaced in dashboard Anomalies +
+  summary + wake. Reminder to self: DON'T re-file — check memory for the dedupe rule before wake-carding.
+- Both cadence cards self-executed (owner dispatcher-cloud): inbox->working->done, Results written.
+- Push path: recorded in the run summary.
