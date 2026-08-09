@@ -394,3 +394,15 @@
   summary + wake. Reminder to self: DON'T re-file — check memory for the dedupe rule before wake-carding.
 - Both cadence cards self-executed (owner dispatcher-cloud): inbox->working->done, Results written.
 - Push path: recorded in the run summary.
+
+## 2026-08-09 nightly run (dispatcher-cloud, opus-4-8)
+- Clean run: preamble PASS, pyyaml OK, sync_skills --check clean (exit 0). Dashboards regenerated.
+  $0 API-billed today; all steps subscription. Budget $30 fully intact. No weekly-audit today (Sun).
+- Dispatch emitted 1 card (6a7819b3 nightly-review); self-executed inbox->working->done, Result written.
+- step 2b: sync_daemon_dirs.py STILL absent on ops (recurring). Ran origin/main copy per precedent.
+  Drift set = 10 files (5 main-only, 5 content-differs), UNCHANGED vs 08-04 card 6a718533. Applied
+  dedupe rule: NO new wake-me card; standing 6a605ebb/6a6c3d8e/6a718533 cover it; surfaced in
+  dashboard Anomalies + summary. (Dedupe rule held again — checked memory first, as prior self-note said.)
+- Queue snapshot: inbox 18, working 2 (6a6bc3dd codex iter-smoke + this card), done 289, approvals 0.
+  5 human-owned inbox cards awaiting Daniel (1 decide, 3 daemon-drift wakes, 1 fyt engagement-fold).
+- Push path: recorded in the run summary.
