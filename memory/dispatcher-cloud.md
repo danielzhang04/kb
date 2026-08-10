@@ -406,3 +406,16 @@
 - Queue snapshot: inbox 18, working 2 (6a6bc3dd codex iter-smoke + this card), done 289, approvals 0.
   5 human-owned inbox cards awaiting Daniel (1 decide, 3 daemon-drift wakes, 1 fyt engagement-fold).
 - Push path: recorded in the run summary.
+
+## 2026-08-10 nightly (cloud)
+- Dispatch emitted 1 card (6a796f91 nightly-review); self-executed inbox->working, dashboards
+  regenerated, Result written, ->done.
+- sync_daemon_dirs.py STILL absent on ops (recurring). ALMOST filed a fresh wake-me card before
+  re-reading this memory shard — the dedupe rule caught it. Ran origin/main copy per precedent:
+  drift = 10 files (5 main-only, 5 content-differs), IDENTICAL to prior runs. NO new card; standing
+  6a605ebb/6a6c3d8e/6a718533 cover it; surfaced in dashboard Anomalies + summary. LESSON REINFORCED:
+  read memory BEFORE filing any wake-me card — the recurring-drift dedupe is easy to trip on a
+  fresh clone where the drift "looks" novel.
+- sync_skills --check in sync. preamble OK. Queue: inbox 18, working 2 (6a6bc3dd halted codex +
+  this card), done 290, approvals 0.
+- Push path: recorded in the run summary.
