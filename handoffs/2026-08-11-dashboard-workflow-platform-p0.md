@@ -64,11 +64,11 @@ Environment facts a resumer must know:
 6. **Verification state at close:** adapter+bridge suites 125/125 isolated; inbox's 9 touched
    suites 256/256; `tsc --noEmit` byte-identical 7-error baseline (both builders diffed
    against pre-edit capture); vite build green. Full `server/control` dir run: 38/40 files,
-   2 failing files — one is visibly the ACCEPTED `workflowRun.test.ts` runtime failure
-   (arc-prompt baseline), the second was NOT yet identified (a re-run grepping FAIL lines
-   was still executing at session close; full-suite runs on this machine also hit known
-   vitest fork-pool timeouts under load — judge suspicious files ISOLATED before believing
-   them).
+   2 failing — both judged load flakes, not regressions: `canonicalResultEmbeddedPython.
+   test.ts` re-ran 6/6 green ISOLATED; `authorizedFailedRunReconciliation.test.ts` (8 fails)
+   died on a temp-remote `git unpack-objects abnormal exit` infra error after 579s under
+   full-suite load — the documented load-flaky reconciliation class. One isolated
+   confirmation run of the latter is still owed (see Remaining 2).
 7. Both builders graded PASS with transcript model-grep (sonnet), per BOSS.md.
 
 ## Remaining (ordered)
@@ -80,9 +80,10 @@ Environment facts a resumer must know:
    locked/loading SPA states). Its output landed (or died) in the closed session — assume
    lost; RE-DISPATCH an opus adversarial reviewer with that scope against the 804acec diff.
    Do not merge or advance the pin before a verdict; fix findings on the same branch.
-2. **Identify + judge the second failing server/control file** (isolated re-run). Accepted
-   baseline is exactly: `workflowRun.test.ts:265` + load-flaky fork-pool timeouts (isolated
-   green = pass). Anything else failing isolated = real regression from 804acec — fix first.
+2. **Confirm `authorizedFailedRunReconciliation.test.ts` green ISOLATED** (from dashboard/:
+   `npx vitest run server/control/authorizedFailedRunReconciliation.test.ts`). Its full-suite
+   failure signature was pure infra (temp-remote git unpack error under load), but the rule
+   stands: isolated green = pass; isolated failure = real regression from 804acec, fix first.
    (Lesson `baseline-failures-are-not-free` applies.)
 3. **Daniel gate — sweep window ruling:** the 7-day age-based auto-close fires even on a
    LIVE waiting-human run. If Daniel deliberately parks gates >7 days, the window (or the
