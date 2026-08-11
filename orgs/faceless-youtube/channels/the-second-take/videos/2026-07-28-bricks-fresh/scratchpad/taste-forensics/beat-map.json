@@ -1,0 +1,4421 @@
+[
+  {
+    "beat_id": "L01",
+    "vo_text": "We're in the 1980s.",
+    "old_L": "L01",
+    "old_L_candidates": null,
+    "new_L": "L01",
+    "named_by": "daniel-named:P6B-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L01",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "We're in the 1980s."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L01",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Crowd sits off the authored back-wall arrangement but the staging intent (dark screen centred, unobstructed) holds; sat 0.7176, the batch's chromatic high."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L01.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.231499",
+        "sha256": "81372a434bfe1e916032526316e5ad317f9a5f5662cb67b07b1a736795ba9be3",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L01.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:38:12.251436",
+        "sha256": "49d1dbb895057c13c6ffb4a77702647c3e006134c10ef25af99de1871e5d95ed",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L01",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L01.png",
+            "sha256_noted": "49d1dbb895057c13"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L02",
+    "vo_text": "Home to big hair, Pac-Man, and one",
+    "old_L": "L02",
+    "old_L_candidates": null,
+    "new_L": "L02",
+    "named_by": "daniel-named:P6B-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L02",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "Home to big hair, Pac-Man,"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L02",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Strongest delta in the whole batch -- only the maze-grid screen changes, the entire held set carries frame-for-frame off L01."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L02.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.254021",
+        "sha256": "5059b5a8e22f943d28b9af77bdc5b8f7f377cecc8d3a1db9f971add5f1f1333d",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L02.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:39:48.872289",
+        "sha256": "5f4e9d875fd33e84c7ff99702a42aa0b623ccdd8dbb725c3dd47b8123a69a627",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L02",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L02.png",
+            "sha256_noted": "5f4e9d875fd33e84"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L03",
+    "vo_text": "of the funniest corporate scams that you've never heard of.",
+    "old_L": "L03",
+    "old_L_candidates": null,
+    "new_L": "L03",
+    "named_by": "daniel-named:P6B-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L03",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "and one of the funniest corporate scams"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L03",
+        "status": "CONTEXT PLATE",
+        "round": null,
+        "caption_or_script": "PROMOTED CONTEXT PLATE -- Daniel board-v2 ruling R3, night-scene exception. Median sat 0.0902 sits below the R1 floor BY DESIGN; L22-L25 inherit this as their night baseline."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L03.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.274388",
+        "sha256": "0a7b7b14b76836397b8e6c8e0e7148f79449ec5a09e5482fdeb36ffc85e8041c",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L03.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-05T20:09:33.410085",
+        "sha256": "ffe78ce41033ecad2eeb6114461fcd1156bcf5b803d9ad469dc1e3f83c08b9e7",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L03",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L03.png",
+            "sha256_noted": "ffe78ce41033ecad"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L04",
+    "vo_text": "It's 1983, and the personal computer",
+    "old_L": "L05",
+    "old_L_candidates": null,
+    "new_L": "L04",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L05",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "It's 1983, and the personal computer"
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L05 ? candidate 1CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "PASS ? no figures present, so ?3 rig is not applicable; authored environment and lettering are clean. None."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L05 ? candidate 2CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "PASS ? no figures present, so ?3 rig is not applicable; authored environment and lettering are clean. None."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L04",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Commuter stream crosses the near pavement rather than the far side, but the ironic no-one-looks-at-the-newsstand payload lands exactly as authored."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L05.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.317479",
+        "sha256": "bb725adf7676358af2ec521e8aaea58fc5ca10bb36a54f954b532e1832e701b7",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L04.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:40:24.783419",
+        "sha256": "b18fc18639c1d130b2a9c76497d07e0fa77d0bb3c987db3351bc6582695cf413",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L04",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L04.png",
+            "sha256_noted": "b18fc18639c1d130"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L05",
+    "vo_text": "had only been invented a few years earlier.",
+    "old_L": "L06",
+    "old_L_candidates": null,
+    "new_L": "L05",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L06",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "had only been invented a few years earlier."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L05",
+        "status": "CONTEXT PLATE",
+        "round": null,
+        "caption_or_script": "PROMOTED CONTEXT PLATE -- Daniel board-v2 ruling R5. The staged style-tile-copy was REJECTED; this is the PREVIOUS computer-shop plate, restored by hand ($0, no batch spec). 2K where its seven siblings run 1K -- a taste call over tier consistency."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L06.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.337083",
+        "sha256": "0cbe6cc19d843721032f67873ed40519d79085447aef6db573aaeb1939e914e1",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L05.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:09:07.853367",
+        "sha256": "9447bfc1a479727b8d52c2a69156af91da12c4603187350b5289ea55cccecec5",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L05",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L05.png",
+            "sha256_noted": "9447bfc1a479727b"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L06",
+    "vo_text": "They were all the craze.",
+    "old_L": "L07",
+    "old_L_candidates": null,
+    "new_L": "L06",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L07",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "They were all the craze."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L06",
+        "status": "PARKED",
+        "round": "ROUND 1",
+        "caption_or_script": "an unauthored second '1983' tent card duplicates the established diegetic literal."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L06-retry1",
+        "status": "PARKED",
+        "round": "ROUND 2",
+        "caption_or_script": "the double '1983' is fixed, but the sole authored delta (the crate) moved onto the counter top at its FAR end, where L05's own prose puts the window card; a passing attribute regressed. Verifier: mildest park in the set, a defensible human waiver."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L06",
+        "status": "PARKED",
+        "round": "latest: L06-retry1 (round 2)",
+        "caption_or_script": "the double '1983' is fixed, but the sole authored delta (the crate) moved onto the counter top at its FAR end, where L05's own prose puts the window card; a passing attribute regressed. Verifier: mildest park in the set, a defensible human waiver."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L07.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.356628",
+        "sha256": "404d91ac4433b71427b17f4632dfbdbef156f71d16deef507b21621925be8e4a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L06",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L06.png",
+            "sha256_noted": "c8773bc6a86f77fe"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L06-retry1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L06-retry1.png",
+            "sha256_noted": "4a31fab7cd611707"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L07",
+    "vo_text": "Anybody with money was buying one,",
+    "old_L": "L08",
+    "old_L_candidates": null,
+    "new_L": "L07",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L08",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "Anybody with money was buying one,"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L07",
+        "status": "PARKED",
+        "round": "ROUND 1",
+        "caption_or_script": "the authored counter-height vantage was not delivered; one banknote floats with no hand; the '1983' card is redrawn truncated to '83'; the crate is not at the counter's near end."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L07-retry1",
+        "status": "PARKED",
+        "round": "ROUND 2",
+        "caption_or_script": "three of four defects fixed, but the frame now draws a SECOND counter with a SECOND brass till, the foreground till carries garbled unauthored glyphs, and the counter-height vantage is still not delivered."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L07",
+        "status": "PARKED",
+        "round": "latest: L07-retry1 (round 2)",
+        "caption_or_script": "three of four defects fixed, but the frame now draws a SECOND counter with a SECOND brass till, the foreground till carries garbled unauthored glyphs, and the counter-height vantage is still not delivered."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L08.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.376551",
+        "sha256": "a87396a93416614b8b5f8138565763ec7add87ca4b76ddf5356e8cc411650da8",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L07",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L07.png",
+            "sha256_noted": "be48a0a66d8a17e1"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L07-retry1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L07-retry1.png",
+            "sha256_noted": "272f903c6f49fcec"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L08",
+    "vo_text": "and they were flying off the shelves.",
+    "old_L": "L09",
+    "old_L_candidates": null,
+    "new_L": "L08",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L09",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "and they were flying off the shelves."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L09CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "Clean ? PASS: no figures present, so ?3 rig is not applicable; authored plate is clean."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L08",
+        "status": "BLOCKED \u2014 NOT MINTED",
+        "round": null,
+        "caption_or_script": "Never generated -- doctrine-blocked on its parked parent L07. Unblocks or parks with whatever ruling L07 receives (see NEEDS YOUR RULING, P2)."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L09.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.399692",
+        "sha256": "ae8450503fb31cf71beb0aedb6ee3c654979fe4cd540418921d8b2aa3e568afb",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L09",
+    "vo_text": "It was like when Apple released the iPhone.",
+    "old_L": "L10",
+    "old_L_candidates": null,
+    "new_L": "L09",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L10",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "It was like when Apple released the iPhone."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L09",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Winged computer 'flying off the shelves' idiom lands; minor door-colour drift off L05 on a non-payload element."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L10.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.420224",
+        "sha256": "574594c83e090665f3d6008e1617a9b9af09a89de981b1111e45ccc7eaaea2cd",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L09.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T01:25:28.294801",
+        "sha256": "2c8287fa191d1b5be41d7ac460f960c10f7f292965cf9108dd525bb452fa9582",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L09",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L09.png",
+            "sha256_noted": "2c8287fa191d1b5b"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L10",
+    "vo_text": "Well, computers run on these things called hard drives.",
+    "old_L": "L11",
+    "old_L_candidates": null,
+    "new_L": "L10",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L11",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "Well, computers run on these things called hard drives."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L10",
+        "status": "PARKED",
+        "round": "ROUND 2",
+        "caption_or_script": "the overnight queue with its chairs, sleeping bags and flasks is staged INSIDE the shop instead of beyond the window glass, inverting the shot's still-interior/packed-street device; the 'wide from behind the counter' vantage was also not delivered."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L10-retry1",
+        "status": "PARKED",
+        "round": "ROUND 3",
+        "caption_or_script": "correction not taken (queue still inside the shop, breath on indoor figures); ink COOL-INVERTED at 217.7deg/-3.8; vantage still the L05 camera; the 'unlit warm brown inside' palette regressed to cold."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L10",
+        "status": "PARKED",
+        "round": "latest: L10-retry1 (round 3)",
+        "caption_or_script": "correction not taken (queue still inside the shop, breath on indoor figures); ink COOL-INVERTED at 217.7deg/-3.8; vantage still the L05 camera; the 'unlit warm brown inside' palette regressed to cold."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L11.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.439327",
+        "sha256": "607f25e0e60dbb5ed65210c80dbe3fff8c8d406b424bcff9ce446a81489e3846",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L10",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L10.png",
+            "sha256_noted": "b72d9f7bd35135bf"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L10-retry1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L10-retry1.png",
+            "sha256_noted": "6f8b3aa4e9e0dd7f"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L11",
+    "vo_text": "A hard drive is the part of your computer that remembers things",
+    "old_L": "L12",
+    "old_L_candidates": null,
+    "new_L": "L11",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L12",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "A hard drive is the part of your computer"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L11",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. pc-boxy + prop-drive service-bench composite; the occluded right arm was judged plausible occlusion, not amputation -- the reviewer's closest anatomy call."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L12.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.459870",
+        "sha256": "bf3d7277b82677951fb1ce737f726c4fb8758a4d753367adad3114b858e96a8e",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L11.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:42:51.550397",
+        "sha256": "a75e82cd16f64f361d3466178111a6b47748beaa1e5d46ec912adf8bf66a295b",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L11",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L11.png",
+            "sha256_noted": "a75e82cd16f64f36"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L12",
+    "vo_text": "after you switch it off:",
+    "old_L": "L13",
+    "old_L_candidates": null,
+    "new_L": "L12",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L13",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "that remembers things after you switch it off:"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L12",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Drive-vault base; the 'four courses' scale pin under-delivers (~2.5) but the readability purpose it was written for (L14's folders) is met regardless."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L13.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.483320",
+        "sha256": "9b29fd5ec24b2a2b876e92da605d46c80f21726581f530c6ad633e41ad68430f",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L12.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:44:23.558569",
+        "sha256": "cecf482da8b3a7a9960436748eba09eb58f66baed8e5a6dd8dac65bbef870115",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L12",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L12.png",
+            "sha256_noted": "cecf482da8b3a7a9"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L13",
+    "vo_text": "your files, your applications,",
+    "old_L": "L14",
+    "old_L_candidates": null,
+    "new_L": "L13",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L14",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "your files, your applications,"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L13",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Vault door swings open on empty ruled shelves; exemplary continuity hold off L12, nothing outside the authored change moved."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L14.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.503338",
+        "sha256": "7f9cb9c594aaaa58b82ae1070cf755c1fed1875b5e48af5b26ec74e73f598ac3",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L13.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:45:51.359701",
+        "sha256": "c79fbf99e43ba8dae34e30e99b58bd9b4066a35ecc499432a8c482e58f5da173",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L13",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L13.png",
+            "sha256_noted": "c79fbf99e43ba8da"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L14",
+    "vo_text": "and your private collections.",
+    "old_L": "L15",
+    "old_L_candidates": null,
+    "new_L": "L14",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L15",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "and your private collections."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L14",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Top two shelves fill with folders and sleeves, both correctly blank -- the batch's highest-risk unrequested-text surface, and it is clean."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L15.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.524276",
+        "sha256": "3d67b951a18c35ad1a818e64ba11b7534118f5c6e4259dd34260095f610677c2",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L14.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:46:17.657563",
+        "sha256": "fc01c53abdb5271c8d33612e56c6ae35251162c12a1a28ccbd7137d67e5b35bd",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L14",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L14.png",
+            "sha256_noted": "fc01c53abdb5271c"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L15",
+    "vo_text": "Every computer needs one.",
+    "old_L": "L16",
+    "old_L_candidates": null,
+    "new_L": "L15",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L16",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "Every computer needs one."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L15",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Curtain closes the bottom shelf; the drive-vault chain closes with near-perfect continuity end to end."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L16.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.546284",
+        "sha256": "3b9d5a0566755d5e469ea994c330074619ec86ce69cd957c26d3d040d4e67fb1",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L15.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:47:04.584521",
+        "sha256": "d1227d8819d52edbecfeec7a93aadc4d5c617c343d3e4e1151976c16d636edc6",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L15",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L15.png",
+            "sha256_noted": "d1227d8819d52edb"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L16",
+    "vo_text": "So while the computer companies were out front fighting",
+    "old_L": "L17",
+    "old_L_candidates": null,
+    "new_L": "L16",
+    "named_by": "daniel-named:P6B-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "problem-L17",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "So while the computer companies were out front"
+      },
+      {
+        "board": "full-board.html",
+        "card_id": "L17",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "So while the computer companies were out front"
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L17 ? candidate 1PARKED",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "FAIL ? the two tugging figures and surrounding crowd are foreground/large by scale but use crowd-tier dot eyes/simple mouths, violating ?3 tiering. Content: foreground crowd-tier rig; flag only, no retry. Hair variation is present. Pick may instead be retry."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L17 ? candidate 2PARKED",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "FAIL ? the tugging figures and cropped foreground bystanders are large while rendered on the crowd rig, violating ?3 tiering. Content: foreground crowd-tier rig; flag only, no retry. Hair variation is present. Pick may instead be retry."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L16",
+        "status": "VERIFIED",
+        "round": "final: L16-remint1",
+        "caption_or_script": "ROUND-3 changed-mechanism RE-MINT -- supersedes two parked attempts. Ink 16.8deg/+18.0 lands on the #241a12 target, the frieze runs square to frame, the rank clears both frame edges, the Tier-A vantage repair holds."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L17.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.570338",
+        "sha256": "2e0527aa16b4178a063a6bca32a08b38e3e1d4a925ed0caf17dfbd3535cd6569",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L16.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T13:39:14.555525",
+        "sha256": "ac2920584251363a800d7c42fb95bef8651f3b8977631dec03ced3931d12b97d",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L16",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L16.png",
+            "sha256_noted": "332bdee0f293c8d4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L16-retry1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L16-retry1.png",
+            "sha256_noted": "6ed64518bd33a243"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L16-remint1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L16-remint1.png",
+            "sha256_noted": "ac2920584251363a"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L17",
+    "vo_text": "like Samsung and Apple fight over the phone market,",
+    "old_L": "L18",
+    "old_L_candidates": null,
+    "new_L": "L17",
+    "named_by": "daniel-named:P6B-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "problem-L18",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "fighting like Samsung and Apple fight over the phone market,"
+      },
+      {
+        "board": "full-board.html",
+        "card_id": "L18",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "fighting like Samsung and Apple fight over the phone market,"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L17",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. The plate glass splits into two side panels rather than one running pane -- a staging drift the reviewer flagged as the closest call they let pass in the batch."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L18.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.590351",
+        "sha256": "ff34a9abb6f560718bf149a6fa83f86a8012b396e27b651c2c21f3b983ae5a67",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L17.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:48:15.809617",
+        "sha256": "838076a09e97a56961da366540b0a07c470342547d139988cc5e26b2533cf6ee",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L17",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L17.png",
+            "sha256_noted": "838076a09e97a569"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L18",
+    "vo_text": "the hard drive manufacturers were",
+    "old_L": "L19",
+    "old_L_candidates": null,
+    "new_L": "L18",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L19",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "the hard drive manufacturers were quietly raking it in."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L18",
+        "status": "VERIFIED",
+        "round": "final: L18-retry1",
+        "caption_or_script": "ROUND-2 surgical retry -- supersedes its parked original. Slabs stand locked up per the R-12 geometry, the held set and the 1980s crowd both fully restored. MANIFEST TRAP: the parked L18 record still points at this same file -- a seed/gate lookup can resolve the wrong status (recorded, not repaired)."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L19.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.610874",
+        "sha256": "6c957638418ba0889d7e5642c309c2e31de379f9c39caac649d4ff243ac139f3",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L18.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T11:38:24.625436",
+        "sha256": "6442f49d2987ad5ab8cb2b9a7f995167bc01fe9e4e9a1a4d2b1206d5dcb0e509",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L18",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L18.png",
+            "sha256_noted": "47bcb1ed3d5db4b4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L18-retry1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L18-retry1.png",
+            "sha256_noted": "6442f49d2987ad5a"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L19",
+    "vo_text": "quietly raking it in.",
+    "old_L": "L19",
+    "old_L_candidates": null,
+    "new_L": "L19",
+    "named_by": "unnamed:p6b-tenth1",
+    "join_confidence": "medium",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L19",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "the hard drive manufacturers were quietly raking it in."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L19",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Clears the grey-drain bar on measurement (warm ink, three chromatic anchors) despite an authored cool-concrete palette and two minor staging drifts."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L19.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.610874",
+        "sha256": "6c957638418ba0889d7e5642c309c2e31de379f9c39caac649d4ff243ac139f3",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L19.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T19:30:04.923449",
+        "sha256": "6c957638418ba0889d7e5642c309c2e31de379f9c39caac649d4ff243ac139f3",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L19",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L20",
+    "vo_text": "They were the people selling picks and",
+    "old_L": "L20",
+    "old_L_candidates": null,
+    "new_L": "L20",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L20",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "They were the people selling picks and shovels in the gold rush."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L20",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Second-best delta in the batch; the rake-in-banknotes idiom reads even though the heap renders as a thinner scatter than authored."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L20.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.632402",
+        "sha256": "95e2dc60bc5f9a38e587a305ddd459431a5473a7e4ce38aa410d446f1cff311a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L20.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T19:30:04.951531",
+        "sha256": "6c957638418ba0889d7e5642c309c2e31de379f9c39caac649d4ff243ac139f3",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L20",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L21",
+    "vo_text": "shovels in the gold rush.",
+    "old_L": "L20",
+    "old_L_candidates": null,
+    "new_L": "L21",
+    "named_by": "daniel-named:P6B-board",
+    "join_confidence": "medium",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L20",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "They were the people selling picks and shovels in the gold rush."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L21",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Picks-and-shovels stall repopulated as rewritten; the sky renders a stronger dawn-orange than the authored palette but stays era-correct and chromatic."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L20.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.632402",
+        "sha256": "95e2dc60bc5f9a38e587a305ddd459431a5473a7e4ce38aa410d446f1cff311a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L21.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T19:30:04.974819",
+        "sha256": "95e2dc60bc5f9a38e587a305ddd459431a5473a7e4ce38aa410d446f1cff311a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L21",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L22",
+    "vo_text": "And one of those companies packed 26,000...",
+    "old_L": "L21",
+    "old_L_candidates": null,
+    "new_L": "L22",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L21",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "And one of those companies packed 26,000..."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L22",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-2 PASS. Brick-tease chain root off the L03 night plate; median sat 0.0902 matches L03 to four decimals -- authored darkness, not a grey-drain regression."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L21.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.653506",
+        "sha256": "4d4d1c072b3b151d182f88574a75bec596a55c90f771617eb165cd4c31d2a139",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L22.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T11:38:24.650394",
+        "sha256": "1db6db57cbb15b8e202cdea2b72d7136cc4f69d6b21a05bd13a37a1d1b2aa85e",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L22",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L22.png",
+            "sha256_noted": "1db6db57cbb15b8e"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L23",
+    "vo_text": "well, the title gives it away...",
+    "old_L": "L22",
+    "old_L_candidates": null,
+    "new_L": "L23",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L22",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "well, the title gives it away..."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L23",
+        "status": "PARKED",
+        "round": "ROUND 2",
+        "caption_or_script": "the opened carton is ~3x the ranked carton it replaces and the brick fills about a third of it, against an authored 'filling the box exactly' and a next-beat narration of 'little boxes'."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L23-retry1",
+        "status": "PARKED",
+        "round": "ROUND 3",
+        "caption_or_script": "brick fill fixed (36% to 74%); the open box is still ~3.4x the ranked carton it replaces and overhangs its own pallet, so the authored 'front carton on that row' and 'filling the box exactly' are not met."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L23",
+        "status": "PARKED",
+        "round": "latest: L23-retry1 (round 3)",
+        "caption_or_script": "brick fill fixed (36% to 74%); the open box is still ~3.4x the ranked carton it replaces and overhangs its own pallet, so the authored 'front carton on that row' and 'filling the box exactly' are not met."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L22.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.671841",
+        "sha256": "fb651397a09cab5511bd68bba92494e5248e494241d28150b10f9309664f3e85",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L23",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L23.png",
+            "sha256_noted": "6f275297a92fd4a4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L23-retry1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L23-retry1.png",
+            "sha256_noted": "17f4dc9e537ca4f1"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L24",
+    "vo_text": "red clay bricks into little boxes",
+    "old_L": "L23",
+    "old_L_candidates": null,
+    "new_L": "L24",
+    "named_by": [
+      "daniel-named:OLD-full-board",
+      "daniel-named:P6B-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L23",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "red clay bricks into little boxes labelled hard drive,"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L24",
+        "status": "PARKED",
+        "round": "ROUND 2",
+        "caption_or_script": "the same scale defect propagated to all three pallets, plus two held crew members gained headwear and clothing against the parent."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L24-retry1",
+        "status": "PARKED",
+        "round": "ROUND 3",
+        "caption_or_script": "wardrobe drift CLOSED; but each top row renders as one pallet-width open box holding three bricks, not individual cartons with one brick each -- and the VO on this frame says 'little boxes'."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L24",
+        "status": "PARKED",
+        "round": "latest: L24-retry1 (round 3)",
+        "caption_or_script": "wardrobe drift CLOSED; but each top row renders as one pallet-width open box holding three bricks, not individual cartons with one brick each -- and the VO on this frame says 'little boxes'."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L23.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.693359",
+        "sha256": "19f02e98682cafc023fc7c07249fab5720a0ac6998b0b480cef527c2a3eafb7a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L24",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L24.png",
+            "sha256_noted": "5f33a5904e85b6d4"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L24-retry1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L24-retry1.png",
+            "sha256_noted": "79cc9b7e4e543cd2"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L25",
+    "vo_text": "labelled hard drive,",
+    "old_L": "L23",
+    "old_L_candidates": null,
+    "new_L": "L25",
+    "named_by": "daniel-named:P6B-board",
+    "join_confidence": "medium",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L23",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "red clay bricks into little boxes labelled hard drive,"
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L25",
+        "status": "PARKED",
+        "round": "ROUND 2",
+        "caption_or_script": "the inherited scale defect, 'HARD DRIVE' on only the three front boxes rather than every open carton, and the persisting crew drift. Lettering register itself is clean."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L25-retry1",
+        "status": "PARKED",
+        "round": "ROUND 3",
+        "caption_or_script": "'HARD DRIVE' renders three times on the SEALED film-wrapped courses, spanning carton seams, with no open carton lettered at all -- the authored clause unmet a second time. Lettering craft itself is clean."
+      },
+      {
+        "board": "p6b-board.html",
+        "card_id": "L25",
+        "status": "PARKED",
+        "round": "latest: L25-retry1 (round 3)",
+        "caption_or_script": "'HARD DRIVE' renders three times on the SEALED film-wrapped courses, spanning carton seams, with no open carton lettered at all -- the authored clause unmet a second time. Lettering craft itself is clean."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L23.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.693359",
+        "sha256": "19f02e98682cafc023fc7c07249fab5720a0ac6998b0b480cef527c2a3eafb7a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L25",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L25.png",
+            "sha256_noted": "081e21bfaf162dc5"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L25-retry1",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "parked",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L25-retry1.png",
+            "sha256_noted": "3e0262a7a7010763"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L26",
+    "vo_text": "and sold them to customers around the world.",
+    "old_L": "L24",
+    "old_L_candidates": null,
+    "new_L": "L26",
+    "named_by": [
+      "daniel-named:6C2-board",
+      "daniel-named:OLD-full-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L24",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "and sold them to customers around the world."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L26",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L24.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.713374",
+        "sha256": "b793f3e0eda369d4b70b1a0016b0a0bfc1fc5cebb82b175439fc92c17cfa4b3c",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L26.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-06T23:59:09.057484",
+        "sha256": "14f29160fcfe45dbff5e122673292877d36fd19996c466e042d8f8187495d918",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L26",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L26.png",
+            "sha256_noted": "14f29160fcfe45dbff5e122673292877d36fd19996c466e042d8f8187495d918"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L27",
+    "vo_text": "Here is the story of that company.",
+    "old_L": "L25",
+    "old_L_candidates": null,
+    "new_L": "L27",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L25",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "Here is the story of that company."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L25CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "Clean ? PASS: no figures present, so ?3 rig is not applicable; authored plate is clean."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L27",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L25.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.733957",
+        "sha256": "3e2523382cc458ac4ddcf2ed0ef70b2fb2bc727df46b176df692ca6eefdb9106",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L27.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T01:15:10.461033",
+        "sha256": "c11fd5449906392c2ed4538ab730e9d2066125d42c9077f1cb25b32bca9640cb",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L27",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L27-fix.png",
+            "sha256_noted": "c11fd5449906392c2ed4538ab730e9d2066125d42c9077f1cb25b32bca9640cb"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L28",
+    "vo_text": "The company was MiniScribe,",
+    "old_L": "L26",
+    "old_L_candidates": null,
+    "new_L": "L28",
+    "named_by": [
+      "daniel-named:6C2-board",
+      "daniel-named:OLD-full-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L26",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "The company was MiniScribe, a hard drive manufacturer"
+      },
+      {
+        "board": "tranche-a-board.html",
+        "card_id": "L26 verified",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "`miniscribe-rep`, the company personified \u2014 a stocky figure with a flat warm-tan head tone, short dark side-parted hair, a boxy tan blazer over a brown open-collar shirt, and one small drive-shaped enamel badge pinned at the lapel \u2014 stands `action-powerstance`, `expr-smug`, at the head of an assembly line and turned three-quarters to the lens so his face reads."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L28",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "place seed -- ink R\u2212B +3.0 (neutral, not warm)"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L28",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L26.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-31T03:34:57.264777",
+        "sha256": "bd358173a06461183d96f7f1631873c42c5641762bc887705032fccb833a7211",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/_archive-pre-regen-2026-08-06/L28.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-05T23:27:08.469004",
+        "sha256": "6f59895098e3d5b6049dd81293b3534129cf9321200f8d37936e995e9aab78e9",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L28",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06",
+        "sha256": null,
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "parked_reasons": null,
+        "staging_provenance": [
+          {
+            "staging_file": "L28-retry1.png",
+            "sha256_noted": "6f59895098e3d5b6"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L28.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:00:21.173233",
+        "sha256": "426f7991d7a00e352756cdf8a385707ea549a7e5f29a8dbfdced6a68f28bde1b",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L28",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L28.png",
+            "sha256_noted": "426f7991d7a00e352756cdf8a385707ea549a7e5f29a8dbfdced6a68f28bde1b"
+          }
+        ],
+        "note": null
+      },
+      {
+        "path_or_board": "git show d1f771a:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json (id L28/L29); first appears 89c720e",
+        "generation_tag": "gen-B-intermediate-41to248shot-2026-08-05",
+        "date": "2026-08-05",
+        "sha256": null,
+        "exists_on_disk": false,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": "Prompt-only. No rendered image found anywhere on disk for this exact still_prompt."
+      }
+    ],
+    "gen_B_intermediate_finding": "GEN-B FINDING (explicit brief callout: 'a better MiniScribe HQ render exists in some prior generation'): between commits 89c720e (2026-08-05T01:04-04:00) and d1f771a (2026-08-05T20:01-04:00) -- the intermediate 41-to-248-shot authoring generation that sits BETWEEN the archived 214-shot generation (Gen A, ends 7cfa9ab) and the current 246-shot generation (Gen C, starts d680fda 2026-08-06) -- shots.json carried a richer MiniScribe plant-entrance concept at the SAME id L28/L29: \"The plant's front entrance seen from inside the building: a double glazed door propped open on a cold morning, and a crowd of accountants filing in through it in dark overcoats with document cases and steel deed boxes... the aisle to the assembly floor opens stage-right with its broad plank board carrying 'MINISCRIBE' above the entrance to it... A plain wall calendar hangs beside the door... carrying '1987'.\" This Gen-B concept was REPLACED by the current simpler character-free assembly-floor-plate concept during the 2026-08-06 doctrine re-author (d680fda) before Gen-B ever reached image-generation: no PNG, board-HTML embed, or visual-kit/_staging file matches this exact prompt anywhere on disk (searched assets/_archive-pre-reset, assets/_archive-pre-regen-2026-08-06, assets/scenes, all 5 board HTMLs, and visual-kit/_staging incl. all _pre-*/_rejected* subfolders). If Daniel is recalling a MORE ELABORATE MiniScribe HQ shot than what is on the current 6c2-board.html or in the p6b-era archive, this Gen-B prompt is almost certainly what he remembers -- but it is a PROMPT-ONLY artifact (shots.json text, recoverable via git show d1f771a:.../shots.json, id L28 or L29) with NO surviving render. Re-generating it would be a fresh mint, not a recovery."
+  },
+  {
+    "beat_id": "L29",
+    "vo_text": "a hard drive manufacturer out of Colorado,",
+    "old_L": "L26",
+    "old_L_candidates": null,
+    "new_L": "L29",
+    "named_by": "unnamed:6c2-tenth2",
+    "join_confidence": "medium",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L26",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "The company was MiniScribe, a hard drive manufacturer"
+      },
+      {
+        "board": "tranche-a-board.html",
+        "card_id": "L26 verified",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "`miniscribe-rep`, the company personified \u2014 a stocky figure with a flat warm-tan head tone, short dark side-parted hair, a boxy tan blazer over a brown open-collar shirt, and one small drive-shaped enamel badge pinned at the lapel \u2014 stands `action-powerstance`, `expr-smug`, at the head of an assembly line and turned three-quarters to the lens so his face reads."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L29",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L26.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-31T03:34:57.264777",
+        "sha256": "bd358173a06461183d96f7f1631873c42c5641762bc887705032fccb833a7211",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L29.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:00:42.749491",
+        "sha256": "374765b638907d2ab11e24c39ca4f78a793c11f202e027f1f760ec173eaf2c08",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L29",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L29.png",
+            "sha256_noted": "374765b638907d2ab11e24c39ca4f78a793c11f202e027f1f760ec173eaf2c08"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L30",
+    "vo_text": "founded in 1980 by",
+    "old_L": "L28",
+    "old_L_candidates": null,
+    "new_L": "L30",
+    "named_by": "unnamed:6c2-tenth2",
+    "join_confidence": "medium",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L28",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "out of Colorado, founded in 1980 by a guy named Terry Johnson."
+      },
+      {
+        "board": "tranche-a-board.html",
+        "card_id": "L28 parked",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "Corrected composite preserves L27 and now shows the drive-shaped lapel badge, Terry holding one drive with one hand, his other hand open and empty, and four additional drives. Residual rig defect: Terry's delighted eyes render as crowd-tier solid dots rather than the named-cast closed curved eyes."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L28 ? repairPARKED",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "Fidelity flag: the visible badge/one-hand drive hold do not read as belonging to the same clearly identifiable Terry figure; park for fresh eyes."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L30",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "obeys the STEP-1 card: dark brown brows"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L30",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L28.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-31T19:16:55.212203",
+        "sha256": "69e4f0fa8d6868476d136e54f07e8194e719f4a2749ca13018a79ee605a3742d",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L30.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:29:11.763320",
+        "sha256": "ca239f74e39782e4fe1a8c946550a87bf78d64816854bfb11a5c97fd62dcc25a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L30",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L30.png",
+            "sha256_noted": "ca239f74e39782e4fe1a8c946550a87bf78d64816854bfb11a5c97fd62dcc25a"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L31",
+    "vo_text": "a guy named Terry Johnson.",
+    "old_L": "L28",
+    "old_L_candidates": null,
+    "new_L": "L31",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L28",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "out of Colorado, founded in 1980 by a guy named Terry Johnson."
+      },
+      {
+        "board": "tranche-a-board.html",
+        "card_id": "L28 parked",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "Corrected composite preserves L27 and now shows the drive-shaped lapel badge, Terry holding one drive with one hand, his other hand open and empty, and four additional drives. Residual rig defect: Terry's delighted eyes render as crowd-tier solid dots rather than the named-cast closed curved eyes."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L28 ? repairPARKED",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "Fidelity flag: the visible badge/one-hand drive hold do not read as belonging to the same clearly identifiable Terry figure; park for fresh eyes."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L31",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "obeys the canonical ref sheet: pale blond brows"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L31",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L28.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-31T19:16:55.212203",
+        "sha256": "69e4f0fa8d6868476d136e54f07e8194e719f4a2749ca13018a79ee605a3742d",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L31.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:30:17.653450",
+        "sha256": "1870c3e36383e279120c304bead0a2eb3ec262b05a027273179dd2f4ace6904a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L31",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L31.png",
+            "sha256_noted": "1870c3e36383e279120c304bead0a2eb3ec262b05a027273179dd2f4ace6904a"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L32",
+    "vo_text": "And they were HOT.",
+    "old_L": "L29",
+    "old_L_candidates": null,
+    "new_L": "L32",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L29",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "And they were HOT."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L32",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "factory interior, median_sat 0.043 (lowest in the slice)"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L32",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L29.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.814738",
+        "sha256": "2a95feda6adf8119ec68e14cfcf551c5e93144c10b1660dc539048ea41519a40",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L32.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T01:16:09.471183",
+        "sha256": "13f8c5fce2eec7d2acfed72d309253a080ba3254a0c83ce53e96d150648ceece",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L32",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L32-fix.png",
+            "sha256_noted": "13f8c5fce2eec7d2acfed72d309253a080ba3254a0c83ce53e96d150648ceece"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L33",
+    "vo_text": "IBM picked MiniScribe to supply",
+    "old_L": "L30",
+    "old_L_candidates": null,
+    "new_L": "L33",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L30",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "IBM picked MiniScribe to supply hard drives for their PCs,"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L33",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "door drawn SHUT (seed L28) though L33's own prose says 'up on grey daylight'"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L33",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L30.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.834286",
+        "sha256": "92f8a0ed73593c6fd21bb9a910c188381c7280c8492622296b2e2fd4157fb62c",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L33.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T01:17:32.232117",
+        "sha256": "77ea9d2d1fbf5b864b7c9f5df5ebdfb610a6c12500951835b33c9a864726a2e0",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L33",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L33-fix.png",
+            "sha256_noted": "77ea9d2d1fbf5b864b7c9f5df5ebdfb610a6c12500951835b33c9a864726a2e0"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L34",
+    "vo_text": "hard drives for their PCs,",
+    "old_L": "L30",
+    "old_L_candidates": null,
+    "new_L": "L34",
+    "named_by": "unnamed:6c2-tenth2",
+    "join_confidence": "medium",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L30",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "IBM picked MiniScribe to supply hard drives for their PCs,"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L34",
+        "status": "PARKED",
+        "round": null,
+        "caption_or_script": "PARKED candidate -- not promoted, staging file untouched"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L30.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.834286",
+        "sha256": "92f8a0ed73593c6fd21bb9a910c188381c7280c8492622296b2e2fd4157fb62c",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L34",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": false,
+        "review_status": "parked",
+        "parked_reasons": [
+          "figures / continuity_figure / delta_discipline: canonical-expression-leak \u2014 miniscribe-rep's whole head (hair silhouette + expression) was redrawn off the canonical seed instead of held from the parent (37.58% hair-core / 29.79% face-interior changed vs parent); ibm-suit resolved the identical spec correctly (identity+costume from canonical, expression from parent, head+hair core 0.00% changed) \u2014 a spec gap in seed_roles expression authority, not a place or generator failure (place seed 0.00-0.11% across every region, MINISCRIBE fascia 0.00%, authored pallet-queue delta landed clean)"
+        ],
+        "staging_provenance": [
+          {
+            "staging_file": "L34.png",
+            "sha256_noted": "c004fcb6b35d583208dd6db600994992a7e2a66d97110a681d134011a2a94e91"
+          },
+          {
+            "staging_file": "L34.png",
+            "sha256_noted": "c004fcb6b35d583208dd6db600994992a7e2a66d97110a681d134011a2a94e91",
+            "parked_candidate": true
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L35",
+    "vo_text": "and within four years the company was making",
+    "old_L": "L31",
+    "old_L_candidates": null,
+    "new_L": "L35",
+    "named_by": [
+      "daniel-named:6C2-board",
+      "daniel-named:OLD-full-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L31",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "and within four years the company was making"
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L31 ? candidate 1CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "PASS ? miniscribe-rep holds a smooth round head, no nose/ear forms, squat proportion, and apparent four-digit hands. None."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L31 ? candidate 2CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "PASS ? miniscribe-rep holds a smooth round head, no nose/ear forms, squat proportion, and apparent four-digit hands. None."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L35",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L31.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.854257",
+        "sha256": "3cad0db801a9c5411e0b6d67abd3b61ec923e27ea70b03b3a72f9e119727c6d5",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L35.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:25:29.515480",
+        "sha256": "ea94d3b2000fe0035857d6e10bbad8af16ac136621bbd2937f282f451ac8967e",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L35",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L35.png",
+            "sha256_noted": "ea94d3b2000fe0035857d6e10bbad8af16ac136621bbd2937f282f451ac8967e"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L36",
+    "vo_text": "125 million dollars a year.",
+    "old_L": "L32",
+    "old_L_candidates": null,
+    "new_L": "L36",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L32",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "125 million dollars a year."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L36",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "NOT an L28 child -- warm-passing comparison, R\u2212B +30.0"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L36",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L32.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.874380",
+        "sha256": "e6a5e077d70929f2e9ac4f295fc16caeba79226c60d17b6899e156e2981a6da2",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L36.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:10:56.851455",
+        "sha256": "8ff7d98979d0fa6a12f53e14903072f4d4814810d57e58420242e8ff17105eb2",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L36",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L36.png",
+            "sha256_noted": "8ff7d98979d0fa6a12f53e14903072f4d4814810d57e58420242e8ff17105eb2"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L37",
+    "vo_text": "And at their peak in 1988,",
+    "old_L": "L33",
+    "old_L_candidates": null,
+    "new_L": "L37",
+    "named_by": [
+      "daniel-named:6C2-board",
+      "daniel-named:OLD-full-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "problem-L33",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "And at their peak in 1988,"
+      },
+      {
+        "board": "full-board.html",
+        "card_id": "L33",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "And at their peak in 1988,"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L37",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L33.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.893167",
+        "sha256": "7626777f3d7bff58de57d2e90f313bec3aac4b4d8e9f76a7bc63164e0e897c59",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L37.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:12:02.805025",
+        "sha256": "95b784cc553ceb5a091ce7e6dfe54b11de2913ef8755a4736c083e30f493b020",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L37",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L37.png",
+            "sha256_noted": "95b784cc553ceb5a091ce7e6dfe54b11de2913ef8755a4736c083e30f493b020"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L38",
+    "vo_text": "they were selling to giants like Compaq and",
+    "old_L": "L34",
+    "old_L_candidates": null,
+    "new_L": "L38",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L34",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "they were selling to giants like Compaq"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L38",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L34.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.911703",
+        "sha256": "58e6ba38b29eefa9f2af20625e7d3c6df064abea67f7bd2fff870f0f00870a0a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L38.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T03:42:49.404390",
+        "sha256": "59d4619e5d92e81ef3cd9cada11a1dfc8ca6c2419ba23a8e32b2ff5b6202a095",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L38",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L38.png",
+            "sha256_noted": "59d4619e5d92e81ef3cd9cada11a1dfc8ca6c2419ba23a8e32b2ff5b6202a095"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L39",
+    "vo_text": "making over 600 million dollars a year.",
+    "old_L": "L35",
+    "old_L_candidates": null,
+    "new_L": "L39",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L35",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "and making over 600 million dollars a year."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L39",
+        "status": "PARKED",
+        "round": null,
+        "caption_or_script": "PARKED candidate -- not promoted, staging file untouched"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L35.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.933160",
+        "sha256": "1cb84f12aae16367ea31ca634c985c648084e1d64e96f754f8374c6726dec561",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L39",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": false,
+        "review_status": "parked",
+        "parked_reasons": [
+          "figures / rig: miniscribe-rep NOSE drawn (bridge line, hooked nostril, nasolabial fold) \u2014 rig law is NO NOSE; collateral regression vs the rejected prior, which held this clean",
+          "figures / rig: miniscribe-rep EAR drawn with an inner helix curl \u2014 rig law is NO EARS; same collateral regression",
+          "figures / expression register: expr-greedy corrective did not land \u2014 card is a closed-mouth smirk under half-lidded eyes, frame renders a teeth-bared effort grimace with hard angry brows"
+        ],
+        "staging_provenance": [
+          {
+            "staging_file": "L39-fix.png",
+            "sha256_noted": "272b616e0dd15dbcb0d5717c1aaeda158174ec763305cb2e6b5ddf202e3e33ab"
+          },
+          {
+            "staging_file": "L39-fix.png",
+            "sha256_noted": "272b616e0dd15dbcb0d5717c1aaeda158174ec763305cb2e6b5ddf202e3e33ab",
+            "parked_candidate": true
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L40",
+    "vo_text": "Accounting for inflation, that's almost",
+    "old_L": "L36",
+    "old_L_candidates": null,
+    "new_L": "L40",
+    "named_by": "daniel-named:6C2-board",
+    "join_confidence": "medium",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L36",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "Accounting for inflation, that's almost as much money as Reddit makes today."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L36CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "Clean ? PASS: no figures present, so ?3 rig is not applicable; authored plate is clean."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L40",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L36.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.955206",
+        "sha256": "fc2a81ad1211fe5899b741d69c6c959eed3f0b19834cca44672e955cff3f79da",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L40.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:17:17.482940",
+        "sha256": "8035806635ac468e37a45a473277409832ac9e9325ec24398986916158423980",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L40",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L40.png",
+            "sha256_noted": "8035806635ac468e37a45a473277409832ac9e9325ec24398986916158423980"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L41",
+    "vo_text": "as much money as Reddit makes today.",
+    "old_L": "L36",
+    "old_L_candidates": null,
+    "new_L": "L41",
+    "named_by": [
+      "daniel-named:6C2-board",
+      "daniel-named:OLD-full-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L36",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "Accounting for inflation, that's almost as much money as Reddit makes today."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L36CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "Clean ? PASS: no figures present, so ?3 rig is not applicable; authored plate is clean."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L41",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L36.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.955206",
+        "sha256": "fc2a81ad1211fe5899b741d69c6c959eed3f0b19834cca44672e955cff3f79da",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L41.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:17:56.717087",
+        "sha256": "d69ea12a4d639f8595a19c6ccc7d5a7cd52a3939605388567919445e33a2aad3",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L41",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L41.png",
+            "sha256_noted": "d69ea12a4d639f8595a19c6ccc7d5a7cd52a3939605388567919445e33a2aad3"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L42",
+    "vo_text": "Or so they said.",
+    "old_L": "L37",
+    "old_L_candidates": null,
+    "new_L": "L42",
+    "named_by": [
+      "daniel-named:6C2-board",
+      "daniel-named:OLD-full-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L37",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "Or so they said."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L42",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L37.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.974966",
+        "sha256": "1bf9350cacb35cffa991e74818481cd12643cd64a2427172f6ca3ffc2558e0e4",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L42.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:18:23.983752",
+        "sha256": "d081cef08f9c5d8f721ee81ee5e3588a49834d6bd0e68c03c274485f2f6e3268",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L42",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L42.png",
+            "sha256_noted": "d081cef08f9c5d8f721ee81ee5e3588a49834d6bd0e68c03c274485f2f6e3268"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L43",
+    "vo_text": "Now rewind four years.",
+    "old_L": "L38",
+    "old_L_candidates": null,
+    "new_L": "L43",
+    "named_by": [
+      "daniel-named:6C2-board",
+      "daniel-named:OLD-full-board"
+    ],
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L38",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "Now rewind four years."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L43",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L38.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.997861",
+        "sha256": "bbfcad5153248ff8efbbb2a33ef320eccbe5fa5c4307a48d49bb9bfce0a902cd",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L43.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:18:43.269883",
+        "sha256": "62988264a1663cbe0f408574fd5aba8f427070b31279d787f4b5043a9205a485",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L43",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L43.png",
+            "sha256_noted": "62988264a1663cbe0f408574fd5aba8f427070b31279d787f4b5043a9205a485"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L44",
+    "vo_text": "At the end of 1984, IBM slashed its orders,",
+    "old_L": "L39",
+    "old_L_candidates": null,
+    "new_L": "L44",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L39",
+        "status": "parked",
+        "round": null,
+        "caption_or_script": "At the end of 1984, IBM slashed its orders,"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L44",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "L28 child, warm-ink retry clause applied -- R\u2212B +1.1 (no-op)"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L44",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "factory interior, median_sat 0.13 (top of the interior band)"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L44",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L39.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:48.018879",
+        "sha256": "24930c1b7736f07129d34e65465b6929fb8a87af87be2d878ed1b7002762d973",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L44.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T01:38:56.752377",
+        "sha256": "14e0d54990d900623072f58e920d49631b0d726f2a09756a367b4ebb7ff6adf2",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L44",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L44-fix.png",
+            "sha256_noted": "14e0d54990d900623072f58e920d49631b0d726f2a09756a367b4ebb7ff6adf2"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L45",
+    "vo_text": "and MiniScribe fell off a cliff.",
+    "old_L": "L40",
+    "old_L_candidates": null,
+    "new_L": "L45",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L40",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "and MiniScribe fell off a cliff."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L45",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L40.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:48.038605",
+        "sha256": "5558b1d7fb3664a22c0b6d0e17c68cd3c74dc88c0bb8d19fb3fcfe009af0e3de",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L45.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T03:42:49.428477",
+        "sha256": "d7195187dc9cefcfab102e345eaab8df41908288e23055a330a3bd28a50ae0a2",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L45",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L45-fix.png",
+            "sha256_noted": "d7195187dc9cefcfab102e345eaab8df41908288e23055a330a3bd28a50ae0a2"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L46",
+    "vo_text": "They let a quarter of their people go,",
+    "old_L": "L41",
+    "old_L_candidates": null,
+    "new_L": "L46",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L41",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "They let a quarter of their people go,"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L46",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "L28 child, warm-ink retry clause applied -- R\u2212B +2.1 (no-op)"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L46",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L41.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:48.059171",
+        "sha256": "95e51a04b688ad576e7fb69bf201c2a61bd02ae410db2735e39f35567b8b403e",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L46.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T01:42:46.715778",
+        "sha256": "a9ffb5cc70e5248ace3be1cf224f175e2c8dd556aca226b2ff88affd066592d7",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L46",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L46-fix.png",
+            "sha256_noted": "a9ffb5cc70e5248ace3be1cf224f175e2c8dd556aca226b2ff88affd066592d7"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L47",
+    "vo_text": "and Terry Johnson was out the door.",
+    "old_L": "L42",
+    "old_L_candidates": null,
+    "new_L": "L47",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L42",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "and Terry Johnson was out the door."
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L47",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L42.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:48.080299",
+        "sha256": "f0e3a8a3cf009bf306d128e22461939d63be5b4b627026e1d30e01215e7a1eb2",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L47.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T01:56:15.873922",
+        "sha256": "f018b80791bfc4816c797fa6fc2ada4f5f12ae72882ea99027274645baccf0c8",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L47",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L47-fix.png",
+            "sha256_noted": "f018b80791bfc4816c797fa6fc2ada4f5f12ae72882ea99027274645baccf0c8"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L48",
+    "vo_text": "By 1985 the company was in real trouble,",
+    "old_L": "L43",
+    "old_L_candidates": [
+      "L43",
+      "L44"
+    ],
+    "new_L": "L48",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": [
+      "high",
+      "medium"
+    ],
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L43",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "By 1985 the company was"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L48",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L43.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:40:47.171759",
+        "sha256": "ea6461793dfb3bfbc09359e0808af65284d1dce71033a3fa5503a6674513e5cf",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L48.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T01:45:26.036880",
+        "sha256": "bcd28e1eefe5841e0f04b27768861f896ed03f23e7cd2782a7f13da8b7b68f7e",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L48",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L48-fix.png",
+            "sha256_noted": "bcd28e1eefe5841e0f04b27768861f896ed03f23e7cd2782a7f13da8b7b68f7e"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L49",
+    "vo_text": "so their bankers at Hambrecht & Quist",
+    "old_L": "L45",
+    "old_L_candidates": null,
+    "new_L": "L49",
+    "named_by": "daniel-named:6C2-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L45",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "bankers at Hambrecht & Quist put"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L49",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "bank office, median_sat 0.64"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L49",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L45.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T05:08:36.458467",
+        "sha256": "ff699c98628586d18daeb043705d76eb0fe9a2c80b764936f4a6999ff5ebbf37",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L49.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T01:48:03.824931",
+        "sha256": "b3f1965df42d35c4356a1e5b9ab0986e51d40fc77ae3ce3e05452a153f9f79ff",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L49",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L49-fix.png",
+            "sha256_noted": "b3f1965df42d35c4356a1e5b9ab0986e51d40fc77ae3ce3e05452a153f9f79ff"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L50",
+    "vo_text": "put about 20 million dollars in",
+    "old_L": "L46",
+    "old_L_candidates": null,
+    "new_L": "L50",
+    "named_by": "unnamed:6c2-tenth2",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L46",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "about 20 million dollars in"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L50",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "bank office, median_sat 0.66"
+      },
+      {
+        "board": "6c2-board.html",
+        "card_id": "L50",
+        "status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L46.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:48:29.208616",
+        "sha256": "7eb9c8510b30daba62bb4cc29e9a425831262593a575ada28de4beb70acfff12",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "assets/scenes/L50.png",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07T00:21:53.129791",
+        "sha256": "e5973625da869a6b9e7a1e63c9861c83c2dffc2293182f1c7edbbd6f85fed192",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "path_or_board": "manifest:assets/scenes/manifest.json#L50",
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "date": "2026-08-07",
+        "sha256": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "parked_reasons": [],
+        "staging_provenance": [
+          {
+            "staging_file": "L50.png",
+            "sha256_noted": "e5973625da869a6b9e7a1e63c9861c83c2dffc2293182f1c7edbbd6f85fed192"
+          }
+        ],
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L55",
+    "vo_text": "You know that Gordon Ramsay show where",
+    "old_L": "L49",
+    "old_L_candidates": null,
+    "new_L": "L55",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L49",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "You know that Gordon Ramsay show"
+      },
+      {
+        "board": "tranche-a-board.html",
+        "card_id": "L49 verified",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "A cramped failing restaurant dining room holds peeling maroon wallpaper, a stack of unpaid bills fanned on the till, three chairs upturned on tables, and one flickering ceiling bulb.  Known compromise: Human-selected candidate B with known accepted compromises: the chef crowd is foreground-large, MENU/BILL text is visible, and the dish is off-centre. Note: Generic makeover-show counterpoint, with restaurant workers staged only as late-1980s crowd figures: no likeness or foreground anonymous host."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L49.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-31T18:02:54.549165",
+        "sha256": "67a26608eae7562d7b342d8255e61edbb528a6239de2b0955d98b51e8607778a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L56",
+    "vo_text": "he goes around reinventing failing restaurants?",
+    "old_L": "L50",
+    "old_L_candidates": null,
+    "new_L": "L56",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L50",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "where he goes around reinventing failing restaurants?"
+      },
+      {
+        "board": "tranche-a-board.html",
+        "card_id": "L50 verified",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "The same cramped dining room, same locked framing: the small crowd of late-1980s restaurant staff at the pass, the covered dish, and the boom microphone.  Note: The generic makeover-show beat is a crowd-scale split-room reveal rather than a caption."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L50.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-31T19:04:44.957300",
+        "sha256": "a0bd9fe808fa85553d393efa379733ca19977e991e63094618a3a958338f81c2",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L83",
+    "vo_text": "Then in January 1987, MiniScribe's",
+    "old_L": "L76",
+    "old_L_candidates": null,
+    "new_L": "L83",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L76",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "Then in January 1987, MiniScribe's outside accountants"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L76.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:53:01.016315",
+        "sha256": "daaad9392d1cb21427437e09f1f924f2ab8b815ad3aab81b270684b9d0037caf",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L84",
+    "vo_text": "outside accountants came in to audit the books,",
+    "old_L": "L77",
+    "old_L_candidates": null,
+    "new_L": "L84",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L77",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "came in to audit the books,"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L77.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:53:04.113564",
+        "sha256": "9e43a0304357269008c6d8a0843839dfb916830a90e1804afd2b30afcbdfa4c9",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L85",
+    "vo_text": "which means somebody counts what your books say",
+    "old_L": "L78",
+    "old_L_candidates": null,
+    "new_L": "L85",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L78",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "which means somebody counts"
+      },
+      {
+        "board": "tranche-a-board.html",
+        "card_id": "L78 verified",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "The MiniScribe warehouse aisle holds a waist-high inspection cart between cold-grey steel racks, their plain boxed inventory receding softly behind it under fluorescent light."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L78.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-31T18:58:33.226543",
+        "sha256": "aa134cb04d918efb288a6e90a2a7d44e0486b755f4a9ae6fe344ee5011c66956",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L86",
+    "vo_text": "is sitting in the warehouse.",
+    "old_L": "L79",
+    "old_L_candidates": null,
+    "new_L": "L86",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L79",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "what your books say is sitting in the warehouse."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L79.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:53:39.182032",
+        "sha256": "dd8222fce5407143ac9a708a69fd54d68cf42b38e0cf3d3a07295b442e65cac0",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L87",
+    "vo_text": "So the accountants set up in the building,",
+    "old_L": "L80",
+    "old_L_candidates": null,
+    "new_L": "L87",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "problem-L80",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "So the accountants set up in the building,"
+      },
+      {
+        "board": "full-board.html",
+        "card_id": "L80",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "So the accountants set up in the building,"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L80.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:53:54.868333",
+        "sha256": "7199abd9d30db867fcf4adf8c78c98680f584bc147621e8bd33d045a43729b6a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L88",
+    "vo_text": "everybody started counting, and all",
+    "old_L": "L81",
+    "old_L_candidates": null,
+    "new_L": "L88",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L81",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "everybody started counting, and all those numbers"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L81.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:54:04.542414",
+        "sha256": "44f5eeac213853812978e7f735148d038210fec2dfe50932a4e24f339c1cd871",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L89",
+    "vo_text": "those numbers the managers had been writing down finally got held up",
+    "old_L": "L82",
+    "old_L_candidates": null,
+    "new_L": "L89",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L82",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "the managers had been writing down"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L82.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:54:16.709204",
+        "sha256": "7f9a6415fcc75281ca2f35963dae7d4496b5e115eeb6498baa1372a5989fe3d5",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L90",
+    "vo_text": "against what was actually on the shelves.",
+    "old_L": "L83",
+    "old_L_candidates": null,
+    "new_L": "L90",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "problem-L83",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "finally got held up against what was actually on the shelves."
+      },
+      {
+        "board": "full-board.html",
+        "card_id": "L83",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "finally got held up against what was actually on the shelves."
+      },
+      {
+        "board": "tranche-b-board.html",
+        "card_id": "L83CLEAN",
+        "status": "clean",
+        "round": null,
+        "caption_or_script": "Clean ? PASS: auditor-rep holds a round head without nose/ear forms, squat proportion, and a seeded paper-hold hand."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L83.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:54:25.404669",
+        "sha256": "5a301c8cb8bbc0b12117952f5874e6298896a5ceac0a9f9156b70c00eb304132",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L91",
+    "vo_text": "Four million dollars of product that was",
+    "old_L": "L84",
+    "old_L_candidates": null,
+    "new_L": "L91",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "problem-L84",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "Four million dollars of product that was supposed to be sitting there, wasn't."
+      },
+      {
+        "board": "full-board.html",
+        "card_id": "L84",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "Four million dollars of product that was supposed to be sitting there, wasn't."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L84.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:46:33.991075",
+        "sha256": "4787738202ef66dff4cfa4f3ab155552b66b383454d16adb13494d5d2f73bdfa",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L93",
+    "vo_text": "Awkward.",
+    "old_L": "L85",
+    "old_L_candidates": null,
+    "new_L": "L93",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "problem-L85",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "Awkward."
+      },
+      {
+        "board": "full-board.html",
+        "card_id": "L85",
+        "status": "queued-regen",
+        "round": null,
+        "caption_or_script": "Awkward."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L85.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:54:34.304414",
+        "sha256": "72f25f00506f6ed86e07fcb01a45f6f3085be31a37d25b4237498e039a5b288a",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L94",
+    "vo_text": "And coming up short like that meant somebody was getting fired,",
+    "old_L": "L86",
+    "old_L_candidates": null,
+    "new_L": "L94",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L86",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "And coming up short like that meant somebody was getting fired,"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L86.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T05:14:51.673654",
+        "sha256": "fcbd2cfc4e780e99cd546814bcd9201870c527c32fcd734f6527a1e90ba3d1db",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L95",
+    "vo_text": "so instead of reporting it, they wrote down a better number.",
+    "old_L": "L87",
+    "old_L_candidates": null,
+    "new_L": "L95",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L87",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "so instead of reporting it, they wrote down a better number."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L87.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:54:55.414088",
+        "sha256": "56e6251cbe727fe9578ebe607819e901fbcde6b318e6c0d992a63c7cf194a295",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L96",
+    "vo_text": "The real sheets were locked in the accountants' own boxes,",
+    "old_L": "L88",
+    "old_L_candidates": null,
+    "new_L": "L96",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L88",
+        "status": "staged-pending",
+        "round": null,
+        "caption_or_script": "The real sheets were locked in the accountants' own boxes,"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L88.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:54:54.564042",
+        "sha256": "035a0ed4902e7d9884eb07d56d42c03c3210bd06748df385a8ee527367d08ae2",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L123",
+    "vo_text": "on the books as inventory.",
+    "old_L": "L111",
+    "old_L_candidates": null,
+    "new_L": "L123",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L111",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "premium Colorado clay sitting on the books as inventory."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L111.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T06:58:11.043829",
+        "sha256": "d045b5d230f6ef16ca1dc2c12464d643dc10ee37c888fa12dba55d6aecfdcba9",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L125",
+    "vo_text": "My Peloton bike is a scam, but these guys?",
+    "old_L": "L113",
+    "old_L_candidates": null,
+    "new_L": "L125",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L113",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "My Peloton bike is a scam, but these guys?"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L113.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:50:36.359883",
+        "sha256": "2f05ee1840e405c59c4514396590b06960f8d55d64cf17d70119948f7dcb49fe",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L182",
+    "vo_text": "inside a company run amok.",
+    "old_L": "L164",
+    "old_L_candidates": null,
+    "new_L": "L182",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L164",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "was a massive fraud inside a company run amok."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L164.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T04:59:39.128021",
+        "sha256": "24970834be6ad511b5fa39b7224ccf43c4aa44b622fcd80f79eef24c59b0ebe8",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L243",
+    "vo_text": "What it didn't survive was HR.",
+    "old_L": "L212",
+    "old_L_candidates": null,
+    "new_L": "L243",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L212",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "What it didn't survive was HR."
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L212.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T05:10:35.643096",
+        "sha256": "4a2ed2f06b3954ac5fca8ba8b30c95d15afc165758e56be06ba935a1113c56cd",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L244",
+    "vo_text": "If MiniScribe had just kept a few more people",
+    "old_L": "L213",
+    "old_L_candidates": null,
+    "new_L": "L244",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "high",
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L213",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "If MiniScribe had just kept a few more people on the payroll through Christmas,"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L213.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T07:08:23.397825",
+        "sha256": "0f824a5a4e9b8c20a17baa64f6b9ea825f04767d4e30bffbd186521cba535827",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "L246",
+    "vo_text": "who knows how many more years they would've gone on selling those bricks.",
+    "old_L": "L214",
+    "old_L_candidates": [
+      "L214",
+      "L215"
+    ],
+    "new_L": "L246",
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": [
+      "high",
+      "medium"
+    ],
+    "boards": [
+      {
+        "board": "full-board.html",
+        "card_id": "L214",
+        "status": "verified",
+        "round": null,
+        "caption_or_script": "who knows how many more years"
+      }
+    ],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L214.png",
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "date": "2026-07-30T05:07:22.922152",
+        "sha256": "a56fe36da4c69c987e99f8c77fd5e58eff6242001b647255556ac4d0fad28618",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "beat_id": "OLD-L27",
+    "vo_text": null,
+    "old_L": "L27",
+    "old_L_candidates": null,
+    "new_L": null,
+    "named_by": "daniel-named:OLD-full-board",
+    "join_confidence": "gap-in-old-file",
+    "boards": [],
+    "renders": [
+      {
+        "path_or_board": "assets/_archive-pre-reset/scenes/L27.png",
+        "generation_tag": "gen-A-old-214shot-orphan-pre-removal",
+        "date": "2026-07-31T19:03:47.922428",
+        "sha256": "b7d2ceba570070b39b07eb2c2a69f8573b98ae5ecf0de06afcd42a42187a2650",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": null
+      }
+    ],
+    "gap_note": "Old id was removed from the 214-shot generation before the archived shots.pre-reset.json snapshot (commit 8f99b2a, 2026-08-03, \"L27 removal\"). A stray orphaned render L27.png DOES exist in assets/_archive-pre-reset/scenes/ despite the shot no longer being in that generation of shots.json -- a pre-removal leftover, not part of the active 214-card board. No word-offset anchor exists to join this id forward into the 246-shot file."
+  }
+]
