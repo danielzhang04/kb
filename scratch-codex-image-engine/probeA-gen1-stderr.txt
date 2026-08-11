@@ -1,0 +1,27 @@
+Reading additional input from stdin...
+2026-08-11T20:22:37.305912Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff27d-93f6-7ab1-afb8-fcfb84121f05`" }
+2026-08-11T20:22:37.306357Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:22:41.945532Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 0.5 seconds
+Output:
+Get-Content : Cannot find path '.\CLAUDE.md' because it does not exist.
+At line:2 char:1
++ Get-Content -Raw -LiteralPath '.\CLAUDE.md'; Get-Content -Raw -Litera ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (.\CLAUDE.md:String) [Get-Content], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetContentCommand
+ 
+Get-Content : Cannot find path '.\governance\agent-rules.md' because it does not exist.
+At line:2 char:46
++ ... CLAUDE.md'; Get-Content -Raw -LiteralPath '.\governance\agent-rules.m ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (.\governance\agent-rules.md:String) [Get-Content], ItemNotFoundExceptio 
+   n
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetContentCommand
+ 
+
+2026-08-11T20:22:45.238715Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff27d-93f6-7ab1-afb8-fcfb84121f05`" }
+2026-08-11T20:22:45.238970Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:22:51.095212Z ERROR codex_core::tools::router: error=approval policy is UnlessTrusted; reject command — you should not ask for escalated permissions if the approval policy is UnlessTrusted
+2026-08-11T20:23:27.229375Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff27d-93f6-7ab1-afb8-fcfb84121f05`" }
+2026-08-11T20:23:27.229563Z ERROR codex_core::tools::router: error=approval request failed

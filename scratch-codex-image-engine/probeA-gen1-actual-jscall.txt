@@ -1,0 +1,15 @@
+// @exec: {"yield_time_ms": 120000, "max_output_tokens": 2000}
+const reader = await tools.mcp__node_repl__js({
+  code: "var passThroughPromptA = await fsA.readFile('C:\\\\Users\\\\danie\\\\kb-worktrees\\\\boss-codex-image-engine\\\\scratch-codex-image-engine\\\\probeA-prompt.txt','utf8'); nodeRepl.write(passThroughPromptA);",
+  title: "Load exact image prompt",
+  timeout_ms: 30000
+});
+const prompt = reader.content.find(x => x.type === "text").text;
+const result = await tools.image_gen__imagegen({
+  prompt,
+  referenced_image_paths: ["C:\\Users\\danie\\kb-worktrees\\boss-codex-image-engine\\scratch-codex-image-engine\\seeds\\figA-qt-wiles.png"]
+});
+store("probeA_prompt", prompt);
+store("probeA_raw_output", result);
+if (result && typeof result === "object" && typeof result.image_url === "string") generatedImage(result);
+text(JSON.stringify({prompt, raw_output: result}));

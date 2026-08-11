@@ -1,0 +1,21 @@
+Reading additional input from stdin...
+2026-08-11T20:35:38.919616Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-11T20:36:05.911441Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff289-a19f-7d43-8b3a-0668d5022091`" }
+2026-08-11T20:36:05.912205Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:36:12.993023Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff289-a19f-7d43-8b3a-0668d5022091`" }
+2026-08-11T20:36:12.993494Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:36:23.902082Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 0.7 seconds
+Output:
+Get-Content : Cannot find path 'CLAUDE.md' because it does not exist.
+At line:2 char:1
++ Get-Content -LiteralPath CLAUDE.md -Raw
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (CLAUDE.md:String) [Get-Content], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetContentCommand
+ 
+
+2026-08-11T20:36:29.336345Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff289-a19f-7d43-8b3a-0668d5022091`" }
+2026-08-11T20:36:29.336516Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:36:51.894647Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff289-a19f-7d43-8b3a-0668d5022091`" }
+2026-08-11T20:36:51.894898Z ERROR codex_core::tools::router: error=approval request failed

@@ -1,0 +1,18 @@
+Reading additional input from stdin...
+2026-08-11T20:42:16.583565Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff28f-40eb-7d61-80f9-8e2252f9a84a`" }
+2026-08-11T20:42:16.584088Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:42:22.416960Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 0.8 seconds
+Output:
+Get-Content : Cannot find path 'CLAUDE.md' because it does not exist.
+At line:2 char:1
++ Get-Content -LiteralPath 'CLAUDE.md' -Raw
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (CLAUDE.md:String) [Get-Content], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetContentCommand
+ 
+
+2026-08-11T20:42:25.514310Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff28f-40eb-7d61-80f9-8e2252f9a84a`" }
+2026-08-11T20:42:25.514452Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:42:45.430092Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff28f-40eb-7d61-80f9-8e2252f9a84a`" }
+2026-08-11T20:42:45.430248Z ERROR codex_core::tools::router: error=approval request failed

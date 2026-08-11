@@ -1,0 +1,27 @@
+Reading additional input from stdin...
+2026-08-11T20:49:47.193064Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-08-11T20:50:21.691683Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff296-9346-7683-a00c-bd92489db6de`" }
+2026-08-11T20:50:21.692213Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:50:30.766927Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 0.6 seconds
+Output:
+Get-Content : Cannot find path '.\CLAUDE.md' because it does not exist.
+At line:2 char:1
++ Get-Content -Raw -LiteralPath '.\CLAUDE.md'; Get-Content -Raw -Litera ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (.\CLAUDE.md:String) [Get-Content], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetContentCommand
+ 
+Get-Content : Cannot find path '.\governance\agent-rules.md' because it does not exist.
+At line:2 char:46
++ ... CLAUDE.md'; Get-Content -Raw -LiteralPath '.\governance\agent-rules.m ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (.\governance\agent-rules.md:String) [Get-Content], ItemNotFoundExceptio 
+   n
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetContentCommand
+ 
+
+2026-08-11T20:50:46.835576Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff296-9346-7683-a00c-bd92489db6de`" }
+2026-08-11T20:50:46.836165Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:51:13.368026Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff296-9346-7683-a00c-bd92489db6de`" }
+2026-08-11T20:51:13.368166Z ERROR codex_core::tools::router: error=approval request failed

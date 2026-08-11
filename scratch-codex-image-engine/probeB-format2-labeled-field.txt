@@ -1,0 +1,14 @@
+Use case: illustration-story
+Asset type: documentary-style animated video still frame
+Primary request: miniscribe-rep, delighted expression, power-stance pose, planted centre in the entrance at the back of the MiniScribe assembly floor, a painted board reading "MINISCRIBE" hanging over him
+Input images: Image 1: character reference for miniscribe-rep -- match exact costume, proportions, and line style
+Scene/backdrop: the assembly floor as established -- two long steel benches running back into the depth, a rack of tote bins at stage-left of frame, a shut roller door beyond
+Subject: miniscribe-rep, matching the character reference exactly
+Style/medium: clean flat 2.5D vector cartoon, even medium-thick dark warm brown-black outline (#241a12), flat cel colour fills with gentle soft shading only, rounded friendly shapes, no realistic detail
+Composition/framing: foreground depth from a cropped bench end at lower-right; 16:9 landscape
+Lighting/mood: flat strip light, cool grey-teal-cream palette
+Color palette: locked 2-3 colour scene palette (cool grey-teal-cream) plus a single red accent #d7402b reserved only for alarm / prohibition / ownership / the final punch element
+Materials/textures: flat cel fills only, no gradients, no ambient occlusion
+Text (verbatim): "MINISCRIBE" (on the painted board only)
+Constraints: preserve miniscribe-rep's exact costume, proportions, and line weight from the reference image; environment stays a built-but-flat environment -- minimal geometry plus one foreground depth prop, not a fully rendered set
+Avoid: photorealism, on-screen narrator or host face, unrequested text or signage beyond the quoted board text, logos, gradients, cast shadows, soft ambient shading, invented staging labels

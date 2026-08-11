@@ -1,0 +1,23 @@
+Reading additional input from stdin...
+2026-08-11T20:42:10.446986Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff28f-75fa-7282-9fb4-5ac4742d299e`" }
+2026-08-11T20:42:10.447650Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:42:15.815962Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 0.5 seconds
+Output:
+Get-Content : Cannot find path '.\CLAUDE.md' because it does not exist.
+At line:2 char:1
++ Get-Content -Raw -LiteralPath .\CLAUDE.md
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (.\CLAUDE.md:String) [Get-Content], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetContentCommand
+ 
+
+2026-08-11T20:42:19.057555Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff28f-75fa-7282-9fb4-5ac4742d299e`" }
+2026-08-11T20:42:19.057800Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:42:27.753440Z ERROR codex_core::tools::router: error=approval policy is UnlessTrusted; reject command — you should not ask for escalated permissions if the approval policy is UnlessTrusted
+2026-08-11T20:42:43.500587Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff28f-75fa-7282-9fb4-5ac4742d299e`" }
+2026-08-11T20:42:43.500806Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:42:46.590721Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff28f-75fa-7282-9fb4-5ac4742d299e`" }
+2026-08-11T20:42:46.590944Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T20:42:59.091046Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff28f-75fa-7282-9fb4-5ac4742d299e`" }
+2026-08-11T20:42:59.091276Z ERROR codex_core::tools::router: error=approval request failed

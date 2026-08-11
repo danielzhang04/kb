@@ -7,3 +7,12 @@ f8e2b6c0e4bdc246  scratch-codex-image-engine/out/probeE1-figure-plus-prop.png  1
 8088d4e819e5e995  scratch-codex-image-engine/out/probeG2-withSuffix.png  1417829 bytes
 4a1e28b0531ab626  scratch-codex-image-engine/out/probeH-wiles-named.png  1360256 bytes
 3d7885ffc6053d97  scratch-codex-image-engine/probe2.png  2960349 bytes
+c502880b2c77808f  out-p2b/probeA-gen1.png  1504207 bytes
+2190a9fb30dff813  out-p2b/probeA-gen2.png  1375805 bytes
+6b68594097dc7203  out-p2b/probeB-format2.png  1349982 bytes
+af39aefe7d5fc742  out-p2b/probeB-format3.png  1447396 bytes
+80121065664feee9  out-p2b/probeD1-ordinal.png  1279009 bytes
+30ba1f0245d567be  out-p2b/probeD2-content-descriptive.png  1581919 bytes
+c70578143e8f701c  out-p2b/probeD3-role-purposed.png  1421972 bytes
+f2a993c1e5d84292  out-p2b/probeE1-long-stress.png  1377784 bytes
+c9aa7e9cb644a476  out-p2b/probeE2-head-tail-repeat.png  1313819 bytes
