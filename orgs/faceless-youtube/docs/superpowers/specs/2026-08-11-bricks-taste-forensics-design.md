@@ -6,12 +6,19 @@
 
 ## Goal
 
-Governance produces shots Daniel finds interesting again. The 6c2 wave regressed: shots read as
-"too basic," named characters render as the base rig instead of their character, characters drift
-off-rig, and background figures get cast-rig treatment where crowd treatment was wanted.
+**Finalize the VPW and image-gen stages of the pipeline**: optimize their governance for all the
+qualities Daniel likes and remove whatever creates output he doesn't. This wave's endpoint is a
+converged, trusted pair of pipeline stages — not a patch for the currently-noticed defects.
+
+The named defects are examples he noticed, not the goal's boundary: 6c2 shots read as "too basic,"
+named characters render as the base rig instead of their character, characters drift off-rig, and
+background figures get cast-rig treatment where crowd treatment was wanted. Phase 0/1 exist to
+find the full quality set, liked and disliked, beyond these examples.
 
 **Success condition (G4):** a ~10–15-shot validation slice re-minted under the revised governance
-receives Daniel's verdict "recovered" on a side-by-side board against the prior generations; all
+receives Daniel's verdict that it delivers the liked qualities and none of the disliked ones — the
+signal that VPW + image-gen governance is finalized for 6c3+ — judged on a side-by-side board
+against the prior generations; all
 affected test suites green; adversarial review of the implementation passed; accepted rules logged
 in `orgs/faceless-youtube/knowledge/decisions.md`. Validation spend cap **$5.00** under the daily
 budget guard, ledgered.
@@ -54,6 +61,16 @@ never by L-number.
   any governing file to a prior state, forge/VPW logic changes, combining function.
 - **Generalized rules only**: no per-shot patches, no bolt-on micro-functions for individual fixes;
   change core logic so general rules cover the cases. Keep files slim; no dead information left.
+- **Rollback over addition (binding change-design law):** if file version A worked for factor A and
+  the current version B breaks it, the proposal must reduce and/or roll back the offending parts of
+  B toward A — while preserving what B does for factors B, C, … — never keep B whole and introduce
+  additional function that tries to replicate A's behavior. Every Phase-2 proposal states which of
+  its edits are reductions/rollbacks vs genuinely new function, and new function requires an
+  explicit justification for why no rollback achieves it.
+- **No governing-file changes before G2:** Phases 0–2 are read-only with respect to every governing
+  file (doctrine, skills, forge, style-bible, shots.json, lint). The first filesystem change to any
+  of them happens only after Daniel approves the specific proposal at G2. Scratchpad analysis
+  artifacts, boards, and dossiers are exempt.
 - Approach: **A+C hybrid** — elicitation-first, measurements verify elicited hypotheses.
 - Subsumes the pending R-A..R-E 6c2 gate rulings: R-A (ink seed) and R-D (saturation) become
   elicitation themes; R-B/R-C/R-E resolve in synthesis. The 6c2 board's own defects (charset,
