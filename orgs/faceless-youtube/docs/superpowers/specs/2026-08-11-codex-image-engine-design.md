@@ -1085,7 +1085,7 @@ a small, bounded, $0 probe:
 | Post-processing the register | **Forbidden** — steer the engine or park it (ruling 3, §7.3). |
 | What codex is *for* | **Full peer engine, any shot class**; routing is taste/A-B (ruling 5, §1). |
 | Quota policy | **Soft cap + ledger, no enforcement**; rate-limit ⇒ stop loud (ruling 6, §5.3). |
-| The register floor | **`M1 ≥ +15` was ratified against a framing P2b refuted and cannot be carried across unchanged** — §7.4 carries a proposed paired translation (`|ΔM1| ≤ 5`, M2/M3/M4 within the baseline band) marked PROPOSAL. **This is the one open decision in the spec.** |
+| The register floor | **Re-ratified in paired form (Daniel, 2026-08-11):** `|ΔM1| ≤ 5` per shot on ≥3 of the 4 corpus shots, `|ΔM2|` within the 23-frame interquartile band, M3/M4 in band (§7.4, binding). Supersedes the hex-framed `M1 ≥ +15`. |
 
 ### 9.3 What comes back to him later, with evidence attached
 
