@@ -478,7 +478,7 @@ print(json.dumps({"runId": op["runId"], "cards": results}))
 
 const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
   try {
-    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], { cwd: repoRoot, encoding: 'utf-8' });
+    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], { cwd: repoRoot, encoding: 'utf-8', windowsHide: true });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (error) {
     const err = error as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };

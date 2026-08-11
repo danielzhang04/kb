@@ -99,7 +99,7 @@ print(json.dumps({"id": card.meta["id"], "path": str(path.relative_to(Path("."))
 `.trim();
 
 function git(repo: string, args: readonly string[]): string {
-  return execFileSync('git', [...args], { cwd: repo, encoding: 'utf8' });
+  return execFileSync('git', [...args], { cwd: repo, encoding: 'utf8', windowsHide: true });
 }
 
 /** Best-effort real absolute path so a mirror path and a real-repo path compare canonically. */

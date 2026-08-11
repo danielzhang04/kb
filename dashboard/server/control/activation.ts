@@ -269,7 +269,7 @@ function managedProfile(profiles: readonly ExecutionProfile[], spec: ManagedStar
 }
 
 function defaultResolveBaseCommit(repoRoot: string): string {
-  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8', windowsHide: true }).trim();
   if (!FULL_COMMIT.test(head)) throw new ActivationError('git rev-parse HEAD did not yield a full immutable commit id');
   return head;
 }
