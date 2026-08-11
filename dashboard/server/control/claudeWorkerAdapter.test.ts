@@ -8,6 +8,7 @@ import {
   parseWorkerStream,
   createClaudeWorkerAdapter,
   ToolPolicyRefusal,
+  RESULT_EOF_GRACE_MS,
   type ClaudeProcess,
   type ClaudeSpawnRequest,
   type ClaudeToolPolicy,
@@ -401,6 +402,32 @@ describe('parseWorkerStream — mapping matrix', () => {
     expect(result.state).toBe('failed');
     expect(result.summary).toContain('exceeded the 999-byte cap');
   });
+
+  // Bug A (2026-08-11): resultObserved makes an already-observed result event authoritative over a
+  // backstop kill's exit code — see createClaudeWorkerAdapter's result+EOF+backstop path.
+  it('resultObserved: a null exit code (backstop kill) does not flip an already-observed success to failed', () => {
+    const result = parseWorkerStream(successLine('worker finished'), '', null, { resultObserved: true });
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('worker finished');
+  });
+
+  it('resultObserved: a nonzero exit code (e.g. taskkill) also does not flip an observed success to failed', () => {
+    const result = parseWorkerStream(successLine('worker finished'), '', 137, { resultObserved: true });
+    expect(result.state).toBe('succeeded');
+  });
+
+  it('without resultObserved, a null/nonzero exit still fails closed exactly as before (unchanged)', () => {
+    const result = parseWorkerStream(successLine('worker finished'), 'boom', null);
+    expect(result.state).toBe('failed');
+    expect(result.summary).toContain('exited with code null');
+  });
+
+  it('resultObserved does not rescue an actually-failed result event (only bypasses the exit-code short-circuit)', () => {
+    const line = `${JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'model refused' })}\n`;
+    const result = parseWorkerStream(line, '', null, { resultObserved: true });
+    expect(result.state).toBe('failed');
+    expect(result.summary).toContain('model refused');
+  });
 });
 
 describe('createClaudeWorkerAdapter.execute', () => {
@@ -448,7 +475,10 @@ describe('createClaudeWorkerAdapter.execute', () => {
     const stdinPayload = JSON.parse(fake.stdin.join('').trim());
     expect(stdinPayload.message.content[0].text).toContain('AUTHORITATIVE WORK ORDER');
     expect(captured!.args.join(' ')).not.toContain('AUTHORITATIVE WORK ORDER');
-    expect(fake.proc.endStdin).not.toHaveBeenCalled();
+    // Bug A contract (2026-08-11): endStdin() IS called, once the result event is observed — the pre-fix
+    // adapter never called it at all, which is exactly why every successful attempt idled until the
+    // 30-minute kill-timeout in production. See the dedicated result+EOF tests below for the full mechanism.
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
   });
 
   it('injects an encoded operator frame only while the assigned child is live', async () => {
@@ -479,13 +509,17 @@ describe('createClaudeWorkerAdapter.execute', () => {
     await Promise.resolve();
     fake.emitStdout('{"type":"assistant"');
     fake.emitStdout(',"x":1}\n{"type":"result","subtype":"success"}\n');
-    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'steer')).toBe(true);
+    // Bug A contract (2026-08-11): the result line itself closes the turn to new operator input —
+    // immediately, not just once the child later exits — so this postMessage is correctly refused. Before
+    // the fix the channel stayed open until `onExit`, which is exactly the gap that let a worker idle
+    // forever: nothing ever told it its turn was already over.
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'steer')).toBe(false);
     fake.emitExit(0);
     await pending;
 
     expect(taps.some((tap) => tap.ref === 'a-1' && tap.dir === 'out' && tap.line.includes('"type":"assistant"'))).toBe(true);
     expect(taps.some((tap) => tap.dir === 'in' && tap.line.includes('queued instruction'))).toBe(true);
-    expect(taps.some((tap) => tap.dir === 'in' && tap.line === 'steer')).toBe(true);
+    expect(taps.some((tap) => tap.dir === 'in' && tap.line === 'steer')).toBe(false);
     expect(taps.at(-1)).toMatchObject({ dir: 'meta' });
   });
 
@@ -683,6 +717,50 @@ describe('createClaudeWorkerAdapter.execute', () => {
     fake.emitExit(0);
     await promise;
     expect(captured!.args).not.toContain('--settings');
+  });
+
+  // Bug A (2026-08-11): the real `claude` CLI in `--input-format stream-json` mode emits its terminal
+  // `type:"result"` line and then never exits on its own while stdin stays open. A fake spawner that
+  // mirrors this — only exits once endStdin() is called — reproduces the production defect: pre-fix, the
+  // adapter never called endStdin() at all and idled every successful attempt until the 30-min timeout.
+  it('finalizes success promptly once endStdin is called after the result event, mirroring a CLI that only exits on stdin EOF', async () => {
+    const fake = fakeProcess();
+    fake.proc.endStdin = vi.fn(() => { fake.emitExit(0); }); // the real CLI: exits once stdin is closed
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc });
+    const promise = adapter.execute(executeInput());
+    fake.emitStdout(successLine('worker finished'));
+    // No timer advance of any kind: the promise resolves off the result+EOF path alone, not any timeout.
+    const result = await promise;
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('worker finished');
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
+    // liveWorkers/postMessage closed the instant the result line was observed.
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'too late')).toBe(false);
+  });
+
+  it('backstop-kills a wedged worker that never exits even after stdin EOF, and the observed success survives the kill', async () => {
+    vi.useFakeTimers();
+    const fake = fakeProcess();
+    const killTree = vi.fn();
+    // endStdin is a no-op here — the fake never calls emitExit, mirroring a genuinely wedged real CLI.
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc, killTree });
+    const promise = adapter.execute(executeInput());
+    fake.emitStdout(successLine('worker finished'));
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'too late')).toBe(false);
+
+    // Advance to just short of the grace window: still not settled, no kill yet.
+    await vi.advanceTimersByTimeAsync(RESULT_EOF_GRACE_MS - 1);
+    expect(killTree).not.toHaveBeenCalled();
+
+    // Cross the grace window: the backstop reaps the wedged tree.
+    await vi.advanceTimersByTimeAsync(2);
+    const result = await promise;
+    expect(killTree).toHaveBeenCalledTimes(1);
+    expect(killTree).toHaveBeenCalledWith(FAKE_PID);
+    // The observed result is authoritative — the backstop kill's null exit code does not flip it to failed.
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('worker finished');
   });
 
   it('tree-kills the child and resolves failed when the kill-timeout fires (fake timers)', async () => {

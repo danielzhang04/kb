@@ -461,7 +461,17 @@ export function cardToWorkflowRequest(card: ParsedCard, options: CardToWorkflowO
   return { def: parsed.value };
 }
 
-/** Read a full card (meta + body) from its repo-relative path, via cards.parse for exact parity. */
+/**
+ * Read a full card (meta + body) from its repo-relative path, via cards.parse for exact parity.
+ *
+ * `default=str` (2026-08-11 fix): YAML auto-types a bare frontmatter scalar like `2026-08-04` into a
+ * Python `datetime.date`, which the stdlib `json` module cannot serialize — an UNGUARDED `json.dumps`
+ * raised `TypeError: Object of type date is not JSON serializable` for any such card, so the bridge could
+ * never read it (a 500 'failed' dispatch outcome, plus a noisy traceback on stderr). `default=str` is the
+ * standard escape hatch: for any value `json.dumps` cannot natively encode, it calls `str(value)` instead
+ * of raising. `date`/`datetime` objects' `str()` IS their ISO-8601 form (`date(2026,8,4)` -> "2026-08-04"),
+ * so this reaches the TS side as a plain ISO string meta value — never a thrown parse failure.
+ */
 export const QUEUE_BRIDGE_READ_CARD_SCRIPT = `
 import sys, json
 from pathlib import Path
@@ -469,7 +479,7 @@ sys.path.insert(0, "scripts")
 import cards
 op = json.loads(sys.argv[1])
 card = cards.parse(Path(op["path"]))
-print(json.dumps({"meta": card.meta, "body": card.body}))
+print(json.dumps({"meta": card.meta, "body": card.body}, default=str))
 `.trim();
 
 /**
@@ -611,7 +621,17 @@ export async function dispatchClaimedCard(
   // revision every re-dispatch and leaks an unbounded pile of them. The audit + idempotent decide below
   // then run against whichever revision (fresh or reused-undecided) we settled on. A revision the bridge
   // created is only ever approved by the bridge, so an undecided one is always safe to re-drive to approved.
-  const sourceTurnId = `bridge:${mapped.def.id}`;
+  // Bug B fix (2026-08-11): match the SPA launch route's convention EXACTLY — routes.ts's
+  // `launchDefinition` creates its proposal revision with `sourceComposerRef: 'workflow-registry'`,
+  // `sourceTurnId: def.id` (no prefix). The Workflows view's run -> definition linkage
+  // (`routes.ts#workflowRefIndex`) keys purely on `sourceTurnId` under that composer ref, matched
+  // against each `WorkflowDefEntry.ref` (= the definition's `id`). A bridge-only `bridge:`-prefixed
+  // sourceTurnId never matched any def's `ref`, so every def-card-launched run silently lost its
+  // project/title linkage and was unreachable from its workflow's row. Reusing the identical
+  // convention here is not a new risk: a bridge launch and a human SPA launch of the SAME definition
+  // content are recognized as the same lineage only when `hash` also matches (see the
+  // undecided/approved revision reuse a few lines below, which already relies on exactly that).
+  const sourceTurnId = mapped.def.id;
   const idempotencyKey = `queue-bridge:${card.id}`;
   const matching = ctx.controlStore
     .listProposalRevisionsForComposer(subject, 'workflow-registry')

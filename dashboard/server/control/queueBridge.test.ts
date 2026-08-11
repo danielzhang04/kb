@@ -9,6 +9,7 @@ import {
   createQueueBridge,
   QueueBridgeError,
   QUEUE_BRIDGE_SELECT_SCRIPT,
+  QUEUE_BRIDGE_READ_CARD_SCRIPT,
   type OwnedCard,
 } from './queueBridge.ts';
 import { defaultPyRunner, type PyRunResult } from '../write/launch.ts';
@@ -441,7 +442,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
         body: '## Work order\n\nAdvisory trigger prose must not replace definition stage work orders.',
       };
       const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-multi', cards: [] } });
-      const { ctx } = fakeCtx({ repoRoot });
+      const { ctx, store } = fakeCtx({ repoRoot });
       const deps = commonDeps({
         readCard: () => card,
         loadRegistry: () => loadRuntimeSkillRegistry(REPO_ROOT),
@@ -455,6 +456,14 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
 
       expect(result).toMatchObject({ outcome: 'launched', runRef: 'run-multi', reconciled: true });
       expect(launch).toHaveBeenCalledOnce();
+      // Bug B: sourceTurnId is the registered definition's OWN id ('multi-run'), byte-identical to what
+      // routes.ts's SPA launch route uses (`sourceTurnId: def.id`, same 'workflow-registry' composer ref).
+      // That is the exact linkage `routes.ts#workflowRefIndex` reads to file this run under the 'multi-run'
+      // row in the Workflows view — a bridge-only-prefixed id would silently orphan it (Bug B).
+      expect(store.createProposalRevision).toHaveBeenCalledWith('dashboard-engine', expect.objectContaining({
+        sourceComposerRef: 'workflow-registry',
+        sourceTurnId: 'multi-run',
+      }));
       const snapshot = launch.mock.calls[0][2].snapshot as {
         parameters?: Record<string, string>;
         stages: Array<{ id: string; dependsOn: string[]; workflowProfile?: string; target: string; workOrder: string }>;
@@ -469,7 +478,13 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     }
   });
 
-  it('fails a non-JSON-serializable YAML parameter per card and continues the tick to the next card', async () => {
+  // Bug fix (2026-08-11): a bare YAML date (`channel: 2026-08-05`, no quotes) auto-types to a Python
+  // `datetime.date`, which `defaultReadCard`'s `QUEUE_BRIDGE_READ_CARD_SCRIPT` used to hand to an
+  // unguarded `json.dumps` — raising `TypeError: ... is not JSON serializable` (a noisy stderr traceback)
+  // and failing the card's dispatch outright. This test used to PIN that failure; it now pins the fixed
+  // contract — the card reads and dispatches like any other — since `QUEUE_BRIDGE_READ_CARD_SCRIPT` now
+  // passes `default=str` to `json.dumps`, which serializes a `date`/`datetime` value as its ISO-8601 string.
+  it('dispatches a card whose YAML frontmatter has a bare date value exactly like any other card', async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-date-parameter-'));
     const queueRoot = join(repoRoot, 'queue');
     const inbox = join(queueRoot, 'inbox');
@@ -494,7 +509,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
         'Run this card.',
         '',
       ].join('\n');
-      writeFileSync(join(inbox, 'a-bad-date.md'), cardText('a-bad-date', ['parameters:', '  channel: 2026-08-05']), 'utf8');
+      writeFileSync(join(inbox, 'a-has-date.md'), cardText('a-has-date', ['parameters:', '  channel: 2026-08-05']), 'utf8');
       writeFileSync(join(inbox, 'b-good.md'), cardText('b-good', []), 'utf8');
 
       const { ctx } = fakeCtx({
@@ -513,10 +528,48 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
       });
 
       await expect(bridge.tick()).resolves.toEqual({ ran: true, blocked: false, discovered: 2, dispatched: 2 });
-      expect(outcomes[0]).toMatchObject({ cardId: 'a-bad-date', outcome: 'failed', status: 500, reconciled: false });
-      expect(outcomes[0].detail).toMatch(/date.*JSON serializable/i);
-      expect(outcomes[1]).toMatchObject({ cardId: 'b-good', outcome: 'launched', runRef: 'run-good' });
-      expect(launch).toHaveBeenCalledOnce();
+      expect(outcomes[0]).toMatchObject({ cardId: 'a-has-date', outcome: 'launched', runRef: 'run-good', reconciled: true });
+      expect(outcomes[1]).toMatchObject({ cardId: 'b-good', outcome: 'launched', runRef: 'run-good', reconciled: true });
+      expect(launch).toHaveBeenCalledTimes(2);
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('QUEUE_BRIDGE_READ_CARD_SCRIPT round-trips a bare-date meta value as its ISO string, not a serialization throw', () => {
+    // Exercises the actual embedded Python script (via the real defaultPyRunner), not a TS mock — this is
+    // the exact code path that used to print `TypeError: Object of type date is not JSON serializable` on
+    // stderr and exit non-zero for any card carrying an unquoted YAML date anywhere in its frontmatter.
+    const repoRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-read-card-date-'));
+    try {
+      const cardPath = join(repoRoot, 'a-has-date.md');
+      writeFileSync(cardPath, [
+        '---',
+        'id: a-has-date',
+        'project: kb-ops',
+        'action: research:web-brief',
+        'target: orgs/kb-ops/output',
+        'risk-tier: T1',
+        'profile: research',
+        'reviewed: 2026-08-04', // bare YAML date -> Python datetime.date on parse
+        `owner: ${SUBJECT}`,
+        'state: inbox',
+        'execution-controller: dashboard',
+        '---',
+        '',
+        '## Work order',
+        '',
+        'Run this card.',
+        '',
+      ].join('\n'), 'utf8');
+
+      const result = defaultPyRunner(REPO_ROOT, QUEUE_BRIDGE_READ_CARD_SCRIPT, JSON.stringify({ path: cardPath }));
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).not.toContain('not JSON serializable');
+      const parsed = JSON.parse(result.stdout.trim()) as { meta: Record<string, unknown>; body: string };
+      expect(parsed.meta.reviewed).toBe('2026-08-04');
+      expect(parsed.meta.id).toBe('a-has-date');
     } finally {
       rmSync(repoRoot, { recursive: true, force: true });
     }
@@ -810,8 +863,10 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(input.idempotencyKey).toBe('queue-bridge:6a5ed0b7-56cc254c');
     expect(input.predecessorRunRef).toBeNull();
     expect(reconcile).toHaveBeenCalledWith(ctx, owned, 'run-1');
+    // Bug B: sourceTurnId is UNPREFIXED (== the synthesized def's own id), matching the SPA launch
+    // route's convention exactly, so the Workflows view can link a def-card run to its definition.
     expect(store.createProposalRevision).toHaveBeenCalledWith('dashboard-engine', expect.objectContaining({
-      sourceTurnId: 'bridge:bridge-6a5ed0b7-56cc254c',
+      sourceTurnId: 'bridge-6a5ed0b7-56cc254c',
     }));
   });
 
@@ -903,7 +958,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     // must reuse p1/1 — not call createProposalRevision again and leak a second undecided revision.
     const { ctx, store } = fakeCtx();
     store.listProposalRevisionsForComposer.mockReturnValue([
-      { sourceTurnId: 'bridge:bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: null, proposalRef: 'p1', revision: 1 },
+      { sourceTurnId: 'bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: null, proposalRef: 'p1', revision: 1 },
     ]);
     const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1' } });
     const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile: vi.fn() }));
@@ -931,7 +986,7 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
   it('reuses an already-approved revision for the same card content (no duplicate import)', async () => {
     const { ctx, store } = fakeCtx();
     store.listProposalRevisionsForComposer.mockReturnValue([
-      { sourceTurnId: 'bridge:bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: { decision: 'approved' }, proposalRef: 'p9', revision: 3 },
+      { sourceTurnId: 'bridge-6a5ed0b7-56cc254c', hash: 'hash-abc', approval: { decision: 'approved' }, proposalRef: 'p9', revision: 3 },
     ]);
     const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1' } });
     await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile: vi.fn() }));

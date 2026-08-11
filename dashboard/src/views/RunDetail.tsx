@@ -1199,7 +1199,9 @@ export function RunDetail({
               <h4 className="entity-block__title">Already answered</h4>
               {resolvedRequests.map((request) => (
                 <article key={request.requestRef} className="control-request" data-testid={`resolved-request-${request.requestRef}`}>
-                  <h4>{request.title}</h4>
+                  {/* spec §3b, same law as the open card above: the plain ASK, never the machine's raw
+                    * `automatic:policy:...` title. */}
+                  <h4>{request.ask}</h4>
                   {request.response ? (
                     <p className="control-help">
                       <span className="mc-mono">{request.response.decision}</span>

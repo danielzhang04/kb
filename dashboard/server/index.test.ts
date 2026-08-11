@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import {
   buildApp,
+  DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS,
   DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS,
   DEFAULT_STRANDED_ARCHIVE_WINDOW_MS,
   STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED,
+  resolveHumanRequestSweepIntervalMs,
   resolveStrandedArchiveIntervalMs,
   resolveStrandedArchiveDryRun,
   resolveStrandedArchiveWindowMs,
@@ -81,5 +83,22 @@ describe('stranded-archiver wiring — DEFAULT-OFF and DRY-RUN-ONLY', () => {
     expect(resolveStrandedArchiveWindowMs({ DASHBOARD_STRANDED_ARCHIVE_WINDOW_MS: '259200000' })).toBe(259_200_000);
     expect(resolveStrandedArchiveWindowMs({ DASHBOARD_STRANDED_ARCHIVE_WINDOW_MS: '-5' })).toBe(7 * 24 * 60 * 60 * 1000);
     expect(resolveStrandedArchiveWindowMs({ DASHBOARD_STRANDED_ARCHIVE_WINDOW_MS: 'x' })).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+});
+
+describe('Human Request orphan-sweep wiring — ON BY DEFAULT (data-only, no filesystem/git risk)', () => {
+  it('defaults the interval to 5 minutes, unlike the stranded-archiver which defaults off', () => {
+    expect(DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS).toBe(300_000);
+    expect(resolveHumanRequestSweepIntervalMs({})).toBe(300_000);
+    expect(resolveHumanRequestSweepIntervalMs({ DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS: '' })).toBe(300_000);
+  });
+
+  it('honors an explicit interval override, including disabling it with 0', () => {
+    expect(resolveHumanRequestSweepIntervalMs({ DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS: '60000' })).toBe(60_000);
+    expect(resolveHumanRequestSweepIntervalMs({ DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS: '0' })).toBe(0);
+  });
+
+  it('falls back to the default on a non-numeric override rather than disabling silently', () => {
+    expect(resolveHumanRequestSweepIntervalMs({ DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS: 'nonsense' })).toBe(300_000);
   });
 });

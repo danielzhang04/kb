@@ -561,6 +561,11 @@ export interface ArchiveRunResult {
   pinnedRequestRefs: string[];
 }
 
+export interface CloseOrphanedHumanRequestsResult {
+  /** Every request auto-closed this sweep, across every subject and run, in one commit. */
+  closed: HumanRequest[];
+}
+
 export interface RecoverAuthorized20260731ExecutionLockInput {
   expectedRunVersion: number;
   expectedManagerGeneration: number;
@@ -760,6 +765,18 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   ): ControlResult<HumanRequest[]>;
   reviseHumanRequest(subject: string, requestRef: string, expectedRevision: number, title: string, prompt: string): ControlResult<HumanRequest>;
   respondHumanRequest(subject: string, requestRef: string, input: RespondHumanRequestInput): ControlResult<HumanRequest>;
+  /**
+   * Housekeeping sweep, not a governed HTTP write — no subject, no session, no idempotency key from a
+   * caller. Auto-closes every OPEN, non-review-linked Human Request whose parent run has reached a
+   * terminal state (mirrors `TERMINAL_RUN`) or whose own age exceeds `staleWindowMs`, with an honest
+   * `'auto-closed'` response — it never claims a human answered. `transitionRun` calls the same
+   * terminal-state predicate inline (same commit as the transition); this method additionally sweeps
+   * the WHOLE document, so it also catches a request whose run went terminal before this shipped, or
+   * whose run never leaves `waiting-human` at all (an abandoned run with a dead manager). Called from
+   * the boot + interval sweep wired in `humanRequestSweep.ts`. Idempotent: an already-resolved request
+   * is simply skipped on the next sweep.
+   */
+  closeOrphanedHumanRequests(nowMs: number, staleWindowMs: number): CloseOrphanedHumanRequestsResult;
   /** Daniel-authorized, exact-run repair for the 2026-07-31 execution-lock launch defect. */
   preflightAuthorized20260731ExecutionLock(
     subject: string,
@@ -1203,6 +1220,41 @@ function recordHumanResponse(
   };
   request.state = 'resolved';
   request.updatedAt = at;
+}
+
+/** The per-request idempotency key an engine-side auto-close writes; `tag` distinguishes the terminal-run
+ *  path from the age-based stale path so a request legitimately closed by one is never reprocessed by
+ *  the other's key derivation (both check `state === 'open'` first regardless, but the key stays unique). */
+function autoCloseResponseKey(tag: string, runRef: string, requestRef: string): string {
+  return `auto-close:${tag}:${runRef}:${requestRef}`.slice(0, MAX_SHORT_TEXT);
+}
+
+/**
+ * Resolve every OPEN, non-review-linked Human Request on one run with an honest auto-close record —
+ * same shape as `archiveRun`'s resolution, except the decision is `'auto-closed'`, never `'responded'`,
+ * so the record can never be misread as a human having answered. A review-linked request is left exactly
+ * as `archiveRun` leaves it: untouched, pinned open by the review lineage invariants.
+ */
+function autoCloseOpenHumanRequestsForRun(
+  document: StoreDocument, subject: string, runRef: string, atISO: string, tag: string, reason: string,
+): StoredHumanRequest[] {
+  const closed: StoredHumanRequest[] = [];
+  for (const request of document.humanRequests) {
+    if (request.subject !== subject || request.runRef !== runRef || request.state !== 'open') continue;
+    if (isReviewLinkedRequest(document, request.requestRef)) continue;
+    // A `review` kind carries retention/audit weight beyond its own run — `quarantinePlan` requires
+    // every Human Request resolved precisely so a review outcome is never silently bypassed by an
+    // ordinary state transition. It is left for an explicit `respondHumanRequest` or a deliberate,
+    // reason-carrying `archiveRun`, never for this ambient close.
+    if (request.kind === 'review') continue;
+    recordHumanResponse(request, subject, {
+      decision: 'auto-closed',
+      idempotencyKey: autoCloseResponseKey(tag, runRef, request.requestRef),
+      response: reason,
+    }, atISO);
+    closed.push(request);
+  }
+  return closed;
 }
 
 function publicEvent(value: StoredEvent): OperationalEvent {
@@ -3413,6 +3465,15 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       run.state = state;
       run.version += 1;
       run.updatedAt = stamp();
+      // A bare transition can land a run on a terminal state (`archived` goes through `archiveRun`
+      // exclusively — rejected above). Close its open requests in the SAME commit, so a run that just
+      // failed/stopped/succeeded can never leave a haunting ask behind the way the pre-fix zombies did.
+      if (TERMINAL_RUN.has(state)) {
+        autoCloseOpenHumanRequestsForRun(
+          document, subject, runRef, run.updatedAt, `terminal:${state}`,
+          `Automatically closed — the run reached its terminal state ('${state}') without this being answered.`,
+        );
+      }
       commit(document);
       return ok(publicRun(run));
     },
@@ -5137,6 +5198,46 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       run.archiveOperationFingerprint = fingerprint;
       commit(document);
       return ok({ run: publicRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() });
+    },
+
+    /**
+     * The boot/tick sweep's write path — see the interface doc for the two predicates. Runs across every
+     * subject in one pass (a background job has no caller subject to scope to); a real per-transition
+     * close already happened inline in `transitionRun` for a run that reaches terminal state after this
+     * shipped, so this mostly re-covers PRE-EXISTING orphans on its first sweep and is a cheap no-op on
+     * every sweep after. One commit total, only when something actually closed.
+     */
+    closeOrphanedHumanRequests(nowMs, staleWindowMs) {
+      const document = load();
+      const atISO = new Date(nowMs).toISOString();
+      const closed: StoredHumanRequest[] = [];
+      for (const run of document.runs) {
+        if (!TERMINAL_RUN.has(run.state)) continue;
+        closed.push(...autoCloseOpenHumanRequestsForRun(
+          document, run.subject, run.runRef, atISO, `terminal:${run.state}`,
+          `Automatically closed — the run reached its terminal state ('${run.state}') without this being answered.`,
+        ));
+      }
+      // Age-based staleness: independent of run state, because a run can sit in `waiting-human` forever
+      // with a dead manager and never reach a terminal state on its own — exactly what stranded the five
+      // 2026-07 requests this sweep was built to clear. Already-closed requests (including the ones the
+      // loop above just resolved) read `state !== 'open'` and are skipped.
+      for (const request of document.humanRequests) {
+        if (request.state !== 'open') continue;
+        const ageMs = nowMs - Date.parse(request.createdAt);
+        if (!Number.isFinite(ageMs) || ageMs <= staleWindowMs) continue;
+        if (isReviewLinkedRequest(document, request.requestRef)) continue;
+        if (request.kind === 'review') continue; // see the terminal-close note above — reviews stay explicit
+        const days = Math.max(1, Math.round(ageMs / 86_400_000));
+        recordHumanResponse(request, request.subject, {
+          decision: 'auto-closed',
+          idempotencyKey: autoCloseResponseKey('stale', request.runRef, request.requestRef),
+          response: `Automatically closed — no response for ${days} days; presumed orphaned.`,
+        }, atISO);
+        closed.push(request);
+      }
+      if (closed.length > 0) commit(document);
+      return { closed: closed.map(publicRequest) };
     },
 
     appendEvent(subject, runRef, input) {

@@ -231,7 +231,14 @@ export interface ManagedSession {
 }
 
 export type HumanRequestKind = 'input' | 'approval' | 'review' | 'intervention' | 'governance-refusal';
-export type HumanRequestDecision = 'responded' | 'approved' | 'rejected' | 'changes-requested';
+/**
+ * `'auto-closed'` is written ONLY by the engine (`transitionRun` on a terminal state, or the orphan
+ * sweep in `closeOrphanedHumanRequests` — see store.ts), never accepted from an operator's own decision
+ * (the public `respondHumanRequest` route validates against `HUMAN_DECISIONS`, which omits it). Keeping
+ * it a distinct value — rather than reusing `'responded'` — means a closed record never claims a human
+ * answered when nobody did.
+ */
+export type HumanRequestDecision = 'responded' | 'approved' | 'rejected' | 'changes-requested' | 'auto-closed';
 
 export interface HumanResponse {
   requestRevision: number;

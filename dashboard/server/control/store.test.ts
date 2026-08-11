@@ -3485,3 +3485,165 @@ describe('run archival', () => {
       .toMatchObject({ ok: true, replayed: true });
   });
 });
+
+/**
+ * Engine-side auto-close of orphaned Human Requests (dashboard Inbox revamp).
+ *
+ * Two independent predicates keep a request from haunting the Inbox forever, and neither one ever
+ * fabricates a human answer: the resolution always carries `decision: 'auto-closed'`, never `'responded'`
+ * (see `HumanRequestDecision`'s doc comment). `transitionRun` closes inline, in the same commit, the
+ * moment a run it is attached to reaches a terminal state; `closeOrphanedHumanRequests` is the
+ * boot/interval sweep that ALSO catches (a) a request whose run was already terminal before this shipped,
+ * and (b) the request the terminal-state predicate can never reach at all — one still sitting on a run
+ * stuck in `waiting-human` with a manager that never comes back, which is exactly how five real requests
+ * were found still open weeks after their runs went cold.
+ */
+describe('Human Request auto-close', () => {
+  function requestOnRun(store: ControlPlaneStore, runRef: string, subject = 'alice') {
+    const created = store.createHumanRequest(subject, runRef, {
+      kind: 'approval',
+      title: 'automatic:policy:draft:spending-language-requires-human-review',
+      prompt: 'spending-language-requires-human-review',
+    });
+    if (!created.ok) throw new Error(created.detail);
+    return created.value;
+  }
+
+  it('closes an open request in the SAME commit the run reaches a terminal state, never claiming a human answered', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+
+    const failed = store.transitionRun('alice', run.runRef, running.value.version, 'failed');
+    expect(failed).toMatchObject({ ok: true, value: { state: 'failed' } });
+
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests).toEqual([expect.objectContaining({
+      requestRef: request.requestRef,
+      state: 'resolved',
+      response: expect.objectContaining({ decision: 'auto-closed', respondedBy: 'alice' }),
+    })]);
+    const reason = detail.value.humanRequests[0]!.response!.response;
+    expect(reason).toMatch(/terminal state/);
+    expect(reason).toMatch(/'failed'/);
+    // Honesty check: never the label a real human response carries.
+    expect(detail.value.humanRequests[0]!.response!.decision).not.toBe('responded');
+  });
+
+  it('leaves an open request untouched when the run only becomes waiting-human or interrupted (both resumable)', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+
+    const waiting = store.transitionRun('alice', run.runRef, running.value.version, 'waiting-human');
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const afterWaiting = store.getRun('alice', run.runRef);
+    if (!afterWaiting.ok) throw new Error(afterWaiting.detail);
+    expect(afterWaiting.value.humanRequests[0]).toMatchObject({ requestRef: request.requestRef, state: 'open' });
+
+    const interrupted = store.transitionRun('alice', run.runRef, waiting.value.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests[0]).toMatchObject({ requestRef: request.requestRef, state: 'open' });
+  });
+
+  it('never auto-closes a `review` kind request — retention/quarantine requires it stay an explicit human decision', () => {
+    // REGRESSION GUARD for 'durability, crash recovery, and retention > requires every descendant to be
+    // settled and every Human Request to be resolved': that test relies on a `review` request surviving
+    // a bare `transitionRun` to `stopped` unresolved, so quarantine dry-run correctly reports ineligible
+    // until a human actually answers it. This kind is exempted from BOTH auto-close predicates on purpose.
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = store.createHumanRequest('alice', run.runRef, { kind: 'review', title: 'Final review', prompt: 'Confirm retention is safe.' });
+    if (!request.ok) throw new Error(request.detail);
+
+    const stopped = store.transitionRun('alice', run.runRef, running.value.version, 'stopped');
+    expect(stopped).toMatchObject({ ok: true, value: { state: 'stopped' } });
+    const afterStop = store.getRun('alice', run.runRef);
+    if (!afterStop.ok) throw new Error(afterStop.detail);
+    expect(afterStop.value.humanRequests[0]).toMatchObject({ requestRef: request.value.requestRef, state: 'open' });
+
+    // The sweep's age-based predicate must not reach it either, however old it gets.
+    const farFuture = Date.parse(request.value.createdAt) + 365 * 24 * 60 * 60 * 1000;
+    expect(store.closeOrphanedHumanRequests(farFuture, 7 * 24 * 60 * 60 * 1000).closed).toEqual([]);
+  });
+
+  it('sweep: closes a request older than the stale window even though its run is still waiting-human', () => {
+    // This is the exact live shape of the five 2026-07 zombies: a run parked in `waiting-human` whose
+    // manager never came back, so the run itself never reaches a terminal state on its own.
+    let hour = 0;
+    const store = createInMemoryControlPlaneStore({
+      newId: (() => { let id = 0; return () => String(++id); })(),
+      now: () => new Date(Date.UTC(2026, 6, 21, hour++, 0, 0)), // 2026-07-21, one hour per call
+    });
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const waiting = store.transitionRun('alice', run.runRef, running.value.version, 'waiting-human');
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const oldRequest = requestOnRun(store, run.runRef);
+
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const staleWindowMs = 7 * oneDayMs;
+    const nowMs = Date.UTC(2026, 7, 11); // 2026-08-11 — 21 days after the request was filed
+    const swept = store.closeOrphanedHumanRequests(nowMs, staleWindowMs);
+    expect(swept.closed).toEqual([expect.objectContaining({ requestRef: oldRequest.requestRef, state: 'resolved' })]);
+    expect(swept.closed[0]!.response).toMatchObject({ decision: 'auto-closed' });
+    expect(swept.closed[0]!.response!.response).toMatch(/presumed orphaned/);
+
+    // A second sweep is a no-op — the request is already resolved, not reprocessed.
+    expect(store.closeOrphanedHumanRequests(nowMs + oneDayMs, staleWindowMs).closed).toEqual([]);
+  });
+
+  it('sweep: leaves a request open when it is younger than the stale window', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const waiting = store.transitionRun('alice', run.runRef, running.value.version, 'waiting-human');
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const request = requestOnRun(store, run.runRef);
+
+    // 5 days old against a 7-day window — the live shape of the two current (2026-08) requests, which
+    // must NOT be swept away alongside the five stale ones.
+    const nowMs = Date.parse(request.createdAt) + 5 * 24 * 60 * 60 * 1000;
+    expect(store.closeOrphanedHumanRequests(nowMs, 7 * 24 * 60 * 60 * 1000).closed).toEqual([]);
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests[0]).toMatchObject({ requestRef: request.requestRef, state: 'open' });
+  });
+
+  it('sweep: also closes an orphan whose run was already terminal before this shipped (file-store, pre-fix shape)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-orphan-sweep-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+
+    // Simulate data written before this fix existed: the run reached `failed` WITHOUT going through the
+    // (now-patched) `transitionRun`, so its request is still `open` on disk — the shape every pre-existing
+    // zombie was actually found in.
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>> };
+    const record = document.runs.find((candidate) => candidate.runRef === run.runRef);
+    if (!record) throw new Error('seeded run missing from the raw document');
+    record.state = 'failed';
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+
+    const reopened = createFileControlPlaneStore(root, deterministicOptions());
+    const swept = reopened.closeOrphanedHumanRequests(Date.now(), 7 * 24 * 60 * 60 * 1000);
+    expect(swept.closed).toEqual([expect.objectContaining({ requestRef: request.requestRef, state: 'resolved' })]);
+    expect(swept.closed[0]!.response).toMatchObject({ decision: 'auto-closed' });
+    expect(swept.closed[0]!.response!.response).toMatch(/terminal state/);
+  });
+});

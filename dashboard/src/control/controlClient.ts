@@ -12,7 +12,9 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export type ProposalDecision = 'approved' | 'rejected' | 'changes-requested';
-export type HumanRequestDecision = 'responded' | 'approved' | 'rejected' | 'changes-requested';
+/** `'auto-closed'` is engine-written only (a terminal run, or the orphan sweep) — never an operator's
+ *  own decision; see the server-side type for the full note. */
+export type HumanRequestDecision = 'responded' | 'approved' | 'rejected' | 'changes-requested' | 'auto-closed';
 
 export interface ProposalRoutingDto {
   runtime: string;

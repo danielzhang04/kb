@@ -31,6 +31,14 @@ import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './exe
 import { parseReviewOutcome, type ReviewContract } from './reviewOutcome.ts';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
+/**
+ * Bug A fix (2026-08-11): the grace window between issuing `endStdin()` (once the terminal `type:"result"`
+ * stream-json event is observed) and forcing a tree-kill if the child still hasn't exited. Independent of
+ * `DEFAULT_TIMEOUT_MS` — that 30-minute timer guards a turn that never produces a result at ALL; this one
+ * guards the much narrower window where a result WAS produced but the real CLI (verified live: it never
+ * exits in `--input-format stream-json` mode while stdin stays open) wedges instead of exiting on EOF.
+ */
+export const RESULT_EOF_GRACE_MS = 20_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
@@ -506,6 +514,14 @@ export interface StreamParseOptions {
   timedOut?: boolean;
   exceeded?: boolean;
   cancelled?: boolean;
+  /**
+   * True when a `type:"result"` stream-json event was observed in stdout before the process settled — see
+   * `createClaudeWorkerAdapter`'s result+EOF+backstop path. A backstop kill terminates the child once it
+   * is known the turn is already over, which leaves a null/nonzero exit code; that code must NOT flip an
+   * already-observed success into `failed`. Does not weaken any other fail-closed check: WAITING-HUMAN,
+   * `is_error`, and missing/malformed result-event handling below are all unchanged either way.
+   */
+  resultObserved?: boolean;
   timeoutMs?: number;
   maxOutputBytes?: number;
   stderrTailChars?: number;
@@ -560,7 +576,11 @@ export function parseWorkerStream(
     }
   }
 
-  if (code !== 0) {
+  // Fail-closed for an UNOBSERVED nonzero/null exit only. Once a result event was already observed live
+  // (Bug A), a backstop kill's exit code is an artifact of forcing a wedged CLI closed, not a signal about
+  // the turn's outcome — the result event parsed below (independently re-derived from `stdout`) is
+  // authoritative instead.
+  if (code !== 0 && !options.resultObserved) {
     return failedResult(`claude worker exited with code ${code ?? 'null'}. ${tail}`, resultEvent ? extractUsage(resultEvent) : ZERO_USAGE, maxChars);
   }
   if (!resultEvent) {
@@ -702,6 +722,13 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         let timedOut = false;
         let exceeded = false;
         let cancelled = false;
+        // Bug A: true once a `type:"result"` stream-json line has been observed — the turn is over even
+        // though the real CLI (verified live) will not exit on its own while stdin stays open.
+        let resultSeen = false;
+        // Guards `closeAfterResult` to at most one call; `resultSeen` alone is not enough because it stays
+        // true across every subsequent `onStdout` invocation, not just the one that first flipped it.
+        let resultHandled = false;
+        let backstopTimer: ReturnType<typeof setTimeout> | null = null;
 
         // Reap the whole process tree, not just the direct child. `killTree` is invoked at most once.
         const terminate = (): void => {
@@ -717,6 +744,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           const key = workerKey(input.runRef, agentId);
           if (liveWorkers.get(key) === liveWorker) liveWorkers.delete(key);
           clearTimeout(timer);
+          if (backstopTimer) { clearTimeout(backstopTimer); backstopTimer = null; }
           options.deregisterCancellation?.(input.operationKey);
           if (lineBuffer.length > 0) {
             tap('out', lineBuffer);
@@ -744,6 +772,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
               timedOut,
               exceeded,
               cancelled,
+              resultObserved: resultSeen,
               timeoutMs,
               maxOutputBytes,
               stderrTailChars,
@@ -804,14 +833,47 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           resolvePromise(failedResult(`claude worker process error: ${error instanceof Error ? error.message : String(error)}`, ZERO_USAGE, summaryMaxChars));
         });
 
+        // Bug A: the CLI emits its turn-terminal `type:"result"` line and then, in
+        // `--input-format stream-json` mode, never exits on its own while stdin stays open — the pre-fix
+        // adapter only ever finalized from `onExit`, so every successful attempt idled until the (30-min)
+        // kill-timeout and was then wrongly finalized as failed. Once a complete result line is observed:
+        // close the turn to further operator input immediately (remove the liveWorkers entry, so
+        // `postMessage` returns false from this point on — not just once the child later exits) and end
+        // stdin so the real CLI can exit on its own. A short backstop timer reaps a wedged child that still
+        // hasn't exited after EOF, without waiting for the much longer general kill-timeout.
+        const closeAfterResult = (): void => {
+          resultHandled = true;
+          const key = workerKey(input.runRef, agentId);
+          if (liveWorkers.get(key) === liveWorker) liveWorkers.delete(key);
+          try { proc.endStdin(); } catch { /* a dead pipe here still lets the backstop reap the tree */ }
+          // endStdin() drove a synchronous exit straight through finalize (possible under test, where the
+          // fake spawner's endStdin calls back into onExit inline) — no backstop needed for a settled turn.
+          if (settled) return;
+          backstopTimer = setTimeout(() => {
+            terminate();
+            finalize(null);
+          }, RESULT_EOF_GRACE_MS);
+          if (typeof backstopTimer.unref === 'function') backstopTimer.unref();
+        };
+
         proc.onStdout((chunk) => {
           if (settled) return;
           lineBuffer += chunk;
           let newline = lineBuffer.indexOf('\n');
           while (newline !== -1) {
-            tap('out', lineBuffer.slice(0, newline));
+            const line = lineBuffer.slice(0, newline);
+            tap('out', line);
             lineBuffer = lineBuffer.slice(newline + 1);
             newline = lineBuffer.indexOf('\n');
+            if (!resultSeen) {
+              const trimmedLine = line.trim();
+              if (trimmedLine) {
+                try {
+                  const parsedLine = JSON.parse(trimmedLine) as Record<string, unknown>;
+                  if (parsedLine && typeof parsedLine === 'object' && parsedLine.type === 'result') resultSeen = true;
+                } catch { /* a single malformed line is never the terminal result event */ }
+              }
+            }
           }
           bytes += Buffer.byteLength(chunk, 'utf8');
           if (bytes > maxOutputBytes) {
@@ -821,6 +883,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
             return;
           }
           stdoutChunks.push(chunk);
+          if (resultSeen && !resultHandled) closeAfterResult();
         });
         proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-stderrTailChars); });
         proc.onExit((code) => finalize(code));
@@ -833,7 +896,8 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           if (bindingPrompt !== null) writeFrame(bindingPrompt);
           if (queuedPrompt !== null) writeFrame(queuedPrompt);
           writeFrame(prompt);
-          // Stream-json accepts additional user frames while a turn is live. EOF would close that channel.
+          // Stream-json accepts additional user frames while a turn is live — so stdin stays open here.
+          // It is closed later, in `closeAfterResult`, once the terminal `type:"result"` line is observed.
           if (!settled) liveWorkers.set(workerKey(input.runRef, agentId), liveWorker);
         } catch {
           terminate();

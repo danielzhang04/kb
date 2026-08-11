@@ -19,6 +19,7 @@ import { originPlugin } from './security/origin.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 import { startStrandedArchiver } from './write/strandedArchiver.ts';
+import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -73,6 +74,17 @@ export function resolveStrandedArchiveWindowMs(env: NodeJS.ProcessEnv = process.
   if (raw === undefined || raw === '') return DEFAULT_STRANDED_ARCHIVE_WINDOW_MS;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_STRANDED_ARCHIVE_WINDOW_MS;
+}
+
+/** Human Request orphan-sweep cadence — ON BY DEFAULT (unlike the stranded-card archiver above, this
+ *  only ever mutates the control-plane JSON document it already owns; there is no filesystem move or
+ *  git commit to gate behind a dry-run). 5 minutes, matching the merge-gate reconciler's cadence. */
+export const DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS = 300_000;
+export function resolveHumanRequestSweepIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
+  if (raw === undefined || raw === '') return DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
 }
 
 /**
@@ -204,6 +216,17 @@ export function buildApp(): FastifyInstance {
     resolveStrandedArchiveIntervalMs(),
   );
   app.addHook('onClose', async () => { stopStrandedArchiver(); });
+
+  // Human Request orphan sweeper — ON BY DEFAULT. Runs once immediately (the boot sweep — clears any
+  // request already stranded before this process started, which is exactly how five 2026-07 requests
+  // were found still open on 2026-08-11: their runs sat in `waiting-human` with a manager that never
+  // came back, and nothing had ever re-checked them) and then on the interval. Every failure just leaves
+  // requests open — the pre-fix status quo — so there is no unsafe direction for this to fail toward.
+  const stopHumanRequestSweeper = startHumanRequestSweeper(
+    { store: surfaceCtx.controlStore },
+    resolveHumanRequestSweepIntervalMs(),
+  );
+  app.addHook('onClose', async () => { stopHumanRequestSweeper(); });
 
   // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
   // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact
