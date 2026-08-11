@@ -1,29 +1,8 @@
 # System Handover
-_Generated: 2026-08-10 06:29 UTC_
+_Generated: 2026-08-11 06:12 UTC_
 
-The nightly dispatcher ran cleanly. Preamble passed and the skills mirror is in
-sync. The dispatcher emitted one cadence card (nightly-review), which is being
-executed now: dashboards regenerated, memory updated, coordination writes pushed
-to `ops`.
+**What happened overnight.** The `nightly-review` cadence ran cleanly on the cloud dispatcher. Preamble, pyyaml, and the `sync_skills` check all passed. The dashboards were regenerated from live queue, ledger, and project state. No API spend today ($0.00 against the $30.00 daily ceiling). No new work cards were dispatched beyond the nightly cadence itself — the queue is steady (18 inbox, 291 done, 0 in approvals).
 
-Two low-priority things persist. First, the daemon-directory mirror check
-(`sync_daemon_dirs`, run from the `origin/main` copy since the script isn't on the
-`ops` branch) still reports the same 10 files out of main→ops sync as prior runs —
-unchanged, already covered by standing wake-me cards `6a605ebb`, `6a6c3d8e`, and
-`6a718533`, so no new card was filed. A desktop `sync_daemon_dirs.py --sync` from
-the dashboard-ops worktree is owed whenever you're next at the desk. Second, card
-`6a6bc3dd-5494006b` (kb-ops `iter-smoke-t2`) is sitting in `queue/working/` at the
-terminal `halted` state; harmless but worth clearing when you get a moment.
+**What is waiting on you.** Nothing is in the formal approvals queue, but five human-owned items sit in the inbox. The one needing a real decision is **`6a5e482a` — decide:budget-gate-measures-nothing** (kb-ops, T3). The others are standing wake-me notices: three about the same **main→ops daemon-dir drift** (10 fyt agent/workflow files out of sync — unchanged since 2026-08-04), and the faceless-youtube **engagement-fold** decision from 2026-07-22. The drift is fixed by one command run at your desk: `python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops worktree. Note that `sync_daemon_dirs.py` still isn't mirrored to `ops`, so the cloud routine has to run the `main` copy to check it.
 
-Nothing is blocked on approvals — the approvals queue is empty. Spend today is
-$0.00 against the $30/day ceiling (subscription billing), so budget is untouched.
-
-Project-side, nothing changed overnight and nothing broke. Atlas V1 is shipped
-and live, waiting on your V2 go/no-go. The faceless-youtube *bricks-fresh* run is
-paused at its P1–P5 human gate, needing your review before it resumes. kb-ops'
-`self-lint-report` cadence stays dormant by design (manual launch only).
-
-Left alone, the system does nothing autonomous except the next scheduled nightly
-dispatch. No worker will pick up the paused faceless-youtube gate or the Atlas V2
-decision without you. If you do one thing: make the Atlas V2 go/no-go call, or
-review the faceless-youtube P1–P5 gate to unblock *bricks-fresh*.
+**What the system does next unattended.** The cloud nightly cadence will run again tomorrow: preamble → sync checks → dispatch → dashboard regen → push. It reports drift but never fixes it, so the daemon-dir drift will keep reappearing here until the desktop sync runs (or its dark cadence is re-enabled). The `self-lint-report` cadence stays dormant — it only launches manually from the dashboard while you hold the gate in a watched session. Active project work (faceless-youtube bricks-fresh at its P1–P5 gate; atlas V2 planning) is paused on you, not on the fleet.

@@ -419,3 +419,15 @@
 - sync_skills --check in sync. preamble OK. Queue: inbox 18, working 2 (6a6bc3dd halted codex +
   this card), done 290, approvals 0.
 - Push path: recorded in the run summary.
+
+## 2026-08-11 nightly (cloud)
+- Dispatch emitted 1 card (6a7abcc6 nightly-review); self-executed inbox->working, dashboards
+  regenerated, Result written, ->done.
+- sync_daemon_dirs.py STILL absent on ops (recurring; tracked by 6a605ebb). Ran origin/main copy
+  in refs-fallback per precedent: drift = 10 files (5 main-only, 5 content-differs), IDENTICAL to
+  08-04/08-10 runs. Read memory shard FIRST, confirmed dedupe rule: NO new wake-me card (drift set
+  unchanged); standing 6a605ebb/6a6c3d8e/6a718533 cover it; surfaced in dashboard Anomalies +
+  run summary + push notification. The read-memory-before-filing habit held again.
+- sync_skills --check in sync. preamble + pyyaml OK. Queue: inbox 18, working 2 (6a6bc3dd halted
+  codex + this card), done 291, approvals 0, archived 1.
+- Push path: recorded in the run summary.
