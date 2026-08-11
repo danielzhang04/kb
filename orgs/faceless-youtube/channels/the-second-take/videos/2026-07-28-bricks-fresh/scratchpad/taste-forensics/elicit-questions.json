@@ -1,0 +1,1166 @@
+[
+ {
+  "qid": "Q1",
+  "panel": "P01",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "assets/scenes/L40.png",
+   "assets/scenes/L41.png",
+   "assets/scenes/L42.png",
+   "assets/scenes/L43.png",
+   "assets/scenes/L29.png",
+   "assets/scenes/L33.png",
+   "assets/scenes/L44.png",
+   "assets/scenes/L46.png",
+   "assets/scenes/L47.png",
+   "assets/scenes/L48.png"
+  ],
+  "question_text": "Looking only at the pictures: what is present in the 4 you named that you do not find in the 6 you did not?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q2",
+  "panel": "P01",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "assets/scenes/L40.png",
+   "assets/scenes/L41.png",
+   "assets/scenes/L42.png",
+   "assets/scenes/L43.png",
+   "assets/scenes/L29.png",
+   "assets/scenes/L33.png",
+   "assets/scenes/L44.png",
+   "assets/scenes/L46.png",
+   "assets/scenes/L47.png",
+   "assets/scenes/L48.png"
+  ],
+  "question_text": "Does the shared room in the 6 un-named frames bother you here - and if so, is it the room itself or what the figures are doing in it?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q3",
+  "panel": "P01",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "assets/scenes/L40.png",
+   "assets/scenes/L41.png",
+   "assets/scenes/L42.png",
+   "assets/scenes/L43.png",
+   "assets/scenes/L29.png",
+   "assets/scenes/L33.png",
+   "assets/scenes/L44.png",
+   "assets/scenes/L46.png",
+   "assets/scenes/L47.png",
+   "assets/scenes/L48.png"
+  ],
+  "question_text": "Name one rule about re-using a place image you would keep, and one you would drop.",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q4",
+  "panel": "P02",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "assets/scenes/L35.png",
+   "assets/scenes/L36.png",
+   "assets/scenes/L37.png",
+   "assets/scenes/L38.png"
+  ],
+  "question_text": "What separates the two you named from the two you did not - subject, staging, palette, figure acting, novelty, or something else? A word plus a sentence is plenty.",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q5",
+  "panel": "P02",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "assets/scenes/L35.png",
+   "assets/scenes/L36.png",
+   "assets/scenes/L37.png",
+   "assets/scenes/L38.png"
+  ],
+  "question_text": "The named two are single-idea frames; the other two show the company doing something. Is the difference you see about the idea in the frame, or about how it is drawn?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q6",
+  "panel": "P02",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "assets/scenes/L35.png",
+   "assets/scenes/L36.png",
+   "assets/scenes/L37.png",
+   "assets/scenes/L38.png"
+  ],
+  "question_text": "Of these two kinds of frame, which would you want more of in the remaining eight tenths, and which would you cut?",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q7",
+  "panel": "P03",
+  "board": 1,
+  "beat": "L27",
+  "images": [
+   "assets/scenes/L27.png"
+  ],
+  "question_text": "Tag the newer frame for L27 (Here is the story of that company.). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q8",
+  "panel": "P03",
+  "board": 1,
+  "beat": "L29",
+  "images": [
+   "assets/scenes/L29.png"
+  ],
+  "question_text": "Tag the newer frame for L29 (a hard drive manufacturer out of Colorado,). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q9",
+  "panel": "P03",
+  "board": 1,
+  "beat": "L30",
+  "images": [
+   "assets/scenes/L30.png"
+  ],
+  "question_text": "Tag the newer frame for L30 (founded in 1980 by). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q10",
+  "panel": "P03",
+  "board": 1,
+  "beat": "L31",
+  "images": [
+   "assets/scenes/L31.png"
+  ],
+  "question_text": "Tag the newer frame for L31 (a guy named Terry Johnson.). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q11",
+  "panel": "P03",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/_pre-p6b-archive-2026-08-06/L25.png",
+   "assets/scenes/L27.png",
+   "assets/_archive-pre-reset/scenes/L26.png",
+   "assets/scenes/L29.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-b5V.png",
+   "assets/scenes/L30.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-b5V.png",
+   "assets/scenes/L31.png"
+  ],
+  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat, what does the older frame have that the newer one does not? One line each is fine.",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q12",
+  "panel": "P03",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/_pre-p6b-archive-2026-08-06/L25.png",
+   "assets/scenes/L27.png",
+   "assets/_archive-pre-reset/scenes/L26.png",
+   "assets/scenes/L29.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-b5V.png",
+   "assets/scenes/L30.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-b5V.png",
+   "assets/scenes/L31.png"
+  ],
+  "question_text": "From these 4 pairs: name one thing the old generation did that you want back, and one thing the new generation does that you would drop.",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q13",
+  "panel": "P04",
+  "board": 1,
+  "beat": "L32",
+  "images": [
+   "assets/scenes/L32.png"
+  ],
+  "question_text": "Tag the newer frame for L32 (And they were HOT.). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q14",
+  "panel": "P04",
+  "board": 1,
+  "beat": "L33",
+  "images": [
+   "assets/scenes/L33.png"
+  ],
+  "question_text": "Tag the newer frame for L33 (IBM picked MiniScribe to supply). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q15",
+  "panel": "P04",
+  "board": 1,
+  "beat": "L34",
+  "images": [
+   "visual-kit/_staging/L34.png"
+  ],
+  "question_text": "Tag the newer frame for L34 (hard drives for their PCs,). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q16",
+  "panel": "P04",
+  "board": 1,
+  "beat": "L36",
+  "images": [
+   "assets/scenes/L36.png"
+  ],
+  "question_text": "Tag the newer frame for L36 (125 million dollars a year.). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q17",
+  "panel": "P04",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "board:full-board.html#L29 current best",
+   "assets/scenes/L32.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L30.png",
+   "assets/scenes/L33.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L30.png",
+   "visual-kit/_staging/L34.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L32-laneC-r1.png",
+   "assets/scenes/L36.png"
+  ],
+  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat, what does the older frame have that the newer one does not? One line each is fine.",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q18",
+  "panel": "P04",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "board:full-board.html#L29 current best",
+   "assets/scenes/L32.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L30.png",
+   "assets/scenes/L33.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L30.png",
+   "visual-kit/_staging/L34.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L32-laneC-r1.png",
+   "assets/scenes/L36.png"
+  ],
+  "question_text": "From these 4 pairs: name one thing the old generation did that you want back, and one thing the new generation does that you would drop.",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q19",
+  "panel": "P05",
+  "board": 1,
+  "beat": "L38",
+  "images": [
+   "assets/scenes/L38.png"
+  ],
+  "question_text": "Tag the newer frame for L38 (they were selling to giants like Compaq and). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q20",
+  "panel": "P05",
+  "board": 1,
+  "beat": "L39",
+  "images": [
+   "visual-kit/_staging/L39-fix.png"
+  ],
+  "question_text": "Tag the newer frame for L39 (making over 600 million dollars a year.). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q21",
+  "panel": "P05",
+  "board": 1,
+  "beat": "L44",
+  "images": [
+   "assets/scenes/L44.png"
+  ],
+  "question_text": "Tag the newer frame for L44 (At the end of 1984, IBM slashed its orders,). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q22",
+  "panel": "P05",
+  "board": 1,
+  "beat": "L45",
+  "images": [
+   "assets/scenes/L45.png"
+  ],
+  "question_text": "Tag the newer frame for L45 (and MiniScribe fell off a cliff.). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q23",
+  "panel": "P05",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L34-laneC-r1.png",
+   "assets/scenes/L38.png",
+   "assets/_archive-pre-reset/scenes/L35.png",
+   "visual-kit/_staging/L39-fix.png",
+   "assets/_archive-pre-reset/scenes/L39.png",
+   "assets/scenes/L44.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L40.png",
+   "assets/scenes/L45.png"
+  ],
+  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat, what does the older frame have that the newer one does not? One line each is fine.",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q24",
+  "panel": "P05",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L34-laneC-r1.png",
+   "assets/scenes/L38.png",
+   "assets/_archive-pre-reset/scenes/L35.png",
+   "visual-kit/_staging/L39-fix.png",
+   "assets/_archive-pre-reset/scenes/L39.png",
+   "assets/scenes/L44.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L40.png",
+   "assets/scenes/L45.png"
+  ],
+  "question_text": "From these 4 pairs: name one thing the old generation did that you want back, and one thing the new generation does that you would drop.",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q25",
+  "panel": "P06",
+  "board": 1,
+  "beat": "L46",
+  "images": [
+   "assets/scenes/L46.png"
+  ],
+  "question_text": "Tag the newer frame for L46 (They let a quarter of their people go,). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q26",
+  "panel": "P06",
+  "board": 1,
+  "beat": "L47",
+  "images": [
+   "assets/scenes/L47.png"
+  ],
+  "question_text": "Tag the newer frame for L47 (and Terry Johnson was out the door.). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q27",
+  "panel": "P06",
+  "board": 1,
+  "beat": "L48",
+  "images": [
+   "assets/scenes/L48.png"
+  ],
+  "question_text": "Tag the newer frame for L48 (By 1985 the company was in real trouble,). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q28",
+  "panel": "P06",
+  "board": 1,
+  "beat": "L50",
+  "images": [
+   "assets/scenes/L50.png"
+  ],
+  "question_text": "Tag the newer frame for L50 (put about 20 million dollars in). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q29",
+  "panel": "P06",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "assets/_archive-pre-reset/scenes/L41.png",
+   "assets/scenes/L46.png",
+   "assets/_archive-pre-reset/scenes/L42.png",
+   "assets/scenes/L47.png",
+   "assets/_archive-pre-reset/scenes/L43.png",
+   "assets/scenes/L48.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L46-round1-D-content-retry.png",
+   "assets/scenes/L50.png"
+  ],
+  "question_text": "For 3 of these 4 beats the older frame is one you named (the badges say which). Beat by beat, what does the older frame have that the newer one does not - and where you named neither, say that.",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q30",
+  "panel": "P06",
+  "board": 1,
+  "beat": null,
+  "images": [
+   "assets/_archive-pre-reset/scenes/L41.png",
+   "assets/scenes/L46.png",
+   "assets/_archive-pre-reset/scenes/L42.png",
+   "assets/scenes/L47.png",
+   "assets/_archive-pre-reset/scenes/L43.png",
+   "assets/scenes/L48.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L46-round1-D-content-retry.png",
+   "assets/scenes/L50.png"
+  ],
+  "question_text": "From these 4 pairs: name one thing the old generation did that you want back, and one thing the new generation does that you would drop.",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q31",
+  "panel": "P07",
+  "board": 1,
+  "beat": "L28",
+  "images": [
+   "assets/_archive-pre-reset/scenes/L26.png",
+   "scratchpad/L28-remint-attempt1.png",
+   "assets/scenes/L28.png",
+   "assets/_archive-pre-regen-2026-08-06/L28.png"
+  ],
+  "question_text": "Which of these is the one you remember as better - or is it none of them?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q32",
+  "panel": "P07",
+  "board": 1,
+  "beat": "L28",
+  "images": [
+   "assets/_archive-pre-reset/scenes/L26.png",
+   "scratchpad/L28-remint-attempt1.png",
+   "assets/scenes/L28.png",
+   "assets/_archive-pre-regen-2026-08-06/L28.png"
+  ],
+  "question_text": "Whatever you picked: what does it have that the current one does not?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q33",
+  "panel": "P07",
+  "board": 1,
+  "beat": "L28",
+  "images": [
+   "assets/_archive-pre-reset/scenes/L26.png",
+   "scratchpad/L28-remint-attempt1.png",
+   "assets/scenes/L28.png",
+   "assets/_archive-pre-regen-2026-08-06/L28.png"
+  ],
+  "question_text": "Should a company's first appearance be a building, a room, or a person? One word is enough.",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q34",
+  "panel": "P08",
+  "board": 2,
+  "beat": "L07",
+  "images": [
+   "visual-kit/_staging/L07-retry1.png"
+  ],
+  "question_text": "Tag the newer frame for L07 (Anybody with money was buying one,). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q35",
+  "panel": "P08",
+  "board": 2,
+  "beat": "L10",
+  "images": [
+   "visual-kit/_staging/L10-retry1.png"
+  ],
+  "question_text": "Tag the newer frame for L10 (Well, computers run on these things called hard…). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q36",
+  "panel": "P08",
+  "board": 2,
+  "beat": "L19",
+  "images": [
+   "assets/_archive-pre-restore-2026-08-06/L19.png"
+  ],
+  "question_text": "Tag the newer frame for L19 (quietly raking it in.). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q37",
+  "panel": "P08",
+  "board": 2,
+  "beat": "L20",
+  "images": [
+   "assets/_archive-pre-restore-2026-08-06/L20.png"
+  ],
+  "question_text": "Tag the newer frame for L20 (They were the people selling picks and). Tick every tag that applies; add your own words for (e).",
+  "answer_type": "tag",
+  "tag_options": [
+   {
+    "key": "a",
+    "label": "too basic"
+   },
+   {
+    "key": "b",
+    "label": "character is the base rig instead of the character"
+   },
+   {
+    "key": "c",
+    "label": "character is off-rig"
+   },
+   {
+    "key": "d",
+    "label": "cast rig in the background where a crowd was wanted"
+   },
+   {
+    "key": "e",
+    "label": "other - name it"
+   }
+  ]
+ },
+ {
+  "qid": "Q38",
+  "panel": "P08",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "assets/_archive-pre-reset/scenes/L08.png",
+   "visual-kit/_staging/L07-retry1.png",
+   "assets/_archive-pre-reset/scenes/L11.png",
+   "visual-kit/_staging/L10-retry1.png",
+   "assets/_archive-pre-regen-2026-08-06/L19.png",
+   "assets/_archive-pre-restore-2026-08-06/L19.png",
+   "assets/_archive-pre-regen-2026-08-06/L21.png",
+   "assets/_archive-pre-restore-2026-08-06/L20.png"
+  ],
+  "question_text": "For each of these: is the newer frame actually bad, or just unremarkable next to the rest of the tenth?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q39",
+  "panel": "P08",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "assets/_archive-pre-reset/scenes/L08.png",
+   "visual-kit/_staging/L07-retry1.png",
+   "assets/_archive-pre-reset/scenes/L11.png",
+   "visual-kit/_staging/L10-retry1.png",
+   "assets/_archive-pre-regen-2026-08-06/L19.png",
+   "assets/_archive-pre-restore-2026-08-06/L19.png",
+   "assets/_archive-pre-regen-2026-08-06/L21.png",
+   "assets/_archive-pre-restore-2026-08-06/L20.png"
+  ],
+  "question_text": "Is there a rule you would write from these 4 that would have caught them before they were drawn?",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q40",
+  "panel": "P09",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "assets/_archive-pre-reset/scenes/L01.png",
+   "assets/_archive-pre-regen-2026-08-06/L01.png",
+   "assets/_archive-pre-reset/scenes/L02.png",
+   "assets/_archive-pre-regen-2026-08-06/L02.png",
+   "assets/_archive-pre-reset/scenes/L03.png",
+   "assets/_archive-pre-regen-2026-08-06/L03.png",
+   "visual-kit/_staging/_pre-p6b-archive-2026-08-06/L17.png",
+   "assets/_archive-pre-regen-2026-08-06/L16.png",
+   "visual-kit/_staging/_pre-p6b-archive-2026-08-06/L18.png",
+   "assets/_archive-pre-regen-2026-08-06/L17.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L45-round1-D.png",
+   "assets/scenes/L49.png"
+  ],
+  "question_text": "What did the new generation get right in these?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q41",
+  "panel": "P09",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "assets/_archive-pre-reset/scenes/L01.png",
+   "assets/_archive-pre-regen-2026-08-06/L01.png",
+   "assets/_archive-pre-reset/scenes/L02.png",
+   "assets/_archive-pre-regen-2026-08-06/L02.png",
+   "assets/_archive-pre-reset/scenes/L03.png",
+   "assets/_archive-pre-regen-2026-08-06/L03.png",
+   "visual-kit/_staging/_pre-p6b-archive-2026-08-06/L17.png",
+   "assets/_archive-pre-regen-2026-08-06/L16.png",
+   "visual-kit/_staging/_pre-p6b-archive-2026-08-06/L18.png",
+   "assets/_archive-pre-regen-2026-08-06/L17.png",
+   "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L45-round1-D.png",
+   "assets/scenes/L49.png"
+  ],
+  "question_text": "Are these a real improvement, or was the older frame simply never something you looked at closely?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q42",
+  "panel": "P10",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/L76-round3-P.png",
+   "visual-kit/_staging/L77-b4T.png"
+  ],
+  "question_text": "Read the two written concepts against each other: which one do you want made?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q43",
+  "panel": "P10",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/L76-round3-P.png",
+   "visual-kit/_staging/L77-b4T.png"
+  ],
+  "question_text": "The unrendered one puts a crowd, a dated prop and a place-establishing sign into one frame. Is that the level of detail you want in a shot description generally, or is it too much for a two-second beat?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q44",
+  "panel": "P10",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/L76-round3-P.png",
+   "visual-kit/_staging/L77-b4T.png"
+  ],
+  "question_text": "Name one thing in the unrendered text that the current text should get back, and one thing it is better off without.",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q45",
+  "panel": "P11",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/L78-round3-P.png",
+   "visual-kit/_staging/L79-round3-P.png",
+   "visual-kit/_staging/L80.png",
+   "visual-kit/_staging/L81-b4T.png",
+   "visual-kit/_staging/L82-b4T.png",
+   "visual-kit/_staging/L83-round2-J.png"
+  ],
+  "question_text": "What do these frames have in common that you want the redraws to keep?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q46",
+  "panel": "P11",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/L78-round3-P.png",
+   "visual-kit/_staging/L79-round3-P.png",
+   "visual-kit/_staging/L80.png",
+   "visual-kit/_staging/L81-b4T.png",
+   "visual-kit/_staging/L82-b4T.png",
+   "visual-kit/_staging/L83-round2-J.png"
+  ],
+  "question_text": "Is there anything here you would now drop?",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q47",
+  "panel": "P12",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/L84-b4T.png",
+   "visual-kit/_staging/L85-b4T.png",
+   "visual-kit/_staging/L86-b4U.png",
+   "visual-kit/_staging/L87-b5X.png",
+   "visual-kit/_staging/L88-b5X.png"
+  ],
+  "question_text": "What do these frames have in common that you want the redraws to keep?",
+  "answer_type": "free",
+  "tag_options": null
+ },
+ {
+  "qid": "Q48",
+  "panel": "P12",
+  "board": 2,
+  "beat": null,
+  "images": [
+   "visual-kit/_staging/L84-b4T.png",
+   "visual-kit/_staging/L85-b4T.png",
+   "visual-kit/_staging/L86-b4U.png",
+   "visual-kit/_staging/L87-b5X.png",
+   "visual-kit/_staging/L88-b5X.png"
+  ],
+  "question_text": "Is there anything here you would now drop?",
+  "answer_type": "keep-drop",
+  "tag_options": null
+ },
+ {
+  "qid": "Q49",
+  "panel": "P13",
+  "board": 2,
+  "beat": null,
+  "images": [],
+  "question_text": "Going through this board, did you notice anything that none of the questions asked about?",
+  "answer_type": "free",
+  "tag_options": null
+ }
+]
