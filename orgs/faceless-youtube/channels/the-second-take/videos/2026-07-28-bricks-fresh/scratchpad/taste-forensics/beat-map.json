@@ -62,7 +62,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L01",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L02",
@@ -127,7 +135,27 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L02",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 0.571,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L03",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        },
+        {
+          "id": "L01",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L03",
@@ -192,7 +220,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L03",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 0.7,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L04",
+          "overlap_words": 3,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L04",
@@ -274,7 +317,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L05",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L05",
@@ -342,7 +393,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L06",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.03)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L06",
@@ -429,7 +488,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L07",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L07",
@@ -513,7 +580,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L08",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L08",
@@ -561,7 +636,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L09",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L09",
@@ -629,7 +712,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L10",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 0.75,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L09",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L10",
@@ -713,7 +811,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L11",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 0.889,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L10",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L11",
@@ -781,7 +894,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L12",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 0.917,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L13",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L12",
@@ -849,7 +977,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L13",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.19)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L13",
@@ -917,7 +1053,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L14",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.05)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L14",
@@ -985,7 +1129,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L15",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L15",
@@ -1053,7 +1205,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L16",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.20)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L16",
@@ -1171,7 +1331,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L17",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L17",
@@ -1243,7 +1411,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L18",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.16)",
+      "join_frac": 0.778,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L17",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L18",
@@ -1327,7 +1510,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L19",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L19",
@@ -1335,7 +1526,9 @@
     "old_L": "L19",
     "old_L_candidates": null,
     "new_L": "L19",
-    "named_by": "unnamed:p6b-tenth1",
+    "named_by": [
+      "daniel-named-old:L19-split"
+    ],
     "join_confidence": "medium",
     "boards": [
       {
@@ -1387,7 +1580,22 @@
         "staging_provenance": [],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L20",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 0.75,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L19",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L20",
@@ -1447,7 +1655,22 @@
         "staging_provenance": [],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L21",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.17)",
+      "join_frac": 0.714,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L20",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L21",
@@ -1507,7 +1730,15 @@
         "staging_provenance": [],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L21",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.18)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L22",
@@ -1575,7 +1806,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L22",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L23",
@@ -1662,7 +1901,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L23",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L24",
@@ -1749,7 +1996,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L24",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L25",
@@ -1833,7 +2088,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L25",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.34)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L26",
@@ -1901,7 +2164,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L26",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L27",
@@ -1973,7 +2244,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L27",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L28",
@@ -2081,20 +2360,16 @@
           }
         ],
         "note": null
-      },
-      {
-        "path_or_board": "git show d1f771a:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json (id L28/L29); first appears 89c720e",
-        "generation_tag": "gen-B-intermediate-41to248shot-2026-08-05",
-        "date": "2026-08-05",
-        "sha256": null,
-        "exists_on_disk": false,
-        "review_status": null,
-        "parked_reasons": null,
-        "staging_provenance": null,
-        "note": "Prompt-only. No rendered image found anywhere on disk for this exact still_prompt."
       }
     ],
-    "gen_B_intermediate_finding": "GEN-B FINDING (explicit brief callout: 'a better MiniScribe HQ render exists in some prior generation'): between commits 89c720e (2026-08-05T01:04-04:00) and d1f771a (2026-08-05T20:01-04:00) -- the intermediate 41-to-248-shot authoring generation that sits BETWEEN the archived 214-shot generation (Gen A, ends 7cfa9ab) and the current 246-shot generation (Gen C, starts d680fda 2026-08-06) -- shots.json carried a richer MiniScribe plant-entrance concept at the SAME id L28/L29: \"The plant's front entrance seen from inside the building: a double glazed door propped open on a cold morning, and a crowd of accountants filing in through it in dark overcoats with document cases and steel deed boxes... the aisle to the assembly floor opens stage-right with its broad plank board carrying 'MINISCRIBE' above the entrance to it... A plain wall calendar hangs beside the door... carrying '1987'.\" This Gen-B concept was REPLACED by the current simpler character-free assembly-floor-plate concept during the 2026-08-06 doctrine re-author (d680fda) before Gen-B ever reached image-generation: no PNG, board-HTML embed, or visual-kit/_staging file matches this exact prompt anywhere on disk (searched assets/_archive-pre-reset, assets/_archive-pre-regen-2026-08-06, assets/scenes, all 5 board HTMLs, and visual-kit/_staging incl. all _pre-*/_rejected* subfolders). If Daniel is recalling a MORE ELABORATE MiniScribe HQ shot than what is on the current 6c2-board.html or in the p6b-era archive, this Gen-B prompt is almost certainly what he remembers -- but it is a PROMPT-ONLY artifact (shots.json text, recoverable via git show d1f771a:.../shots.json, id L28 or L29) with NO surviving render. Re-generating it would be a fresh mint, not a recovery."
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L28",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L29",
@@ -2102,7 +2377,9 @@
     "old_L": "L26",
     "old_L_candidates": null,
     "new_L": "L29",
-    "named_by": "unnamed:6c2-tenth2",
+    "named_by": [
+      "daniel-named-old:L26-split"
+    ],
     "join_confidence": "medium",
     "boards": [
       {
@@ -2166,7 +2443,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L29",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.18)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L30",
@@ -2174,7 +2459,9 @@
     "old_L": "L28",
     "old_L_candidates": null,
     "new_L": "L30",
-    "named_by": "unnamed:6c2-tenth2",
+    "named_by": [
+      "daniel-named-old:L28-split"
+    ],
     "join_confidence": "medium",
     "boards": [
       {
@@ -2252,7 +2539,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L30",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L31",
@@ -2338,7 +2633,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L31",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 0.6,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L30",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L32",
@@ -2410,7 +2720,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L32",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L33",
@@ -2482,7 +2800,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L33",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.26)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L34",
@@ -2490,7 +2816,9 @@
     "old_L": "L30",
     "old_L_candidates": null,
     "new_L": "L34",
-    "named_by": "unnamed:6c2-tenth2",
+    "named_by": [
+      "daniel-named-old:L30-split"
+    ],
     "join_confidence": "medium",
     "boards": [
       {
@@ -2543,7 +2871,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L34",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L35",
@@ -2625,7 +2961,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L35",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L36",
@@ -2697,7 +3041,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L36",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 0.8,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L35",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L37",
@@ -2772,7 +3131,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L37",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L38",
@@ -2837,7 +3204,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L38",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L39",
@@ -2900,7 +3275,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L39",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 0.857,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L38",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L40",
@@ -2972,7 +3362,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L40",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.20)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L41",
@@ -3047,7 +3445,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L41",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.26)",
+      "join_frac": 0.714,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L40",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L42",
@@ -3115,7 +3528,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L42",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L43",
@@ -3183,7 +3604,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L43",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L44",
@@ -3262,7 +3691,22 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L44",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.18)",
+      "join_frac": 0.556,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L43",
+          "overlap_words": 4,
+          "first_commit": "23d6300"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L45",
@@ -3327,7 +3771,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L45",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.06)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L46",
@@ -3399,7 +3851,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L46",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L47",
@@ -3464,7 +3924,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L47",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.18)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L48",
@@ -3535,7 +4003,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L48",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L49",
@@ -3607,7 +4083,15 @@
         ],
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L49",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.19)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L50",
@@ -3717,7 +4201,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L54",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L56",
@@ -3755,7 +4247,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L55",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L83",
@@ -3785,8 +4285,35 @@
         "parked_reasons": null,
         "staging_provenance": null,
         "note": null
+      },
+      {
+        "path_or_board": "git show aa576b9:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json (id L81); present through 52b17ab",
+        "generation_tag": "gen-B-intermediate-41to248shot-2026-08-05",
+        "date": "2026-08-05",
+        "sha256": null,
+        "exists_on_disk": false,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": "Prompt-only (Gen-B id L81). No rendered image found anywhere on disk for this exact still_prompt."
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L80",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.06)",
+      "join_frac": 0.6,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L81",
+          "overlap_words": 2,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
+    "gen_B_intermediate_finding": "GEN-B FINDING, CORRECTED (explicit brief callout: 'a better MiniScribe HQ render exists in some prior generation'; original attribution to L28/L29 was WRONG and has been removed from that row -- see below): the rich unrendered 'plant's front entrance' concept lives at Gen-B id L81, first appearing at commit aa576b9 (2026-08-05T01:xx, 89-shot state; the earlier 47-shot state at 89c720e does not reach L81 at all). Full text: \"The plant's front entrance seen from inside the building: a double glazed door propped open on a cold morning, and a crowd of accountants filing in through it in dark overcoats with document cases and steel deed boxes carried between them. The lobby floor is pale sealed concrete, a bench runs along the wall stage-left, and the aisle to the assembly floor opens stage-right with its broad plank board carrying 'MINISCRIBE' above the entrance to it... A plain wall calendar hangs beside the door... carrying '1987'.\" Gen-B's L81 sits in the audit-arrival beat (vo 'MiniScribe's outside accountants'), between Gen-B L80 ('Then in January') and L82 ('came in to audit the books'). By word-offset position this maps to the CURRENT (Gen-C, 246-shot) L83 (\"Then in January 1987, MiniScribe's\") / L84 (\"outside accountants came in to audit the books,\") pair -- both inside Daniel's OLD-named L76-88 range (old L76/L77). This Gen-B concept was replaced by the current simpler concept during the 2026-08-06 doctrine re-author (d680fda) before it ever reached image generation: no PNG, board-HTML embed, or visual-kit/_staging file matches this exact prompt anywhere on disk (searched assets/_archive-pre-reset, assets/_archive-pre-regen-2026-08-06, assets/scenes, all 5 board HTMLs, and visual-kit/_staging incl. all _pre-*/_rejected* subfolders). Recoverable as text only via `git show aa576b9:.../shots.json` (id L81) or any Gen-B commit through 52b17ab (identical text at L81 throughout); NOT recoverable as pixels. Re-generating it would be a fresh mint, not a recovery. NOTE ON L28/L29: separately, Gen-B's OWN L28/L29 (present from the earliest 41-shot Gen-B commit 8b735ab onward) carry a different, simpler still_prompt -- a cast-free assembly floor / miniscribe-rep standing at the plant entrance, no crowd, no calendar -- confirmed by exact-text diff against Gen-B's final (52b17ab) state. That is NOT the 'better HQ' render; it is a distinct, already-catalogued beat (see this file's L28 row, gen-C renders)."
   },
   {
     "beat_id": "L84",
@@ -3816,8 +4343,35 @@
         "parked_reasons": null,
         "staging_provenance": null,
         "note": null
+      },
+      {
+        "path_or_board": "git show aa576b9:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json (id L81); present through 52b17ab",
+        "generation_tag": "gen-B-intermediate-41to248shot-2026-08-05",
+        "date": "2026-08-05",
+        "sha256": null,
+        "exists_on_disk": false,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": "Prompt-only (Gen-B id L81). No rendered image found anywhere on disk for this exact still_prompt."
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L82",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 0.75,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L81",
+          "overlap_words": 2,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
+    "gen_B_intermediate_finding": "GEN-B FINDING, CORRECTED (explicit brief callout: 'a better MiniScribe HQ render exists in some prior generation'; original attribution to L28/L29 was WRONG and has been removed from that row -- see below): the rich unrendered 'plant's front entrance' concept lives at Gen-B id L81, first appearing at commit aa576b9 (2026-08-05T01:xx, 89-shot state; the earlier 47-shot state at 89c720e does not reach L81 at all). Full text: \"The plant's front entrance seen from inside the building: a double glazed door propped open on a cold morning, and a crowd of accountants filing in through it in dark overcoats with document cases and steel deed boxes carried between them. The lobby floor is pale sealed concrete, a bench runs along the wall stage-left, and the aisle to the assembly floor opens stage-right with its broad plank board carrying 'MINISCRIBE' above the entrance to it... A plain wall calendar hangs beside the door... carrying '1987'.\" Gen-B's L81 sits in the audit-arrival beat (vo 'MiniScribe's outside accountants'), between Gen-B L80 ('Then in January') and L82 ('came in to audit the books'). By word-offset position this maps to the CURRENT (Gen-C, 246-shot) L83 (\"Then in January 1987, MiniScribe's\") / L84 (\"outside accountants came in to audit the books,\") pair -- both inside Daniel's OLD-named L76-88 range (old L76/L77). This Gen-B concept was replaced by the current simpler concept during the 2026-08-06 doctrine re-author (d680fda) before it ever reached image generation: no PNG, board-HTML embed, or visual-kit/_staging file matches this exact prompt anywhere on disk (searched assets/_archive-pre-reset, assets/_archive-pre-regen-2026-08-06, assets/scenes, all 5 board HTMLs, and visual-kit/_staging incl. all _pre-*/_rejected* subfolders). Recoverable as text only via `git show aa576b9:.../shots.json` (id L81) or any Gen-B commit through 52b17ab (identical text at L81 throughout); NOT recoverable as pixels. Re-generating it would be a fresh mint, not a recovery. NOTE ON L28/L29: separately, Gen-B's OWN L28/L29 (present from the earliest 41-shot Gen-B commit 8b735ab onward) carry a different, simpler still_prompt -- a cast-free assembly floor / miniscribe-rep standing at the plant entrance, no crowd, no calendar -- confirmed by exact-text diff against Gen-B's final (52b17ab) state. That is NOT the 'better HQ' render; it is a distinct, already-catalogued beat (see this file's L28 row, gen-C renders)."
   },
   {
     "beat_id": "L85",
@@ -3855,7 +4409,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L82",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 0.5,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L83",
+          "overlap_words": 4,
+          "first_commit": "aa576b9"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L86",
@@ -3886,7 +4455,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L83",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L87",
@@ -3924,7 +4501,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L84",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L88",
@@ -3955,7 +4540,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L85",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 0.6,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L84",
+          "overlap_words": 2,
+          "first_commit": "aa576b9"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L89",
@@ -3986,7 +4586,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L85",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 0.583,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L86",
+          "overlap_words": 5,
+          "first_commit": "aa576b9"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L90",
@@ -4031,7 +4646,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L86",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 0.571,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L87",
+          "overlap_words": 3,
+          "first_commit": "aa576b9"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L91",
@@ -4069,7 +4699,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L88",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.05)",
+      "join_frac": 0.571,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L87",
+          "overlap_words": 3,
+          "first_commit": "aa576b9"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L93",
@@ -4107,7 +4752,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L89",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.14)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L94",
@@ -4138,7 +4791,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L090",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 0.909,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L091",
+          "overlap_words": 1,
+          "first_commit": "2c95315"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L95",
@@ -4169,7 +4837,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L092",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 0.545,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L091",
+          "overlap_words": 5,
+          "first_commit": "2c95315"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L96",
@@ -4200,7 +4883,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L093",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 0.9,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L094",
+          "overlap_words": 1,
+          "first_commit": "2c95315"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L123",
@@ -4231,7 +4929,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L122",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.21)",
+      "join_frac": 0.6,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L121",
+          "overlap_words": 2,
+          "first_commit": "2c95315"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L125",
@@ -4262,7 +4975,22 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L124",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 0.778,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L125",
+          "overlap_words": 2,
+          "first_commit": "2c95315"
+        }
+      ]
+    }
   },
   {
     "beat_id": "L182",
@@ -4293,7 +5021,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L180",
+      "first_commit": "ef9a1be",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.05)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L243",
@@ -4324,7 +5060,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L245",
+      "first_commit": "2cb1856",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L244",
@@ -4355,7 +5099,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L246",
+      "first_commit": "2cb1856",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "L246",
@@ -4392,7 +5144,15 @@
         "staging_provenance": null,
         "note": null
       }
-    ]
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L248",
+      "first_commit": "2cb1856",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.19)",
+      "join_frac": 1.0
+    }
   },
   {
     "beat_id": "OLD-L27",

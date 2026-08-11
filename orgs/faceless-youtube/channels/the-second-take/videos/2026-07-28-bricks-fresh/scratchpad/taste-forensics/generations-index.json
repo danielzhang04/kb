@@ -69,6 +69,14 @@
         "caption_or_script": "Round-1 PASS. Crowd sits off the authored back-wall arrangement but the staging intent (dark screen centred, unobstructed) holds; sat 0.7176, the batch's chromatic high."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L01",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -141,6 +149,26 @@
         "caption_or_script": "Round-1 PASS. Strongest delta in the whole batch -- only the maze-grid screen changes, the entire held set carries frame-for-frame off L01."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L02",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 0.571,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L03",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        },
+        {
+          "id": "L01",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 5
   },
   {
@@ -213,6 +241,21 @@
         "caption_or_script": "PROMOTED CONTEXT PLATE -- Daniel board-v2 ruling R3, night-scene exception. Median sat 0.0902 sits below the R1 floor BY DESIGN; L22-L25 inherit this as their night baseline."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L03",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 0.7,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L04",
+          "overlap_words": 3,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 5
   },
   {
@@ -310,6 +353,14 @@
         "caption_or_script": "Round-1 PASS. Commuter stream crosses the near pavement rather than the far side, but the ironic no-one-looks-at-the-newsstand payload lands exactly as authored."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L05",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 1.0
+    },
     "generation_count": 7
   },
   {
@@ -385,6 +436,14 @@
         "caption_or_script": "PROMOTED CONTEXT PLATE -- Daniel board-v2 ruling R5. The staged style-tile-copy was REJECTED; this is the PREVIOUS computer-shop plate, restored by hand ($0, no batch spec). 2K where its seven siblings run 1K -- a taste call over tier consistency."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L06",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.03)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -487,6 +546,14 @@
         "caption_or_script": "the double '1983' is fixed, but the sole authored delta (the crate) moved onto the counter top at its FAR end, where L05's own prose puts the window card; a passing attribute regressed. Verifier: mildest park in the set, a defensible human waiver."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L07",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    },
     "generation_count": 7
   },
   {
@@ -586,6 +653,14 @@
         "caption_or_script": "three of four defects fixed, but the frame now draws a SECOND counter with a SECOND brass till, the foreground till carries garbled unauthored glyphs, and the counter-height vantage is still not delivered."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L08",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    },
     "generation_count": 7
   },
   {
@@ -645,6 +720,14 @@
         "caption_or_script": "Never generated -- doctrine-blocked on its parked parent L07. Unblocks or parks with whatever ruling L07 receives (see NEEDS YOUR RULING, P2)."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L09",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 1.0
+    },
     "generation_count": 4
   },
   {
@@ -720,6 +803,21 @@
         "caption_or_script": "Round-1 PASS. Winged computer 'flying off the shelves' idiom lands; minor door-colour drift off L05 on a non-payload element."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L10",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 0.75,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L09",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 5
   },
   {
@@ -819,6 +917,21 @@
         "caption_or_script": "correction not taken (queue still inside the shop, breath on indoor figures); ink COOL-INVERTED at 217.7deg/-3.8; vantage still the L05 camera; the 'unlit warm brown inside' palette regressed to cold."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L11",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 0.889,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L10",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 7
   },
   {
@@ -894,6 +1007,21 @@
         "caption_or_script": "Round-1 PASS. pc-boxy + prop-drive service-bench composite; the occluded right arm was judged plausible occlusion, not amputation -- the reviewer's closest anatomy call."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L12",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 0.917,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L13",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 5
   },
   {
@@ -969,6 +1097,14 @@
         "caption_or_script": "Round-1 PASS. Drive-vault base; the 'four courses' scale pin under-delivers (~2.5) but the readability purpose it was written for (L14's folders) is met regardless."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L13",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.19)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -1044,6 +1180,14 @@
         "caption_or_script": "Round-1 PASS. Vault door swings open on empty ruled shelves; exemplary continuity hold off L12, nothing outside the authored change moved."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L14",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.05)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -1119,6 +1263,14 @@
         "caption_or_script": "Round-1 PASS. Top two shelves fill with folders and sleeves, both correctly blank -- the batch's highest-risk unrequested-text surface, and it is clean."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L15",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -1194,6 +1346,14 @@
         "caption_or_script": "Round-1 PASS. Curtain closes the bottom shelf; the drive-vault chain closes with near-perfect continuity end to end."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L16",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.20)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -1331,6 +1491,14 @@
         "caption_or_script": "ROUND-3 changed-mechanism RE-MINT -- supersedes two parked attempts. Ink 16.8deg/+18.0 lands on the #241a12 target, the frieze runs square to frame, the rank clears both frame edges, the Tier-A vantage repair holds."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L17",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 1.0
+    },
     "generation_count": 10
   },
   {
@@ -1414,6 +1582,21 @@
         "caption_or_script": "Round-1 PASS. The plate glass splits into two side panels rather than one running pane -- a staging drift the reviewer flagged as the closest call they let pass in the batch."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L18",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.16)",
+      "join_frac": 0.778,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L17",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 6
   },
   {
@@ -1505,7 +1688,99 @@
         "caption_or_script": "ROUND-2 surgical retry -- supersedes its parked original. Slabs stand locked up per the R-12 geometry, the held set and the 1980s crowd both fully restored. MANIFEST TRAP: the parked L18 record still points at this same file -- a seed/gate lookup can resolve the wrong status (recorded, not repaired)."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L19",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    },
     "generation_count": 6
+  },
+  {
+    "beat_id": "L19",
+    "named_by": [
+      "daniel-named-old:L19-split"
+    ],
+    "old_L": "L19",
+    "old_L_candidates": null,
+    "new_L": "L19",
+    "vo_text": "quietly raking it in.",
+    "join_confidence": "medium",
+    "generations": [
+      {
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "provenance_type": "archive-file",
+        "source": "assets/_archive-pre-reset/scenes/L19.png",
+        "sha256": "6c957638418ba0889d7e5642c309c2e31de379f9c39caac649d4ff243ac139f3",
+        "date": "2026-07-30T04:40:47.610874",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "provenance_type": "archive-file",
+        "source": "assets/_archive-pre-regen-2026-08-06/L19.png",
+        "sha256": "6c957638418ba0889d7e5642c309c2e31de379f9c39caac649d4ff243ac139f3",
+        "date": "2026-08-06T19:30:04.923449",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "provenance_type": "manifest-record",
+        "source": "manifest:assets/_archive-pre-regen-2026-08-06/manifest.json#L19",
+        "sha256": null,
+        "date": "2026-08-06",
+        "exists_on_disk": null,
+        "review_status": "verified",
+        "staging_provenance": [],
+        "note": null
+      },
+      {
+        "generation_tag": "board-embed:full-board.html",
+        "provenance_type": "board-html",
+        "source": "full-board.html#L19",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "round": null,
+        "caption_or_script": "the hard drive manufacturers were quietly raking it in."
+      },
+      {
+        "generation_tag": "board-embed:p6b-board.html",
+        "provenance_type": "board-html",
+        "source": "p6b-board.html#L19",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "Round-1 PASS. Clears the grey-drain bar on measurement (warm ink, three chromatic anchors) despite an authored cool-concrete palette and two minor staging drifts."
+      }
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L20",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 0.75,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L19",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
+    "generation_count": 5
   },
   {
     "beat_id": "L20",
@@ -1572,6 +1847,21 @@
         "caption_or_script": "Round-1 PASS. Second-best delta in the batch; the rake-in-banknotes idiom reads even though the heap renders as a thinner scatter than authored."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L21",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.17)",
+      "join_frac": 0.714,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L20",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 5
   },
   {
@@ -1639,6 +1929,14 @@
         "caption_or_script": "Round-1 PASS. Picks-and-shovels stall repopulated as rewritten; the sky renders a stronger dawn-orange than the authored palette but stays era-correct and chromatic."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L21",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.18)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -1714,6 +2012,14 @@
         "caption_or_script": "Round-2 PASS. Brick-tease chain root off the L03 night plate; median sat 0.0902 matches L03 to four decimals -- authored darkness, not a grey-drain regression."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L22",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -1816,6 +2122,14 @@
         "caption_or_script": "brick fill fixed (36% to 74%); the open box is still ~3.4x the ranked carton it replaces and overhangs its own pallet, so the authored 'front carton on that row' and 'filling the box exactly' are not met."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L23",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 1.0
+    },
     "generation_count": 7
   },
   {
@@ -1918,6 +2232,14 @@
         "caption_or_script": "wardrobe drift CLOSED; but each top row renders as one pallet-width open box holding three bricks, not individual cartons with one brick each -- and the VO on this frame says 'little boxes'."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L24",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 1.0
+    },
     "generation_count": 7
   },
   {
@@ -2017,6 +2339,14 @@
         "caption_or_script": "'HARD DRIVE' renders three times on the SEALED film-wrapped courses, spanning carton seams, with no open carton lettered at all -- the authored clause unmet a second time. Lettering craft itself is clean."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L25",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.34)",
+      "join_frac": 1.0
+    },
     "generation_count": 7
   },
   {
@@ -2092,6 +2422,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L26",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -2175,6 +2513,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L27",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 1.0
+    },
     "generation_count": 6
   },
   {
@@ -2255,17 +2601,6 @@
         "note": null
       },
       {
-        "generation_tag": "gen-B-intermediate-41to248shot-2026-08-05",
-        "provenance_type": "prompt-only",
-        "source": "git show d1f771a:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json (id L28/L29); first appears 89c720e",
-        "sha256": null,
-        "date": "2026-08-05",
-        "exists_on_disk": false,
-        "review_status": null,
-        "staging_provenance": null,
-        "note": "Prompt-only. No rendered image found anywhere on disk for this exact still_prompt."
-      },
-      {
         "generation_tag": "board-embed:full-board.html",
         "provenance_type": "board-html",
         "source": "full-board.html#L26",
@@ -2310,8 +2645,223 @@
         "caption_or_script": null
       }
     ],
-    "gen_B_intermediate_finding": "GEN-B FINDING (explicit brief callout: 'a better MiniScribe HQ render exists in some prior generation'): between commits 89c720e (2026-08-05T01:04-04:00) and d1f771a (2026-08-05T20:01-04:00) -- the intermediate 41-to-248-shot authoring generation that sits BETWEEN the archived 214-shot generation (Gen A, ends 7cfa9ab) and the current 246-shot generation (Gen C, starts d680fda 2026-08-06) -- shots.json carried a richer MiniScribe plant-entrance concept at the SAME id L28/L29: \"The plant's front entrance seen from inside the building: a double glazed door propped open on a cold morning, and a crowd of accountants filing in through it in dark overcoats with document cases and steel deed boxes... the aisle to the assembly floor opens stage-right with its broad plank board carrying 'MINISCRIBE' above the entrance to it... A plain wall calendar hangs beside the door... carrying '1987'.\" This Gen-B concept was REPLACED by the current simpler character-free assembly-floor-plate concept during the 2026-08-06 doctrine re-author (d680fda) before Gen-B ever reached image-generation: no PNG, board-HTML embed, or visual-kit/_staging file matches this exact prompt anywhere on disk (searched assets/_archive-pre-reset, assets/_archive-pre-regen-2026-08-06, assets/scenes, all 5 board HTMLs, and visual-kit/_staging incl. all _pre-*/_rejected* subfolders). If Daniel is recalling a MORE ELABORATE MiniScribe HQ shot than what is on the current 6c2-board.html or in the p6b-era archive, this Gen-B prompt is almost certainly what he remembers -- but it is a PROMPT-ONLY artifact (shots.json text, recoverable via git show d1f771a:.../shots.json, id L28 or L29) with NO surviving render. Re-generating it would be a fresh mint, not a recovery.",
-    "generation_count": 10
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L28",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 1.0
+    },
+    "generation_count": 9
+  },
+  {
+    "beat_id": "L29",
+    "named_by": [
+      "daniel-named-old:L26-split"
+    ],
+    "old_L": "L26",
+    "old_L_candidates": null,
+    "new_L": "L29",
+    "vo_text": "a hard drive manufacturer out of Colorado,",
+    "join_confidence": "medium",
+    "generations": [
+      {
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "provenance_type": "archive-file",
+        "source": "assets/_archive-pre-reset/scenes/L26.png",
+        "sha256": "bd358173a06461183d96f7f1631873c42c5641762bc887705032fccb833a7211",
+        "date": "2026-07-31T03:34:57.264777",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "provenance_type": "archive-file",
+        "source": "assets/scenes/L29.png",
+        "sha256": "374765b638907d2ab11e24c39ca4f78a793c11f202e027f1f760ec173eaf2c08",
+        "date": "2026-08-07T00:00:42.749491",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "provenance_type": "manifest-record",
+        "source": "manifest:assets/scenes/manifest.json#L29",
+        "sha256": null,
+        "date": "2026-08-07",
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "staging_provenance": [
+          {
+            "staging_file": "L29.png",
+            "sha256_noted": "374765b638907d2ab11e24c39ca4f78a793c11f202e027f1f760ec173eaf2c08"
+          }
+        ],
+        "note": null
+      },
+      {
+        "generation_tag": "board-embed:full-board.html",
+        "provenance_type": "board-html",
+        "source": "full-board.html#L26",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "round": null,
+        "caption_or_script": "The company was MiniScribe, a hard drive manufacturer"
+      },
+      {
+        "generation_tag": "board-embed:tranche-a-board.html",
+        "provenance_type": "board-html",
+        "source": "tranche-a-board.html#L26 verified",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "round": null,
+        "caption_or_script": "`miniscribe-rep`, the company personified \u2014 a stocky figure with a flat warm-tan head tone, short dark side-parted hair, a boxy tan blazer over a brown open-collar shirt, and one small drive-shaped enamel badge pinned at the lapel \u2014 stands `action-powerstance`, `expr-smug`, at the head of an assembly line and turned three-quarters to the lens so his face reads."
+      },
+      {
+        "generation_tag": "board-embed:6c2-board.html",
+        "provenance_type": "board-html",
+        "source": "6c2-board.html#L29",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L29",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.18)",
+      "join_frac": 1.0
+    },
+    "generation_count": 6
+  },
+  {
+    "beat_id": "L30",
+    "named_by": [
+      "daniel-named-old:L28-split"
+    ],
+    "old_L": "L28",
+    "old_L_candidates": null,
+    "new_L": "L30",
+    "vo_text": "founded in 1980 by",
+    "join_confidence": "medium",
+    "generations": [
+      {
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "provenance_type": "archive-file",
+        "source": "assets/_archive-pre-reset/scenes/L28.png",
+        "sha256": "69e4f0fa8d6868476d136e54f07e8194e719f4a2749ca13018a79ee605a3742d",
+        "date": "2026-07-31T19:16:55.212203",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "provenance_type": "archive-file",
+        "source": "assets/scenes/L30.png",
+        "sha256": "ca239f74e39782e4fe1a8c946550a87bf78d64816854bfb11a5c97fd62dcc25a",
+        "date": "2026-08-07T00:29:11.763320",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "provenance_type": "manifest-record",
+        "source": "manifest:assets/scenes/manifest.json#L30",
+        "sha256": null,
+        "date": "2026-08-07",
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "staging_provenance": [
+          {
+            "staging_file": "L30.png",
+            "sha256_noted": "ca239f74e39782e4fe1a8c946550a87bf78d64816854bfb11a5c97fd62dcc25a"
+          }
+        ],
+        "note": null
+      },
+      {
+        "generation_tag": "board-embed:full-board.html",
+        "provenance_type": "board-html",
+        "source": "full-board.html#L28",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "staged-pending",
+        "round": null,
+        "caption_or_script": "out of Colorado, founded in 1980 by a guy named Terry Johnson."
+      },
+      {
+        "generation_tag": "board-embed:tranche-a-board.html",
+        "provenance_type": "board-html",
+        "source": "tranche-a-board.html#L28 parked",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "parked",
+        "round": null,
+        "caption_or_script": "Corrected composite preserves L27 and now shows the drive-shaped lapel badge, Terry holding one drive with one hand, his other hand open and empty, and four additional drives. Residual rig defect: Terry's delighted eyes render as crowd-tier solid dots rather than the named-cast closed curved eyes."
+      },
+      {
+        "generation_tag": "board-embed:tranche-b-board.html",
+        "provenance_type": "board-html",
+        "source": "tranche-b-board.html#L28 ? repairPARKED",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "parked",
+        "round": null,
+        "caption_or_script": "Fidelity flag: the visible badge/one-hand drive hold do not read as belonging to the same clearly identifiable Terry figure; park for fresh eyes."
+      },
+      {
+        "generation_tag": "board-embed:6c2-board.html",
+        "provenance_type": "board-html",
+        "source": "6c2-board.html#L30",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "VERIFIED",
+        "round": null,
+        "caption_or_script": "obeys the STEP-1 card: dark brown brows"
+      },
+      {
+        "generation_tag": "board-embed:6c2-board.html",
+        "provenance_type": "board-html",
+        "source": "6c2-board.html#L30",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "VERIFIED",
+        "round": null,
+        "caption_or_script": null
+      }
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L30",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    },
+    "generation_count": 8
   },
   {
     "beat_id": "L31",
@@ -2416,6 +2966,21 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L31",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 0.6,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L30",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 8
   },
   {
@@ -2499,6 +3064,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L32",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 1.0
+    },
     "generation_count": 6
   },
   {
@@ -2582,7 +3155,91 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L33",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.26)",
+      "join_frac": 1.0
+    },
     "generation_count": 6
+  },
+  {
+    "beat_id": "L34",
+    "named_by": [
+      "daniel-named-old:L30-split"
+    ],
+    "old_L": "L30",
+    "old_L_candidates": null,
+    "new_L": "L34",
+    "vo_text": "hard drives for their PCs,",
+    "join_confidence": "medium",
+    "generations": [
+      {
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "provenance_type": "archive-file",
+        "source": "assets/_archive-pre-reset/scenes/L30.png",
+        "sha256": "92f8a0ed73593c6fd21bb9a910c188381c7280c8492622296b2e2fd4157fb62c",
+        "date": "2026-07-30T04:40:47.834286",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "generation_tag": "gen-C-new246-6c2-tenth2-current",
+        "provenance_type": "manifest-record",
+        "source": "manifest:assets/scenes/manifest.json#L34",
+        "sha256": null,
+        "date": "2026-08-07",
+        "exists_on_disk": false,
+        "review_status": "parked",
+        "staging_provenance": [
+          {
+            "staging_file": "L34.png",
+            "sha256_noted": "c004fcb6b35d583208dd6db600994992a7e2a66d97110a681d134011a2a94e91"
+          },
+          {
+            "staging_file": "L34.png",
+            "sha256_noted": "c004fcb6b35d583208dd6db600994992a7e2a66d97110a681d134011a2a94e91",
+            "parked_candidate": true
+          }
+        ],
+        "note": null
+      },
+      {
+        "generation_tag": "board-embed:full-board.html",
+        "provenance_type": "board-html",
+        "source": "full-board.html#L30",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "staged-pending",
+        "round": null,
+        "caption_or_script": "IBM picked MiniScribe to supply hard drives for their PCs,"
+      },
+      {
+        "generation_tag": "board-embed:6c2-board.html",
+        "provenance_type": "board-html",
+        "source": "6c2-board.html#L34",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "PARKED",
+        "round": null,
+        "caption_or_script": "PARKED candidate -- not promoted, staging file untouched"
+      }
+    ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L34",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 1.0
+    },
+    "generation_count": 4
   },
   {
     "beat_id": "L35",
@@ -2679,6 +3336,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L35",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 1.0
+    },
     "generation_count": 7
   },
   {
@@ -2762,6 +3427,21 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L36",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 0.8,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L35",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 6
   },
   {
@@ -2848,6 +3528,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L37",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 1.0
+    },
     "generation_count": 6
   },
   {
@@ -2920,6 +3608,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L38",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.09)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -2986,6 +3682,21 @@
         "caption_or_script": "PARKED candidate -- not promoted, staging file untouched"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L39",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 0.857,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L38",
+          "overlap_words": 1,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 4
   },
   {
@@ -3069,6 +3780,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L40",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.20)",
+      "join_frac": 1.0
+    },
     "generation_count": 6
   },
   {
@@ -3155,6 +3874,21 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L41",
+      "first_commit": "8b735ab",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.26)",
+      "join_frac": 0.714,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L40",
+          "overlap_words": 2,
+          "first_commit": "8b735ab"
+        }
+      ]
+    },
     "generation_count": 6
   },
   {
@@ -3230,6 +3964,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L42",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -3305,6 +4047,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L43",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -3399,6 +4149,21 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L44",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.18)",
+      "join_frac": 0.556,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L43",
+          "overlap_words": 4,
+          "first_commit": "23d6300"
+        }
+      ]
+    },
     "generation_count": 7
   },
   {
@@ -3471,6 +4236,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L45",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.06)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -3554,6 +4327,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L46",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    },
     "generation_count": 6
   },
   {
@@ -3626,6 +4407,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L47",
+      "first_commit": "23d6300",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.18)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -3704,6 +4493,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L48",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 1.0
+    },
     "generation_count": 5
   },
   {
@@ -3787,6 +4584,14 @@
         "caption_or_script": null
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L49",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.19)",
+      "join_frac": 1.0
+    },
     "generation_count": 6
   },
   {
@@ -3832,6 +4637,14 @@
         "caption_or_script": "A cramped failing restaurant dining room holds peeling maroon wallpaper, a stack of unpaid bills fanned on the till, three chairs upturned on tables, and one flickering ceiling bulb.  Known compromise: Human-selected candidate B with known accepted compromises: the chef crowd is foreground-large, MENU/BILL text is visible, and the dish is off-centre. Note: Generic makeover-show counterpoint, with restaurant workers staged only as late-1980s crowd figures: no likeness or foreground anonymous host."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L54",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 1.0
+    },
     "generation_count": 3
   },
   {
@@ -3877,6 +4690,14 @@
         "caption_or_script": "The same cramped dining room, same locked framing: the small crowd of late-1980s restaurant staff at the pass, the covered dish, and the boom microphone.  Note: The generic makeover-show beat is a crowd-scale split-room reveal rather than a caption."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L55",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 1.0
+    },
     "generation_count": 3
   },
   {
@@ -3900,6 +4721,17 @@
         "note": null
       },
       {
+        "generation_tag": "gen-B-intermediate-41to248shot-2026-08-05",
+        "provenance_type": "prompt-only",
+        "source": "git show aa576b9:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json (id L81); present through 52b17ab",
+        "sha256": null,
+        "date": "2026-08-05",
+        "exists_on_disk": false,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": "Prompt-only (Gen-B id L81). No rendered image found anywhere on disk for this exact still_prompt."
+      },
+      {
         "generation_tag": "board-embed:full-board.html",
         "provenance_type": "board-html",
         "source": "full-board.html#L76",
@@ -3911,7 +4743,23 @@
         "caption_or_script": "Then in January 1987, MiniScribe's outside accountants"
       }
     ],
-    "generation_count": 2
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L80",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.06)",
+      "join_frac": 0.6,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L81",
+          "overlap_words": 2,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
+    "gen_B_intermediate_finding": "GEN-B FINDING, CORRECTED (explicit brief callout: 'a better MiniScribe HQ render exists in some prior generation'; original attribution to L28/L29 was WRONG and has been removed from that row -- see below): the rich unrendered 'plant's front entrance' concept lives at Gen-B id L81, first appearing at commit aa576b9 (2026-08-05T01:xx, 89-shot state; the earlier 47-shot state at 89c720e does not reach L81 at all). Full text: \"The plant's front entrance seen from inside the building: a double glazed door propped open on a cold morning, and a crowd of accountants filing in through it in dark overcoats with document cases and steel deed boxes carried between them. The lobby floor is pale sealed concrete, a bench runs along the wall stage-left, and the aisle to the assembly floor opens stage-right with its broad plank board carrying 'MINISCRIBE' above the entrance to it... A plain wall calendar hangs beside the door... carrying '1987'.\" Gen-B's L81 sits in the audit-arrival beat (vo 'MiniScribe's outside accountants'), between Gen-B L80 ('Then in January') and L82 ('came in to audit the books'). By word-offset position this maps to the CURRENT (Gen-C, 246-shot) L83 (\"Then in January 1987, MiniScribe's\") / L84 (\"outside accountants came in to audit the books,\") pair -- both inside Daniel's OLD-named L76-88 range (old L76/L77). This Gen-B concept was replaced by the current simpler concept during the 2026-08-06 doctrine re-author (d680fda) before it ever reached image generation: no PNG, board-HTML embed, or visual-kit/_staging file matches this exact prompt anywhere on disk (searched assets/_archive-pre-reset, assets/_archive-pre-regen-2026-08-06, assets/scenes, all 5 board HTMLs, and visual-kit/_staging incl. all _pre-*/_rejected* subfolders). Recoverable as text only via `git show aa576b9:.../shots.json` (id L81) or any Gen-B commit through 52b17ab (identical text at L81 throughout); NOT recoverable as pixels. Re-generating it would be a fresh mint, not a recovery. NOTE ON L28/L29: separately, Gen-B's OWN L28/L29 (present from the earliest 41-shot Gen-B commit 8b735ab onward) carry a different, simpler still_prompt -- a cast-free assembly floor / miniscribe-rep standing at the plant entrance, no crowd, no calendar -- confirmed by exact-text diff against Gen-B's final (52b17ab) state. That is NOT the 'better HQ' render; it is a distinct, already-catalogued beat (see this file's L28 row, gen-C renders).",
+    "generation_count": 3
   },
   {
     "beat_id": "L84",
@@ -3934,6 +4782,17 @@
         "note": null
       },
       {
+        "generation_tag": "gen-B-intermediate-41to248shot-2026-08-05",
+        "provenance_type": "prompt-only",
+        "source": "git show aa576b9:orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json (id L81); present through 52b17ab",
+        "sha256": null,
+        "date": "2026-08-05",
+        "exists_on_disk": false,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": "Prompt-only (Gen-B id L81). No rendered image found anywhere on disk for this exact still_prompt."
+      },
+      {
         "generation_tag": "board-embed:full-board.html",
         "provenance_type": "board-html",
         "source": "full-board.html#L77",
@@ -3945,7 +4804,23 @@
         "caption_or_script": "came in to audit the books,"
       }
     ],
-    "generation_count": 2
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L82",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 0.75,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L81",
+          "overlap_words": 2,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
+    "gen_B_intermediate_finding": "GEN-B FINDING, CORRECTED (explicit brief callout: 'a better MiniScribe HQ render exists in some prior generation'; original attribution to L28/L29 was WRONG and has been removed from that row -- see below): the rich unrendered 'plant's front entrance' concept lives at Gen-B id L81, first appearing at commit aa576b9 (2026-08-05T01:xx, 89-shot state; the earlier 47-shot state at 89c720e does not reach L81 at all). Full text: \"The plant's front entrance seen from inside the building: a double glazed door propped open on a cold morning, and a crowd of accountants filing in through it in dark overcoats with document cases and steel deed boxes carried between them. The lobby floor is pale sealed concrete, a bench runs along the wall stage-left, and the aisle to the assembly floor opens stage-right with its broad plank board carrying 'MINISCRIBE' above the entrance to it... A plain wall calendar hangs beside the door... carrying '1987'.\" Gen-B's L81 sits in the audit-arrival beat (vo 'MiniScribe's outside accountants'), between Gen-B L80 ('Then in January') and L82 ('came in to audit the books'). By word-offset position this maps to the CURRENT (Gen-C, 246-shot) L83 (\"Then in January 1987, MiniScribe's\") / L84 (\"outside accountants came in to audit the books,\") pair -- both inside Daniel's OLD-named L76-88 range (old L76/L77). This Gen-B concept was replaced by the current simpler concept during the 2026-08-06 doctrine re-author (d680fda) before it ever reached image generation: no PNG, board-HTML embed, or visual-kit/_staging file matches this exact prompt anywhere on disk (searched assets/_archive-pre-reset, assets/_archive-pre-regen-2026-08-06, assets/scenes, all 5 board HTMLs, and visual-kit/_staging incl. all _pre-*/_rejected* subfolders). Recoverable as text only via `git show aa576b9:.../shots.json` (id L81) or any Gen-B commit through 52b17ab (identical text at L81 throughout); NOT recoverable as pixels. Re-generating it would be a fresh mint, not a recovery. NOTE ON L28/L29: separately, Gen-B's OWN L28/L29 (present from the earliest 41-shot Gen-B commit 8b735ab onward) carry a different, simpler still_prompt -- a cast-free assembly floor / miniscribe-rep standing at the plant entrance, no crowd, no calendar -- confirmed by exact-text diff against Gen-B's final (52b17ab) state. That is NOT the 'better HQ' render; it is a distinct, already-catalogued beat (see this file's L28 row, gen-C renders).",
+    "generation_count": 3
   },
   {
     "beat_id": "L85",
@@ -3990,6 +4865,21 @@
         "caption_or_script": "The MiniScribe warehouse aisle holds a waist-high inspection cart between cold-grey steel racks, their plain boxed inventory receding softly behind it under fluorescent light."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L82",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 0.5,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L83",
+          "overlap_words": 4,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
     "generation_count": 3
   },
   {
@@ -4024,6 +4914,14 @@
         "caption_or_script": "what your books say is sitting in the warehouse."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L83",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    },
     "generation_count": 2
   },
   {
@@ -4069,6 +4967,14 @@
         "caption_or_script": "So the accountants set up in the building,"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L84",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 1.0
+    },
     "generation_count": 3
   },
   {
@@ -4103,6 +5009,21 @@
         "caption_or_script": "everybody started counting, and all those numbers"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L85",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 0.6,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L84",
+          "overlap_words": 2,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
     "generation_count": 2
   },
   {
@@ -4137,6 +5058,21 @@
         "caption_or_script": "the managers had been writing down"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L85",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.11)",
+      "join_frac": 0.583,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L86",
+          "overlap_words": 5,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
     "generation_count": 2
   },
   {
@@ -4193,6 +5129,21 @@
         "caption_or_script": "Clean ? PASS: auditor-rep holds a round head without nose/ear forms, squat proportion, and a seeded paper-hold hand."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L86",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.13)",
+      "join_frac": 0.571,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L87",
+          "overlap_words": 3,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
     "generation_count": 4
   },
   {
@@ -4238,6 +5189,21 @@
         "caption_or_script": "Four million dollars of product that was supposed to be sitting there, wasn't."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L88",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.05)",
+      "join_frac": 0.571,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L87",
+          "overlap_words": 3,
+          "first_commit": "aa576b9"
+        }
+      ]
+    },
     "generation_count": 3
   },
   {
@@ -4283,6 +5249,14 @@
         "caption_or_script": "Awkward."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L89",
+      "first_commit": "aa576b9",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.14)",
+      "join_frac": 1.0
+    },
     "generation_count": 3
   },
   {
@@ -4317,6 +5291,21 @@
         "caption_or_script": "And coming up short like that meant somebody was getting fired,"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L090",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 0.909,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L091",
+          "overlap_words": 1,
+          "first_commit": "2c95315"
+        }
+      ]
+    },
     "generation_count": 2
   },
   {
@@ -4351,6 +5340,21 @@
         "caption_or_script": "so instead of reporting it, they wrote down a better number."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L092",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.07)",
+      "join_frac": 0.545,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L091",
+          "overlap_words": 5,
+          "first_commit": "2c95315"
+        }
+      ]
+    },
     "generation_count": 2
   },
   {
@@ -4385,6 +5389,21 @@
         "caption_or_script": "The real sheets were locked in the accountants' own boxes,"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L093",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.08)",
+      "join_frac": 0.9,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L094",
+          "overlap_words": 1,
+          "first_commit": "2c95315"
+        }
+      ]
+    },
     "generation_count": 2
   },
   {
@@ -4419,6 +5438,21 @@
         "caption_or_script": "premium Colorado clay sitting on the books as inventory."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L122",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.21)",
+      "join_frac": 0.6,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L121",
+          "overlap_words": 2,
+          "first_commit": "2c95315"
+        }
+      ]
+    },
     "generation_count": 2
   },
   {
@@ -4453,6 +5487,21 @@
         "caption_or_script": "My Peloton bike is a scam, but these guys?"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L124",
+      "first_commit": "2c95315",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.15)",
+      "join_frac": 0.778,
+      "other_overlapping_genB_ids": [
+        {
+          "id": "L125",
+          "overlap_words": 2,
+          "first_commit": "2c95315"
+        }
+      ]
+    },
     "generation_count": 2
   },
   {
@@ -4487,6 +5536,14 @@
         "caption_or_script": "was a massive fraud inside a company run amok."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L180",
+      "first_commit": "ef9a1be",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.05)",
+      "join_frac": 1.0
+    },
     "generation_count": 2
   },
   {
@@ -4521,6 +5578,14 @@
         "caption_or_script": "What it didn't survive was HR."
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L245",
+      "first_commit": "2cb1856",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.10)",
+      "join_frac": 1.0
+    },
     "generation_count": 2
   },
   {
@@ -4555,6 +5620,14 @@
         "caption_or_script": "If MiniScribe had just kept a few more people on the payroll through Christmas,"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L246",
+      "first_commit": "2cb1856",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.12)",
+      "join_frac": 1.0
+    },
     "generation_count": 2
   },
   {
@@ -4595,6 +5668,14 @@
         "caption_or_script": "who knows how many more years"
       }
     ],
+    "text_generations": {
+      "generation": "gen-b",
+      "id": "L248",
+      "first_commit": "2cb1856",
+      "still_prompt_differs": true,
+      "notable_concept_delta": "materially different concept (ratio 0.19)",
+      "join_frac": 1.0
+    },
     "generation_count": 2
   },
   {
