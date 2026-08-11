@@ -65,8 +65,8 @@ and JSONL logs exist either way.
 
 | Worker | Dispatch/thread id | Model | Final message file |
 | ------ | ------------------ | ----- | ------------------ |
-| Prior-art research (GitOps splits, git-as-queue limits, workflow-platform state layouts, agent memory practice, DVC/LFS/object-store, solo-VM deploy) | `6a7b9e7f-fc3db183` | gpt-5.6-terra | `%LOCALAPPDATA%\kb-codex-dispatch\logs\6a7b9e7f-fc3db183.last.md` |
-| Adversarial critique of the design (BLOCKER/MAJOR/MINOR + steelman alternatives incl. "keep monorepo, deploy a subtree" + SHIP verdict) | `6a7b9e84-b9f50765` | gpt-5.6-sol (xhigh) | `%LOCALAPPDATA%\kb-codex-dispatch\logs\6a7b9e84-b9f50765.last.md` |
+| Prior-art research (GitOps splits, git-as-queue limits, workflow-platform state layouts, agent memory practice, DVC/LFS/object-store, solo-VM deploy) — **COMPLETE** (exit 0, 252 s; card `6a7b9f6e-b1198cea` published to ops; follow-up id `019ff2e3-452c-7500-a2ec-de3df1298b5c`) | `6a7b9e7f-fc3db183` | gpt-5.6-terra | `%LOCALAPPDATA%\kb-codex-dispatch\logs\6a7b9e7f-fc3db183.last.md` (confirmed written) |
+| Adversarial critique of the design (BLOCKER/MAJOR/MINOR + steelman alternatives incl. "keep monorepo, deploy a subtree" + SHIP verdict) — still running at handoff time; its completion footer (in the card / dispatch output) names its own card + follow-up ids | `6a7b9e84-b9f50765` | gpt-5.6-sol (xhigh) | `%LOCALAPPDATA%\kb-codex-dispatch\logs\6a7b9e84-b9f50765.last.md` |
 
 Briefs (full context each worker got): scratchpad of session 61379a4a —
 `C:\Users\danie\AppData\Local\Temp\claude\C--Users-danie-kb\61379a4a-3b5a-4fd0-9cff-d5e66669e7ee\scratchpad\brief-prior-art.md` and `brief-adversarial-critique.md`. If the scratchpad was
