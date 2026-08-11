@@ -73,7 +73,8 @@ LADDER = [
 
 # --------------------------------------------------------------------------------------
 # 2. GROUND TRUTH - Daniel's lists, copied verbatim from the spec "Input data" block
-#    (docs/superpowers/specs/2026-08-11-bricks-taste-forensics-design.md). Never re-inferred.
+#    (orgs/faceless-youtube/docs/superpowers/specs/2026-08-11-bricks-taste-forensics-design.md).
+#    Never re-inferred.
 # --------------------------------------------------------------------------------------
 
 # Old full-video board (pre-reset generation, 214 shots): L05-16, L19-44, L49/50, L76-88,
@@ -453,6 +454,40 @@ def board_ref(row, fam):
     return None
 
 
+def gap_frame(reg, gid):
+    """A beat id with NO beat-map.json row at all (a numbering gap inside an otherwise contiguous
+    id range) that still has a card on the old board and a matching file in the pixel pool.
+    Returns a registry index, or None if no frame survives anywhere for it - the caller then
+    states the absence instead of silently skipping the id (M2: a gap must be disclosed, not
+    dropped)."""
+    ref = BIDX.get("full-board.html", "%s current best" % gid)
+    if ref is None:
+        return None
+    raw_emb, size_emb, dh_emb = ref
+    rel, dist, size, abspath = best_pool_match(dh_emb)
+    if 1.0 <= dist <= 5.0:
+        die("%s: closest pixel match to its old-board card is ambiguous (distance %.2f)"
+            % (gid, dist))
+    tag = "gen-A-old-214shot-2026-08-04"
+    badge_gap = ("warn", "no beat-map.json entry for this id - recovered directly from the old "
+                          "board and pixel pool")
+    badge_unknown = ("plain", "named status unknown - not recorded in beat-map.json")
+    if dist < 1.0 and size[0] > size_emb[0]:
+        date = file_date(abspath)
+        return reg.add(key=rel, loader=lambda p=abspath: open(p, "rb").read(),
+                       caption="%s - %s" % (GEN_LABELS.get(tag, tag), date),
+                       gen_tag=tag, date=date, badges=[badge_gap, badge_unknown], beat=gid,
+                       provenance="%s (matches full-board.html card %r at distance %.2f)"
+                                  % (rel, "%s current best" % gid, dist))
+    return reg.add(key="board:full-board.html#%s current best" % gid, loader=lambda r=raw_emb: r,
+                   caption="%s - board copy" % GEN_LABELS.get(tag, tag), gen_tag=tag, date="",
+                   badges=[badge_gap, badge_unknown,
+                           ("warn", "board copy at %dx%d - no higher-resolution file survives"
+                                    % size_emb)],
+                   beat=gid, provenance="full-board.html card %r (embedded copy)"
+                                        % ("%s current best" % gid))
+
+
 def disk_entries(row, fam):
     """(date, tag, relpath, expected sha, kind) for every real file beat-map knows about."""
     out = []
@@ -637,7 +672,7 @@ def build_panels(ctx, reg, qb, S):
     for b in place_children:
         g_dis["cells"].append(cell_img(ctx, reg, frames_for(ctx, reg, b, families=("C",))[0], b))
     p = dict(id="P01", board=1,
-             title="One room, %d times - against the run that kept moving" % len(place_children),
+             title="%d beats in one room, and a %d-beat run" % (len(place_children), len(liked_run)),
              lede=("All %d frames are from the 6c2 tenth, same doctrine, same week. The %d on top "
                    "are ones you named; they carry no shared place at all and were each chained "
                    "off the frame before them. The %d below all sit on one place, "
@@ -653,8 +688,8 @@ def build_panels(ctx, reg, qb, S):
         qb.add("P01", 1, "Looking only at the pictures: what is present in the %d you named that "
                          "you do not find in the %d you did not?"
                % (len(liked_run), len(place_children)), "free", imgs01),
-        qb.add("P01", 1, "Does the shared room in the %d un-named frames bother you here - and if "
-                         "so, is it the room itself or what the figures are doing in it?"
+        qb.add("P01", 1, "Across the %d un-named frames: does the shared room read as a repeat to "
+                         "you, or not - and if so, is it the room itself or the staging within it?"
                % len(place_children), "free", imgs01),
         qb.add("P01", 1, "Name one rule about re-using a place image you would keep, and one you "
                          "would drop.", "keep-drop", imgs01),
@@ -678,9 +713,10 @@ def build_panels(ctx, reg, qb, S):
         qb.add("P02", 1, "What separates the two you named from the two you did not - subject, "
                          "staging, palette, figure acting, novelty, or something else? A word plus "
                          "a sentence is plenty.", "free", imgs02),
-        qb.add("P02", 1, "The named two are single-idea frames; the other two show the company "
-                         "doing something. Is the difference you see about the idea in the frame, "
-                         "or about how it is drawn?", "free", imgs02),
+        qb.add("P02", 1, "Do the two you named read as single-idea frames to you, against the "
+                         "other two showing the company doing something - and if so, is the "
+                         "difference about the idea in the frame, or about how it is drawn?",
+               "free", imgs02),
         qb.add("P02", 1, "Of these two kinds of frame, which would you want more of in the "
                          "remaining eight tenths, and which would you cut?", "keep-drop", imgs02),
     ]
@@ -714,16 +750,20 @@ def build_panels(ctx, reg, qb, S):
         named_old = [b for b in chunk_beats if S["all_status"][b][0] == "named"]
         if len(named_old) == len(chunk_beats):
             q1 = ("For all %d of these beats the older frame is one you named and the newer one is "
-                  "not. Beat by beat, what does the older frame have that the newer one does not? "
-                  "One line each is fine." % len(chunk_beats))
+                  "not. Beat by beat: is the newer frame actually bad, or just unremarkable next "
+                  "to the older one - and if there is something the older frame has that the "
+                  "newer one does not, what is it? One line each is fine." % len(chunk_beats))
         else:
             q1 = ("For %d of these %d beats the older frame is one you named (the badges say "
-                  "which). Beat by beat, what does the older frame have that the newer one does "
-                  "not - and where you named neither, say that." % (len(named_old), len(chunk_beats)))
+                  "which). Beat by beat: is the newer frame actually bad, or just unremarkable "
+                  "next to the older one - and if there is something the older frame has that "
+                  "the newer one does not, what is it? Where you named neither, say that."
+                  % (len(named_old), len(chunk_beats)))
         p = dict(id=pid, board=1,
                  title="Then and now - %s" % ", ".join(chunk_beats),
                  lede=("Same script beat, both generations. Left is oldest. Labels carry the "
-                       "generation and the date only."),
+                       "generation and the date only. Tagging a shot: “none — nothing "
+                       "wrong with this shot” is a valid answer for any of it."),
                  groups=groups, questions=[], tag_qids=tagq)
         p["questions"] = [
             qb.add(pid, 1, q1, "free", all_imgs),
@@ -764,10 +804,11 @@ def build_panels(ctx, reg, qb, S):
     p["questions"] = [
         qb.add("P07", 1, "Which of these is the one you remember as better - or is it none of "
                          "them?", "free", order, beat=hq),
-        qb.add("P07", 1, "Whatever you picked: what does it have that the current one does not?",
+        qb.add("P07", 1, "If you picked one in Q31: what does it have that the current one does "
+                         "not?", "free", order, beat=hq),
+        qb.add("P07", 1, "Should a company's first appearance be a building, a room, or a person "
+                         "- or: it depends (say on what)? A word is enough unless it depends.",
                "free", order, beat=hq),
-        qb.add("P07", 1, "Should a company's first appearance be a building, a room, or a person? "
-                         "One word is enough.", "keep-drop", order, beat=hq),
     ]
     panels.append(p)
 
@@ -795,12 +836,13 @@ def build_panels(ctx, reg, qb, S):
     p = dict(id="P08", board=2,
              title="The %d beats of the first tenth you did not name" % len(S["p6b_disliked"]),
              lede=("The p6b wave scored %d of %d named. These are the %d that were not, each "
-                   "beside its old-generation frame."
+                   "beside its old-generation frame. Tagging a shot: “none — nothing wrong "
+                   "with this shot” is a valid answer for any of it."
                    % (len(P6B_LIKED), len(P6B_RANGE), len(S["p6b_disliked"]))),
              groups=groups, questions=[], tag_qids=tagq)
     p["questions"] = [
         qb.add("P08", 2, "For each of these: is the newer frame actually bad, or just unremarkable "
-                         "next to the rest of the tenth?", "free", all_imgs),
+                         "next to the rest of the tenth - or neither / both fine?", "free", all_imgs),
         qb.add("P08", 2, "Is there a rule you would write from these %d that would have caught them "
                          "before they were drawn?" % len(S["p6b_disliked"]), "keep-drop", all_imgs),
     ] + tagq
@@ -831,7 +873,8 @@ def build_panels(ctx, reg, qb, S):
     p["questions"] = [
         qb.add("P09", 2, "What did the new generation get right in these?", "free", all_imgs),
         qb.add("P09", 2, "Are these a real improvement, or was the older frame simply never "
-                         "something you looked at closely?", "free", all_imgs),
+                         "something you looked at closely - or neither / both fine?",
+               "free", all_imgs),
     ]
     panels.append(p)
 
@@ -889,26 +932,51 @@ def build_panels(ctx, reg, qb, S):
         if not chunk_beats:
             continue
         pid = "P%d" % (11 + gi)
+        # M2: the chunk's own id range can contain a beat id with no beat-map.json row at all (a
+        # catalog gap, not a beat that was simply not carried in) - close it if a frame survives
+        # for it anywhere, else say so explicitly instead of silently dropping it from the count.
+        lo, hi = lnum(chunk_beats[0]), lnum(chunk_beats[-1])
+        present = set(lnum(b) for b in chunk_beats)
+        gap_ids = ["L%d" % n for n in range(lo, hi + 1) if n not in present]
         cells = []
         prose = []
-        for b in chunk_beats:
-            for i in frames_for(ctx, reg, b, families=("A",)):
-                cells.append(cell_img(ctx, reg, i, b))
-            prose.append(("%s - \u201c%s\u201d" % (b, vo(ctx, b)), prose_blocks(ctx, b)))
+        gap_notes = []
+        entries = [("beat", b) for b in chunk_beats] + [("gap", g) for g in gap_ids]
+        entries.sort(key=lambda e: lnum(e[1]))
+        for kind, b in entries:
+            if kind == "beat":
+                for i in frames_for(ctx, reg, b, families=("A",)):
+                    cells.append(cell_img(ctx, reg, i, b))
+                prose.append(("%s - \u201c%s\u201d" % (b, vo(ctx, b)), prose_blocks(ctx, b)))
+                continue
+            gidx = gap_frame(reg, b)
+            if gidx is not None:
+                cells.append(dict(kind="img", idx=gidx, beat=b, show_beat=True,
+                                   vo="(no beat-map.json entry - script line unknown)"))
+                gap_notes.append("%s has no beat-map.json entry; its frame was recovered "
+                                 "directly from the old board." % b)
+            else:
+                gap_notes.append("%s has no beat-map.json entry, and no frame for it survives "
+                                 "in the old board or the pixel pool." % b)
         g = dict(heading="%s \u2013 %s" % (chunk_beats[0], chunk_beats[-1]), cols=3, cells=cells,
-                 sub="old-generation frames, all named by you; none of these beats has been redrawn")
+                 sub="old-generation frames, all named by you; none of these beats has been "
+                     "redrawn" + (" (except where a gap note below says otherwise)"
+                                  if gap_notes else ""))
         imgs = [c["idx"] for c in cells]
+        lede = ("%d beats from the audit stretch. The current file has text for all of them and "
+               "pixels for none - they sit in a tenth the pipeline has not reached. Their "
+               "written prompts are collapsed under the grid." % len(chunk_beats))
+        if gap_notes:
+            lede += " " + " ".join(gap_notes)
         p = dict(id=pid, board=2,
                  title="Named on the old board, not yet redrawn (%s\u2013%s)"
                        % (chunk_beats[0], chunk_beats[-1]),
-                 lede=("%d beats from the audit stretch. The current file has text for all of "
-                       "them and pixels for none - they sit in a tenth the pipeline has not "
-                       "reached. Their written prompts are collapsed under the grid."
-                       % len(chunk_beats)),
+                 lede=lede,
                  groups=[g], questions=[], beat_prose=prose)
         p["questions"] = [
-            qb.add(pid, 2, "What do these frames have in common that you want the redraws to "
-                           "keep?", "free", imgs),
+            qb.add(pid, 2, "What do these %d frames (%s\u2013%s) have in common that you want "
+                           "the redraws to keep?"
+                   % (len(chunk_beats), chunk_beats[0], chunk_beats[-1]), "free", imgs),
             qb.add(pid, 2, "Is there anything here you would now drop?", "keep-drop", imgs),
         ]
         panels.append(p)
@@ -1125,17 +1193,29 @@ def render_panel(reg, p, qmap):
     return "\n".join(out)
 
 
-HEAD_HOW = (
-    "Answer in the terminal by question id \u2014 \u201cQ7: the room is fine, the people are "
-    "doing nothing\u201d. The checkboxes are there so you can see the tag set; they do not record "
-    "anything. Click any frame for it full size (\u2190 / \u2192 to move through the panel, Esc to "
-    "close). Frames are labelled with their generation and date only.")
+# One illustrative example per board, anchored to a real qid that actually renders on that board
+# (fixes M9: board 2's header used to cite a board-1 qid). render_board asserts the anchor holds.
+HEAD_EXAMPLES = {
+    1: ("Q7", "a,c"),
+    2: ("Q40", "the new one reads cleaner, nothing else changed"),
+}
+
+
+def head_how(example_qid, example_text):
+    return (
+        "Answer in the terminal by question id \u2014 \u201c%s: %s\u201d. The checkboxes are there "
+        "so you can see the tag set; they do not record anything. Click any frame for its full "
+        "size (\u2190 / \u2192 to move through the panel, Esc to close). Frames are labelled with "
+        "their generation and date only." % (example_qid, example_text))
 
 
 def render_board(reg, panels, board_no, boards_meta, stats, css, lb_payload):
     qmap = {q["qid"]: q for q in stats["questions"]}
     mine = [p for p in panels if p["board"] == board_no]
     other = [b for b in boards_meta if b["no"] != board_no]
+    ex_qid, ex_text = HEAD_EXAMPLES[board_no]
+    assert qmap[ex_qid]["board"] == board_no, \
+        "head-how example %s does not belong to board %d" % (ex_qid, board_no)
     parts = []
     parts.append('<meta charset="utf-8">')
     parts.append('<meta name="viewport" content="width=device-width,initial-scale=1">')
@@ -1144,7 +1224,7 @@ def render_board(reg, panels, board_no, boards_meta, stats, css, lb_payload):
     parts.append('<div class="wrap">')
     parts.append('<div class="head"><h1>%s</h1>' % esc(boards_meta[board_no - 1]["title"]))
     parts.append("<p>%s</p>" % boards_meta[board_no - 1]["lede"])
-    parts.append('<p class="how">%s</p>' % HEAD_HOW)
+    parts.append('<p class="how">%s</p>' % head_how(ex_qid, ex_text))
     parts.append("<p>This board carries %d of the %d panels and %d of the %d questions; the other "
                  "%d panels are on %s. Every frame here is the frame that was on the board you "
                  "reviewed, matched pixel-for-pixel to its full-resolution original where one "
@@ -1153,7 +1233,7 @@ def render_board(reg, panels, board_no, boards_meta, stats, css, lb_payload):
                  % (len(mine), len(panels),
                     sum(len(p["questions"]) for p in mine), len(stats["questions"]),
                     len(panels) - len(mine),
-                    ", ".join('<a href="%s">%s</a>' % (o["file"], esc(o["short"])) for o in other)))
+                    ", ".join('<a href="%s">%s</a>' % (o["link"], esc(o["short"])) for o in other)))
     parts.append('<div class="toc">%s</div>' % "".join(
         '<a href="#%s">%s \u00b7 %s</a>' % (p["id"], p["id"], esc(short(p["title"], 44)))
         for p in mine))
@@ -1211,7 +1291,20 @@ document.addEventListener('keydown',function(e){
 # --------------------------------------------------------------------------------------
 
 
-def main():
+def parse_args(argv):
+    import argparse
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--board1-url", default=None,
+                    help="href to emit for board 1's cross-link (default: the relative filename "
+                         "elicit-board.html - only correct when both boards are hosted side by "
+                         "side; pass a real URL once each board is published separately)")
+    p.add_argument("--board2-url", default=None,
+                    help="href to emit for board 2's cross-link (default: elicit-board-2.html)")
+    return p.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(sys.argv[1:] if argv is None else argv)
     ctx = load_ctx()
     S = derive_sets(ctx)
     reg = Registry()
@@ -1286,13 +1379,15 @@ def main():
     stats = dict(n_beats=len(ctx["beats"]), n_named=len(ctx["gens"]), questions=questions)
 
     boards_meta = [
-        dict(no=1, file="elicit-board.html", short="board 1 \u00b7 the 6c2 tenth",
+        dict(no=1, file="elicit-board.html", link=args.board1_url or "elicit-board.html",
+             short="board 1 \u00b7 the 6c2 tenth",
              title="Taste elicitation \u00b7 board 1 \u2014 the 6c2 tenth",
              lede=("The second tenth (%s\u2013%s) scored %d named of %d. This board puts those %d "
                    "not-named frames next to the frames you did name, and next to the "
                    "old-generation frame of the same script beat."
                    % ("L26", "L50", len(C6C2_LIKED), len(C6C2_RANGE), len(C6C2_RANGE) - len(C6C2_LIKED)))),
-        dict(no=2, file="elicit-board-2.html", short="board 2 \u00b7 first tenth + old arc",
+        dict(no=2, file="elicit-board-2.html", link=args.board2_url or "elicit-board-2.html",
+             short="board 2 \u00b7 first tenth + old arc",
              title="Taste elicitation \u00b7 board 2 \u2014 first tenth and the old-generation arc",
              lede=("The first tenth scored %d of %d named. This board carries the %d it missed, "
                    "the beats where the new generation won, and the stretch of old-generation "
@@ -1365,8 +1460,11 @@ def main():
         assert "#lb{position:fixed;inset:0;overflow:auto" in doc, "%s: lightbox not scrollable" % fname
         assert doc.count('id="lb"') == 1
         # the two boards must reach each other, or half the questions are unreachable
-        for other in [m["file"] for m in boards_meta if m["file"] != fname]:
-            assert 'href="%s"' % other in doc, "%s: no link to %s" % (fname, other)
+        # (checked against the emitted link, which --board1-url/--board2-url can override
+        # away from the default relative filename)
+        for om in [m for m in boards_meta if m["file"] != fname]:
+            assert 'href="%s"' % om["link"] in doc, \
+                "%s: no link to %s" % (fname, om["link"])
         # every question id is rendered exactly once, on exactly one board
     for q in questions:
         hits = [f for f, d in outputs.items() if ('id="%s"' % q["qid"]) in d]

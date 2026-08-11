@@ -37,7 +37,7 @@
    "assets/scenes/L47.png",
    "assets/scenes/L48.png"
   ],
-  "question_text": "Does the shared room in the 6 un-named frames bother you here - and if so, is it the room itself or what the figures are doing in it?",
+  "question_text": "Across the 6 un-named frames: does the shared room read as a repeat to you, or not - and if so, is it the room itself or the staging within it?",
   "answer_type": "free",
   "tag_options": null
  },
@@ -88,7 +88,7 @@
    "assets/scenes/L37.png",
    "assets/scenes/L38.png"
   ],
-  "question_text": "The named two are single-idea frames; the other two show the company doing something. Is the difference you see about the idea in the frame, or about how it is drawn?",
+  "question_text": "Do the two you named read as single-idea frames to you, against the other two showing the company doing something - and if so, is the difference about the idea in the frame, or about how it is drawn?",
   "answer_type": "free",
   "tag_options": null
  },
@@ -254,7 +254,7 @@
    "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-b5V.png",
    "assets/scenes/L31.png"
   ],
-  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat, what does the older frame have that the newer one does not? One line each is fine.",
+  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat: is the newer frame actually bad, or just unremarkable next to the older one - and if there is something the older frame has that the newer one does not, what is it? One line each is fine.",
   "answer_type": "free",
   "tag_options": null
  },
@@ -424,7 +424,7 @@
    "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L32-laneC-r1.png",
    "assets/scenes/L36.png"
   ],
-  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat, what does the older frame have that the newer one does not? One line each is fine.",
+  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat: is the newer frame actually bad, or just unremarkable next to the older one - and if there is something the older frame has that the newer one does not, what is it? One line each is fine.",
   "answer_type": "free",
   "tag_options": null
  },
@@ -594,7 +594,7 @@
    "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L40.png",
    "assets/scenes/L45.png"
   ],
-  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat, what does the older frame have that the newer one does not? One line each is fine.",
+  "question_text": "For all 4 of these beats the older frame is one you named and the newer one is not. Beat by beat: is the newer frame actually bad, or just unremarkable next to the older one - and if there is something the older frame has that the newer one does not, what is it? One line each is fine.",
   "answer_type": "free",
   "tag_options": null
  },
@@ -764,7 +764,7 @@
    "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L46-round1-D-content-retry.png",
    "assets/scenes/L50.png"
   ],
-  "question_text": "For 3 of these 4 beats the older frame is one you named (the badges say which). Beat by beat, what does the older frame have that the newer one does not - and where you named neither, say that.",
+  "question_text": "For 3 of these 4 beats the older frame is one you named (the badges say which). Beat by beat: is the newer frame actually bad, or just unremarkable next to the older one - and if there is something the older frame has that the newer one does not, what is it? Where you named neither, say that.",
   "answer_type": "free",
   "tag_options": null
  },
@@ -813,7 +813,7 @@
    "assets/scenes/L28.png",
    "assets/_archive-pre-regen-2026-08-06/L28.png"
   ],
-  "question_text": "Whatever you picked: what does it have that the current one does not?",
+  "question_text": "If you picked one in Q31: what does it have that the current one does not?",
   "answer_type": "free",
   "tag_options": null
  },
@@ -828,8 +828,8 @@
    "assets/scenes/L28.png",
    "assets/_archive-pre-regen-2026-08-06/L28.png"
   ],
-  "question_text": "Should a company's first appearance be a building, a room, or a person? One word is enough.",
-  "answer_type": "keep-drop",
+  "question_text": "Should a company's first appearance be a building, a room, or a person - or: it depends (say on what)? A word is enough unless it depends.",
+  "answer_type": "free",
   "tag_options": null
  },
  {
@@ -979,7 +979,7 @@
    "assets/_archive-pre-regen-2026-08-06/L21.png",
    "assets/_archive-pre-restore-2026-08-06/L20.png"
   ],
-  "question_text": "For each of these: is the newer frame actually bad, or just unremarkable next to the rest of the tenth?",
+  "question_text": "For each of these: is the newer frame actually bad, or just unremarkable next to the rest of the tenth - or neither / both fine?",
   "answer_type": "free",
   "tag_options": null
  },
@@ -1044,7 +1044,7 @@
    "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L45-round1-D.png",
    "assets/scenes/L49.png"
   ],
-  "question_text": "Are these a real improvement, or was the older frame simply never something you looked at closely?",
+  "question_text": "Are these a real improvement, or was the older frame simply never something you looked at closely - or neither / both fine?",
   "answer_type": "free",
   "tag_options": null
  },
@@ -1100,7 +1100,7 @@
    "visual-kit/_staging/L82-b4T.png",
    "visual-kit/_staging/L83-round2-J.png"
   ],
-  "question_text": "What do these frames have in common that you want the redraws to keep?",
+  "question_text": "What do these 6 frames (L85–L90) have in common that you want the redraws to keep?",
   "answer_type": "free",
   "tag_options": null
  },
@@ -1128,12 +1128,13 @@
   "beat": null,
   "images": [
    "visual-kit/_staging/L84-b4T.png",
+   "visual-kit/_staging/L92-b4T-retry.png",
    "visual-kit/_staging/L85-b4T.png",
    "visual-kit/_staging/L86-b4U.png",
    "visual-kit/_staging/L87-b5X.png",
    "visual-kit/_staging/L88-b5X.png"
   ],
-  "question_text": "What do these frames have in common that you want the redraws to keep?",
+  "question_text": "What do these 5 frames (L91–L96) have in common that you want the redraws to keep?",
   "answer_type": "free",
   "tag_options": null
  },
@@ -1144,6 +1145,7 @@
   "beat": null,
   "images": [
    "visual-kit/_staging/L84-b4T.png",
+   "visual-kit/_staging/L92-b4T-retry.png",
    "visual-kit/_staging/L85-b4T.png",
    "visual-kit/_staging/L86-b4U.png",
    "visual-kit/_staging/L87-b5X.png",
