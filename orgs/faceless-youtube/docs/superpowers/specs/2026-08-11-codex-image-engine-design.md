@@ -811,24 +811,21 @@ starts, and doctrine names that failure (3+ failed fixes ⇒ question the archit
 
 ### 7.4 Gates — and the floor that needs re-ratification
 
-> ### ⚠ RULING 4 NEEDS RE-RATIFICATION IN PAIRED FORM
+> ### RULING 4, RE-RATIFIED IN PAIRED FORM (Daniel, 2026-08-11)
 >
-> Daniel ratified **`M1 ≥ +15`** when the target was the pinned hex (+18). P2b refuted that framing:
-> the real Gemini render of L29 measures **+0.5**. Applied literally to paired judging, the old floor
-> **inverts** — a codex frame at +2.5 (distance **2.0** from the truth) would FAIL, while a frame at
-> +15.0 (distance **14.5**) would PASS. The number cannot be carried across unchanged.
+> Context: the original **`M1 ≥ +15`** was ratified when the target was the pinned hex (+18). P2b
+> refuted that framing — the real Gemini render of L29 measures **+0.5**, so the absolute floor
+> inverts under paired judging (a codex frame at +2.5, distance 2.0, would fail while +15.0,
+> distance 14.5, would pass). Daniel re-ratified the paired translation as THE floor:
 >
-> **Proposed translation — PROPOSAL, NOT RULED:**
-> - **`|ΔM1| ≤ 5` per shot**, on at least 3 of the 4 corpus shots (P2b's best already sits at 2.0 on
->   L29, so this is a real but reachable bar); and
-> - **`|ΔM2|` within the baseline band** — no worse than the interquartile width of M2 across the 23
->   verified frames, i.e. codex must differ from its paired frame by no more than accepted frames
->   differ from each other; and
+> - **`|ΔM1| ≤ 5` per shot, on at least 3 of the 4 corpus shots** (P2b's best already sits at 2.0
+>   on L29 — a real but reachable bar); and
+> - **`|ΔM2|` within the baseline band** — no worse than the interquartile width of M2 across the
+>   23 verified frames (codex may differ from its paired frame by no more than accepted frames
+>   differ from each other); and
 > - **M3/M4 inside the same band.**
 >
-> Daniel rules on these numbers before the study's verdict is binding. Running the study is not
-> blocked on the ruling — the measurements are the same either way — but **no PASS is declared** under
-> a floor he has not ratified.
+> This floor is binding; the study's PASS/escalate verdict is declared against it.
 
 - **Promote a lever** only if it reduces its target paired distance by more than the L0 within-cell
   spread, on at least 3 of the 4 shots, and worsens no other metric beyond that spread.
