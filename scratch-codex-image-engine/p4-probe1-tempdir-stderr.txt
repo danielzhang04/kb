@@ -1,0 +1,6 @@
+Reading additional input from stdin...
+2026-08-11T21:53:05.525648Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff2d0-16c2-7e12-bacd-e841ef27d85e`" }
+2026-08-11T21:53:05.526075Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-11T21:53:10.593284Z ERROR codex_core::tools::router: error=approval policy is UnlessTrusted; reject command — you should not ask for escalated permissions if the approval policy is UnlessTrusted
+2026-08-11T21:53:36.341693Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff2d0-16c2-7e12-bacd-e841ef27d85e`" }
+2026-08-11T21:53:36.341976Z ERROR codex_core::tools::router: error=approval request failed

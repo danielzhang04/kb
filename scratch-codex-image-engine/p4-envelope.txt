@@ -1,0 +1,1 @@
+Read the file at <PROMPT_PATH> and pass its exact byte content as the `prompt` argument to `image_gen__imagegen`. Do not compose, paraphrase, normalize, or reformat this text -- read and pass through only. Call the tool exactly once, with referenced_image_paths = [<SEED_1>]. Do not read any file outside this directory. Report only the saved image path.
