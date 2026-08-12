@@ -75,6 +75,14 @@ test_impact: adds pin-tests to test_forge_figures.py, test_forge_seed_roles_and_
 ordering_dependency: FIRST — lands before P2..P13 so every later change is measured against it
 ```
 
+**verdict: APPROVED (G2, 2026-08-12). Daniel:** "Sure. Of course I don't want to lose goals. That
+said, L40-43 isn't some gold standard. There should be various standalone shots throughouts. Many
+shots shouldn't be using plates anyways. Four digit hand should be baked in. No nose as well.
+identity rig laws as well. satuation and warm as well." — Implementation reading: the chain pin is
+"don't break the recipe", never "canonize L40-43"; standalone shots remain first-class throughout;
+rig + saturation/warm pins are BAKED-IN floor law, not per-video preference; "many shots shouldn't
+use plates" carries into the P5/P6/P7 rulings.
+
 Which liked quality each later proposal endangers, and where it is pinned:
 - money chain → **P9** (delta face authority) must not change the delta seed recipe → pinned by
   test_forge_seed_roles_and_delta.py.
@@ -152,6 +160,14 @@ ordering_dependency: after P1; BEFORE P3 (new cast members become Pass-1 gate it
   together"), and P8 (the pose fix applies to whatever tier survives)
 ```
 
+**verdict: APPROVED (G2, 2026-08-12). Daniel:** "Yes. No anonymous foreground character. Let's go
+back slightly. Performers become NEW cast members, and must go through the same cast generation
+waves (rounds of seeding)." — Implementation reading: default disposition for a performer casting is
+a NEW named cast member minted through the standard cast-generation waves (canonical + seeding
+rounds), identical process to existing cast — no shortcut mints; where the story says the figure IS
+an existing character (his own L38→COMPAQ example), resolve to that cast member; mass-action restage
+only where the beat is genuinely mass action.
+
 **Rejected alternative, stated because Law 1 requires it:** keeping the performer tier and giving it
 per-shot hair + head tone would be "keep B whole and add function to replicate A" — explicitly
 banned. It also cannot work as specified: a performer mints no canonical, so its hair and tone would
@@ -222,6 +238,20 @@ ordering_dependency: after P2 (P2's new cast members are Pass-1 gate items); BEF
   and P12 (a vetoed expression is recorded as a FAIL verdict in this same store)
 ```
 
+**verdict: APPROVED WITH MODIFICATION (G2, 2026-08-12). Daniel:** "No. P2 seeds don't need their own
+human gates. I trust those will be fine. As long as it seeds with our actual logic and from asset
+base. Everything else you mentioned though, yes. Also, VPW must be authoring shots, generally, that
+use stuff that exists in our asset base. EIther that, or image gen must conform to the closest
+existing asset. Make sense? That should exist already as function" — Implementation reading:
+(1) P2's new cast members are EXEMPT from per-item human gate slots — trusted when minted through
+the standard seeding logic from the asset base; the P2 verdict's "same cast generation waves"
+requirement stands, minus the human slot. (2) All other classes gated as proposed (plates,
+environments, crowd exemplars, props, primitives, expressions, in-batch cards). (3) VPW
+authors-from-asset-base / closest-existing-asset conformance: partially existing function
+(named-but-missing tags already refused by seeding_law_violations; registry-vocabulary lint) —
+the unnamed-prose-act hole is P8's scope, with "conform to the closest existing asset" as the
+preferred resolution direction, carried to the P8 ruling.
+
 ---
 
 ## P4 — Crowd figures carry varied flat head tones; hair and era attire are ENFORCED, not re-legislated
@@ -276,6 +306,13 @@ test_impact: test_forge_figures.py (crowd clause fingerprint), test_forge_style_
   test_doctrine_reset_guards.py / test_new_guards.py (clause text changes -> fingerprint changes)
 ordering_dependency: after P2 (the tier decision) and P3 (the exemplar is minted/gated there)
 ```
+
+**verdict: APPROVED WITH AMENDMENT (G2, 2026-08-12). Daniel:** "Ok. Every video should have its own
+'crowd' exemplar. BUT crowd also varies based on hair and outfits within a video." — Implementation
+reading: the per-video exemplar anchors rig discipline, head-tone set and era; it must NOT
+homogenize dress/hair across the video — each scene's crowd dresses for ITS OWN setting (already
+the §2d law's wording "THIS shot's own scene era and setting"), hair varies within the bounded
+2-3-silhouette rule per group. The exemplar is an anchor, not a uniform.
 
 **Deliberately NOT proposed here, against Track C's ledger:** rolling back the 27bc7e2 sentence that
 exempts crowd expression from attribute-routing ("a crowd-rig figure names no asset and carries no
@@ -341,6 +378,9 @@ ordering_dependency: after P3 (a revised plate is gated before it seeds 17 shots
   ship together, since P6 is what stops a better plate from failing the same way by repetition
 ```
 
+**verdict: APPROVED (G2, 2026-08-12). Daniel:** "Ok" — presented with the H1 refinement (standalone
+L28 liked; repetition is the axis; P5 pairs with P6) and the two-sided occupancy target.
+
 **Refinement that must reach Daniel at G2 (separations.md H1, surfaced there, not buried):** the L28
 plate as its OWN establishing shot is **liked**; every disliked verdict is the same pixels used as
 anonymous backdrop behind a figure. So "the plate itself is the defect" is not literally true by the
@@ -394,6 +434,8 @@ ordering_dependency: with P5 (ship together); after P3 (variants are gated frame
   P7 pushes MORE shots onto anchors, so the repetition bound must exist first
 ```
 
+**verdict: APPROVED (G2, 2026-08-12). Daniel:** "Yes. That makes sense."
+
 ---
 
 ## P7 — A figure-bearing shot inherits its environment from a pixel anchor, or IS the anchor
@@ -446,6 +488,12 @@ test_impact: lint fixtures in test_shots_v2.py, test_stage_check.py, test_new_gu
 ordering_dependency: after P5+P6 (a better, variant-bounded plate must exist before more shots seed
   it); interacts with P13 (which restores the register anchor on the frames P7 cannot anchor)
 ```
+
+**verdict: REJECTED (G2, 2026-08-12). Daniel:** "Nah I don't know that this is necessary." —
+Consequences recorded: the detail ask (P03-L29, scoped P08-L10) is now delivered by P5 only; the
+"characters too big"/scale mechanism (routing-trace L30/L31) has no approved structural fix — if G4
+still shows scale/detail defects on unanchored figure shots, this is the first re-open candidate.
+P13's justification is no longer shrunk by P7 (see P13 ruling).
 
 ---
 
@@ -503,6 +551,21 @@ ordering_dependency: after P2 (which decides whose cards these are) and P3 (card
   scenes spend on them); BEFORE P10 (a drifted card needs a re-mint route)
 ```
 
+**verdict: APPROVED AS AMENDED (G2, 2026-08-12). Daniel:** "Instead of lint refusal, how about
+changing the actual writing/authoring logic? And we can add a gate like you said. But also,
+previously it was obeying so necessary to add a lot more function here or not? Sure if you think
+this makes sense." + "Right. The point though, is that the beat's act sometimes calls for the
+character to be in poses that don't exist, holding/interacting with objects in a way that isn't
+supported. And that was the problem yes? So those should flow into asset base gen, THEN shot gen,
+yes? But htat shouldn't happen often either, otherwise we have infinite asset base expansion. Make
+sense? Still, slim" — RESHAPED SCOPE: (1) primary fix = VPW authoring doctrine: figure sentences
+composed FROM the primitive vocabulary, naming the primitive (the old file's natural style);
+default = conform to the closest existing asset. (2) Genuinely uncovered act -> asset-base gen
+FIRST (Pass-1 gate item, minted as a reusable primitive), THEN shot gen — the exception path,
+strong reuse bias, asset base grows by deliberate drops only. (3) Forge: card minted holding the
+act (derived clause widens clothing -> clothing+act, reusing machinery P2 strands). (4) LINT
+REFUSAL DROPPED per Daniel. Slim.
+
 ---
 
 ## P9 — Every seed role names the attribute class it owns — including the FACE on a delta
@@ -545,6 +608,13 @@ ordering_dependency: after P2 (the performer's role prose is deleted first, so t
   is done once over the surviving roles)
 ```
 
+**verdict: APPROVED (G2, 2026-08-12). Daniel:** "Uh. I don't think we need to have states explicitly
+which attribute classes it owns. We just need the seeding to be correct. Whoever should be running
+it, just add that no?" — Clarified and confirmed: the role prose IS the seeding channel (the model
+is told in words what to take from each seed image); the fix is forge's request-builder adding the
+missing face-ownership sentence. Same change as proposed, framed as "make the seeding correct" —
+no metadata layer, one function's output strings.
+
 ---
 
 ## P10 — `pose` joins the STEP-1 retry defect enum
@@ -573,6 +643,8 @@ test_impact: test_forge_surgical_retry_and_zones.py
 ordering_dependency: after P8 (P8 reduces how often a card comes back wrong; P10 is the repair route
   for the residue)
 ```
+
+**verdict: APPROVED (G2, 2026-08-12). Daniel:** "Sure"
 
 ---
 
@@ -631,6 +703,19 @@ ordering_dependency: after P5/P6/P7 (plates and anchors carry palette into the f
   so re-leaning the prose first would be measured through the wrong mechanism); independent of P8-P10
 ```
 
+**verdict: APPROVED IN REDUCED FORM (G2, 2026-08-12). Daniel:** "No. Not each shot states a
+deliberate warm or cool lean. I think that's unnecessary additional function. I want to restore the
+channel 'warm' palette but only slightly. Shots can do whatever within that. And I agree that
+monotone is probably the problem, but that doesn't mean I want to crank satuation either. Just on
+some of the shots, monotone was a problem." — REDUCED SCOPE: (1) NO per-shot lean rule, NO 246-shot
+authoring pass, NO Step 2.4/3c changes. (2) Channel-level only: diff current channel palette text
+(style-bible §2b descriptor, global_prompt_suffix, VPW channel-level palette guidance) vs the
+Poyais-era version (ff36f63) and restore the remaining delta SLIGHTLY, bounded — if the delta is
+near-empty (suffix already era-verbatim per d1f771a), record "already restored" and let G4's render
+verdict decide sufficiency. (3) Saturation clause untouched (P1 pin); no global saturation change;
+per-shot monotone judged at existing review axes. Render-side reference band (informational, not a
+new gate): liked median_sat IQR [0.16, 0.49].
+
 ---
 
 ## P12 — The vetoed expression asset is removed, identified from the judged PIXEL, not from prose
@@ -676,6 +761,16 @@ test_impact: test_stamp_review.py, test_forge_seed_requirement.py (a named-but-m
 ordering_dependency: after P3 (the store that carries the veto); independent of everything else
 ```
 
+**verdict: APPROVED IN REDUCED SCOPE, IDENTIFICATION RESOLVED BY DANIEL (G2, 2026-08-12). Daniel:**
+"No need to reauthor shots now, we'll probably rerun the entire thing later from VPW onwards. I
+never vetoed deadpan. I vetoed the shocked and the pleading. Not those emotions, just those two
+SPECIFIC facial expressions. There may be another shock facial expression that is less crazy and
+works. This step should literally just remove those two from the library and anything that calls on
+them in gen logic" — SCOPE: remove `expr-shock` + `expr-pleading` registry rows; FAIL verdicts in
+the review store (no re-seed/re-mint); strip gen-logic references. NO shots.json re-authoring in
+this wave (file expected to rerun from VPW later). The EMOTIONS stay legal — a calmer shock may be
+minted later through the P3 gate. No pixel-identification board needed.
+
 ---
 
 ## P13 — The §5 register tile is derived on figure frames too (LOWEST CONFIDENCE — droppable)
@@ -714,6 +809,21 @@ test_impact: test_forge_style_tile.py (the derivation condition is asserted ther
 ordering_dependency: last; after P7 (P7 removes the anchor gap on the frames it can reach, which
   shrinks P13's remaining justification — re-measure before implementing)
 ```
+
+**verdict: DEFERRED (G2, 2026-08-12). Daniel:** "Sure" (to boss recommendation: defer; re-open only
+if G4's validation mint shows register drift on figure frames as a real pattern).
+
+---
+
+## G2 CLOSED — 2026-08-12. Final tally
+APPROVED: P1 (qualified), P2 (new-cast-via-standard-waves), P3 (modified: P2 mints exempt from human
+slots), P4 (amended: per-video exemplar, within-video variation), P5, P6, P8 (reshaped: authoring
+doctrine + asset-base-first, lint refusal dropped), P9, P10, P11 (reduced: channel-level only),
+P12 (reduced: expr-shock + expr-pleading removal only). REJECTED: P7. DEFERRED: P13.
+Phase-3 scope note (from Daniel's P12 statement "we'll probably rerun the entire thing later from
+VPW onwards"): implementation delivers governance/code/doctrine changes fully; bulk shots.json
+re-authoring (P2's 116 performer castings, P5's plate prose, P11) is limited in this wave to the
+beats the G4 validation slice needs — the full-file re-author belongs to the later VPW rerun.
 
 ---
 
