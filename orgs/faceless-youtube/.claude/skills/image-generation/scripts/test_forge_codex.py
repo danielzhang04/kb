@@ -805,6 +805,57 @@ def test_composer_is_deterministic():
     assert a == b and a.encode("utf-8") == b.encode("utf-8")
 
 
+def test_minimal_format_is_short_carries_the_same_facts_and_keeps_the_avoid_field():
+    import forge_codex as fc
+    labeled = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    minimal = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9",
+                                fmt="minimal")
+    assert len(minimal) < len(labeled) / 2
+    assert len(minimal) <= 900
+    for fact in ("miniscribe-rep", "delighted expression", "roller door", "tote bins"):
+        assert fact in minimal, fact
+    assert "on the left of the frame" in minimal            # idiom translation still applies
+    assert '"MINISCRIBE"' in minimal
+    assert minimal.rstrip().split("\n")[-1].startswith("Avoid: ")
+    assert "16:9 landscape" in minimal
+    assert minimal.count("#d7402b") == 1
+
+
+def test_minimal_format_omits_the_labeled_schema_headers():
+    import forge_codex as fc
+    minimal = fc.compose_prompt(_item_L26(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9",
+                                fmt="minimal")
+    for label in ("Use case:", "Asset type:", "Primary request:", "Style/medium:",
+                  "Materials/textures:", "Constraints:"):
+        assert label not in minimal, label
+    assert minimal.rstrip().split("\n")[-1].startswith("Avoid: any words, letters")
+
+
+def test_minimal_format_is_deterministic_and_unknown_format_fails_loud():
+    import forge_codex as fc
+    a = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9",
+                          fmt="minimal")
+    b = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9",
+                          fmt="minimal")
+    assert a == b
+    raised = None
+    try:
+        fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9",
+                          fmt="freestyle")
+    except SystemExit as e:
+        raised = str(e)
+    assert raised is not None and "freestyle" in raised
+
+
+def test_cli_format_flag_reaches_the_composer():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed)])
+    assert fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging),
+                    "--format", "minimal"]) == 0
+    text = (staging / "_codex" / "prompts" / "A1.txt").read_text(encoding="utf-8")
+    assert "Use case:" not in text and text.rstrip().split("\n")[-1].startswith("Avoid: ")
+
+
 def test_primary_request_is_the_payload_verbatim_after_idiom_and_slug_resolution():
     import forge_codex as fc
     item = _item_L29()

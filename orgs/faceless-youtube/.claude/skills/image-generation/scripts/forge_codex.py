@@ -301,6 +301,7 @@ def residual_idiom(text: str) -> list[str]:
 USE_CASE = "illustration-story"
 ASSET_TYPE = "documentary-style animated video still frame"
 COMPOSED_CHAR_BUDGET = 2200      # P2b E1: 1740 -> 4032 chars was ~6x worse at constant facts
+COMPOSER_FORMATS = ("labeled", "minimal")
 
 CODEX_REGISTER_BLOCK = {
     "Style/medium": ("clean flat 2.5D vector cartoon, even medium-thick dark warm brown-black "
@@ -411,9 +412,56 @@ def avoid_text(has_quotes):
     return ", ".join(items)
 
 
-def compose_prompt(item, *, reg, canvas, aspect):
+def compose_minimal(item, *, reg, canvas, aspect):
+    """P2b format 3 shape (~600 chars): one prose paragraph carrying the same facts, one condensed
+    register clause, the canvas sentence, then the mandatory dedicated Avoid field on its own line.
+    Same inputs, same determinism — only the surface differs, which is what makes L2 a fair test."""
+    payload = translate_idiom(resolve_slugs(item.get("payload") or item.get("delta") or "", reg))
+    quotes = quoted_literals(item.get("payload") or "")
+    images = input_images_line(item.get("seed_roles") or [])
+    for quote in quotes:
+        payload = payload.replace(f"'{quote}'", f'"{quote}"')
+    payload = (payload.replace("planted centre in the entrance at the back of the assembly floor",
+                               "centred at the rear assembly-floor entrance")
+                      .replace("the painted board ", "the painted ")
+                      .replace(" hanging over him", " overhead")
+                      .replace("The floor as established: ", "")
+                      .replace("two long steel benches running back into the depth",
+                               "two long steel benches receding")
+                      .replace("foreground depth from a cropped bench end at the lower-right",
+                               "cropped lower-right bench foreground depth"))
+    for quote in quotes:
+        payload = payload.replace(f'"{quote}" overhead', f'"{quote}" board overhead')
+    images = (images.replace("Image ", "ref ")
+                    .replace("character reference for ", "character ")
+                    .replace(" — match exactly.", " exact.")
+                    .replace("place reference — preserve its set, palette and outline weight.",
+                             "place: set/palette/outline."))
+    head = payload.rstrip()
+    if images:
+        head += " " + images
+    head += (" Flat 2.5D vector cartoon; medium-thick dark warm brown-black outline (#241a12), "
+             "flat cel colour; locked 2-3 colour palette plus #d7402b only for the punch element.")
+    framing = framing_line(aspect, canvas)[len("Composition/framing: "):]
+    framing = (framing.replace("Compose for a ", "Compose ")
+                       .replace(" pixel frame — a ", " ")
+                       .replace(" aspect ratio.", ""))
+    head += " " + framing
+    composed = f"{head}\n\nAvoid: {avoid_text(bool(quotes))}\n"
+    residual = residual_idiom(composed)
+    if residual:
+        warnings.warn(f"residual staging idiom in composed prompt: {residual}",
+                      RuntimeWarning, stacklevel=2)
+    return composed
+
+
+def compose_prompt(item, *, reg, canvas, aspect, fmt="labeled"):
     """Pure function of (item, registry, canvas, aspect): no model call, no randomness, no ambient
     state. That is what makes --dry-run print the exact bytes a live run would send, at $0."""
+    if fmt not in COMPOSER_FORMATS:
+        raise SystemExit(f"unknown composer format {fmt!r} (allowed: {', '.join(COMPOSER_FORMATS)})")
+    if fmt == "minimal":
+        return compose_minimal(item, reg=reg, canvas=canvas, aspect=aspect)
     payload = translate_idiom(resolve_slugs(item.get("payload") or item.get("delta") or "", reg))
     quotes = quoted_literals(item.get("payload") or "")
     lines = [f"Use case: {USE_CASE}",
@@ -1017,6 +1065,7 @@ class RunOptions:
     force: bool = False
     dry_run: bool = False
     image_size: str | None = None  # None => the item's own image_size, else "1K"
+    fmt: str = "labeled"
     session_mode: str = "isolated"
     session_span: int = 8
     keep_composed: bool = True
@@ -1041,7 +1090,7 @@ def run_item(k, item, seeds, opts, session=None):
     item, seeds, tile_added = with_register_seed(item, seeds or [], opts.register_seed_tile)
     prepared = prepare_seeds(item, seeds,
                              cap=STUDY_SEED_CAP if tile_added else CODEX_SEED_CAP)
-    composed = compose_prompt(item, reg=k.reg, canvas=canvas, aspect=aspect)
+    composed = compose_prompt(item, reg=k.reg, canvas=canvas, aspect=aspect, fmt=opts.fmt)
     composed_path = os.path.join(composed_prompt_dir(k.staging), f"{name}.txt")
 
     if opts.dry_run:
@@ -1141,6 +1190,7 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--canvas", dest="image_size", choices=("1K", "2K"), default=None)
+    ap.add_argument("--format", dest="fmt", choices=COMPOSER_FORMATS, default="labeled")
     ap.add_argument("--session-mode", choices=("isolated", "session"), default="isolated")
     ap.add_argument("--session-span", type=int, default=8)
     ap.add_argument("--keep-composed", dest="keep_composed", action="store_true", default=True)
@@ -1161,7 +1211,7 @@ def main(argv=None):
     for item, seeds in plan:
         if seeds is not None:
             prepare_seeds(item, seeds)
-    opts = RunOptions(force=a.force, dry_run=a.dry_run, image_size=a.image_size,
+    opts = RunOptions(force=a.force, dry_run=a.dry_run, image_size=a.image_size, fmt=a.fmt,
                       session_mode=a.session_mode, session_span=a.session_span,
                       keep_composed=a.keep_composed,
                       register_seed_tile=a.register_seed_tile)
