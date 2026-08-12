@@ -16,7 +16,8 @@
  *
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with `.ts` specifiers.
  */
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { renameWithRetrySync } from '../atomicRename.ts';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { stableHumanTitle, type ProvisionSpendGrantInput } from './execution.ts';
@@ -75,7 +76,7 @@ function defaultWriteGrantFile(worktreePath: string, contents: SpendGrantFileCon
   const target = join(dir, 'spend-grant.json');
   const temp = `${target}.${process.pid}.${randomUUID()}.tmp`;
   writeFileSync(temp, `${JSON.stringify(contents, null, 2)}\n`, { mode: 0o600 });
-  renameSync(temp, target);
+  renameWithRetrySync(temp, target);
 }
 
 /**

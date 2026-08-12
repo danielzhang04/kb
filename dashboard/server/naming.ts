@@ -3,7 +3,8 @@
  * ("run 87d8aef2", short ref #3); every other system (routing, persistence, cross-service refs)
  * keeps using the canonical ID untouched — this module never replaces it, only labels it.
  */
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { renameWithRetrySync } from './atomicRename.ts';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { resolveDashboardStateRoot } from './composer/store.ts';
@@ -76,7 +77,7 @@ export class NamingRegistry {
       writeFileSync(fd, encoded, 'utf8');
       closeSync(fd);
       fd = null;
-      renameSync(temp, this.path);
+      renameWithRetrySync(temp, this.path);
     } finally {
       if (fd !== null) closeSync(fd);
       if (existsSync(temp)) rmSync(temp, { force: true });

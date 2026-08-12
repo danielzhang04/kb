@@ -5,7 +5,6 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -13,6 +12,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { renameWithRetrySync } from '../atomicRename.ts';
 
 /** A server-owned error factory keeps persistence failures in the caller's error domain. */
 export interface AtomicJsonDocumentOptions<T> {
@@ -80,7 +80,7 @@ export function createAtomicJsonDocument<T>(options: AtomicJsonDocumentOptions<T
       fsyncSync(fd);
       closeSync(fd);
       fd = null;
-      renameSync(temp, options.path);
+      renameWithRetrySync(temp, options.path);
     } finally {
       if (fd !== null) closeSync(fd);
       if (existsSync(temp)) rmSync(temp, { force: true });

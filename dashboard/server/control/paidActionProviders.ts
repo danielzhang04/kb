@@ -8,11 +8,11 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, isAbsolute, resolve, sep } from 'node:path';
+import { renameWithRetrySync } from '../atomicRename.ts';
 import type {
   PaidActionArtifactVerifier,
   PaidActionCommitInput,
@@ -327,7 +327,7 @@ export function createProviderCommitter(options: ProviderCommitterOptions): Paid
         fsyncSync(fd);
         closeSync(fd);
         fd = null;
-        renameSync(temp, target);
+        renameWithRetrySync(temp, target);
       } finally {
         if (fd !== null) closeSync(fd);
         if (existsSync(temp)) rmSync(temp, { force: true });

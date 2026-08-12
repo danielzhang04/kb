@@ -4,13 +4,13 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
+import { renameWithRetrySync } from '../atomicRename.ts';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { MAX_REVIEW_OUTCOME_CHARS, parseReviewOutcome } from './reviewOutcome.ts';
 import type {
@@ -5601,7 +5601,7 @@ export function createFileControlPlaneStore(stateRoot: string, options: ControlS
       writeFileSync(fd, encoded, 'utf8');
       closeSync(fd);
       fd = null;
-      renameSync(temp, path);
+      renameWithRetrySync(temp, path);
     } finally {
       if (fd !== null) closeSync(fd);
       if (existsSync(temp)) rmSync(temp, { force: true });
