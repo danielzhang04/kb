@@ -874,6 +874,68 @@ def test_dead_levers_stay_dead_no_head_tail_repetition():
     assert len(labels) == len(set(labels)), labels
 
 
+def _png(path, n=4096):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_bytes(b"\x89PNG\r\n\x1a\n" + os.urandom(n))
+    return str(path)
+
+
+def test_prepare_seeds_requires_absolute_paths_and_realpaths_them():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="seeds-"))
+    a = _png(tmp / "a.png")
+    out = fc.prepare_seeds({"name": "L29"}, [a])
+    assert out == [os.path.realpath(a)] and all(os.path.isabs(p) for p in out)
+    raised = None
+    try:
+        fc.prepare_seeds({"name": "L29"}, ["refs/base/base.png"])
+    except fc.CodexContractError as e:
+        raised = str(e)
+    assert raised is not None and "L29" in raised and "absolute" in raised
+
+
+def test_prepare_seeds_enforces_transport_ceiling_then_doctrine_cap():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="seeds-"))
+    many = [_png(tmp / f"s{i}.png") for i in range(6)]
+    assert fc.CODEX_SEED_CAP == 5
+    raised = None
+    try:
+        fc.prepare_seeds({"name": "L33"}, many)
+    except fc.CodexContractError as e:
+        raised = str(e)
+    assert raised is not None and "L33" in raised and "at most 5" in raised
+    saved_ceiling = fc.TRANSPORT_SEED_CEILING
+    fc.TRANSPORT_SEED_CEILING = 6
+    try:
+        raised = None
+        try:
+            fc.prepare_seeds({"name": "L33"}, many)
+        except fc.CodexContractError as e:
+            raised = str(e)
+    finally:
+        fc.TRANSPORT_SEED_CEILING = saved_ceiling
+    assert raised is not None and "L33" in raised and "CODEX_SEED_CAP" in raised
+    assert "truncat" in raised
+    assert len(fc.prepare_seeds({"name": "L33"}, many[:5])) == 5
+
+
+def test_seed_digests_reverify_raises_seed_integrity_error_on_mutation():
+    import forge_codex as fc
+    from forge import SeedIntegrityError
+    tmp = Path(tempfile.mkdtemp(prefix="seeds-"))
+    a = _png(tmp / "a.png")
+    expected = fc.seed_digests([a])
+    fc.reverify_seed_digests("L29", expected)          # unchanged -> silent
+    Path(a).write_bytes(b"\x89PNG\r\n\x1a\n" + os.urandom(4096))
+    raised = None
+    try:
+        fc.reverify_seed_digests("L29", expected)
+    except SeedIntegrityError as e:
+        raised = str(e)
+    assert raised is not None and "L29" in raised
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

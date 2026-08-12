@@ -8,6 +8,7 @@ log. ``git diff forge.py`` must stay empty.
 
 Subscription-billed: $0 API spend. No key is ever loaded — every Kit is built dry.
 """
+import hashlib
 import os
 import shutil
 import sys
@@ -29,7 +30,7 @@ SESSIONS_ROOT = os.path.expanduser("~/.codex/sessions")
 TIMEOUT_S = 240
 
 ENGINE_ID = "codex-imagegen"
-CODEX_SEED_CAP = 4
+CODEX_SEED_CAP = 5
 TRANSPORT_SEED_CEILING = 5
 
 # --- §4.6 normalization canvas. (16:9,1K) is VERIFIED MEASURED: all 23 baseline frames in
@@ -70,6 +71,41 @@ class RatioError(RuntimeError):
 
 class CodexContractError(RuntimeError):
     """A deterministic contract violation detected before a subprocess is invoked (class 1)."""
+
+
+def prepare_seeds(item: dict, seeds: list[str]) -> list[str]:
+    """§4.5 + §4.7: canonicalize absolute seeds, then enforce transport and doctrine limits."""
+    name = item.get("name", "<unnamed>")
+    out = []
+    for seed in seeds or []:
+        supplied = os.fspath(seed)
+        if not os.path.isabs(supplied):
+            raise CodexContractError(
+                f"{name}: seed path is not absolute: {seed!r} — codex rejects relative paths outright "
+                "(AbsolutePathBuf deserialized without a base path)")
+        out.append(os.path.realpath(supplied))
+    if len(out) > TRANSPORT_SEED_CEILING:
+        raise CodexContractError(
+            f"{name}: {len(out)} seeds — referenced_image_paths must contain at most "
+            f"{TRANSPORT_SEED_CEILING} paths")
+    if len(out) > CODEX_SEED_CAP:
+        raise CodexContractError(
+            f"{name}: slate carries {len(out)} seeds, over CODEX_SEED_CAP={CODEX_SEED_CAP} — "
+            "refusing to truncate; re-derive the slate with forge.py batch instead")
+    return out
+
+
+def seed_digests(seeds: list[str]) -> dict[str, str]:
+    """Return a SHA-256 digest for each seed, for the engine log's later audit."""
+    return {path: hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in seeds}
+
+
+def reverify_seed_digests(name: str, expected: dict[str, str]) -> None:
+    """Narrow the path-based invocation TOCTOU window immediately before execution (§4.5)."""
+    for path, digest in (expected or {}).items():
+        actual = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        if actual != digest:
+            raise SeedIntegrityError(f"{name}: seed SHA-256 changed after preflight: {path}")
 
 
 class CodexRunError(RuntimeError):
