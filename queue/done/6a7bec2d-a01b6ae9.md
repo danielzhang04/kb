@@ -6,7 +6,7 @@ target: orgs/kb-ops/output
 risk-tier: T1
 owner: dashboard-engine
 claim-token: null
-state: inbox
+state: done
 approval: null
 workflow: null
 depends-on: []
@@ -40,3 +40,7 @@ for the acceptance criteria this run exists to satisfy.
 ## Evidence
 
 (none — this card originates the run; it carries no external/untrusted input)
+
+## Bridged run
+
+This trigger card was consumed by the dashboard engine and run as run-74383969-3742-43d5-9c56-6024891f402e.
