@@ -49,12 +49,19 @@ class CodexRunError(RuntimeError):
 
 
 import re  # noqa: E402
+from collections.abc import Callable  # noqa: E402
 
 # --- §4.3 idiom translation: this pipeline's STAGING idiom renders as literal signage on codex
 # --- (p1 probe E2 minted a "TOTE RACK / STAGE-LEFT" sign). Ordered, word-boundary, case-insensitive.
 # --- It changes WORDING only: dropping a load-bearing staging fact would be the fidelity violation
 # --- named at SKILL.md L395-397.
-IDIOM_TABLE: list[tuple[re.Pattern, str]] = [
+def _frame_side(match: re.Match) -> str:
+    return f"on the {match.group('side').lower()} of the frame"
+
+
+IDIOM_TABLE: list[tuple[re.Pattern, str | Callable[[re.Match], str]]] = [
+    (re.compile(r"\b(?:at\s+)?(?:stage|camera)[-\s](?P<side>left|right)\s+of\s+"
+                r"(?:the\s+)?frame\b", re.I), _frame_side),
     (re.compile(r"\boff[-\s]?stage\b", re.I), "outside the frame"),
     (re.compile(r"\bstage[-\s](?:centre|center)\b", re.I), "centred in the frame"),
     (re.compile(r"\bstage[-\s]left\b", re.I), "on the left of the frame"),
@@ -93,9 +100,10 @@ def _translate_span(span: str) -> str:
 def residual_idiom(text: str) -> list[str]:
     """WARN-level scan for staging idiom the table cannot claim to cover. Never raises: the table
     is not provably exhaustive and hard-failing on authored prose would block legitimate shots."""
+    translated = translate_idiom(text or "")
     hits = []
-    for m in _RESIDUAL.finditer(translate_idiom(text or "")):
-        window = (text or "")[max(0, m.start() - 40):m.end() + 40]
+    for m in _RESIDUAL.finditer(translated):
+        window = translated[max(0, m.start() - 40):m.end() + 40]
         if _DIRECTION_NEAR.search(window):
             hits.append(window.strip())
     return hits
