@@ -86,15 +86,40 @@ RATIO_TOLERANCE = 0.05
 
 
 def crop_to_ratio(im, target_ratio):
-    """Centre-crop the excess axis so the result is exactly `target_ratio`. Never stretches."""
+    """Centre-crop to `target_ratio`, preferring an exact integer rectangle. Never stretches."""
+    import math
+    from fractions import Fraction
+
     w, h = im.size
-    if w / h > target_ratio:                       # too wide -> trim width
-        new_w = int(round(h * target_ratio))
-        left = (w - new_w) // 2
-        return im.crop((left, 0, left + new_w, h))
-    new_h = int(round(w / target_ratio))           # too tall -> trim height
+    if target_ratio <= 0:
+        raise ValueError("target_ratio must be positive")
+
+    target = Fraction(target_ratio).limit_denominator()
+    candidates = set()
+
+    # A target canvas ratio such as 1376:768 reduces to an exact, non-stretchable crop rectangle.
+    scale = min(w // target.numerator, h // target.denominator)
+    if scale:
+        candidates.add((target.numerator * scale, target.denominator * scale))
+
+    # Tiny inputs may not contain one exact target-ratio rectangle. In that case, choose the
+    # closest possible integer crop by considering floor/round/ceil on either crop axis.
+    for new_w in {math.floor(h * target_ratio), round(h * target_ratio),
+                  math.ceil(h * target_ratio)}:
+        if 0 < new_w <= w:
+            candidates.add((new_w, h))
+    for new_h in {math.floor(w / target_ratio), round(w / target_ratio),
+                  math.ceil(w / target_ratio)}:
+        if 0 < new_h <= h:
+            candidates.add((w, new_h))
+
+    new_w, new_h = min(
+        candidates,
+        key=lambda size: (abs(size[0] / size[1] - target_ratio), -(size[0] * size[1])),
+    )
+    left = (w - new_w) // 2
     top = (h - new_h) // 2
-    return im.crop((0, top, w, top + new_h))
+    return im.crop((left, top, left + new_w, top + new_h))
 
 
 def normalize_to_canvas(data, canvas):

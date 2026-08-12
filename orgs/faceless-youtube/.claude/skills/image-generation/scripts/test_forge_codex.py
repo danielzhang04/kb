@@ -1271,32 +1271,83 @@ def test_normalization_crops_then_resizes_to_the_exact_canvas():
     import forge_codex as fc
     from PIL import Image
     data = _png_bytes((1659, 948))
-    out, native, err = fc.normalize_to_canvas(data, (1376, 768))
+    validations = []
+    original_validate_png = fc.validate_png
+
+    def spy_validate_png(bytes_to_validate):
+        validations.append(bytes_to_validate)
+        return original_validate_png(bytes_to_validate)
+
+    fc.validate_png = spy_validate_png
+    try:
+        out, native, err = fc.normalize_to_canvas(data, (1376, 768))
+    finally:
+        fc.validate_png = original_validate_png
     assert native == (1659, 948)
     assert 0 < err <= fc.RATIO_TOLERANCE
     assert Image.open(io.BytesIO(out)).size == (1376, 768)
-    import forge
-    forge.validate_png(out)
+    assert validations == [data, out]
 
 
 def test_normalization_is_a_pure_resize_when_the_ratio_already_matches():
     import io
     import forge_codex as fc
     from PIL import Image
-    out, native, err = fc.normalize_to_canvas(_png_bytes((1672, 941)), (1376, 768))
-    assert native == (1672, 941)
-    assert err <= fc.RATIO_TOLERANCE
+    original_crop_to_ratio = fc.crop_to_ratio
+    crop_called = False
+
+    def spy_crop_to_ratio(*args, **kwargs):
+        nonlocal crop_called
+        crop_called = True
+        return original_crop_to_ratio(*args, **kwargs)
+
+    fc.crop_to_ratio = spy_crop_to_ratio
+    try:
+        out, native, err = fc.normalize_to_canvas(_png_bytes((1720, 960)), (1376, 768))
+    finally:
+        fc.crop_to_ratio = original_crop_to_ratio
+    assert native == (1720, 960)
+    assert err == 0
+    assert not crop_called
     assert Image.open(io.BytesIO(out)).size == (1376, 768)
 
 
-def test_normalization_crops_the_excess_axis_not_both():
+def test_normalization_crops_to_an_exact_ratio():
     import io
     import forge_codex as fc
     from PIL import Image
     # 1659x948 is WIDER-than-target?  target 16:9 = 1.7917, native = 1.7500 -> too TALL, crop height
     cropped = fc.crop_to_ratio(Image.open(io.BytesIO(_png_bytes((1659, 948)))), 1376 / 768)
-    assert cropped.size[0] == 1659
-    assert abs(cropped.size[0] / cropped.size[1] - 1376 / 768) < 1e-3
+    assert abs(cropped.size[0] / cropped.size[1] - 1376 / 768) == 0
+
+
+def test_crop_to_ratio_eliminates_the_52_by_29_rounding_residual():
+    import io
+    import forge_codex as fc
+    from PIL import Image
+
+    target_ratio = 1376 / 768
+    source = Image.open(io.BytesIO(_png_bytes((52, 29))))
+    cropped = fc.crop_to_ratio(source, target_ratio)
+    residual = abs(cropped.size[0] / cropped.size[1] - target_ratio)
+    unfixed_residual = abs(52 / 29 - target_ratio)
+
+    assert residual <= max(1 / cropped.size[0], 1 / cropped.size[1])
+    assert residual < unfixed_residual
+
+
+def test_crop_to_ratio_stays_within_the_one_pixel_quantization_bound():
+    import forge_codex as fc
+    from PIL import Image
+
+    target_ratio = 1376 / 768
+    for width in range(20, 81):
+        for height in range(20, 81):
+            cropped = fc.crop_to_ratio(Image.new("RGB", (width, height)), target_ratio)
+            residual = abs(cropped.size[0] / cropped.size[1] - target_ratio)
+            assert residual <= max(1 / cropped.size[0], 1 / cropped.size[1]), (
+                f"{width}x{height} cropped to {cropped.size} leaves residual {residual}"
+            )
 
 
 def test_normalization_raises_ratio_error_beyond_tolerance():
