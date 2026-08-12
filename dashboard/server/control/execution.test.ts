@@ -15,6 +15,7 @@ import {
   planRunWorktreePath,
   type AccountingAdapter,
   type AutomaticExecutionOptions,
+  type ExecutionBudget,
   type ExecutionCancellationController,
   type ManagerAdapter,
   type ResultIntegrator,
@@ -138,6 +139,7 @@ interface Fakes {
   worktreePaths: string[];
   removedPaths: string[];
   reservations: string[];
+  reservationLimits: ExecutionBudget[];
 }
 
 function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapter } = {}): Fakes {
@@ -146,6 +148,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
   const worktreePaths: string[] = [];
   const removedPaths: string[] = [];
   const reservations: string[] = [];
+  const reservationLimits: ExecutionBudget[] = [];
   const settled = new Set<string>();
   const worktrees: WorktreeAdapter = {
     async ensure(input) { worktreePaths.push(input.path); },
@@ -159,6 +162,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
   const accounting: AccountingAdapter = overrides.accounting ?? {
     async reserve(input) {
       reservations.push(input.operationKey);
+      reservationLimits.push(input.limits);
       return { ok: true, value: { reservationRef: `reservation:${input.attemptRef}`, replayed: false } };
     },
     async settle(input) { settled.add(input.operationKey); },
@@ -187,7 +191,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
     async cancelManager() {},
     async cancelWorker() {},
   };
-  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, removedPaths, reservations };
+  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, removedPaths, reservations, reservationLimits };
 }
 
 function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir(), 'kb-auto-worktrees')): AutomaticExecutionOptions {
@@ -197,6 +201,8 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
     worktreeRoot: root,
     maxConcurrency: 1,
     budget: { maxAttempts: 3, maxInputTokens: 1_000, maxOutputTokens: 1_000, maxCostUsdMicros: 10_000 },
+    // Deliberately distinct from the window budget above so a reservation can only match one of them.
+    attemptBudget: { maxAttempts: 1, maxInputTokens: 400, maxOutputTokens: 400, maxCostUsdMicros: 4_000 },
     worktrees: fake.worktrees,
     managers: fake.managers,
     workers: fake.workers,
@@ -363,6 +369,22 @@ describe('AutomaticExecutionEngine', () => {
       },
     });
     expect(observed).toEqual([{ runState: 'running', managerState: 'running' }]);
+  });
+
+  it('reserves every attempt against the PER-ATTEMPT budget, never the window budget', async () => {
+    const store = createStore();
+    const plan = proposal([stage('reserve-first'), stage('reserve-second', ['reserve-first'])]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    await new AutomaticExecutionEngine(options).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+    expect(fake.executionOrder).toEqual(['reserve-first', 'reserve-second']);
+    // Both reservations carry the attempt limits. Reserving the window ceiling instead is the live
+    // multi-stage defect: the adapter would project the whole window against itself on stage two.
+    expect(fake.reservationLimits).toEqual([options.attemptBudget, options.attemptBudget]);
+    expect(fake.reservationLimits).not.toContainEqual(options.budget);
   });
 
   it('contains failed Manager startup without terminalizing the resumable run or stage graph', async () => {

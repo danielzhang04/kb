@@ -255,7 +255,15 @@ export interface AutomaticExecutionOptions {
   assignedAgents?: AssignedAgentResolver;
   worktreeRoot: string;
   maxConcurrency: number;
+  /** WINDOW ceiling for the whole accounting window; also the automatic retry cap (`maxAttempts`). */
   budget: ExecutionBudget;
+  /**
+   * PER-ATTEMPT reservation limits. Every attempt reserves against this, never against the window
+   * ceiling: the accounting adapter projects held limits at face value, so reserving each attempt at the
+   * window ceiling makes the second attempt of a window unadmittable as soon as the first settles with
+   * any usage. Must fit inside `budget` on every field (validated where it is resolved, in activation).
+   */
+  attemptBudget: ExecutionBudget;
   /** Closed server action registry; prose cannot widen runtime capabilities. */
   worktrees: WorktreeAdapter;
   managers: ManagerAdapter;
@@ -714,6 +722,10 @@ export class AutomaticExecutionEngine {
     requireSafeInteger(options.budget.maxInputTokens, 'budget.maxInputTokens', 0);
     requireSafeInteger(options.budget.maxOutputTokens, 'budget.maxOutputTokens', 0);
     requireSafeInteger(options.budget.maxCostUsdMicros, 'budget.maxCostUsdMicros', 0);
+    requireSafeInteger(options.attemptBudget.maxAttempts, 'attemptBudget.maxAttempts', 1);
+    requireSafeInteger(options.attemptBudget.maxInputTokens, 'attemptBudget.maxInputTokens', 0);
+    requireSafeInteger(options.attemptBudget.maxOutputTokens, 'attemptBudget.maxOutputTokens', 0);
+    requireSafeInteger(options.attemptBudget.maxCostUsdMicros, 'attemptBudget.maxCostUsdMicros', 0);
     planRunWorktreePath(options.worktreeRoot, 'validation');
   }
 
@@ -1827,7 +1839,7 @@ export class AutomaticExecutionEngine {
       subject: input.subject,
       runRef: input.runRef,
       attemptRef: attempt.attemptRef,
-      limits: this.options.budget,
+      limits: this.options.attemptBudget,
     });
     if (this.cancellationObserved(input)) {
       if (reservation.ok) {

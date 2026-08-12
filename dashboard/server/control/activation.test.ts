@@ -7,6 +7,8 @@ import {
   createExecutionLatch,
   createProjectPolicyResolver,
   DASHBOARD_EXECUTOR_SUBJECT,
+  DEFAULT_ATTEMPT_BUDGET,
+  DEFAULT_BUDGET,
   type ActivationDeps,
   type BuildActivatedExecutionOptions,
   type ExecutionLatchState,
@@ -178,6 +180,39 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(on.createAssignedAgentResolver).toHaveBeenCalledWith('/repo');
     const engineOptions = (on.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(engineOptions.assignedAgents).toBe((on.createAssignedAgentResolver as ReturnType<typeof vi.fn>).mock.results[0].value);
+  });
+
+  it('passes a per-attempt budget that fits strictly inside the window ceiling', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const engineOptions = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(engineOptions.budget).toEqual(DEFAULT_BUDGET);
+    expect(engineOptions.attemptBudget).toEqual(DEFAULT_ATTEMPT_BUDGET);
+    // The window ceiling is what the accounting adapter projects against; an attempt reserved AT that
+    // ceiling can never be the second attempt of a window, because the projection counts settled usage
+    // plus this reservation's full held limit. Every attempt field must therefore be strictly smaller.
+    for (const field of ['maxAttempts', 'maxInputTokens', 'maxOutputTokens', 'maxCostUsdMicros'] as const) {
+      expect(DEFAULT_ATTEMPT_BUDGET[field]).toBeLessThan(DEFAULT_BUDGET[field]);
+    }
+    // And the window accounting adapter is still built on the WINDOW budget, not the attempt budget.
+    expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ globalBudget: DEFAULT_BUDGET }));
+  });
+
+  it('refuses at construction when a per-attempt budget exceeds the window ceiling on any field', () => {
+    for (const field of ['maxAttempts', 'maxInputTokens', 'maxOutputTokens', 'maxCostUsdMicros'] as const) {
+      const deps = spyDeps();
+      expect(() => buildActivatedExecution({
+        ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+        attemptBudget: { ...DEFAULT_ATTEMPT_BUDGET, [field]: DEFAULT_BUDGET[field] + 1 },
+      })).toThrow(new RegExp(`attempt budget ${field} .* exceeds the window budget`));
+      expect(deps.createEngine).not.toHaveBeenCalled();
+    }
+    // Equality on every field is admissible (it is a ceiling, not a strict bound) — only excess throws.
+    const deps = spyDeps();
+    expect(() => buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      attemptBudget: { ...DEFAULT_BUDGET },
+    })).not.toThrow();
   });
 
   it('delegates run, stop, and recoverable Manager-start containment to the engine', async () => {
