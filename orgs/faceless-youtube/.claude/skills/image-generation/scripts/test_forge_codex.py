@@ -2086,6 +2086,102 @@ def test_dry_run_prints_the_prompt_and_spawns_no_subprocess():
     assert not any(Path(tmp / "generated_images").rglob("*.png"))
 
 
+def _spec_file(tmp, items):
+    p = Path(tmp) / "spec.json"
+    p.write_text(json.dumps(items), encoding="utf-8")
+    return str(p)
+
+
+def _runnable_item(name, payload_seed):
+    it = _item_L29()
+    it["name"] = name
+    it["mode"] = "identity"
+    it["seed"] = [payload_seed]
+    it.pop("seed_roles")
+    return it
+
+
+def _cli_env(mode):
+    fc, k, tmp, staging, seed = _kit_for_run(mode)
+    return fc, k, tmp, staging, seed
+
+
+def test_cli_shots_filter_consumes_only_the_named_items():
+    fc, k, tmp, staging, seed = _cli_env("ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed), _runnable_item("A2", seed)])
+    rc = fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging),
+                  "--shots", "A1"])
+    assert rc == 0
+    assert (staging / "A1.png").is_file() and not (staging / "A2.png").exists()
+    rows = [json.loads(l) for l in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [r["name"] for r in rows] == ["A1"]
+
+
+def test_cli_unknown_shot_id_raises_naming_it():
+    fc, k, tmp, staging, seed = _cli_env("ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed)])
+    raised = None
+    try:
+        fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging),
+                 "--shots", "A1,NOPE"])
+    except SystemExit as e:
+        raised = str(e)
+    assert raised is not None and "NOPE" in raised
+
+
+def test_cli_without_shots_consumes_the_whole_spec():
+    fc, k, tmp, staging, seed = _cli_env("ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed), _runnable_item("A2", seed)])
+    assert fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging)]) == 0
+    assert (staging / "A1.png").is_file() and (staging / "A2.png").is_file()
+
+
+def test_cli_dry_run_spawns_zero_subprocesses_and_writes_no_png():
+    fc, k, tmp, staging, seed = _cli_env("ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed), _runnable_item("A2", seed)])
+    fc.CODEX_ARGV_PREFIX = ["definitely-not-a-real-binary-xyz"]
+    rc = fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging), "--dry-run"])
+    assert rc == 0
+    assert not list(staging.glob("*.png"))
+    assert not list(Path(tmp / "generated_images").rglob("*.png"))
+    assert (staging / "_codex" / "prompts" / "A1.txt").is_file()
+    assert (staging / "_codex" / "prompts" / "A2.txt").is_file()
+    assert not (staging / "_codex" / "engine-log.jsonl").exists()
+
+
+def test_cli_split_run_isolation_over_one_spec():
+    """§2.2: codex runs its subset; a Gemini-side publication of the other name is untouched and
+    the codex log holds exactly one row."""
+    fc, k, tmp, staging, seed = _cli_env("ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed), _runnable_item("A2", seed)])
+    assert fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging),
+                    "--shots", "A1"]) == 0
+    (staging / "A2.png").write_bytes(_png_bytes((1376, 768)))     # the "Gemini half"
+    rows = [json.loads(l) for l in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [r["name"] for r in rows] == ["A1"]
+    assert (staging / "A1.png").is_file() and (staging / "A2.png").is_file()
+    assert not list(staging.glob("*.lock"))
+
+
+def test_cli_reports_failures_with_a_nonzero_exit():
+    fc, k, tmp, staging, seed = _cli_env("no_image")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed)])
+    assert fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging)]) == 1
+
+
+def test_cli_never_loads_a_key():
+    fc, k, tmp, staging, seed = _cli_env("ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed)])
+    saved = os.environ.pop("GEMINI_API_KEY", None)
+    try:
+        assert fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging)]) == 0
+    finally:
+        if saved is not None:
+            os.environ["GEMINI_API_KEY"] = saved
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

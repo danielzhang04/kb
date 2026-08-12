@@ -8,6 +8,7 @@ log. ``git diff forge.py`` must stay empty.
 
 Subscription-billed: $0 API spend. No key is ever loaded — every Kit is built dry.
 """
+import argparse
 import datetime
 import glob
 import hashlib
@@ -1036,3 +1037,96 @@ def run_item(k, item, seeds, opts, session=None):
     if residual:
         sys.stderr.write(f"  WARN {name}: residual staging idiom {residual}\n")
     return status, row
+
+
+def parse_shots(values):
+    """`--shots L26,L33 --shots L29` -> ['L26','L33','L29']; no flag -> None (the whole spec)."""
+    if not values:
+        return None
+    out = []
+    for v in values:
+        for part in str(v).split(","):
+            part = part.strip()
+            if part and part not in out:
+                out.append(part)
+    return out or None
+
+
+def filter_spec(spec, shots):
+    if shots is None:
+        return list(spec)
+    have = {item["name"] for item in spec}
+    missing = [s for s in shots if s not in have]
+    if missing:
+        raise SystemExit(f"--shots names {len(missing)} id(s) not in the spec: "
+                         f"{', '.join(missing)}")
+    wanted = set(shots)
+    return [item for item in spec if item["name"] in wanted]
+
+
+def main(argv=None):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    ap = argparse.ArgumentParser(prog="forge_codex",
+                                 description="codex CLI image engine (standalone peer runner)")
+    ap.add_argument("cmd", choices=("gen",))
+    ap.add_argument("--kit", required=True)
+    ap.add_argument("--batch", required=True, help="a spec.json emitted by `forge.py batch`")
+    ap.add_argument("--video", default=None, help="merge this video's own cast vocabulary")
+    ap.add_argument("--staging", default=None,
+                    help="output directory (default <kit>/_staging); the arc always passes its own")
+    ap.add_argument("--shots", action="append", default=[])
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--force", action="store_true")
+    ap.add_argument("--canvas", dest="image_size", choices=("1K", "2K"), default=None)
+    ap.add_argument("--session-mode", choices=("isolated", "session"), default="isolated")
+    ap.add_argument("--session-span", type=int, default=8)
+    ap.add_argument("--keep-composed", dest="keep_composed", action="store_true", default=True)
+    a = ap.parse_args(argv)
+
+    k = Kit(a.kit, dry=True)
+    if a.video:
+        k.use_video(a.video)
+    if a.staging:
+        k.staging = os.path.abspath(a.staging)
+    os.makedirs(k.staging, exist_ok=True)
+
+    spec = json.load(open(a.batch, encoding="utf-8"))
+    reqs = filter_spec(spec, parse_shots(a.shots))
+    plan = preflight_batch(k, reqs, a.force, a.dry_run)
+    for item, seeds in plan:
+        if seeds is not None:
+            prepare_seeds(item, seeds)
+    opts = RunOptions(force=a.force, dry_run=a.dry_run, image_size=a.image_size,
+                      session_mode=a.session_mode, session_span=a.session_span,
+                      keep_composed=a.keep_composed)
+    session = None
+    rows, failures = [], 0
+    for item, seeds in plan:
+        if seeds is None:
+            print(f"  {item['name']}: skip (exists in staging)", flush=True)
+            continue
+        session = _session_for(opts, session)
+        status, row = run_item(k, item, seeds, opts, session=session)
+        print(f"  {item['name']}: {status}", flush=True)
+        if row is not None:
+            rows.append(row)
+        if status.startswith("ERR"):
+            failures += 1
+            if status.startswith("ERR quota"):
+                print("  == QUOTA — stopping the run loud; a human decides (§5.3) ==", flush=True)
+                break
+    if rows:
+        print(run_totals_text(rows), flush=True)
+    return 1 if failures else 0
+
+
+def _session_for(opts, session):
+    """Isolated mode has no session object at all. Replaced in full by Task C14."""
+    return None
+
+
+if __name__ == "__main__":
+    sys.exit(main())
