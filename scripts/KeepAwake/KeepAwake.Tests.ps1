@@ -1059,6 +1059,71 @@ Describe 'CLI entry point (scripts/keep_awake.ps1 invoked as a real subprocess)'
     }
 }
 
+Describe 'Start-KeepAwakeSupervisor pass-failure resilience (F2: one bad pass must never kill the supervisor)' {
+    # Incident 2026-08-12 01:29: a single lease-file write collision escaped
+    # Invoke-SupervisorPass with no try/catch around it, and the `finally`
+    # block then disarmed power management with four live leases still held.
+    # Get-KeepAwakeMutexName isolates the production mutex name
+    # ('Global\kb-keepawake-supervisor') from these tests -- a real supervisor
+    # runs on this machine and must never be touched by the suite.
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        $script:FakeStore = @{
+            '4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936' = 1
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da' = 1200
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364' = 900
+        }
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = { param($SubGuid, $SettingGuid, $Value) $script:FakeStore["$SubGuid|$SettingGuid"] = $Value; $true }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'derives an isolated mutex name under KB_KEEPAWAKE_ROOT' {
+        Get-KeepAwakeMutexName | Should -Not -Be 'Global\kb-keepawake-supervisor'
+    }
+
+    It 'survives transient pass failures and exits 0 when leases drain' {
+        $script:calls = 0
+        Set-SupervisorPassInvoker {
+            param($Now, $IdleTimeoutMinutes, $CpuThreshold)
+            $script:calls++
+            if ($script:calls -le 3) { throw 'injected transient failure' }
+            return @{ LiveCount = 0; Pruned = @(); Armed = $false; ImmediatePruned = @() }
+        }
+        Start-KeepAwakeSupervisor -PollSeconds 0 | Should -Be 0
+        $script:calls | Should -Be 4
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'supervisor-pass-ERROR'
+    }
+
+    It 'exits 2 after 10 consecutive pass failures' {
+        $script:calls = 0
+        Set-SupervisorPassInvoker { $script:calls++; throw 'injected persistent failure' }
+        Start-KeepAwakeSupervisor -PollSeconds 0 | Should -Be 2
+        $script:calls | Should -Be 10
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'supervisor-FAILING-persistently'
+    }
+
+    It 'a success resets the consecutive-failure counter' {
+        $script:calls = 0
+        Set-SupervisorPassInvoker {
+            $script:calls++
+            # 9 failures, one success (live lease so the loop continues), 9 more failures, then drain:
+            if ($script:calls -eq 10) { return @{ LiveCount = 1; Pruned = @(); Armed = $true; ImmediatePruned = @() } }
+            if ($script:calls -eq 20) { return @{ LiveCount = 0; Pruned = @(); Armed = $false; ImmediatePruned = @() } }
+            throw 'injected'
+        }
+        Start-KeepAwakeSupervisor -PollSeconds 0 | Should -Be 0
+        $script:calls | Should -Be 20
+    }
+}
+
 Describe 'supervisor singleton' {
     # A named Win32 mutex is reentrant PER THREAD, not per handle: a second
     # Mutex object opened for the same name on the SAME thread that already

@@ -14,6 +14,18 @@ function Get-KeepAwakeRoot {
     return (Join-Path $env:LOCALAPPDATA 'kb-keepawake')
 }
 
+# Production keeps the historical fixed name. Under KB_KEEPAWAKE_ROOT (tests,
+# parallel sandboxes) the name is suffixed with a hash of the root so a test
+# supervisor can never collide with -- or be shadowed by -- the real one. A
+# real supervisor runs on this machine at all times; this is the seam that
+# keeps the test suite from ever touching it.
+function Get-KeepAwakeMutexName {
+    if (-not $env:KB_KEEPAWAKE_ROOT) { return 'Global\kb-keepawake-supervisor' }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $hash = [System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($env:KB_KEEPAWAKE_ROOT))).Replace('-', '').Substring(0, 16)
+    return "Global\kb-keepawake-supervisor-$hash"
+}
+
 function Get-LeaseDir {
     $d = Join-Path (Get-KeepAwakeRoot) 'leases'
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
@@ -765,6 +777,17 @@ function Test-SupervisorShouldContinueAfterEmptyPass {
     return ((& $GetLiveLeaseCount) -gt 0)
 }
 
+# Test seam for Start-KeepAwakeSupervisor's per-iteration work: F2's tests
+# inject failure/success sequences here rather than driving the real
+# Invoke-SupervisorPass (which needs real lease files and power provider
+# plumbing to produce a given LiveCount on demand). Same style as
+# $script:PowerProvider.
+$script:SupervisorPassInvoker = {
+    param($Now, $IdleTimeoutMinutes, $CpuThreshold)
+    Invoke-SupervisorPass -Now $Now -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
+}
+function Set-SupervisorPassInvoker { param([Parameter(Mandatory)][scriptblock]$Invoker) $script:SupervisorPassInvoker = $Invoker }
+
 function Start-KeepAwakeSupervisor {
     param(
         [int]$PollSeconds = 60,
@@ -775,7 +798,7 @@ function Start-KeepAwakeSupervisor {
     # A PID file alone is racy: two -Acquire calls can both observe "no
     # supervisor" before either spawns. The named mutex is the authority.
     $created = $false
-    $mutex = New-Object System.Threading.Mutex($true, 'Global\kb-keepawake-supervisor', [ref]$created)
+    $mutex = New-Object System.Threading.Mutex($true, (Get-KeepAwakeMutexName), [ref]$created)
     if (-not $created) {
         Write-KeepAwakeLog 'supervisor-exit reason=another-supervisor-holds-mutex'
         $mutex.Dispose()
@@ -795,6 +818,7 @@ function Start-KeepAwakeSupervisor {
 
     $deadline = (Get-Date).AddHours($MaxHours)
     $exit = 0
+    $consecutiveFailures = 0
     try {
         while ($true) {
             if ((Get-Date) -ge $deadline) {
@@ -802,14 +826,30 @@ function Start-KeepAwakeSupervisor {
                 $exit = 3
                 break
             }
-            $pass = Invoke-SupervisorPass -Now ([datetimeoffset]::Now) `
-                        -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
+            try {
+                $pass = & $script:SupervisorPassInvoker ([datetimeoffset]::Now) $IdleTimeoutMinutes $CpuThreshold
+                $consecutiveFailures = 0
+            } catch {
+                # One racy/failed pass must never tear the supervisor down (the
+                # 2026-08-12 overnight outage was exactly this: a single
+                # lease-file write collision escaped the loop, and the
+                # `finally` block disarmed with four live leases still held).
+                $consecutiveFailures++
+                Write-KeepAwakeLog ("supervisor-pass-ERROR consecutive=$consecutiveFailures :: $_")
+                if ($consecutiveFailures -ge 10) {
+                    Write-KeepAwakeLog 'supervisor-FAILING-persistently 10 consecutive pass errors -- disarming and exiting'
+                    $exit = 2
+                    break
+                }
+                Start-Sleep -Seconds $PollSeconds
+                continue
+            }
             if ($pass.LiveCount -eq 0) {
                 # Re-check for a lease that appeared in the tiny window since
-                # Invoke-SupervisorPass computed LiveCount, before committing
+                # the pass invoker computed LiveCount, before committing
                 # to exit and releasing the mutex. `continue` (not
                 # Start-Sleep then continue) so the next loop iteration re-runs
-                # Invoke-SupervisorPass immediately and re-arms without delay.
+                # the pass invoker immediately and re-arms without delay.
                 if (Test-SupervisorShouldContinueAfterEmptyPass) {
                     Write-KeepAwakeLog 'supervisor-shutdown-race-AVOIDED lease appeared during final check -- resuming instead of exiting'
                     continue
@@ -830,7 +870,7 @@ function Start-KeepAwakeSupervisor {
     return $exit
 }
 
-Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLog,
+Export-ModuleMember -Function Get-KeepAwakeRoot, Get-KeepAwakeMutexName, Get-LeaseDir, Write-KeepAwakeLog,
     Get-SafeLabel, Get-LeasePath, Write-JsonFileAtomic, New-KeepAwakeLease, Get-KeepAwakeLeases,
     Update-KeepAwakeLeaseHeartbeat, Remove-KeepAwakeLease,
     Test-ProcessAlive, Get-ProcessTreeCpu, Update-LeaseActivity,
@@ -839,4 +879,4 @@ Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLo
     Set-PowerProvider, Get-PowerProvider, Get-PowerBaselineStatus, Get-PowerBaseline, Save-PowerBaseline,
     Set-PowerArmed, Restore-PowerBaseline, Test-PowerArmed, Resolve-StaleArmReconciliation,
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass,
-    Test-SupervisorShouldContinueAfterEmptyPass, Start-KeepAwakeSupervisor
+    Test-SupervisorShouldContinueAfterEmptyPass, Set-SupervisorPassInvoker, Start-KeepAwakeSupervisor
