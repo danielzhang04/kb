@@ -1,58 +1,49 @@
-# 2026-08-12 — Workflow-platform P0: fix stack SHIPPED + deployed, acceptance run at the human gate
-
-Supersedes `2026-08-11-dashboard-workflow-platform-p0.md` (consumed; delete both on pickup).
+# 2026-08-12 — Workflow-platform P0: COMPLETE. Acceptance run PASSED live; PR #117 open (merge = Daniel's click)
 
 ## Load list
 - `memory/claude-boss.md` (ops) — lessons through this arc
-- Branch `claude/workflow-platform` @ **9a33f7e** (pushed) — the full P0 stack
-- Prod pin `claude/dashboard-prod-pin` @ **7a5e832** (pushed) — merge of the stack, LIVE on pm2 :5317
-- `orgs/kb-ops/workflows/acceptance-run.md` (ops) — the gated 3-stage def (gates g1/g2)
-- Control plane: `AppData/Local/kb-dashboard/control/control-plane.json` — run-74383969
+- PR #117 (claude/workflow-platform @ 4c1e6bf → main) — full 14-commit stack, all delta-reviews SHIP
+- Prod pin `claude/dashboard-prod-pin` @ **da9c79f** (= branch tip merged) — LIVE on pm2 :5317, verified
+- Acceptance evidence: run-74383969 SUCCEEDED, signoff verdict PASS on managed branch
+  `codex/managed-c08a71ee84040459c07dc89d` (409f64f draft → 2865b0f revise → c24cd83 signoff);
+  cost `ledgers/cost/dashboard-engine-2026-08-12.tsv` (3 stages, $0 subscription)
 
-## State: everything built, reviewed, deployed. Blocked ONLY on Daniel's passkey.
+## State
 
-Commit chain on `claude/workflow-platform` (all pushed):
-804acec (P0 fixes) → ecf7265 (adapter result-correlation) → 89bb805 (auto-close drop + read scope) →
-172e0b5 (round 2) → 0b24360 (operator mutation authority, ruling 3) → **SHIP verdict** →
-8bed430 (auto-resume + cross-subject activate + owner-keyed locks) → e1aa422 (GAP-3/4/5/6 + dead
-/api/timeline removed) → **FIX-THEN-SHIP (2 MAJOR/6 MINOR)** → ef3af4e (all 8 fixed, mutation-checked)
-→ **delta verdict SHIP** → 9a33f7e (comment accuracy N1/N2).
+P0 is DONE end-to-end. The live gated 3-stage acceptance run passed: one Resume click ran the
+chain; auto-resume fired 3× (g1 answer, budget-intervention answer, g2 answer — zero extra clicks);
+dependsOn lineage verified on disk. Four REAL defects surfaced live and were fixed+reviewed+deployed
+same-session (all invisible to 900+ green tests):
+1. df857db — resolveBase was the only integrator method outside the serialized ops-transaction span
+   → every multi-stage dispatch crashed (first live multi-stage ever attempted).
+2. c9d0ccf — per-attempt budget == window budget → second attempt per window arithmetically
+   impossible ("global token or cost budget exhausted").
+3. 74602f6 — refused settlement stranded its reservation → with maxConcurrency 1, ONE overage
+   blocked every later reserve ("global concurrency limit reached"). Released at ceiling now.
+4. d89ce10+4c1e6bf — Windows EPERM on atomic-save rename when ANY reader (CPython open, editors, AV)
+   held control-plane.json → bounded transient retry at all 8 rename sites via shared
+   server/atomicRename.ts.
 
-All reviews opus, model-grepped (96/187/190/96× claude-opus-5). Final tallies: 382 tests green across
-the 5 affected suites, tsc 7-error pre-existing baseline byte-identical.
+## NEXT (in order)
+1. **Daniel merges PR #117** (`gh pr merge 117 --merge` — classifier blocks the boss doing it).
+2. After merge: boss session sweeps — delete claude/workflow-platform local+remote (verify
+   rev-list==0 first), remove kb-worktrees/workflow-platform, `git worktree prune`.
+3. Start P1: iteration-loops research per the arc prompt on origin/claude/boss-2026-08-11.
 
-Deployed: pin merged to 7a5e832, SPA rebuilt (`npm run build` green), `pm2 restart kb-dashboard`,
-daemon verified (root 200, API 401 unauth as expected).
+## Cleanup still owed (task #15)
+- Archive dead runs via operator UI: run-73e28f66 ("…no-spend chain + gate smoke test", 2026-08-11,
+  8 open policy/execution requests) and run-96ce771d (failed twin, same title as the passing run).
+- Scratchpad qtest/, atlas no-.git anomaly, boss-worktree sweep per BOSS.md.
 
-## THE GATE — Daniel, in order (~2 min + two gate answers)
-
-1. Dashboard → arm the executor (pm2 restart wiped the in-memory arming latch).
-2. Open run **run-74383969** (Workflow-platform P0 chain smoke test, waiting-human, all boundaries
-   accepted) → click **Resume** once. The /activate scoping fix + auto-resume are live: this single
-   click should carry the run through stage `draft`.
-3. Gate **g1-review-draft** fires (approval, blocks `revise`): check
-   `orgs/kb-ops/output/acceptance-run-status.md` has a `## Stage: draft` section → Approve.
-   Auto-resume now drives `revise` with NO second click — that's the mechanism under test.
-4. Gate **g2-review-revise** (blocks `signoff`): confirm draft section intact above the new revise
-   section → Approve → `signoff` writes `acceptance-run-signoff.md` with PASS/FAIL.
-
-## Evidence checklist (task #13, collect during/after the run)
-- [ ] One Resume click → run executes (no dead park)
-- [ ] g1 answer auto-resumes revise (no manual activate) — THE auto-resume proof
-- [ ] g2 answer auto-resumes signoff; signoff verdict PASS
-- [ ] Workflows graph shows the run; live stream click-in works
-- [ ] Cost ledger row for the run; no tracebacks in pm2 logs
-Then task #14: present evidence → PR `claude/workflow-platform` → main → start P1 (iteration-loops
-research per arc prompt on origin/claude/boss-2026-08-11).
-
-## Known-accepted residuals (logged, not blockers)
-- Delta-review MINORs: N1 bridge-side duplicate window (own-subject launch skips the one-run-per-
-  revision guard; narrow reachability), N3 park dedup keys on free-text titles, N4 `:954` await has
-  no rejecting-sink test.
-- Client: `resumeRunAfterHumanResponse` on a foreign pre-publication run now gets 409
-  `run-already-exists-for-revision` → error banner though the answer committed; follow-up = treat as
-  benign no-op in `controlClient.ts`.
-- Earlier round's minors (task #12 description): steering-grace 60s vs long tool calls, shutdown race
-  window, non-ops repoRoot exit unreported, manager-command audit gap.
-- Cleanup (task #15): parked run-73e28f66 + its 8 open policy/execution requests (archive via
-  operator), scratchpad qtest/, atlas no-.git anomaly, boss worktree sweep per BOSS.md.
+## Non-blocking follow-ups (from final SHIP reviews)
+- Duplicate-run guard is one-directional (bridge's own-subject launch skips it) — launch.ts:143.
+- Usable window = window − attempt_limit (settled+held cliff); durable shape = reserve expected
+  usage, reconcile at settle. One overage burns 1M/200k/$2.50 of the window (charged at ceiling).
+- Client: treat 409 run-already-exists-for-revision as benign no-op in resumeRunAfterHumanResponse.
+- tmp-orphan on final rename failure at canonicalResultIntegrator.ts:416 + spendGrantProvision.ts:73
+  (6 of 8 sites clean up; these 2 don't).
+- atomicJsonDocument path could sleep async (holds SQLite lock across awaits) — comment marks it.
+- park dedup keys on free-text titles (execution.ts:1484 gate title could collide).
+- UI: run-title twins indistinguishable in list (two runs same def title) — surface created-at/runRef.
+- Earlier-round minors: steering-grace 60s vs long tool calls, shutdown race window, non-ops repoRoot
+  exit unreported, manager-command audit gap.
