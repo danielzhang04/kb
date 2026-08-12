@@ -14,18 +14,92 @@ function Get-KeepAwakeRoot {
     return (Join-Path $env:LOCALAPPDATA 'kb-keepawake')
 }
 
+# Production keeps the historical fixed name. Under KB_KEEPAWAKE_ROOT (tests,
+# parallel sandboxes) the name is suffixed with a hash of the root so a test
+# supervisor can never collide with -- or be shadowed by -- the real one. A
+# real supervisor runs on this machine at all times; this is the seam that
+# keeps the test suite from ever touching it.
+function Get-KeepAwakeMutexName {
+    if (-not $env:KB_KEEPAWAKE_ROOT) { return 'Global\kb-keepawake-supervisor' }
+    # Normalize before hashing: 'C:\x', 'C:\x\' and 'C:\X' are the same store
+    # on Windows and must not derive three different mutex names.
+    $normalized = $env:KB_KEEPAWAKE_ROOT.TrimEnd('\', '/').ToLowerInvariant()
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = [System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($normalized))).Replace('-', '').Substring(0, 16)
+    } finally { $sha.Dispose() }
+    return "Global\kb-keepawake-supervisor-$hash"
+}
+
+# Every state file here (log, armed.json, supervisor.pid, respawn.json) can be
+# the FIRST thing written on a given machine -- only Get-LeaseDir used to create
+# the root, so anything writing before the first lease landed in a missing
+# directory.
+function Confirm-KeepAwakeRoot {
+    $root = Get-KeepAwakeRoot
+    if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force -ErrorAction SilentlyContinue | Out-Null }
+    return $root
+}
+
 function Get-LeaseDir {
     $d = Join-Path (Get-KeepAwakeRoot) 'leases'
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
     return $d
 }
 
+# One shared log file is written by every hook invocation, every spawn and the
+# supervisor itself, so contention is the normal case, not the exception
+# (~48% Add-Content failure measured at 3 writers x 200ms cadence). This
+# function is called from inside the supervisor's own error path and from its
+# `finally`, which is precisely how a lost log line escalated into a machine
+# that slept overnight on 2026-08-12: a log line is NEVER worth a process.
+# Hence: FileShare.ReadWrite append (concurrent writers are expected), a few
+# quick retries, then swallow. The whole body is wrapped -- even Get-KeepAwakeRoot
+# and the directory creation must not be able to throw out of here.
+$script:LogMaxBytes = 1MB
+$script:LogWriteAttempts = 3
+# Delete sharing is load-bearing, not decoration: without it the rename that
+# rotation performs fails with a sharing violation (win32=32, measured) for as
+# long as ANY keepawake writer holds the log open -- so the log could only ever
+# rotate while idle, which is precisely when it is not growing.
+$script:LogFileShare = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+function Get-KeepAwakeLogFileShare { return $script:LogFileShare }
+
+# Single-generation size cap: the respawn-storm finding measured ~5.5 MB/day of
+# log growth with nothing ever trimming the file. Best effort in every respect --
+# a rotation that fails just means the file keeps growing this cycle, which is
+# strictly better than a throw. MoveFileExW (not Move-Item) so replacing an
+# existing .1 is one kernel call with no delete-then-create window.
+function Invoke-KeepAwakeLogRotation {
+    param([Parameter(Mandatory)][string]$Path)
+    try {
+        $fi = New-Object System.IO.FileInfo $Path
+        if ($fi.Exists -and $fi.Length -gt $script:LogMaxBytes) {
+            [KbPower.FileNative]::MoveFileExW($Path, "$Path.1", $script:MOVEFILE_REPLACE_EXISTING) | Out-Null
+        }
+    } catch { }
+}
+
 function Write-KeepAwakeLog {
     param([Parameter(Mandatory)][string]$Message)
-    $root = Get-KeepAwakeRoot
-    if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
-    $line = '{0}  {1}' -f (Get-Date -Format $script:TimeFormat), $Message
-    Add-Content -Path (Join-Path $root 'keepawake.log') -Value $line -Encoding utf8
+    try {
+        $root = Confirm-KeepAwakeRoot
+        # FileStream resolves relative paths against the process working
+        # directory, not the PowerShell location -- normalize first.
+        $path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath((Join-Path $root 'keepawake.log'))
+        Invoke-KeepAwakeLogRotation -Path $path
+        $line = ('{0}  {1}{2}' -f (Get-Date -Format $script:TimeFormat), $Message, [Environment]::NewLine)
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($line)
+        for ($attempt = 1; $attempt -le $script:LogWriteAttempts; $attempt++) {
+            try {
+                $fs = New-Object System.IO.FileStream($path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, $script:LogFileShare)
+                try { $fs.Write($bytes, 0, $bytes.Length) } finally { $fs.Dispose() }
+                return
+            } catch {
+                Start-Sleep -Milliseconds (5 + (Get-Random -Maximum 16))
+            }
+        }
+    } catch { }
 }
 
 # A label becomes a filename, so it must never contain path separators or
@@ -45,20 +119,48 @@ function Get-LeasePath {
 
 # Shared atomic-write helper: a plain Set-Content is not atomic on Windows,
 # so a crash or power loss mid-write leaves a truncated file that the next
-# reader chokes on. Writing to a unique temp file then Move-Item -Force into
-# place means a reader always sees either the fully-old or fully-new
-# content. The PID + GUID suffix keeps concurrent writers (e.g. a -Heartbeat
-# CLI call racing the supervisor) from colliding on the temp file itself --
-# only the final Move-Item is a race, and -Force resolves that atomically.
+# reader chokes on. Writing to a unique temp file then kernel-atomically
+# replacing the destination means a reader always sees either the fully-old
+# or fully-new content. The PID + GUID suffix keeps concurrent writers (e.g.
+# a -Heartbeat CLI call racing the supervisor) from colliding on the temp
+# file itself -- only the final replace is a race.
+#
+# 2026-08-12 incident: Move-Item -Force onto an existing destination is
+# delete-then-create, not atomic -- a window in which a concurrent writer's
+# own create can land and throw "Cannot create a file when that file already
+# exists." That escaped into the supervisor's own lease rewrite (no
+# try/catch there at the time) and killed a live supervisor with four leases
+# still held. MoveFileExW with MOVEFILE_REPLACE_EXISTING is a single kernel
+# call -- no delete-then-create window -- so this replaces Move-Item outright.
+# Retried up to 3 times with a short jittered sleep for the residual sharing-
+# violation case (another process has the destination open), then throws --
+# callers decide (F2 catches it in the supervisor loop; the Heartbeat CLI
+# already catches and exits 0).
+$script:AtomicWriteAttempts = 5
+
 function Write-JsonFileAtomic {
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)]$Data
     )
+    # Set-Content resolves a relative path against the PowerShell location while
+    # MoveFileExW resolves it against the process working directory -- the two
+    # can differ, so normalize once here and let both see the same file.
+    $Path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     $tmp = "$Path.$PID.$([guid]::NewGuid().ToString('N')).tmp"
     try {
         $Data | ConvertTo-Json -Compress -Depth 5 | Set-Content -Path $tmp -Encoding utf8
-        Move-Item -Path $tmp -Destination $Path -Force
+        $lastWin32 = 0
+        # 5 attempts with a growing jittered backoff, not 3 with a flat one: the
+        # review measured a residual 0.27% throw rate under a 5-writer hammer
+        # even after the MoveFileExW change, and the suite's own concurrency
+        # test flaked on it.
+        for ($attempt = 1; $attempt -le $script:AtomicWriteAttempts; $attempt++) {
+            if ([KbPower.FileNative]::MoveFileExW($tmp, $Path, $script:MOVEFILE_REPLACE_EXISTING)) { return }
+            $lastWin32 = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            Start-Sleep -Milliseconds ((15 * $attempt) + (Get-Random -Maximum 41))
+        }
+        throw "Write-JsonFileAtomic: MoveFileExW failed for '$Path' after $($script:AtomicWriteAttempts) attempts (win32=$lastWin32)"
     } finally {
         Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
     }
@@ -501,8 +603,7 @@ function Save-PowerBaseline {
             hibernateidle_ac = (& $read $script:SUB_SLEEP $script:HIBERNATEIDLE 'hibernateidle_ac')
         }
     }
-    $root = Get-KeepAwakeRoot
-    if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
+    Confirm-KeepAwakeRoot | Out-Null
     # Atomic write (temp file + Move-Item -Force) rather than a direct
     # Set-Content -- a crash or power loss mid-write is exactly the scenario
     # that would otherwise leave a corrupt armed.json behind.
@@ -624,6 +725,29 @@ Add-Type -Namespace KbPower -Name Native -MemberDefinition @'
 public static extern uint SetThreadExecutionState(uint esFlags);
 '@ -ErrorAction SilentlyContinue
 
+# Separate type from KbPower.Native above (not an added member on it): that
+# type's -ErrorAction SilentlyContinue means a partial prior load (e.g. a
+# stale in-process module from an earlier version) could otherwise hide this
+# member never having been added. Used by Write-JsonFileAtomic, defined
+# earlier in this file -- function bodies resolve at call time, after the
+# whole module (including this Add-Type) has loaded, so definition order
+# here does not matter.
+Add-Type -Namespace KbPower -Name FileNative -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+public static extern bool MoveFileExW(string lpExistingFileName, string lpNewFileName, uint dwFlags);
+'@ -ErrorAction SilentlyContinue
+$script:MOVEFILE_REPLACE_EXISTING = [uint32]0x1
+
+# Both Add-Type calls above use -ErrorAction SilentlyContinue so a duplicate
+# load never takes the module down -- which also means a genuine load failure
+# would otherwise be completely silent, and every atomic write would then fail
+# at call time with a cryptic "type not found". Say so once, loudly, at import.
+foreach ($requiredType in @('KbPower.FileNative', 'KbPower.Native')) {
+    if ($null -eq ($requiredType -as [type])) {
+        Write-KeepAwakeLog "FATAL module-load type '$requiredType' unavailable (Add-Type failed) -- atomic writes and/or the execution-state hold will not work"
+    }
+}
+
 # The L suffix on 0x80000000 is required: PowerShell 5.1 parses a bare
 # 0x80000000 literal as a negative Int32, and casting that to [uint32] throws
 # at module-import time, taking down the whole module. The L suffix parses
@@ -643,6 +767,36 @@ function Clear-ExecutionStateHold {
     $r = [KbPower.Native]::SetThreadExecutionState($script:ES_CONTINUOUS)
     Write-KeepAwakeLog ("exec-state-clear result=$r")
     return ($r -ne 0)
+}
+
+# Consecutive per-lease failure counts, in supervisor process memory only --
+# deliberately not a file: this is scratch state for one supervisor's lifetime,
+# and another state file would be one more thing to fail to write.
+$script:LeaseFailureCounts = @{}
+$script:LeaseFailureDegradeThreshold = 3
+
+function Clear-LeaseFailureCount {
+    param([Parameter(Mandatory)][string]$Label)
+    if ($script:LeaseFailureCounts.ContainsKey($Label)) { $script:LeaseFailureCounts.Remove($Label) }
+}
+
+function Reset-LeaseFailureCounts { $script:LeaseFailureCounts = @{} }
+
+# Counting a throwing lease as LIVE is right for a transient failure and wrong
+# forever: a lease with parseable JSON but an unparseable heartbeat throws every
+# single pass, so it used to hold the machine awake until the 16h cap with its
+# prune branches unreachable. After $ConsecutiveFailures reaches the threshold,
+# decide on process liveness alone -- the one fact about a lease that does not
+# depend on the lease content being readable.
+function Resolve-DegradedLeaseAction {
+    param(
+        [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][int]$ConsecutiveFailures,
+        [int]$Threshold = $script:LeaseFailureDegradeThreshold
+    )
+    if ($ConsecutiveFailures -lt $Threshold) { return 'fail-live' }
+    if ($ProcessId -gt 0 -and (Test-ProcessAlive -ProcessId $ProcessId)) { return 'degraded-keep' }
+    return 'degraded-prune'
 }
 
 # One supervisor iteration, extracted so refcount transitions are testable
@@ -665,8 +819,21 @@ function Invoke-SupervisorPass {
     $pruned = @()
     $immediatePruned = @()
     $live = 0
+    $seenLabels = @{}
     foreach ($lease in (Get-KeepAwakeLeases)) {
+      $currentLabel = '<unknown>'
+      try { $currentLabel = [string]$lease.label } catch { }
+      $seenLabels[$currentLabel] = $true
+      # Per-lease isolation: one unwritable lease used to abort the entire pass
+      # -- including the arm/disarm decision below -- so a persistently
+      # unwritable lease meant 10 consecutive pass failures, exit 2, disarm,
+      # respawn, repeat, with the machine unarmed most of the time. A lease
+      # that cannot be rewritten is counted LIVE (fail safe toward armed):
+      # being unable to update a lease is not evidence its owner stopped
+      # working.
+      try {
         if (-not (Test-ProcessAlive -ProcessId $lease.pid)) {
+            Clear-LeaseFailureCount -Label $currentLabel
             Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
             # A corrupt/missing 'acquired' value must never crash the supervisor
             # (same defensive stance as Get-KeepAwakeLeases above) -- treat it as
@@ -687,6 +854,7 @@ function Invoke-SupervisorPass {
         $res = Update-LeaseActivity -Lease $lease -CpuNow $cpuNow -Now $Now `
                    -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
         if (-not $res.Active) {
+            Clear-LeaseFailureCount -Label $currentLabel
             Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
             Write-KeepAwakeLog ("lease-pruned label=$($lease.label) reason=$($res.Reason)")
             $pruned += $lease.label
@@ -700,7 +868,36 @@ function Invoke-SupervisorPass {
         $u = $res.Lease.Clone()
         $u.Remove('path')
         Write-JsonFileAtomic -Path $lease.path -Data $u
+        Clear-LeaseFailureCount -Label $currentLabel
         $live++
+      } catch {
+        $failedPid = 0
+        try { $failedPid = [int]$lease.pid } catch { }
+        $n = 1
+        if ($script:LeaseFailureCounts.ContainsKey($currentLabel)) { $n = [int]$script:LeaseFailureCounts[$currentLabel] + 1 }
+        $script:LeaseFailureCounts[$currentLabel] = $n
+        Write-KeepAwakeLog ("lease-pass-ERROR label=$currentLabel consecutive=$n -- counting it LIVE and continuing :: $_")
+        # Fail-live is bounded: past the threshold a lease that keeps throwing
+        # falls back to the one judgement that needs no lease content at all.
+        switch (Resolve-DegradedLeaseAction -ProcessId $failedPid -ConsecutiveFailures $n) {
+            'degraded-prune' {
+                Write-KeepAwakeLog ("lease-pass-DEGRADED label=$currentLabel consecutive=$n action=prune -- lease content unusable for $n passes and its owner (pid=$failedPid) is gone; pruning on process liveness alone")
+                try { Remove-Item $lease.path -Force -ErrorAction SilentlyContinue } catch { }
+                $pruned += $currentLabel
+                $script:LeaseFailureCounts.Remove($currentLabel)
+            }
+            'degraded-keep' {
+                Write-KeepAwakeLog ("lease-pass-DEGRADED label=$currentLabel consecutive=$n action=keep -- lease content unusable for $n passes but its owner (pid=$failedPid) is alive; keeping on process liveness alone")
+                $live++
+            }
+            default { $live++ }
+        }
+      }
+    }
+    # Drop counters for leases that are no longer on disk, so a label reused
+    # later starts clean and the table cannot grow across a 16-hour run.
+    foreach ($staleLabel in @($script:LeaseFailureCounts.Keys)) {
+        if (-not $seenLabels.ContainsKey($staleLabel)) { $script:LeaseFailureCounts.Remove($staleLabel) }
     }
 
     if ($live -gt 0 -and -not (Test-PowerArmed)) { Set-PowerArmed | Out-Null }
@@ -734,6 +931,246 @@ function Test-SupervisorShouldContinueAfterEmptyPass {
     return ((& $GetLiveLeaseCount) -gt 0)
 }
 
+function Get-SupervisorPidFilePath { return (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') }
+
+# Reads any file with FileShare.ReadWrite: the watchdog reads the pidfile on
+# every tool call while the supervisor may be replacing it, and Get-Content's
+# default sharing turned that into a measured 778/800 failure rate.
+function Read-KeepAwakeSharedText {
+    param([Parameter(Mandatory)][string]$Path)
+    $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    $fs = New-Object System.IO.FileStream($full, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+        $sr = New-Object System.IO.StreamReader($fs)
+        try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
+    } finally { $fs.Dispose() }
+}
+
+# A pid ALONE is not an identity: Windows recycles pids, so a recycled pid made
+# the watchdog read a long-dead supervisor as alive forever -- the outage
+# returning silently with the fix in place. Identity is pid + process start
+# time, so the pidfile is a JSON record, written atomically like every other
+# state file here.
+function Write-SupervisorPidFile {
+    param([int]$ProcessId = $PID)
+    Confirm-KeepAwakeRoot | Out-Null
+    $ticks = 0
+    try { $ticks = [long](Get-Process -Id $ProcessId -ErrorAction Stop).StartTime.Ticks } catch { }
+    Write-JsonFileAtomic -Path (Get-SupervisorPidFilePath) -Data ([ordered]@{ pid = $ProcessId; start_ticks = $ticks })
+}
+
+# Format values: 'absent', 'json' (current), 'legacy' (bare int written by a
+# pre-2026-08-12 supervisor still running -- no start time, so identity is
+# unknowable and callers must treat it as dead), 'unreadable'.
+function Read-SupervisorPidRecord {
+    $path = Get-SupervisorPidFilePath
+    if (-not (Test-Path $path)) { return @{ Format = 'absent'; Pid = 0; StartTicks = [long]0 } }
+    $raw = $null
+    try { $raw = Read-KeepAwakeSharedText -Path $path } catch { return @{ Format = 'unreadable'; Pid = 0; StartTicks = [long]0 } }
+    if ([string]::IsNullOrWhiteSpace($raw)) { return @{ Format = 'unreadable'; Pid = 0; StartTicks = [long]0 } }
+    $trimmed = $raw.Trim()
+    try {
+        $obj = $trimmed | ConvertFrom-Json
+        if ($null -ne $obj.PSObject.Properties['pid'] -and $null -ne $obj.PSObject.Properties['start_ticks']) {
+            return @{ Format = 'json'; Pid = [int]$obj.pid; StartTicks = [long]$obj.start_ticks }
+        }
+    } catch { }
+    $n = 0
+    if ([int]::TryParse($trimmed, [ref]$n) -and $n -gt 0) {
+        return @{ Format = 'legacy'; Pid = $n; StartTicks = [long]0 }
+    }
+    return @{ Format = 'unreadable'; Pid = 0; StartTicks = [long]0 }
+}
+
+# Alive AND the same process: a start-time mismatch means the pid was recycled.
+# StartTicks of 0 means "identity unknown", which fails closed to dead so the
+# watchdog respawns rather than trusting a bare pid.
+function Test-SupervisorProcessAlive {
+    param([Parameter(Mandatory)][int]$ProcessId, [long]$StartTicks = 0)
+    if ($ProcessId -le 0 -or $StartTicks -le 0) { return $false }
+    try {
+        $p = Get-Process -Id $ProcessId -ErrorAction Stop
+        if ($p.HasExited) { return $false }
+        return ([long]$p.StartTime.Ticks -eq $StartTicks)
+    } catch { return $false }
+}
+
+# The overnight failure mode this closes: the supervisor dies (crash, kill,
+# anything), and until the next SessionStart nothing respawns it -- Heartbeat
+# was a pure lease write. Heartbeat fires on every tool call of every session,
+# so it is the one signal guaranteed to still be firing overnight while work
+# runs. Duplicate spawns are safe: the named mutex arbitrates, losers exit.
+# Presence only -- deliberately NOT Get-KeepAwakeLeases. This runs on every tool
+# call of every session, and Get-KeepAwakeLeases parses each lease and DELETES
+# any that fail to parse; a zero-length read of a live lease (possible
+# mid-replace) would mean the watchdog deleting a live session's protection.
+# Corrupt-lease deletion stays a supervisor-only decision. Also does not create
+# the lease directory the way Get-LeaseDir does.
+function Test-AnyKeepAwakeLeaseFile {
+    $dir = Join-Path (Get-KeepAwakeRoot) 'leases'
+    if (-not (Test-Path $dir)) { return $false }
+    $first = Get-ChildItem -Path $dir -Filter '*.lease' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    return ($null -ne $first)
+}
+
+function Test-SupervisorRespawnNeeded {
+    if (-not (Test-AnyKeepAwakeLeaseFile)) { return $false }
+    $rec = Read-SupervisorPidRecord
+    if ($rec.Format -ne 'json') { return $true }
+    return (-not (Test-SupervisorProcessAlive -ProcessId $rec.Pid -StartTicks $rec.StartTicks))
+}
+
+# Respawn-storm guard. -Heartbeat fires at least twice per tool call per
+# session, and several failure states never self-clear (module import error,
+# execution-policy refusal, mutex held while the pidfile is gone), so an
+# unthrottled watchdog is worth ~57,600 spawns/day. State lives in the keepawake
+# root so it is shared across every session's hook process.
+$script:RespawnMinIntervalSeconds = 60
+$script:RespawnAbsoluteMaxIntervalSeconds = 900
+
+function Get-RespawnStatePath { return (Join-Path (Get-KeepAwakeRoot) 'respawn.json') }
+
+# The backoff ceiling is racing ONE number: the standby idle timeout that will
+# put the machine to sleep once the supervisor stops holding it off. A hardcoded
+# 900 s only ever worked because this machine's timeout happens to be 1200 s.
+# Derive it instead -- a third of the real baseline value, so at least two
+# respawn attempts land inside every sleep window -- and fall back to the
+# documented default when nothing is armed or the baseline is unusable.
+function Get-SupervisorRespawnMaxIntervalSeconds {
+    $standby = 0
+    try {
+        $b = Get-PowerBaseline
+        if ($null -ne $b) { $standby = [int]$b.original.standbyidle_ac }
+    } catch { $standby = 0 }
+    if ($standby -le 0) { $standby = [int]$script:PowerDefaults.standbyidle_ac }
+    $derived = [int][math]::Floor($standby / 3)
+    if ($derived -lt 1) { $derived = 1 }
+    return [int][math]::Min($script:RespawnAbsoluteMaxIntervalSeconds, $derived)
+}
+
+function Get-SupervisorRespawnBackoffSeconds {
+    param([Parameter(Mandatory)][int]$Attempts)
+    $ceiling = Get-SupervisorRespawnMaxIntervalSeconds
+    # The ceiling binds the first interval too: if the sleep timeout is shorter
+    # than the 60 s minimum, retrying every 60 s would lose the race outright.
+    if ($Attempts -le 1) { return [int][math]::Min($script:RespawnMinIntervalSeconds, $ceiling) }
+    # Doubling in the exponent domain, then capped -- 60, 120, 240, ...
+    $shift = [math]::Min($Attempts - 1, 20)
+    $seconds = $script:RespawnMinIntervalSeconds * [math]::Pow(2, $shift)
+    if ($seconds -gt $ceiling) { return [int]$ceiling }
+    return [int]$seconds
+}
+
+function Get-SupervisorRespawnState {
+    $empty = @{ Attempts = 0; LastAttempt = $null; ThrottleNoticeLogged = $false }
+    $path = Get-RespawnStatePath
+    if (-not (Test-Path $path)) { return $empty }
+    try {
+        $obj = (Read-KeepAwakeSharedText -Path $path) | ConvertFrom-Json
+        $state = @{ Attempts = 0; LastAttempt = $null; ThrottleNoticeLogged = $false }
+        if ($null -ne $obj.PSObject.Properties['attempts']) { $state.Attempts = [int]$obj.attempts }
+        if ($null -ne $obj.PSObject.Properties['throttle_notice_logged']) { $state.ThrottleNoticeLogged = [bool]$obj.throttle_notice_logged }
+        if ($null -ne $obj.PSObject.Properties['last_attempt'] -and -not [string]::IsNullOrWhiteSpace([string]$obj.last_attempt)) {
+            try { $state.LastAttempt = [datetimeoffset]::Parse([string]$obj.last_attempt) } catch { }
+        }
+        return $state
+    } catch { return $empty }
+}
+
+# Returns $true only if the state is durably on disk. It must never THROW into
+# a hook, but it must never lie either: the caller denies the spawn on $false,
+# because a throttle that cannot remember its own attempt is no throttle at all.
+function Save-SupervisorRespawnState {
+    param([Parameter(Mandatory)][hashtable]$State)
+    try {
+        Confirm-KeepAwakeRoot | Out-Null
+        $last = ''
+        if ($null -ne $State.LastAttempt) { $last = $State.LastAttempt.ToString($script:TimeFormat) }
+        Write-JsonFileAtomic -Path (Get-RespawnStatePath) -Data ([ordered]@{
+            attempts               = [int]$State.Attempts
+            last_attempt           = $last
+            throttle_notice_logged = [bool]$State.ThrottleNoticeLogged
+        })
+        return $true
+    } catch { return $false }
+}
+
+function Clear-SupervisorRespawnState {
+    # Gated on existence: this runs on the happy path of every heartbeat, where
+    # the file is normally absent.
+    $path = Get-RespawnStatePath
+    if (Test-Path $path) { Remove-Item $path -Force -ErrorAction SilentlyContinue }
+}
+
+# The single decision the -Heartbeat watchdog asks: may I spawn a supervisor
+# right now? Returns @{ Respawn; Reason; Attempt }. -Now is injectable so the
+# backoff schedule is testable without sleeping.
+function Resolve-SupervisorRespawnDecision {
+    param([datetimeoffset]$Now = [datetimeoffset]::Now)
+    if (-not (Test-SupervisorRespawnNeeded)) {
+        # A live supervisor (or no leases at all) means whatever was wrong is
+        # over -- the next failure deserves a fresh 60 s window, not a
+        # backed-off one carried over from an unrelated earlier outage.
+        Clear-SupervisorRespawnState
+        return @{ Respawn = $false; Reason = 'not-needed'; Attempt = 0 }
+    }
+    $state = Get-SupervisorRespawnState
+    $window = Get-SupervisorRespawnBackoffSeconds -Attempts $state.Attempts
+    if ($state.Attempts -gt 0) {
+        $last = $state.LastAttempt
+        if ($null -eq $last) {
+            # An unparseable/absent last_attempt used to skip the window check
+            # entirely -- a free pass on every heartbeat. The state file's own
+            # mtime is a sound lower bound on when that attempt happened.
+            try { $last = [datetimeoffset](Get-Item (Get-RespawnStatePath) -ErrorAction Stop).LastWriteTime } catch { }
+        }
+        if ($null -eq $last) {
+            # Attempts were made but nothing can date them: fail closed.
+            Write-KeepAwakeLog ("supervisor-respawn-DENIED reason=attempt-time-unknowable attempts=$($state.Attempts) -- refusing to spawn unthrottled")
+            return @{ Respawn = $false; Reason = 'throttled'; Attempt = $state.Attempts }
+        }
+        if (($Now - $last).TotalSeconds -lt $window) {
+            if (-not $state.ThrottleNoticeLogged) {
+                $remaining = [math]::Round($window - ($Now - $last).TotalSeconds)
+                Write-KeepAwakeLog ("supervisor-respawn-THROTTLED attempts=$($state.Attempts) window=${window}s next-attempt-in=${remaining}s -- supervisor still not running")
+                $state.ThrottleNoticeLogged = $true
+                Save-SupervisorRespawnState -State $state | Out-Null
+            }
+            return @{ Respawn = $false; Reason = 'throttled'; Attempt = $state.Attempts }
+        }
+    }
+    $attempt = $state.Attempts + 1
+    # Deny BEFORE spawning, never after: the record of this attempt has to be
+    # durable first, or the next heartbeat reads stale state and spawns again,
+    # and again, unthrottled.
+    if (-not (Save-SupervisorRespawnState -State @{ Attempts = $attempt; LastAttempt = $Now; ThrottleNoticeLogged = $false })) {
+        Write-KeepAwakeLog ("supervisor-respawn-DENIED reason=throttle-state-unpersistable attempt=$attempt -- refusing to spawn without a durable record of it")
+        return @{ Respawn = $false; Reason = 'persist-failed'; Attempt = $state.Attempts }
+    }
+    # Logged as an ATTEMPT, never as a success: this function cannot observe
+    # whether the spawn actually took, and the next heartbeat's liveness check
+    # is what confirms it.
+    Write-KeepAwakeLog ("supervisor-respawn-attempt attempt=$attempt next-window=$(Get-SupervisorRespawnBackoffSeconds -Attempts $attempt)s")
+    return @{ Respawn = $true; Reason = 'attempt'; Attempt = $attempt }
+}
+
+# Test seam for Start-KeepAwakeSupervisor's per-iteration work: F2's tests
+# inject failure/success sequences here rather than driving the real
+# Invoke-SupervisorPass (which needs real lease files and power provider
+# plumbing to produce a given LiveCount on demand). Same style as
+# $script:PowerProvider.
+function Get-DefaultSupervisorPassInvoker {
+    return {
+        param($Now, $IdleTimeoutMinutes, $CpuThreshold)
+        Invoke-SupervisorPass -Now $Now -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
+    }
+}
+$script:SupervisorPassInvoker = Get-DefaultSupervisorPassInvoker
+function Set-SupervisorPassInvoker { param([Parameter(Mandatory)][scriptblock]$Invoker) $script:SupervisorPassInvoker = $Invoker }
+# Injecting a fake invoker is process-wide state: without a reset the next test
+# file/block silently runs against the previous block's stub.
+function Reset-SupervisorPassInvoker { $script:SupervisorPassInvoker = Get-DefaultSupervisorPassInvoker }
+
 function Start-KeepAwakeSupervisor {
     param(
         [int]$PollSeconds = 60,
@@ -744,62 +1181,126 @@ function Start-KeepAwakeSupervisor {
     # A PID file alone is racy: two -Acquire calls can both observe "no
     # supervisor" before either spawns. The named mutex is the authority.
     $created = $false
-    $mutex = New-Object System.Threading.Mutex($true, 'Global\kb-keepawake-supervisor', [ref]$created)
+    $mutex = New-Object System.Threading.Mutex($true, (Get-KeepAwakeMutexName), [ref]$created)
     if (-not $created) {
         Write-KeepAwakeLog 'supervisor-exit reason=another-supervisor-holds-mutex'
         $mutex.Dispose()
         return 0
     }
 
-    $root = Get-KeepAwakeRoot
     # Defensive: on a truly first-ever run nothing has created the root yet
-    # (Get-LeaseDir only runs once a lease is written), so this write would
-    # otherwise fail silently. The mutex above is the real singleton guard;
-    # this just keeps -Status able to find the pid file on that first run.
-    if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
-    $pidFile = Join-Path $root 'supervisor.pid'
-    Set-Content -Path $pidFile -Value $PID -Encoding utf8
-    Set-ExecutionStateHold | Out-Null
-    Write-KeepAwakeLog ("supervisor-start pid=$PID poll=${PollSeconds}s cap=${MaxHours}h idle=${IdleTimeoutMinutes}m")
+    # (Get-LeaseDir only runs once a lease is written), so the pidfile write
+    # would otherwise fail. The mutex above is the real singleton guard; this
+    # just keeps -Status able to find the pid file on that first run.
+    Confirm-KeepAwakeRoot | Out-Null
+    $pidFile = Get-SupervisorPidFilePath
 
     $deadline = (Get-Date).AddHours($MaxHours)
     $exit = 0
+    $consecutiveFailures = 0
+    # Whether this supervisor ever learned anything about the world. Until the
+    # first pass returns, it has no idea whether leases are live -- see the
+    # disarm guard in the finally.
+    $completedPass = $false
     try {
+        # Inside the try (review finding 8): the pidfile write used to sit
+        # outside it, so a failure there killed the starting supervisor under
+        # $ErrorActionPreference='Stop' before the `finally` could clean up.
+        # Atomic JSON record (pid + start_ticks) rather than Set-Content of a
+        # bare int: measured 778/800 Set-Content failures against a concurrent
+        # reader, and a bare pid cannot survive pid recycling.
+        Write-SupervisorPidFile
+        Set-ExecutionStateHold | Out-Null
+        Write-KeepAwakeLog ("supervisor-start pid=$PID poll=${PollSeconds}s cap=${MaxHours}h idle=${IdleTimeoutMinutes}m")
         while ($true) {
-            if ((Get-Date) -ge $deadline) {
-                Write-KeepAwakeLog "supervisor-CAP-REACHED after ${MaxHours}h -- force-disarming"
-                $exit = 3
-                break
-            }
-            $pass = Invoke-SupervisorPass -Now ([datetimeoffset]::Now) `
-                        -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
-            if ($pass.LiveCount -eq 0) {
-                # Re-check for a lease that appeared in the tiny window since
-                # Invoke-SupervisorPass computed LiveCount, before committing
-                # to exit and releasing the mutex. `continue` (not
-                # Start-Sleep then continue) so the next loop iteration re-runs
-                # Invoke-SupervisorPass immediately and re-arms without delay.
-                if (Test-SupervisorShouldContinueAfterEmptyPass) {
-                    Write-KeepAwakeLog 'supervisor-shutdown-race-AVOIDED lease appeared during final check -- resuming instead of exiting'
-                    continue
+            # The ENTIRE body is inside this try, not just the pass invocation:
+            # the review reproduced an escape through $pass.LiveCount (a result
+            # missing that key throws PropertyNotFoundException under
+            # Set-StrictMode Latest) and through
+            # Test-SupervisorShouldContinueAfterEmptyPass, both of which used to
+            # sit outside it. Anything that throws in here is a failed cycle,
+            # never a dead supervisor.
+            try {
+                if ((Get-Date) -ge $deadline) {
+                    Write-KeepAwakeLog "supervisor-CAP-REACHED after ${MaxHours}h -- force-disarming"
+                    $exit = 3
+                    break
                 }
-                Write-KeepAwakeLog 'supervisor-exit reason=no-live-leases'
-                break
+                $pass = & $script:SupervisorPassInvoker ([datetimeoffset]::Now) $IdleTimeoutMinutes $CpuThreshold
+                $consecutiveFailures = 0
+                $completedPass = $true
+                if ($pass.LiveCount -eq 0) {
+                    # Re-check for a lease that appeared in the tiny window since
+                    # the pass invoker computed LiveCount, before committing
+                    # to exit and releasing the mutex. `continue` (not
+                    # Start-Sleep then continue) so the next loop iteration re-runs
+                    # the pass invoker immediately and re-arms without delay.
+                    if (Test-SupervisorShouldContinueAfterEmptyPass) {
+                        Write-KeepAwakeLog 'supervisor-shutdown-race-AVOIDED lease appeared during final check -- resuming instead of exiting'
+                        continue
+                    }
+                    Write-KeepAwakeLog 'supervisor-exit reason=no-live-leases'
+                    break
+                }
+                Start-Sleep -Seconds $PollSeconds
+            } catch {
+                # One racy/failed cycle must never tear the supervisor down (the
+                # 2026-08-12 overnight outage was exactly this: a single
+                # lease-file write collision escaped the loop, and the
+                # `finally` block disarmed with four live leases still held).
+                $consecutiveFailures++
+                Write-KeepAwakeLog ("supervisor-pass-ERROR consecutive=$consecutiveFailures :: $_")
+                if ($consecutiveFailures -ge 10) {
+                    Write-KeepAwakeLog 'supervisor-FAILING-persistently 10 consecutive pass errors -- disarming and exiting'
+                    $exit = 2
+                    break
+                }
+                Start-Sleep -Seconds $PollSeconds
+                continue
             }
-            Start-Sleep -Seconds $PollSeconds
         }
     } finally {
         # Belt and braces: whatever happened above, never leave the machine armed.
-        if (Test-PowerArmed) { Restore-PowerBaseline | Out-Null }
-        Clear-ExecutionStateHold | Out-Null
-        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-        Write-KeepAwakeLog ("supervisor-stop pid=$PID exit=$exit")
-        $mutex.ReleaseMutex(); $mutex.Dispose()
+        # Every step is guarded on its own -- the review proved that a throw in
+        # any one of them (all of them touch powercfg, the log, or the disk)
+        # skipped every later step, leaving the pidfile on disk and the mutex
+        # held by a dying process.
+        # ...except when this supervisor died before completing a single pass
+        # while lease files are on disk. It never observed the world, so
+        # disarming would be acting on pure ignorance -- and that is the
+        # 2026-08-12 outage shape reached through the startup path (measured:
+        # armed True->False, standbyidle 0->1200, live lease still held). Leave
+        # the existing arm; the backstops are stale-arm reconciliation on the
+        # next -Acquire, the MaxHours cap, and the watchdog respawn. The
+        # orderly no-live-leases exit has completed a pass by definition, so it
+        # still disarms even when lease FILES remain.
+        $skipDisarm = $false
+        try { $skipDisarm = ((-not $completedPass) -and (Test-AnyKeepAwakeLeaseFile)) } catch { $skipDisarm = $false }
+        try {
+            if ($skipDisarm) {
+                Write-KeepAwakeLog ("supervisor-disarm-SKIPPED exit=$exit -- died before completing a pass with lease files present; leaving power state armed for the next supervisor")
+            } elseif (Test-PowerArmed) {
+                Restore-PowerBaseline | Out-Null
+            }
+        } catch { }
+        try { Clear-ExecutionStateHold | Out-Null } catch { }
+        try { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue } catch { }
+        try { Write-KeepAwakeLog ("supervisor-stop pid=$PID exit=$exit") } catch { }
+        try {
+            $mutex.ReleaseMutex()
+        } catch {
+        } finally {
+            # Dispose on its own line in a nested finally: a failed ReleaseMutex
+            # must still release the handle.
+            try { $mutex.Dispose() } catch { }
+        }
     }
     return $exit
 }
 
-Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLog,
+Export-ModuleMember -Function Get-KeepAwakeRoot, Get-KeepAwakeMutexName, Get-LeaseDir, Write-KeepAwakeLog,
+    Get-DefaultPowerProvider, Reset-SupervisorPassInvoker, Get-KeepAwakeLogFileShare,
+    Resolve-DegradedLeaseAction, Reset-LeaseFailureCounts,
     Get-SafeLabel, Get-LeasePath, Write-JsonFileAtomic, New-KeepAwakeLease, Get-KeepAwakeLeases,
     Update-KeepAwakeLeaseHeartbeat, Remove-KeepAwakeLease,
     Test-ProcessAlive, Get-ProcessTreeCpu, Update-LeaseActivity,
@@ -808,4 +1309,7 @@ Export-ModuleMember -Function Get-KeepAwakeRoot, Get-LeaseDir, Write-KeepAwakeLo
     Set-PowerProvider, Get-PowerProvider, Get-PowerBaselineStatus, Get-PowerBaseline, Save-PowerBaseline,
     Set-PowerArmed, Restore-PowerBaseline, Test-PowerArmed, Resolve-StaleArmReconciliation,
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass,
-    Test-SupervisorShouldContinueAfterEmptyPass, Start-KeepAwakeSupervisor
+    Test-SupervisorShouldContinueAfterEmptyPass, Set-SupervisorPassInvoker, Start-KeepAwakeSupervisor,
+    Test-SupervisorRespawnNeeded, Test-AnyKeepAwakeLeaseFile, Get-SupervisorPidFilePath, Write-SupervisorPidFile, Read-SupervisorPidRecord,
+    Test-SupervisorProcessAlive, Get-SupervisorRespawnBackoffSeconds, Get-SupervisorRespawnMaxIntervalSeconds, Get-SupervisorRespawnState,
+    Resolve-SupervisorRespawnDecision, Clear-SupervisorRespawnState
