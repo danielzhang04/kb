@@ -1,0 +1,97 @@
+Completed the dependency map. Raw findings were appended to [findings-checkpoint.md](C:\Users\danie\AppData\Local\Temp\claude\C--Users-danie-kb\11fdfac9-c43f-46cc-bda2-977339b37234\scratchpad\boundary-work\findings-checkpoint.md).
+
+All paths below are relative to an injected `repoRoot` / `repo_root` unless noted.
+
+| Consumer | Data-layer access |
+|---|---|
+| `dashboard/server/` | R/W queue, ledgers; R memory, governance, agents, orgs, skills; generic read-only browser covers all surfaces incl. docs; generic save can W any non-governance path. |
+| Dashboard SPA | No direct repo filesystem access; API-only. |
+| `atlas/` | R queue, dashboards, ledgers, orgs, skills; W queue and `orgs/atlas/output/transcripts`. |
+| `broker/` | No direct named-surface access; indirect read through `scripts/preamble.py`. |
+| `scripts/*.py` | Primary owner of card, ledger, routing, grade, cadence, approval, dashboard-projection, and sync contracts. |
+| `routines/` | Server reads `routines/roles/*.md`; other routine files are operational prose. |
+| `.agents/` | `scripts/sync_skills.py` writes `.agents/skills/**` as a generated mirror. |
+| `templates/` | `new_project.py` reads them to create `orgs/<project>`; SPA has a duplicated inline copy. |
+| `evals/` | `scripts/canary.py` parses canaries and manifest; optional grade-ledger writes. |
+| `tests/` | Platform tests; temporary data-shape fixtures for queue, ledger, governance, agents, orgs, skills. |
+
+## Direct runtime accesses
+
+### Dashboard server
+
+- Queue R: `planeA/indexer.ts:32-49` reads `queue/{inbox,working,approvals,done}/*.md`; `approvals/routes.ts:39-43` and `write/cardRespond.ts:24-32` locate cards; queue bridge reads/settles cards at `control/queueBridge.ts:97,370,599`.
+- Queue W: embedded Python/card primitives in `write/launch.ts:9-24,123`, `write/cardRouting.ts:201-237`, `write/workflowRun.ts:124-125,549`, `control/canonicalResultIntegrator.ts:88-158`, `stop/floor.ts:240-272`, and `write/strandedArchiver.ts:307-328`.
+- Ledger R: TSV rollups at `planeA/ledgers.ts:66-120,125-152`; activity routing audit at `routing/audit.ts:57-59`; grade overlay at `registry/skills.ts:62-66`; owner liveness uses dispatch/activity shard names at `write/ownerActivity.ts:11-13,97,131-139`.
+- Ledger W: audit NDJSON at `audit/log.ts:29,56-72,101-123,143-152`; routing override also writes it at `write/routingOverride.ts:149-200`.
+- Memory R: `write/ownerActivity.ts:11-13,138-139` stats `memory/<owner>.md`.
+- Governance R: routing YAML at `routing/policy.ts:48-74`; policy/contract refs at `control/activation.ts:88-89,236,251`, `control/environment.ts:157-169`, `control/execution.ts:18,516`, `workflows/compile.ts:40,242`.
+- Agents R: authoritative declarations at `agents/roster.ts:257-261,297-315,371-480`; routing uses them at `agents/assignable.ts:17-20`.
+- Orgs R: project STATE at `planeA/states.ts:29-35`; workflows at `workflows/routes.ts:142-160`; MCP settings at `registry/connections.ts:62-70`; Atlas transcripts at `panels/atlas.ts:11,155,218`.
+- Skills R: `registry/skills.ts:89-111`.
+- Docs/all data surfaces R: generic GET-only browser `kb/browser.ts:78-100,120-134`, routes at `kb/routes.ts:33-60`; root is `DASHBOARD_KB_ROOT ?? ../../../` at `kb/routes.ts:18-25`.
+- Generic W: `write/governedSave.ts:253-350` writes a confined arbitrary repo-relative path, except `governance/**` (`:283-285`) and with special validation for `agents/*.md` (`:287-307`).
+
+Roots: most server routes use `DASHBOARD_REPO_ROOT ?? ../../../`, e.g. `http/surface.ts:44,69`; browser separately uses `DASHBOARD_KB_ROOT`.
+
+### Dashboard SPA
+
+No data-layer file reads/writes. It calls server APIs only: `/api/index` and `/api/registry` at `flyout/useFleetData.ts:36,49`; browser APIs at `views/folderView.tsx:36,42-44`; writes through `/api/write/*` at `composer/deploy.ts:113,120` and `lib/routingClient.ts:101,117`. It has no repo-root environment resolution.
+
+### Atlas
+
+- Root resolution: `ATLAS_KB_ROOT` / `ATLAS_OPS_ROOT`, fallback hardcoded to `C:/Users/danie/kb-worktrees/dashboard-ops`, `atlas/kbmcp/kb_tools.py:13-29`.
+- Queue R: parses `queue/{inbox,working,done,approvals}` via `scripts/cards.py`, `kb_tools.py:31-41`; done watcher re-parses the same physical dirs at `worker/donewatcher.py:43-56,155-166`.
+- Queue W: `kb_tools.py:64-100` creates and commits `queue/inbox/<id>.md`.
+- Dashboards R: `kb_tools.py:43-44`.
+- Orgs R: project `STATE.md`, `kb_tools.py:46-53`; org names and skill names for STT terms, `worker/app.py:104-119`.
+- Ledgers R: cost/activity through `scripts/ledger.py`, `kb_tools.py:55-58`.
+- Orgs W: transcript JSONL `{t,role,text}` to `orgs/atlas/output/transcripts/YYYY-MM-DD-<session>.jsonl`, `worker/ledgerwriter.py:39-41,118-147`.
+
+### Broker
+
+No direct data-surface I/O. It passes `process.cwd()` as root (`broker/daemon.ts:168-169`, `pm2Entry.ts:15`) to `scripts/preamble.py` (`broker/preambleGate.ts:27-36`), which reads budget and cost ledger. `stopWatch.ts:103-138` watches only root `STOP`.
+
+### Scripts
+
+- Card format and queue state machine: `scripts/cards.py:11-71,90-103,106-196`. It R/Ws cards at a caller-provided queue root and is the shared dependency for dashboard, Atlas, dispatcher, approvals, bridge, and tests.
+- Generic ledger format: `scripts/ledger.py:8-45`; shards are `ledgers/<kind>/<agent>-<date>.tsv`, TSV header taken from first record. Approval cursor is a plain integer file at `ledger.py:61-88`.
+- Grade contract: `scripts/grade.py:17-75` writes exact grade columns and paired activity rows.
+- Budget: `scripts/preamble.py:13-46` reads `governance/budget.yaml` and cost shards.
+- Routing: `scripts/routing.py:93-127,165-299,364-463` reads `governance/model-routing.yaml`, `queue/routing-override.yaml`, queue cards, and writes routing audit/wake cards.
+- Cadence/dispatch: `scripts/dispatch.py:135-155,268-420,470-514,531-648` reads/writes queue, reads root/org HEARTBEAT documents and paused sentinels, and loads routing config.
+- Promotions/reconciliation: `scripts/promotion.py:161-219,268-355`; `scripts/reconcile.py:174-304,315-332` read grades/activity/governance and can write `ledgers/grades/FROZEN`, freeze log, and queue wake cards.
+- Approval paths: `scripts/approvals.py:188-214,305-319,339-504`; `telegram_poll.py:62-75,95-108,172-227`; `webauthn_verify.py:409-467,503-557,629-789`.
+- Dashboard projections: `brief.py:143-429`, `rollup.py:67-220`, `mission_control.py:122-532`, `trust.py:49-249` read queue/ledgers and write `dashboards/*.md`.
+- Skills mirror: `sync_skills.py:18-21,121-206` reads `skills/curated` and writes `.agents/skills`, `.claude/skills`, `.codex` manifests.
+- Daemon sync: `sync_daemon_dirs.py:3,34-35,182-300` syncs `agents/**` and `orgs/*/workflows/**`; default ops root is hardcoded at line 38.
+- Project scaffold: `new_project.py:14-34` reads templates and writes `orgs/<name>`.
+- Canaries: `canary.py:102-204,460-490,497-544` reads `evals`, optionally writes normal grade ledger rows, and can regenerate the eval manifest.
+
+## Format/version-skew surfaces
+
+| Rank | Platform-side encoding | Data artifact that must remain compatible |
+|---:|---|---|
+| 1 | `scripts/cards.py:11-196`; `dashboard/server/planeA/cards.ts:16-95` | `queue/**/*.md`, `governance/card-schema.md` |
+| 2 | `scripts/grade.py:17-75`; `scripts/promotion.py:161-219`; `scripts/reconcile.py:174-217` | `ledgers/grades/*.tsv`, `ledgers/activity/*.tsv`, `governance/graders.yaml` |
+| 3 | `scripts/routing.py:93-299`; `dashboard/server/routing/{policy,yaml}.ts:24-74` | `governance/model-routing.yaml`, `queue/routing-override.yaml` |
+| 4 | `dashboard/server/workflows/defs.ts:4-15,37-104,202-310`; `compile.ts:49-56,166-267` | `orgs/*/workflows/*.md` |
+| 5 | `dashboard/server/agents/roster.ts:341-358,423-477`; `write/governedSave.ts:287-307` | `agents/*.md` |
+| 6 | `scripts/approvals.py:106-134,254-290,433-504`; `webauthn_verify.py:250-289,409-557` | approval-card fields; `governance/humans.yaml`, `web-flow.gpg`, `webauthn-credentials.yaml` |
+| 7 | `scripts/preamble.py:13-46`; `scripts/sentinel.py:518-557` | `governance/budget.yaml`, cost-ledger `usd` column |
+| 8 | `scripts/dispatch.py:470-514`; `scripts/promotion.py:268-355` | root/org `HEARTBEAT.md` fenced cadence format |
+| 9 | `dashboard/server/registry/skills.ts:62-111`; `scripts/sync_skills.py:121-206` | `skills/<tier>/<slug>/SKILL.md` and manifests |
+| 10 | `scripts/new_project.py:14-34`; `dashboard/src/composer/artifactTypes.ts:248-253` | `templates/{_index,STATE,contract,HEARTBEAT}.md` |
+
+## Ambiguous-directory verdicts
+
+- `.agents/`: split internally. `.agents/skills/**` is generated platform integration (`sync_skills.py:18-21,135-161`); source skills are data-owned.
+- `agents/`: data/coordination identity records. Runtime parser is platform-owned (`agents/roster.ts:257-480`).
+- `routines/`: split. `routines/roles/*.md` is platform role vocabulary (`agents/roster.ts:241-249`); cadence prose is coordination content.
+- `templates/`: data-owned project-scaffold content, but currently duplicated in SPA source (`artifactTypes.ts:248-253`).
+- `evals/`: platform-owned behavioral/schema oracle suite (`scripts/canary.py:102-204`).
+- `skills/`: data-owned source knowledge; tier/slug/SKILL layout is a platform API.
+- `tests/`: platform-owned. Data-shape fixtures include `dashboard/server/__fixtures__/repo-a`, `repo-atlas`, plus temp-tree factories in `tests/test_mission_control.py:22-24`, `test_sentinel.py:26-27`, `test_routing.py:47-54`, `test_sync_daemon_dirs.py:45-48`, and `test_sync_skills.py:14-38`.
+
+Absence finding: no dashboard SPA, broker, or runtime platform reader of `handoffs/` was found. `handoffs/` appears in agent instructions only, not executable platform code.
+
+--- codex-dispatch card 6a7bce06-d43cf9d2 | model gpt-5.6-terra | exit 0 | 570s | ops publish: pushed | log: C:\Users\danie\AppData\Local\kb-codex-dispatch\logs\6a7bcbd5-b51e8378.jsonl | session 019ff394-4648-71d2-975a-aaa675213932 (follow up with --follow-up 019ff394-4648-71d2-975a-aaa675213932)
