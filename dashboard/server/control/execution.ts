@@ -255,7 +255,15 @@ export interface AutomaticExecutionOptions {
   assignedAgents?: AssignedAgentResolver;
   worktreeRoot: string;
   maxConcurrency: number;
+  /** WINDOW ceiling for the whole accounting window; also the automatic retry cap (`maxAttempts`). */
   budget: ExecutionBudget;
+  /**
+   * PER-ATTEMPT reservation limits. Every attempt reserves against this, never against the window
+   * ceiling: the accounting adapter projects held limits at face value, so reserving each attempt at the
+   * window ceiling makes the second attempt of a window unadmittable as soon as the first settles with
+   * any usage. Must fit inside `budget` on every field (validated where it is resolved, in activation).
+   */
+  attemptBudget: ExecutionBudget;
   /** Closed server action registry; prose cannot widen runtime capabilities. */
   worktrees: WorktreeAdapter;
   managers: ManagerAdapter;
@@ -714,6 +722,10 @@ export class AutomaticExecutionEngine {
     requireSafeInteger(options.budget.maxInputTokens, 'budget.maxInputTokens', 0);
     requireSafeInteger(options.budget.maxOutputTokens, 'budget.maxOutputTokens', 0);
     requireSafeInteger(options.budget.maxCostUsdMicros, 'budget.maxCostUsdMicros', 0);
+    requireSafeInteger(options.attemptBudget.maxAttempts, 'attemptBudget.maxAttempts', 1);
+    requireSafeInteger(options.attemptBudget.maxInputTokens, 'attemptBudget.maxInputTokens', 0);
+    requireSafeInteger(options.attemptBudget.maxOutputTokens, 'attemptBudget.maxOutputTokens', 0);
+    requireSafeInteger(options.attemptBudget.maxCostUsdMicros, 'attemptBudget.maxCostUsdMicros', 0);
     planRunWorktreePath(options.worktreeRoot, 'validation');
   }
 
@@ -1827,7 +1839,7 @@ export class AutomaticExecutionEngine {
       subject: input.subject,
       runRef: input.runRef,
       attemptRef: attempt.attemptRef,
-      limits: this.options.budget,
+      limits: this.options.attemptBudget,
     });
     if (this.cancellationObserved(input)) {
       if (reservation.ok) {
@@ -1893,12 +1905,37 @@ export class AutomaticExecutionEngine {
         usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [],
       };
     }
-    assertUsage(result.usage);
-    await this.options.accounting.settle({
-      operationKey: `settle:${attempt.attemptRef}`,
-      reservationRef: reservation.value.reservationRef,
-      usage: result.usage,
-    });
+    try {
+      assertUsage(result.usage);
+      await this.options.accounting.settle({
+        operationKey: `settle:${attempt.attemptRef}`,
+        reservationRef: reservation.value.reservationRef,
+        usage: result.usage,
+      });
+    } catch (error) {
+      // A settlement the accounting adapter refuses (reported usage above this attempt's reserved
+      // ceiling — cache-read input tokens accumulate across a long multi-turn worker session) writes
+      // NOTHING: the reservation stays `active`, holding its full limit and, at maxConcurrency 1, the
+      // window's only concurrency slot — for the rest of the window. Every later reserve in that window
+      // would then be refused and every stage would park. Release the hold at the reserved ceiling (the
+      // most this attempt could ever have been charged; never under-charge), then rethrow the original
+      // error so the existing park/intervention path still fires with the overage message intact.
+      try {
+        await this.options.accounting.settle({
+          operationKey: `settle-ceiling:${attempt.attemptRef}`,
+          reservationRef: reservation.value.reservationRef,
+          usage: {
+            inputTokens: this.options.attemptBudget.maxInputTokens,
+            outputTokens: this.options.attemptBudget.maxOutputTokens,
+            costUsdMicros: this.options.attemptBudget.maxCostUsdMicros,
+          },
+        });
+      } catch (releaseError) {
+        // Best effort only: the actionable error for the human is the refusal below, not this one.
+        console.error('accounting reservation could not be released at its ceiling', releaseError);
+      }
+      throw error;
+    }
     if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
     const inspection = result.state === 'succeeded'
       ? await this.options.worktrees.inspect({ operationKey: `inspect:${attempt.attemptRef}`, runRef: input.runRef, path: worktreePath })

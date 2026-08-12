@@ -67,6 +67,9 @@ export function createLocalGitCommandRunner(options: LocalGitRunnerOptions = {})
         for (const name of ['PATH', 'PATHEXT', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL']) {
           if (process.env[name] !== undefined) environment[name] = process.env[name];
         }
+        // Pinned AFTER the allowlist copy so it wins over any inherited locale: the worktree-removal
+        // matcher below classifies benign failures by English stderr text (same rationale as opsGitEnv).
+        environment.LC_ALL = 'C';
         const child = spawn('git', [...args], {
           cwd,
           env: environment,

@@ -281,7 +281,9 @@ describe('workflow definition routes', () => {
     const crossOwner = await app.inject({ method: 'POST', url: '/api/workflows/video-run/launch', headers: headers(token),
       payload: await launchPayload(app, 'video-run', 'other-key', { composerRef: composerStore.create('mallory', 'Foreign', agent).composerRef, parameters: { channel: 'the-second-take', slug: '2026-07-19-wells-fargo', slice: 'act-1' } }) });
     expect(crossOwner.statusCode).toBe(404);
-  });
+    // Five real launches through the canonical body (compile → import → approve → publish) take ~5.3s on
+    // a Windows dev machine, over vitest's 5s default. The budget is the flake fix, not a slow assertion.
+  }, 15_000);
 
 });
 

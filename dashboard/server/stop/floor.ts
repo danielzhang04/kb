@@ -42,6 +42,7 @@ import { verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
 import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
+import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {
@@ -148,18 +149,7 @@ async function commitToOps(
   await runGit(repoRoot, ['add', '--', ...relPaths]);
   await runGit(repoRoot, ['commit', '-m', message]);
 
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
-    try {
-      await runGit(repoRoot, ['push', 'origin', 'ops']);
-      return;
-    } catch (err) {
-      lastErr = err;
-      if (attempt === maxRetryPushes) break;
-      await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
-    }
-  }
-  throw lastErr;
+  await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
 }
 
 /** Injectable dependencies shared by every primitive in this module. Every field is hermetic-test-safe. */

@@ -114,15 +114,49 @@ const DEFAULT_GOVERNANCE_REFS: readonly string[] = [
 const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 /**
- * Conservative execution caps for single-stage Wave-A runs. Subscription runs report 0 cost; the micro-
- * dollar ceiling is a fail-closed guard, never a spend authorization.
+ * WINDOW ceiling: the fail-closed daily cap for the whole accounting window (all runs, all stages, all
+ * attempts in one window id). Subscription runs report 0 cost; the micro-dollar ceiling is a fail-closed
+ * guard, never a spend authorization. Never used as a single attempt's reservation limit — see
+ * {@link DEFAULT_ATTEMPT_BUDGET}.
  */
-const DEFAULT_BUDGET: ExecutionBudget = {
+export const DEFAULT_BUDGET: ExecutionBudget = {
   maxAttempts: 30,
   maxInputTokens: 2_000_000,
   maxOutputTokens: 400_000,
   maxCostUsdMicros: 5_000_000,
 };
+
+/**
+ * PER-ATTEMPT reservation limits. The accounting adapter projects `sum(settled usage or full held limit)
+ * + this reservation's full limit` against the window ceiling, so reserving each attempt at the WINDOW
+ * ceiling made a second attempt arithmetically impossible the moment the first one settled with any
+ * usage at all (the live multi-stage defect: 180,177 settled input tokens + 2,000,000 held > 2,000,000).
+ * Every field here is strictly below its {@link DEFAULT_BUDGET} counterpart, so a three-stage chain plus
+ * a retry fits inside one window: 4 x 1,000,000 held would exceed 2,000,000 only if all four were held
+ * at once, and concurrency is 1 — each settles (measured baseline: the acceptance draft stage settled at
+ * ~180k in / ~1k out / ~$0.25) long before the next reserves. `maxAttempts: 1` because a reservation is
+ * one attempt; the retry cap stays the window budget's `maxAttempts`.
+ */
+export const DEFAULT_ATTEMPT_BUDGET: ExecutionBudget = {
+  maxAttempts: 1,
+  maxInputTokens: 1_000_000,
+  maxOutputTokens: 200_000,
+  maxCostUsdMicros: 2_500_000,
+};
+
+/**
+ * Fails loud at construction when a per-attempt limit exceeds the window ceiling on any field. Such a
+ * reservation could never be admitted (the adapter projects the full held limit against the window), so
+ * the executor would be built already unable to run a single attempt.
+ */
+function assertAttemptBudgetFitsWindow(attempt: ExecutionBudget, window: ExecutionBudget): void {
+  const fields = ['maxAttempts', 'maxInputTokens', 'maxOutputTokens', 'maxCostUsdMicros'] as const;
+  for (const field of fields) {
+    if (attempt[field] > window[field]) {
+      throw new ActivationError(`attempt budget ${field} (${attempt[field]}) exceeds the window budget (${window[field]})`);
+    }
+  }
+}
 
 const FULL_COMMIT = /^[a-f0-9]{40}$/;
 
@@ -245,7 +279,10 @@ export interface BuildActivatedExecutionOptions {
   worktreeRoot?: string;
   integrationRoot?: string;
   baseCommit?: string;
+  /** Window ceiling for the whole accounting window. Defaults to {@link DEFAULT_BUDGET}. */
   budget?: ExecutionBudget;
+  /** Per-attempt reservation limits; must fit inside `budget`. Defaults to {@link DEFAULT_ATTEMPT_BUDGET}. */
+  attemptBudget?: ExecutionBudget;
   maxConcurrency?: number;
   /**
    * Manager-session launch resolver. Dormant under D3(b) (no manager broker session is started), so the
@@ -338,6 +375,8 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const worktreeRoot = options.worktreeRoot ?? join(stateRoot, 'control', 'worktrees');
   const integrationRoot = options.integrationRoot ?? join(stateRoot, 'control', 'integration');
   const budget = options.budget ?? DEFAULT_BUDGET;
+  const attemptBudget = options.attemptBudget ?? DEFAULT_ATTEMPT_BUDGET;
+  assertAttemptBudgetFitsWindow(attemptBudget, budget);
   const maxConcurrency = options.maxConcurrency ?? 1;
   const baseCommit = options.baseCommit ?? deps.resolveBaseCommit(repoRoot);
 
@@ -506,6 +545,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     worktreeRoot,
     maxConcurrency,
     budget,
+    attemptBudget,
     worktrees,
     managers,
     workers,

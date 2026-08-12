@@ -54,6 +54,35 @@
   color: var(--error);
 }
 
+/* Locked-tab notice — same shape as .v-approvals__outcome (a fact strip above the list), not an alarm. */
+.v-approvals__notice {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-size: var(--type-meta-size);
+}
+
+/* Older/stale — a collapsed fold below the actionable list, never interleaved with it. */
+.v-approvals__stale {
+  margin-top: var(--space-3);
+}
+
+.v-approvals__stale > summary {
+  cursor: pointer;
+  color: var(--fg-dim);
+  font-size: var(--type-section-size);
+  font-weight: var(--type-section-weight);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.v-approvals__stale > .v-approvals__list {
+  margin-top: var(--space-2);
+}
+
 /* ---- LEFT: ranked pending list ---------------------------------------- */
 .v-approvals__list {
   display: flex;
@@ -179,6 +208,14 @@
 
 .v-approvals__row-badge {
   flex: 0 0 auto;
+}
+
+/* "Time added" — relative age, exact stamp on hover via `title`. Same quiet weight as the entity name. */
+.v-approvals__row-time {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  font-size: var(--type-meta-size);
+  white-space: nowrap;
 }
 
 .v-approvals__buttons {

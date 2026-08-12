@@ -262,7 +262,7 @@ role_default: { runtime: claude, model: sonnet }
     expect(payload).toMatchObject({ managed: true });
     expect(WORKFLOW_CARD_OP_SCRIPT).toContain('if op["managed"] or card.meta["depends-on"]');
     const runnerSource = readFileSync(fileURLToPath(new URL('../../../scripts/agent_runner.ps1', import.meta.url)), 'utf8');
-    expect(runnerSource).toContain('card.meta.get("execution-controller") != "dashboard"');
+    expect(runnerSource).toContain('if (not card.meta.get("execution-controller")');
     const dispatchSource = readFileSync(fileURLToPath(new URL('../../../scripts/dispatch.py', import.meta.url)), 'utf8');
     expect(dispatchSource).toMatch(/deps = child\.meta\.get\("depends-on"\) or \[\][\s\S]*if not deps:[\s\S]*continue/);
   });
@@ -453,8 +453,12 @@ describe('managed canonical root activation', async () => {
     expect(await activateManagedRootCards({
       repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
       authorizeAfterPrepare: () => { calls.push(['authorize']); },
+      reassertAfterReconcile: () => { calls.push(['reassert']); },
     }))
       .toEqual({ replayed: false, cardPaths: [`queue/inbox/${cardRef}.md`] });
+    // No push was rejected, so the reconcile re-proof never ran: it is a retry-path proof, not a second
+    // authorization of the happy path.
+    expect(calls.some((args) => args[0] === 'reassert')).toBe(false);
     expect(calls.findIndex((args) => args[0] === 'authorize'))
       .toBeGreaterThan(calls.findIndex((args) => args[0] === 'pull'));
     const commit = calls.findIndex((args) => args[0] === 'commit');
@@ -465,7 +469,9 @@ describe('managed canonical root activation', async () => {
     expect(reread).toBeGreaterThan(push);
 
     calls.length = 0;
-    expect(await activateManagedRootCards({ repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy }))
+    expect(await activateManagedRootCards({
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, reassertAfterReconcile: () => {},
+    }))
       .toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
     expect(calls.some((args) => args[0] === 'commit')).toBe(false);
     expect(calls.findIndex((args) => args[0] === 'show')).toBeGreaterThan(calls.findIndex((args) => args[0] === 'push'));
@@ -492,6 +498,7 @@ describe('managed canonical root activation', async () => {
     const verifyCompletedRoots = vi.fn(async () => {});
     await expect(activateManagedRootCards({
       repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, verifyCompletedRoots,
+      reassertAfterReconcile: () => {},
     })).resolves.toEqual({ replayed: true, cardPaths: [`queue/done/${cardRef}.md`] });
     expect(verifyCompletedRoots).toHaveBeenCalledWith({ runRef: 'wf-test-0001', cardRefs: [cardRef] });
     expect(seen).not.toContain('commit');
@@ -505,7 +512,7 @@ describe('managed canonical root activation', async () => {
     }) });
     await expect(activateManagedRootCards({
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: [cardRef], runGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '', runPy,
-      verifyCompletedRoots: async () => {},
+      verifyCompletedRoots: async () => {}, reassertAfterReconcile: () => {},
     })).rejects.toThrow('completion state changed');
   });
 
@@ -518,7 +525,122 @@ describe('managed canonical root activation', async () => {
     };
     await expect(activateManagedRootCards({
       repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
+      reassertAfterReconcile: () => {},
     })).rejects.toThrow(/dirty index/);
     expect(runPy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * F3 — the reconcile re-proof is REQUIRED, not optional. The publication below reconciles and retries a
+   * lost push race; a caller that forgot the re-proof would publish an activation under a canonical head
+   * nothing authorized. Refusing at entry makes that structurally impossible instead of relying on every
+   * caller to remember.
+   */
+  it('refuses at entry when no reconcile re-proof is supplied, before touching git or python', async () => {
+    const runPy = vi.fn<PyRunner>();
+    const runGit = vi.fn((_root: string, _args: string[]) => 'ops\n');
+    await expect(activateManagedRootCards({
+      repoRoot: '/repo', runRef: 'wf-test-0001', cardRefs: ['wf-9b91ad52f99f63f91e0cbd97'], runGit, runPy,
+      authorizeAfterPrepare: () => {},
+    })).rejects.toThrow(/requires a reassertAfterReconcile re-proof/);
+    expect(runGit).not.toHaveBeenCalled();
+    expect(runPy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * F1 — a lost push race must re-run the PURE re-proof, never the side-effecting authorization. The
+   * activation's `authorizeAfterPrepare` emits a T3 `control-run-activate-authorize` audit row (with its
+   * own nested commit+push) and takes the activation claim; running it per reconcile would produce three
+   * authorize rows and three claims for ONE authorization.
+   */
+  it('re-proves purely on every reconcile while authorizing exactly once across two lost push races', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'managed-activation-race-'));
+    const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
+    const cardPath = join(repoRoot, 'queue', 'inbox', `${cardRef}.md`);
+    mkdirSync(join(repoRoot, 'queue', 'inbox'), { recursive: true });
+    writeFileSync(cardPath, 'state: blocked\nexecution-controller: dashboard\n');
+    const order: string[] = [];
+    let pushes = 0;
+    const runGit = (_root: string, args: string[]): string => {
+      order.push(args.join(' '));
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'show') return readFileSync(cardPath, 'utf8');
+      if (args[0] === 'push' && pushes++ < 2) {
+        const stderr = ' ! [rejected]        ops -> ops (non-fast-forward)';
+        throw Object.assign(new Error(`git push exited with code 1: ${stderr}`), { status: 1, stdout: '', stderr });
+      }
+      return '';
+    };
+    const runPy: PyRunner = (_root, _code, raw) => {
+      const operation = JSON.parse(raw) as { mode: 'probe' | 'apply' };
+      if (operation.mode === 'apply') writeFileSync(cardPath, 'state: inbox\nexecution-controller: dashboard\n');
+      return { exitCode: 0, stderr: '', stdout: JSON.stringify({
+        cards: [{ cardRef, path: `queue/inbox/${cardRef}.md`, completed: false, changed: true }],
+      }) };
+    };
+    const authorizeAfterPrepare = vi.fn(() => { order.push('AUTHORIZE(audit row + claim)'); });
+    const reassertAfterReconcile = vi.fn(() => { order.push('reassert'); });
+
+    await expect(activateManagedRootCards({
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy,
+      authorizeAfterPrepare, reassertAfterReconcile,
+    })).resolves.toEqual({ replayed: false, cardPaths: [`queue/inbox/${cardRef}.md`] });
+
+    // ONE authorize for one act, however many races were lost; one pure re-proof per reconcile.
+    expect(authorizeAfterPrepare).toHaveBeenCalledTimes(1);
+    expect(reassertAfterReconcile).toHaveBeenCalledTimes(2);
+    // ...and the authorization happened once, BEFORE the first push, never between retries.
+    expect(order.filter((step) => step.startsWith('AUTHORIZE'))).toHaveLength(1);
+    const firstPush = order.indexOf('push origin ops');
+    expect(order.indexOf('AUTHORIZE(audit row + claim)')).toBeLessThan(firstPush);
+    expect(order.slice(firstPush)).toEqual([
+      'push origin ops', 'rev-parse --abbrev-ref HEAD', 'pull --rebase origin ops', 'reassert',
+      'push origin ops', 'rev-parse --abbrev-ref HEAD', 'pull --rebase origin ops', 'reassert',
+      'push origin ops', `show HEAD:queue/inbox/${cardRef}.md`,
+    ]);
+  });
+
+  /**
+   * F2 — the idempotent-replay branch pushes without creating a commit. Its reconcile still PULLS, and a
+   * `pull --rebase` on a checkout that is no longer `ops` rebases an unrelated HEAD and can leave this
+   * shared checkout mid-rebase (the 2026-07-30 jam class). The checkout guard must precede that pull.
+   */
+  it('guards the checkout before the replay branch reconciles a rejected push', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'managed-replay-race-'));
+    const cardRef = 'wf-9b91ad52f99f63f91e0cbd97';
+    const cardPath = join(repoRoot, 'queue', 'inbox', `${cardRef}.md`);
+    mkdirSync(join(repoRoot, 'queue', 'inbox'), { recursive: true });
+    writeFileSync(cardPath, 'state: inbox\nexecution-controller: dashboard\n');
+    const order: string[] = [];
+    let pushes = 0;
+    const runGit = (_root: string, args: string[]): string => {
+      order.push(args.join(' '));
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args[0] === 'show') return readFileSync(cardPath, 'utf8');
+      if (args[0] === 'push' && pushes++ === 0) {
+        const stderr = 'hint: Updates were rejected because the tip of your current branch is behind';
+        throw Object.assign(new Error(`git push exited with code 1: ${stderr}`), { status: 1, stdout: '', stderr });
+      }
+      return '';
+    };
+    // `changed: false` everywhere — the replay branch, which commits nothing.
+    const runPy: PyRunner = () => ({ exitCode: 0, stderr: '', stdout: JSON.stringify({
+      cards: [{ cardRef, path: `queue/inbox/${cardRef}.md`, completed: false, changed: false }],
+    }) });
+    const reassertAfterReconcile = vi.fn(() => { order.push('reassert'); });
+
+    await expect(activateManagedRootCards({
+      repoRoot, runRef: 'wf-test-0001', cardRefs: [cardRef], runGit, runPy, reassertAfterReconcile,
+    })).resolves.toEqual({ replayed: true, cardPaths: [`queue/inbox/${cardRef}.md`] });
+
+    expect(order.some((step) => step === 'commit')).toBe(false);
+    const firstPush = order.indexOf('push origin ops');
+    expect(order.slice(firstPush)).toEqual([
+      'push origin ops',
+      // The guard, THEN the pull — never a pull onto an unproven checkout.
+      'rev-parse --abbrev-ref HEAD', 'pull --rebase origin ops', 'reassert',
+      'push origin ops', `show HEAD:queue/inbox/${cardRef}.md`,
+    ]);
+    expect(reassertAfterReconcile).toHaveBeenCalledTimes(1);
   });
 });

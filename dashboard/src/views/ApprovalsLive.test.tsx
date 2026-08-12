@@ -90,7 +90,7 @@ afterEach(() => {
 });
 
 describe('ApprovalsLive', () => {
-  it('renders card items from the live feed with no session at all', async () => {
+  it('renders card items from the live feed with no session at all, and says run-side asks are hidden', async () => {
     const fetchImpl = vi.fn(async (_url: string) => inboxResponse());
     render(<SessionProvider><ApprovalsLive fetchImpl={fetchImpl as unknown as typeof fetch} /></SessionProvider>);
 
@@ -99,6 +99,9 @@ describe('ApprovalsLive', () => {
     // A locked tab shows the card side and asks for no unlock of its own — the app has ONE unlock.
     expect(fetchImpl.mock.calls.some((call) => String(call[0]).startsWith('/api/control/runs'))).toBe(false);
     expect(screen.queryByRole('button', { name: /unlock/i })).toBeNull();
+    // REGRESSION: this used to render the card side with no sign anything was hidden — a locked tab must
+    // say so, not look complete.
+    expect(screen.getByTestId('approvals-locked-notice').textContent).toMatch(/hidden/i);
   });
 
   it('merges run asks into the same list and deep-links each row to its owning surface', async () => {
@@ -114,6 +117,8 @@ describe('ApprovalsLive', () => {
     expect(runRow.textContent).toContain('failed to boot');
     expect(runRow.textContent).not.toContain('ENOENT');
     expect(screen.getByLabelText('Human Inbox').textContent).toMatch(/Needs you · 2/);
+    // Unlocked: no locked notice, run asks are actually here.
+    expect(screen.queryByTestId('approvals-locked-notice')).toBeNull();
 
     fireEvent.click(runRow);
     expect(onNavigate).toHaveBeenCalledWith({ view: 'workflows', focus: { kind: 'run', id: 'run-1' } });

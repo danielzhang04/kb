@@ -102,6 +102,7 @@ function makeStage(stageId: string, agentId: string | null, over: Partial<RunDet
 
 function makeDetail(over: Partial<RunDetailDto> = {}): RunDetailDto {
   return {
+    ownerSubject: over.ownerSubject ?? 'operator',
     run: {
       runRef: 'run-1', predecessorRunRef: null, title: 'headless run',
       displayName: 'headless run', shortRef: 1, workflowRef: 'kb~video.md', proposalRef: 'p-1', proposalRevision: 1,
@@ -332,6 +333,87 @@ describe('the run surface', () => {
     // Ids and hashes are real and reachable, just not what the surface leads with.
     expect(screen.getByTestId('run-technical').textContent).toContain('a'.repeat(64));
     expect(screen.getByTestId('entity-detail-status').textContent).toContain('running');
+  });
+
+  it('leads a resolved request with plain words in the PAST tense — never the raw title, never a live demand', () => {
+    // REGRESSION 1: "Already answered" rendered `request.title` verbatim — the exact
+    // `automatic:policy:draft:spending-language-requires-human-review` shape Daniel saw live.
+    // REGRESSION 2: the fix for that printed `request.ask`, which is written for an OPEN request:
+    // present tense, ending in an instruction ("Open the run to approve or turn it down"). Under
+    // "Already answered", and especially on one the platform auto-closed with nobody answering, that
+    // reads as a live request for something the operator can no longer do. Past tense headline, and the
+    // decision line below it — which is the actual record of how it ended — is untouched.
+    const detail = makeDetail({
+      humanRequests: [{
+        requestRef: 'req-closed', runRef: 'run-1', stageRef: 'ref-idea', kind: 'approval', revision: 1,
+        state: 'resolved', title: 'automatic:policy:draft:spending-language-requires-human-review',
+        prompt: 'spending-language-requires-human-review',
+        ask: 'headless run needs your sign-off before it can go any further. Open the run to approve or turn it down.',
+        technicalDetail: 'automatic:policy:draft:spending-language-requires-human-review',
+        displayName: 'headless run', shortRef: 1,
+        response: {
+          requestRevision: 1, decision: 'auto-closed',
+          response: "Automatically closed — the run reached its terminal state ('failed') without this being answered.",
+          respondedAt: '2026-08-11T00:00:00.000Z',
+        },
+        createdAt: '2026-07-21T00:00:00.000Z', updatedAt: '2026-08-11T00:00:00.000Z',
+      }] as unknown as RunDetailDto['humanRequests'],
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
+
+    const resolved = screen.getByTestId('resolved-request-req-closed');
+    expect(resolved.querySelector('h4')?.textContent).toBe('headless run asked for your sign-off.');
+    expect(resolved.textContent).not.toContain('automatic:policy:draft:spending-language-requires-human-review');
+    // No present-tense demand and no instruction to act on something already settled.
+    expect(resolved.textContent).not.toContain('needs your sign-off');
+    expect(resolved.textContent).not.toContain('Open the run to');
+    // The decision line survives in full: what the platform decided, why, and when.
+    expect(resolved.textContent).toContain('auto-closed');
+    expect(resolved.textContent).toContain('terminal state');
+  });
+
+  it('falls back to a safe headline for a request kind this build does not know, instead of blanking the page', () => {
+    // The DTOs reaching this view are unvalidated `as` casts off the wire. An older SPA against a newer
+    // server can therefore be handed a kind that is not in RESOLVED_HEADLINE — and the pre-fix
+    // `RESOLVED_HEADLINE[kind](...)` threw a TypeError on `undefined`, unmounting the WHOLE run page over
+    // one settled record in a secondary section.
+    const detail = makeDetail({
+      humanRequests: [{
+        requestRef: 'req-unknown', runRef: 'run-1', stageRef: 'ref-idea', kind: 'a-kind-from-the-future',
+        revision: 1, state: 'resolved', title: 'automatic:policy:whatever', prompt: 'whatever',
+        ask: 'whatever', technicalDetail: 'automatic:policy:whatever',
+        displayName: 'headless run', shortRef: 1,
+        response: {
+          requestRevision: 1, decision: 'approved', response: 'fine', respondedAt: '2026-08-11T00:00:00.000Z',
+        },
+        createdAt: '2026-07-21T00:00:00.000Z', updatedAt: '2026-08-11T00:00:00.000Z',
+      }] as unknown as RunDetailDto['humanRequests'],
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
+
+    const resolved = screen.getByTestId('resolved-request-req-unknown');
+    expect(resolved.querySelector('h4')?.textContent).toBe('headless run asked for a person, and this was answered.');
+    // Still past tense, still no raw machine title, and the decision line is intact.
+    expect(resolved.textContent).not.toContain('automatic:policy:whatever');
+    expect(resolved.textContent).toContain('approved');
+  });
+
+  it('states who owns the run in the header facts, engine-owned and own alike', () => {
+    // A verified operator session opens runs it does not own (the queue bridge and the executor own
+    // theirs as `dashboard-engine`), so the header has to say whose run this is. Uniform, like every
+    // other fact in the strip — a slot that only appears sometimes would read as a warning.
+    const own = render(unlocked(
+      <RunDetail runRef="run-1" detail={makeDetail()} events={[]} dag={{ nodes: [], edges: [] }} />,
+    ));
+    const ownFacts = own.getByTestId('entity-detail-facts').textContent ?? '';
+    expect(ownFacts).toContain('Owner');
+    expect(ownFacts).toContain('operator');
+    own.unmount();
+
+    const engine = render(unlocked(
+      <RunDetail runRef="run-1" detail={makeDetail({ ownerSubject: 'dashboard-engine' })} events={[]} dag={{ nodes: [], edges: [] }} />,
+    ));
+    expect(engine.getByTestId('entity-detail-facts').textContent).toContain('dashboard-engine');
   });
 
   it('links back to the workflow that produced it, off the server grouping key', () => {

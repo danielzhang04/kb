@@ -12,8 +12,13 @@
  *   - auto-scroll while tailing; FREEZE on manual scroll-up, with an "N new" pill that jumps to live
  *
  * The surface is labelled message-granular: there is NO intra-turn token claim (that arrives only
- * with the v2 Broker). The view accepts a model directly (live tail / Vibe / tests) or self-fetches a
- * replay from `/api/timeline`.
+ * with the v2 Broker). The view is fed a model by its caller (live tail / Composer / tests) and renders
+ * an empty scaffold without one.
+ *
+ * It used to carry a `sessionPath` prop that self-fetched a replay from `GET /api/timeline`. No server
+ * ever registered that route and no caller ever passed the prop, so the branch could only ever throw
+ * into its own swallowing `.catch` — dead wiring removed rather than given a server route it was never
+ * designed against.
  */
 import { useEffect, useRef, useState } from 'react';
 import type { Turn, TimelineStep, SubagentView, TimelineModel } from '../lib/timelineModel';
@@ -118,27 +123,9 @@ function TurnBlock({ turn }: { turn: Turn }): React.JSX.Element {
   );
 }
 
-/** Timeline / Activity view. Accepts a model directly (live tail / Vibe / tests) or self-fetches a replay. */
-export function Timeline({ model, sessionPath }: { model?: TimelineModel; sessionPath?: string }): React.JSX.Element {
-  const [fetched, setFetched] = useState<TimelineModel | null>(null);
-
-  useEffect(() => {
-    if (model || !sessionPath) return;
-    let cancelled = false;
-    fetch(`/api/timeline?session=${encodeURIComponent(sessionPath)}`)
-      .then((r) => r.json() as Promise<TimelineModel>)
-      .then((d) => {
-        if (!cancelled) setFetched(d);
-      })
-      .catch(() => {
-        /* read-only view: on failure keep the empty scaffold, never crash the shell */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [model, sessionPath]);
-
-  const view = model ?? fetched ?? EMPTY;
+/** Timeline / Activity view. Renders the model its caller supplies (live tail / Composer / tests). */
+export function Timeline({ model }: { model?: TimelineModel }): React.JSX.Element {
+  const view = model ?? EMPTY;
   const turnCount = view.turns.length;
 
   // ---- Tail vs freeze -------------------------------------------------------------------------

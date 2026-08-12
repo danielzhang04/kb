@@ -15,7 +15,9 @@ import {
   planRunWorktreePath,
   type AccountingAdapter,
   type AutomaticExecutionOptions,
+  type ExecutionBudget,
   type ExecutionCancellationController,
+  type ExecutionUsage,
   type ManagerAdapter,
   type ResultIntegrator,
   type WorkerAdapter,
@@ -138,6 +140,7 @@ interface Fakes {
   worktreePaths: string[];
   removedPaths: string[];
   reservations: string[];
+  reservationLimits: ExecutionBudget[];
 }
 
 function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapter } = {}): Fakes {
@@ -146,6 +149,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
   const worktreePaths: string[] = [];
   const removedPaths: string[] = [];
   const reservations: string[] = [];
+  const reservationLimits: ExecutionBudget[] = [];
   const settled = new Set<string>();
   const worktrees: WorktreeAdapter = {
     async ensure(input) { worktreePaths.push(input.path); },
@@ -159,6 +163,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
   const accounting: AccountingAdapter = overrides.accounting ?? {
     async reserve(input) {
       reservations.push(input.operationKey);
+      reservationLimits.push(input.limits);
       return { ok: true, value: { reservationRef: `reservation:${input.attemptRef}`, replayed: false } };
     },
     async settle(input) { settled.add(input.operationKey); },
@@ -187,7 +192,71 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
     async cancelManager() {},
     async cancelWorker() {},
   };
-  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, removedPaths, reservations };
+  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, removedPaths, reservations, reservationLimits };
+}
+
+interface LedgerRecord {
+  reservationRef: string;
+  limits: ExecutionBudget;
+  state: 'active' | 'settled';
+  usage: ExecutionUsage | null;
+}
+
+/**
+ * Faithful in-memory stand-in for the file accounting adapter's arithmetic (see adapters.ts): an active
+ * reservation holds its FULL limit against the window and occupies a concurrency slot until it settles,
+ * and a settlement whose usage exceeds its own reservation's limits is refused exactly as `withinBudget`
+ * refuses it — writing nothing, leaving the reservation active.
+ */
+function windowAccounting(window: ExecutionBudget, maxConcurrency = 1): { adapter: AccountingAdapter; records: LedgerRecord[] } {
+  const records: LedgerRecord[] = [];
+  const held = (record: LedgerRecord): ExecutionUsage => (record.state === 'settled' && record.usage
+    ? record.usage
+    : {
+      inputTokens: record.limits.maxInputTokens,
+      outputTokens: record.limits.maxOutputTokens,
+      costUsdMicros: record.limits.maxCostUsdMicros,
+    });
+  const adapter: AccountingAdapter = {
+    async reserve(input) {
+      if (records.filter((item) => item.state === 'active').length >= maxConcurrency) {
+        return { ok: false, reason: 'global concurrency limit reached' };
+      }
+      const projected = records.reduce((sum, record) => {
+        const usage = held(record);
+        return {
+          inputTokens: sum.inputTokens + usage.inputTokens,
+          outputTokens: sum.outputTokens + usage.outputTokens,
+          costUsdMicros: sum.costUsdMicros + usage.costUsdMicros,
+        };
+      }, {
+        inputTokens: input.limits.maxInputTokens,
+        outputTokens: input.limits.maxOutputTokens,
+        costUsdMicros: input.limits.maxCostUsdMicros,
+      });
+      if (projected.inputTokens > window.maxInputTokens
+        || projected.outputTokens > window.maxOutputTokens
+        || projected.costUsdMicros > window.maxCostUsdMicros) {
+        return { ok: false, reason: 'global token or cost budget exhausted' };
+      }
+      const reservationRef = `reservation:${input.attemptRef}`;
+      records.push({ reservationRef, limits: input.limits, state: 'active', usage: null });
+      return { ok: true, value: { reservationRef, replayed: false } };
+    },
+    async settle(input) {
+      const record = records.find((item) => item.reservationRef === input.reservationRef);
+      if (!record) throw new Error('accounting reservation was not found');
+      if (record.state === 'settled') return;
+      if (input.usage.inputTokens > record.limits.maxInputTokens
+        || input.usage.outputTokens > record.limits.maxOutputTokens
+        || input.usage.costUsdMicros > record.limits.maxCostUsdMicros) {
+        throw new Error('settlement exceeds its reserved limits');
+      }
+      record.state = 'settled';
+      record.usage = input.usage;
+    },
+  };
+  return { adapter, records };
 }
 
 function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir(), 'kb-auto-worktrees')): AutomaticExecutionOptions {
@@ -197,6 +266,8 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
     worktreeRoot: root,
     maxConcurrency: 1,
     budget: { maxAttempts: 3, maxInputTokens: 1_000, maxOutputTokens: 1_000, maxCostUsdMicros: 10_000 },
+    // Deliberately distinct from the window budget above so a reservation can only match one of them.
+    attemptBudget: { maxAttempts: 1, maxInputTokens: 400, maxOutputTokens: 400, maxCostUsdMicros: 4_000 },
     worktrees: fake.worktrees,
     managers: fake.managers,
     workers: fake.workers,
@@ -363,6 +434,72 @@ describe('AutomaticExecutionEngine', () => {
       },
     });
     expect(observed).toEqual([{ runState: 'running', managerState: 'running' }]);
+  });
+
+  it('reserves every attempt against the PER-ATTEMPT budget, never the window budget', async () => {
+    const store = createStore();
+    const plan = proposal([stage('reserve-first'), stage('reserve-second', ['reserve-first'])]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    await new AutomaticExecutionEngine(options).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    });
+    expect(fake.executionOrder).toEqual(['reserve-first', 'reserve-second']);
+    // Both reservations carry the attempt limits. Reserving the window ceiling instead is the live
+    // multi-stage defect: the adapter would project the whole window against itself on stage two.
+    expect(fake.reservationLimits).toEqual([options.attemptBudget, options.attemptBudget]);
+    expect(fake.reservationLimits).not.toContainEqual(options.budget);
+  });
+
+  it('releases the accounting hold at its ceiling when a settlement is REFUSED, so the window keeps admitting work', async () => {
+    const store = createStore();
+    const plan = proposal([stage('settlement-overage')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    const ledger = windowAccounting(options.budget);
+    options.accounting = ledger.adapter;
+    options.workers = {
+      // Reports more input tokens than this attempt reserved (cache-read tokens accumulate across a long
+      // multi-turn session), so the accounting adapter refuses the settlement.
+      async execute() {
+        return {
+          state: 'succeeded',
+          summary: 'over the reserved ceiling',
+          usage: { inputTokens: options.attemptBudget.maxInputTokens + 1, outputTokens: 5, costUsdMicros: 100 },
+          artifacts: [], checkpoints: [],
+        };
+      },
+    };
+    await expect(new AutomaticExecutionEngine(options).runToBoundary({
+      subject: 'operator', runRef: run.runRef, proposal: plan,
+    })).resolves.toMatchObject({ state: 'waiting-human' });
+
+    // Existing behaviour is unchanged: the attempt parks for a human with the overage as the prompt.
+    const detail = store.getRun('operator', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.run.state).toBe('waiting-human');
+    expect(detail.value.humanRequests.some((request) =>
+      request.kind === 'intervention' && request.prompt.includes('settlement exceeds its reserved limits'))).toBe(true);
+
+    // The reservation is terminal at its reserved ceiling — never left active holding the whole limit
+    // (and, at maxConcurrency 1, the window's only slot) for the rest of the window.
+    expect(ledger.records).toEqual([{
+      reservationRef: expect.any(String),
+      limits: options.attemptBudget,
+      state: 'settled',
+      usage: {
+        inputTokens: options.attemptBudget.maxInputTokens,
+        outputTokens: options.attemptBudget.maxOutputTokens,
+        costUsdMicros: options.attemptBudget.maxCostUsdMicros,
+      },
+    }]);
+    // So the same window still admits the next attempt.
+    await expect(ledger.adapter.reserve({
+      operationKey: 'reserve:after-overage', subject: 'operator', runRef: run.runRef,
+      attemptRef: 'attempt-after-overage', limits: options.attemptBudget,
+    })).resolves.toMatchObject({ ok: true });
   });
 
   it('contains failed Manager startup without terminalizing the resumable run or stage graph', async () => {

@@ -75,6 +75,7 @@ const def = (over: Partial<WorkflowDefEntry> & { ref: string }): WorkflowDefEntr
 });
 
 const governed = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
+  ownerSubject: 'operator',
   displayName: 'Governed video run',
   shortRef: 7,
   workflowRef: 'kb~video.md',

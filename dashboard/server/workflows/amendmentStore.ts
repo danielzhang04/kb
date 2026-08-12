@@ -1,7 +1,8 @@
 /** Durable, dashboard-owned state for workflow definition amendments. This is deliberately outside
  * the repository: a pending PR is runtime control state, not canonical workflow content. */
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
+import { renameWithRetrySync } from '../atomicRename.ts';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DEFAULT_WORK_BRANCH } from '../write/branch.ts';
 
@@ -102,7 +103,7 @@ export function createFileDefinitionAmendmentStore(stateRoot: string): Definitio
     const path = pathFor(record.workflowPath);
     const temp = join(dirname(path), `.${key(record.workflowPath)}.${process.pid}.${Date.now()}.tmp`);
     writeFileSync(temp, `${JSON.stringify(record)}\n`, { encoding: 'utf8', flag: 'wx' });
-    try { renameSync(temp, path); } catch (error) { try { unlinkSync(temp); } catch { /* preserve original error */ } throw error; }
+    try { renameWithRetrySync(temp, path); } catch (error) { try { unlinkSync(temp); } catch { /* preserve original error */ } throw error; }
   };
   return {
     lookup(workflowPath, activeSourceHash) {

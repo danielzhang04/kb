@@ -28,7 +28,10 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_REF,
   AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
   AUTHORIZED_20260801_FAILED_RUN_STAGES,
+  OPERATOR_SUBJECT,
   exactAuthorized20260801ProposalRevision,
+  type ReadScope,
+  type RunActivationInput,
   type RunActivationPhase,
 } from './store.ts';
 import {
@@ -40,7 +43,7 @@ import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
-import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf } from './launch.ts';
+import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
 import { registerPaidActionRoute } from './paidActionRoute.ts';
 import type { EntityDisplay } from '../naming.ts';
 import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
@@ -67,6 +70,34 @@ function subject(req: FastifyRequest): string | null {
 }
 
 /**
+ * The scope this request resolves to — the ONE place cross-subject reach is decided (rulings,
+ * 2026-08-11).
+ *
+ * This daemon serves exactly one human, who owns the whole machine; but a run is owned by whichever
+ * subject created it, and only the runs launched by hand through the SPA carry the operator's. Every
+ * run the queue bridge or the executor launches is owned by `dashboard-engine` (`activation.ts`), so an
+ * own-subject-only read hid them from the runs list, from the Workflows graph, and from run detail —
+ * unreachable, not merely unlabelled.
+ *
+ * The first ruling widened READS only. That left the Inbox listing human gates on engine-owned runs
+ * which rendered answerable and then 404'd on submit, and left operator message / steer / stop /
+ * archive unreachable on exactly the headless runs those controls exist for. Daniel's follow-up
+ * ruling: the verified OPERATOR session carries FULL MUTATION AUTHORITY across every subject's runs.
+ *
+ * So a verified operator session reads AND drives the operator-facing mutations across every subject.
+ * Nothing else does: every other subject keeps exact own-subject scoping on both. The widening derives
+ * from the verified session subject alone — no header, query param or body field can select it — and
+ * the engine, executor and queue-bridge call paths never pass a scope, so they stay own-subject.
+ *
+ * A widened mutation never moves ownership (the store files every record it writes under the RUN's own
+ * subject) and never launders the actor (`respondedBy` and the audit row's `owner` both name the
+ * operator). See {@link ReadScope}.
+ */
+function readScope(req: FastifyRequest): ReadScope {
+  return subject(req) === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
+}
+
+/**
  * The `sourceComposerRef` that `server/workflows/routes.ts` stamps on every revision it creates from a
  * workflow definition; such a revision carries that definition's id in `sourceTurnId`.
  */
@@ -78,10 +109,14 @@ const WORKFLOW_COMPOSER_REF = 'workflow-registry';
  * This join used to be re-derived in the BROWSER, which forced every surface listing runs to also fetch
  * the whole revision list just to answer "which workflow does this run belong to". The revisions are
  * already in the store here, so the grouping key is stamped at the DTO-build site instead.
+ *
+ * Built at the SAME `scope` as the runs it labels: a run read under `'all-subjects'` whose revision was
+ * looked up under the caller's own subject would come back with `workflowRef: null` and silently drop
+ * out of the Workflows graph — the exact symptom this index exists to prevent.
  */
-function workflowRefIndex(ctx: SurfaceContext, sub: string): Map<string, string> {
+function workflowRefIndex(ctx: SurfaceContext, sub: string, scope: ReadScope): Map<string, string> {
   const byProposal = new Map<string, string>();
-  for (const revision of ctx.controlStore.listProposalRevisionsForComposer(sub, WORKFLOW_COMPOSER_REF)) {
+  for (const revision of ctx.controlStore.listProposalRevisionsForComposer(sub, WORKFLOW_COMPOSER_REF, scope)) {
     if (revision.sourceTurnId) byProposal.set(revision.proposalRef, revision.sourceTurnId);
   }
   return byProposal;
@@ -125,10 +160,10 @@ function humanRequestDisplay(
 }
 
 /** The `/api/control/runs/:runRef` DTO: the run and each of its requests carry the run's display identity. */
-function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail): RunDetail {
+function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope: ReadScope): RunDetail {
   return {
     ...detail,
-    run: runDisplay(ctx, detail.run, workflowRefIndex(ctx, sub)),
+    run: runDisplay(ctx, detail.run, workflowRefIndex(ctx, sub, scope)),
     humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
   };
 }
@@ -261,11 +296,21 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return reply.send({ proposals: values });
   });
 
+  /**
+   * The SINGLE-revision read, widened (ruling 3). Run detail polls it to build the steering CHECKPOINT
+   * pick-list from the approved plan; on an engine-owned run it answered `not-found` and the UI degraded
+   * silently to a free-text checkpoint box — the operator steering a headless run had to type a
+   * checkpoint id from memory, with a typo indistinguishable from a real one.
+   *
+   * Deliberately NOT widened alongside it: the proposals LIST above (bridge-imported revisions are not
+   * the operator's to enumerate — adoption safety) and the composer import / revision / decision routes
+   * below (Composer authoring state stays the authoring subject's).
+   */
   scope.get('/api/control/proposals/:proposalRef/revisions/:revision', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const { proposalRef, revision } = req.params as { proposalRef: string; revision: string };
-    return sendResult(reply, ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision)));
+    return sendResult(reply, ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision), readScope(req)));
   });
 
   scope.post('/api/control/proposals/import', { preHandler }, async (req, reply) => {
@@ -373,23 +418,41 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return sendResult(reply, decided);
   });
 
+  /**
+   * Launch / Retry an approved revision.
+   *
+   * Ruling 3 reaches this route (2026-08-11 audit): the revision is resolved under the caller's READ
+   * SCOPE, so a verified operator can launch or retry a revision the queue bridge imported, and the
+   * launch then executes AS THE REVISION'S OWNER. Before this, RunDetail's "Run it again" on a failed
+   * engine run and the pre-publication resume branch both 404'd inside the very first revision lookup.
+   * "Run it again" is now delivered; the pre-publication resume branch stays a dead end BY DESIGN —
+   * it 409s `run-already-exists-for-revision` (naming the run already on screen) instead of minting
+   * a duplicate engine-owned run for the same revision.
+   *
+   * Ownership never moves: the successor run, its stages, attempts, sessions, boundaries and events are
+   * all the owner's, and the executor is handed the owner. The operator is the ACTOR — audited as the
+   * `control-run-launch` row's `owner`, beside `detail.runOwnerSubject`. The operator's launch identity
+   * is namespaced inside {@link executeApprovedLaunch} so it cannot collide with the owner's own launch
+   * operations in either direction.
+   */
   scope.post('/api/control/proposals/:proposalRef/revisions/:revision/launch', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const { proposalRef, revision } = req.params as { proposalRef: string; revision: string };
     const body = record(req.body);
-    const stored = ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision));
+    const stored = ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision), readScope(req));
     if (!stored.ok) return sendResult(reply, stored);
     if (stored.value.hash !== string(body.expectedHash)) return reply.code(409).send({ error: 'revision-mismatch' });
     if (stored.value.approval?.decision !== 'approved') return reply.code(409).send({ error: 'not-approved' });
     // The single canonical launch body (one ops transaction: reconcile, compile, publish cards +
     // audit, activate) lives in control/launch.ts. Every launch surface calls it; nothing forks it.
-    const outcome = await executeApprovedLaunch(ctx, sub, {
+    const outcome = await executeApprovedLaunch(ctx, stored.value.ownerSubject, {
       proposalRef,
       revision: Number(revision),
       storedHash: stored.value.hash,
       snapshot: stored.value.snapshot,
       sessionToken: verifiedSession(req)?.token,
+      actorSubject: sub,
       idempotencyKey: string(body.idempotencyKey),
       predecessorRunRef: body.predecessorRunRef == null ? null : string(body.predecessorRunRef),
       expectedPredecessorVersion: integer(body.expectedPredecessorVersion),
@@ -467,6 +530,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1) {
       return reply.code(409).send({ error: 'legacy-recovery-cas-mismatch' });
     }
+    // The run-control lock is keyed by the CALLER here, not by a resolved owner, and that is only safe
+    // because this route is own-subject: every store call below reads and writes as `sub`, so `sub` IS
+    // the owner. If this frozen route is ever scope-widened, the lock must key by the resolved owner
+    // first — otherwise a cross-subject caller would serialise against its own subject and race the
+    // owner's activation.
     return ctx.runControlTransactions.run(sub, AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF, async () => {
       const preflight = ctx.controlStore.preflightAuthorized20260731ExecutionLock(sub, input);
       if (!preflight.ok) return sendResult(reply, preflight);
@@ -530,6 +598,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       || input.idempotencyKey !== AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY) {
       return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-cas-mismatch' });
     }
+    // Caller-keyed lock, same invariant as the 2026-07-31 route above: own-subject route ⇒ `sub` IS the
+    // owner of this run. A scope widening here must resolve the owner and key the lock by it.
     return ctx.runControlTransactions.run(sub, AUTHORIZED_20260801_FAILED_RUN_REF, async () =>
       withOpsTransaction(async () => {
         const grant = authorizedFailedRunReconciliationGrant(ctx, sub);
@@ -583,13 +653,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const scope = readScope(req);
     // One revision walk for the whole list, not one per run.
-    const workflows = workflowRefIndex(ctx, sub);
+    const workflows = workflowRefIndex(ctx, sub, scope);
     // An archived run is one the operator explicitly dismissed. It stays fully readable by ref and is
     // still listable on request, but it is out of the DEFAULT projection every surface renders —
     // otherwise "archive" would mean nothing and dead runs would keep haunting every list.
     const includeArchived = string((req.query as { includeArchived?: unknown }).includeArchived) === '1';
-    const runs = ctx.controlStore.listRuns(sub).filter((run) => includeArchived || run.state !== 'archived');
+    const runs = ctx.controlStore.listRuns(sub, scope).filter((run) => includeArchived || run.state !== 'archived');
     return reply.send({ runs: runs.map((run) => runDisplay(ctx, run, workflows)) });
   });
 
@@ -597,11 +668,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const scope = readScope(req);
+    const detail = ctx.controlStore.getRun(sub, runRef, scope);
     if (!detail.ok) return sendResult(reply, detail);
     return reply.send({
       ok: true,
-      value: runDetailDto(ctx, sub, detail.value),
+      value: runDetailDto(ctx, sub, detail.value, scope),
       replayed: detail.replayed ?? false,
       execution: executionPosture(ctx),
     });
@@ -611,7 +683,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const { runRef, attemptRef } = req.params as { runRef: string; attemptRef: string };
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const detail = ctx.controlStore.getRun(sub, runRef, readScope(req));
     if (!detail.ok) return sendResult(reply, detail);
     if (!detail.value.attempts.some((attempt) => attempt.attemptRef === attemptRef)) {
       return reply.code(404).send({ error: 'attempt-not-found' });
@@ -630,9 +702,21 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const query = req.query as { after?: string; limit?: string };
-    return sendResult(reply, ctx.controlStore.listEvents(sub, (req.params as { runRef: string }).runRef, Number(query.after ?? 0), Number(query.limit ?? 200)));
+    return sendResult(reply, ctx.controlStore.listEvents(
+      sub, (req.params as { runRef: string }).runRef, Number(query.after ?? 0), Number(query.limit ?? 200), readScope(req),
+    ));
   });
 
+  /**
+   * Per-stage runtime/model routing (RunDetail's routing controls).
+   *
+   * Ruling 3: the run is resolved under the caller's READ SCOPE and everything after that — the
+   * authorization re-read, the approved-revision binding, the successor attempt projection, the
+   * reconciliation intervention and the timeline event — executes AS THE RUN'S OWNER. A bridge-launched
+   * run's records all live under `dashboard-engine`, and reading them as the operator answered
+   * `not-found` before the canonical card was ever touched. The actor is recorded by the canonical
+   * `card-routing` audit row that `setCardRouting` writes from the verified session.
+   */
   scope.post('/api/control/runs/:runRef/stages/:stageRef/reroute', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -649,8 +733,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(400).send({ error: 'invalid-reroute', detail: 'runtime, model, positive stage/attempt versions, attempt identity, and idempotencyKey are required' });
     }
 
+    // Resolved once, up front, so the owner is available to the idempotent-replay branch below as well
+    // as to `authorize`. A caller with no reach over this run stops here, before any canonical write.
+    const owned = ctx.controlStore.getRun(sub, runRef, readScope(req));
+    if (!owned.ok) return sendResult(reply, owned);
+    const owner = owned.value.ownerSubject;
+
     const authorize = () => {
-      const detail = ctx.controlStore.getRun(sub, runRef);
+      const detail = ctx.controlStore.getRun(owner, runRef);
       if (!detail.ok) return { ok: false as const, status: 404, error: 'not-found', detail: detail.detail };
       const stage = detail.value.stages.find((candidate) => candidate.stageRef === stageRef);
       if (!stage) return { ok: false as const, status: 404, error: 'not-found', detail: 'stage was not found' };
@@ -700,7 +790,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         return { ok: false as const, status: 400, error: 'invalid-reroute', detail: 'reroute must change runtime or model' };
       }
       const stored = ctx.controlStore.getProposalRevision(
-        sub, detail.value.run.proposalRef, detail.value.run.proposalRevision,
+        owner, detail.value.run.proposalRef, detail.value.run.proposalRevision,
       );
       if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
         return { ok: false as const, status: 409, error: 'approved-proposal-binding-lost', detail: 'approved proposal binding was lost' };
@@ -751,7 +841,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const initial = authorize();
     if (!initial.ok) {
       if (initial.error === 'reroute-state-changed') {
-        const replay = ctx.controlStore.rerouteStage(sub, stageRef, {
+        const replay = ctx.controlStore.rerouteStage(owner, stageRef, {
           expectedStageVersion,
           expectedAttemptRef,
           expectedAttemptVersion,
@@ -765,6 +855,21 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         }
       }
       return reply.code(initial.status).send({ error: initial.error, detail: initial.detail, ...('disposition' in initial ? { disposition: initial.disposition } : {}) });
+    }
+    // Attribution BEFORE the canonical write, like every other cross-subject mutation on this surface.
+    // The `card-routing` row `setCardRouting` writes names the card, not the run or its owner, so on an
+    // engine-owned run nothing recorded WHO rerouted WHOSE run. `owner` is the actor; `runOwnerSubject`
+    // is whose run it is.
+    try {
+      await auditFn(ctx)(ctx.repoRoot, {
+        action: 'control-run-reroute-authorize', owner: sub, target: stageRef, riskTier: 'T2',
+        result: `authorized:${runtime}:${model}`,
+        detail: {
+          runRef, runOwnerSubject: owner, stageRef, cardId: initial.cardId, runtime, model,
+        },
+      }, { runGit: ctx.opsGit, now: ctx.now });
+    } catch {
+      return reply.code(500).send({ error: 'reroute-audit-required' });
     }
     const canonical = await setCardRouting({
       repoRoot: ctx.repoRoot,
@@ -794,7 +899,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         ...(canonical.disposition ? { disposition: canonical.disposition } : {}),
       });
     }
-    const projected = ctx.controlStore.rerouteStage(sub, stageRef, {
+    const projected = ctx.controlStore.rerouteStage(owner, stageRef, {
       expectedStageVersion,
       expectedAttemptRef,
       expectedAttemptVersion,
@@ -803,7 +908,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       idempotencyKey,
     });
     if (!projected.ok) {
-      ctx.controlStore.createHumanRequest(sub, runRef, {
+      ctx.controlStore.createHumanRequest(owner, runRef, {
         stageRef,
         kind: 'intervention',
         title: `reroute:reconcile:${stageRef}`,
@@ -811,7 +916,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       });
       return reply.code(409).send({ error: 'reroute-projection-reconciliation-required', detail: projected.detail });
     }
-    ctx.controlStore.appendEvent(sub, runRef, {
+    ctx.controlStore.appendEvent(owner, runRef, {
       kind: 'lifecycle', source: 'human', stageRef, attemptRef: projected.value.attempt.attemptRef,
       sessionRef: projected.value.session.sessionRef, status: 'pending',
       summary: `queued successor attempt ${projected.value.attempt.generation} with ${runtime}/${model}`,
@@ -848,7 +953,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     });
     if (!reconciled.ok) return reply.code(409).send({ error: reconciled.reason, detail: reconciled.detail });
     try {
-      auditFn(ctx)(ctx.repoRoot, {
+      await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-publication-reconcile', owner: sub, target: runRef, riskTier: 'T2',
         result: `verified:${runRef}:${stored.value.hash}`,
         detail: {
@@ -950,7 +1055,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
     if (!ctx.controlBroker?.isRunning(detail.value.run.managerSessionRef)) {
       return reply.code(409).send({ error: 'manager-not-running' });
@@ -960,7 +1066,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       expectedManagerGeneration: integer(body.expectedManagerGeneration),
       idempotencyKey: string(body.idempotencyKey),
       kind: 'message', message: string(body.message),
-    });
+    }, runScope);
     if (!committed.ok) return sendResult(reply, committed);
     if (!ctx.controlBroker.queueInstruction(
       detail.value.run.managerSessionRef, string(body.message), string(body.idempotencyKey),
@@ -968,7 +1074,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Manager message delivery needs reconciliation',
         prompt: 'The operator message committed durably, but the live Manager could not accept its checkpoint queue.',
-      });
+      }, runScope);
       return reply.code(409).send({ error: 'manager-message-reconciliation-required', value: committed.value.event });
     }
     return reply.send({ ok: true, value: committed.value.event, replayed: committed.replayed ?? false });
@@ -979,7 +1085,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const { runRef, agentId } = req.params as { runRef: string; agentId: string };
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
     const stageOfAssignment = detail.value.stages.find((stage) => stage.assignment?.agentId === agentId);
     const assignment = stageOfAssignment?.assignment;
@@ -998,7 +1105,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         const appended = ctx.controlStore.appendEvent(sub, runRef, {
           kind: 'message', source: 'human', stageRef: stageOfAssignment.stageRef, status: null,
           summary: boundSummary(`operator → ${agentId} (${delivered}): ${message}`),
-        });
+        }, runScope);
         if (!appended.ok) {
           try {
             await auditFn(ctx)(ctx.repoRoot, {
@@ -1024,7 +1131,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
     if (!ctx.controlBroker?.isRunning(detail.value.run.managerSessionRef)) {
       return reply.code(409).send({ error: 'manager-not-running' });
@@ -1036,7 +1144,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       expectedManagerGeneration: integer(body.expectedManagerGeneration),
       idempotencyKey: string(body.idempotencyKey),
       kind: 'steer', message: instruction, checkpoint,
-    });
+    }, runScope);
     if (!committed.ok) return sendResult(reply, committed);
     if (!ctx.controlBroker.queueInstructionAtCheckpoint(
       detail.value.run.managerSessionRef, checkpoint, instruction, string(body.idempotencyKey),
@@ -1044,7 +1152,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Manager steering needs reconciliation',
         prompt: 'The checkpoint-bound instruction committed durably, but the live Manager could not accept its queue.',
-      });
+      }, runScope);
       return reply.code(409).send({ error: 'manager-steering-reconciliation-required', value: committed.value.event });
     }
     return reply.send({ ok: true, value: committed.value.event, replayed: committed.replayed ?? false });
@@ -1055,8 +1163,15 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
-    return ctx.runControlTransactions.run(sub, runRef, async () => {
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    // The per-run lock is keyed by the RUN (its owner + ref), never by the caller: a cross-subject
+    // operator control and the engine's own operations on the same run must take the SAME lock, or the
+    // stop-vs-activation exclusion this lock exists for silently disappears on exactly the headless runs
+    // it matters most for. Own-subject callers are unaffected — owner and caller are the same string.
+    const owned = ctx.controlStore.getRun(sub, runRef, runScope);
+    if (!owned.ok) return sendResult(reply, owned);
+    return ctx.runControlTransactions.run(owned.value.ownerSubject, runRef, async () => {
+    const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
     if (!ctx.cancelAutomatic) {
       const locked = executionLockedRefusal(ctx);
@@ -1067,8 +1182,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'run-state-changed' });
     }
     try {
+      // The cancellation is executed AS THE RUN'S OWNER, not as the caller. The executor walks the
+      // run's whole record tree (intent, every session, attempt and stage) with one subject, and every
+      // one of those store writes is own-subject by design — the engine is not being widened here. The
+      // operator's authority is what got us past the session gate above and past the scoped read; who
+      // asked is recorded in the cancellation reason on the run's own timeline. Ownership is immutable,
+      // so this resolves to `sub` verbatim for a run the caller owns.
       const outcome = await ctx.cancelAutomatic({
-        subject: sub, runRef, idempotencyKey: string(body.idempotencyKey), reason: 'operator requested stop',
+        subject: detail.value.ownerSubject, runRef, idempotencyKey: string(body.idempotencyKey), reason: 'operator requested stop',
       });
       return reply.send({ ok: true, value: outcome, replayed: outcome.replayed });
     } catch (error) {
@@ -1102,16 +1223,24 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!idempotencyKey || idempotencyKey.length > 512 || (body.reason != null && typeof body.reason !== 'string')) {
       return reply.code(400).send({ error: 'invalid-archive', detail: 'idempotencyKey is required and reason must be text' });
     }
-    return ctx.runControlTransactions.run(sub, runRef, async () => {
-      const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    // Keyed by the RUN's owner, like every other lifecycle control here — see the stop route.
+    const owned = ctx.controlStore.getRun(sub, runRef, runScope);
+    if (!owned.ok) return sendResult(reply, owned);
+    return ctx.runControlTransactions.run(owned.value.ownerSubject, runRef, async () => {
+      const detail = ctx.controlStore.getRun(sub, runRef, runScope);
       if (!detail.ok) return sendResult(reply, detail);
       if (detail.value.run.state !== 'archived') {
         try {
           await auditFn(ctx)(ctx.repoRoot, {
+            // `owner` is the ACTOR — the operator session that authorized this — while `runOwnerSubject`
+            // below names the subject whose run it is. On a cross-subject archive the two differ, and
+            // the row is what makes that attributable.
             action: 'control-run-archive-authorize', owner: sub, target: runRef, riskTier: 'T3',
             result: `authorized:${idempotencyKey}`,
             detail: {
               runRef,
+              runOwnerSubject: detail.value.ownerSubject,
               runVersion: detail.value.run.version,
               runState: detail.value.run.state,
               openHumanRequestCount: detail.value.humanRequests.filter((request) => request.state === 'open').length,
@@ -1122,7 +1251,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           return reply.code(500).send({ error: 'run-archive-audit-required' });
         }
       }
-      const archived = ctx.controlStore.archiveRun(sub, runRef, { idempotencyKey, reason });
+      const archived = ctx.controlStore.archiveRun(sub, runRef, { idempotencyKey, reason }, runScope);
       if (!archived.ok) return sendResult(reply, archived);
       if (!archived.replayed) {
         ctx.controlStore.appendEvent(sub, runRef, {
@@ -1130,7 +1259,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           summary: reason
             ? `Run archived by the operator: ${reason}`
             : 'Run archived by the operator',
-        });
+        }, runScope);
       }
       return sendResult(reply, archived);
     });
@@ -1141,10 +1270,19 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
-    return ctx.runControlTransactions.run(sub, runRef, async () => {
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    // Keyed by the RUN's owner, like every other lifecycle control here — see the stop route.
+    const owned = ctx.controlStore.getRun(sub, runRef, runScope);
+    if (!owned.ok) return sendResult(reply, owned);
+    return ctx.runControlTransactions.run(owned.value.ownerSubject, runRef, async () => {
+    // Ruling 3, same as `/activate`: the operator resolves the run across subjects, and everything the
+    // successor needs (the run record, its approved proposal revision, the new Manager session, the
+    // executor call) is then read and written as the RUN'S OWNER — a bridge-launched run's records all
+    // live under `dashboard-engine`, and reading them as the operator answered `not-found`.
+    const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
-    const activeActivation = ctx.controlStore.hasActiveRunActivation(sub, runRef);
+    const owner = detail.value.ownerSubject;
+    const activeActivation = ctx.controlStore.hasActiveRunActivation(owner, runRef);
     if (!activeActivation.ok) return sendResult(reply, activeActivation);
     const acceptedResume = detail.value.run.publicationState === 'published'
       && detail.value.run.state === 'waiting-human'
@@ -1160,7 +1298,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     );
     if (!profile) return reply.code(400).send({ error: 'manager-profile-refused' });
     const stored = ctx.controlStore.getProposalRevision(
-      sub, detail.value.run.proposalRef, detail.value.run.proposalRevision,
+      owner, detail.value.run.proposalRef, detail.value.run.proposalRevision,
     );
     if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
       return reply.code(409).send({ error: 'approved-proposal-binding-lost' });
@@ -1176,17 +1314,19 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     }
     try {
       await auditFn(ctx)(ctx.repoRoot, {
+        // `owner` is the ACTOR (the operator session); `runOwnerSubject` names whose run it is.
         action: 'control-manager-successor-authorize', owner: sub, target: runRef, riskTier: 'T2',
         result: `authorized:generation:${integer(body.expectedManagerGeneration) + 1}`,
         detail: {
-          runRef, proposalHash: stored.value.hash, expectedManagerGeneration: integer(body.expectedManagerGeneration),
+          runRef, runOwnerSubject: owner,
+          proposalHash: stored.value.hash, expectedManagerGeneration: integer(body.expectedManagerGeneration),
           runtime, model, profileId: profile.id,
         },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'manager-successor-audit-required' });
     }
-    const successor = ctx.controlStore.createManagerSuccessor(sub, runRef, {
+    const successor = ctx.controlStore.createManagerSuccessor(owner, runRef, {
       expectedManagerGeneration: integer(body.expectedManagerGeneration),
       runtime, model, idempotencyKey: string(body.idempotencyKey),
     });
@@ -1194,8 +1334,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!ctx.controlBroker || !ctx.runAutomatic) {
       return reply.code(202).send({ ok: true, value: successor.value, replayed: successor.replayed ?? false, activationGated: true });
     }
-    void ctx.runAutomatic({ subject: sub, runRef, proposal: proposal.value }).catch((error: unknown) => {
-      ctx.controlStore.createHumanRequest(sub, runRef, {
+    void ctx.runAutomatic({ subject: owner, runRef, proposal: proposal.value }).catch((error: unknown) => {
+      ctx.controlStore.createHumanRequest(owner, runRef, {
         kind: 'intervention', title: 'Manager successor needs intervention',
         prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
       });
@@ -1204,287 +1344,36 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     });
   });
 
+  /**
+   * The operator's manual Resume. Thin by design: the activation itself is
+   * {@link activateRunUnderOwner}, which the automatic post-gate resume calls too, so the manual and
+   * automatic paths cannot drift.
+   *
+   * Ruling 3 reaches this route as well (2026-08-11 incident): the run is resolved under the caller's
+   * READ SCOPE, so a verified operator can activate a run owned by another subject, while the
+   * activation machinery underneath executes as the RUN'S OWNER. Before this, a bridge-launched
+   * (`dashboard-engine`-owned) run refused the operator's Resume click as `not-found` inside the very
+   * first receipt lookup — no receipt written, nothing on the timeline to explain it.
+   */
   scope.post('/api/control/runs/:runRef/activate', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
     if (!string(body.idempotencyKey)) return reply.code(400).send({ error: 'idempotency-key-required' });
-    const activationInput = {
-      expectedRunVersion: integer(body.expectedRunVersion),
-      expectedManagerGeneration: integer(body.expectedManagerGeneration),
-      idempotencyKey: string(body.idempotencyKey),
-    };
-    // Exact completed retries are read-only and remain replayable even if the runtime gate was
-    // turned off after the original dispatch. Pending receipts still require a live dispatcher.
-    const persistedReceipt = ctx.controlStore.getRunActivationReceipt(sub, runRef, activationInput);
-    if (!persistedReceipt.ok) return sendResult(reply, persistedReceipt);
-    if (persistedReceipt.value?.phase === 'dispatched') {
-      return reply.send({ ok: true, value: persistedReceipt.value.run, replayed: true });
-    }
-    if (persistedReceipt.value?.phase === 'failed') {
-      return reply.code(409).send({ error: 'activation-failed' });
-    }
-    if (!ctx.controlBroker || !ctx.runAutomatic || !ctx.containManagerStart) {
-      // A locked daemon gets its OWN refusal, which the UI turns into an unlock prompt; anything else
-      // (an injected-but-incomplete executor) keeps the original not-activated answer.
-      const locked = executionLockedRefusal(ctx);
-      return reply.code(409).send(locked ?? { error: 'automatic-runtime-not-activated' });
-    }
-    // Captured before the span closure: the handler's early activation gate proved it non-null, but
-    // control-flow narrowing does not cross the closure boundary.
-    const runAutomatic = ctx.runAutomatic;
-    const containManagerStart = ctx.containManagerStart;
-    if (!runAutomatic || !containManagerStart) {
-      return reply.code(409).send({ error: 'automatic-runtime-not-activated' });
-    }
-    // Per-run serialization excludes stop/successor controls without holding the fleet-wide Git lock
-    // during runtime startup. The nested ops transaction covers only audit and canonical root mutation.
-    return ctx.runControlTransactions.run(sub, runRef, async () => {
-    const receipt = ctx.controlStore.getRunActivationReceipt(sub, runRef, activationInput);
-    if (!receipt.ok) return sendResult(reply, receipt);
-    if (receipt.value?.phase === 'dispatched') {
-      return reply.send({ ok: true, value: receipt.value.run, replayed: true });
-    }
-    if (receipt.value?.phase === 'failed') return reply.code(409).send({ error: 'activation-failed' });
-    const detail = ctx.controlStore.getRun(sub, runRef);
-    if (!detail.ok) return sendResult(reply, detail);
-    const pendingReplay = receipt.value?.phase === 'claimed' || receipt.value?.phase === 'roots-activated';
-    if ((!pendingReplay && detail.value.run.version !== activationInput.expectedRunVersion)
-      || detail.value.run.managerGeneration !== activationInput.expectedManagerGeneration
-      || detail.value.run.publicationState !== 'published'
-      || (pendingReplay
-        ? detail.value.run.state !== 'waiting-human' && detail.value.run.state !== 'recovering'
-        : detail.value.run.state !== 'waiting-human')) {
-      return reply.code(409).send({ error: 'activation-state-changed' });
-    }
-    if (detail.value.humanRequests.length === 0
-      || detail.value.humanRequests.some((request) => !acceptsBoundary(request))) {
-      return reply.code(409).send({ error: 'human-boundary-unresolved' });
-    }
-    const stored = ctx.controlStore.getProposalRevision(
-      sub, detail.value.run.proposalRef, detail.value.run.proposalRevision,
-    );
-    if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
-      return reply.code(409).send({ error: 'approved-proposal-binding-lost' });
-    }
-    let proposalForDispatch: PlanProposal | null = null;
-    const preparationFailure = await withOpsTransaction(async (): Promise<FastifyReply | null> => {
-    try {
-      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
-    } catch {
-      return reply.code(409).send({ error: 'canonical-reconciliation-failed' });
-    }
-    const registry = loadRuntimeSkillRegistry(ctx.repoRoot);
-    const proposal = validateServerCompiledPlanProposal(stored.value.snapshot, registry);
-    if (!proposal.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: proposal.detail });
-    const compiled = compileApprovedProposal(proposal.value, stored.value.hash, stored.value.hash, {
-      policy: loadPolicyEnvironment(ctx.repoRoot, proposal.value.project, proposal.value.governanceRefs),
-      defaultWorkers: defaultWorkers(ctx.repoRoot),
-    });
-    if (!compiled.ok) return reply.code(409).send({ error: compiled.reason, detail: compiled.detail });
-    const rootStageIds = new Set(proposal.value.stages.filter((stage) => stage.dependsOn.length === 0).map((stage) => stage.id));
-    const rootStages = detail.value.stages.filter((stage) => rootStageIds.has(stage.stageId));
-    const rootCards = rootStages
-      .map((stage) => stage.canonicalCardRef)
-      .filter((cardRef): cardRef is string => typeof cardRef === 'string' && cardRef.length > 0);
-    if (rootCards.length !== rootStageIds.size || new Set(rootCards).size !== rootCards.length) {
-      return reply.code(409).send({ error: 'managed-root-card-binding-lost' });
-    }
-    const rootByCard = new Map(rootStages.map((stage) => [stage.canonicalCardRef, stage]));
-    let claimed = receipt.value ?? null;
-    try {
-      await (ctx.activateManagedRoots ?? activateManagedRootCards)({
-        repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
-        runGit: ctx.opsGit ?? defaultGitRunner,
-        verifyCompletedRoots: async ({ cardRefs }) => {
-          if (!ctx.verifyCanonicalResult) throw new CompletedRootProvenanceError('canonical result verifier is unavailable');
-          for (const cardRef of cardRefs) {
-            const stage = rootByCard.get(cardRef);
-            let verified = false;
-            try {
-              verified = !!stage && stage.currentGeneration === 1 && workflowCardId(runRef, stage.stageId) === cardRef
-                && await ctx.verifyCanonicalResult({ subject: sub, runRef, stageId: stage.stageId });
-            } catch {
-              throw new CompletedRootProvenanceError('completed managed root provenance is not canonical');
-            }
-            if (!verified) {
-              throw new CompletedRootProvenanceError('completed managed root provenance is not canonical');
-            }
-          }
-        },
-        authorizeAfterPrepare: async () => {
-          const exactPending = claimed?.phase === 'claimed' || claimed?.phase === 'roots-activated';
-          const assertCurrentState = (): void => {
-            const current = ctx.controlStore.getRun(sub, runRef);
-            if (!current.ok
-              || (!exactPending && current.value.run.version !== activationInput.expectedRunVersion)
-              || current.value.run.managerGeneration !== activationInput.expectedManagerGeneration
-              || current.value.run.publicationState !== 'published'
-              || (exactPending
-                ? current.value.run.state !== 'waiting-human' && current.value.run.state !== 'recovering'
-                : current.value.run.state !== 'waiting-human')
-              || current.value.humanRequests.length === 0
-              || current.value.humanRequests.some((request) => !acceptsBoundary(request))) {
-              throw new Error('run activation state changed before canonical root activation');
-            }
-          };
-          const currentPolicyMatches = (): boolean => {
-            const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-            const currentCompiled = currentProposal.ok
-              ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
-                  policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-                  defaultWorkers: defaultWorkers(ctx.repoRoot),
-                })
-              : null;
-            return !!currentCompiled?.ok
-              && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(compiled.value.stagePolicies);
-          };
-          assertCurrentState();
-          if (!currentPolicyMatches()) {
-            throw new ActivationPreparationError(409, { error: 'activation-policy-changed' });
-          }
-          try {
-            await auditFn(ctx)(ctx.repoRoot, {
-              action: 'control-run-activate-authorize', owner: sub, target: runRef, riskTier: 'T3',
-              result: `authorized:${runRef}:${stored.value.hash}`,
-              detail: { runRef, proposalHash: stored.value.hash, managerGeneration: detail.value.run.managerGeneration },
-            }, { runGit: ctx.opsGit, now: ctx.now });
-          } catch {
-            throw new ActivationPreparationError(500, { error: 'activation-audit-reconciliation-required' });
-          }
-          const postAuditPreamble = (ctx.runPreamble ?? defaultPreambleRunner)(ctx.repoRoot);
-          if (postAuditPreamble.exitCode !== 0 || !postAuditPreamble.stdout.includes('PREAMBLE OK')) {
-            throw new ActivationPreparationError(409, { error: 'post-audit-preamble-refused' });
-          }
-          assertCurrentState();
-          if (!currentPolicyMatches()) {
-            throw new ActivationPreparationError(409, { error: 'activation-policy-changed' });
-          }
-          const claim = ctx.controlStore.claimRunActivation(sub, runRef, activationInput);
-          if (!claim.ok) throw new Error(claim.detail);
-          claimed = claim.value;
-        },
-      });
-    } catch (error) {
-      if (error instanceof CompletedRootProvenanceError) {
-        return reply.code(409).send({ error: 'completed-root-provenance-refused' });
-      }
-      if (error instanceof ActivationPreparationError) {
-        return reply.code(error.statusCode).send(error.body);
-      }
-      if (claimed) ctx.controlStore.failRunActivation(sub, runRef, activationInput);
-      return reply.code(409).send({
-        error: 'canonical-activation-failed', detail: error instanceof Error ? error.message : String(error),
-      });
-    }
-    if (!claimed) return reply.code(409).send({ error: 'activation-claim-missing' });
-    const rootsActivated = ctx.controlStore.advanceRunActivation(sub, runRef, activationInput, 'roots-activated');
-    if (!rootsActivated.ok) {
-      ctx.controlStore.failRunActivation(sub, runRef, activationInput);
-      return sendResult(reply, rootsActivated);
-    }
-    proposalForDispatch = proposal.value;
-    return null;
-    });
-    if (preparationFailure) return preparationFailure;
-    if (!proposalForDispatch) return reply.code(409).send({ error: 'activation-preparation-missing' });
-    let acknowledgeDispatch!: (receipt: { run: Run; phase: RunActivationPhase }) => void;
-    let rejectDispatch!: (error: Error) => void;
-    let dispatchAcknowledged = false;
-    const dispatchAcknowledgement = new Promise<{
-      run: Run;
-      phase: RunActivationPhase;
-    }>((resolve, reject) => {
-      acknowledgeDispatch = resolve;
-      rejectDispatch = reject;
-    });
-    let execution: Promise<unknown>;
-    try {
-      execution = runAutomatic({
-        subject: sub,
-        runRef,
-        proposal: proposalForDispatch,
-        onManagerStarted: () => {
-          const dispatched = ctx.controlStore.advanceRunActivation(sub, runRef, activationInput, 'dispatched');
-          if (!dispatched.ok) throw new Error(dispatched.detail);
-          dispatchAcknowledged = true;
-          acknowledgeDispatch(dispatched.value);
-        },
-      });
-    } catch (error) {
-      ctx.controlStore.failRunActivation(sub, runRef, activationInput);
-      return reply.code(409).send({
-        error: 'automatic-dispatch-failed',
-        detail: error instanceof Error ? error.message : 'automatic execution adapter failed',
-      });
-    }
-    void execution.then(
-      () => {
-        if (!dispatchAcknowledged) rejectDispatch(new Error('automatic execution returned before durable Manager startup'));
+    const owned = ctx.controlStore.getRun(sub, runRef, readScope(req));
+    if (!owned.ok) return sendResult(reply, owned);
+    const outcome = await activateRunUnderOwner(ctx, {
+      actorSubject: sub,
+      ownerSubject: owned.value.ownerSubject,
+      runRef,
+      activation: {
+        expectedRunVersion: integer(body.expectedRunVersion),
+        expectedManagerGeneration: integer(body.expectedManagerGeneration),
+        idempotencyKey: string(body.idempotencyKey),
       },
-      (error: unknown) => rejectDispatch(error instanceof Error ? error : new Error('automatic execution adapter failed')),
-    );
-    let dispatched: { run: Run; phase: RunActivationPhase };
-    try {
-      dispatched = await withControlDeadline(
-        dispatchAcknowledgement,
-        ctx.managerStartAckTimeoutMs,
-        `Manager startup was not durably acknowledged within ${ctx.managerStartAckTimeoutMs}ms`,
-      );
-    } catch (error) {
-      // Close the outbox first. A Manager-start callback arriving while cancellation is in flight
-      // must observe `failed` and can never turn a timeout response into a later dispatched replay.
-      ctx.controlStore.failRunActivation(sub, runRef, activationInput);
-      try {
-        await withControlDeadline(
-          containManagerStart({
-            subject: sub,
-            runRef,
-            idempotencyKey: `activation-contain:${activationInput.idempotencyKey}`,
-          }),
-          ctx.managerStartAckTimeoutMs,
-          `Manager startup cancellation was not acknowledged within ${ctx.managerStartAckTimeoutMs}ms`,
-        );
-      } catch {
-        // The durable run/receipt containment below remains mandatory even if process cancellation
-        // cannot be confirmed.
-      }
-      const intervention = ctx.controlStore.createHumanRequest(sub, runRef, {
-        kind: 'intervention',
-        title: 'Activation dispatch needs reconciliation',
-        prompt: error instanceof Error ? error.message : 'durable Manager startup acknowledgement failed',
-      });
-      if (!intervention.ok) {
-        const current = ctx.controlStore.getRun(sub, runRef);
-        if (current.ok && (current.value.run.state === 'recovering'
-          || current.value.run.state === 'running'
-          || current.value.run.state === 'waiting-human')) {
-          ctx.controlStore.transitionRun(sub, runRef, current.value.run.version, 'interrupted');
-        }
-      }
-      return reply.code(409).send({
-        error: 'automatic-dispatch-failed',
-        detail: error instanceof Error ? error.message : 'automatic execution adapter failed',
-      });
-    }
-    void execution.catch((error: unknown) => {
-      const intervention = ctx.controlStore.createHumanRequest(sub, runRef, {
-        kind: 'intervention', title: 'Automatic execution needs intervention',
-        prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
-      });
-      const current = ctx.controlStore.getRun(sub, runRef);
-      if (current.ok && (current.value.run.state === 'recovering' || current.value.run.state === 'running')) {
-        ctx.controlStore.transitionRun(
-          sub,
-          runRef,
-          current.value.run.version,
-          intervention.ok ? 'waiting-human' : 'interrupted',
-        );
-      }
     });
-    return reply.code(202).send({ ok: true, value: dispatched.run, starting: true });
-    });
+    return reply.code(outcome.status).send(outcome.body);
   });
 
   scope.post('/api/control/human-requests/:requestRef/respond', { preHandler }, async (req, reply) => {
@@ -1492,12 +1381,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const body = record(req.body);
     const requestRef = (req.params as { requestRef: string }).requestRef;
-    const found = ctx.controlStore.getHumanRequest(sub, requestRef);
+    const runScope = readScope(req);
+    const found = ctx.controlStore.getHumanRequest(sub, requestRef, runScope);
     if (!found.ok) return sendResult(reply, found);
     const existing = found.value;
     // A completion gate has review-lineage CAS requirements. It may only be resolved by the
     // dedicated route below, never by this generic Human Request mutation.
-    const requestRun = ctx.controlStore.getRun(sub, existing.runRef);
+    const requestRun = ctx.controlStore.getRun(sub, existing.runRef, runScope);
     if (!requestRun.ok) return sendResult(reply, requestRun);
     if (requestRun.value.reviewReceipts.some((receipt) => receipt.completionRequestRef === requestRef)) {
       return reply.code(409).send({ error: 'review-completion-gate-reserved' });
@@ -1506,10 +1396,15 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       if (existing.revision !== integer(body.expectedRevision)) return reply.code(409).send({ error: 'request-revision-changed' });
       try {
         await auditFn(ctx)(ctx.repoRoot, {
+          // `owner` is the ACTOR (the operator session); `runOwnerSubject` names whose run it is. The
+          // two differ on a cross-subject answer, and this row is the durable attribution for it.
           action: 'control-human-response-authorize', owner: sub, target: requestRef,
           riskTier: existing.kind === 'approval' || existing.kind === 'review' || existing.kind === 'governance-refusal' ? 'T3' : 'T2',
           result: `authorized:${string(body.decision)}`,
-          detail: { requestRef, runRef: existing.runRef, requestRevision: existing.revision, decision: string(body.decision) },
+          detail: {
+            requestRef, runRef: existing.runRef, runOwnerSubject: requestRun.value.ownerSubject,
+            requestRevision: existing.revision, decision: string(body.decision),
+          },
         }, { runGit: ctx.opsGit, now: ctx.now });
       } catch {
         return reply.code(500).send({ error: 'human-response-audit-required' });
@@ -1520,13 +1415,18 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       decision: string(body.decision) as 'responded' | 'approved' | 'rejected' | 'changes-requested',
       idempotencyKey: string(body.idempotencyKey),
       response: body.response == null ? null : string(body.response),
-    });
+    }, runScope);
     if (!responded.ok) return sendResult(reply, responded);
     if (!responded.replayed) {
       ctx.controlStore.appendEvent(sub, responded.value.runRef, {
         kind: 'governance', source: 'human', stageRef: responded.value.stageRef,
         status: responded.value.response?.decision === 'approved' || responded.value.response?.decision === 'responded' ? 'success' : 'waiting',
         summary: `Human Request ${responded.value.response?.decision ?? 'resolved'} at revision ${responded.value.revision}`,
+      }, runScope);
+      // Answering the LAST open boundary resumes the run — see resumeRunAfterBoundaryAccepted. Only a
+      // fresh decision kicks; a replayed re-submit records nothing new and must start nothing.
+      resumeRunAfterBoundaryAccepted(ctx, {
+        actorSubject: sub, runRef: responded.value.runRef, answeredTitle: responded.value.title, scope: runScope,
       });
     }
     // Unit-B's spend-grant mint marker used to live here. Unit D moved it to STAGE LAUNCH (see
@@ -1545,9 +1445,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const body = record(req.body);
     const requestRef = (req.params as { requestRef: string }).requestRef;
-    const request = ctx.controlStore.getHumanRequest(sub, requestRef);
+    // The run tab submits a gate through EITHER this route or the generic respond route above,
+    // picked by whether the request is a completion gate. Both therefore carry the operator's scope,
+    // or half the Inbox's gates would still dead-end on an engine-owned run.
+    const runScope = readScope(req);
+    const request = ctx.controlStore.getHumanRequest(sub, requestRef, runScope);
     if (!request.ok) return sendResult(reply, request);
-    const run = ctx.controlStore.getRun(sub, request.value.runRef);
+    const run = ctx.controlStore.getRun(sub, request.value.runRef, runScope);
     if (!run.ok) return sendResult(reply, run);
     const receipts = run.value.reviewReceipts.filter((receipt) => receipt.completionRequestRef === requestRef);
     if (receipts.length !== 1) return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
@@ -1570,10 +1474,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       }
       try {
         await auditFn(ctx)(ctx.repoRoot, {
+          // `owner` is the ACTOR; `runOwnerSubject` names whose run it is (they differ cross-subject).
           action: 'control-review-completion-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',
           result: `authorized:${decision}`,
           detail: {
-            requestRef, runRef: request.value.runRef, requestRevision: request.value.revision,
+            requestRef, runRef: request.value.runRef, runOwnerSubject: run.value.ownerSubject,
+            requestRevision: request.value.revision,
             reviewReceiptRef: receipt.reviewReceiptRef, receiptVersion: receipt.version,
             reviewLoopRef: loops[0].reviewLoopRef, loopVersion: loops[0].version,
             reviewStageRef: reviewStages[0].stageRef, reviewStageVersion: reviewStages[0].version,
@@ -1603,7 +1509,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       decision,
       idempotencyKey: string(body.idempotencyKey),
       response: body.response == null ? null : string(body.response),
-    });
+    }, runScope);
     if (!resolved.ok) return sendResult(reply, resolved);
     if (!resolved.replayed) {
       ctx.controlStore.appendEvent(sub, resolved.value.request.runRef, {
@@ -1612,21 +1518,41 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         summary: decision === 'approved'
           ? `Review completion gate approved at revision ${resolved.value.request.revision}`
           : `Review completion gate ${decision}; run parked with intervention`,
+      }, runScope);
+      // Same rule as the generic respond route: a fresh decision that leaves no unaccepted boundary
+      // resumes the run. A `rejected`/`changes-requested` gate mints its own intervention inside the
+      // store call above, so it fails the all-boundaries-accepted predicate and starts nothing.
+      resumeRunAfterBoundaryAccepted(ctx, {
+        actorSubject: sub, runRef: resolved.value.request.runRef, answeredTitle: resolved.value.request.title,
+        scope: runScope,
       });
     }
     return sendResult(reply, resolved);
   });
 
+  // ── RETENTION ──────────────────────────────────────────────────────────────────────────────────────
+  // All four routes carry the operator's scope (ruling 3). RunDetail's "Stored data" → "Review archiving"
+  // drives dry-run + quarantine, and on an engine-owned run both answered `not-found` — the operator
+  // could see a headless run's storage cost everywhere except where it could be reclaimed. `inventory`
+  // and `restore` have no live SPA caller today and are widened WITH them on purpose: a half-widened
+  // retention surface (plan across subjects, restore only your own) is a worse trap than the original.
+  //
+  // The store keys every record it moves by the RUN's OWN subject, so quarantine and restore never
+  // relabel a bundle as the operator's; the T2 audit rows name the operator as the actor beside the
+  // owning subject of each bundle.
+
   scope.get('/api/control/retention/inventory', { preHandler }, async (req, reply) => {
     const sub = subject(req);
-    return sub ? reply.send({ inventory: ctx.controlStore.inventory(sub) }) : reply.code(401).send({ error: 'unauthenticated' });
+    return sub ? reply.send({ inventory: ctx.controlStore.inventory(sub, readScope(req)) }) : reply.code(401).send({ error: 'unauthenticated' });
   });
 
   scope.post('/api/control/retention/dry-run', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRefs = record(req.body).runRefs;
-    return sendResult(reply, ctx.controlStore.dryRunQuarantine(sub, Array.isArray(runRefs) ? runRefs.filter((item): item is string => typeof item === 'string') : []));
+    return sendResult(reply, ctx.controlStore.dryRunQuarantine(
+      sub, Array.isArray(runRefs) ? runRefs.filter((item): item is string => typeof item === 'string') : [], readScope(req),
+    ));
   });
 
   scope.post('/api/control/retention/quarantine', { preHandler }, async (req, reply) => {
@@ -1635,7 +1561,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const body = record(req.body);
     const runRefs = Array.isArray(body.runRefs) ? body.runRefs.filter((item): item is string => typeof item === 'string') : [];
     const expectedPlanHash = string(body.expectedPlanHash);
-    const planned = ctx.controlStore.dryRunQuarantine(sub, runRefs);
+    const runScope = readScope(req);
+    const planned = ctx.controlStore.dryRunQuarantine(sub, runRefs, runScope);
     if (!planned.ok) return sendResult(reply, planned);
     if (planned.value.planHash !== expectedPlanHash) {
       return reply.code(409).send({ error: 'conflict', detail: 'quarantine plan changed; review a fresh dry-run' });
@@ -1644,15 +1571,20 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(400).send({ error: 'ineligible', detail: 'only quiescent settled run bundles can be quarantined' });
     }
     try {
-      auditFn(ctx)(ctx.repoRoot, {
+      await auditFn(ctx)(ctx.repoRoot, {
+        // `owner` is the ACTOR; `runOwnerSubjects` names whose bundles are being moved (they differ on a
+        // cross-subject quarantine), ordered like the plan's own items.
         action: 'control-retention-quarantine-authorize', owner: sub, target: runRefs.join(','), riskTier: 'T2',
         result: `authorized:${expectedPlanHash}`,
-        detail: { runRefs, planHash: expectedPlanHash, itemCount: planned.value.items.length },
+        detail: {
+          runRefs, planHash: expectedPlanHash, itemCount: planned.value.items.length,
+          runOwnerSubjects: planned.value.items.map((item) => item.ownerSubject),
+        },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'quarantine-audit-required' });
     }
-    const quarantined = ctx.controlStore.quarantineRuns(sub, runRefs, expectedPlanHash);
+    const quarantined = ctx.controlStore.quarantineRuns(sub, runRefs, expectedPlanHash, runScope);
     return sendResult(reply, quarantined);
   });
 
@@ -1660,19 +1592,443 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = string(record(req.body).runRef);
-    if (!ctx.controlStore.inventory(sub).quarantinedRuns.some((run) => run.runRef === runRef)) {
+    const runScope = readScope(req);
+    const bundle = ctx.controlStore.inventory(sub, runScope).quarantinedRuns.find((run) => run.runRef === runRef);
+    if (!bundle) {
       return reply.code(404).send({ error: 'not-found', detail: 'quarantined run was not found' });
     }
     try {
-      auditFn(ctx)(ctx.repoRoot, {
+      await auditFn(ctx)(ctx.repoRoot, {
+        // `owner` is the ACTOR; `runOwnerSubject` names whose bundle is coming back. Restore returns it
+        // to that same subject — a cross-subject restore never adopts the run.
         action: 'control-retention-restore-authorize', owner: sub, target: runRef, riskTier: 'T2',
         result: `authorized:${runRef}`,
-        detail: { runRef },
+        detail: { runRef, runOwnerSubject: bundle.ownerSubject },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'restore-audit-required' });
     }
-    const restored = ctx.controlStore.restoreRun(sub, runRef);
+    const restored = ctx.controlStore.restoreRun(sub, runRef, runScope);
     return sendResult(reply, restored);
   });
+}
+
+/** The `{ status, body }` a failed store result serialises to (matches {@link sendResult}). */
+function activationFailure(result: Extract<ControlResult<unknown>, { ok: false }>): LaunchOutcome {
+  return { status: statusOf(result), body: { error: result.reason, detail: result.detail } };
+}
+
+/** The executor is armed only when the whole activation wiring is present; anything less fails closed. */
+function executorArmed(ctx: SurfaceContext): boolean {
+  return !!(ctx.controlBroker && ctx.runAutomatic && ctx.containManagerStart);
+}
+
+/**
+ * The ONE run-activation implementation. Both the operator's manual Resume
+ * (`POST /api/control/runs/:runRef/activate`) and the automatic resume that fires when a human answer
+ * clears a run's LAST boundary ({@link resumeRunAfterBoundaryAccepted}) call this, so the two can never
+ * drift: same receipt/idempotency flow, same canonical root activation, same audit row, same durable
+ * Manager-start acknowledgement, same containment when startup cannot be confirmed.
+ *
+ * Two subjects, deliberately:
+ * - `actorSubject` is WHO authorized it — the audit row's `owner`, and nothing else.
+ * - `ownerSubject` is WHOSE RUN it is: the per-run serialization key (every lifecycle control locks the
+ *   RUN, never the caller, so a cross-subject operator activation and the engine's own operations on
+ *   that run cannot interleave), every store read/write here, and the executor call. Exactly
+ *   like `cancelAutomatic` on the stop route. A bridge-launched run is owned by `dashboard-engine`, and
+ *   its activation receipts, approved proposal revision, stages and cards all live under that subject —
+ *   resolving them as the operator is precisely what made the live Resume click die as `not-found`
+ *   before any receipt existed. Ownership never moves; the caller's authority was already settled by the
+ *   route's scoped read, and the audit row names both parties.
+ */
+async function activateRunUnderOwner(ctx: SurfaceContext, input: {
+  actorSubject: string;
+  ownerSubject: string;
+  runRef: string;
+  activation: RunActivationInput;
+}): Promise<LaunchOutcome> {
+  const { actorSubject, ownerSubject, runRef } = input;
+  const activationInput = input.activation;
+  // Exact completed retries are read-only and remain replayable even if the runtime gate was
+  // turned off after the original dispatch. Pending receipts still require a live dispatcher.
+  const persistedReceipt = ctx.controlStore.getRunActivationReceipt(ownerSubject, runRef, activationInput);
+  if (!persistedReceipt.ok) return activationFailure(persistedReceipt);
+  if (persistedReceipt.value?.phase === 'dispatched') {
+    return { status: 200, body: { ok: true, value: persistedReceipt.value.run, replayed: true } };
+  }
+  if (persistedReceipt.value?.phase === 'failed') {
+    return { status: 409, body: { error: 'activation-failed' } };
+  }
+  if (!ctx.controlBroker || !ctx.runAutomatic || !ctx.containManagerStart) {
+    // A locked daemon gets its OWN refusal, which the UI turns into an unlock prompt; anything else
+    // (an injected-but-incomplete executor) keeps the original not-activated answer.
+    const locked = executionLockedRefusal(ctx);
+    return { status: 409, body: locked ?? { error: 'automatic-runtime-not-activated' } };
+  }
+  // Captured before the span closure: the gate above proved it non-null, but control-flow narrowing
+  // does not cross the closure boundary.
+  const runAutomatic = ctx.runAutomatic;
+  const containManagerStart = ctx.containManagerStart;
+  if (!runAutomatic || !containManagerStart) {
+    return { status: 409, body: { error: 'automatic-runtime-not-activated' } };
+  }
+  // Per-run serialization excludes stop/successor controls without holding the fleet-wide Git lock
+  // during runtime startup. The nested ops transaction covers only audit and canonical root mutation.
+  return ctx.runControlTransactions.run(ownerSubject, runRef, async (): Promise<LaunchOutcome> => {
+    const receipt = ctx.controlStore.getRunActivationReceipt(ownerSubject, runRef, activationInput);
+    if (!receipt.ok) return activationFailure(receipt);
+    if (receipt.value?.phase === 'dispatched') {
+      return { status: 200, body: { ok: true, value: receipt.value.run, replayed: true } };
+    }
+    if (receipt.value?.phase === 'failed') return { status: 409, body: { error: 'activation-failed' } };
+    const detail = ctx.controlStore.getRun(ownerSubject, runRef);
+    if (!detail.ok) return activationFailure(detail);
+    const pendingReplay = receipt.value?.phase === 'claimed' || receipt.value?.phase === 'roots-activated';
+    if ((!pendingReplay && detail.value.run.version !== activationInput.expectedRunVersion)
+      || detail.value.run.managerGeneration !== activationInput.expectedManagerGeneration
+      || detail.value.run.publicationState !== 'published'
+      || (pendingReplay
+        ? detail.value.run.state !== 'waiting-human' && detail.value.run.state !== 'recovering'
+        : detail.value.run.state !== 'waiting-human')) {
+      return { status: 409, body: { error: 'activation-state-changed' } };
+    }
+    if (detail.value.humanRequests.length === 0
+      || detail.value.humanRequests.some((request) => !acceptsBoundary(request))) {
+      return { status: 409, body: { error: 'human-boundary-unresolved' } };
+    }
+    const stored = ctx.controlStore.getProposalRevision(
+      ownerSubject, detail.value.run.proposalRef, detail.value.run.proposalRevision,
+    );
+    if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
+      return { status: 409, body: { error: 'approved-proposal-binding-lost' } };
+    }
+    let proposalForDispatch: PlanProposal | null = null;
+    const preparationFailure = await withOpsTransaction(async (): Promise<LaunchOutcome | null> => {
+    try {
+      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
+    } catch {
+      return { status: 409, body: { error: 'canonical-reconciliation-failed' } };
+    }
+    const registry = loadRuntimeSkillRegistry(ctx.repoRoot);
+    const proposal = validateServerCompiledPlanProposal(stored.value.snapshot, registry);
+    if (!proposal.ok) return { status: 409, body: { error: 'stored-proposal-invalid', detail: proposal.detail } };
+    const compiled = compileApprovedProposal(proposal.value, stored.value.hash, stored.value.hash, {
+      policy: loadPolicyEnvironment(ctx.repoRoot, proposal.value.project, proposal.value.governanceRefs),
+      defaultWorkers: defaultWorkers(ctx.repoRoot),
+    });
+    if (!compiled.ok) return { status: 409, body: { error: compiled.reason, detail: compiled.detail } };
+    const rootStageIds = new Set(proposal.value.stages.filter((stage) => stage.dependsOn.length === 0).map((stage) => stage.id));
+    const rootStages = detail.value.stages.filter((stage) => rootStageIds.has(stage.stageId));
+    const rootCards = rootStages
+      .map((stage) => stage.canonicalCardRef)
+      .filter((cardRef): cardRef is string => typeof cardRef === 'string' && cardRef.length > 0);
+    if (rootCards.length !== rootStageIds.size || new Set(rootCards).size !== rootCards.length) {
+      return { status: 409, body: { error: 'managed-root-card-binding-lost' } };
+    }
+    const rootByCard = new Map(rootStages.map((stage) => [stage.canonicalCardRef, stage]));
+    let claimed = receipt.value ?? null;
+    /**
+     * The PURE half of activation authorization: read current state, compare, throw. No audit row, no
+     * preamble, no claim. Safe to run any number of times, which is what makes it the re-proof the
+     * publication runs after every reconciling pull — a run that loses two push races calls it three
+     * times for one act, and anything side-effecting here would emit three T3 authorize rows and take
+     * the claim three times.
+     *
+     * `exactPending` is recomputed on EVERY call rather than captured once: after `claimRunActivation`
+     * below the run is `claimed`, so a later re-proof must judge it by the pending-phase rules (the
+     * version has moved and `recovering` is legal) instead of failing on the pre-claim expectations.
+     */
+    const assertCurrentState = (): void => {
+      const exactPending = claimed?.phase === 'claimed' || claimed?.phase === 'roots-activated';
+      const current = ctx.controlStore.getRun(ownerSubject, runRef);
+      if (!current.ok
+        || (!exactPending && current.value.run.version !== activationInput.expectedRunVersion)
+        || current.value.run.managerGeneration !== activationInput.expectedManagerGeneration
+        || current.value.run.publicationState !== 'published'
+        || (exactPending
+          ? current.value.run.state !== 'waiting-human' && current.value.run.state !== 'recovering'
+          : current.value.run.state !== 'waiting-human')
+        || current.value.humanRequests.length === 0
+        || current.value.humanRequests.some((request) => !acceptsBoundary(request))) {
+        throw new Error('run activation state changed before canonical root activation');
+      }
+    };
+    const currentPolicyMatches = (): boolean => {
+      const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+      const currentCompiled = currentProposal.ok
+        ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
+            policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
+            defaultWorkers: defaultWorkers(ctx.repoRoot),
+          })
+        : null;
+      return !!currentCompiled?.ok
+        && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(compiled.value.stagePolicies);
+    };
+    const reassertActivationAuthorization = (): void => {
+      assertCurrentState();
+      if (!currentPolicyMatches()) {
+        throw new ActivationPreparationError(409, { error: 'activation-policy-changed' });
+      }
+    };
+    try {
+      await (ctx.activateManagedRoots ?? activateManagedRootCards)({
+        repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
+        runGit: ctx.opsGit ?? defaultGitRunner,
+        verifyCompletedRoots: async ({ cardRefs }) => {
+          if (!ctx.verifyCanonicalResult) throw new CompletedRootProvenanceError('canonical result verifier is unavailable');
+          for (const cardRef of cardRefs) {
+            const stage = rootByCard.get(cardRef);
+            let verified = false;
+            try {
+              verified = !!stage && stage.currentGeneration === 1 && workflowCardId(runRef, stage.stageId) === cardRef
+                && await ctx.verifyCanonicalResult({ subject: ownerSubject, runRef, stageId: stage.stageId });
+            } catch {
+              throw new CompletedRootProvenanceError('completed managed root provenance is not canonical');
+            }
+            if (!verified) {
+              throw new CompletedRootProvenanceError('completed managed root provenance is not canonical');
+            }
+          }
+        },
+        reassertAfterReconcile: reassertActivationAuthorization,
+        authorizeAfterPrepare: async () => {
+          reassertActivationAuthorization();
+          try {
+            await auditFn(ctx)(ctx.repoRoot, {
+              // `owner` is the ACTOR that authorized this activation — the operator session on a
+              // cross-subject Resume — while `runOwnerSubject` names the subject the activation itself
+              // executes as. The row is what makes the two attributable when they differ.
+              action: 'control-run-activate-authorize', owner: actorSubject, target: runRef, riskTier: 'T3',
+              result: `authorized:${runRef}:${stored.value.hash}`,
+              detail: {
+                runRef, runOwnerSubject: ownerSubject, proposalHash: stored.value.hash,
+                managerGeneration: detail.value.run.managerGeneration,
+              },
+            }, { runGit: ctx.opsGit, now: ctx.now });
+          } catch {
+            throw new ActivationPreparationError(500, { error: 'activation-audit-reconciliation-required' });
+          }
+          const postAuditPreamble = (ctx.runPreamble ?? defaultPreambleRunner)(ctx.repoRoot);
+          if (postAuditPreamble.exitCode !== 0 || !postAuditPreamble.stdout.includes('PREAMBLE OK')) {
+            throw new ActivationPreparationError(409, { error: 'post-audit-preamble-refused' });
+          }
+          reassertActivationAuthorization();
+          const claim = ctx.controlStore.claimRunActivation(ownerSubject, runRef, activationInput);
+          if (!claim.ok) throw new Error(claim.detail);
+          claimed = claim.value;
+        },
+      });
+    } catch (error) {
+      if (error instanceof CompletedRootProvenanceError) {
+        return { status: 409, body: { error: 'completed-root-provenance-refused' } };
+      }
+      if (error instanceof ActivationPreparationError) {
+        return { status: error.statusCode, body: error.body };
+      }
+      if (claimed) ctx.controlStore.failRunActivation(ownerSubject, runRef, activationInput);
+      return {
+        status: 409,
+        body: { error: 'canonical-activation-failed', detail: error instanceof Error ? error.message : String(error) },
+      };
+    }
+    if (!claimed) return { status: 409, body: { error: 'activation-claim-missing' } };
+    const rootsActivated = ctx.controlStore.advanceRunActivation(ownerSubject, runRef, activationInput, 'roots-activated');
+    if (!rootsActivated.ok) {
+      ctx.controlStore.failRunActivation(ownerSubject, runRef, activationInput);
+      return activationFailure(rootsActivated);
+    }
+    proposalForDispatch = proposal.value;
+    return null;
+    });
+    if (preparationFailure) return preparationFailure;
+    if (!proposalForDispatch) return { status: 409, body: { error: 'activation-preparation-missing' } };
+    let acknowledgeDispatch!: (receipt: { run: Run; phase: RunActivationPhase }) => void;
+    let rejectDispatch!: (error: Error) => void;
+    let dispatchAcknowledged = false;
+    const dispatchAcknowledgement = new Promise<{
+      run: Run;
+      phase: RunActivationPhase;
+    }>((resolve, reject) => {
+      acknowledgeDispatch = resolve;
+      rejectDispatch = reject;
+    });
+    let execution: Promise<unknown>;
+    try {
+      execution = runAutomatic({
+        subject: ownerSubject,
+        runRef,
+        proposal: proposalForDispatch,
+        onManagerStarted: () => {
+          const dispatched = ctx.controlStore.advanceRunActivation(ownerSubject, runRef, activationInput, 'dispatched');
+          if (!dispatched.ok) throw new Error(dispatched.detail);
+          dispatchAcknowledged = true;
+          acknowledgeDispatch(dispatched.value);
+        },
+      });
+    } catch (error) {
+      ctx.controlStore.failRunActivation(ownerSubject, runRef, activationInput);
+      return {
+        status: 409,
+        body: {
+          error: 'automatic-dispatch-failed',
+          detail: error instanceof Error ? error.message : 'automatic execution adapter failed',
+        },
+      };
+    }
+    void execution.then(
+      () => {
+        if (!dispatchAcknowledged) rejectDispatch(new Error('automatic execution returned before durable Manager startup'));
+      },
+      (error: unknown) => rejectDispatch(error instanceof Error ? error : new Error('automatic execution adapter failed')),
+    );
+    let dispatched: { run: Run; phase: RunActivationPhase };
+    try {
+      dispatched = await withControlDeadline(
+        dispatchAcknowledgement,
+        ctx.managerStartAckTimeoutMs,
+        `Manager startup was not durably acknowledged within ${ctx.managerStartAckTimeoutMs}ms`,
+      );
+    } catch (error) {
+      // Close the outbox first. A Manager-start callback arriving while cancellation is in flight
+      // must observe `failed` and can never turn a timeout response into a later dispatched replay.
+      ctx.controlStore.failRunActivation(ownerSubject, runRef, activationInput);
+      try {
+        await withControlDeadline(
+          containManagerStart({
+            subject: ownerSubject,
+            runRef,
+            idempotencyKey: `activation-contain:${activationInput.idempotencyKey}`,
+          }),
+          ctx.managerStartAckTimeoutMs,
+          `Manager startup cancellation was not acknowledged within ${ctx.managerStartAckTimeoutMs}ms`,
+        );
+      } catch {
+        // The durable run/receipt containment below remains mandatory even if process cancellation
+        // cannot be confirmed.
+      }
+      const intervention = ctx.controlStore.createHumanRequest(ownerSubject, runRef, {
+        kind: 'intervention',
+        title: 'Activation dispatch needs reconciliation',
+        prompt: error instanceof Error ? error.message : 'durable Manager startup acknowledgement failed',
+      });
+      if (!intervention.ok) {
+        const current = ctx.controlStore.getRun(ownerSubject, runRef);
+        if (current.ok && (current.value.run.state === 'recovering'
+          || current.value.run.state === 'running'
+          || current.value.run.state === 'waiting-human')) {
+          ctx.controlStore.transitionRun(ownerSubject, runRef, current.value.run.version, 'interrupted');
+        }
+      }
+      return {
+        status: 409,
+        body: {
+          error: 'automatic-dispatch-failed',
+          detail: error instanceof Error ? error.message : 'automatic execution adapter failed',
+        },
+      };
+    }
+    void execution.catch((error: unknown) => {
+      const intervention = ctx.controlStore.createHumanRequest(ownerSubject, runRef, {
+        kind: 'intervention', title: 'Automatic execution needs intervention',
+        prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
+      });
+      const current = ctx.controlStore.getRun(ownerSubject, runRef);
+      if (current.ok && (current.value.run.state === 'recovering' || current.value.run.state === 'running')) {
+        ctx.controlStore.transitionRun(
+          ownerSubject,
+          runRef,
+          current.value.run.version,
+          intervention.ok ? 'waiting-human' : 'interrupted',
+        );
+      }
+    });
+    return { status: 202, body: { ok: true, value: dispatched.run, starting: true } };
+  });
+}
+
+/**
+ * The two titles an activation refusal parks a run under: the dispatch-failure ask minted inside
+ * {@link activateRunUnderOwner} and the auto-resume ask minted by `park()` below.
+ *
+ * These strings are a DURABLE IDENTITY, not a description — both the mint guard and the
+ * do-not-re-fire guard match on them, so renaming one reopens the intervention storm they prevent.
+ */
+const ACTIVATION_PARK_TITLES = new Set<string>([
+  'Activation dispatch needs reconciliation',
+  'Automatic resume needs intervention',
+]);
+
+/**
+ * Answering a gate IS the operator's go.
+ *
+ * A run parked in `waiting-human` sits there until something drives it again. Recording the answer used
+ * to be the whole of it, so the operator had to find a SECOND control (Resume) and click it — ceremony,
+ * and on 2026-08-11 a bridge-launched run simply sat there until he went looking for that button. So the
+ * respond and completion-gate routes call this immediately after a decision is durably recorded.
+ *
+ * The decision to kick is computed SYNCHRONOUSLY from post-response state (the HTTP answer never waits
+ * on the runtime), and it is deliberately narrow:
+ * - the executor must be armed. A locked daemon must never auto-start work; the manual Resume stays the
+ *   fallback and is the control that raises the unlock prompt.
+ * - the run must still be published and parked in `waiting-human`.
+ * - EVERY boundary must now be accepted. A second open gate, or a `rejected` / `changes-requested`
+ *   decision (which leaves its own request unaccepted, and mints an intervention on the review path),
+ *   fails this predicate — which is why neither needs a special case here.
+ *
+ * The kick itself is exactly the manual Resume ({@link activateRunUnderOwner}) — same receipts, same
+ * audit, same executor call under the run's owner — and a refusal is reported the way every other
+ * automatic-execution failure is: as an intervention Human Request on the run, so the operator sees WHY
+ * their answer did not resume it instead of watching a silent park. That intervention is minted only
+ * while the run is still parked, so a refusal caused by the run having already moved on adds nothing.
+ */
+function resumeRunAfterBoundaryAccepted(ctx: SurfaceContext, input: {
+  actorSubject: string;
+  runRef: string;
+  /** The title of the boundary just answered — see {@link ACTIVATION_PARK_TITLES}. */
+  answeredTitle: string;
+  scope: ReadScope;
+}): void {
+  const { actorSubject, runRef, scope } = input;
+  if (!executorArmed(ctx)) return;
+  // ANSWERING AN ACTIVATION PARK NEVER RE-FIRES THE ACTIVATION. Every refusal reachable before
+  // `claimRunActivation` is deterministic and leaves no receipt and no version bump, so a retry driven
+  // by the answer fails identically and mints the next park — one per answer, to
+  // MAX_HUMAN_REQUESTS_PER_RUN, after which the run is parked forever with nothing left to answer. The
+  // operator fixes the cause and uses the manual Resume, which is exactly this activation without the
+  // self-feeding loop.
+  if (ACTIVATION_PARK_TITLES.has(input.answeredTitle)) return;
+  const detail = ctx.controlStore.getRun(actorSubject, runRef, scope);
+  if (!detail.ok) return;
+  const run = detail.value.run;
+  if (run.state !== 'waiting-human' || run.publicationState !== 'published') return;
+  if (detail.value.humanRequests.length === 0
+    || detail.value.humanRequests.some((request) => !acceptsBoundary(request))) return;
+  const ownerSubject = detail.value.ownerSubject;
+  const activation: RunActivationInput = {
+    expectedRunVersion: run.version,
+    expectedManagerGeneration: run.managerGeneration,
+    idempotencyKey: `auto-resume:${runRef}:${run.version}:${run.managerGeneration}:${run.proposalHash}`,
+  };
+  const park = (reason: string): void => {
+    const current = ctx.controlStore.getRun(ownerSubject, runRef);
+    if (!current.ok || current.value.run.state !== 'waiting-human') return;
+    // At most ONE open activation park per run, whichever surface minted it: a dispatch failure already
+    // files 'Activation dispatch needs reconciliation' inside `activateRunUnderOwner` and then returns
+    // the refusal here, so without this one event produced two asks for the same thing.
+    if (current.value.humanRequests.some((request) => request.state === 'open' && ACTIVATION_PARK_TITLES.has(request.title))) return;
+    ctx.controlStore.createHumanRequest(ownerSubject, runRef, {
+      kind: 'intervention',
+      title: 'Automatic resume needs intervention',
+      prompt: `The answered boundary cleared this run, but the automatic resume was refused: ${reason}`,
+    });
+  };
+  // Fire-and-forget, exactly like the activate route's own `void runAutomatic(...)` handlers: the
+  // operator's answer is already durable and its HTTP response must not wait on Manager startup.
+  void activateRunUnderOwner(ctx, { actorSubject, ownerSubject, runRef, activation }).then(
+    (outcome) => {
+      if (outcome.status < 300) return;
+      park(string(outcome.body.error) || 'automatic resume was refused');
+    },
+    (error: unknown) => park(error instanceof Error ? error.message : 'automatic execution adapter failed'),
+  );
 }

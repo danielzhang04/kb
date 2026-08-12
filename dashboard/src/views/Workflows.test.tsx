@@ -35,6 +35,7 @@ const definition = (over: Partial<{
 });
 
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
+  ownerSubject: 'operator',
   predecessorRunRef: null,
   title: 'Research brief run',
   displayName: 'Research brief run',

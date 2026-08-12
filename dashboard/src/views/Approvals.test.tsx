@@ -62,6 +62,7 @@ function runAsk(overrides: Partial<RunAskRow> = {}): RunAskRow {
     category: 'gate',
     categoryLabel: 'Gate',
     urgency: 'high',
+    createdAt: '2026-08-11T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -101,6 +102,29 @@ describe('inboxRows — one merged, ordered list', () => {
     const ask = runAsk({ ask: 'thin slice #3 stopped because the spend allowed for it is used up.' });
     expect(inboxRows([], [ask])[0].ask).toBe(ask.ask);
   });
+
+  it('breaks an urgency+tier tie by recency, newest first', () => {
+    const rows = inboxRows([], [
+      runAsk({ requestRef: 'request-old', createdAt: '2026-08-01T00:00:00.000Z' }),
+      runAsk({ requestRef: 'request-new', createdAt: '2026-08-10T00:00:00.000Z' }),
+    ]);
+    expect(rows.map((row) => row.key)).toEqual(['run:request-new', 'run:request-old']);
+  });
+
+  it('decodes a card time-added from its id-epoch prefix, same convention the server reads', () => {
+    // `cards.new_id` shape: 8 hex chars of unix-epoch-seconds, then a dash. 0x6a7a6600 = 2026-08-11T00:00:00Z.
+    const rows = inboxRows(projectHumanInbox(index([
+      card({ id: '6a7a6600-deadbeef', action: 'approve:x', state: 'inbox', owner: 'human-operator' }),
+    ])).items);
+    expect(rows[0]!.createdAt).toBe('2026-08-11T00:00:00.000Z');
+  });
+
+  it('carries no time-added for a legacy card id with no epoch prefix', () => {
+    const rows = inboxRows(projectHumanInbox(index([
+      card({ id: 'legacy-card', action: 'approve:x', state: 'inbox', owner: 'human-operator' }),
+    ])).items);
+    expect(rows[0]!.createdAt).toBeNull();
+  });
 });
 
 describe('Approvals — the list IS the view', () => {
@@ -135,6 +159,49 @@ describe('Approvals — the list IS the view', () => {
   it('renders a calm empty state when nothing is waiting', () => {
     render(<Approvals rows={[]} />);
     expect(screen.getByTestId('approvals-empty').textContent).toMatch(/no human attention waiting/i);
+  });
+
+  it('shows the exact time added as a hover title beside the badge', () => {
+    render(<Approvals rows={rowsFrom([], [runAsk({ createdAt: '2026-08-11T10:00:00.000Z' })])} />);
+    const time = screen.getByTestId('inbox-row-run:request-1').querySelector('.v-approvals__row-time');
+    expect(time?.getAttribute('title')).toBe('2026-08-11 10:00:00Z');
+  });
+
+  it('separates a low-urgency item into a collapsed Older/stale section, never interleaved with what needs you', () => {
+    // A card owned by a real agent, sitting in `working` with an ancient id-epoch, classifies as
+    // `stranded`/`low` urgency (server/approvals/humanInbox.ts) — advisory, nothing to act on right now.
+    const stranded = card({ id: '5f000000-0000dead', action: 'noop:heartbeat', target: '.', owner: 'claude-m1', state: 'working' });
+    const rows = rowsFrom([
+      card({ id: 'card-t3', action: 'approve:t3', 'risk-tier': 'T3', state: 'inbox', owner: 'human-operator' }),
+      stranded,
+    ]);
+    render(<Approvals rows={rows} />);
+
+    expect(screen.getByText(/Needs you · 1/)).toBeTruthy();
+    const staleSection = screen.getByTestId('approvals-stale-section');
+    expect(staleSection.tagName.toLowerCase()).toBe('details');
+    expect(staleSection.textContent).toContain('Older / stale · 1');
+    expect(staleSection.textContent).toContain('noop:heartbeat');
+    // Not interleaved into the actionable list above it.
+    const actionableList = screen.getByTestId('inbox-row-card:card-t3').closest('ul');
+    expect(actionableList?.textContent).not.toContain('noop:heartbeat');
+  });
+
+  it('shows an explicit notice when the tab is locked, instead of a silent gap — even with rows present', () => {
+    render(<Approvals rows={rowsFrom([card()])} locked />);
+    expect(screen.getByTestId('approvals-locked-notice').textContent).toMatch(/locked/i);
+    expect(screen.getByTestId('approvals-locked-notice').textContent).toMatch(/unlock/i);
+  });
+
+  it('shows the locked notice even with an empty list, so it never reads identical to "nothing waiting"', () => {
+    render(<Approvals rows={[]} locked />);
+    expect(screen.getByTestId('approvals-locked-notice')).toBeTruthy();
+    expect(screen.getByTestId('approvals-empty')).toBeTruthy();
+  });
+
+  it('renders no locked notice when the tab is unlocked', () => {
+    render(<Approvals rows={rowsFrom([card()])} />);
+    expect(screen.queryByTestId('approvals-locked-notice')).toBeNull();
   });
 });
 

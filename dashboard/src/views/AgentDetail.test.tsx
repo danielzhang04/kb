@@ -75,6 +75,7 @@ const EMPTY_INDEX: PlaneAIndex = {
 };
 
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
+  ownerSubject: 'operator',
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline',
   displayName: 'Rebuild the faceless video pipeline',

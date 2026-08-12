@@ -10,8 +10,10 @@
  * hard elapsed-time timeout that KILLS the child, so a hung remote can never wedge the loop again.
  *
  * Behavioural parity with the retired sync runners is deliberate and load-bearing:
- *   - env: inherited from `process.env` verbatim (spawn's default) — NEVER an added credential. The
- *     sync runners passed no `env`, so `execFileSync` inherited the whole environment; this matches.
+ *   - env: inherited from `process.env` — NEVER an added credential. The sync runners passed no `env`,
+ *     so `execFileSync` inherited the whole environment; this matches, with the single addition of
+ *     `LC_ALL=C` for git children (see {@link opsGitEnv}) so git's messages stay in the English the
+ *     failure classifiers match on.
  *   - `cwd: repoRoot` — mirrors the sync runners' `cwd` exactly (no `-C` rewriting).
  *   - stdout returned as a UTF-8 string (the sync runners used `encoding: 'utf-8'`).
  *   - a non-zero exit REJECTS with an Error that carries `.status` (the exit code), `.stdout`, and
@@ -113,10 +115,35 @@ export interface AsyncGitOptions {
    * and on first boot instead of intermittently in production. Read-only runners stay unrestricted.
    */
   requireTransaction?: boolean;
+  /**
+   * Child environment. Defaults to `process.env` verbatim (spawn's own default). Set ONLY to pin
+   * locale — never to add a credential.
+   */
+  env?: NodeJS.ProcessEnv;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+
+/**
+ * The parent environment with the child's locale pinned to `C`.
+ *
+ * Git TRANSLATES its porcelain messages when `LC_ALL`/`LC_MESSAGES`/`LANG` select a non-English locale.
+ * The whole coordination layer classifies git failures by matching that text — `opsPushRetry.ts` decides
+ * whether a rejected push was a retryable lost race by looking for `non-fast-forward` / `fetch first` /
+ * `Updates were rejected because`, and `control/adapters.ts` recognises benign worktree-removal errors
+ * the same way. Under a localized git those markers never match: every lost race would rethrow
+ * immediately and park a run with no diagnostic, on a machine whose only difference is `LANG`.
+ *
+ * `LC_ALL=C` is the standard scripting fix and outranks both `LC_MESSAGES` and `LANG`, so one variable
+ * pins it. Nothing in this daemon reads localized git output — the message matchers above all expect
+ * English, and every structured read is already locale-independent (`--porcelain`, `-z`, exit codes) —
+ * so pinning can only make existing matches more reliable, never less. No credential is added: this is
+ * `process.env` plus exactly one locale variable.
+ */
+export function opsGitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...base, LC_ALL: 'C' };
+}
 
 // Single-process daemon: track every live child so Fastify/PM2 shutdown can terminate an in-flight
 // (possibly network-stalled) git/gh before the process exits — the same drain discipline the vibe
@@ -164,9 +191,11 @@ export function runTrackedProcess(
   return new Promise<string>((resolvePromise, reject) => {
     const child = spawn(bin, [...argv], {
       cwd,
-      // Inherit the parent environment verbatim (matches the retired execFileSync runners). No
-      // credential is ever added here — the ops push relies on ambient runtime credentials only.
-      env: process.env,
+      // Inherit the parent environment (matches the retired execFileSync runners). No credential is
+      // ever added here — the ops push relies on ambient runtime credentials only. Git callers pass
+      // {@link opsGitEnv}, which is that same environment with `LC_ALL=C` so git's messages stay in the
+      // English the failure classifiers match on.
+      env: options.env ?? process.env,
       shell: false,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -302,7 +331,11 @@ export function createAsyncGitRunner(options: AsyncGitOptions = {}): OpsGitRunne
         `ops git '${subcommandLabel(args)}' invoked outside withOpsTransaction — wrap the whole prepare/mutate/commit span`,
       ));
     }
-    return runTrackedProcess('git', ['-c', 'commit.gpgsign=false', ...args], repoRoot, subcommandLabel(args), options);
+    return runTrackedProcess('git', ['-c', 'commit.gpgsign=false', ...args], repoRoot, subcommandLabel(args), {
+      ...options,
+      // Locale pinned for EVERY ops git child: the push-rejection classifier reads git's own words.
+      env: options.env ?? opsGitEnv(),
+    });
   };
 }
 

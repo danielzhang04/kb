@@ -17,6 +17,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
+import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
 
 /**
  * A git invocation runner. `args` is the full argv AFTER `git`. Injected so tests need no real git and
@@ -73,19 +74,9 @@ export async function commitTraceToOps(
   await runGit(repoRoot, ['add', '--', relDir]);
   await runGit(repoRoot, ['commit', '-m', message]);
 
-  // Push; a rejected push means re-read state (pull --rebase) and retry, bounded.
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
-    try {
-      await runGit(repoRoot, ['push', 'origin', 'ops']);
-      return;
-    } catch (err) {
-      lastErr = err;
-      if (attempt === maxRetryPushes) break;
-      await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
-    }
-  }
-  throw lastErr;
+  // Push; a push rejected because another ops writer got there first means re-read state (pull --rebase)
+  // and retry, bounded (`write/opsPushRetry.ts`).
+  await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
   });
 }
 
