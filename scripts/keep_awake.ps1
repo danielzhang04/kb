@@ -106,6 +106,16 @@ try {
             Update-KeepAwakeLeaseHeartbeat -Label $Label | Out-Null
             # Silent no-op if the lease is gone -- a heartbeat for an expired
             # lease is normal and must not resurrect it or emit hook noise.
+
+            # Watchdog: Heartbeat is the only hook guaranteed to keep firing
+            # overnight, so it carries the respawn duty for a supervisor that
+            # died mid-run (2026-08-12 outage). Start-DetachedSupervisor is
+            # idempotent via the named mutex -- a duplicate spawn just loses
+            # the race and exits immediately.
+            if (Test-SupervisorRespawnNeeded) {
+                Start-DetachedSupervisor
+                Write-KeepAwakeLog ("supervisor-respawned-by-heartbeat label=$Label")
+            }
         }
         'Release' {
             if (-not $Label) { throw '-Label is required with -Release (or pass -FromStdin)' }

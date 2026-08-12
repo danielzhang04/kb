@@ -777,6 +777,23 @@ function Test-SupervisorShouldContinueAfterEmptyPass {
     return ((& $GetLiveLeaseCount) -gt 0)
 }
 
+# The overnight failure mode this closes: the supervisor dies (crash, kill,
+# anything), and until the next SessionStart nothing respawns it -- Heartbeat
+# was a pure lease write. Heartbeat fires on every tool call of every session,
+# so it is the one signal guaranteed to still be firing overnight while work
+# runs. Duplicate spawns are safe: the named mutex arbitrates, losers exit.
+function Test-SupervisorRespawnNeeded {
+    $leases = @(Get-KeepAwakeLeases)
+    if ($leases.Count -eq 0) { return $false }
+    $pidFile = Join-Path (Get-KeepAwakeRoot) 'supervisor.pid'
+    if (-not (Test-Path $pidFile)) { return $true }
+    try {
+        $sp = [int](Get-Content $pidFile -Raw -ErrorAction Stop).Trim()
+    } catch { return $true }
+    if ($sp -le 0) { return $true }
+    return (-not (Test-ProcessAlive -ProcessId $sp))
+}
+
 # Test seam for Start-KeepAwakeSupervisor's per-iteration work: F2's tests
 # inject failure/success sequences here rather than driving the real
 # Invoke-SupervisorPass (which needs real lease files and power provider
@@ -879,4 +896,5 @@ Export-ModuleMember -Function Get-KeepAwakeRoot, Get-KeepAwakeMutexName, Get-Lea
     Set-PowerProvider, Get-PowerProvider, Get-PowerBaselineStatus, Get-PowerBaseline, Save-PowerBaseline,
     Set-PowerArmed, Restore-PowerBaseline, Test-PowerArmed, Resolve-StaleArmReconciliation,
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass,
-    Test-SupervisorShouldContinueAfterEmptyPass, Set-SupervisorPassInvoker, Start-KeepAwakeSupervisor
+    Test-SupervisorShouldContinueAfterEmptyPass, Set-SupervisorPassInvoker, Start-KeepAwakeSupervisor,
+    Test-SupervisorRespawnNeeded

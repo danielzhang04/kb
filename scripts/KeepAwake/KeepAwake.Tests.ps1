@@ -1124,6 +1124,51 @@ Describe 'Start-KeepAwakeSupervisor pass-failure resilience (F2: one bad pass mu
     }
 }
 
+Describe 'Test-SupervisorRespawnNeeded (F3: heartbeat watchdog self-heals a dead supervisor)' {
+    # 2026-08-12 outage: nothing restarts a dead supervisor overnight -- only
+    # -Acquire (SessionStart hook) ever spawns one, and -Heartbeat was a pure
+    # lease-file write with no liveness check. Heartbeat fires on every tool
+    # call of every session, so it is the one signal guaranteed to keep firing
+    # overnight while work runs; wiring the respawn duty there closes the gap.
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'false when no leases exist, regardless of supervisor state' {
+        Test-SupervisorRespawnNeeded | Should -BeFalse
+    }
+
+    It 'true when a lease exists and no pid file exists' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Test-SupervisorRespawnNeeded | Should -BeTrue
+    }
+
+    It 'true when a lease exists and the recorded pid is dead' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        $dead = Start-Process powershell -ArgumentList '-NoProfile','-Command','exit' -PassThru -WindowStyle Hidden
+        $dead.WaitForExit()
+        Set-Content (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') -Value $dead.Id -Encoding utf8
+        Test-SupervisorRespawnNeeded | Should -BeTrue
+    }
+
+    It 'false when a lease exists and the recorded pid is alive' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Set-Content (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') -Value $PID -Encoding utf8
+        Test-SupervisorRespawnNeeded | Should -BeFalse
+    }
+
+    It 'true when the pid file is unreadable garbage' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Set-Content (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') -Value 'not-a-pid' -Encoding utf8
+        Test-SupervisorRespawnNeeded | Should -BeTrue
+    }
+}
+
 Describe 'supervisor singleton' {
     # A named Win32 mutex is reentrant PER THREAD, not per handle: a second
     # Mutex object opened for the same name on the SAME thread that already
