@@ -1389,6 +1389,38 @@ def test_classify_turn_maps_every_documented_class():
     assert fc.classify_turn(quota, []) == "quota"
 
 
+def test_classify_turn_quoted_usage_limit_is_no_image():
+    import forge_codex as fc
+    ok = {"timed_out": False, "returncode": 0, "thread_id": "t"}
+    for text in (
+        "The prompt says 'usage limit' as a literal, but the tool returned no image.",
+        'The reference says "You\'ve hit your usage limit."',
+    ):
+        result = dict(ok, events=[{"type": "item.completed", "item": {"type": "agent_message",
+                      "text": text}}])
+        assert fc.classify_turn(result, []) == "no_image"
+
+
+def test_classify_turn_quoted_refusal_is_no_image():
+    import forge_codex as fc
+    ok = {"timed_out": False, "returncode": 0, "thread_id": "t"}
+    for text in (
+        "The brief says 'I can't help' is a phrase to avoid.",
+        'The brief says "I cannot help" is a phrase to avoid.',
+    ):
+        result = dict(ok, events=[{"type": "item.completed", "item": {"type": "agent_message",
+                      "text": text}}])
+        assert fc.classify_turn(result, []) == "no_image"
+
+
+def test_classify_turn_try_again_later_is_no_image():
+    import forge_codex as fc
+    ok = {"timed_out": False, "returncode": 0, "thread_id": "t"}
+    result = dict(ok, events=[{"type": "item.completed",
+                               "item": {"type": "agent_message", "text": "Try again later."}}])
+    assert fc.classify_turn(result, []) == "no_image"
+
+
 def test_generate_happy_path_returns_canvas_bytes_and_full_metadata():
     import io
     from PIL import Image

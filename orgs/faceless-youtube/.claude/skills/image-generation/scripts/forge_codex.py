@@ -12,6 +12,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import signal
 import shutil
 import subprocess
@@ -701,9 +702,17 @@ def harvest_new_pngs(thread_id, before, *, image_root=None, polls=5, delay=1.0, 
 # --- frame, ruled by the next fresh-eyes pass). This adds ONE strictly separate notion: a TRANSPORT
 # --- re-issue of the IDENTICAL prompt file, because no image was produced at all.
 REISSUABLE = ("no_image", "stall", "exec_failed")
-_QUOTA_MARKERS = ("usage limit", "rate limit", "quota", "try again later")
-_REFUSAL_MARKERS = ("can't help", "cannot help", "can't create", "cannot create", "i'm unable",
-                    "i am unable", "won't be able")
+_QUOTA_MARKERS = (
+    re.compile(r"(?<!['\"])\byou(?:'ve| have)\s+(?:hit|reached)\s+your\s+usage\s+limit\b", re.I),
+    re.compile(r"(?<!['\"])\brate\s+limit\s+(?:reached|exceeded|hit)\b", re.I),
+    re.compile(r"(?<!['\"])\busage\s+limit\s+(?:reached|exceeded)\b", re.I),
+)
+_REFUSAL_MARKERS = (
+    re.compile(r"(?<!['\"])\bi\s+(?:can't|cannot|won't\s+be\s+able\s+to)\s+"
+               r"(?:help|create|generate|do)\b", re.I),
+    re.compile(r"(?<!['\"])\bi'?m\s+unable\s+to\b", re.I),
+    re.compile(r"(?<!['\"])\bi\s+am\s+unable\s+to\b", re.I),
+)
 
 
 def agent_texts(events):
@@ -720,10 +729,10 @@ def classify_turn(result, new_pngs):
     if len(new_pngs) > 1:
         return "multi_emit"
     if not new_pngs:
-        text = " ".join(agent_texts(result.get("events"))).lower()
-        if any(m in text for m in _QUOTA_MARKERS):
+        texts = agent_texts(result.get("events"))
+        if any(marker.search(text) for text in texts for marker in _QUOTA_MARKERS):
             return "quota"
-        if any(m in text for m in _REFUSAL_MARKERS):
+        if any(marker.search(text) for text in texts for marker in _REFUSAL_MARKERS):
             return "refusal"
         return "no_image"
     return None
