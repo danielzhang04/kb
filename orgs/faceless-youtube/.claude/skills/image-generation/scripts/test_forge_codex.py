@@ -184,6 +184,95 @@ def test_fake_resume_reemits_the_thread_and_writes_one_new_png():
     assert len(after - before) == 1
 
 
+def _run(mode, tmp, prompt, seed, **kw):
+    env = ENVELOPE_FMT.format(prompt_path=prompt, seeds=str(seed))
+    return run_fake(mode, envelope=env, image_root=tmp / "generated_images",
+                    sessions_root=tmp / "sessions", **kw)
+
+
+def _tid(result):
+    return _events(result.stdout)[0]["thread_id"]
+
+
+def test_fake_modes_image_shapes():
+    tmp, prompt, seed = _scratch()
+    from PIL import Image
+    r = _run("ok_portrait", tmp, prompt, seed)
+    p = next((tmp / "generated_images" / _tid(r)).glob("*.png"))
+    assert Image.open(p).size == (941, 1672)
+    r = _run("wrong_ratio", tmp, prompt, seed)
+    p = next((tmp / "generated_images" / _tid(r)).glob("*.png"))
+    assert Image.open(p).size == (1200, 900)
+    r = _run("two_images", tmp, prompt, seed)
+    assert len(list((tmp / "generated_images" / _tid(r)).glob("*.png"))) == 2
+    r = _run("tiny_png", tmp, prompt, seed)
+    p = next((tmp / "generated_images" / _tid(r)).glob("*.png"))
+    assert p.stat().st_size <= 1024
+
+
+def test_fake_no_image_refuse_and_quota_complete_the_turn_with_no_png():
+    tmp, prompt, seed = _scratch()
+    for mode, marker in (("no_image", "unable to produce"),
+                         ("refuse", "can't help"),
+                         ("quota", "usage limit")):
+        r = _run(mode, tmp, prompt, seed)
+        assert r.returncode == 0, (mode, r.stderr)
+        evs = _events(r.stdout)
+        assert evs[-1]["type"] == "turn.completed"
+        assert any(marker in e.get("item", {}).get("text", "") for e in evs), mode
+        assert not list((tmp / "generated_images" / _tid(r)).glob("*.png")), mode
+
+
+def test_fake_transport_failure_modes():
+    tmp, prompt, seed = _scratch()
+    r = _run("nonzero_exit", tmp, prompt, seed)
+    assert r.returncode == 1 and "stream error" in r.stderr
+    r = _run("bad_json", tmp, prompt, seed)
+    assert "not json at all" in r.stdout
+    r = _run("no_thread_event", tmp, prompt, seed)
+    assert all(json.loads(l)["type"] != "thread.started"
+               for l in r.stdout.splitlines() if l.strip())
+
+
+def test_fake_stall_mode_does_not_return_within_two_seconds():
+    tmp, prompt, seed = _scratch()
+    env = ENVELOPE_FMT.format(prompt_path=prompt, seeds=str(seed))
+    proc = subprocess.Popen(fake_prefix("stall", tmp / "generated_images", tmp / "sessions")
+                            + ["exec", "--json", "--skip-git-repo-check", "--sandbox",
+                               "workspace-write", "--cd", str(tmp), env],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        timed_out = False
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+        assert timed_out is True
+    finally:
+        proc.kill()
+        proc.wait(timeout=10)
+
+
+def test_fake_rollout_variants_paraphrase_and_none():
+    tmp, prompt, seed = _scratch()
+    r = _run("paraphrase", tmp, prompt, seed)
+    roll = next((tmp / "sessions").glob(f"*/*/*/rollout-*-{_tid(r)}.jsonl"))
+    assert "PARAPHRASED: " in roll.read_text(encoding="utf-8")
+    r = _run("no_rollout", tmp, prompt, seed)
+    assert not list((tmp / "sessions").glob(f"*/*/*/rollout-*-{_tid(r)}.jsonl"))
+    assert len(list((tmp / "generated_images" / _tid(r)).glob("*.png"))) == 1
+
+
+def test_fake_resume_writes_a_second_png_into_the_same_thread_dir():
+    tmp, prompt, seed = _scratch()
+    first = _run("resume_ok", tmp, prompt, seed)
+    tid = _tid(first)
+    assert len(list((tmp / "generated_images" / tid).glob("*.png"))) == 1
+    second = _run("resume_ok", tmp, prompt, seed, resume_thread=tid)
+    assert _tid(second) == tid
+    assert len(list((tmp / "generated_images" / tid).glob("*.png"))) == 2
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":
