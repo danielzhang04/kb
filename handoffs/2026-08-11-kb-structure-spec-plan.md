@@ -1,77 +1,90 @@
-# kb-structure spec + Phase I plan handoff — 2026-08-11
+# kb-structure spec + Phase I plan handoff — 2026-08-11 (updated: plan RE-RUN, 2 rulings pending)
 
-**Topic:** kb-structure arc completed its design cycle: evidence harvest (4 codex workers + 1
-salvage attempt), synthesis, Daniel's three rulings LOCKED, spec + 25-task Phase I plan shipped
-on `claude/boss-2026-08-11c` (pushed, c521d20 spec + 59825c6 plan). This CONSUMES
-`2026-08-11-kb-structure-brainstorm.md` (deleted this push). Execution is NOT started —
-sequenced behind cloud-migration Wave-3 per ruling 3.
+**Topic:** kb-structure arc. Design cycle COMPLETE and Daniel's 3 rulings LOCKED; spec + 25-task
+Phase I plan shipped. Plan then went through consistency-review (+5 fixes) → adversarial review
+(16 findings) → fix attempt (worker KILLED mid-run) → independent re-review = **RE-RUN**. Plan is
+NOT mergeable. Two decisions now belong to Daniel. All on `claude/boss-2026-08-11c` (pushed).
+Gate artifact: https://claude.ai/code/artifact/e61e4e55-e65c-43b6-8438-7735bf04afb8
 
-### The locked rulings (Daniel, this session — binding)
-1. **Architecture:** phased design ADOPTED; platform/data two-repo split ABANDONED (adversarial
-   critique verdict RETHINK, evidence-backed). Phase I = monorepo + immutable versioned release
-   artifacts to the VM. Phase II = state-first split (queue/ledgers churn out; knowledge+platform
-   stay coupled). Phase III = trigger-based project extraction.
-2. **Sync topology:** desktop promotion + durable VM outbox; NO GitHub credential on the VM ever.
-   Staging-repo promotion = pre-designed escalation; brokered GitHub App only if direct
-   publication proves necessary; PAT permanently rejected.
-3. **Sequencing:** ALL media exile after cutover (pre-cutover archive tranche explicitly
-   rejected). Cutover = TWO gates: read-only web first, execution authority behind the hardening
-   checklist.
+### The locked rulings (Daniel, 2026-08-11 — binding, unchanged)
+1. Phased architecture ADOPTED; platform/data two-repo split ABANDONED. Phase I = monorepo +
+   immutable versioned release artifacts to VM. Phase II = state-first split. Phase III =
+   trigger-based project extraction.
+2. Desktop promotion + durable VM outbox; NO GitHub credential on the VM ever; PAT rejected;
+   staging-repo = pre-designed escalation.
+3. Media exile entirely post-cutover; cutover = two gates (read-only web, then execution
+   authority behind a hardening checklist).
+
+### TWO DECISIONS PENDING FROM DANIEL (present context-first; both are real gates)
+1. **Scope ruling — local session secret.** The B5 fix persists the dashboard's own HMAC
+   session-signing key to a root-owned `0600` file on the VM so the restart canary can re-auth
+   after a daemon restart. It grants NO external authority (only signs local dashboard sessions;
+   no GitHub/backup/signing key reaches the VM). But it is a new persistent secret on the box, and
+   ruling 2 was "no credential on the VM ever." Question: is a local-authority session secret
+   in-bounds, or must the canary re-auth another way? (Also unblocks finding m3.)
+2. **Sequencing ruling — execution-plane tasks.** B5 (recovery supervisor + restart canary)
+   depends on the daemon's card→run linkage, and the REAL launch path
+   (`dashboard/server/control/launch.ts` `executeApprovedLaunch`) starts `runAutomatic()` BEFORE
+   returning `runRef` — so "durable receipt before execution" can't be finalized until
+   `claude/workflow-platform` merges and its contracts settle. Question: fully specify those tasks
+   now against a moving target, or mark them "specify post-merge" and ship Tasks 1–8 + the
+   non-execution hardening first?
 
 ### What WORKED (with evidence)
-- **Spec** `docs/superpowers/specs/2026-08-11-kb-structure-design.md` (c521d20) with all six
-  evidence reports banked in sibling dir `2026-08-11-kb-structure-evidence/` — boss fixed the
-  worker's ephemeral-path evidence register before commit.
-- **Plan** `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` (59825c6): 25 tasks,
-  workflow-platform merge checkpoint between Tasks 8/9, TDD steps with real code throughout.
-  Writer sol/xhigh hit the 5400s timeout DURING its self-review — file was complete (verified:
-  25 headings, coverage map, zero forbidden phrases). Fresh-context sonnet verifier
-  (87/87 turns model-grepped): FIX-THEN-SHIP, 1 Critical + 2 Important + 2 Minor; all five fixed
-  by a terra worker and boss-verified in the final file.
-- **Evidence quality loop:** 4 parallel evidence workers (critique sol/xhigh RETHINK; boundary
-  map spot-verified 3/3; media inventory; creds options) under the critique's wall-clock shadow.
-  Boss corrected one critique claim (createQueueBridge HAS a production caller — env-gated
-  default-off at surface.ts:128).
+- Spec `docs/superpowers/specs/2026-08-11-kb-structure-design.md` (c521d20) + 8 evidence files in
+  sibling `2026-08-11-kb-structure-evidence/` (now includes plan-adversarial-findings-r1.md +
+  plan-adversarial-review.md).
+- Plan (59825c6) + fix-attempt WIP (4c3599e). Re-review (codex sol/xhigh, card 6a7cb97c) graded
+  16 findings: 11 ADDRESSED, B4/B6 PARTIAL, B3/B5/m3 NOT-ADDRESSED. Scope PASS on external
+  authority (VM gets only public verification material); Phase integrity PASS; checkpoint PASS;
+  4/5 earlier fixes survived.
+- Parallel evidence harvest (4 codex workers under the critique's shadow) + boundary map
+  spot-verified 3/3 by boss. B5 sourceTurnId (`bridge-${id}`) and B6 (`ExecutionLatch.lock` is the
+  real synchronous owner at activation.ts:598, NOT `ActivatedExecution.lock`) both boss-verified.
 
 ### What Did NOT Work (and why)
-- **Original critique worker (thread 6a7b9e84-b9f50765)** — died at 2h26m on codex backend
-  stream disconnect (5 reconnects failed, turn.failed). Read-only sandbox meant ZERO banked
-  output; 165 audit commands lost.
-- **Salvage follow-up into the dead thread** — worker honestly reported its audit context was
-  gone post-disconnect and refused to fabricate. Thread resume after a crashed turn does NOT
-  recover working memory; the JSONL log (`turn.failed` tail) is the reliable postmortem.
-- **codex dispatch with non-git scratch cwd** — refuses in 9s ("Not inside a trusted directory");
-  `git init` the scratch dir first.
-- **Plan-writer self-review at 5400s timeout** — the audit checklist at the plan's tail was
-  written but never executed by the writer; the external verifier substituted for it and caught
-  a real Critical (Task 21 register() throw contradicting the pinned overwrite-semantics test at
-  managedExecution.test.ts).
+- **Fix worker KILLED mid-run** (background task stopped ~48min in; both pids dead, no final
+  message). Recovered: 946 insertions were coherent on disk, banked as WIP 4c3599e. Lesson: a
+  killed worker leaves a plausible-but-unverified artifact — the re-review is what caught that B3/B5
+  were prose-only and that fixes added compile breakage (Task21→22 order, deleted checksum iface,
+  canary v1/v2 mismatch, Gate2 consumes unproduced files).
+- **TWO claude opus review agents died** (API error, then 600s stall) before producing output.
+  The claude Agent path was flaky this session; codex was reliable throughout. Switched the
+  re-review to codex-deep and it completed clean.
+- **codex re-review misconfigured with `--sandbox read-only`** — blocks the checkpoint writes the
+  brief asked for. Killed (taskkill /PID <python> /T /F, verified other terminals' workers
+  untouched) and re-dispatched with default workspace-write + scratch `--cwd` (reads repo, writes
+  only checkpoints). Lesson: for a checkpointing reviewer, NEVER `--sandbox read-only`; confine via
+  `--cwd` instead.
 
 ### What Has NOT Been Tried Yet
-- Opening the PR for `claude/boss-2026-08-11c` → main (spec + plan; Daniel merges).
-- Everything in the plan itself: Tasks 1–8 may land pre-checkpoint any time; Tasks 9–25 blocked
-  on the workflow-platform merge (804acec ancestor requirement).
-- Media-exile track design details beyond the spec's fixed sequence (post-cutover).
+- The targeted fix pass that clears RE-RUN: fix all compile/ordering breakage; implement B3
+  signing + verify_inventory extras-rejection; wire B6 to real `ExecutionLatch.lock`; complete B4
+  restore drill; resolve B5 + m3 + HMAC-secret per Daniel's two rulings. Sequence B5/canary behind
+  the workflow-platform merge if Daniel picks "defer".
+- Opening the PR to main (only after RE-RUN cleared).
 
 ### Current State of Files
 | File | Status | Notes |
 | ---- | ------ | ----- |
-| `docs/superpowers/specs/2026-08-11-kb-structure-design.md` | DONE | c521d20; decision record, rulings locked |
-| `docs/superpowers/specs/2026-08-11-kb-structure-evidence/*` (6 files) | DONE | synthesis + 5 worker reports, banked |
-| `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` | DONE | 59825c6; 25 tasks, review-fixed |
-| branch `claude/boss-2026-08-11c` | PUSHED | remote == local; worktree `kb-worktrees/boss-2026-08-11c` KEEP until merge |
-| `handoffs/2026-08-11-kb-structure-brainstorm.md` | CONSUMED | deleted this push |
+| `docs/superpowers/specs/2026-08-11-kb-structure-design.md` | DONE | c521d20; rulings locked |
+| `.../2026-08-11-kb-structure-evidence/*` (8 files) | DONE | synthesis + 5 design reports + 2 plan-review files |
+| `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` | WIP/BROKEN | 59825c6 clean baseline; 4c3599e fix attempt has RE-RUN issues — do NOT merge |
+| branch `claude/boss-2026-08-11c` | PUSHED | remote == local; worktree `kb-worktrees/boss-2026-08-11c` KEEP |
 
 ### Exact Next Step
-Daniel merges the branch (PR or direct). Then: Tasks 1–8 of the Phase I plan are dispatchable
-immediately in a fresh arc (subagent-driven-development, one reviewer per task); Tasks 9+ wait
-for the workflow-platform merge; execution authority + media exile wait for their gates. The
-plan header names the required sub-skill.
+Present Daniel the two rulings above (artifact link + context, one at a time). On his answers:
+dispatch ONE targeted codex fix pass scoped by the re-review verdict
+(`.../scratchpad/rereview-verdict.md`, also banked as evidence/plan-adversarial-review.md) + his
+rulings; re-review; then PR to main. If "defer" on ruling 2, split the execution-plane tasks out
+behind the workflow-platform-merge checkpoint and ship Tasks 1–8 + non-execution hardening first.
 
 ### Load list
-- `docs/superpowers/specs/2026-08-11-kb-structure-design.md` (the authority)
-- `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` (header + Global Constraints + Source anchors first; tasks by need)
-- `docs/superpowers/specs/2026-08-11-kb-structure-evidence/synthesis.md` (why the design changed)
-- `handoffs/2026-08-11-dashboard-workflow-platform-p0.md` (the checkpoint dependency's arc)
+- this handoff
+- gate artifact https://claude.ai/code/artifact/e61e4e55-e65c-43b6-8438-7735bf04afb8
+- `docs/superpowers/specs/2026-08-11-kb-structure-design.md` (authority)
+- `docs/superpowers/specs/2026-08-11-kb-structure-evidence/plan-adversarial-review.md` (the RE-RUN verdict — fix scope) + `plan-adversarial-findings-r1.md`
+- `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` @ 4c3599e (the WIP to fix)
+- `handoffs/2026-08-11-dashboard-workflow-platform-p0.md` (the merge dependency)
 - `memory/claude-boss.md` 2026-08-11 lessons
 - Skill on execution pickup: superpowers:subagent-driven-development
