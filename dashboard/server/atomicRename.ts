@@ -31,9 +31,12 @@ export interface AtomicRenameDeps {
 }
 
 /**
- * Blocking sleep. Every caller of this seam is a synchronous `save()` running under an exclusion
- * lock, so the retry must not yield the save to another writer mid-flight; `Atomics.wait` gives a
- * dependency-free synchronous wait.
+ * Blocking sleep. Seven of the eight call sites are synchronous `save()` functions reached from
+ * synchronous store code with no await point, so the retry cannot yield without changing their
+ * signatures; `Atomics.wait` gives a dependency-free synchronous wait. (`atomicJsonDocument` is the
+ * exception — its mutate already holds a cross-process SQLite lock across awaits and COULD sleep
+ * async; if this blocking wait ever matters there, fix THAT caller, not the seven sync ones.)
+ * Worst case ~795ms of blocked event loop before the original error is rethrown.
  */
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
