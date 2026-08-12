@@ -8,6 +8,7 @@ log. ``git diff forge.py`` must stay empty.
 
 Subscription-billed: $0 API spend. No key is ever loaded — every Kit is built dry.
 """
+import glob
 import hashlib
 import json
 import os
@@ -482,6 +483,88 @@ def run_codex_exec(*, envelope: str, cwd: str, timeout_s: float | None = None,
     if job:
         _windows_kernel32().CloseHandle(job)
     return result
+
+
+# --- §4.6 FIDELITY AUDIT. `image_gen__imagegen` is invoked from a model-authored sandboxed JS
+# --- snippet, not a native structured call, so the session rollout log is the only ground truth
+# --- for what the tool actually saw. Shape-tolerant on purpose: P2b observed the prompt both as a
+# --- JS string literal in `custom_tool_call.input` AND echoed in `custom_tool_call_output`.
+_JS_PROMPT = re.compile(r'(?:(?:"prompt")|\bprompt)\s*:\s*("(?:[^"\\]|\\.)*")')
+
+
+def rollout_path(thread_id, sessions_root=None):
+    """Return the newest rollout for exactly this thread, or None when it is unavailable."""
+    root = sessions_root or SESSIONS_ROOT
+    if not thread_id or not os.path.isdir(root):
+        return None
+    filename = f"rollout-*-{glob.escape(str(thread_id))}.jsonl"
+    hits = sorted(glob.glob(os.path.join(root, "*", "*", "*", filename)))
+    return hits[-1] if hits else None
+
+
+def _string_leaves(node):
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for value in node.values():
+            yield from _string_leaves(value)
+    elif isinstance(node, (list, tuple)):
+        for value in node:
+            yield from _string_leaves(value)
+
+
+def extract_captured_prompt(body):
+    """Return the literal prompt sent to the tool, or None when the literal is unrecoverable.
+
+    A read-into-variable tool call has no literal prompt argument. That is the safer mechanism and
+    yields an ``unverifiable`` result rather than a fidelity failure. Decode each JSONL row before
+    examining its string leaves: raw JSONL escapes multi-line prompts, so raw substring searches
+    falsely miss a verbatim pass-through.
+    """
+    for line in (body or "").splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        for leaf in _string_leaves(row):
+            match = _JS_PROMPT.search(leaf)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    continue
+    return None
+
+
+def audit_fidelity(thread_id, prompt_path, sessions_root=None):
+    """Return (verified|mismatch|unverifiable, captured SHA-256 or None) read-only."""
+    path = rollout_path(thread_id, sessions_root)
+    if not path:
+        return "unverifiable", None
+    with open(path, encoding="utf-8", errors="replace") as rollout:
+        captured = extract_captured_prompt(rollout.read())
+    if captured is None:
+        return "unverifiable", None
+    with open(prompt_path, encoding="utf-8") as prompt_file:
+        composed = prompt_file.read()
+    sha = hashlib.sha256(captured.encode("utf-8")).hexdigest()
+    return ("verified" if captured == composed else "mismatch"), sha
+
+
+def count_pre_call_tool_calls(thread_id, sessions_root=None):
+    """Return custom-tool-call count before image generation, or None without this thread's log."""
+    path = rollout_path(thread_id, sessions_root)
+    if not path:
+        return None
+    count = 0
+    with open(path, encoding="utf-8", errors="replace") as rollout:
+        for line in rollout:
+            if "custom_tool_call" not in line:
+                continue
+            if "image_gen__imagegen" in line:
+                return count
+            count += 1
+    return count
 
 
 def snapshot_thread_dir(thread_id, image_root=None):

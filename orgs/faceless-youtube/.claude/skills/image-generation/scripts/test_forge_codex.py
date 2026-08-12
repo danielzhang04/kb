@@ -25,6 +25,12 @@ ENVELOPE_FMT = (
     "Do not read any file outside this directory. Report only the saved image path."
 )
 
+REAL_VARIABLE_JS = (
+    'const reader = await tools.mcp__node_repl__js({code: "var p = await fsA.readFile(\'x.txt\');"});'
+    '\nconst prompt = reader.content.find(x => x.type === "text").text;\n'
+    'const result = await tools.image_gen__imagegen({prompt, referenced_image_paths: ["C:\\\\a.png"]});'
+)
+
 
 def fake_prefix(mode, image_root, sessions_root):
     return [sys.executable, str(FAKE), "--mode", mode,
@@ -1042,6 +1048,63 @@ def _fc_with_roots(mode, tmp):
     fc.IMAGE_ROOT = str(tmp / "generated_images")
     fc.SESSIONS_ROOT = str(tmp / "sessions")
     return fc
+
+
+def test_fidelity_verified_on_a_literal_pass_through():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("ok", tmp)
+    r = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                          timeout_s=120)
+    verdict, sha = fc.audit_fidelity(r["thread_id"], str(prompt))
+    assert verdict == "verified" and sha and len(sha) == 64
+
+
+def test_fidelity_mismatch_is_detected_and_carries_the_captured_sha():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("paraphrase", tmp)
+    r = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                          timeout_s=120)
+    verdict, sha = fc.audit_fidelity(r["thread_id"], str(prompt))
+    assert verdict == "mismatch" and sha and len(sha) == 64
+
+
+def test_fidelity_unverifiable_without_a_rollout_log_is_not_a_failure():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("no_rollout", tmp)
+    r = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                          timeout_s=120)
+    verdict, sha = fc.audit_fidelity(r["thread_id"], str(prompt))
+    assert verdict == "unverifiable" and sha is None
+
+
+def test_fidelity_unverifiable_when_the_model_used_the_read_into_variable_mechanism():
+    import forge_codex as fc
+    assert fc.extract_captured_prompt(json.dumps(
+        {"payload": {"type": "custom_tool_call", "input": REAL_VARIABLE_JS}})) is None
+
+
+def test_audit_reads_only_the_rollout_file_matching_its_own_thread_id():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("ok", tmp)
+    r1 = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                           timeout_s=120)
+    other = tmp / "L44.txt"
+    other.write_text("a completely different composed prompt\n", encoding="utf-8")
+    r2 = fc.run_codex_exec(envelope=fc.build_envelope(str(other), [str(seed)]), cwd=str(tmp),
+                           timeout_s=120)
+    assert r1["thread_id"] != r2["thread_id"]
+    assert fc.audit_fidelity(r1["thread_id"], str(prompt))[0] == "verified"
+    assert fc.audit_fidelity(r2["thread_id"], str(other))[0] == "verified"
+    assert fc.audit_fidelity(r1["thread_id"], str(other))[0] == "mismatch"
+
+
+def test_pre_call_tool_calls_counts_the_ambient_detour():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("ok", tmp)
+    r = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                          timeout_s=120)
+    assert fc.count_pre_call_tool_calls(r["thread_id"]) == 3
+    assert fc.count_pre_call_tool_calls("019ff000-0000-7000-0000-000000000000") is None
 
 
 def test_harvest_accepts_exactly_one_new_png_and_ignores_pre_existing_files():
