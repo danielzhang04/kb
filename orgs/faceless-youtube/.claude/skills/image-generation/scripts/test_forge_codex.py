@@ -679,6 +679,153 @@ def test_unknown_canvas_pair_fails_loud_naming_the_pair():
     assert raised is not None and "16:9" in raised and "3K" in raised
 
 
+L29_PAYLOAD = ("`miniscribe-rep`, `expr-delighted`, `action-powerstance`, planted centre in the "
+               "entrance at the back of the assembly floor, the painted board 'MINISCRIBE' hanging "
+               "over him. The floor as established: two long steel benches running back into the "
+               "depth, the rack of tote bins stage-left, the roller door shut beyond. Cool "
+               "grey-teal-cream palette, flat strip light, foreground depth from a cropped bench "
+               "end at the lower-right.")
+
+L29_GOLDEN = (
+    "Use case: illustration-story\n"
+    "Asset type: documentary-style animated video still frame\n"
+    "Primary request: miniscribe-rep, delighted expression, powerstance pose, planted centre in "
+    "the entrance at the back of the assembly floor, the painted board 'MINISCRIBE' hanging over "
+    "him. The floor as established: two long steel benches running back into the depth, the rack "
+    "of tote bins on the left of the frame, the roller door shut beyond. Cool grey-teal-cream "
+    "palette, flat strip light, foreground depth from a cropped bench end at the lower-right.\n"
+    "Input images: Image 1: character reference for miniscribe-rep — match exactly. "
+    "Image 2: place reference — preserve its set, palette and outline weight.\n"
+    "Style/medium: clean flat 2.5D vector cartoon, even medium-thick dark warm brown-black outline "
+    "(#241a12), flat cel colour fills with gentle soft shading only, rounded friendly shapes, no "
+    "realistic detail\n"
+    "Composition/framing: Compose for a 1376×768 pixel frame — a 16:9 landscape aspect "
+    "ratio.\n"
+    "Color palette: locked 2-3 colour scene palette plus a single red accent #d7402b reserved only "
+    "for alarm / prohibition / ownership / the final punch element\n"
+    "Materials/textures: flat cel fills only, no gradients, no ambient occlusion\n"
+    "Text (verbatim): \"MINISCRIBE\" — render exactly this text and nothing else.\n"
+    "Constraints: preserve miniscribe-rep's exact costume, proportions and line weight from the "
+    "reference image; environment stays a built-but-flat environment — minimal geometry plus "
+    "one foreground depth prop, not a fully rendered set\n"
+    "Avoid: photorealism, on-screen narrator or host face, logos, gradients and cast shadows, soft "
+    "ambient shading, unrequested text or signage beyond the quoted text and invented staging "
+    "labels\n"
+)
+
+
+def _item_L29():
+    return {"name": "L29", "mode": "environment", "aspect": "16:9", "payload": L29_PAYLOAD,
+            "figures": None,
+            "seed_roles": [
+                {"path": "C:/k/refs/miniscribe-rep/fig-miniscribe-rep.png", "role": "figure",
+                 "character": "miniscribe-rep"},
+                {"path": "C:/k/_staging/L28.png", "role": "place", "character": None}]}
+
+
+def _item_L26():
+    return {"name": "L26", "mode": "environment", "aspect": "16:9", "figures": None,
+            "payload": ("A flat top-down world map laid out across a concrete floor, oceans in pale "
+                        "teal and landmasses in cream, every landmass left completely blank and "
+                        "unlettered."),
+            "seed_roles": [{"path": "C:/k/refs/env/scene-style-tile.png", "role": "style-anchor",
+                            "character": None}]}
+
+
+def test_composer_reproduces_the_L29_golden_byte_for_byte():
+    import forge_codex as fc
+    got = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    assert got == L29_GOLDEN, "\n--- got ---\n" + got + "\n--- want ---\n" + L29_GOLDEN
+
+
+def test_composer_is_deterministic():
+    import forge_codex as fc
+    a = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    b = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    assert a == b and a.encode("utf-8") == b.encode("utf-8")
+
+
+def test_primary_request_is_the_payload_verbatim_after_idiom_and_slug_resolution():
+    import forge_codex as fc
+    item = _item_L29()
+    line = [l for l in fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768),
+                                         aspect="16:9").split("\n")
+            if l.startswith("Primary request: ")][0]
+    body = line[len("Primary request: "):]
+    assert body == fc.translate_idiom(fc.resolve_slugs(item["payload"], REGISTRY))
+    assert "`" not in body
+
+
+def test_input_images_line_follows_seed_roles_in_order():
+    import forge_codex as fc
+    roles = [{"path": "a.png", "role": "figure", "character": "ibm-suit"},
+             {"path": "b.png", "role": "prop", "character": None},
+             {"path": "c.png", "role": "style-anchor", "character": None},
+             {"path": "d.png", "role": "interaction", "character": None}]
+    line = fc.input_images_line(roles)
+    assert line.startswith("Image 1: character reference for ibm-suit")
+    assert "Image 2: prop reference" in line
+    assert "Image 3: style reference only" in line
+    assert "Image 4: interaction geometry reference" in line
+    assert line.index("Image 1") < line.index("Image 2") < line.index("Image 3")
+
+
+def test_text_field_present_with_quotes_and_absent_without():
+    import forge_codex as fc
+    with_quotes = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    assert 'Text (verbatim): "MINISCRIBE"' in with_quotes
+    assert "unrequested text or signage beyond the quoted text" in with_quotes
+    no_quotes = fc.compose_prompt(_item_L26(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    assert "Text (verbatim):" not in no_quotes
+    avoid = [l for l in no_quotes.split("\n") if l.startswith("Avoid: ")][0]
+    assert avoid.startswith("Avoid: any words, letters, numerals or signage")
+
+
+def test_fields_with_no_source_are_omitted_never_emitted_empty():
+    import forge_codex as fc
+    out = fc.compose_prompt(_item_L26(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    assert "Scene/backdrop:" not in out and "Subject:" not in out and "Lighting/mood:" not in out
+    for line in out.split("\n"):
+        if line:
+            assert not line.rstrip().endswith(":"), line
+
+
+def test_crowd_clause_only_when_figures_crowd():
+    import forge_codex as fc
+    item = _item_L29()
+    plain = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    assert "background crowd figures" not in plain
+    item["figures"] = {"crowd": True}
+    crowded = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    assert "background crowd figures stay flat silhouetted shapes" in crowded
+
+
+def test_brevity_budget_and_no_fact_stated_twice():
+    import forge_codex as fc
+    for item in (_item_L29(), _item_L26()):
+        out = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+        assert len(out) <= fc.COMPOSED_CHAR_BUDGET, (item["name"], len(out))
+        assert out.count("#241a12") == 1
+        assert out.count("clean flat 2.5D vector cartoon") == 1
+        assert out.count("#d7402b") == 1
+        assert out.count("Avoid:") == 1
+        bodies = [l.split(": ", 1)[1] for l in out.split("\n") if ": " in l]
+        for i, a in enumerate(bodies):
+            for j, b in enumerate(bodies):
+                assert i == j or a not in b, (a, b)
+
+
+def test_dead_levers_stay_dead_no_head_tail_repetition():
+    import forge_codex as fc
+    out = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    lines = [l for l in out.split("\n") if l]
+    assert lines[-1].startswith("Avoid: ")
+    assert lines[0].startswith("Use case: ")
+    assert "flat cel" not in lines[0] and "flat cel" not in lines[2]
+    labels = [l.split(":", 1)[0] for l in lines]
+    assert len(labels) == len(set(labels)), labels
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

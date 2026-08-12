@@ -140,6 +140,145 @@ def residual_idiom(text: str) -> list[str]:
     return hits
 
 
+# --- §4.1-4.3 THE COMPOSER. Codex's own labeled schema (~/.codex/skills/.system/imagegen/SKILL.md
+# --- L212-229), front-loaded, ONE trailing constraint block. Gemini's two-voice head+tail
+# --- convention is NOT ported: P2b E2 measured it ~4x worse on this engine.
+USE_CASE = "illustration-story"
+ASSET_TYPE = "documentary-style animated video still frame"
+COMPOSED_CHAR_BUDGET = 2200      # P2b E1: 1740 -> 4032 chars was ~6x worse at constant facts
+
+CODEX_REGISTER_BLOCK = {
+    "Style/medium": ("clean flat 2.5D vector cartoon, even medium-thick dark warm brown-black "
+                     "outline (#241a12), flat cel colour fills with gentle soft shading only, "
+                     "rounded friendly shapes, no realistic detail"),
+    "Color palette": ("locked 2-3 colour scene palette plus a single red accent #d7402b reserved "
+                      "only for alarm / prohibition / ownership / the final punch element"),
+    "Materials/textures": "flat cel fills only, no gradients, no ambient occlusion",
+}
+
+# The single biggest measured register lever (P2b B/C: 2-3x closer, and zero unrequested text in
+# EVERY dedicated-Avoid run). Kept to 6 items: short, hard, direct negation, never merged into
+# Constraints -- the schema splits keep/avoid deliberately.
+AVOID_BASE = ["photorealism", "on-screen narrator or host face", "logos",
+              "gradients and cast shadows", "soft ambient shading"]
+AVOID_TEXT_WITH_QUOTES = ("unrequested text or signage beyond the quoted text and invented staging "
+                          "labels")
+AVOID_TEXT_NO_QUOTES = "any words, letters, numerals or signage"
+
+CONSTRAINT_FIGURE = ("preserve {who}'s exact costume, proportions and line weight from the "
+                     "reference image")
+CONSTRAINT_CROWD = ("background crowd figures stay flat silhouetted shapes in the scene palette, "
+                    "no individual faces and no added named characters")
+CONSTRAINT_ENVIRONMENT = ("environment stays a built-but-flat environment — minimal geometry "
+                          "plus one foreground depth prop, not a fully rendered set")
+
+# Short ordinal + role label. P2b D: all three tested framings prevented style-tile content leak
+# equally, INCLUDING the cheapest -- verbosity is not protective, so the composer uses the short
+# form. The role words restate forge's own `role` vocabulary (seed_roles_text L1270-1352).
+_ROLE_CLAUSE = {
+    "figure": "character reference for {who} — match exactly",
+    "canonical": "character reference for {who} — match exactly",
+    "pose": "pose reference for {who} — match the body position",
+    "expression": "expression reference for {who} — match the face",
+    "place": "place reference — preserve its set, palette and outline weight",
+    "parent": "previous frame in this chain — preserve its set, palette and outline weight",
+    "prop": "prop reference — include exactly as shown",
+    "crowd": "crowd reference — match its figure proportion and face style",
+    "interaction": "interaction geometry reference — match the contact and eye-line",
+    "style-anchor": "style reference only",
+}
+_ROLE_CLAUSE_DEFAULT = "reference only"
+
+_FIGURE_ROLES = ("figure", "canonical", "pose", "expression")
+_SLUG = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._-]*)`")
+# A diegetic literal is short and quoted (SKILL.md L136-138: 1-4 words). The single-quote form is
+# guarded on both sides so a possessive apostrophe can never pair into a false literal.
+_QUOTED_LITERAL = re.compile(r'"([^"\n]{1,60})"' r"|(?<![A-Za-z0-9])'([^'\n]{1,40})'(?![A-Za-z0-9])")
+
+
+def resolve_slugs(text, reg):
+    """Backticked slugs -> plain words, resolved from the registry so the result is deterministic."""
+    assets = {a["name"]: a for a in (reg or {}).get("assets", [])}
+
+    def one(m):
+        slug = m.group(1)
+        asset = assets.get(slug)
+        if asset:
+            tag = asset.get("tag") or slug
+            kind = asset.get("kind")
+            if kind == "expression":
+                return f"{tag} expression"
+            if kind in ("pose", "action"):
+                return f"{tag} pose"
+            if kind == "interaction":
+                return f"{tag} interaction staging"
+            return str(tag)
+        return slug
+
+    return _SLUG.sub(one, text or "")
+
+
+def quoted_literals(text):
+    """The in-video diegetic text, in authored order, de-duplicated."""
+    out = []
+    for m in _QUOTED_LITERAL.finditer(text or ""):
+        lit = (m.group(1) if m.group(1) is not None else m.group(2)).strip()
+        if lit and len(lit.split()) <= 4 and lit not in out:
+            out.append(lit)
+    return out
+
+
+def input_images_line(seed_roles):
+    parts = []
+    for i, entry in enumerate(seed_roles or [], start=1):
+        who = entry.get("character") or _stem(entry.get("path", ""))
+        clause = _ROLE_CLAUSE.get(entry.get("role"), _ROLE_CLAUSE_DEFAULT).format(who=who)
+        parts.append(f"Image {i}: {clause}.")
+    return " ".join(parts)
+
+
+def constraints_text(item):
+    out, seen = [], []
+    for entry in item.get("seed_roles") or []:
+        who = entry.get("character")
+        if entry.get("role") in _FIGURE_ROLES and who and who not in seen:
+            seen.append(who)
+            out.append(CONSTRAINT_FIGURE.format(who=who))
+    if (item.get("figures") or {}).get("crowd"):
+        out.append(CONSTRAINT_CROWD)
+    out.append(CONSTRAINT_ENVIRONMENT)
+    return "; ".join(out)
+
+
+def avoid_text(has_quotes):
+    items = (AVOID_BASE + [AVOID_TEXT_WITH_QUOTES]) if has_quotes \
+        else ([AVOID_TEXT_NO_QUOTES] + AVOID_BASE)
+    return ", ".join(items)
+
+
+def compose_prompt(item, *, reg, canvas, aspect):
+    """Pure function of (item, registry, canvas, aspect): no model call, no randomness, no ambient
+    state. That is what makes --dry-run print the exact bytes a live run would send, at $0."""
+    payload = translate_idiom(resolve_slugs(item.get("payload") or item.get("delta") or "", reg))
+    quotes = quoted_literals(item.get("payload") or "")
+    lines = [f"Use case: {USE_CASE}",
+             f"Asset type: {ASSET_TYPE}",
+             f"Primary request: {payload}"]
+    images = input_images_line(item.get("seed_roles") or [])
+    if images:
+        lines.append(f"Input images: {images}")
+    lines.append(f"Style/medium: {CODEX_REGISTER_BLOCK['Style/medium']}")
+    lines.append(framing_line(aspect, canvas))
+    lines.append(f"Color palette: {CODEX_REGISTER_BLOCK['Color palette']}")
+    lines.append(f"Materials/textures: {CODEX_REGISTER_BLOCK['Materials/textures']}")
+    if quotes:
+        joined = "; ".join(f'"{q}"' for q in quotes)
+        lines.append(f"Text (verbatim): {joined} — render exactly this text and nothing else.")
+    lines.append(f"Constraints: {constraints_text(item)}")
+    lines.append(f"Avoid: {avoid_text(bool(quotes))}")
+    return "\n".join(lines) + "\n"
+
+
 def resolve_codex_binary() -> str:
     """Resolve the executable at run time, failing loudly without a Codex installation.
 
