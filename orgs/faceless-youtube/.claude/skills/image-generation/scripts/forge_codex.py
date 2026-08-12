@@ -482,3 +482,30 @@ def run_codex_exec(*, envelope: str, cwd: str, timeout_s: float | None = None,
     if job:
         _windows_kernel32().CloseHandle(job)
     return result
+
+
+def snapshot_thread_dir(thread_id, image_root=None):
+    """Empty for a fresh thread, non-empty for a resumed session — which is why harvest is a DIFF
+    and never 'the only file in the directory'."""
+    d = os.path.join(image_root or IMAGE_ROOT, str(thread_id or ""))
+    return set(os.listdir(d)) if thread_id and os.path.isdir(d) else set()
+
+
+def harvest_new_pngs(thread_id, before, *, image_root=None, polls=5, delay=1.0):
+    """Every *.png that appeared in this thread's directory since `before`, as absolute paths.
+    Bounded poll covers write/close lag after turn.completed. Counting happens here; RULING on the
+    count (exactly one => success, zero => no_image, more than one => multi_emit, take none) is
+    `classify_turn`'s job, so the §6 class ids live in exactly one place.
+    Newest-by-mtime is explicitly rejected: 17 gens across both probe logs never produced a second
+    image, so there is no evidence about what a second one MEANS."""
+    root = image_root or IMAGE_ROOT
+    d = os.path.join(root, str(thread_id or ""))
+    new = []
+    for attempt in range(max(1, polls)):
+        now = snapshot_thread_dir(thread_id, image_root=root)
+        new = sorted(n for n in (now - set(before)) if n.lower().endswith(".png"))
+        if new:
+            break
+        if attempt + 1 < polls:
+            time.sleep(delay)
+    return [os.path.join(d, n) for n in new]

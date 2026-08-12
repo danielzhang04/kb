@@ -1034,6 +1034,57 @@ def test_run_codex_exec_reports_stderr_tail_bounded_to_160_chars():
     assert "failed to connect" in r["stderr_tail"] and len(r["stderr_tail"]) <= 160
 
 
+def _fc_with_roots(mode, tmp):
+    import forge_codex as fc
+    fc.CODEX_ARGV_PREFIX = fake_prefix(mode, tmp / "generated_images", tmp / "sessions")
+    fc.IMAGE_ROOT = str(tmp / "generated_images")
+    fc.SESSIONS_ROOT = str(tmp / "sessions")
+    return fc
+
+
+def test_harvest_accepts_exactly_one_new_png_and_ignores_pre_existing_files():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("ok", tmp)
+    env = fc.build_envelope(str(prompt), [str(seed)])
+    first = fc.run_codex_exec(envelope=env, cwd=str(tmp), timeout_s=120)
+    tid = first["thread_id"]
+    before = fc.snapshot_thread_dir(tid)
+    assert len(before) == 1                       # turn 1's frame is already there
+    second = fc.run_codex_exec(envelope=env + " ", cwd=str(tmp), timeout_s=120,
+                               resume_thread=tid)
+    got = fc.harvest_new_pngs(tid, before, polls=3, delay=0.1)
+    assert len(got) == 1 and os.path.isfile(got[0]) and got[0].endswith(".png")
+    assert os.path.basename(got[0]) not in before
+    assert second["returncode"] == 0
+
+
+def test_harvest_returns_an_empty_list_when_nothing_was_written():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("no_image", tmp)
+    r = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                          timeout_s=120)
+    assert fc.harvest_new_pngs(r["thread_id"], set(), polls=2, delay=0.05) == []
+
+
+def test_harvest_returns_both_paths_when_two_images_landed():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("two_images", tmp)
+    r = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                          timeout_s=120)
+    got = fc.harvest_new_pngs(r["thread_id"], set(), polls=2, delay=0.05)
+    assert len(got) == 2 and got == sorted(got)
+
+
+def test_harvest_leaves_the_source_file_in_place():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("ok", tmp)
+    r = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                          timeout_s=120)
+    got = fc.harvest_new_pngs(r["thread_id"], set(), polls=2, delay=0.05)[0]
+    assert os.path.isfile(got)
+    assert os.path.commonpath([got, fc.IMAGE_ROOT]) == os.path.normpath(fc.IMAGE_ROOT)
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":
