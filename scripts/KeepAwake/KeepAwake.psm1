@@ -963,17 +963,38 @@ function Test-SupervisorRespawnNeeded {
 # unthrottled watchdog is worth ~57,600 spawns/day. State lives in the keepawake
 # root so it is shared across every session's hook process.
 $script:RespawnMinIntervalSeconds = 60
-$script:RespawnMaxIntervalSeconds = 900
+$script:RespawnAbsoluteMaxIntervalSeconds = 900
 
 function Get-RespawnStatePath { return (Join-Path (Get-KeepAwakeRoot) 'respawn.json') }
 
+# The backoff ceiling is racing ONE number: the standby idle timeout that will
+# put the machine to sleep once the supervisor stops holding it off. A hardcoded
+# 900 s only ever worked because this machine's timeout happens to be 1200 s.
+# Derive it instead -- a third of the real baseline value, so at least two
+# respawn attempts land inside every sleep window -- and fall back to the
+# documented default when nothing is armed or the baseline is unusable.
+function Get-SupervisorRespawnMaxIntervalSeconds {
+    $standby = 0
+    try {
+        $b = Get-PowerBaseline
+        if ($null -ne $b) { $standby = [int]$b.original.standbyidle_ac }
+    } catch { $standby = 0 }
+    if ($standby -le 0) { $standby = [int]$script:PowerDefaults.standbyidle_ac }
+    $derived = [int][math]::Floor($standby / 3)
+    if ($derived -lt 1) { $derived = 1 }
+    return [int][math]::Min($script:RespawnAbsoluteMaxIntervalSeconds, $derived)
+}
+
 function Get-SupervisorRespawnBackoffSeconds {
     param([Parameter(Mandatory)][int]$Attempts)
-    if ($Attempts -le 1) { return $script:RespawnMinIntervalSeconds }
-    # Doubling in the exponent domain, then capped -- 60, 120, 240, 480, 900...
+    $ceiling = Get-SupervisorRespawnMaxIntervalSeconds
+    # The ceiling binds the first interval too: if the sleep timeout is shorter
+    # than the 60 s minimum, retrying every 60 s would lose the race outright.
+    if ($Attempts -le 1) { return [int][math]::Min($script:RespawnMinIntervalSeconds, $ceiling) }
+    # Doubling in the exponent domain, then capped -- 60, 120, 240, ...
     $shift = [math]::Min($Attempts - 1, 20)
     $seconds = $script:RespawnMinIntervalSeconds * [math]::Pow(2, $shift)
-    if ($seconds -gt $script:RespawnMaxIntervalSeconds) { return $script:RespawnMaxIntervalSeconds }
+    if ($seconds -gt $ceiling) { return [int]$ceiling }
     return [int]$seconds
 }
 
@@ -1114,6 +1135,10 @@ function Start-KeepAwakeSupervisor {
     $deadline = (Get-Date).AddHours($MaxHours)
     $exit = 0
     $consecutiveFailures = 0
+    # Whether this supervisor ever learned anything about the world. Until the
+    # first pass returns, it has no idea whether leases are live -- see the
+    # disarm guard in the finally.
+    $completedPass = $false
     try {
         # Inside the try (review finding 8): the pidfile write used to sit
         # outside it, so a failure there killed the starting supervisor under
@@ -1140,6 +1165,7 @@ function Start-KeepAwakeSupervisor {
                 }
                 $pass = & $script:SupervisorPassInvoker ([datetimeoffset]::Now) $IdleTimeoutMinutes $CpuThreshold
                 $consecutiveFailures = 0
+                $completedPass = $true
                 if ($pass.LiveCount -eq 0) {
                     # Re-check for a lease that appeared in the tiny window since
                     # the pass invoker computed LiveCount, before committing
@@ -1176,7 +1202,24 @@ function Start-KeepAwakeSupervisor {
         # any one of them (all of them touch powercfg, the log, or the disk)
         # skipped every later step, leaving the pidfile on disk and the mutex
         # held by a dying process.
-        try { if (Test-PowerArmed) { Restore-PowerBaseline | Out-Null } } catch { }
+        # ...except when this supervisor died before completing a single pass
+        # while lease files are on disk. It never observed the world, so
+        # disarming would be acting on pure ignorance -- and that is the
+        # 2026-08-12 outage shape reached through the startup path (measured:
+        # armed True->False, standbyidle 0->1200, live lease still held). Leave
+        # the existing arm; the backstops are stale-arm reconciliation on the
+        # next -Acquire, the MaxHours cap, and the watchdog respawn. The
+        # orderly no-live-leases exit has completed a pass by definition, so it
+        # still disarms even when lease FILES remain.
+        $skipDisarm = $false
+        try { $skipDisarm = ((-not $completedPass) -and (Test-AnyKeepAwakeLeaseFile)) } catch { $skipDisarm = $false }
+        try {
+            if ($skipDisarm) {
+                Write-KeepAwakeLog ("supervisor-disarm-SKIPPED exit=$exit -- died before completing a pass with lease files present; leaving power state armed for the next supervisor")
+            } elseif (Test-PowerArmed) {
+                Restore-PowerBaseline | Out-Null
+            }
+        } catch { }
         try { Clear-ExecutionStateHold | Out-Null } catch { }
         try { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue } catch { }
         try { Write-KeepAwakeLog ("supervisor-stop pid=$PID exit=$exit") } catch { }
@@ -1204,5 +1247,5 @@ Export-ModuleMember -Function Get-KeepAwakeRoot, Get-KeepAwakeMutexName, Get-Lea
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass,
     Test-SupervisorShouldContinueAfterEmptyPass, Set-SupervisorPassInvoker, Start-KeepAwakeSupervisor,
     Test-SupervisorRespawnNeeded, Test-AnyKeepAwakeLeaseFile, Get-SupervisorPidFilePath, Write-SupervisorPidFile, Read-SupervisorPidRecord,
-    Test-SupervisorProcessAlive, Get-SupervisorRespawnBackoffSeconds, Get-SupervisorRespawnState,
+    Test-SupervisorProcessAlive, Get-SupervisorRespawnBackoffSeconds, Get-SupervisorRespawnMaxIntervalSeconds, Get-SupervisorRespawnState,
     Resolve-SupervisorRespawnDecision, Clear-SupervisorRespawnState

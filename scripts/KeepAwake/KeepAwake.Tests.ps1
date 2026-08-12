@@ -1380,14 +1380,43 @@ Describe 'supervisor respawn throttle (review-1 finding 3: the watchdog must not
         Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
     }
 
-    It 'backs off 60s, doubling per consecutive attempt, capped at 15 minutes' {
+    # Re-review 2.2b: the ceiling must be a fraction of the standby idle
+    # timeout it is racing, not a hardcoded 900 that happened to sit 300 s under
+    # this machine's 1200 s. With no armed baseline the documented default
+    # (1200) stands in, so the ceiling is 400 s here, not 900.
+    It 'backs off 60s, doubling per consecutive attempt, capped at the derived ceiling' {
         Get-SupervisorRespawnBackoffSeconds -Attempts 0 | Should -Be 60
         Get-SupervisorRespawnBackoffSeconds -Attempts 1 | Should -Be 60
         Get-SupervisorRespawnBackoffSeconds -Attempts 2 | Should -Be 120
         Get-SupervisorRespawnBackoffSeconds -Attempts 3 | Should -Be 240
-        Get-SupervisorRespawnBackoffSeconds -Attempts 4 | Should -Be 480
-        Get-SupervisorRespawnBackoffSeconds -Attempts 5 | Should -Be 900
-        Get-SupervisorRespawnBackoffSeconds -Attempts 99 | Should -Be 900
+        Get-SupervisorRespawnBackoffSeconds -Attempts 4 | Should -Be 400
+        Get-SupervisorRespawnBackoffSeconds -Attempts 5 | Should -Be 400
+        Get-SupervisorRespawnBackoffSeconds -Attempts 99 | Should -Be 400
+    }
+
+    It 'derives the retry ceiling as min(900, standbyidle_ac / 3) from the armed baseline' {
+        New-Item -ItemType Directory -Path $script:TestRoot -Force | Out-Null
+        function Set-TestBaseline {
+            param([int]$Standby)
+            Write-JsonFileAtomic -Path (Join-Path $script:TestRoot 'armed.json') -Data ([ordered]@{
+                armed_at = '2026-08-12T03:00:00+09:00'
+                scheme   = '381b4222-f694-41f0-9685-ff5bb260df2e'
+                original = [ordered]@{ lidaction_ac = 1; standbyidle_ac = $Standby; hibernateidle_ac = 900 }
+            })
+        }
+        # unarmed -> documented default 1200 -> 400
+        Get-SupervisorRespawnMaxIntervalSeconds | Should -Be 400
+        Set-TestBaseline -Standby 1200
+        Get-SupervisorRespawnMaxIntervalSeconds | Should -Be 400
+        Set-TestBaseline -Standby 3600
+        Get-SupervisorRespawnMaxIntervalSeconds | Should -Be 900   # the absolute 900 s cap still binds
+        Set-TestBaseline -Standby 90
+        Get-SupervisorRespawnMaxIntervalSeconds | Should -Be 30
+        # A ceiling below the 60 s minimum wins: never retry slower than the
+        # sleep timeout we are racing.
+        Get-SupervisorRespawnBackoffSeconds -Attempts 1 | Should -Be 30
+        Set-Content (Join-Path $script:TestRoot 'armed.json') -Value '{not json' -Encoding utf8
+        Get-SupervisorRespawnMaxIntervalSeconds | Should -Be 400
     }
 
     It 'allows the first attempt and logs exactly one supervisor-respawn-attempt line' {
@@ -1615,6 +1644,54 @@ Describe 'supervisor loop is exception-proof end to end (review-1 findings 1b + 
         Start-KeepAwakeSupervisor -PollSeconds 0 | Should -Be 0
         $script:calls | Should -Be 4
         (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'supervisor-pass-ERROR'
+    }
+
+    # Re-review 2.2a: a supervisor that dies BEFORE its first pass (measured
+    # with a pidfile write that throws) used to run the same unconditional
+    # disarm as an orderly shutdown -- armed True->False and standbyidle
+    # 0->1200 with a live lease on disk, i.e. the 2026-08-12 outage reproduced
+    # through the startup path instead of the loop. It knows nothing about the
+    # world yet, so it must not act on that ignorance; the existing arm stands
+    # and stale-arm reconciliation, the MaxHours cap and the watchdog are the
+    # backstops.
+    It 'does not disarm when it dies before completing a single pass and lease files exist (2.2a)' {
+        Set-PowerArmed | Out-Null
+        New-KeepAwakeLease -Label 'live-work' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        Write-SupervisorPidFile
+        $lock = New-Object System.IO.FileStream((Join-Path $script:TestRoot 'supervisor.pid'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            { Start-KeepAwakeSupervisor -PollSeconds 0 } | Should -Throw
+        } finally { $lock.Dispose() }
+        Test-PowerArmed | Should -BeTrue
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 0
+        $log = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        $log | Should -Match 'supervisor-disarm-SKIPPED'
+        $log | Should -Not -Match 'power-restored'
+    }
+
+    It 'still disarms on the orderly no-live-leases exit even though lease FILES exist (2.2a must not over-apply)' {
+        Set-PowerArmed | Out-Null
+        # Lease file present but its owner is dead: presence is true, live count
+        # is zero. The skip must key on "never completed a pass", not on
+        # "a lease file exists".
+        New-KeepAwakeLease -Label 'ghost' -Mode 'pid-only' -ProcessId 999999 -CpuSample 0 | Out-Null
+        Set-SupervisorPassInvoker {
+            param($Now, $IdleTimeoutMinutes, $CpuThreshold)
+            return @{ LiveCount = 0; Pruned = @(); Armed = $true; ImmediatePruned = @() }
+        }
+        Start-KeepAwakeSupervisor -PollSeconds 0 | Should -Be 0
+        Test-PowerArmed | Should -BeFalse
+        $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 1200
+    }
+
+    It 'still disarms when it dies before its first pass with NO lease files at all' {
+        Set-PowerArmed | Out-Null
+        Write-SupervisorPidFile
+        $lock = New-Object System.IO.FileStream((Join-Path $script:TestRoot 'supervisor.pid'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            { Start-KeepAwakeSupervisor -PollSeconds 0 } | Should -Throw
+        } finally { $lock.Dispose() }
+        Test-PowerArmed | Should -BeFalse
     }
 
     It 'a throwing finally step still removes the pidfile, logs supervisor-stop and releases the mutex (finding 2)' {
