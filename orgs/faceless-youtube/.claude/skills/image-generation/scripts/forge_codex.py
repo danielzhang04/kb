@@ -826,6 +826,35 @@ def snapshot_thread_dir(thread_id, image_root=None):
     return set(os.listdir(d)) if thread_id and os.path.isdir(d) else set()
 
 
+class Session:
+    """§5.2 optional `session` mode: `codex exec resume <thread_id>`, still ONE image per turn.
+    Harvest stays a snapshot diff precisely so a shared per-thread image directory works unchanged.
+    NOT the default until P4's resume probe reports and Daniel rules (§9.3 item 4)."""
+
+    def __init__(self, span=8):
+        self.span = max(1, int(span))
+        self.thread_id = None
+        self.turns = 0
+        self.snapshot = set()
+        self.fallbacks = 0
+
+    def record(self, thread_id):
+        self.thread_id = thread_id
+        self.turns += 1
+        self.snapshot = snapshot_thread_dir(thread_id)
+
+    def reset(self):
+        """A fresh thread: after span exhaustion, or after a re-issue (the session state is suspect)."""
+        if self.thread_id is not None:
+            self.fallbacks += 1
+        self.thread_id = None
+        self.turns = 0
+        self.snapshot = set()
+
+    def exhausted(self):
+        return self.turns >= self.span
+
+
 def harvest_new_pngs(thread_id, before, *, image_root=None, polls=5, delay=1.0, settle_polls=2):
     """Every *.png that appeared in this thread's directory since `before`, as absolute paths.
     Bounded poll covers write/close lag after turn.completed. Counting happens here; RULING on the
@@ -1124,8 +1153,13 @@ def main(argv=None):
 
 
 def _session_for(opts, session):
-    """Isolated mode has no session object at all. Replaced in full by Task C14."""
-    return None
+    if opts.session_mode != "session":
+        return None
+    if session is None:
+        return Session(span=opts.session_span)
+    if session.exhausted():
+        session.reset()
+    return session
 
 
 if __name__ == "__main__":

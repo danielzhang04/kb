@@ -2206,6 +2206,55 @@ def test_cli_never_loads_a_key():
     assert reads == [], f"main() read credential keys: {reads}"
 
 
+def test_session_reuses_one_thread_and_harvests_turn_two():
+    fc, k, tmp, staging, seed = _kit_for_run("resume_ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed), _runnable_item("A2", seed)])
+    rc = fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging),
+                  "--session-mode", "session"])
+    assert rc == 0
+    assert (staging / "A1.png").is_file() and (staging / "A2.png").is_file()
+    rows = [json.loads(l) for l in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [r["name"] for r in rows] == ["A1", "A2"]
+    assert rows[0]["thread_id"] == rows[1]["thread_id"], "turn 2 must reuse the thread"
+    assert [r["turn_index"] for r in rows] == [1, 2]
+    assert all(r["session_mode"] == "session" for r in rows)
+
+
+def test_session_span_starts_a_fresh_thread_after_n_turns():
+    fc, k, tmp, staging, seed = _kit_for_run("resume_ok")
+    spec = _spec_file(tmp, [_runnable_item(f"A{i}", seed) for i in range(3)])
+    assert fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging),
+                    "--session-mode", "session", "--session-span", "2"]) == 0
+    rows = [json.loads(l) for l in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["thread_id"] == rows[1]["thread_id"]
+    assert rows[2]["thread_id"] != rows[1]["thread_id"]
+    assert [r["turn_index"] for r in rows] == [1, 2, 1]
+
+
+def test_session_object_records_and_resets():
+    import forge_codex as fc
+    s = fc.Session(span=2)
+    assert s.thread_id is None and s.turns == 0 and s.exhausted() is False
+    s.record("t1")
+    assert s.thread_id == "t1" and s.turns == 1 and s.exhausted() is False
+    s.record("t1")
+    assert s.turns == 2 and s.exhausted() is True
+    s.reset()
+    assert s.thread_id is None and s.turns == 0 and s.fallbacks == 1
+
+
+def test_isolated_mode_uses_a_fresh_thread_per_frame():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    spec = _spec_file(tmp, [_runnable_item("A1", seed), _runnable_item("A2", seed)])
+    assert fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging)]) == 0
+    rows = [json.loads(l) for l in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["thread_id"] != rows[1]["thread_id"]
+    assert all(r["session_mode"] == "isolated" and r["turn_index"] == 1 for r in rows)
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":
