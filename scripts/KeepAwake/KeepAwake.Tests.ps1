@@ -1169,6 +1169,164 @@ Describe 'Test-SupervisorRespawnNeeded (F3: heartbeat watchdog self-heals a dead
     }
 }
 
+Describe 'Write-KeepAwakeLog is structurally non-throwing (review-1 finding 1a)' {
+    # Adversarial review 2026-08-12: Write-KeepAwakeLog was Add-Content to one
+    # file written by every hook, every spawn and the supervisor itself
+    # (~48% failure measured at 3 writers x 200ms). It is called from inside
+    # the supervisor's own error path and its `finally`, so a throwing log call
+    # is exactly how a lost log line escalates into a machine that sleeps
+    # overnight. A lost log line is always acceptable; a thrown one is not.
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        New-Item -ItemType Directory -Path $script:TestRoot -Force | Out-Null
+        $script:LogPath = Join-Path $script:TestRoot 'keepawake.log'
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'writes a normal line when nothing is contending' {
+        Write-KeepAwakeLog 'plain-line-test'
+        (Get-Content $script:LogPath -Raw) | Should -Match 'plain-line-test'
+    }
+
+    It 'swallows an exclusively locked log file instead of throwing' {
+        Set-Content -Path $script:LogPath -Value 'seed' -Encoding utf8
+        $lock = New-Object System.IO.FileStream($script:LogPath, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        try {
+            { Write-KeepAwakeLog 'must-not-throw' } | Should -Not -Throw
+        } finally { $lock.Dispose() }
+    }
+
+    It 'keeps writing while another writer holds the file open with FileShare.ReadWrite' {
+        Set-Content -Path $script:LogPath -Value 'seed' -Encoding utf8
+        $other = New-Object System.IO.FileStream($script:LogPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+        try {
+            Write-KeepAwakeLog 'concurrent-writer-line'
+        } finally { $other.Dispose() }
+        (Get-Content $script:LogPath -Raw) | Should -Match 'concurrent-writer-line'
+    }
+
+    It 'rotates the log into keepawake.log.1 once it passes 1 MB (finding 3)' {
+        # Unbounded growth was the other half of the respawn-storm finding:
+        # ~5.5 MB/day of respawn lines with nothing ever trimming the file.
+        [System.IO.File]::WriteAllBytes($script:LogPath, (New-Object byte[] (1200000)))
+        Write-KeepAwakeLog 'post-rotation-line'
+        Test-Path "$($script:LogPath).1" | Should -BeTrue
+        (Get-Item "$($script:LogPath).1").Length | Should -BeGreaterThan 1000000
+        (Get-Item $script:LogPath).Length | Should -BeLessThan 1000000
+        (Get-Content $script:LogPath -Raw) | Should -Match 'post-rotation-line'
+    }
+
+    It 'replaces an existing keepawake.log.1 rather than failing the rotation' {
+        Set-Content -Path "$($script:LogPath).1" -Value 'older-generation' -Encoding utf8
+        [System.IO.File]::WriteAllBytes($script:LogPath, (New-Object byte[] (1200000)))
+        { Write-KeepAwakeLog 'second-rotation' } | Should -Not -Throw
+        (Get-Item "$($script:LogPath).1").Length | Should -BeGreaterThan 1000000
+    }
+}
+
+Describe 'supervisor loop is exception-proof end to end (review-1 findings 1b + 2)' {
+    # The reviewer reproduced BOTH escapes against the previous code: a locked
+    # log file made the supervisor's own error path throw out of the loop, and
+    # a throwing step in the `finally` skipped pidfile removal, the
+    # supervisor-stop line and the mutex release. Both are reproduced here.
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        New-Item -ItemType Directory -Path $script:TestRoot -Force | Out-Null
+        $script:FakeStore = @{
+            '4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936' = 1
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da' = 1200
+            '238c9fa8-0aad-41ed-83f4-97be242c8f20|9d7815a6-7ee4-497e-8888-515a05f02364' = 900
+        }
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = { param($SubGuid, $SettingGuid, $Value) $script:FakeStore["$SubGuid|$SettingGuid"] = $Value; $true }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+    }
+    AfterEach {
+        Reset-SupervisorPassInvoker
+        Set-PowerProvider -Provider (Get-DefaultPowerProvider)
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'survives a failing pass while the log file is exclusively locked (reviewer escape scenario)' {
+        $logPath = Join-Path $script:TestRoot 'keepawake.log'
+        Set-Content -Path $logPath -Value 'seed' -Encoding utf8
+        $script:calls = 0
+        Set-SupervisorPassInvoker {
+            param($Now, $IdleTimeoutMinutes, $CpuThreshold)
+            $script:calls++
+            if ($script:calls -le 2) { throw 'injected pass failure while the log is locked' }
+            return @{ LiveCount = 0; Pruned = @(); Armed = $false; ImmediatePruned = @() }
+        }
+        $lock = New-Object System.IO.FileStream($logPath, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        try {
+            Start-KeepAwakeSupervisor -PollSeconds 0 | Should -Be 0
+        } finally { $lock.Dispose() }
+        $script:calls | Should -Be 3
+        Test-Path (Join-Path $script:TestRoot 'supervisor.pid') | Should -BeFalse
+    }
+
+    It 'counts a throw from OUTSIDE the pass invocation as a pass failure instead of dying (finding 1b)' {
+        # $pass.LiveCount sat outside the old try/catch: a pass result missing
+        # that key throws PropertyNotFoundException under Set-StrictMode Latest
+        # and escaped the loop straight into the disarming `finally`.
+        $script:calls = 0
+        Set-SupervisorPassInvoker {
+            param($Now, $IdleTimeoutMinutes, $CpuThreshold)
+            $script:calls++
+            if ($script:calls -le 3) { return @{ Pruned = @(); Armed = $false } }
+            return @{ LiveCount = 0; Pruned = @(); Armed = $false; ImmediatePruned = @() }
+        }
+        Start-KeepAwakeSupervisor -PollSeconds 0 | Should -Be 0
+        $script:calls | Should -Be 4
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'supervisor-pass-ERROR'
+    }
+
+    It 'a throwing finally step still removes the pidfile, logs supervisor-stop and releases the mutex (finding 2)' {
+        Set-PowerArmed | Out-Null
+        Test-PowerArmed | Should -BeTrue
+        Set-SupervisorPassInvoker {
+            param($Now, $IdleTimeoutMinutes, $CpuThreshold)
+            return @{ LiveCount = 0; Pruned = @(); Armed = $true; ImmediatePruned = @() }
+        }
+        # Restore-PowerBaseline runs first in the `finally`; make it throw.
+        Set-PowerProvider -Provider @{
+            GetAcValue = { param($SubGuid, $SettingGuid) $script:FakeStore["$SubGuid|$SettingGuid"] }
+            SetAcValue = { param($SubGuid, $SettingGuid, $Value) throw 'injected powercfg failure inside finally' }
+            GetScheme  = { '381b4222-f694-41f0-9685-ff5bb260df2e' }
+        }
+        $mutexName = Get-KeepAwakeMutexName
+
+        { $script:supExit = Start-KeepAwakeSupervisor -PollSeconds 0 } | Should -Not -Throw
+
+        Test-Path (Join-Path $script:TestRoot 'supervisor.pid') | Should -BeFalse
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'supervisor-stop'
+
+        # Mutex release must be proven cross-thread: a named mutex is reentrant
+        # per thread, so re-acquiring it on the Pester thread proves nothing.
+        $rs = [runspacefactory]::CreateRunspace()
+        $rs.Open()
+        $ps = [powershell]::Create()
+        $ps.Runspace = $rs
+        try {
+            $ps.AddScript({
+                param($n)
+                $c = $false
+                $m = New-Object System.Threading.Mutex($true, $n, [ref]$c)
+                try { return $m.WaitOne(0, $false) } finally { try { $m.ReleaseMutex() } catch { }; $m.Dispose() }
+            }).AddArgument($mutexName) | Out-Null
+            $ps.Invoke()[0] | Should -BeTrue
+        } finally { $ps.Dispose(); $rs.Close() }
+    }
+}
+
 Describe 'supervisor singleton' {
     # A named Win32 mutex is reentrant PER THREAD, not per handle: a second
     # Mutex object opened for the same name on the SAME thread that already
