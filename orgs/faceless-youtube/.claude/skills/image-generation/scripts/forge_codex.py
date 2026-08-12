@@ -9,6 +9,7 @@ log. ``git diff forge.py`` must stay empty.
 Subscription-billed: $0 API spend. No key is ever loaded — every Kit is built dry.
 """
 import argparse
+import copy
 import datetime
 import glob
 import hashlib
@@ -175,7 +176,7 @@ def with_register_seed(item: dict, seeds: list[str], tile_path: str | None) -> t
     if tile in [os.path.realpath(str(s)) for s in seeds]:
         return item, list(seeds), False            # cast-free plates carry it by law already
     copied = dict(item)
-    copied["seed_roles"] = list(item.get("seed_roles") or []) + \
+    copied["seed_roles"] = copy.deepcopy(item.get("seed_roles") or []) + \
         [{"path": tile, "role": "style-anchor", "character": None}]
     return copied, list(seeds) + [tile], True
 
@@ -957,6 +958,7 @@ def generate(*, prompt_path, seeds, canvas, name, session=None, poll_delay=1.0):
     Returns BYTES so publication flows through forge's `_publish_staging_png` unchanged — one
     writer of staging (§3.2). `canvas` is explicit (W, H); aspect resolution happened in the
     composer."""
+    assert_transport_seed_ceiling({"name": name}, seeds)
     envelope = build_envelope(prompt_path, seeds)
     reissues = 0
     while True:

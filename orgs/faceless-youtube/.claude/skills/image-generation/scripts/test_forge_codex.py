@@ -934,6 +934,29 @@ def test_prepare_seeds_rejects_five_content_seeds_at_doctrine_cap():
     assert raised is not None and "L33" in raised and "at most 5" in raised
 
 
+def test_generate_rejects_over_transport_ceiling_before_any_subprocess():
+    import forge_codex as fc
+    spawns = []
+    original_run_codex_exec = fc.run_codex_exec
+
+    def spawn_spy(**kwargs):
+        spawns.append(kwargs)
+        raise AssertionError("the transport ceiling must fail before subprocess work")
+
+    fc.run_codex_exec = spawn_spy
+    raised = None
+    try:
+        try:
+            fc.generate(prompt_path="unused.txt", seeds=["seed.png"] * 6,
+                        canvas=(1376, 768), name="L33")
+        except fc.CodexContractError as e:
+            raised = str(e)
+    finally:
+        fc.run_codex_exec = original_run_codex_exec
+    assert raised is not None and "L33" in raised and "at most 5" in raised
+    assert spawns == [], "the over-ceiling request must not re-issue or spawn"
+
+
 def test_seed_digests_reverify_raises_seed_integrity_error_on_mutation():
     import forge_codex as fc
     from forge import SeedIntegrityError
@@ -2053,6 +2076,20 @@ def test_register_seed_is_appended_after_the_slate_and_labelled_style_only():
     assert item is not item2 and len(item["seed_roles"]) == 2, "the original item is not mutated"
     line = fc.input_images_line(item2["seed_roles"])
     assert line.rstrip().endswith("Image 3: style reference only.")
+
+
+def test_register_seed_deep_copies_existing_roles_before_adding_policy_tile():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="tile-"))
+    tile = _png(tmp / "scene-style-tile.png")
+    item = _item_L29()
+    original = json.dumps(item, sort_keys=True, separators=(",", ":"))
+    item2, _seeds2, added = fc.with_register_seed(item, ["C:/k/a.png"], tile)
+    assert added is True
+    item2["seed_roles"][0]["role"] = "POISON"
+    item2["seed_roles"][-1]["role"] = "POISON-ADDED"
+    item2["seed_roles"].append({"path": "C:/k/extra.png", "role": "extra", "character": None})
+    assert json.dumps(item, sort_keys=True, separators=(",", ":")) == original
 
 
 def test_register_seed_is_not_added_twice_when_the_slate_already_carries_it():
