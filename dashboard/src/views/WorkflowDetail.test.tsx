@@ -40,6 +40,7 @@ const def = (over: Partial<WorkflowDefEntry> & { ref: string }): WorkflowDefEntr
 });
 
 const run = (over: Partial<RunMetadataDto> & { runRef: string }): RunMetadataDto => ({
+  ownerSubject: 'operator',
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline and republish the audio stage',
   displayName: 'Rebuild the faceless video pipeline and republish the audio stage',
@@ -256,6 +257,25 @@ describe('workflow -> its runs', () => {
 
     fireEvent.click(screen.getByTestId('workflow-run-run-7'));
     expect(onOpenRun).toHaveBeenCalledWith('run-7');
+  });
+
+  it('badges every run row with the subject that owns it, engine-owned and own alike', () => {
+    // A verified operator session lists every subject's runs in ONE list, so a row without an owner
+    // badge is unidentifiable. The badge is uniform rather than foreign-only: a conditional badge
+    // reads as an alert instead of provenance.
+    render(
+      <WorkflowDetail
+        entry={def({ ref: 'kb~video.md' })}
+        compiled={null}
+        runs={[
+          run({ runRef: 'run-7' }),
+          run({ runRef: 'run-9', ownerSubject: 'dashboard-engine' }),
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('entity-tab-runs'));
+    expect(screen.getByTestId('workflow-run-run-7-owner').textContent).toBe('operator');
+    expect(screen.getByTestId('workflow-run-run-9-owner').textContent).toBe('dashboard-engine');
   });
 
   it('renders the full run title without truncating it', () => {

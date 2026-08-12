@@ -15,6 +15,7 @@ import {
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 
 const run = (over: Partial<RunMetadataDto>): RunMetadataDto => ({
+  ownerSubject: 'operator',
   runRef: 'run-1',
   predecessorRunRef: null,
   title: 'Rebuild the faceless video pipeline',

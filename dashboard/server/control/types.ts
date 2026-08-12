@@ -94,6 +94,15 @@ export interface Run {
 }
 
 export interface RunMetadata extends Run {
+  /**
+   * The subject that OWNS this run — `operator` for a run launched by hand from the SPA,
+   * `dashboard-engine` for one the queue bridge or the executor launched headlessly.
+   *
+   * A verified operator session reads (and now mutates) across every subject, so one list mixes both;
+   * without this the rows are indistinguishable. Display/attribution provenance only: nothing
+   * authorizes off it, and ownership never changes, not even when the operator acts on a foreign run.
+   */
+  ownerSubject: string;
   stageCount: number;
   attemptCount: number;
   sessionCount: number;
@@ -314,6 +323,8 @@ export interface OperationalEvent {
 
 export interface RunDetail {
   run: Run;
+  /** The subject that owns this run. See {@link RunMetadata.ownerSubject}. */
+  ownerSubject: string;
   stages: Stage[];
   attempts: Attempt[];
   sessions: ManagedSession[];

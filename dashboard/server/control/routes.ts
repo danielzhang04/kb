@@ -69,8 +69,8 @@ function subject(req: FastifyRequest): string | null {
 }
 
 /**
- * The read scope this request resolves to — the ONE place cross-subject read visibility is decided
- * (ruling, 2026-08-11).
+ * The scope this request resolves to — the ONE place cross-subject reach is decided (rulings,
+ * 2026-08-11).
  *
  * This daemon serves exactly one human, who owns the whole machine; but a run is owned by whichever
  * subject created it, and only the runs launched by hand through the SPA carry the operator's. Every
@@ -78,10 +78,19 @@ function subject(req: FastifyRequest): string | null {
  * own-subject-only read hid them from the runs list, from the Workflows graph, and from run detail —
  * unreachable, not merely unlabelled.
  *
- * So a VERIFIED operator session READS across every subject. Nothing else does: any other subject keeps
- * its own scope. And this value never reaches a mutation — no write method on the store accepts a scope
- * at all — so approvals, responses, reroutes and transitions stay owned by their subject exactly as
- * before, including refusing the operator on another subject's run.
+ * The first ruling widened READS only. That left the Inbox listing human gates on engine-owned runs
+ * which rendered answerable and then 404'd on submit, and left operator message / steer / stop /
+ * archive unreachable on exactly the headless runs those controls exist for. Daniel's follow-up
+ * ruling: the verified OPERATOR session carries FULL MUTATION AUTHORITY across every subject's runs.
+ *
+ * So a verified operator session reads AND drives the operator-facing mutations across every subject.
+ * Nothing else does: every other subject keeps exact own-subject scoping on both. The widening derives
+ * from the verified session subject alone — no header, query param or body field can select it — and
+ * the engine, executor and queue-bridge call paths never pass a scope, so they stay own-subject.
+ *
+ * A widened mutation never moves ownership (the store files every record it writes under the RUN's own
+ * subject) and never launders the actor (`respondedBy` and the audit row's `owner` both name the
+ * operator). See {@link ReadScope}.
  */
 function readScope(req: FastifyRequest): ReadScope {
   return subject(req) === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
@@ -979,7 +988,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
     if (!ctx.controlBroker?.isRunning(detail.value.run.managerSessionRef)) {
       return reply.code(409).send({ error: 'manager-not-running' });
@@ -989,7 +999,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       expectedManagerGeneration: integer(body.expectedManagerGeneration),
       idempotencyKey: string(body.idempotencyKey),
       kind: 'message', message: string(body.message),
-    });
+    }, runScope);
     if (!committed.ok) return sendResult(reply, committed);
     if (!ctx.controlBroker.queueInstruction(
       detail.value.run.managerSessionRef, string(body.message), string(body.idempotencyKey),
@@ -997,7 +1007,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Manager message delivery needs reconciliation',
         prompt: 'The operator message committed durably, but the live Manager could not accept its checkpoint queue.',
-      });
+      }, runScope);
       return reply.code(409).send({ error: 'manager-message-reconciliation-required', value: committed.value.event });
     }
     return reply.send({ ok: true, value: committed.value.event, replayed: committed.replayed ?? false });
@@ -1008,7 +1018,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const { runRef, agentId } = req.params as { runRef: string; agentId: string };
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
     const stageOfAssignment = detail.value.stages.find((stage) => stage.assignment?.agentId === agentId);
     const assignment = stageOfAssignment?.assignment;
@@ -1027,7 +1038,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         const appended = ctx.controlStore.appendEvent(sub, runRef, {
           kind: 'message', source: 'human', stageRef: stageOfAssignment.stageRef, status: null,
           summary: boundSummary(`operator → ${agentId} (${delivered}): ${message}`),
-        });
+        }, runScope);
         if (!appended.ok) {
           try {
             await auditFn(ctx)(ctx.repoRoot, {
@@ -1053,7 +1064,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const runScope = readScope(req);
+    const detail = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!detail.ok) return sendResult(reply, detail);
     if (!ctx.controlBroker?.isRunning(detail.value.run.managerSessionRef)) {
       return reply.code(409).send({ error: 'manager-not-running' });
@@ -1065,7 +1077,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       expectedManagerGeneration: integer(body.expectedManagerGeneration),
       idempotencyKey: string(body.idempotencyKey),
       kind: 'steer', message: instruction, checkpoint,
-    });
+    }, runScope);
     if (!committed.ok) return sendResult(reply, committed);
     if (!ctx.controlBroker.queueInstructionAtCheckpoint(
       detail.value.run.managerSessionRef, checkpoint, instruction, string(body.idempotencyKey),
@@ -1073,7 +1085,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       ctx.controlStore.createHumanRequest(sub, runRef, {
         kind: 'intervention', title: 'Manager steering needs reconciliation',
         prompt: 'The checkpoint-bound instruction committed durably, but the live Manager could not accept its queue.',
-      });
+      }, runScope);
       return reply.code(409).send({ error: 'manager-steering-reconciliation-required', value: committed.value.event });
     }
     return reply.send({ ok: true, value: committed.value.event, replayed: committed.replayed ?? false });
@@ -1085,7 +1097,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const runRef = (req.params as { runRef: string }).runRef;
     const body = record(req.body);
     return ctx.runControlTransactions.run(sub, runRef, async () => {
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const detail = ctx.controlStore.getRun(sub, runRef, readScope(req));
     if (!detail.ok) return sendResult(reply, detail);
     if (!ctx.cancelAutomatic) {
       const locked = executionLockedRefusal(ctx);
@@ -1096,8 +1108,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'run-state-changed' });
     }
     try {
+      // The cancellation is executed AS THE RUN'S OWNER, not as the caller. The executor walks the
+      // run's whole record tree (intent, every session, attempt and stage) with one subject, and every
+      // one of those store writes is own-subject by design — the engine is not being widened here. The
+      // operator's authority is what got us past the session gate above and past the scoped read; who
+      // asked is recorded in the cancellation reason on the run's own timeline. Ownership is immutable,
+      // so this resolves to `sub` verbatim for a run the caller owns.
       const outcome = await ctx.cancelAutomatic({
-        subject: sub, runRef, idempotencyKey: string(body.idempotencyKey), reason: 'operator requested stop',
+        subject: detail.value.ownerSubject, runRef, idempotencyKey: string(body.idempotencyKey), reason: 'operator requested stop',
       });
       return reply.send({ ok: true, value: outcome, replayed: outcome.replayed });
     } catch (error) {
@@ -1131,16 +1149,21 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!idempotencyKey || idempotencyKey.length > 512 || (body.reason != null && typeof body.reason !== 'string')) {
       return reply.code(400).send({ error: 'invalid-archive', detail: 'idempotencyKey is required and reason must be text' });
     }
+    const runScope = readScope(req);
     return ctx.runControlTransactions.run(sub, runRef, async () => {
-      const detail = ctx.controlStore.getRun(sub, runRef);
+      const detail = ctx.controlStore.getRun(sub, runRef, runScope);
       if (!detail.ok) return sendResult(reply, detail);
       if (detail.value.run.state !== 'archived') {
         try {
           await auditFn(ctx)(ctx.repoRoot, {
+            // `owner` is the ACTOR — the operator session that authorized this — while `runOwnerSubject`
+            // below names the subject whose run it is. On a cross-subject archive the two differ, and
+            // the row is what makes that attributable.
             action: 'control-run-archive-authorize', owner: sub, target: runRef, riskTier: 'T3',
             result: `authorized:${idempotencyKey}`,
             detail: {
               runRef,
+              runOwnerSubject: detail.value.ownerSubject,
               runVersion: detail.value.run.version,
               runState: detail.value.run.state,
               openHumanRequestCount: detail.value.humanRequests.filter((request) => request.state === 'open').length,
@@ -1151,7 +1174,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           return reply.code(500).send({ error: 'run-archive-audit-required' });
         }
       }
-      const archived = ctx.controlStore.archiveRun(sub, runRef, { idempotencyKey, reason });
+      const archived = ctx.controlStore.archiveRun(sub, runRef, { idempotencyKey, reason }, runScope);
       if (!archived.ok) return sendResult(reply, archived);
       if (!archived.replayed) {
         ctx.controlStore.appendEvent(sub, runRef, {
@@ -1159,7 +1182,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           summary: reason
             ? `Run archived by the operator: ${reason}`
             : 'Run archived by the operator',
-        });
+        }, runScope);
       }
       return sendResult(reply, archived);
     });
@@ -1521,12 +1544,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const body = record(req.body);
     const requestRef = (req.params as { requestRef: string }).requestRef;
-    const found = ctx.controlStore.getHumanRequest(sub, requestRef);
+    const runScope = readScope(req);
+    const found = ctx.controlStore.getHumanRequest(sub, requestRef, runScope);
     if (!found.ok) return sendResult(reply, found);
     const existing = found.value;
     // A completion gate has review-lineage CAS requirements. It may only be resolved by the
     // dedicated route below, never by this generic Human Request mutation.
-    const requestRun = ctx.controlStore.getRun(sub, existing.runRef);
+    const requestRun = ctx.controlStore.getRun(sub, existing.runRef, runScope);
     if (!requestRun.ok) return sendResult(reply, requestRun);
     if (requestRun.value.reviewReceipts.some((receipt) => receipt.completionRequestRef === requestRef)) {
       return reply.code(409).send({ error: 'review-completion-gate-reserved' });
@@ -1535,10 +1559,15 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       if (existing.revision !== integer(body.expectedRevision)) return reply.code(409).send({ error: 'request-revision-changed' });
       try {
         await auditFn(ctx)(ctx.repoRoot, {
+          // `owner` is the ACTOR (the operator session); `runOwnerSubject` names whose run it is. The
+          // two differ on a cross-subject answer, and this row is the durable attribution for it.
           action: 'control-human-response-authorize', owner: sub, target: requestRef,
           riskTier: existing.kind === 'approval' || existing.kind === 'review' || existing.kind === 'governance-refusal' ? 'T3' : 'T2',
           result: `authorized:${string(body.decision)}`,
-          detail: { requestRef, runRef: existing.runRef, requestRevision: existing.revision, decision: string(body.decision) },
+          detail: {
+            requestRef, runRef: existing.runRef, runOwnerSubject: requestRun.value.ownerSubject,
+            requestRevision: existing.revision, decision: string(body.decision),
+          },
         }, { runGit: ctx.opsGit, now: ctx.now });
       } catch {
         return reply.code(500).send({ error: 'human-response-audit-required' });
@@ -1549,14 +1578,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       decision: string(body.decision) as 'responded' | 'approved' | 'rejected' | 'changes-requested',
       idempotencyKey: string(body.idempotencyKey),
       response: body.response == null ? null : string(body.response),
-    });
+    }, runScope);
     if (!responded.ok) return sendResult(reply, responded);
     if (!responded.replayed) {
       ctx.controlStore.appendEvent(sub, responded.value.runRef, {
         kind: 'governance', source: 'human', stageRef: responded.value.stageRef,
         status: responded.value.response?.decision === 'approved' || responded.value.response?.decision === 'responded' ? 'success' : 'waiting',
         summary: `Human Request ${responded.value.response?.decision ?? 'resolved'} at revision ${responded.value.revision}`,
-      });
+      }, runScope);
     }
     // Unit-B's spend-grant mint marker used to live here. Unit D moved it to STAGE LAUNCH (see
     // execution.ts `provisionSpendGrant` + spendGrantProvision.ts): the token FILE must exist inside the
@@ -1574,9 +1603,13 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const body = record(req.body);
     const requestRef = (req.params as { requestRef: string }).requestRef;
-    const request = ctx.controlStore.getHumanRequest(sub, requestRef);
+    // The run tab submits a gate through EITHER this route or the generic respond route above,
+    // picked by whether the request is a completion gate. Both therefore carry the operator's scope,
+    // or half the Inbox's gates would still dead-end on an engine-owned run.
+    const runScope = readScope(req);
+    const request = ctx.controlStore.getHumanRequest(sub, requestRef, runScope);
     if (!request.ok) return sendResult(reply, request);
-    const run = ctx.controlStore.getRun(sub, request.value.runRef);
+    const run = ctx.controlStore.getRun(sub, request.value.runRef, runScope);
     if (!run.ok) return sendResult(reply, run);
     const receipts = run.value.reviewReceipts.filter((receipt) => receipt.completionRequestRef === requestRef);
     if (receipts.length !== 1) return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
@@ -1599,10 +1632,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       }
       try {
         await auditFn(ctx)(ctx.repoRoot, {
+          // `owner` is the ACTOR; `runOwnerSubject` names whose run it is (they differ cross-subject).
           action: 'control-review-completion-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',
           result: `authorized:${decision}`,
           detail: {
-            requestRef, runRef: request.value.runRef, requestRevision: request.value.revision,
+            requestRef, runRef: request.value.runRef, runOwnerSubject: run.value.ownerSubject,
+            requestRevision: request.value.revision,
             reviewReceiptRef: receipt.reviewReceiptRef, receiptVersion: receipt.version,
             reviewLoopRef: loops[0].reviewLoopRef, loopVersion: loops[0].version,
             reviewStageRef: reviewStages[0].stageRef, reviewStageVersion: reviewStages[0].version,
@@ -1632,7 +1667,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       decision,
       idempotencyKey: string(body.idempotencyKey),
       response: body.response == null ? null : string(body.response),
-    });
+    }, runScope);
     if (!resolved.ok) return sendResult(reply, resolved);
     if (!resolved.replayed) {
       ctx.controlStore.appendEvent(sub, resolved.value.request.runRef, {
@@ -1641,7 +1676,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         summary: decision === 'approved'
           ? `Review completion gate approved at revision ${resolved.value.request.revision}`
           : `Review completion gate ${decision}; run parked with intervention`,
-      });
+      }, runScope);
     }
     return sendResult(reply, resolved);
   });

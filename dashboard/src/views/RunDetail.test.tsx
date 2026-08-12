@@ -102,6 +102,7 @@ function makeStage(stageId: string, agentId: string | null, over: Partial<RunDet
 
 function makeDetail(over: Partial<RunDetailDto> = {}): RunDetailDto {
   return {
+    ownerSubject: over.ownerSubject ?? 'operator',
     run: {
       runRef: 'run-1', predecessorRunRef: null, title: 'headless run',
       displayName: 'headless run', shortRef: 1, workflowRef: 'kb~video.md', proposalRef: 'p-1', proposalRevision: 1,
@@ -395,6 +396,24 @@ describe('the run surface', () => {
     // Still past tense, still no raw machine title, and the decision line is intact.
     expect(resolved.textContent).not.toContain('automatic:policy:whatever');
     expect(resolved.textContent).toContain('approved');
+  });
+
+  it('states who owns the run in the header facts, engine-owned and own alike', () => {
+    // A verified operator session opens runs it does not own (the queue bridge and the executor own
+    // theirs as `dashboard-engine`), so the header has to say whose run this is. Uniform, like every
+    // other fact in the strip — a slot that only appears sometimes would read as a warning.
+    const own = render(unlocked(
+      <RunDetail runRef="run-1" detail={makeDetail()} events={[]} dag={{ nodes: [], edges: [] }} />,
+    ));
+    const ownFacts = own.getByTestId('entity-detail-facts').textContent ?? '';
+    expect(ownFacts).toContain('Owner');
+    expect(ownFacts).toContain('operator');
+    own.unmount();
+
+    const engine = render(unlocked(
+      <RunDetail runRef="run-1" detail={makeDetail({ ownerSubject: 'dashboard-engine' })} events={[]} dag={{ nodes: [], edges: [] }} />,
+    ));
+    expect(engine.getByTestId('entity-detail-facts').textContent).toContain('dashboard-engine');
   });
 
   it('links back to the workflow that produced it, off the server grouping key', () => {

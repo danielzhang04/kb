@@ -1373,6 +1373,11 @@ export function RunDetail({
       facts={[
         { label: 'Steps', value: detail.stages.length, mono: true },
         { label: 'Waiting on you', value: openRequests.length, mono: true },
+        // Who owns this run — `operator` when it was launched by hand here, `dashboard-engine` when
+        // the queue bridge or the executor launched it headlessly. Stated on every run, like the other
+        // facts, rather than only on foreign ones: the facts row is a uniform strip, and a slot that
+        // appears conditionally would read as a warning instead of provenance.
+        { label: 'Owner', value: detail.ownerSubject, mono: true },
         { label: 'Started', value: timestampLabel(detail.run.createdAt), mono: true },
         { label: 'Updated', value: timestampLabel(detail.run.updatedAt), mono: true },
       ]}

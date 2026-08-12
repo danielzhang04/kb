@@ -158,6 +158,13 @@ export interface RunDto {
 }
 
 export interface RunMetadataDto extends RunDto {
+  /**
+   * The subject that owns this run: `operator` for one launched by hand here, `dashboard-engine` for
+   * one the queue bridge or the executor launched headlessly. A verified operator session lists every
+   * subject's runs in one list, so the rows need this to be told apart — including the daemon's own
+   * synthetic acceptance runs, which are deliberately listed rather than filtered.
+   */
+  ownerSubject: string;
   stageCount: number;
   attemptCount: number;
   sessionCount: number;
@@ -269,6 +276,8 @@ export interface ReviewReceiptDto {
 
 export interface RunDetailDto {
   run: RunDto;
+  /** The subject that owns this run. See {@link RunMetadataDto.ownerSubject}. */
+  ownerSubject: string;
   stages: StageDto[];
   attempts: AttemptDto[];
   sessions: ManagedSessionDto[];
