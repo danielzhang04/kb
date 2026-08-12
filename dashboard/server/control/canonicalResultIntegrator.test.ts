@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { insideOpsTransaction } from '../write/asyncGit.ts';
 import type { GitRunner } from '../write/branch.ts';
 import type { PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
@@ -220,6 +221,18 @@ function fixture(options: {
   let failCanonicalRecovery = options.failAfterCardMutation ?? false;
   const coordinationCalls: string[][] = [];
   const coordinationGit: GitRunner = (_cwd, fullArgs) => {
+    // PRODUCTION PARITY, not decoration: the daemon's coordination runner is
+    // `defaultGitRunner` = `createAsyncGitRunner({ requireTransaction: true })`, which REJECTS any ops
+    // git invoked outside `withOpsTransaction`. Every earlier fake here had no such guard, which is why
+    // `resolveBase` shipped unserialized and crashed the first live multi-stage run at revise dispatch
+    // ("ops git 'fetch' invoked outside withOpsTransaction"). Replicating the real refusal here means any
+    // future integrator path that reaches coordination git outside the serialized span fails in THIS file.
+    if (!insideOpsTransaction()) {
+      const label = fullArgs.find((arg) => !String(arg).startsWith('-')) ?? '(none)';
+      throw new Error(
+        `ops git '${label}' invoked outside withOpsTransaction — wrap the whole prepare/mutate/commit span`,
+      );
+    }
     expect(fullArgs.slice(0, 3)).toEqual(['-c', 'protocol.allow=never', '-c']);
     expect(fullArgs).toContain('protocol.https.allow=always');
     // Coordination pushes also keep the `file` transport denied on the daemon path (harness-only fix).
@@ -442,6 +455,45 @@ describe('canonical Git result integrator', () => {
     await expect(item.integrator.resolveBase?.({
       operationKey: 'base:run-1:stage-2', subject: 'operator', runRef: 'run-1', stageId: 'stage-2', dependencyStageIds: ['stage-1'],
     })).resolves.toBe('d'.repeat(40));
+  });
+
+  /**
+   * REGRESSION (first live multi-stage run, 2026-08-11): `resolveBase` was the one returned method whose
+   * body was not wrapped in `serialize`, so its `verifyCanonical` call reached coordination git outside
+   * `withOpsTransaction` and the production runner refused. It only runs when a stage HAS dependencies,
+   * so stage 1 always worked and every dependent stage was unreachable — the acceptance chain crashed at
+   * revise dispatch. Mutation check: delete the `serialize(...)` wrapper in `resolveBase` and this test
+   * fails with "ops git '...' invoked outside withOpsTransaction".
+   */
+  it('resolves a dependency base inside the ops transaction its coordination verification requires', async () => {
+    const item = fixture();
+    await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
+    // The caller is NOT in a span — exactly as `executeAttemptUnsafe` calls it — so only the integrator's
+    // own `serialize` wrapper can supply one.
+    expect(insideOpsTransaction()).toBe(false);
+
+    const before = item.coordinationCalls.length;
+    await expect(item.integrator.resolveBase?.({
+      operationKey: 'result-base:run-1:stage-2',
+      subject: 'operator',
+      runRef: 'run-1',
+      stageId: 'stage-2',
+      dependencyStageIds: ['stage-1'],
+      dependencyResultOperationKeys: [{ stageId: 'stage-1', operationKey: item.input.operationKey }],
+    })).resolves.toBe('d'.repeat(40));
+    // PROOF the guarded runner was actually exercised: `verifyCanonical` refetched ops during resolveBase.
+    expect(item.coordinationCalls.slice(before).some((args) =>
+      args[0] === 'fetch' && args.includes('refs/heads/ops:refs/remotes/origin/ops'))).toBe(true);
+  });
+
+  it('needs no ops transaction to answer a stage that has no dependencies', async () => {
+    const item = fixture();
+    await expect(item.integrator.resolveBase?.({
+      operationKey: 'result-base:run-1:stage-1', subject: 'operator', runRef: 'run-1', stageId: 'stage-1',
+      dependencyStageIds: [],
+    })).resolves.toBeNull();
+    expect(item.coordinationCalls).toEqual([]);
+    expect(item.gitCalls).toEqual([]);
   });
 
   it('recovers an exact attempt commit created after the durable intent but before phase persistence', async () => {
