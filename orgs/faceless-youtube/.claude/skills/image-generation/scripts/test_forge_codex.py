@@ -670,6 +670,13 @@ def test_unknown_canvas_pair_fails_loud_naming_the_pair():
     except SystemExit as e:
         raised = str(e)
     assert raised is not None and "21:9" in raised and "1K" in raised
+    # Known ratio with an unknown tier must fail loud the same way (review C3 finding).
+    raised = None
+    try:
+        fc.resolve_canvas("16:9", "3K")
+    except SystemExit as e:
+        raised = str(e)
+    assert raised is not None and "16:9" in raised and "3K" in raised
 
 
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
