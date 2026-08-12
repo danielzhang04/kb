@@ -21,7 +21,11 @@ def test_ladder_shape_and_gen_counts_match_the_spec_budget():
     assert sorted({c["rep"] for c in l0}) == [1, 2]
     assert sum(c["gens"] for c in sr.ladder(("L1",))) <= 16
     assert sum(c["gens"] for c in sr.ladder(("L2",))) == 8
-    assert sum(c["gens"] for c in sr.ladder(("L3",))) == 0
+    l3 = sr.ladder(("L3",))
+    assert len(l3) == 16 and sum(c["gens"] for c in l3) == 0
+    assert {c["variant"] for c in l3} == {"1K", "2K"}
+    assert sorted({c["shot"] for c in l3}) == sorted(sr.CORPUS)
+    assert sorted({c["rep"] for c in l3}) == [1, 2]
     assert sum(c["gens"] for c in sr.ladder()) <= sr.GEN_BUDGET
 
 
@@ -61,6 +65,58 @@ def test_run_study_writes_results_incrementally_and_is_resumable():
     out2 = sr.run_study(cells=sr.ladder(("L0",)), generate_fn=gen, measure_fn=meas,
                         results_path=path, budget=sr.Budget(sr.GEN_BUDGET))
     assert calls == [] and out2["gens_used"] == 0 and out2["skipped"] == 8
+
+
+def test_l3_re_normalizes_its_l0_predecessors_without_generating_and_fails_if_missing():
+    import study_run as sr
+    path = _results()
+    generated, normalized = [], []
+
+    def gen(cell):
+        generated.append(cell)
+        return f"/fake/L0-{cell['shot']}-{cell['rep']}.png"
+
+    def normalize(png, variant):
+        normalized.append((png, variant))
+        return f"/normalized/{variant}/{Path(png).name}"
+
+    def meas(png):
+        return {"m1": 10.0 if png.startswith("/normalized/") else 2.0,
+                "m2": 0.70, "m3": 8, "m4": 0.01}
+
+    budget = sr.Budget(sr.GEN_BUDGET)
+    sr.run_study(cells=sr.ladder(("L0",)), generate_fn=gen, measure_fn=meas,
+                 results_path=path, budget=budget, baseline_m1={shot: 0.0 for shot in sr.CORPUS})
+    generated.clear()
+    out = sr.run_study(cells=sr.ladder(("L3",)), generate_fn=gen, normalize_fn=normalize,
+                       measure_fn=meas, results_path=path, budget=budget,
+                       baseline_m1={shot: 0.0 for shot in sr.CORPUS})
+    l3_rows = [r for r in sr.load_results(path) if r["lever"] == "L3"]
+    assert (generated == [] and out["gens_used"] == 0 and len(normalized) == 16
+            and out["stopped_levers"] == [])
+    assert len(l3_rows) == 16 and len({sr._key(r) for r in l3_rows}) == 16
+    assert all(r["source_png"].startswith("/fake/L0-") for r in l3_rows)
+
+    raised = None
+    try:
+        sr.run_study(cells=sr.ladder(("L3",)), generate_fn=gen, normalize_fn=normalize,
+                     measure_fn=meas, results_path=_results(), budget=sr.Budget())
+    except RuntimeError as e:
+        raised = str(e)
+    assert raised is not None and "L0 predecessor" in raised
+
+
+def test_resume_key_keeps_otherwise_identical_variants_distinct():
+    import study_run as sr
+    path = _results()
+    first = {"lever": "L1", "shot": "L26", "variant": "tile-on", "rep": 1, "gens": 1}
+    second = dict(first, variant="tile-on-short-label")
+    sr.append_result(path, dict(first, png="/fake/banked.png", m1=1.0, m2=0.7, m3=8, m4=0.01))
+    called = []
+    out = sr.run_study(cells=[first, second], generate_fn=lambda cell: called.append(cell) or "/fake/new.png",
+                       measure_fn=lambda _png: {"m1": 1.0, "m2": 0.7, "m3": 8, "m4": 0.01},
+                       results_path=path, budget=sr.Budget())
+    assert called == [second] and out["skipped"] == 1 and out["gens_used"] == 1
 
 
 def test_run_study_stops_a_lever_that_worsens_m1_by_more_than_three():

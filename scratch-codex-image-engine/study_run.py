@@ -27,7 +27,7 @@ LEVER_VARIANTS = {
     "L0": ("base",),
     "L1": ("tile-on", "tile-on-short-label"),
     "L2": ("format2-labeled", "format3-minimal"),
-    "L3": (),                       # zero-gen: re-normalizes existing renders
+    "L3": ("1K", "2K"),             # zero-gen: re-normalizes the L0 renders
 }
 
 
@@ -55,7 +55,14 @@ def ladder(levers=("L0", "L1", "L2", "L3")):
     cells = []
     for lever in levers:
         variants = LEVER_VARIANTS[lever]
-        if not variants:
+        if lever == "L3":
+            # Each L0 frame is measured at both canvases.  These cells name the
+            # L0 pairing by shot/rep and perform no new generation.
+            for shot in CORPUS:
+                for rep in range(1, REPS + 1):
+                    for variant in variants:
+                        cells.append({"lever": lever, "shot": shot, "variant": variant,
+                                      "rep": rep, "gens": 0})
             continue
         # L2 compares two formats but spends only 8 gens: one rep per format per shot.
         reps = 1 if lever == "L2" else REPS
@@ -83,13 +90,15 @@ def append_result(path, row):
         f.write(json.dumps(row) + "\n")
 
 
-def run_study(*, cells, generate_fn, measure_fn, results_path, budget, baseline_m1=None):
+def run_study(*, cells, generate_fn, measure_fn, results_path, budget, baseline_m1=None,
+              normalize_fn=None):
     """Walk the ladder, banking each cell to `results_path` the moment it lands (a crash mid-run
     never loses spent generations). Stops a lever whose |dM1| worsens by more than 3 against the
     best so far -- never rescues it with a third wording."""
-    done = {(_key(r)) for r in load_results(results_path)}
-    best_d_m1 = min([r["d_m1"] for r in load_results(results_path) if "d_m1" in r] or [None]) \
-        if any("d_m1" in r for r in load_results(results_path)) else None
+    result_rows = load_results(results_path)
+    done = {_key(r) for r in result_rows}
+    prior_d_m1 = [r["d_m1"] for r in result_rows if "d_m1" in r]
+    best_d_m1 = min(prior_d_m1) if prior_d_m1 else None
     stopped, used, skipped = [], 0, 0
     for cell in cells:
         if cell["lever"] in stopped:
@@ -97,15 +106,33 @@ def run_study(*, cells, generate_fn, measure_fn, results_path, budget, baseline_
         if _key(cell) in done:
             skipped += 1
             continue
-        budget.spend(cell["gens"])
-        png = generate_fn(cell)
+        if cell["lever"] == "L3":
+            if normalize_fn is None:
+                raise RuntimeError("L3 requires an injected normalize_fn")
+            predecessor = next((r for r in result_rows
+                                if r.get("lever") == "L0" and r.get("shot") == cell["shot"]
+                                and r.get("rep") == cell["rep"]), None)
+            if predecessor is None or not predecessor.get("png"):
+                raise RuntimeError("L3 predecessor missing L0 predecessor for %s rep %s"
+                                   % (cell["shot"], cell["rep"]))
+            source_png = predecessor["png"]
+            png = normalize_fn(source_png, cell["variant"])
+        else:
+            budget.spend(cell["gens"])
+            png = generate_fn(cell)
         metrics = measure_fn(png)
         row = dict(cell, png=png, **metrics)
+        if cell["lever"] == "L3":
+            row["source_png"] = source_png
         if baseline_m1 is not None and cell["shot"] in baseline_m1:
             row["d_m1"] = abs(metrics["m1"] - baseline_m1[cell["shot"]])
         append_result(results_path, row)
+        result_rows.append(row)
+        done.add(_key(cell))
         used += cell["gens"]
-        if "d_m1" in row:
+        # L3 is a free comparison of both canvases, not a wording lever: bank
+        # both normalizations even if resampling shifts M1.
+        if "d_m1" in row and cell["lever"] != "L3":
             if best_d_m1 is not None and row["d_m1"] > best_d_m1 + EARLY_STOP_DELTA:
                 stopped.append(cell["lever"])
                 print(f"  == lever {cell['lever']} STOPPED: |dM1| {row['d_m1']:.1f} is more than "

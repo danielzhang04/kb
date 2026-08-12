@@ -52,9 +52,11 @@ def m2_flatness(arr):
     y = luma(arr)
     win = _windows(y, 5)
     rng = win.max(axis=(-1, -2)) - win.min(axis=(-1, -2))
-    gx = np.zeros_like(y); gy = np.zeros_like(y)
-    gx[:, 1:-1] = y[:, 2:] - y[:, :-2]
-    gy[1:-1, :] = y[2:, :] - y[:-2, :]
+    # Sobel magnitude is the specified edge detector.  Edge padding avoids
+    # inventing a high-contrast boundary around an otherwise flat frame.
+    sobel = _windows(np.pad(y, 1, mode="edge"), 3)
+    gx = (sobel * np.array(((1, 0, -1), (2, 0, -2), (1, 0, -1)))).sum(axis=(-1, -2))
+    gy = (sobel * np.array(((1, 2, 1), (0, 0, 0), (-1, -2, -1)))).sum(axis=(-1, -2))
     mag = np.hypot(gx, gy)
     edge = mag > np.percentile(mag, EDGE_PERCENTILE)
     near_edge = _windows(edge.astype(float), 5).max(axis=(-1, -2)) > 0
@@ -126,6 +128,9 @@ def iqr_width(values):
 
 
 def baseline_table(baseline_dir):
+    bad = verify_baseline_shas(baseline_dir)
+    if bad:
+        raise RuntimeError("baseline SHA verification failed: " + ", ".join(bad))
     out = {}
     for name in sorted(os.listdir(baseline_dir)):
         if name.lower().endswith(".png"):

@@ -47,6 +47,33 @@ def test_m2_flatness_is_high_for_flat_cel_and_low_for_a_gradient():
     assert sm.m2_flatness(np.asarray(grad).astype(float)) < 0.5
 
 
+def test_m2_uses_sobel_not_central_differences_for_edge_exclusion():
+    import study_metrics as sm
+    import numpy as np
+    # Fixed low-amplitude field: central differences score 0.017241..., while
+    # the specified 3x3 Sobel detector scores 0.009433962264150943.
+    field = np.random.default_rng(44).integers(0, 7, size=(35, 35)).astype(float)
+    arr = np.repeat(field[:, :, None], 3, axis=2)
+    assert abs(sm.m2_flatness(arr) - 0.009433962264150943) < 1e-12
+
+
+def test_m2_counts_a_five_by_five_luma_range_of_four_but_not_above_four():
+    import study_metrics as sm
+    import numpy as np
+    exact = np.zeros((5, 5, 3), dtype=float)
+    exact[0, 0] = 4.0
+    above = exact.copy()
+    above[0, 0] = 4.01
+    # Isolate the inclusive flat-window boundary from the independent edge detector.
+    original_percentile = sm.np.percentile
+    sm.np.percentile = lambda *_args, **_kwargs: float("inf")
+    try:
+        assert sm.m2_flatness(exact) == 1.0
+        assert sm.m2_flatness(above) == 0.0
+    finally:
+        sm.np.percentile = original_percentile
+
+
 def test_m3_counts_colours_to_ninety_percent_area():
     import study_metrics as sm
     import numpy as np
@@ -96,6 +123,22 @@ def test_baseline_table_and_bands_over_the_23_verified_frames():
     assert set(bands) == {"m1", "m2", "m3", "m4"}
     assert all(v >= 0 for v in bands.values())
     assert bands["m1"] > 0, "a zero M1 band over 23 real frames means the metric is broken"
+
+
+def test_baseline_table_fails_closed_when_a_baseline_copy_is_tampered():
+    import shutil
+    import study_metrics as sm
+    with tempfile.TemporaryDirectory(prefix="baseline-tamper-") as tmp:
+        copied = Path(tmp) / "gemini-baseline"
+        shutil.copytree(HERE / "gemini-baseline", copied)
+        with open(copied / "L26.png", "ab") as f:
+            f.write(b"tamper")
+        try:
+            sm.baseline_table(str(copied))
+        except RuntimeError as e:
+            assert "L26.png" in str(e)
+        else:
+            raise AssertionError("tampered baseline was measured instead of rejected")
 
 
 def test_paired_distances_are_absolute_per_metric():
