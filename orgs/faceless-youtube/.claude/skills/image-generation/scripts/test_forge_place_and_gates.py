@@ -586,7 +586,7 @@ def test_a_tagged_prop_or_environment_asset_is_refused_without_a_record():
 
 
 def test_a_pose_or_expression_primitive_is_refused_without_a_record():
-    """P3's largest newly gated class: 30 body primitives + 18 expressions seeded on no ruling."""
+    """P3's largest newly gated class: 30 body primitives + 16 expressions seeded on no ruling."""
     spec, err, _ = _unstamped(_doc(
         {"id": "M1", "place": "records-room",
          "still_prompt": CARD_PROMPT}))

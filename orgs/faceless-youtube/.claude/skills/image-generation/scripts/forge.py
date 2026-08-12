@@ -652,7 +652,7 @@ _SEED_ROLES = {"place", "figure", "canonical", "parent", "pose", "expression", "
 
 # A registry KIND is the librarian's word for an asset; a seed ROLE is the provider's word for the
 # job that asset does in one slate. They overlap, which is why passing one off as the other went
-# unnoticed — but they are not the same vocabulary: on the-second-take, 22 of 66 assets carry a
+# unnoticed — but they are not the same vocabulary: on the-second-take, 22 of 64 assets carry a
 # kind (`action` 13, `identity` 7, `base` 1, `crowd-anchor` 1) that is not a legal role at all.
 # `cmd_batch` never needed the translation because it consults `kind` for exactly one question —
 # is this tagged asset a prop or an environment — and those two words happen to be spelled the

@@ -611,8 +611,8 @@ def test_the_beat_clause_is_the_era_opener_plus_the_figures_own_sentence():
     assert "minted for reads" in forge_module.figure_card_payload("action-slump", clause)
 
 
-MICRO_PATTERN_PROSE = ("A 1985 test bench under strip light. `base`, `expr-shock`, in a white lab "
-                       "coat and quilted oven gloves, backs off from a board glowing cherry-red.")
+MICRO_PATTERN_PROSE = ("A 1985 test bench under strip light. `base`, `expr-surprised`, in a white "
+                       "lab coat and quilted oven gloves, backs off from a board glowing cherry-red.")
 
 
 def test_a_micro_pattern_texture_adjective_never_reaches_a_derived_rig_card():

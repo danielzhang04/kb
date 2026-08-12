@@ -375,28 +375,6 @@
    "notes": "Reused from the channel registry; no generation."
   },
   {
-   "name": "expr-pleading",
-   "kind": "expression",
-   "file": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
-   "source": "reused",
-   "shots": [
-    "L196",
-    "L197"
-   ],
-   "notes": "Reused from the channel registry; no generation."
-  },
-  {
-   "name": "expr-shock",
-   "kind": "expression",
-   "file": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
-   "source": "reused",
-   "shots": [
-    "L39",
-    "L163"
-   ],
-   "notes": "Reused from the channel registry; no generation."
-  },
-  {
    "name": "expr-skeptical",
    "kind": "expression",
    "file": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",

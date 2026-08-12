@@ -19,9 +19,9 @@ def uri(n): return datauri(os.path.join(R, n + ".png"))
 EXPR = [  # curated calm -> exaggerated
  ("expr-deadpan","Deadpan"),("expr-skeptical","Skeptical"),("expr-thinking","Thinking"),
  ("expr-talking","Talking"),("expr-confused","Confused"),("expr-worried","Worried"),
- ("expr-pleading","Pleading"),("expr-annoyed","Annoyed"),("expr-fear","Fear"),
+ ("expr-annoyed","Annoyed"),("expr-fear","Fear"),
  ("expr-despair","Despair"),("expr-surprised","Surprised"),("expr-smug","Smug"),
- ("expr-greedy","Greedy"),("expr-shock","Shock"),("expr-delighted","Delighted"),
+ ("expr-greedy","Greedy"),("expr-delighted","Delighted"),
 ]
 ACT = [
  ("action-present","Present"),("action-leanpoint","Lean-point"),("action-accuse","Accuse"),

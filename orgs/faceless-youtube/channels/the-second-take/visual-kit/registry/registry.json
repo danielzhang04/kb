@@ -166,14 +166,6 @@
       "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
     },
     {
-      "name": "expr-pleading",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-pleading.png",
-      "character": "base",
-      "kind": "expression",
-      "tag": "pleading",
-      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
-    },
-    {
       "name": "action-celebrate",
       "file": "channels/the-second-take/visual-kit/refs/base/action-celebrate.png",
       "character": "base",
@@ -251,14 +243,6 @@
       "character": "base",
       "kind": "expression",
       "tag": "caught",
-      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
-    },
-    {
-      "name": "expr-shock",
-      "file": "channels/the-second-take/visual-kit/refs/base/expr-shock.png",
-      "character": "base",
-      "kind": "expression",
-      "tag": "shock",
       "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
     },
     {

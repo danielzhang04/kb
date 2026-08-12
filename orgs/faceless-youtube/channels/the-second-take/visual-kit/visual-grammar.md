@@ -135,7 +135,7 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
 - **Emotion acts through mouth and body, restrained by default:** the beat's lead gets a legible
   expression sized to its register, secondary characters hold one, posture carries the rest. Register
   dial (`../storytelling-grammar.md §1.4`): `expr-smug` on con/boast beats · hopeful-warm on the sell
-  · `expr-deadpan` on ironic counterpoint · `expr-worried`/`expr-shock` on the turn · grim-flat on
+  · `expr-deadpan` on ironic counterpoint · `expr-worried` on the turn · grim-flat on
   human-cost beats. Reserve strong faces for beats that warrant them; a swap is a legitimate delta.
 - **Co-stars share eye-line and height** unless the size gap or the disconnection IS the argument. A named face
   that carries the beat states its orientation and the foreground/occlusion protection that keeps it visible.
