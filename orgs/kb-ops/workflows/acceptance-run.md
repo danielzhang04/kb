@@ -20,6 +20,10 @@ stages:
     target: orgs/kb-ops/output
     riskTier: T1
     dependsOn: [draft]
+    humanGates:
+      - id: g1-review-draft
+        kind: approval
+        prompt: "Gate 1 of 2. The draft stage has written orgs/kb-ops/output/acceptance-run-status.md. Look it over (a '## Stage: draft' section with a UTC timestamp). Approve to let the revise stage run; decline to halt the chain here."
     workOrder: "Read the existing orgs/kb-ops/output/acceptance-run-status.md written by stage draft. REWRITE the same file (Write, not Edit — this profile has no Edit tool) to APPEND a '## Stage: revise' section below the existing content: today's UTC timestamp, a one-sentence confirmation that draft's section was read and is intact, and a note that this is stage 2 of 3. The draft section's original text must remain unchanged above the new section — this is what proves dependsOn lineage: revise genuinely builds on draft's real output. Do not touch any file outside orgs/kb-ops/output/."
     artifacts:
       - id: status-file-revised
@@ -31,6 +35,10 @@ stages:
     target: orgs/kb-ops/output
     riskTier: T1
     dependsOn: [revise]
+    humanGates:
+      - id: g2-review-revise
+        kind: approval
+        prompt: "Gate 2 of 2. The revise stage has rewritten acceptance-run-status.md so it now carries both the '## Stage: draft' and '## Stage: revise' sections. Confirm the draft section survived unchanged above the new one. Approve to let the signoff stage run; decline to halt the chain here."
     workOrder: "Read orgs/kb-ops/output/acceptance-run-status.md in full. Verify it contains both a '## Stage: draft' section and a '## Stage: revise' section, each with its own timestamp. Write a NEW file, orgs/kb-ops/output/acceptance-run-signoff.md, containing: a one-paragraph summary confirming the full 3-stage chain (draft -> revise -> signoff) executed in order, an explicit PASS/FAIL verdict line (PASS iff both prior sections were found intact), and a short bullet list of what this run proved (stage chaining via dependsOn, per-stage observable output on disk). Do not touch any file outside orgs/kb-ops/output/."
     artifacts:
       - id: signoff-note
