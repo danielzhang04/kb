@@ -419,33 +419,17 @@ def compose_minimal(item, *, reg, canvas, aspect):
     payload = translate_idiom(resolve_slugs(item.get("payload") or item.get("delta") or "", reg))
     quotes = quoted_literals(item.get("payload") or "")
     images = input_images_line(item.get("seed_roles") or [])
-    for quote in quotes:
-        payload = payload.replace(f"'{quote}'", f'"{quote}"')
-    payload = (payload.replace("planted centre in the entrance at the back of the assembly floor",
-                               "centred at the rear assembly-floor entrance")
-                      .replace("the painted board ", "the painted ")
-                      .replace(" hanging over him", " overhead")
-                      .replace("The floor as established: ", "")
-                      .replace("two long steel benches running back into the depth",
-                               "two long steel benches receding")
-                      .replace("foreground depth from a cropped bench end at the lower-right",
-                               "cropped lower-right bench foreground depth"))
-    for quote in quotes:
-        payload = payload.replace(f'"{quote}" overhead', f'"{quote}" board overhead')
     images = (images.replace("Image ", "ref ")
                     .replace("character reference for ", "character ")
                     .replace(" — match exactly.", " exact.")
                     .replace("place reference — preserve its set, palette and outline weight.",
                              "place: set/palette/outline."))
-    head = payload.rstrip()
+    head = payload
     if images:
         head += " " + images
-    head += (" Flat 2.5D vector cartoon; medium-thick dark warm brown-black outline (#241a12), "
-             "flat cel colour; locked 2-3 colour palette plus #d7402b only for the punch element.")
-    framing = framing_line(aspect, canvas)[len("Composition/framing: "):]
-    framing = (framing.replace("Compose for a ", "Compose ")
-                       .replace(" pixel frame — a ", " ")
-                       .replace(" aspect ratio.", ""))
+    head += (" Flat 2.5D; medium-thick dark warm-brown-black outline (#241a12); flat cel; "
+             "locked 2-3-colour palette; #d7402b only punch.")
+    framing = f"{canvas[0]}×{canvas[1]}; {aspect} landscape."
     head += " " + framing
     composed = f"{head}\n\nAvoid: {avoid_text(bool(quotes))}\n"
     residual = residual_idiom(composed)

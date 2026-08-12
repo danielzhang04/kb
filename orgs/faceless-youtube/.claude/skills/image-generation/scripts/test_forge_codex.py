@@ -815,10 +815,40 @@ def test_minimal_format_is_short_carries_the_same_facts_and_keeps_the_avoid_fiel
     for fact in ("miniscribe-rep", "delighted expression", "roller door", "tote bins"):
         assert fact in minimal, fact
     assert "on the left of the frame" in minimal            # idiom translation still applies
-    assert '"MINISCRIBE"' in minimal
+    assert "'MINISCRIBE'" in minimal
     assert minimal.rstrip().split("\n")[-1].startswith("Avoid: ")
     assert "16:9 landscape" in minimal
     assert minimal.count("#d7402b") == 1
+
+
+def test_minimal_format_does_not_delete_the_painted_board_payload_fact():
+    import forge_codex as fc
+
+    item = {"name": "painted-board", "payload": "the painted board beside the roller door.",
+            "seed_roles": []}
+    labeled = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+    minimal = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9",
+                                fmt="minimal")
+    assert "painted board" in labeled
+    assert "painted board" in minimal
+
+
+def test_minimal_format_preserves_the_shared_translated_payload_verbatim():
+    import forge_codex as fc
+
+    payloads = (
+        "the painted board beside the roller door.",
+        "`miniscribe-rep` stands stage-left of the painted board.",
+        "The painted board reading 'MINISCRIBE' is stage-right. ",
+    )
+    for payload in payloads:
+        item = {"name": "payload-pin", "payload": payload, "seed_roles": []}
+        translated = fc.translate_idiom(fc.resolve_slugs(payload, REGISTRY))
+        labeled = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+        minimal = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9",
+                                    fmt="minimal")
+        assert translated in labeled
+        assert translated in minimal
 
 
 def test_minimal_format_omits_the_labeled_schema_headers():
