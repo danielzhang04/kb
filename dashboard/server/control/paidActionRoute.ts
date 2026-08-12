@@ -24,7 +24,6 @@ import {
   PaidActionError,
   type PaidActionErrorCode,
   type PaidActionImageSeed,
-  type PaidActionOperation,
   type PaidActionRequest,
   type PaidActionResult,
 } from './paidActionService.ts';

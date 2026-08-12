@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -83,7 +84,7 @@ describe('POST /api/control/paid-action', () => {
 
   function mount(ctx: SurfaceContext): void {
     app = Fastify();
-    app.register(async (scope) => {
+    app.register(async (scope: FastifyInstance) => {
       originPlugin(scope, { allowedOrigins: [ORIGIN] });
       scope.addHook('onRequest', writeRateLimitHook(makeDefaultWriteRateGuard()));
       registerPaidActionRoute(scope, ctx);
