@@ -3,6 +3,7 @@
 Plain asserts, no pytest (house style). Run: py -3 test_forge_codex.py
 NO NETWORK, NO API SPEND: every codex invocation in this file is _fake_codex.py."""
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -304,6 +305,142 @@ def test_fake_resume_writes_a_second_png_into_the_same_thread_dir():
     second = _run("resume_ok", tmp, prompt, seed, resume_thread=tid)
     assert _tid(second) == tid
     assert len(list((tmp / "generated_images" / tid).glob("*.png"))) == 2
+
+
+STYLE_BIBLE = """# Style bible (test fixture)
+
+## LOCKED STYLE descriptor
+> clean flat 2.5D vector cartoon, even medium-thick #241a12 outline, flat cel colour.
+
+## STYLE-ONLY descriptor
+> flat cel colour, no gradients, no ambient occlusion.
+
+## RIG-HOLD descriptor
+> no nose, no ears, four digits per hand, squat proportion.
+
+## CROWD-RIG clause
+> anonymous background figures inherit the squat base proportion and dot-eye face.
+"""
+
+REGISTRY = {
+    "channel": "the-second-take",
+    "engine": "gemini-3-pro-image",
+    "characters": {
+        "base": {"base": "channels/x/visual-kit/refs/base/base.png"},
+        "miniscribe-rep": {"base": "channels/x/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"},
+        "ibm-suit": {"base": "channels/x/visual-kit/refs/ibm-suit/ibm-suit.png"},
+        "terry-johnson": {"base": "channels/x/visual-kit/refs/terry-johnson/terry-johnson.png"},
+    },
+    "assets": [
+        {"name": "expr-delighted", "kind": "expression", "tag": "delighted", "character": "base",
+         "file": "channels/x/visual-kit/refs/base/expr-delighted.png"},
+        {"name": "expr-crestfallen", "kind": "expression", "tag": "crestfallen", "character": "base",
+         "file": "channels/x/visual-kit/refs/base/expr-crestfallen.png"},
+        {"name": "action-powerstance", "kind": "action", "tag": "powerstance", "character": "base",
+         "file": "channels/x/visual-kit/refs/base/action-powerstance.png"},
+        {"name": "hold-both-hands", "kind": "pose", "tag": "both-hands", "character": "base",
+         "file": "channels/x/visual-kit/refs/base/hold-both-hands.png"},
+        {"name": "handshake", "kind": "interaction", "tag": "handshake", "character": "base",
+         "file": "channels/x/visual-kit/refs/base/handshake.png"},
+        {"name": "crowd-exemplar", "kind": "crowd-anchor", "tag": "crowd", "character": "base",
+         "file": "channels/x/visual-kit/refs/base/crowd-exemplar.png"},
+    ],
+}
+
+
+def make_kit(tmp):
+    """Build the minimal real kit accepted by ``forge.Kit(dry=True)``.
+
+    The empty temporary ``.env`` is only a root sentinel; nothing reads the repository's real
+    environment file.
+    """
+    root = Path(tmp)
+    (root / ".env").write_text("", encoding="utf-8")
+    kit = root / "channels" / "x" / "visual-kit"
+    (kit / "registry").mkdir(parents=True)
+    (kit / "refs" / "base").mkdir(parents=True)
+    (kit / "_staging").mkdir(parents=True)
+    (kit / "style-bible.md").write_text(STYLE_BIBLE, encoding="utf-8")
+    (kit / "registry" / "registry.json").write_text(json.dumps(REGISTRY), encoding="utf-8")
+    return str(kit), root
+
+
+def test_import_surface_contract_matches_forge():
+    import inspect
+    import forge
+    import forge_codex  # noqa: F401
+    expected = {
+        "Kit": ["kit", "dry"],
+        "preflight_batch": ["k", "reqs", "force", "dry"],
+        "resolve_request_seeds": ["k", "r", "pending"],
+        "verify_request_seed_digests": ["k", "r", "seeds"],
+        "validate_png": ["data"],
+        "to_png_bytes": ["data"],
+        "_staging_png": ["k", "name"],
+        "_existing_staging_png": ["path"],
+        "_reserve_staging_output": ["k", "name", "force"],
+        "_publish_staging_png": ["k", "name", "out", "data", "force"],
+        "_release_staging_lock": ["lock", "token"],
+        "_stem": ["path"],
+    }
+    for name, params in expected.items():
+        obj = getattr(forge, name, None)
+        assert obj is not None, f"forge.{name} disappeared -- forge_codex imports it"
+        target = obj.__init__ if inspect.isclass(obj) else obj
+        got = [p for p in inspect.signature(target).parameters if p != "self"]
+        assert got == params, f"forge.{name} signature drifted: {got} != {params}"
+    assert issubclass(forge.SeedIntegrityError, RuntimeError)
+    assert forge.SEED_CAP == 4
+
+
+def test_importing_forge_has_no_side_effects():
+    tmp = Path(tempfile.mkdtemp(prefix="importsafe-"))
+    before = set(os.listdir(tmp))
+    r = subprocess.run([sys.executable, "-c",
+                        "import sys; sys.path.insert(0, r'%s'); import forge, forge_codex" % HERE],
+                       cwd=str(tmp), capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == ""
+    assert set(os.listdir(tmp)) == before
+    src = (HERE / "forge.py").read_text(encoding="utf-8")
+    assert 'if __name__ == "__main__":' in src
+
+
+def test_kit_builds_with_no_key_and_no_url():
+    import forge
+    tmp = Path(tempfile.mkdtemp(prefix="nokey-"))
+    kit, _root = make_kit(tmp)
+    saved = os.environ.pop("GEMINI_API_KEY", None)
+    try:
+        k = forge.Kit(kit, dry=True)
+    finally:
+        if saved is not None:
+            os.environ["GEMINI_API_KEY"] = saved
+    assert k.url is None
+    assert k.key == ""
+    assert k.ctx is None
+    assert k.desc_identity and k.desc_crowdrig
+    assert k.reg["characters"]["miniscribe-rep"]
+
+
+def test_resolve_codex_binary_is_never_called_at_import_and_fails_loud():
+    import forge_codex
+    saved = forge_codex.CODEX_ARGV_PREFIX
+    forge_codex.CODEX_ARGV_PREFIX = ["definitely-not-a-real-binary-xyz"]
+    try:
+        raised = None
+        try:
+            forge_codex.resolve_codex_binary()
+        except SystemExit as e:
+            raised = str(e)
+        assert raised is not None and "codex CLI not found on PATH" in raised
+    finally:
+        forge_codex.CODEX_ARGV_PREFIX = saved
+    forge_codex.CODEX_ARGV_PREFIX = [sys.executable]
+    try:
+        assert os.path.isfile(forge_codex.resolve_codex_binary())
+    finally:
+        forge_codex.CODEX_ARGV_PREFIX = saved
 
 
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
