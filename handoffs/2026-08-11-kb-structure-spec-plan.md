@@ -1,90 +1,72 @@
-# kb-structure spec + Phase I plan handoff — 2026-08-11 (updated: plan RE-RUN, 2 rulings pending)
+# kb-structure spec + Phase I plan handoff — 2026-08-12 (PR #118 open, ship-now review-clean)
 
-**Topic:** kb-structure arc. Design cycle COMPLETE and Daniel's 3 rulings LOCKED; spec + 25-task
-Phase I plan shipped. Plan then went through consistency-review (+5 fixes) → adversarial review
-(16 findings) → fix attempt (worker KILLED mid-run) → independent re-review = **RE-RUN**. Plan is
-NOT mergeable. Two decisions now belong to Daniel. All on `claude/boss-2026-08-11c` (pushed).
+**Topic:** kb-structure arc. Design + 3 rulings LOCKED; spec + Phase I plan complete and reviewed.
+Two 2026-08-12 rulings applied. Ship-now set is review-clean and open as **PR #118 → main**
+(awaits Daniel merge). Execution-plane set DEFERRED behind the workflow-platform merge (PR #117).
+Branch `claude/boss-2026-08-11c` (pushed, tip 2d327e4).
 Gate artifact: https://claude.ai/code/artifact/e61e4e55-e65c-43b6-8438-7735bf04afb8
 
-### The locked rulings (Daniel, 2026-08-11 — binding, unchanged)
-1. Phased architecture ADOPTED; platform/data two-repo split ABANDONED. Phase I = monorepo +
-   immutable versioned release artifacts to VM. Phase II = state-first split. Phase III =
-   trigger-based project extraction.
-2. Desktop promotion + durable VM outbox; NO GitHub credential on the VM ever; PAT rejected;
-   staging-repo = pre-designed escalation.
-3. Media exile entirely post-cutover; cutover = two gates (read-only web, then execution
-   authority behind a hardening checklist).
+### Rulings (all binding)
+- Design (2026-08-11): (1) phased monorepo/state-first, platform/data split ABANDONED; (2) desktop
+  promotion + VM outbox, NO GitHub credential on VM; (3) media post-cutover, two-gate cutover.
+- Plan (2026-08-12): (1) NO persistent secret on the VM even a local one — restart canary re-auths
+  via durable-file observation + human passkey; HMAC session mechanism DELETED with enforcement
+  tests (resolves finding m3). (2) DEFER merge-dependent execution-plane tasks behind the
+  workflow-platform checkpoint rather than specify against moving contracts.
 
-### TWO DECISIONS PENDING FROM DANIEL (present context-first; both are real gates)
-1. **Scope ruling — local session secret.** The B5 fix persists the dashboard's own HMAC
-   session-signing key to a root-owned `0600` file on the VM so the restart canary can re-auth
-   after a daemon restart. It grants NO external authority (only signs local dashboard sessions;
-   no GitHub/backup/signing key reaches the VM). But it is a new persistent secret on the box, and
-   ruling 2 was "no credential on the VM ever." Question: is a local-authority session secret
-   in-bounds, or must the canary re-auth another way? (Also unblocks finding m3.)
-2. **Sequencing ruling — execution-plane tasks.** B5 (recovery supervisor + restart canary)
-   depends on the daemon's card→run linkage, and the REAL launch path
-   (`dashboard/server/control/launch.ts` `executeApprovedLaunch`) starts `runAutomatic()` BEFORE
-   returning `runRef` — so "durable receipt before execution" can't be finalized until
-   `claude/workflow-platform` merges and its contracts settle. Question: fully specify those tasks
-   now against a moving target, or mark them "specify post-merge" and ship Tasks 1–8 + the
-   non-execution hardening first?
+### THE ONE OPEN THREAD (owed, not blocked-on-Daniel)
+**Post-merge specification pass for the deferred sub-plan.** When PR #117 (workflow-platform)
+merges to main, Tasks 9, 21, 23, 24, 25 become a MECHANICAL specification pass — their acceptance
+criteria + files-to-reread are already written in the plan's `## DEFERRED` section. Per the
+2026-08-12 memory index, #117's P0 is COMPLETE and it awaits Daniel's merge, so this may unblock
+soon. Whoever resumes: after #117 lands on main, rebase this branch, do the deferred pass against
+the real merged contracts (`executeApprovedLaunch` returns runRef AFTER runAutomatic starts;
+bridge `sourceTurnId` = synthesized def id, not card id; real lock is synchronous
+`ExecutionLatch.lock` at activation.ts:598), re-review, PR.
 
 ### What WORKED (with evidence)
-- Spec `docs/superpowers/specs/2026-08-11-kb-structure-design.md` (c521d20) + 8 evidence files in
-  sibling `2026-08-11-kb-structure-evidence/` (now includes plan-adversarial-findings-r1.md +
-  plan-adversarial-review.md).
-- Plan (59825c6) + fix-attempt WIP (4c3599e). Re-review (codex sol/xhigh, card 6a7cb97c) graded
-  16 findings: 11 ADDRESSED, B4/B6 PARTIAL, B3/B5/m3 NOT-ADDRESSED. Scope PASS on external
-  authority (VM gets only public verification material); Phase integrity PASS; checkpoint PASS;
-  4/5 earlier fixes survived.
-- Parallel evidence harvest (4 codex workers under the critique's shadow) + boundary map
-  spot-verified 3/3 by boss. B5 sourceTurnId (`bridge-${id}`) and B6 (`ExecutionLatch.lock` is the
-  real synchronous owner at activation.ts:598, NOT `ActivatedExecution.lock`) both boss-verified.
+- Ship-now plan (Tasks 1–8, 10–20, 22) review-clean: re-review #2 = FIX-THEN-COMMIT (both rulings
+  PASS, no regressions, scope clean), last gap (Task 13 restore validators prose→code) fixed and
+  boss-verified (6 helper `def`s + per-helper failure tests). Committed 2d327e4, PR #118.
+- Full review trail banked in `docs/superpowers/specs/2026-08-11-kb-structure-evidence/`
+  (plan-adversarial-findings-r1.md + plan-adversarial-review.md alongside the 6 design reports).
+- Ruling-1 removal enforced IN-PLAN: tests assert `session.env` absent + `DASHBOARD_SESSION_SECRET`/
+  `KB_CANARY_SESSION` unset + systemd `UnsetEnvironment=`; `auth/session.ts` keeps process-local
+  `randomBytes(32)` so restarts invalidate sessions (verified in real code).
 
-### What Did NOT Work (and why)
-- **Fix worker KILLED mid-run** (background task stopped ~48min in; both pids dead, no final
-  message). Recovered: 946 insertions were coherent on disk, banked as WIP 4c3599e. Lesson: a
-  killed worker leaves a plausible-but-unverified artifact — the re-review is what caught that B3/B5
-  were prose-only and that fixes added compile breakage (Task21→22 order, deleted checksum iface,
-  canary v1/v2 mismatch, Gate2 consumes unproduced files).
-- **TWO claude opus review agents died** (API error, then 600s stall) before producing output.
-  The claude Agent path was flaky this session; codex was reliable throughout. Switched the
-  re-review to codex-deep and it completed clean.
-- **codex re-review misconfigured with `--sandbox read-only`** — blocks the checkpoint writes the
-  brief asked for. Killed (taskkill /PID <python> /T /F, verified other terminals' workers
-  untouched) and re-dispatched with default workspace-write + scratch `--cwd` (reads repo, writes
-  only checkpoints). Lesson: for a checkpointing reviewer, NEVER `--sandbox read-only`; confine via
-  `--cwd` instead.
-
-### What Has NOT Been Tried Yet
-- The targeted fix pass that clears RE-RUN: fix all compile/ordering breakage; implement B3
-  signing + verify_inventory extras-rejection; wire B6 to real `ExecutionLatch.lock`; complete B4
-  restore drill; resolve B5 + m3 + HMAC-secret per Daniel's two rulings. Sequence B5/canary behind
-  the workflow-platform merge if Daniel picks "defer".
-- Opening the PR to main (only after RE-RUN cleared).
+### What Did NOT Work (and why) — lessons for the resumer
+- A KILLED worker leaves a plausible-but-hollow artifact (the first fix's 946 insertions looked
+  complete; re-review found B3/B5 prose-only + compile breakage). Always re-review a killed
+  worker's output; never commit-then-trust.
+- claude Agent path was infra-flaky this session (2 opus reviewers died: API error, 600s stall).
+  codex ran every worker with zero infra deaths. When claude Agents die repeatedly, move the role
+  to a codex worker (cold session = still independent of the fixer).
+- A checkpointing reviewer must NOT use `--sandbox read-only` (blocks its own checkpoint writes);
+  confine via `--cwd` on default workspace-write instead.
+- Fully TDD-specifying execution-plane code against an UNMERGED dependency is fighting a moving
+  target — that's what the RE-RUN charged us for; defer + gate instead.
 
 ### Current State of Files
 | File | Status | Notes |
 | ---- | ------ | ----- |
 | `docs/superpowers/specs/2026-08-11-kb-structure-design.md` | DONE | c521d20; rulings locked |
-| `.../2026-08-11-kb-structure-evidence/*` (8 files) | DONE | synthesis + 5 design reports + 2 plan-review files |
-| `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` | WIP/BROKEN | 59825c6 clean baseline; 4c3599e fix attempt has RE-RUN issues — do NOT merge |
-| branch `claude/boss-2026-08-11c` | PUSHED | remote == local; worktree `kb-worktrees/boss-2026-08-11c` KEEP |
+| `.../2026-08-11-kb-structure-evidence/*` (8 files) | DONE | design + plan review trail |
+| `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` | SHIP-NOW clean / DEFER gated | 2d327e4; ship-now Tasks 1–8,10–20,22 review-clean; DEFER 9,21,23,24,25 |
+| PR #118 → main | OPEN | awaits Daniel merge |
+| branch `claude/boss-2026-08-11c` | PUSHED | worktree `kb-worktrees/boss-2026-08-11c` KEEP until #118 merges |
 
 ### Exact Next Step
-Present Daniel the two rulings above (artifact link + context, one at a time). On his answers:
-dispatch ONE targeted codex fix pass scoped by the re-review verdict
-(`.../scratchpad/rereview-verdict.md`, also banked as evidence/plan-adversarial-review.md) + his
-rulings; re-review; then PR to main. If "defer" on ruling 2, split the execution-plane tasks out
-behind the workflow-platform-merge checkpoint and ship Tasks 1–8 + non-execution hardening first.
+Daniel merges PR #118 (ship-now plan). Independently, when PR #117 merges, run the deferred
+specification pass (above). After #118 merges: the plan is the governing Phase I execution plan —
+Tasks 1–8 are dispatchable immediately in a fresh execution arc (subagent-driven-development, one
+reviewer per task); the rest follow the plan's own sequencing + the workflow-platform gate.
 
 ### Load list
 - this handoff
 - gate artifact https://claude.ai/code/artifact/e61e4e55-e65c-43b6-8438-7735bf04afb8
 - `docs/superpowers/specs/2026-08-11-kb-structure-design.md` (authority)
-- `docs/superpowers/specs/2026-08-11-kb-structure-evidence/plan-adversarial-review.md` (the RE-RUN verdict — fix scope) + `plan-adversarial-findings-r1.md`
-- `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` @ 4c3599e (the WIP to fix)
-- `handoffs/2026-08-11-dashboard-workflow-platform-p0.md` (the merge dependency)
-- `memory/claude-boss.md` 2026-08-11 lessons
+- `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md` @ 2d327e4 (the plan; `## DEFERRED` section = post-merge work)
+- `docs/superpowers/specs/2026-08-11-kb-structure-evidence/plan-adversarial-review.md` (the review that shaped the rulings)
+- `handoffs/2026-08-12-dashboard-workflow-platform-p0.md` (the merge dependency — PR #117)
+- `memory/claude-boss.md` 2026-08-11/12 lessons
 - Skill on execution pickup: superpowers:subagent-driven-development
