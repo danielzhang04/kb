@@ -28,7 +28,9 @@ describe('authorized 2026-08-01 proposal provenance', () => {
   const snapshot = JSON.parse(readFileSync(join(
     process.cwd(), 'server', 'control', 'test-fixtures', 'authorized-20260801-fyt-proposal.json',
   ), 'utf8')) as JsonObject;
-  const exact: ProposalRevision = {
+  // Ownerless shape: the frozen historical comparison pins source/title/timestamp/approval fields only,
+  // and never looks at which subject owns the revision.
+  const exact: Omit<ProposalRevision, 'ownerSubject'> = {
     proposalRef: 'proposal-3725fb98-e20e-4619-b6e7-c9055138a50d', sourceComposerRef: 'workflow-registry',
     sourceTurnId: 'thin-slice-run', revision: 1,
     hash: '396480363d02620c25730160e00fd7adf51e1eff43f8427c80b2062a18dc80d9', previousHash: null,

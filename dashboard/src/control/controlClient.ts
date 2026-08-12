@@ -442,6 +442,8 @@ export interface StorageInventoryItemDto {
   eventCount: number;
   estimatedBytes: number;
   quarantinedAt: string | null;
+  /** The subject that owns the bundle; quarantine and restore never move it. See `RunDto.ownerSubject`. */
+  ownerSubject: string;
 }
 
 export interface StorageInventoryDto {

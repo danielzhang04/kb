@@ -296,11 +296,21 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return reply.send({ proposals: values });
   });
 
+  /**
+   * The SINGLE-revision read, widened (ruling 3). Run detail polls it to build the steering CHECKPOINT
+   * pick-list from the approved plan; on an engine-owned run it answered `not-found` and the UI degraded
+   * silently to a free-text checkpoint box — the operator steering a headless run had to type a
+   * checkpoint id from memory, with a typo indistinguishable from a real one.
+   *
+   * Deliberately NOT widened alongside it: the proposals LIST above (bridge-imported revisions are not
+   * the operator's to enumerate — adoption safety) and the composer import / revision / decision routes
+   * below (Composer authoring state stays the authoring subject's).
+   */
   scope.get('/api/control/proposals/:proposalRef/revisions/:revision', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const { proposalRef, revision } = req.params as { proposalRef: string; revision: string };
-    return sendResult(reply, ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision)));
+    return sendResult(reply, ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision), readScope(req)));
   });
 
   scope.post('/api/control/proposals/import', { preHandler }, async (req, reply) => {
@@ -408,23 +418,39 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return sendResult(reply, decided);
   });
 
+  /**
+   * Launch / Retry an approved revision.
+   *
+   * Ruling 3 reaches this route (2026-08-11 audit): the revision is resolved under the caller's READ
+   * SCOPE, so a verified operator can launch or retry a revision the queue bridge imported, and the
+   * launch then executes AS THE REVISION'S OWNER. Before this, RunDetail's "Run it again" on a failed
+   * engine run and the pre-publication resume branch both 404'd inside the very first revision lookup —
+   * the two triggers the SPA offers for a headless run, both dead ends.
+   *
+   * Ownership never moves: the successor run, its stages, attempts, sessions, boundaries and events are
+   * all the owner's, and the executor is handed the owner. The operator is the ACTOR — audited as the
+   * `control-run-launch` row's `owner`, beside `detail.runOwnerSubject`. The operator's launch identity
+   * is namespaced inside {@link executeApprovedLaunch} so it cannot collide with the owner's own launch
+   * operations in either direction.
+   */
   scope.post('/api/control/proposals/:proposalRef/revisions/:revision/launch', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const { proposalRef, revision } = req.params as { proposalRef: string; revision: string };
     const body = record(req.body);
-    const stored = ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision));
+    const stored = ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision), readScope(req));
     if (!stored.ok) return sendResult(reply, stored);
     if (stored.value.hash !== string(body.expectedHash)) return reply.code(409).send({ error: 'revision-mismatch' });
     if (stored.value.approval?.decision !== 'approved') return reply.code(409).send({ error: 'not-approved' });
     // The single canonical launch body (one ops transaction: reconcile, compile, publish cards +
     // audit, activate) lives in control/launch.ts. Every launch surface calls it; nothing forks it.
-    const outcome = await executeApprovedLaunch(ctx, sub, {
+    const outcome = await executeApprovedLaunch(ctx, stored.value.ownerSubject, {
       proposalRef,
       revision: Number(revision),
       storedHash: stored.value.hash,
       snapshot: stored.value.snapshot,
       sessionToken: verifiedSession(req)?.token,
+      actorSubject: sub,
       idempotencyKey: string(body.idempotencyKey),
       predecessorRunRef: body.predecessorRunRef == null ? null : string(body.predecessorRunRef),
       expectedPredecessorVersion: integer(body.expectedPredecessorVersion),
@@ -672,6 +698,16 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     ));
   });
 
+  /**
+   * Per-stage runtime/model routing (RunDetail's routing controls).
+   *
+   * Ruling 3: the run is resolved under the caller's READ SCOPE and everything after that — the
+   * authorization re-read, the approved-revision binding, the successor attempt projection, the
+   * reconciliation intervention and the timeline event — executes AS THE RUN'S OWNER. A bridge-launched
+   * run's records all live under `dashboard-engine`, and reading them as the operator answered
+   * `not-found` before the canonical card was ever touched. The actor is recorded by the canonical
+   * `card-routing` audit row that `setCardRouting` writes from the verified session.
+   */
   scope.post('/api/control/runs/:runRef/stages/:stageRef/reroute', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -688,8 +724,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(400).send({ error: 'invalid-reroute', detail: 'runtime, model, positive stage/attempt versions, attempt identity, and idempotencyKey are required' });
     }
 
+    // Resolved once, up front, so the owner is available to the idempotent-replay branch below as well
+    // as to `authorize`. A caller with no reach over this run stops here, before any canonical write.
+    const owned = ctx.controlStore.getRun(sub, runRef, readScope(req));
+    if (!owned.ok) return sendResult(reply, owned);
+    const owner = owned.value.ownerSubject;
+
     const authorize = () => {
-      const detail = ctx.controlStore.getRun(sub, runRef);
+      const detail = ctx.controlStore.getRun(owner, runRef);
       if (!detail.ok) return { ok: false as const, status: 404, error: 'not-found', detail: detail.detail };
       const stage = detail.value.stages.find((candidate) => candidate.stageRef === stageRef);
       if (!stage) return { ok: false as const, status: 404, error: 'not-found', detail: 'stage was not found' };
@@ -739,7 +781,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         return { ok: false as const, status: 400, error: 'invalid-reroute', detail: 'reroute must change runtime or model' };
       }
       const stored = ctx.controlStore.getProposalRevision(
-        sub, detail.value.run.proposalRef, detail.value.run.proposalRevision,
+        owner, detail.value.run.proposalRef, detail.value.run.proposalRevision,
       );
       if (!stored.ok || stored.value.hash !== detail.value.run.proposalHash || stored.value.approval?.decision !== 'approved') {
         return { ok: false as const, status: 409, error: 'approved-proposal-binding-lost', detail: 'approved proposal binding was lost' };
@@ -790,7 +832,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const initial = authorize();
     if (!initial.ok) {
       if (initial.error === 'reroute-state-changed') {
-        const replay = ctx.controlStore.rerouteStage(sub, stageRef, {
+        const replay = ctx.controlStore.rerouteStage(owner, stageRef, {
           expectedStageVersion,
           expectedAttemptRef,
           expectedAttemptVersion,
@@ -833,7 +875,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         ...(canonical.disposition ? { disposition: canonical.disposition } : {}),
       });
     }
-    const projected = ctx.controlStore.rerouteStage(sub, stageRef, {
+    const projected = ctx.controlStore.rerouteStage(owner, stageRef, {
       expectedStageVersion,
       expectedAttemptRef,
       expectedAttemptVersion,
@@ -842,7 +884,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       idempotencyKey,
     });
     if (!projected.ok) {
-      ctx.controlStore.createHumanRequest(sub, runRef, {
+      ctx.controlStore.createHumanRequest(owner, runRef, {
         stageRef,
         kind: 'intervention',
         title: `reroute:reconcile:${stageRef}`,
@@ -850,7 +892,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       });
       return reply.code(409).send({ error: 'reroute-projection-reconciliation-required', detail: projected.detail });
     }
-    ctx.controlStore.appendEvent(sub, runRef, {
+    ctx.controlStore.appendEvent(owner, runRef, {
       kind: 'lifecycle', source: 'human', stageRef, attemptRef: projected.value.attempt.attemptRef,
       sessionRef: projected.value.session.sessionRef, status: 'pending',
       summary: `queued successor attempt ${projected.value.attempt.generation} with ${runtime}/${model}`,
@@ -1461,16 +1503,29 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return sendResult(reply, resolved);
   });
 
+  // ── RETENTION ──────────────────────────────────────────────────────────────────────────────────────
+  // All four routes carry the operator's scope (ruling 3). RunDetail's "Stored data" → "Review archiving"
+  // drives dry-run + quarantine, and on an engine-owned run both answered `not-found` — the operator
+  // could see a headless run's storage cost everywhere except where it could be reclaimed. `inventory`
+  // and `restore` have no live SPA caller today and are widened WITH them on purpose: a half-widened
+  // retention surface (plan across subjects, restore only your own) is a worse trap than the original.
+  //
+  // The store keys every record it moves by the RUN's OWN subject, so quarantine and restore never
+  // relabel a bundle as the operator's; the T2 audit rows name the operator as the actor beside the
+  // owning subject of each bundle.
+
   scope.get('/api/control/retention/inventory', { preHandler }, async (req, reply) => {
     const sub = subject(req);
-    return sub ? reply.send({ inventory: ctx.controlStore.inventory(sub) }) : reply.code(401).send({ error: 'unauthenticated' });
+    return sub ? reply.send({ inventory: ctx.controlStore.inventory(sub, readScope(req)) }) : reply.code(401).send({ error: 'unauthenticated' });
   });
 
   scope.post('/api/control/retention/dry-run', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRefs = record(req.body).runRefs;
-    return sendResult(reply, ctx.controlStore.dryRunQuarantine(sub, Array.isArray(runRefs) ? runRefs.filter((item): item is string => typeof item === 'string') : []));
+    return sendResult(reply, ctx.controlStore.dryRunQuarantine(
+      sub, Array.isArray(runRefs) ? runRefs.filter((item): item is string => typeof item === 'string') : [], readScope(req),
+    ));
   });
 
   scope.post('/api/control/retention/quarantine', { preHandler }, async (req, reply) => {
@@ -1479,7 +1534,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const body = record(req.body);
     const runRefs = Array.isArray(body.runRefs) ? body.runRefs.filter((item): item is string => typeof item === 'string') : [];
     const expectedPlanHash = string(body.expectedPlanHash);
-    const planned = ctx.controlStore.dryRunQuarantine(sub, runRefs);
+    const runScope = readScope(req);
+    const planned = ctx.controlStore.dryRunQuarantine(sub, runRefs, runScope);
     if (!planned.ok) return sendResult(reply, planned);
     if (planned.value.planHash !== expectedPlanHash) {
       return reply.code(409).send({ error: 'conflict', detail: 'quarantine plan changed; review a fresh dry-run' });
@@ -1489,14 +1545,19 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     }
     try {
       auditFn(ctx)(ctx.repoRoot, {
+        // `owner` is the ACTOR; `runOwnerSubjects` names whose bundles are being moved (they differ on a
+        // cross-subject quarantine), ordered like the plan's own items.
         action: 'control-retention-quarantine-authorize', owner: sub, target: runRefs.join(','), riskTier: 'T2',
         result: `authorized:${expectedPlanHash}`,
-        detail: { runRefs, planHash: expectedPlanHash, itemCount: planned.value.items.length },
+        detail: {
+          runRefs, planHash: expectedPlanHash, itemCount: planned.value.items.length,
+          runOwnerSubjects: planned.value.items.map((item) => item.ownerSubject),
+        },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'quarantine-audit-required' });
     }
-    const quarantined = ctx.controlStore.quarantineRuns(sub, runRefs, expectedPlanHash);
+    const quarantined = ctx.controlStore.quarantineRuns(sub, runRefs, expectedPlanHash, runScope);
     return sendResult(reply, quarantined);
   });
 
@@ -1504,19 +1565,23 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = string(record(req.body).runRef);
-    if (!ctx.controlStore.inventory(sub).quarantinedRuns.some((run) => run.runRef === runRef)) {
+    const runScope = readScope(req);
+    const bundle = ctx.controlStore.inventory(sub, runScope).quarantinedRuns.find((run) => run.runRef === runRef);
+    if (!bundle) {
       return reply.code(404).send({ error: 'not-found', detail: 'quarantined run was not found' });
     }
     try {
       auditFn(ctx)(ctx.repoRoot, {
+        // `owner` is the ACTOR; `runOwnerSubject` names whose bundle is coming back. Restore returns it
+        // to that same subject — a cross-subject restore never adopts the run.
         action: 'control-retention-restore-authorize', owner: sub, target: runRef, riskTier: 'T2',
         result: `authorized:${runRef}`,
-        detail: { runRef },
+        detail: { runRef, runOwnerSubject: bundle.ownerSubject },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'restore-audit-required' });
     }
-    const restored = ctx.controlStore.restoreRun(sub, runRef);
+    const restored = ctx.controlStore.restoreRun(sub, runRef, runScope);
     return sendResult(reply, restored);
   });
 }

@@ -3305,3 +3305,510 @@ describe('operator cross-subject authority', () => {
     } finally { await app.close(); }
   });
 });
+
+/**
+ * Operator cross-subject authority, round 3 — the four remaining dead ends a route-surface audit found
+ * after the mutation widening landed (2026-08-12).
+ *
+ * Same ruling, same idiom as the block above: the target is resolved from the VERIFIED SESSION's read
+ * scope, the work then executes AS THE TARGET'S OWNER, ownership never moves, and the audit row names
+ * the operator as the actor beside `runOwnerSubject`. What these four add is that they are the surfaces
+ * where the SPA offers a button and the server answered `not-found`:
+ *
+ *   - launch/retry     RunDetail's "Run it again" and the pre-publication resume, both 404 on an
+ *                      engine-owned revision before anything was written;
+ *   - reroute          the per-stage runtime/model controls;
+ *   - retention        "Stored data" -> "Review archiving";
+ *   - the single       run detail's steering CHECKPOINT pick-list, which failed SILENTLY and degraded
+ *     revision GET     to a free-text box.
+ */
+describe('operator cross-subject authority — launch, reroute, retention, revision read', () => {
+  const ENGINE = 'dashboard-engine';
+
+  function surface(store: ReturnType<typeof createInMemoryControlPlaneStore>) {
+    const audit: Array<Record<string, unknown>> = [];
+    const routingWrites: Array<Record<string, unknown>> = [];
+    const capture = (_repoRoot: string, event: Record<string, unknown>) => {
+      audit.push(event);
+      return { ts: '2026-08-12T00:00:00.000Z', ...event };
+    };
+    let composerId = 0;
+    const app = Fastify();
+    registerWriteSurface(app, makeSurfaceContext({
+      repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
+      sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: store,
+      composerStore: createInMemoryComposerStore({
+        protector: { seal: (value: string) => value, open: (value: string) => value },
+        newId: () => `composer-${++composerId}`,
+      }),
+      appendAudit: capture, appendAuditLocal: capture,
+      runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
+      opsGit: (_repoRoot: string, args: string[]) => {
+        if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+        if (args.join(' ') === 'rev-parse HEAD') return `${'a'.repeat(40)}\n`;
+        return '';
+      },
+      // One runner for both shapes this suite drives: a card-routing operation (reroute) carries
+      // `cardId`; a workflow publication carries `runId` + `stages`.
+      runPy: (_repoRoot: string, _code: string, jsonArg: string) => {
+        const payload = JSON.parse(jsonArg) as {
+          cardId?: string; runId?: string; managed?: boolean; stages?: Array<{ id: string; dependsOn: string[] }>;
+        };
+        if (typeof payload.cardId === 'string') {
+          routingWrites.push(payload as Record<string, unknown>);
+          return {
+            exitCode: 0, stderr: '',
+            stdout: `${JSON.stringify({ id: payload.cardId, path: `queue/inbox/${payload.cardId}.md`, state: 'inbox' })}\n`,
+          };
+        }
+        return {
+          exitCode: 0, stderr: '', stdout: JSON.stringify({
+            runId: payload.runId,
+            cards: (payload.stages ?? []).map((stage) => {
+              const cardId = workflowCardId(String(payload.runId), stage.id);
+              const state = payload.managed || stage.dependsOn.length ? 'blocked' : 'inbox';
+              return { stageId: stage.id, cardId, state, cardPath: `queue/${state === 'blocked' ? 'inbox' : state}/${cardId}.md` };
+            }),
+          }),
+        };
+      },
+    } as never));
+    return { app, audit, routingWrites, token: mintSession('operator', SESSION).token };
+  }
+
+  /** One APPROVED revision owned by `owner` — the shape the queue bridge imports from a card. */
+  function approvedRevisionFor(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    owner: string,
+    key: string,
+    snapshot: PlanProposal = proposal,
+  ): { proposalRef: string; hash: string } {
+    const created = store.createProposalRevision(owner, {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: key, title: snapshot.title,
+      snapshot: snapshot as unknown as JsonObject,
+    });
+    if (!created.ok) throw new Error(created.detail);
+    const approved = store.decideProposal(owner, created.value.proposalRef, 1, {
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    return { proposalRef: created.value.proposalRef, hash: created.value.hash };
+  }
+
+  /** The run the queue bridge itself creates from that revision, under its own launch operation key. */
+  function bridgeRunFor(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    revision: { proposalRef: string; hash: string },
+    idempotencyKey: string,
+  ) {
+    const run = store.createRun(ENGINE, {
+      title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
+      expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
+      idempotencyKey,
+      stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+    });
+    if (!run.ok) throw new Error(run.detail);
+    return run.value;
+  }
+
+  // ── GAP-3: launch / retry ────────────────────────────────────────────────────────────────────────
+
+  it('launches an engine-owned revision AS the engine, with the operator audited as the actor', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `x-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-launch');
+    const { app, audit, token } = surface(store);
+    try {
+      const launched = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+      // The P0 symptom was a 404 here, from the very first revision lookup.
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+
+      // OWNERSHIP NEVER MOVES: the run, its stages and their canonical cards are all the engine's, and
+      // the operator's own partition stays empty.
+      const owned = store.getRun(ENGINE, runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.ownerSubject).toBe(ENGINE);
+      expect(owned.value.run.publicationState).toBe('published');
+      expect(owned.value.stages.map((stage) => stage.canonicalCardRef))
+        .toEqual(proposal.stages.map((stage) => workflowCardId(runRef, stage.id)));
+      expect(store.listRuns('operator')).toEqual([]);
+      expect(store.getRun('operator', runRef)).toMatchObject({ ok: false, reason: 'not-found' });
+
+      // ATTRIBUTION: `owner` is the operator (the actor), `runOwnerSubject` is whose run it is.
+      expect(audit.find((row) => row.action === 'control-run-launch')).toMatchObject({
+        owner: 'operator', result: `launched:${runRef}:${revision.hash}`,
+        detail: expect.objectContaining({ runOwnerSubject: ENGINE, proposalHash: revision.hash }),
+      });
+    } finally { await app.close(); }
+  });
+
+  it('resolves the Retry predecessor as the run OWNER, not the caller', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `y-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-retry');
+    const predecessor = bridgeRunFor(store, revision, 'queue-bridge:card-retry');
+    const interrupted = store.transitionRun(ENGINE, predecessor.run.runRef, predecessor.run.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    const { app, token } = surface(store);
+    try {
+      const retried = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: {
+          expectedHash: revision.hash, idempotencyKey: `retry:${predecessor.run.runRef}:${interrupted.value.version}`,
+          predecessorRunRef: predecessor.run.runRef, expectedPredecessorVersion: interrupted.value.version,
+        },
+      });
+      // The mechanism under test is WHICH SUBJECT the predecessor is read as. Read as the caller it was
+      // `not-found`; read as the owner it is found, its version matches, and the launch proceeds to the
+      // canonical quiescence check — which this in-memory surface has no committed cards to satisfy.
+      expect(retried.statusCode, retried.body).toBe(409);
+      expect(retried.json()).toMatchObject({ error: 'retry-predecessor-not-quiescent' });
+    } finally { await app.close(); }
+  });
+
+  /**
+   * BRIDGE IDEMPOTENCY SAFETY, both directions.
+   *
+   * `createRun` keys replay on `(subject, launchOperationKey)`. A cross-subject launch writes into the
+   * OWNER's key space, so a client-supplied key could name an operation the operator never performed —
+   * and the bridge's keys are derived from card ids, which a browser can read off the run. The operator's
+   * key is therefore namespaced inside `executeApprovedLaunch`.
+   */
+  it('namespaces the operator launch key so it can neither replay nor poison the bridge record', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `z-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-idem');
+    const bridgeKey = 'queue-bridge:card-collide';
+    const bridgeRun = bridgeRunFor(store, revision, bridgeKey);
+    const { app, token } = surface(store);
+    try {
+      // DIRECTION 1 — operator -> bridge. The operator presents the BRIDGE's exact key. Without the
+      // namespace this replays the bridge's own pending run (same fingerprint) and answers for a launch
+      // the operator never made; with it, the operator gets a launch of its own and the bridge's record
+      // is not consulted at all.
+      const collided = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: bridgeKey },
+      });
+      expect(collided.statusCode, collided.body).toBe(202);
+      const operatorRunRef = collided.json().runRef as string;
+      expect(operatorRunRef).not.toBe(bridgeRun.run.runRef);
+
+      // The bridge's run is untouched — same version, still unpublished.
+      const untouched = store.getRun(ENGINE, bridgeRun.run.runRef);
+      if (!untouched.ok) throw new Error(untouched.detail);
+      expect(untouched.value.run).toMatchObject({
+        version: bridgeRun.run.version, publicationState: 'pending', state: 'planned',
+      });
+
+      // DIRECTION 2 — bridge -> operator. The bridge re-ticks the SAME card and still replays ITS OWN
+      // run, because nothing the operator wrote can occupy `queue-bridge:<cardId>`.
+      const replay = store.createRun(ENGINE, {
+        title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
+        expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
+        idempotencyKey: bridgeKey,
+        stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+      });
+      expect(replay).toMatchObject({ ok: true, replayed: true });
+      expect(replay.ok && replay.value.run.runRef).toBe(bridgeRun.run.runRef);
+
+      // And the operator's own key stays idempotent among the operator's own launches.
+      const again = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: bridgeKey },
+      });
+      expect(again.statusCode, again.body).toBe(200);
+      expect(again.json()).toMatchObject({ runRef: operatorRunRef, replayed: true });
+    } finally { await app.close(); }
+  });
+
+  it('keeps an own-subject launch key un-namespaced, byte for byte', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `w-${++n}`; })() });
+    const revision = approvedRevisionFor(store, 'operator', 'own-launch');
+    const { app, audit, token } = surface(store);
+    try {
+      const launched = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+      // The un-namespaced client key still identifies this launch: an SPA re-entry with the SAME key
+      // replays the same run (the pre-publication resume depends on exactly this).
+      const resumed = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+      expect(resumed.json()).toMatchObject({ runRef, replayed: true });
+      // Actor and owner are the same subject here, and the row says so rather than going quiet.
+      expect(audit.find((row) => row.action === 'control-run-launch')).toMatchObject({
+        owner: 'operator', detail: expect.objectContaining({ runOwnerSubject: 'operator' }),
+      });
+    } finally { await app.close(); }
+  });
+
+  it('refuses a third subject the launch of a foreign revision, with zero side effects', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `v-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-foreign');
+    const { app, audit } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(otherToken),
+        payload: { expectedHash: revision.hash, idempotencyKey: 'foreign-launch' },
+      });
+      expect(refused.statusCode, refused.body).toBe(404);
+      expect(refused.json()).toMatchObject({ error: 'not-found' });
+      expect(audit).toEqual([]);
+      expect(store.listRuns(ENGINE)).toEqual([]);
+      expect(store.listRuns('other-agent')).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  // ── GAP-4: per-stage reroute ─────────────────────────────────────────────────────────────────────
+
+  /** A published engine-owned run whose first stage is a legal reroute source (ready / queued / pending). */
+  function reroutableEngineRun(store: ReturnType<typeof createInMemoryControlPlaneStore>) {
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-reroute');
+    const created = bridgeRunFor(store, revision, 'queue-bridge:card-reroute');
+    const runRef = created.run.runRef;
+    const stage = created.stages[0];
+    const cardRef = workflowCardId(runRef, stage.stageId);
+    const linked = store.linkStageCard(ENGINE, stage.stageRef, stage.version, cardRef);
+    if (!linked.ok) throw new Error(linked.detail);
+    const publishing = store.transitionPublication(ENGINE, runRef, created.run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const published = store.transitionPublication(ENGINE, runRef, publishing.value.version, 'published');
+    if (!published.ok) throw new Error(published.detail);
+    const attempt = store.createAttempt(ENGINE, stage.stageRef, {
+      expectedStageVersion: linked.value.version, runtime: 'codex', model: 'gpt-5.6-sol',
+    });
+    if (!attempt.ok) throw new Error(attempt.detail);
+    const session = store.createWorkerSession(ENGINE, attempt.value.attemptRef, { expectedAttemptVersion: attempt.value.version });
+    if (!session.ok) throw new Error(session.detail);
+    const current = store.getRun(ENGINE, runRef);
+    if (!current.ok) throw new Error(current.detail);
+    // Re-read both: linking the attempt bumps the stage and `createWorkerSession` bumps the attempt.
+    const live = current.value.stages.find((item) => item.stageRef === stage.stageRef);
+    const liveAttempt = current.value.attempts.find((item) => item.attemptRef === attempt.value.attemptRef);
+    if (!live || !liveAttempt) throw new Error('reroute source missing');
+    return {
+      runRef, cardRef, stageRef: stage.stageRef,
+      payload: {
+        expectedStageVersion: live.version, expectedAttemptRef: liveAttempt.attemptRef,
+        expectedAttemptVersion: liveAttempt.version, runtime: 'claude', model: 'claude-sonnet-5',
+        idempotencyKey: `reroute:${runRef}:1`,
+      },
+    };
+  }
+
+  it('reroutes a stage on an engine-owned run: successor attempt under the engine, operator audited', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `r-${++n}`; })() });
+    const target = reroutableEngineRun(store);
+    const { app, audit, routingWrites, token } = surface(store);
+    try {
+      const response = await app.inject({
+        method: 'POST', url: `/api/control/runs/${target.runRef}/stages/${target.stageRef}/reroute`,
+        headers: headers(token), payload: target.payload,
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({
+        ok: true,
+        value: {
+          attempt: { generation: 2, runtime: 'claude', model: 'claude-sonnet-5', state: 'queued' },
+          session: { state: 'pending' },
+        },
+      });
+      expect(routingWrites).toEqual([expect.objectContaining({ cardId: target.cardRef, runtime: 'claude', model: 'claude-sonnet-5' })]);
+
+      // The successor attempt, its session and the timeline event all landed under the RUN's OWNER.
+      const owned = store.getRun(ENGINE, target.runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.attempts.map((attempt) => [attempt.generation, attempt.runtime, attempt.model]))
+        .toEqual([[1, 'codex', 'gpt-5.6-sol'], [2, 'claude', 'claude-sonnet-5']]);
+      expect(store.listRuns('operator')).toEqual([]);
+      const events = store.listEvents(ENGINE, target.runRef);
+      if (!events.ok) throw new Error(events.detail);
+      expect(events.value.map((event) => event.summary))
+        .toContain('queued successor attempt 2 with claude/claude-sonnet-5');
+
+      // The canonical routing audit names the ACTOR — the verified operator session, not the run owner.
+      expect(audit.find((row) => row.action === 'card-routing')).toMatchObject({ owner: 'operator' });
+    } finally { await app.close(); }
+  });
+
+  it('refuses a third subject the reroute of a foreign stage, with zero side effects', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `q-${++n}`; })() });
+    const target = reroutableEngineRun(store);
+    const { app, audit, routingWrites } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/runs/${target.runRef}/stages/${target.stageRef}/reroute`,
+        headers: headers(otherToken), payload: target.payload,
+      });
+      expect(refused.statusCode, refused.body).toBe(404);
+      expect(refused.json()).toMatchObject({ error: 'not-found' });
+      expect(routingWrites).toEqual([]);
+      expect(audit).toEqual([]);
+      const owned = store.getRun(ENGINE, target.runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.attempts).toHaveLength(1);
+    } finally { await app.close(); }
+  });
+
+  // ── GAP-5: retention ─────────────────────────────────────────────────────────────────────────────
+
+  /** An engine-owned run settled into the one shape quarantine accepts. */
+  function quarantinableEngineRun(store: ReturnType<typeof createInMemoryControlPlaneStore>): string {
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-retention');
+    const created = bridgeRunFor(store, revision, 'queue-bridge:card-retention');
+    const runRef = created.run.runRef;
+    const interrupted = store.transitionRun(ENGINE, runRef, created.run.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    for (const stage of created.stages) {
+      const stopped = store.transitionStage(ENGINE, stage.stageRef, stage.version, 'stopped');
+      if (!stopped.ok) throw new Error(stopped.detail);
+    }
+    for (const session of created.sessions) {
+      const stopped = store.transitionSession(ENGINE, session.sessionRef, session.version, 'stopped');
+      if (!stopped.ok) throw new Error(stopped.detail);
+    }
+    return runRef;
+  }
+
+  it('plans, quarantines and restores an engine-owned bundle without ever relabelling it', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `s-${++n}`; })() });
+    const runRef = quarantinableEngineRun(store);
+    const { app, audit, token } = surface(store);
+    try {
+      const planned = await app.inject({
+        method: 'POST', url: '/api/control/retention/dry-run', headers: headers(token), payload: { runRefs: [runRef] },
+      });
+      expect(planned.statusCode, planned.body).toBe(200);
+      const plan = planned.json().value as { planHash: string; items: Array<{ runRef: string; eligible: boolean; ownerSubject: string }> };
+      // The plan describes the OWNER's records — read as the caller the bundle would come back empty,
+      // reporting a foreign run as costless and trivially eligible.
+      expect(plan.items).toEqual([expect.objectContaining({ runRef, eligible: true, ownerSubject: ENGINE })]);
+
+      const quarantined = await app.inject({
+        method: 'POST', url: '/api/control/retention/quarantine', headers: headers(token),
+        payload: { runRefs: [runRef], expectedPlanHash: plan.planHash },
+      });
+      expect(quarantined.statusCode, quarantined.body).toBe(200);
+      expect(audit.find((row) => row.action === 'control-retention-quarantine-authorize')).toMatchObject({
+        owner: 'operator', riskTier: 'T2',
+        detail: expect.objectContaining({ runRefs: [runRef], runOwnerSubjects: [ENGINE] }),
+      });
+
+      // The bundle is filed under the ENGINE, never adopted into the operator's storage.
+      expect(store.inventory(ENGINE).quarantinedRuns).toEqual([expect.objectContaining({ runRef, ownerSubject: ENGINE })]);
+      expect(store.inventory('operator')).toMatchObject({ activeRuns: [], quarantinedRuns: [] });
+      expect(store.getRun(ENGINE, runRef)).toMatchObject({ ok: false, reason: 'not-found' });
+
+      const restored = await app.inject({
+        method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
+      });
+      expect(restored.statusCode, restored.body).toBe(200);
+      expect(restored.json()).toMatchObject({ ok: true, value: { runRef, ownerSubject: ENGINE } });
+      expect(audit.find((row) => row.action === 'control-retention-restore-authorize')).toMatchObject({
+        owner: 'operator', detail: { runRef, runOwnerSubject: ENGINE },
+      });
+
+      // Restored to its OWN subject, with its record tree and a recovery event on its own timeline.
+      const back = store.getRun(ENGINE, runRef);
+      if (!back.ok) throw new Error(back.detail);
+      expect(back.value.ownerSubject).toBe(ENGINE);
+      expect(back.value.stages).toHaveLength(proposal.stages.length);
+      expect(store.listRuns('operator')).toEqual([]);
+      const events = store.listEvents(ENGINE, runRef);
+      if (!events.ok) throw new Error(events.detail);
+      expect(events.value.map((event) => event.summary)).toContain('run restored from quarantine');
+    } finally { await app.close(); }
+  });
+
+  it('shows an engine-owned bundle in the operator inventory and hides it from a third subject', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `t-${++n}`; })() });
+    const runRef = quarantinableEngineRun(store);
+    const { app, token } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      const mine = await app.inject({ method: 'GET', url: '/api/control/retention/inventory', headers: headers(token) });
+      expect((mine.json() as { inventory: { activeRuns: Array<{ runRef: string; ownerSubject: string }> } }).inventory.activeRuns)
+        .toEqual([expect.objectContaining({ runRef, ownerSubject: ENGINE })]);
+
+      const theirs = await app.inject({ method: 'GET', url: '/api/control/retention/inventory', headers: headers(otherToken) });
+      expect((theirs.json() as { inventory: Record<string, unknown> }).inventory)
+        .toMatchObject({ activeRuns: [], quarantinedRuns: [], proposalRevisionCount: 0 });
+    } finally { await app.close(); }
+  });
+
+  it('refuses a third subject every retention route on a foreign run, with zero side effects', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `u-${++n}`; })() });
+    const runRef = quarantinableEngineRun(store);
+    const { app, audit, token } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      // A real plan hash, taken by the operator — a third subject must not be able to spend it either.
+      const planned = await app.inject({
+        method: 'POST', url: '/api/control/retention/dry-run', headers: headers(token), payload: { runRefs: [runRef] },
+      });
+      const planHash = (planned.json().value as { planHash: string }).planHash;
+      audit.length = 0;
+
+      for (const [url, payload] of [
+        ['/api/control/retention/dry-run', { runRefs: [runRef] }],
+        ['/api/control/retention/quarantine', { runRefs: [runRef], expectedPlanHash: planHash }],
+        ['/api/control/retention/restore', { runRef }],
+      ] as Array<[string, Record<string, unknown>]>) {
+        const response = await app.inject({ method: 'POST', url, headers: headers(otherToken), payload });
+        expect(response.statusCode, `${url}: ${response.body}`).toBe(404);
+        expect(response.json()).toMatchObject({ error: 'not-found' });
+      }
+      expect(audit).toEqual([]);
+      const owned = store.getRun(ENGINE, runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.run.state).toBe('interrupted');
+      expect(store.inventory(ENGINE).quarantinedRuns).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  // ── GAP-6: the single-revision read ──────────────────────────────────────────────────────────────
+
+  it('serves an engine-owned revision so the steering checkpoint pick-list populates', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `p-${++n}`; })() });
+    const planned: PlanProposal = {
+      ...proposal,
+      stages: proposal.stages.map((stage) => ({ ...stage, checkpoints: [{ id: `safe-${stage.id}`, label: `After ${stage.title}` }] })),
+    };
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-checkpoints', planned);
+    const { app, token } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      const read = await app.inject({
+        method: 'GET', url: `/api/control/proposals/${revision.proposalRef}/revisions/1`, headers: headers(token),
+      });
+      // Before this, run detail's poll threw here and the steering control degraded SILENTLY to a
+      // free-text box — the operator had to type a checkpoint id from memory on exactly the headless
+      // runs steering exists for.
+      expect(read.statusCode, read.body).toBe(200);
+      const value = read.json().value as {
+        ownerSubject: string; snapshot: { stages: Array<{ checkpoints: Array<{ id: string }> }> };
+      };
+      expect(value.ownerSubject).toBe(ENGINE);
+      expect(value.snapshot.stages.flatMap((stage) => stage.checkpoints.map((point) => point.id)))
+        .toEqual(['safe-verify', 'safe-report']);
+
+      // Every other subject keeps exact own-subject scoping on this read too.
+      expect((await app.inject({
+        method: 'GET', url: `/api/control/proposals/${revision.proposalRef}/revisions/1`, headers: headers(otherToken),
+      })).statusCode).toBe(404);
+
+      // BOUNDARY: only the single-revision GET widened. The proposals LIST stays own-subject — bridge
+      // adoption safety — so the operator's Composer list is not filled with imported def-card plans.
+      const list = await app.inject({ method: 'GET', url: '/api/control/proposals', headers: headers(token) });
+      expect((list.json() as { proposals: unknown[] }).proposals).toEqual([]);
+    } finally { await app.close(); }
+  });
+});
