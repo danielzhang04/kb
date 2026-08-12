@@ -3418,6 +3418,8 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     store: ReturnType<typeof createInMemoryControlPlaneStore>,
     /** An audit sink that REJECTS — the durable-row precondition every mutation here is gated on. */
     appendAudit?: (repoRoot: string, event: Record<string, unknown>) => unknown,
+    /** A git seam that RACES — the concurrent-ops-writer shape the launch push must survive. */
+    opsGitOverride?: (repoRoot: string, args: string[]) => string,
   ) {
     const audit: Array<Record<string, unknown>> = [];
     const routingWrites: Array<Record<string, unknown>> = [];
@@ -3436,11 +3438,11 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       }),
       appendAudit: appendAudit ?? capture, appendAuditLocal: capture,
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
-      opsGit: (_repoRoot: string, args: string[]) => {
+      opsGit: opsGitOverride ?? ((_repoRoot: string, args: string[]) => {
         if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
         if (args.join(' ') === 'rev-parse HEAD') return `${'a'.repeat(40)}\n`;
         return '';
-      },
+      }),
       // One runner for both shapes this suite drives: a card-routing operation (reroute) carries
       // `cardId`; a workflow publication carries `runId` + `stages`.
       runPy: (_repoRoot: string, _code: string, jsonArg: string) => {
@@ -3676,6 +3678,55 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const replayed = await app.inject({ method: 'POST', url, headers: headers(token), payload: resume });
       expect(replayed.statusCode, replayed.body).toBe(200);
       expect(replayed.json()).toMatchObject({ runRef: launched.json().runRef, replayed: true });
+    } finally { await app.close(); }
+  });
+
+  /**
+   * REGRESSION, live defect (both real queue-bridge launches, 2026-08-11 and -12).
+   *
+   * `ops` has many concurrent writers. One of them pushing inside a launch's compile window rejected the
+   * launch's coordination push non-fast-forward, and the route answered 500 `launch-reconciliation-required`
+   * and parked the run on a human intervention — for a lost race the repository constitution says to
+   * reconcile and retry. The launch now re-reads state and re-pushes, bounded, and only parks on a failure
+   * that a human really does own.
+   */
+  it('survives a concurrent ops writer: a non-fast-forward launch push reconciles and retries, never parking', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `w-${++n}`; })() });
+    const revision = approvedRevisionFor(store, 'operator', 'raced-launch');
+    const gitCalls: string[][] = [];
+    let pushes = 0;
+    const { app, token } = surface(store, undefined, (_repoRoot: string, args: string[]) => {
+      gitCalls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args.join(' ') === 'rev-parse HEAD') return `${'a'.repeat(40)}\n`;
+      if (args[0] === 'push' && pushes++ === 0) {
+        const stderr = ' ! [rejected]        ops -> ops (non-fast-forward)\n'
+          + 'hint: Updates were rejected because the tip of your current branch is behind';
+        throw Object.assign(new Error(`git push exited with code 1: ${stderr}`), { status: 1, stdout: '', stderr });
+      }
+      return '';
+    });
+    try {
+      const launched = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+
+      // Published, not parked: no `launch-reconciliation-required`, no intervention, no failed run.
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+      const detail = store.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      expect(detail.value.run.publicationState).toBe('published');
+      expect(detail.value.humanRequests.map((request) => request.title))
+        .not.toContain('Launch reconciliation required');
+
+      // Exactly one reconciling pull between the rejected push and the accepted one.
+      const verbs = gitCalls.map((args) => args.join(' '));
+      const first = verbs.indexOf('push origin ops');
+      expect(verbs.slice(first)).toEqual([
+        'push origin ops', 'rev-parse --abbrev-ref HEAD', 'pull --rebase origin ops', 'push origin ops',
+      ]);
     } finally { await app.close(); }
   });
 

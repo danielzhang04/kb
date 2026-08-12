@@ -131,8 +131,10 @@ describe('commitAuditToOps (injectable git-runner, hermetic)', () => {
   });
 
   it('gives up after maxRetryPushes exhausted, surfacing the push error', async () => {
+    // A REAL rejection string: retry is gated on the git non-fast-forward markers, so only a genuine
+    // lost race reaches the exhaustion path this test is about.
     const runner: OpsGitRunner = (_r, args) => {
-      if (args[0] === 'push') throw new Error('rejected');
+      if (args[0] === 'push') throw new Error('! [rejected] ops -> ops (non-fast-forward)');
       return '';
     };
     await expect(commitAuditToOps('/r', runner, { maxRetryPushes: 2 })).rejects.toThrow(/rejected/);

@@ -18,6 +18,7 @@ import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
 import type { PreambleRunner } from './preambleGate.ts';
 import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from './branch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
+import { pushOpsWithReconcile } from './opsPushRetry.ts';
 
 export const MAX_WORKFLOW_STAGES = 32;
 
@@ -258,11 +259,17 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
       runGit,
       alsoStage: [...rest, ...(options.alsoStage ?? [])],
       message: `chore(queue): activate managed run ${options.runRef}`,
-      maxRetryPushes: 0,
+      // Losing the push race with another ops writer is transient, so it reconciles and retries rather
+      // than parking the run — but the activation was authorized against the pre-rebase canonical head,
+      // so `authorizeAfterPrepare` re-proves that authorization against every newer head before the
+      // retried push. A changed policy still throws, exactly as it would have before the pull.
+      onReconciled: options.authorizeAfterPrepare,
     });
   } else {
     // An idempotent replay still proves the committed canonical branch reached the remote.
-    await runGit(options.repoRoot, ['push', 'origin', 'ops']);
+    await pushOpsWithReconcile({
+      repoRoot: options.repoRoot, runGit, onReconciled: options.authorizeAfterPrepare,
+    });
   }
   for (const path of cardPaths) {
     const committed = (await runGit(options.repoRoot, ['show', `HEAD:${path}`])).replace(/\r\n?/g, '\n');
