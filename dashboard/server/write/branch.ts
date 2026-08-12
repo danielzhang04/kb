@@ -22,6 +22,7 @@
  */
 
 import { createAsyncGitRunner, createAsyncPrOpener, withOpsTransaction } from './asyncGit.ts';
+import { pushOpsWithReconcile } from './opsPushRetry.ts';
 import type { AsyncPrResult } from './asyncGit.ts';
 import type { OpsGitRunner } from './asyncGit.ts';
 
@@ -120,8 +121,15 @@ async function assertCleanIndex(repoRoot: string, runGit: GitRunner): Promise<vo
   if (paths.length > 0) throw new DirtyIndexError(paths);
 }
 
-/** Query the real checkout through the injected runner and fail closed unless it is exactly `ops`. */
-async function assertCoordinationCheckout(repoRoot: string, runGit: GitRunner): Promise<void> {
+/**
+ * Query the real checkout through the injected runner and fail closed unless it is exactly `ops`.
+ *
+ * Exported because it is a precondition of PULLING, not merely of committing: `pull --rebase origin ops`
+ * on a checkout that is no longer `ops` rebases an unrelated HEAD, and a conflict there leaves this
+ * SHARED checkout mid-rebase for the next writer (the 2026-07-30 jam class). Every reconciling pull —
+ * including the ones `opsPushRetry.ts` issues for callers outside this module — must be guarded by it.
+ */
+export async function assertCoordinationCheckout(repoRoot: string, runGit: GitRunner): Promise<void> {
   const branch = (await runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
   if (branch !== 'ops') throw new CoordinationCheckoutError(branch);
 }
@@ -154,7 +162,7 @@ export interface RouteOptions {
    *  committed atomically with the change it records — one commit, one push). Coordination route only. */
   alsoStage?: string[];
   /** Re-run caller-specific authorization after a rejected push pulls a newer canonical ops head. */
-  onReconciled?: () => void;
+  onReconciled?: () => void | Promise<void>;
 }
 
 /**
@@ -242,9 +250,14 @@ export class DurableRouteError extends Error {
 
 /**
  * Prepared coordination commit: re-prove that the checkout is still `ops`, then add exact relpaths ->
- * commit -> push, retrying a rejected push after re-reading state (bounded). The second check closes the
- * gap between prepare and a caller's local write: an external branch switch fails before staging.
+ * commit -> push, reconciling and retrying a push that LOST A RACE with another ops writer (bounded, via
+ * `opsPushRetry.ts`; any other push failure rethrows on the spot). The second check closes the gap
+ * between prepare and a caller's local write: an external branch switch fails before staging.
  * `audit/log.ts#commitAuditToOps` — the same rule applied generically to any coordination relpath.
+ *
+ * A caller whose commit is only valid under the canonical head it was compiled against passes
+ * `onReconciled` to re-prove that after each reconcile (see `control/launch.ts`), rather than disabling
+ * the retry — a disabled retry turns every lost race into a human intervention.
  */
 export async function commitPreparedCoordination(repoRoot: string, relpath: string, options: RouteOptions = {}): Promise<void> {
   const runGit = options.runGit ?? defaultGitRunner;
@@ -258,20 +271,15 @@ export async function commitPreparedCoordination(repoRoot: string, relpath: stri
   await runGit(repoRoot, ['add', '--', ...stagePaths]);
   await runGit(repoRoot, ['commit', '-m', message, '--only', '--', ...stagePaths]);
 
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
-    try {
-      await runGit(repoRoot, ['push', 'origin', 'ops']);
-      return;
-    } catch (err) {
-      lastErr = err;
-      if (attempt === maxRetryPushes) break;
-      await assertCoordinationCheckout(repoRoot, runGit);
-      await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
-      options.onReconciled?.();
-    }
-  }
-  throw lastErr;
+  await pushOpsWithReconcile({
+    repoRoot,
+    runGit,
+    maxRetryPushes,
+    // The checkout is re-proved `ops` before each reconciling pull: an external branch switch between
+    // the failed push and the retry must fail closed rather than rebase an unrelated HEAD.
+    beforeReconcile: () => assertCoordinationCheckout(repoRoot, runGit),
+    onReconciled: options.onReconciled,
+  });
   });
 }
 

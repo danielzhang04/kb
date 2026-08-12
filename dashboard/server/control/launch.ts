@@ -336,6 +336,26 @@ export async function executeApprovedLaunch(
       });
       return { status: 500, body: { error: outcome.reason, detail: 'detail' in outcome ? outcome.detail : outcome.problems } };
     }
+    /**
+     * Re-prove that the compiled routing this launch is publishing is STILL the routing the current
+     * canonical ops head compiles to. Called after any git step that moved the local checkout onto a
+     * newer head — the reconciling `pull --rebase` of a rejected push, and the managed-root activation's
+     * own post-prepare gate — so `policyBaseCommit` never silently becomes a claim about a head whose
+     * policy differs. A change throws, which parks the run exactly as a bare failure would have.
+     */
+    const reassertCompiledPolicy = (): void => {
+      const currentProposal = validateServerCompiledPlanProposal(snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+      const currentCompiled = currentProposal.ok
+        ? compileApprovedProposal(currentProposal.value, storedHash, storedHash, {
+            policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
+            defaultWorkers: defaultWorkers(ctx.repoRoot),
+          })
+        : null;
+      if (!currentCompiled?.ok
+        || JSON.stringify(currentCompiled.value.stagePolicies) !== JSON.stringify(compiled.value.stagePolicies)) {
+        throw new Error('managed root activation policy changed');
+      }
+    };
     try {
       const appendLocal = ctx.appendAuditLocal ?? appendAuditRowLocal;
       const riskTier = parsed.value.stages.some((stage) => stage.riskTier === 'T3') ? 'T3'
@@ -362,10 +382,19 @@ export async function executeApprovedLaunch(
         runGit: ctx.opsGit ?? defaultGitRunner,
         alsoStage: [...rest, AUDIT_REL_PATH],
         message: `chore(queue): launch approved run ${runRef}`,
-        // The cards and audit were compiled against policyBaseCommit. A rejected push means the
-        // canonical base changed, so do not rebase and publish stale routing under a newer ops head.
-        // The route enters reconcile-required and a fresh launch/reconciliation must recompile.
-        maxRetryPushes: 0,
+        // `ops` has many concurrent writers, so ANY of them pushing inside this launch's compile window
+        // rejects this push non-fast-forward. That is a lost race, not divergence, and the repository
+        // constitution answers it directly: "a rejected push means: re-read state, reconcile, retry."
+        // Parking the run on a human intervention for it (observed on both live bridge launches,
+        // 2026-08-11 and -12) implemented the opposite doctrine.
+        //
+        // What the old `maxRetryPushes: 0` was really protecting is preserved by `onReconciled`, not by
+        // refusing to retry: the cards and audit were compiled against `policyBaseCommit`, so before the
+        // retried push the reconciled head is recompiled and its stage policies compared. Identical
+        // policy means this routing is not stale and may publish; a changed policy throws and the route
+        // enters reconcile-required, exactly as before. A conflicting rebase aborts and parks too
+        // (`write/opsPushRetry.ts`).
+        onReconciled: reassertCompiledPolicy,
       });
       for (const card of outcome.cards) {
         const stage = created.value.stages.find((candidate) => candidate.stageId === card.stageId);
@@ -406,19 +435,11 @@ export async function executeApprovedLaunch(
       await activateManagedRootCards({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
-        authorizeAfterPrepare: () => {
-          const currentProposal = validateServerCompiledPlanProposal(snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-          const currentCompiled = currentProposal.ok
-            ? compileApprovedProposal(currentProposal.value, storedHash, storedHash, {
-                policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-                defaultWorkers: defaultWorkers(ctx.repoRoot),
-              })
-            : null;
-          if (!currentCompiled?.ok
-            || JSON.stringify(currentCompiled.value.stagePolicies) !== JSON.stringify(compiled.value.stagePolicies)) {
-            throw new Error('managed root activation policy changed');
-          }
-        },
+        authorizeAfterPrepare: reassertCompiledPolicy,
+        // The same proof at a different moment: `authorizeAfterPrepare` runs once after the opening
+        // pull, `reassertAfterReconcile` after every pull a rejected push forces. This closure is pure
+        // (recompile and compare, no writes), so repeating it costs nothing and duplicates nothing.
+        reassertAfterReconcile: reassertCompiledPolicy,
       });
       ctx.controlStore.appendEvent(sub, runRef, {
         kind: 'lifecycle', source: 'system', status: 'running',

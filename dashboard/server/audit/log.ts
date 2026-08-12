@@ -20,6 +20,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createAsyncGitRunner, resolveCheckedOutBranch, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
+import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
 
 /** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. Widened
  *  to allow a `Promise` so the async default coexists with synchronous test fakes. Shared, unified type. */
@@ -123,20 +124,17 @@ export async function commitAuditToOps(
   await runGit(repoRoot, ['add', '--', AUDIT_REL_PATH]);
   await runGit(repoRoot, ['commit', '-m', message, '--only', '--', AUDIT_REL_PATH]);
 
-  // Push; a rejected push means re-read state (pull --rebase) and retry, bounded. The append above
-  // already happened exactly once — only the push step is retried, so a retry never duplicates a row.
-  let lastErr: unknown;
-  for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
-    try {
-      await runGit(repoRoot, ['push', 'origin', 'ops']);
-      return;
-    } catch (err) {
-      lastErr = err;
-      if (attempt === maxRetryPushes) break;
-      await runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
-    }
-  }
-  throw lastErr;
+  // Push; a push rejected because another ops writer got there first means re-read state (pull --rebase)
+  // and retry, bounded (`write/opsPushRetry.ts`). The append above already happened exactly once — only
+  // the push step is retried, so a retry never duplicates a row.
+  await pushOpsWithReconcile({
+    repoRoot,
+    runGit,
+    maxRetryPushes,
+    // `--autostash` for the same reason the pre-commit pull above needs it: this shared checkout may
+    // hold another writer's unstaged work, and a plain `pull --rebase` refuses to run over it.
+    reconcileArgs: ['pull', '--rebase', '--autostash', 'origin', 'ops'],
+  });
   });
 }
 

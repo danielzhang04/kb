@@ -528,7 +528,7 @@ describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, au
     const onReconciled = vi.fn();
     const runner: GitRunner = (_repoRoot, args) => {
       if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
-      if (args[0] === 'push' && pushes++ === 0) throw new Error('rejected');
+      if (args[0] === 'push' && pushes++ === 0) throw new Error('! [rejected] ops -> ops (non-fast-forward)');
       return '';
     };
     await commitPreparedCoordination('/fake/repo', 'queue/inbox/card.md', { runGit: runner, onReconciled });

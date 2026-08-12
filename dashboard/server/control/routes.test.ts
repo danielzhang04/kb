@@ -307,6 +307,13 @@ describe('control proposal routes', () => {
       managerStartAckTimeoutMs?: number;
       /** Override the ops runner — a throwing one is the cheapest deterministic pre-claim refusal. */
       opsGit?: (root: string, args: string[]) => string;
+      /**
+       * How many lost push races the activation seam should simulate. The real
+       * `activateManagedRootCards` calls `authorizeAfterPrepare` ONCE after its opening pull, then
+       * `reassertAfterReconcile` once per reconciling `pull --rebase` a rejected push forces. Modelling
+       * that here is what pins which half of the route's authorization is safe to repeat.
+       */
+      reconcileRaces?: number;
     } = {},
   ) {
     const runAutomatic = vi.fn(overrides.runAutomatic ?? (async (input: ExecuteRunInput) => {
@@ -330,10 +337,15 @@ describe('control proposal routes', () => {
     })));
     const containManagerStart = vi.fn(overrides.containManagerStart ?? (async () => {}));
     const verifyCanonicalResult = vi.fn(async () => overrides.verifyCanonicalResult ?? true);
-    const activateManagedRoots = vi.fn(async (options: { runRef: string; cardRefs: string[]; authorizeAfterPrepare?: () => void | Promise<void>; verifyCompletedRoots?: (input: { runRef: string; cardRefs: string[] }) => Promise<void> }) => {
+    const activateManagedRoots = vi.fn(async (options: { runRef: string; cardRefs: string[]; authorizeAfterPrepare?: () => void | Promise<void>; reassertAfterReconcile?: () => void | Promise<void>; verifyCompletedRoots?: (input: { runRef: string; cardRefs: string[] }) => Promise<void> }) => {
       await beforeRootAuthorization?.();
       if (overrides.completedRoot) await options.verifyCompletedRoots?.({ runRef: options.runRef, cardRefs: [options.cardRefs[0]] });
       await options.authorizeAfterPrepare?.();
+      // Each lost push race reconciles onto a newer canonical head and re-proves against it. Only the
+      // PURE half may run here; the real function passes exactly this callback.
+      for (let race = 0; race < (overrides.reconcileRaces ?? 0); race += 1) {
+        await options.reassertAfterReconcile?.();
+      }
       return {
         replayed: false,
         cardPaths: options.cardRefs.map((cardRef) => `queue/inbox/${cardRef}.md`),
@@ -1250,6 +1262,54 @@ describe('control proposal routes', () => {
       expect(runAutomatic).toHaveBeenCalledTimes(1);
       expect(activateManagedRoots).toHaveBeenCalledTimes(1);
     } finally {
+      await activated.close();
+    }
+  });
+
+  /**
+   * A lost push race must NOT re-authorize.
+   *
+   * `activateManagedRootCards` reconciles and retries a push rejected non-fast-forward, and it re-proves
+   * authorization after every reconcile. That re-proof has to be the PURE half of the route's
+   * authorization — read state, compare policy, throw — because the other half emits a T3
+   * `control-run-activate-authorize` audit row (which carries its OWN nested ops commit+push) and takes
+   * the activation claim. Wiring the whole closure to the reconcile hook would bill one authorization as
+   * three: three audit rows, three claims, for one operator act.
+   */
+  it('re-proves purely on every reconciled push race: still exactly one authorize row and one claim', async () => {
+    const detail = seedActivatableRun();
+    const auditRows: Array<Record<string, unknown>> = [];
+    const claim = vi.spyOn(controlStore, 'claimRunActivation');
+    const { activated, activateManagedRoots } = await activatedApp(undefined, {
+      // Two writers beat this activation to `ops`; both are transient, and neither is a new authorization.
+      reconcileRaces: 2,
+      appendAudit: (_root: string, event: unknown) => {
+        auditRows.push(event as Record<string, unknown>);
+        return { ts: new Date().toISOString(), ...(event as Record<string, unknown>) };
+      },
+    });
+    try {
+      const activateResponse = await activated.inject({
+        method: 'POST',
+        url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version,
+          expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:${detail.run.proposalHash}:${detail.run.managerGeneration}`,
+        },
+      });
+
+      expect(activateResponse.statusCode, activateResponse.body).toBe(202);
+      expect(activateManagedRoots).toHaveBeenCalledTimes(1);
+      // Both re-proofs ran — the retry path really was exercised, not skipped.
+      const wiring = activateManagedRoots.mock.calls[0][0] as { reassertAfterReconcile?: unknown };
+      expect(typeof wiring.reassertAfterReconcile).toBe('function');
+      // ...and neither of them authorized anything a second time.
+      expect(auditRows.filter((row) => row.action === 'control-run-activate-authorize')).toHaveLength(1);
+      expect(claim).toHaveBeenCalledTimes(1);
+    } finally {
+      claim.mockRestore();
       await activated.close();
     }
   });
@@ -3418,6 +3478,8 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     store: ReturnType<typeof createInMemoryControlPlaneStore>,
     /** An audit sink that REJECTS — the durable-row precondition every mutation here is gated on. */
     appendAudit?: (repoRoot: string, event: Record<string, unknown>) => unknown,
+    /** A git seam that RACES — the concurrent-ops-writer shape the launch push must survive. */
+    opsGitOverride?: (repoRoot: string, args: string[]) => string,
   ) {
     const audit: Array<Record<string, unknown>> = [];
     const routingWrites: Array<Record<string, unknown>> = [];
@@ -3436,11 +3498,11 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       }),
       appendAudit: appendAudit ?? capture, appendAuditLocal: capture,
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
-      opsGit: (_repoRoot: string, args: string[]) => {
+      opsGit: opsGitOverride ?? ((_repoRoot: string, args: string[]) => {
         if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
         if (args.join(' ') === 'rev-parse HEAD') return `${'a'.repeat(40)}\n`;
         return '';
-      },
+      }),
       // One runner for both shapes this suite drives: a card-routing operation (reroute) carries
       // `cardId`; a workflow publication carries `runId` + `stages`.
       runPy: (_repoRoot: string, _code: string, jsonArg: string) => {
@@ -3676,6 +3738,55 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const replayed = await app.inject({ method: 'POST', url, headers: headers(token), payload: resume });
       expect(replayed.statusCode, replayed.body).toBe(200);
       expect(replayed.json()).toMatchObject({ runRef: launched.json().runRef, replayed: true });
+    } finally { await app.close(); }
+  });
+
+  /**
+   * REGRESSION, live defect (both real queue-bridge launches, 2026-08-11 and -12).
+   *
+   * `ops` has many concurrent writers. One of them pushing inside a launch's compile window rejected the
+   * launch's coordination push non-fast-forward, and the route answered 500 `launch-reconciliation-required`
+   * and parked the run on a human intervention — for a lost race the repository constitution says to
+   * reconcile and retry. The launch now re-reads state and re-pushes, bounded, and only parks on a failure
+   * that a human really does own.
+   */
+  it('survives a concurrent ops writer: a non-fast-forward launch push reconciles and retries, never parking', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `w-${++n}`; })() });
+    const revision = approvedRevisionFor(store, 'operator', 'raced-launch');
+    const gitCalls: string[][] = [];
+    let pushes = 0;
+    const { app, token } = surface(store, undefined, (_repoRoot: string, args: string[]) => {
+      gitCalls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (args.join(' ') === 'rev-parse HEAD') return `${'a'.repeat(40)}\n`;
+      if (args[0] === 'push' && pushes++ === 0) {
+        const stderr = ' ! [rejected]        ops -> ops (non-fast-forward)\n'
+          + 'hint: Updates were rejected because the tip of your current branch is behind';
+        throw Object.assign(new Error(`git push exited with code 1: ${stderr}`), { status: 1, stdout: '', stderr });
+      }
+      return '';
+    });
+    try {
+      const launched = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+
+      // Published, not parked: no `launch-reconciliation-required`, no intervention, no failed run.
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+      const detail = store.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      expect(detail.value.run.publicationState).toBe('published');
+      expect(detail.value.humanRequests.map((request) => request.title))
+        .not.toContain('Launch reconciliation required');
+
+      // Exactly one reconciling pull between the rejected push and the accepted one.
+      const verbs = gitCalls.map((args) => args.join(' '));
+      const first = verbs.indexOf('push origin ops');
+      expect(verbs.slice(first)).toEqual([
+        'push origin ops', 'rev-parse --abbrev-ref HEAD', 'pull --rebase origin ops', 'push origin ops',
+      ]);
     } finally { await app.close(); }
   });
 

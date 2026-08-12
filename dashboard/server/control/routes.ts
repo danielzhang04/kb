@@ -1727,6 +1727,49 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
     }
     const rootByCard = new Map(rootStages.map((stage) => [stage.canonicalCardRef, stage]));
     let claimed = receipt.value ?? null;
+    /**
+     * The PURE half of activation authorization: read current state, compare, throw. No audit row, no
+     * preamble, no claim. Safe to run any number of times, which is what makes it the re-proof the
+     * publication runs after every reconciling pull — a run that loses two push races calls it three
+     * times for one act, and anything side-effecting here would emit three T3 authorize rows and take
+     * the claim three times.
+     *
+     * `exactPending` is recomputed on EVERY call rather than captured once: after `claimRunActivation`
+     * below the run is `claimed`, so a later re-proof must judge it by the pending-phase rules (the
+     * version has moved and `recovering` is legal) instead of failing on the pre-claim expectations.
+     */
+    const assertCurrentState = (): void => {
+      const exactPending = claimed?.phase === 'claimed' || claimed?.phase === 'roots-activated';
+      const current = ctx.controlStore.getRun(ownerSubject, runRef);
+      if (!current.ok
+        || (!exactPending && current.value.run.version !== activationInput.expectedRunVersion)
+        || current.value.run.managerGeneration !== activationInput.expectedManagerGeneration
+        || current.value.run.publicationState !== 'published'
+        || (exactPending
+          ? current.value.run.state !== 'waiting-human' && current.value.run.state !== 'recovering'
+          : current.value.run.state !== 'waiting-human')
+        || current.value.humanRequests.length === 0
+        || current.value.humanRequests.some((request) => !acceptsBoundary(request))) {
+        throw new Error('run activation state changed before canonical root activation');
+      }
+    };
+    const currentPolicyMatches = (): boolean => {
+      const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
+      const currentCompiled = currentProposal.ok
+        ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
+            policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
+            defaultWorkers: defaultWorkers(ctx.repoRoot),
+          })
+        : null;
+      return !!currentCompiled?.ok
+        && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(compiled.value.stagePolicies);
+    };
+    const reassertActivationAuthorization = (): void => {
+      assertCurrentState();
+      if (!currentPolicyMatches()) {
+        throw new ActivationPreparationError(409, { error: 'activation-policy-changed' });
+      }
+    };
     try {
       await (ctx.activateManagedRoots ?? activateManagedRootCards)({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
@@ -1747,37 +1790,9 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
             }
           }
         },
+        reassertAfterReconcile: reassertActivationAuthorization,
         authorizeAfterPrepare: async () => {
-          const exactPending = claimed?.phase === 'claimed' || claimed?.phase === 'roots-activated';
-          const assertCurrentState = (): void => {
-            const current = ctx.controlStore.getRun(ownerSubject, runRef);
-            if (!current.ok
-              || (!exactPending && current.value.run.version !== activationInput.expectedRunVersion)
-              || current.value.run.managerGeneration !== activationInput.expectedManagerGeneration
-              || current.value.run.publicationState !== 'published'
-              || (exactPending
-                ? current.value.run.state !== 'waiting-human' && current.value.run.state !== 'recovering'
-                : current.value.run.state !== 'waiting-human')
-              || current.value.humanRequests.length === 0
-              || current.value.humanRequests.some((request) => !acceptsBoundary(request))) {
-              throw new Error('run activation state changed before canonical root activation');
-            }
-          };
-          const currentPolicyMatches = (): boolean => {
-            const currentProposal = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
-            const currentCompiled = currentProposal.ok
-              ? compileApprovedProposal(currentProposal.value, stored.value.hash, stored.value.hash, {
-                  policy: loadPolicyEnvironment(ctx.repoRoot, currentProposal.value.project, currentProposal.value.governanceRefs),
-                  defaultWorkers: defaultWorkers(ctx.repoRoot),
-                })
-              : null;
-            return !!currentCompiled?.ok
-              && JSON.stringify(currentCompiled.value.stagePolicies) === JSON.stringify(compiled.value.stagePolicies);
-          };
-          assertCurrentState();
-          if (!currentPolicyMatches()) {
-            throw new ActivationPreparationError(409, { error: 'activation-policy-changed' });
-          }
+          reassertActivationAuthorization();
           try {
             await auditFn(ctx)(ctx.repoRoot, {
               // `owner` is the ACTOR that authorized this activation — the operator session on a
@@ -1797,10 +1812,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
           if (postAuditPreamble.exitCode !== 0 || !postAuditPreamble.stdout.includes('PREAMBLE OK')) {
             throw new ActivationPreparationError(409, { error: 'post-audit-preamble-refused' });
           }
-          assertCurrentState();
-          if (!currentPolicyMatches()) {
-            throw new ActivationPreparationError(409, { error: 'activation-policy-changed' });
-          }
+          reassertActivationAuthorization();
           const claim = ctx.controlStore.claimRunActivation(ownerSubject, runRef, activationInput);
           if (!claim.ok) throw new Error(claim.detail);
           claimed = claim.value;
