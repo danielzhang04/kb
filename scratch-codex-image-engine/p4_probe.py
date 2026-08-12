@@ -71,6 +71,49 @@ def count_pre_call_tool_calls(thread_id):
     return n
 
 
+def run_resume_probe(*, label, thread_id, prompt_path, seeds, cwd, timeout_s=240):
+    """Second turn into an existing thread: `codex exec resume <thread_id> --json ...`."""
+    # Same PATHEXT resolution as run_probe: bare "codex" is codex.CMD on Windows (A1 deviation 1).
+    codex_bin = shutil.which("codex") or "codex"
+    # `exec resume` accepts ONLY `--json <SESSION_ID> [PROMPT]` (codex 0.146.1 rc-2 rejects
+    # --sandbox/--cd): the resumed session restores its own stored cwd and sandbox. The `cwd`
+    # arg therefore only sets the child process cwd, not the session's working root.
+    argv = [codex_bin, "exec", "resume", str(thread_id), "--json", "--skip-git-repo-check",
+            build_envelope(prompt_path, seeds)]
+    raw, err = ARC / f"{label}-raw.jsonl", ARC / f"{label}-stderr.txt"
+    kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" \
+        else {"start_new_session": True}
+    before = _thread_dir_listing(thread_id)
+    t0 = time.time()
+    with open(raw, "w", encoding="utf-8") as fo, open(err, "w", encoding="utf-8") as fe:
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=fo, stderr=fe,
+                                cwd=str(cwd), **kwargs)
+        timed_out = False
+        try:
+            proc.wait(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            kill_tree(proc)
+    saw_thread_started, usage, seen_id = False, {}, None
+    for line in raw.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("type") == "thread.started":
+            saw_thread_started, seen_id = True, ev.get("thread_id")
+        elif ev.get("type") == "turn.completed":
+            usage = ev.get("usage", {})
+    after = _thread_dir_listing(thread_id)
+    out = {"label": label, "resumed": True, "thread_id": thread_id,
+           "emitted_thread_started": saw_thread_started, "thread_started_id": seen_id,
+           "usage": usage, "pre_call_tool_calls": count_pre_call_tool_calls(thread_id),
+           "wall_s": round(time.time() - t0, 1), "returncode": proc.returncode,
+           "timed_out": timed_out, "new_images": sorted(after - before)}
+    print(json.dumps(out, indent=2), flush=True)
+    return out
+
+
 def scrub_long_strings(obj, max_len=120, keep=40):
     """Recursively truncate every string value longer than `max_len` chars to its first
     `keep` chars plus a "...<TRUNCATED len=N>" marker (N = original length) -- no exceptions.

@@ -1,0 +1,17 @@
+Reading additional input from stdin...
+2026-08-12T01:54:45.563630Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff3ad-61f6-7513-9127-a973f73a5f26`" }
+2026-08-12T01:54:45.564046Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-12T01:54:50.374988Z ERROR codex_core::tools::router: error=approval policy is UnlessTrusted; reject command — you should not ask for escalated permissions if the approval policy is UnlessTrusted
+2026-08-12T01:55:09.538417Z ERROR codex_app_server::bespoke_event_handling: request failed with client error: JSONRPCErrorError { code: -32000, data: None, message: "command execution approval is not supported in exec mode for thread `019ff3ad-61f6-7513-9127-a973f73a5f26`" }
+2026-08-12T01:55:09.538659Z ERROR codex_core::tools::router: error=approval request failed
+2026-08-12T01:55:16.067754Z ERROR codex_core::tools::router: error=Exit code: 1
+Wall time: 0.9 seconds
+Output:
+Get-Content : A parameter cannot be found that matches parameter name 'AsByteStream'.
+At line:2 char:13
++ Get-Content -AsByteStream -LiteralPath 'C:\Users\danie\kb-worktrees\b ...
++             ~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Get-Content], ParameterBindingException
+    + FullyQualifiedErrorId : NamedParameterNotFound,Microsoft.PowerShell.Commands.GetContentCommand
+ 
+
