@@ -442,6 +442,8 @@ export interface StorageInventoryItemDto {
   eventCount: number;
   estimatedBytes: number;
   quarantinedAt: string | null;
+  /** The subject that owns the bundle; quarantine and restore never move it. See `RunDto.ownerSubject`. */
+  ownerSubject: string;
 }
 
 export interface StorageInventoryDto {
@@ -756,7 +758,17 @@ export function activateRun(
   }, token, fetchImpl);
 }
 
-/** Re-enter the exact launch operation after accepted Human Requests have committed. */
+/**
+ * Re-enter the exact PRE-PUBLICATION launch operation after accepted Human Requests have committed.
+ *
+ * A run that is already published no longer resumes from here. The server does it: answering the last
+ * open boundary is the operator's go, and `POST /human-requests/:ref/respond` (and the completion-gate
+ * route) kick the same activation the manual Resume button uses — see `server/control/routes.ts`
+ * `resumeRunAfterBoundaryAccepted`. This client used to fire its OWN `activate` with a different
+ * idempotency key, which after the server-side resume landed would have meant two activations of one
+ * run from two sides, deduped by nothing. One mechanism, server-side; the Resume button stays as the
+ * operator's manual fallback when the daemon is locked.
+ */
 export async function resumeRunAfterHumanResponse(
   runRef: string,
   token: string,
@@ -770,16 +782,6 @@ export async function resumeRunAfterHumanResponse(
       expectedHash: detail.run.proposalHash,
       idempotencyKey: `launch:${detail.run.proposalHash}`,
     }, token, fetchImpl);
-  } else if (detail.run.publicationState === 'published' && detail.run.state === 'waiting-human') {
-    try {
-      await activateRun(detail.run, token, fetchImpl);
-    } catch (error) {
-      // The Human Request response is already durable. An intentionally inactive daemon runtime is
-      // still a successful response flow; activation remains visibly gated on the refreshed run.
-      if (error instanceof ControlApiError
-        && (error.code === 'automatic-runtime-not-activated' || error.code === 'execution-locked')) return;
-      throw error;
-    }
   }
 }
 

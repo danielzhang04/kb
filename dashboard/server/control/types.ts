@@ -31,6 +31,13 @@ export interface ProposalRevision {
   createdAt: string;
   snapshot: JsonObject;
   approval: ProposalApproval | null;
+  /**
+   * The subject that OWNS this revision — `operator` for one authored in the Composer, `dashboard-engine`
+   * for one the queue bridge imported from a card. Same rule and same immutability as
+   * {@link RunMetadata.ownerSubject}: a cross-subject launch executes AS this subject, so the launch
+   * route has to be able to name it.
+   */
+  ownerSubject: string;
 }
 
 export interface ProposalRevisionMetadata {
@@ -343,6 +350,8 @@ export interface StorageInventoryItem {
   eventCount: number;
   estimatedBytes: number;
   quarantinedAt: string | null;
+  /** The subject that owns the bundle — see {@link RunMetadata.ownerSubject}. Quarantine never moves it. */
+  ownerSubject: string;
 }
 
 export interface StorageInventory {

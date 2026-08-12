@@ -199,7 +199,12 @@ const SESSION_EDGES: Readonly<Record<ManagedSessionState, ReadonlySet<ManagedSes
   interrupted: new Set(['stopped']),
 };
 
-interface StoredProposal extends ProposalRevision {
+/**
+ * `ownerSubject` is omitted deliberately: on a STORED row the owner is `subject`, and carrying both
+ * would be two mutable copies of one fact. {@link publicProposal} projects `subject` onto `ownerSubject`
+ * on the way out, exactly as `detail`/`metadata` do for a run.
+ */
+interface StoredProposal extends Omit<ProposalRevision, 'ownerSubject'> {
   subject: string;
 }
 
@@ -735,7 +740,7 @@ export interface BrokerStoreBackend {
 export interface ControlPlaneStore extends BrokerStoreBackend {
   listProposalRevisions(subject: string, proposalRef?: string): ProposalRevisionMetadata[];
   listProposalRevisionsForComposer(subject: string, sourceComposerRef: string, scope?: ReadScope): ProposalRevisionMetadata[];
-  getProposalRevision(subject: string, proposalRef: string, revision: number): ControlResult<ProposalRevision>;
+  getProposalRevision(subject: string, proposalRef: string, revision: number, scope?: ReadScope): ControlResult<ProposalRevision>;
   createProposalRevision(subject: string, input: CreateProposalRevisionInput): ControlResult<ProposalRevision>;
   decideProposal(subject: string, proposalRef: string, revision: number, input: ApproveProposalInput): ControlResult<ProposalRevision>;
 
@@ -744,6 +749,20 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   listRuns(subject: string, scope?: ReadScope): RunMetadata[];
   getRun(subject: string, runRef: string, scope?: ReadScope): ControlResult<RunDetail>;
   createRun(subject: string, input: CreateRunInput): ControlResult<RunDetail>;
+  /**
+   * The non-terminal run this SUBJECT already holds for `(proposalRef, revision)`, ignoring the one a
+   * launch keyed `launchOperationKey` would replay.
+   *
+   * A cross-subject launch consults it before creating a run: the operator's launch key is namespaced
+   * away from the owner's key space, so replay can never find the owner's in-flight run, and a second
+   * launch of the same revision would strand it behind a duplicate.
+   */
+  findActiveRunForRevision(
+    subject: string,
+    proposalRef: string,
+    revision: number,
+    launchOperationKey: string,
+  ): RunMetadata | null;
   /** Read an exact durable activation receipt without claiming a new activation. */
   getRunActivationReceipt(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt | null>;
   /** Internal lifecycle guard used to exclude competing Manager recovery while activation owns the run. */
@@ -848,10 +867,15 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   appendEvent(subject: string, runRef: string, input: OperationalEventInput, scope?: ReadScope): ControlResult<OperationalEvent>;
   listEvents(subject: string, runRef: string, afterCursor?: number, limit?: number, scope?: ReadScope): ControlResult<OperationalEvent[]>;
 
-  inventory(subject: string): StorageInventory;
-  dryRunQuarantine(subject: string, runRefs: string[]): ControlResult<QuarantinePlan>;
-  quarantineRuns(subject: string, runRefs: string[], expectedPlanHash: string): ControlResult<StorageInventoryItem[]>;
-  restoreRun(subject: string, runRef: string): ControlResult<RunMetadata>;
+  /**
+   * Retention. `scope` defaults to `'own-subject'` here exactly as everywhere else; a widened call
+   * resolves the bundle across subjects and then partitions every record it moves by the RUN's OWN
+   * subject, so quarantine and restore never relabel a bundle as the caller's.
+   */
+  inventory(subject: string, scope?: ReadScope): StorageInventory;
+  dryRunQuarantine(subject: string, runRefs: string[], scope?: ReadScope): ControlResult<QuarantinePlan>;
+  quarantineRuns(subject: string, runRefs: string[], expectedPlanHash: string, scope?: ReadScope): ControlResult<StorageInventoryItem[]>;
+  restoreRun(subject: string, runRef: string, scope?: ReadScope): ControlResult<RunMetadata>;
 }
 
 export class ControlStoreLimitError extends Error {}
@@ -1144,8 +1168,10 @@ function validOptionalEventText(input: OperationalEventInput): boolean {
 }
 
 function publicProposal(value: StoredProposal): ProposalRevision {
-  const { subject: _subject, ...proposal } = value;
-  return clone(proposal);
+  const { subject, ...proposal } = value;
+  // Always the REVISION's own subject, never the reader's: under `'all-subjects'` those differ, and the
+  // field exists precisely to name the owner of a revision the caller does not own.
+  return { ...clone(proposal), ownerSubject: subject };
 }
 
 function proposalMetadata(value: StoredProposal): ProposalRevisionMetadata {
@@ -1418,6 +1444,7 @@ function inventoryItem(bundle: QuarantinedRunBundle | Omit<QuarantinedRunBundle,
     eventCount: bundle.events.length,
     estimatedBytes: bundleBytes(bundle),
     quarantinedAt: 'quarantinedAt' in bundle ? bundle.quarantinedAt : null,
+    ownerSubject: bundle.subject,
   };
 }
 
@@ -1804,7 +1831,9 @@ const AUTHORIZED_20260801_AGENT_WORKSPACE_LAUNCH = {
   declarationHash: 'ba119796897f72495ba8dadcb8ca78a4be352e88e6f7ef42c74823fe1b048fc0',
 } as const;
 
-export function exactAuthorized20260801ProposalRevision(proposal: ProposalRevision): boolean {
+// Takes the OWNERLESS shape so a `StoredProposal` and a projected `ProposalRevision` both satisfy it —
+// the frozen field-by-field comparison below is unchanged and never looks at ownership.
+export function exactAuthorized20260801ProposalRevision(proposal: Omit<ProposalRevision, 'ownerSubject'>): boolean {
   const approval = proposal.approval as unknown as Record<string, unknown> | null;
   return proposal.proposalRef === AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF
     && proposal.sourceComposerRef === 'workflow-registry'
@@ -3034,15 +3063,20 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
     return null;
   };
 
-  const quarantinePlan = (document: StoreDocument, subject: string, runRefs: string[], createdAt: string): ControlResult<QuarantinePlan> => {
+  const quarantinePlan = (
+    document: StoreDocument, subject: string, runRefs: string[], createdAt: string, scope: ReadScope = 'own-subject',
+  ): ControlResult<QuarantinePlan> => {
     const unique = [...new Set(runRefs)].sort();
     if (unique.length === 0 || unique.length !== runRefs.length) return fail('invalid', 'runRefs must be a non-empty array without duplicates');
     const items = [];
     const bundleHashes: Array<{ runRef: string; bundleHash: string }> = [];
     for (const runRef of unique) {
-      const run = findRun(document, subject, runRef);
+      const run = findRun(document, subject, runRef, scope);
       if (!run) return fail('not-found', `run '${runRef}' was not found`);
-      const bundle = activeBundle(document, subject, run);
+      // The bundle is assembled under the RUN's OWN subject, so a widened plan describes exactly the
+      // records that will move — reading the siblings as the CALLER would return an empty bundle and
+      // report a foreign run as costless and trivially eligible.
+      const bundle = activeBundle(document, run.subject, run);
       const item = inventoryItem(bundle);
       items.push({ ...item, eligible: bundleIsQuarantineEligible(bundle) });
       bundleHashes.push({ runRef, bundleHash: quarantineBundleHash(bundle) });
@@ -3051,6 +3085,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       runs: bundleHashes,
     };
     return ok({
+      // The plan hash stays keyed to the CALLER, not the owner: it is the dry-run → execute CAS for one
+      // reviewer's confirmation, and both halves are computed by the same caller. Keying it to the owner
+      // would let two different callers' confirmations satisfy each other's CAS.
       planHash: sha256(`${subject}\n${canonicalJson(planBody)}`),
       createdAt,
       items,
@@ -3073,8 +3110,13 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         .map(proposalMetadata);
     },
 
-    getProposalRevision(subject, proposalRef, revision) {
-      const proposal = load().proposals.find((item) => item.subject === subject && item.proposalRef === proposalRef && item.revision === revision);
+    getProposalRevision(subject, proposalRef, revision, scope = 'own-subject') {
+      // Widened for the operator's SINGLE-revision read only (run detail's checkpoint pick-list, and the
+      // launch route resolving a bridge-imported revision). The proposals LIST and the composer
+      // import/revision/decision paths stay own-subject on purpose — bridge adoption safety and Composer
+      // authoring state are not the operator's to enumerate or edit. See {@link ReadScope}.
+      const proposal = load().proposals.find((item) =>
+        (scope === 'all-subjects' || item.subject === subject) && item.proposalRef === proposalRef && item.revision === revision);
       return proposal ? ok(publicProposal(proposal)) : fail('not-found', 'proposal revision was not found');
     },
 
@@ -3160,6 +3202,19 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const document = load();
       const run = findRun(document, subject, runRef, scope);
       return run ? ok(detail(document, run.subject, run)) : fail('not-found', 'run was not found');
+    },
+
+    findActiveRunForRevision(subject, proposalRef, revision, launchOperationKey) {
+      const document = load();
+      // Own-subject only, by construction: the caller asks about the OWNER's key space, which is the
+      // space a launch would create in. `launchOperationKey` names the run this launch would REPLAY, and
+      // replaying is not duplicating.
+      const active = document.runs.find((item) => item.subject === subject
+        && item.proposalRef === proposalRef
+        && item.proposalRevision === revision
+        && item.launchOperationKey !== launchOperationKey
+        && !TERMINAL_RUN.has(item.state));
+      return active ? metadata(document, subject, active) : null;
     },
 
     createRun(subject, input) {
@@ -5399,17 +5454,20 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         .map(publicEvent));
     },
 
-    inventory(subject) {
+    inventory(subject, scope = 'own-subject') {
       const document = load();
-      const activeRuns = document.runs.filter((run) => run.subject === subject).map((run) => inventoryItem(activeBundle(document, subject, run)));
-      const quarantinedRuns = document.quarantine.filter((bundle) => bundle.subject === subject).map(inventoryItem);
+      const mine = (owner: string): boolean => scope === 'all-subjects' || owner === subject;
+      // Each bundle is still assembled under its OWN subject; the scope only decides which bundles are
+      // listed at all.
+      const activeRuns = document.runs.filter((run) => mine(run.subject)).map((run) => inventoryItem(activeBundle(document, run.subject, run)));
+      const quarantinedRuns = document.quarantine.filter((bundle) => mine(bundle.subject)).map(inventoryItem);
       const proposalBytes = document.proposals
-        .filter((proposal) => proposal.subject === subject)
+        .filter((proposal) => mine(proposal.subject))
         .reduce((sum, proposal) => sum + Buffer.byteLength(JSON.stringify(proposal), 'utf8'), 0);
       return {
         activeRuns,
         quarantinedRuns,
-        proposalRevisionCount: document.proposals.filter((proposal) => proposal.subject === subject).length,
+        proposalRevisionCount: document.proposals.filter((proposal) => mine(proposal.subject)).length,
         nextEventCursor: document.nextEventCursor,
         estimatedBytes: proposalBytes
           + activeRuns.reduce((sum, item) => sum + item.estimatedBytes, 0)
@@ -5417,13 +5475,13 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       };
     },
 
-    dryRunQuarantine(subject, runRefs) {
-      return quarantinePlan(load(), subject, runRefs, stamp());
+    dryRunQuarantine(subject, runRefs, scope = 'own-subject') {
+      return quarantinePlan(load(), subject, runRefs, stamp(), scope);
     },
 
-    quarantineRuns(subject, runRefs, expectedPlanHash) {
+    quarantineRuns(subject, runRefs, expectedPlanHash, scope = 'own-subject') {
       const document = load();
-      const planned = quarantinePlan(document, subject, runRefs, stamp());
+      const planned = quarantinePlan(document, subject, runRefs, stamp(), scope);
       if (!planned.ok) return planned;
       if (planned.value.planHash !== expectedPlanHash) return fail('conflict', 'quarantine plan changed; review a fresh dry-run');
       if (planned.value.items.some((item) => !item.eligible)) {
@@ -5432,32 +5490,41 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const quarantinedAt = stamp();
       const moved: StorageInventoryItem[] = [];
       for (const item of planned.value.items) {
-        const run = findRun(document, subject, item.runRef);
+        const run = findRun(document, subject, item.runRef, scope);
         if (!run) return fail('conflict', 'quarantine plan changed');
-        const bundle: QuarantinedRunBundle = { ...activeBundle(document, subject, run), quarantinedAt };
+        // `owner` — never the caller — keys the bundle and every partition sweep below. Sweeping by the
+        // caller's subject on a widened quarantine would archive an EMPTY bundle and leave the owner's
+        // stages, attempts, sessions, requests and events orphaned behind the removed run.
+        const owner = run.subject;
+        const bundle: QuarantinedRunBundle = { ...activeBundle(document, owner, run), quarantinedAt };
         document.quarantine.push(bundle);
         document.runs = document.runs.filter((value) => value !== run);
-        document.stages = document.stages.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
-        document.attempts = document.attempts.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
-        document.sessions = document.sessions.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
-        document.humanRequests = document.humanRequests.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
-        document.events = document.events.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
-        document.stageGenerations = document.stageGenerations.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
-        document.reviewLoops = document.reviewLoops.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
-        document.reviewReceipts = document.reviewReceipts.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
-        document.generationSupersessions = document.generationSupersessions.filter((value) => value.subject !== subject || value.runRef !== run.runRef);
+        document.stages = document.stages.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
+        document.attempts = document.attempts.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
+        document.sessions = document.sessions.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
+        document.humanRequests = document.humanRequests.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
+        document.events = document.events.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
+        document.stageGenerations = document.stageGenerations.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
+        document.reviewLoops = document.reviewLoops.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
+        document.reviewReceipts = document.reviewReceipts.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
+        document.generationSupersessions = document.generationSupersessions.filter((value) => value.subject !== owner || value.runRef !== run.runRef);
         moved.push(inventoryItem(bundle));
       }
       commit(document);
       return ok(moved);
     },
 
-    restoreRun(subject, runRef) {
+    restoreRun(subject, runRef, scope = 'own-subject') {
       const document = load();
-      if (findRun(document, subject, runRef)) return fail('conflict', 'an active run already has this reference');
-      const index = document.quarantine.findIndex((bundle) => bundle.subject === subject && bundle.run.runRef === runRef);
+      if (findRun(document, subject, runRef, scope)) return fail('conflict', 'an active run already has this reference');
+      const index = document.quarantine.findIndex((bundle) =>
+        (scope === 'all-subjects' || bundle.subject === subject) && bundle.run.runRef === runRef);
       if (index < 0) return fail('not-found', 'quarantined run was not found');
       const [bundle] = document.quarantine.splice(index, 1);
+      // Restore puts the bundle back exactly where it came from: every record it carries already names
+      // its own subject, and the recovery event and the returned metadata are filed under that same
+      // owner, never under whoever asked for the restore.
+      const owner = bundle.subject;
       const restoredAt = stamp();
       bundle.run.updatedAt = restoredAt;
       bundle.run.version += 1;
@@ -5473,7 +5540,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       document.generationSupersessions.push(...bundle.generationSupersessions);
       document.events.sort((a, b) => a.cursor - b.cursor);
       const recoveryEvent: StoredEvent = {
-        subject,
+        subject: owner,
         cursor: document.nextEventCursor,
         runRef,
         kind: 'lifecycle',
@@ -5493,7 +5560,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       document.nextEventCursor += 1;
       document.events.push(recoveryEvent);
       commit(document);
-      return ok(metadata(document, subject, bundle.run));
+      return ok(metadata(document, owner, bundle.run));
     },
   };
 }

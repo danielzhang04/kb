@@ -23,7 +23,7 @@ import { compileApprovedProposal } from './compiler.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
-import type { CreateHumanRequestInput } from './store.ts';
+import { OPERATOR_SUBJECT, type CreateHumanRequestInput } from './store.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 
 /** A transport-neutral HTTP outcome. Routes serialise it with `reply.code(status).send(body)`. */
@@ -48,6 +48,15 @@ export interface ApprovedLaunchInput {
   internalService?: InternalServiceCaller;
   /** Client-supplied launch identity. Empty is rejected by the store, never invented server-side. */
   idempotencyKey: string;
+  /**
+   * The verified session that AUTHORIZED this launch, when that is not the owner it executes as (ruling
+   * 3: a verified operator may launch/retry another subject's approved revision; the run is still
+   * created under the REVISION'S OWNER — ownership never moves — and the operator is only the actor).
+   *
+   * Omitted by every own-subject caller (the workflow route, the queue bridge), so their audit rows and
+   * their idempotency keys are byte-unchanged.
+   */
+  actorSubject?: string;
   predecessorRunRef: string | null;
   expectedPredecessorVersion: number;
   /** Optional provenance discriminator recorded in the launch audit detail (e.g. `workflow:<id>`). */
@@ -84,14 +93,71 @@ export function defaultWorkers(repoRoot: string): Record<string, string> {
  * Launch an approved revision. One ops transaction: reconcile, compile, publish cards + audit,
  * activate. Nested transaction helpers (prepare/commit/audit/activate) reenter the held lock instead
  * of deadlocking.
+ *
+ * `sub` is the subject the launch EXECUTES AS — the owner of every record it creates (the run, its
+ * stages, attempts, sessions, boundaries, events) and the subject the executor is handed. On a
+ * cross-subject operator launch that is the REVISION'S owner, not the caller; `input.actorSubject` then
+ * names the caller and appears as the audit row's `owner` beside `detail.runOwnerSubject`.
  */
 export async function executeApprovedLaunch(
   ctx: SurfaceContext,
   sub: string,
   input: ApprovedLaunchInput,
 ): Promise<LaunchOutcome> {
-  const { proposalRef, revision, storedHash, snapshot, idempotencyKey } = input;
+  const { proposalRef, revision, storedHash, snapshot } = input;
+  const actorSubject = input.actorSubject ?? sub;
+  const crossSubject = actorSubject !== sub;
+  /**
+   * IDEMPOTENCY SAFETY, both directions.
+   *
+   * `createRun` keys replay on `(subject, launchOperationKey)` and guards it with a content fingerprint.
+   * A cross-subject launch writes into the OWNER's key space, where the owner's own launcher (the queue
+   * bridge, keyed `queue-bridge:<cardId>`) already lives — so a client-supplied key could collide with
+   * an operation the operator never performed. Namespacing the operator's key removes the collision
+   * outright rather than relying on the fingerprint to reject it:
+   *
+   *   - operator → bridge: an operator key can never equal a bridge key, so no operator request can
+   *     replay, alias, or poison (`idempotency-conflict`) the bridge's launch record;
+   *   - bridge → operator: a bridge re-tick of the same card still finds its OWN run and replays it,
+   *     because nothing the operator wrote can occupy `queue-bridge:<cardId>`.
+   *
+   * Operator retries stay idempotent among themselves (the namespace is deterministic). Own-subject
+   * launches are untouched — same key, byte for byte.
+   *
+   * The namespace parses back injectively only while the actor is the ONE literal operator subject: for
+   * a free-form actor, `a` + `b:c` and `a:b` + `c` build the same key, so two distinct operations would
+   * share one launch identity. The guard below ENFORCES that invariant instead of inheriting it from the
+   * fact that `readScope` widens for `operator` alone.
+   */
+  if (crossSubject && actorSubject !== OPERATOR_SUBJECT) {
+    return { status: 403, body: { error: 'cross-subject-launch-actor-refused' } };
+  }
+  const idempotencyKey = crossSubject && input.idempotencyKey
+    ? `operator:${actorSubject}:${input.idempotencyKey}`
+    : input.idempotencyKey;
   return withOpsTransaction(async (): Promise<LaunchOutcome> => {
+    // NO CROSS-SUBJECT LAUNCH MAY DUPLICATE A LIVE RUN.
+    //
+    // One-directional by design: only cross-subject launches consult this guard. The owner's own
+    // launcher (e.g. the queue bridge) skips it — an own-subject fresh key is a deliberate second run.
+    //
+    // The namespace above buys collision safety at the cost of recognition: an operator key can never
+    // equal the owner's, so `createRun` cannot replay the owner's in-flight run and would mint a SECOND
+    // engine-owned run for the same revision — stranding the first (this is exactly what the SPA's
+    // pre-publication resume did to a bridge-launched run). Own-subject launches keep their existing
+    // contract: their raw key IS their launch identity, and a fresh key there is a deliberate second run.
+    //
+    // Retry is exempt because it carries a predecessor and is already gated by the quiescence check
+    // below; a TERMINAL prior run never blocks a fresh launch.
+    if (crossSubject && input.predecessorRunRef === null) {
+      const active = ctx.controlStore.findActiveRunForRevision(sub, proposalRef, revision, idempotencyKey);
+      if (active) {
+        return {
+          status: 409,
+          body: { error: 'run-already-exists-for-revision', runRef: active.runRef, runOwnerSubject: sub },
+        };
+      }
+    }
     try {
       // Reconcile canonical ops before loading executable policy, routing, or running the post-pull
       // preamble. The launcher below receives no second pull hook, so approval checks and publication
@@ -117,6 +183,9 @@ export async function executeApprovedLaunch(
     if (!compiled.ok) return { status: 400, body: { error: compiled.reason, detail: compiled.detail } };
     const predecessorRunRef = input.predecessorRunRef;
     if (predecessorRunRef) {
+      // Resolved as the OWNER, like every other read here. A Retry successor belongs to the same subject
+      // as the run it succeeds, so a predecessor under any other subject is correctly not-found — an
+      // operator cannot graft one subject's run onto another subject's revision.
       const predecessor = ctx.controlStore.getRun(sub, predecessorRunRef);
       if (!predecessor.ok) return failure(predecessor);
       if (predecessor.value.run.version !== input.expectedPredecessorVersion
@@ -272,12 +341,17 @@ export async function executeApprovedLaunch(
       const riskTier = parsed.value.stages.some((stage) => stage.riskTier === 'T3') ? 'T3'
         : parsed.value.stages.some((stage) => stage.riskTier === 'T2') ? 'T2' : 'T1';
       appendLocal(ctx.repoRoot, {
-        action: 'control-run-launch', owner: sub, target: parsed.value.project, riskTier,
+        // `owner` is the ACTOR that authorized this launch — the operator session on a cross-subject
+        // launch — while `runOwnerSubject` names the subject the launch executes as and the run belongs
+        // to. They are equal for every own-subject launch; the row is what makes them attributable when
+        // they are not.
+        action: 'control-run-launch', owner: actorSubject, target: parsed.value.project, riskTier,
         result: `launched:${runRef}:${storedHash}`,
         detail: {
           proposalRef,
           proposalRevision: revision,
           proposalHash: storedHash,
+          runOwnerSubject: sub,
           policyBaseCommit,
           policyHashes: compiled.value.stagePolicies.map((stage) => ({ stageId: stage.stageId, policyHash: stage.decision.policyHash })),
           ...(input.source === undefined ? {} : { source: input.source }),

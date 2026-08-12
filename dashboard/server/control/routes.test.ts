@@ -19,6 +19,7 @@ import type { SurfaceContext } from '../http/context.ts';
 import { authorizedFailedRunReconciliationGrant, authorizedFailedRunReconciliationRefusal } from './routes.ts';
 import { AuthorizedFailedRunPublishedUncommittedError } from './authorizedFailedRunReconciliation.ts';
 import { createAttemptIoStore } from './attemptIo.ts';
+import { executeApprovedLaunch } from './launch.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -219,22 +220,23 @@ describe('control proposal routes', () => {
     return { request, resolve };
   }
 
-  function seedActivatableRun(withAcceptedRequest = true, suffix = '') {
-    const stored = controlStore.createProposalRevision('operator', {
+  /** `owner` is whose run it is: 'operator' for an SPA launch, 'dashboard-engine' for a bridge launch. */
+  function seedActivatableRun(withAcceptedRequest = true, suffix = '', owner = 'operator') {
+    const stored = controlStore.createProposalRevision(owner, {
       sourceComposerRef: 'composer-activation',
       sourceTurnId: 'turn-activation',
       title: proposal.title,
       snapshot: proposal as unknown as JsonObject,
     });
     if (!stored.ok) throw new Error(stored.detail);
-    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, stored.value.revision, {
+    const approved = controlStore.decideProposal(owner, stored.value.proposalRef, stored.value.revision, {
       expectedHash: stored.value.hash,
       expectedApprovalRevision: 0,
       decision: 'approved',
       idempotencyKey: `approve-activation${suffix}`,
     });
     if (!approved.ok) throw new Error(approved.detail);
-    const created = controlStore.createRun('operator', {
+    const created = controlStore.createRun(owner, {
       title: proposal.title,
       proposalRef: stored.value.proposalRef,
       proposalRevision: stored.value.revision,
@@ -250,45 +252,45 @@ describe('control proposal routes', () => {
     });
     if (!created.ok) throw new Error(created.detail);
     for (const stage of created.value.stages.filter((candidate) => candidate.dependsOn.length === 0)) {
-      const linked = controlStore.linkStageCard('operator', stage.stageRef, stage.version, workflowCardId(created.value.run.runRef, stage.stageId));
+      const linked = controlStore.linkStageCard(owner, stage.stageRef, stage.version, workflowCardId(created.value.run.runRef, stage.stageId));
       if (!linked.ok) throw new Error(linked.detail);
     }
     const publishing = controlStore.transitionPublication(
-      'operator',
+      owner,
       created.value.run.runRef,
       created.value.run.version,
       'publishing',
     );
     if (!publishing.ok) throw new Error(publishing.detail);
     const published = controlStore.transitionPublication(
-      'operator',
+      owner,
       created.value.run.runRef,
       publishing.value.version,
       'published',
     );
     if (!published.ok) throw new Error(published.detail);
     const waiting = controlStore.transitionRun(
-      'operator',
+      owner,
       created.value.run.runRef,
       published.value.version,
       'waiting-human',
     );
     if (!waiting.ok) throw new Error(waiting.detail);
     if (withAcceptedRequest) {
-      const request = controlStore.createHumanRequest('operator', created.value.run.runRef, {
+      const request = controlStore.createHumanRequest(owner, created.value.run.runRef, {
         kind: 'intervention',
         title: 'Execution report',
         prompt: 'Acknowledge the report before resuming.',
       });
       if (!request.ok) throw new Error(request.detail);
-      const responded = controlStore.respondHumanRequest('operator', request.value.requestRef, {
+      const responded = controlStore.respondHumanRequest(owner, request.value.requestRef, {
         expectedRevision: request.value.revision,
         decision: 'responded',
         idempotencyKey: `accept-activation${suffix}`,
       });
       if (!responded.ok) throw new Error(responded.detail);
     }
-    const detail = controlStore.getRun('operator', created.value.run.runRef);
+    const detail = controlStore.getRun(owner, created.value.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
     return detail.value;
   }
@@ -303,6 +305,8 @@ describe('control proposal routes', () => {
       completedRoot?: boolean;
       verifyCanonicalResult?: boolean;
       managerStartAckTimeoutMs?: number;
+      /** Override the ops runner — a throwing one is the cheapest deterministic pre-claim refusal. */
+      opsGit?: (root: string, args: string[]) => string;
     } = {},
   ) {
     const runAutomatic = vi.fn(overrides.runAutomatic ?? (async (input: ExecuteRunInput) => {
@@ -355,7 +359,8 @@ describe('control proposal routes', () => {
       }))) as never,
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
-      opsGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '',
+      opsGit: overrides.opsGit
+        ?? ((_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : ''),
     }));
     await activated.ready();
     return { activated, runAutomatic, cancelAutomatic, containManagerStart, activateManagedRoots, verifyCanonicalResult };
@@ -1317,6 +1322,498 @@ describe('control proposal routes', () => {
         value: { run: { state: 'waiting-human', version: detail.run.version } },
       });
     } finally {
+      await activated.close();
+    }
+  });
+
+  /** The open ask an operator actually answers in the Inbox, on an already parked run. */
+  function seedOpenBoundary(
+    runRef: string,
+    owner = 'operator',
+    input: { kind?: 'intervention' | 'approval'; title?: string; stageRef?: string } = {},
+  ) {
+    const request = controlStore.createHumanRequest(owner, runRef, {
+      kind: input.kind ?? 'intervention',
+      title: input.title ?? 'Launch reconciliation required',
+      prompt: 'Acknowledge this before the run continues.',
+      ...(input.stageRef ? { stageRef: input.stageRef } : {}),
+    });
+    if (!request.ok) throw new Error(request.detail);
+    return request.value;
+  }
+
+  function respondPayload(request: { requestRef: string; revision: number }, decision: string) {
+    return {
+      expectedRevision: request.revision,
+      decision,
+      idempotencyKey: `human:${request.requestRef}:${request.revision}:${decision}`,
+      response: null,
+    };
+  }
+
+  /** The key the server derives for an auto-resume; used to read the receipt it did (or did not) write. */
+  function autoResumeInput(run: { runRef: string; version: number; managerGeneration: number; proposalHash: string }) {
+    return {
+      expectedRunVersion: run.version,
+      expectedManagerGeneration: run.managerGeneration,
+      idempotencyKey: `auto-resume:${run.runRef}:${run.version}:${run.managerGeneration}:${run.proposalHash}`,
+    };
+  }
+
+  it('resumes a parked run the moment a human answer clears its last boundary', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    const wired = await activatedApp();
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      // Answering the gate IS the go: no second control, and the answer's own response never waits on
+      // Manager startup.
+      await vi.waitFor(() => expect(wired.runAutomatic).toHaveBeenCalledTimes(1));
+      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({
+        subject: 'operator', runRef: detail.run.runRef,
+      }));
+      await vi.waitFor(() => expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'running' } },
+      }));
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
+        .toMatchObject({ ok: true, value: { phase: 'dispatched' } });
+      expect(wired.activateManagedRoots).toHaveBeenCalledTimes(1);
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('resumes an engine-owned run AS ITS OWNER when the operator answers its last boundary', async () => {
+    const detail = seedActivatableRun(false, ':engine', 'dashboard-engine');
+    const boundary = seedOpenBoundary(detail.run.runRef, 'dashboard-engine');
+    const wired = await activatedApp(undefined, {
+      appendAudit: (_root: string, event: unknown) => {
+        auditRows.push(event as Record<string, unknown>);
+        return { ts: new Date().toISOString(), ...(event as Record<string, unknown>) };
+      },
+    });
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await vi.waitFor(() => expect(wired.runAutomatic).toHaveBeenCalledTimes(1));
+      // The operator authorized it; the engine that OWNS the run is what executes, exactly like the
+      // stop route's cancellation. Ownership never moves.
+      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({
+        subject: 'dashboard-engine', runRef: detail.run.runRef,
+      }));
+      await vi.waitFor(() => expect(controlStore.getRun('dashboard-engine', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'running' } },
+      }));
+      expect(controlStore.getRunActivationReceipt('dashboard-engine', detail.run.runRef, autoResumeInput(detail.run)))
+        .toMatchObject({ ok: true, value: { phase: 'dispatched' } });
+      // Both the answer and the activation it triggered name the operator as ACTOR and the engine as
+      // the run's owner. Ownership is never laundered by a cross-subject control.
+      expect(auditRows).toContainEqual(expect.objectContaining({
+        action: 'control-human-response-authorize', owner: 'operator',
+        detail: expect.objectContaining({ runOwnerSubject: 'dashboard-engine' }),
+      }));
+      expect(auditRows).toContainEqual(expect.objectContaining({
+        action: 'control-run-activate-authorize', owner: 'operator',
+        detail: expect.objectContaining({ runOwnerSubject: 'dashboard-engine' }),
+      }));
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('activates an engine-owned run for the operator and stays not-found for every other subject', async () => {
+    const detail = seedActivatableRun(true, ':engine-activate', 'dashboard-engine');
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:manual`,
+    };
+    const wired = await activatedApp(undefined, {
+      appendAudit: (_root: string, event: unknown) => {
+        auditRows.push(event as Record<string, unknown>);
+        return { ts: new Date().toISOString(), ...(event as Record<string, unknown>) };
+      },
+    });
+    try {
+      // The live 2026-08-11 refusal: the operator's Resume click on a bridge-launched run died as
+      // not-found inside the receipt lookup, leaving activationReceipts empty.
+      const stranger = await wired.activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(mintSession('another-agent', SESSION).token), payload,
+      });
+      expect(stranger.statusCode).toBe(404);
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRunActivationReceipt('dashboard-engine', detail.run.runRef, payload))
+        .toMatchObject({ ok: true, value: null });
+
+      const operator = await wired.activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(operator.statusCode, operator.body).toBe(202);
+      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({ subject: 'dashboard-engine' }));
+      expect(controlStore.getRunActivationReceipt('dashboard-engine', detail.run.runRef, payload))
+        .toMatchObject({ ok: true, value: { phase: 'dispatched' } });
+      // The actor is the operator; the run's owner is recorded beside it, never laundered.
+      expect(auditRows).toContainEqual(expect.objectContaining({
+        action: 'control-run-activate-authorize',
+        owner: 'operator',
+        detail: expect.objectContaining({ runOwnerSubject: 'dashboard-engine' }),
+      }));
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('starts nothing while another boundary on the same run is still open', async () => {
+    const detail = seedActivatableRun(false);
+    const first = seedOpenBoundary(detail.run.runRef, 'operator', { title: 'First gate' });
+    seedOpenBoundary(detail.run.runRef, 'operator', { title: 'Second gate' });
+    const wired = await activatedApp();
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${first.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(first, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'waiting-human' } },
+      });
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('never resumes on a rejected decision', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef, 'operator', { kind: 'approval', title: 'Publish approval' });
+    const wired = await activatedApp();
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'rejected'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'waiting-human' } },
+      });
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('records the answer and leaves the run parked while the daemon is locked', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    // `app` is the unarmed daemon: no broker, no executor. A locked daemon must never auto-start work.
+    const responded = await app.inject({
+      method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+      headers: headers(token), payload: respondPayload(boundary, 'responded'),
+    });
+    expect(responded.statusCode, responded.body).toBe(200);
+    expect(responded.json()).toMatchObject({ ok: true, value: { state: 'resolved' } });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+      ok: true, value: { run: { state: 'waiting-human', version: detail.run.version } },
+    });
+    expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
+      .toMatchObject({ ok: true, value: null });
+    // The manual Resume stays the fallback, and is what tells the operator the runtime is gated.
+    const manual = await app.inject({
+      method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`, headers: headers(token),
+      payload: {
+        expectedRunVersion: detail.run.version,
+        expectedManagerGeneration: detail.run.managerGeneration,
+        idempotencyKey: `activate:${detail.run.runRef}:manual`,
+      },
+    });
+    expect(manual.statusCode).toBe(409);
+    // The locked daemon's own refusal, which is what raises the unlock prompt in the UI.
+    expect(manual.json()).toMatchObject({ error: 'execution-locked' });
+  });
+
+  /** Every intervention on the run, in mint order, by title — the storm is visible as a length. */
+  function interventionTitles(runRef: string, owner = 'operator'): string[] {
+    const detail = controlStore.getRun(owner, runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    return detail.value.humanRequests.filter((request) => request.kind === 'intervention').map((request) => request.title);
+  }
+
+  /**
+   * A DETERMINISTIC activation refusal must not become an intervention treadmill.
+   *
+   * Every refusal reachable before `claimRunActivation` writes no receipt and does not bump the run
+   * version, so the auto-resume key is byte-identical on the next try: answering the park re-fired the
+   * same failure, which minted the next park, up to MAX_HUMAN_REQUESTS_PER_RUN — then the run was parked
+   * forever with nothing left to answer.
+   */
+  it('parks a deterministically refused resume ONCE and never re-fires it from its own answer', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    // Canonical reconciliation fails => `canonical-reconciliation-failed`, before any claim.
+    const wired = await activatedApp(undefined, {
+      opsGit: () => { throw new Error('ops fetch refused'); },
+    });
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await vi.waitFor(() => expect(interventionTitles(detail.run.runRef))
+        .toEqual(['Launch reconciliation required', 'Automatic resume needs intervention']));
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+
+      // Answering the park itself: the run is still parked and every boundary is accepted, so the
+      // predicate that drives the resume is satisfied — only the do-not-re-fire rule stops it.
+      const parked = controlStore.getRun('operator', detail.run.runRef);
+      if (!parked.ok) throw new Error(parked.detail);
+      const parkRequest = parked.value.humanRequests.find((request) => request.title === 'Automatic resume needs intervention');
+      if (!parkRequest) throw new Error('park intervention missing');
+      const answeredPark = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${parkRequest.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(parkRequest, 'responded'),
+      });
+      expect(answeredPark.statusCode, answeredPark.body).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(interventionTitles(detail.run.runRef))
+        .toEqual(['Launch reconciliation required', 'Automatic resume needs intervention']);
+      // No second activation attempt at all: no receipt, no executor call, run untouched.
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
+        .toMatchObject({ ok: true, value: null });
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'waiting-human' } },
+      });
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('files ONE intervention for a failed activation dispatch, not one per surface', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    // The executor returns without ever acknowledging durable Manager startup: the dispatch path fails,
+    // files its own 'Activation dispatch needs reconciliation', and returns the refusal that the
+    // auto-resume park would otherwise report a SECOND time for the same event.
+    const wired = await activatedApp(undefined, {
+      runAutomatic: async () => ({
+        state: 'succeeded' as const, startedStageIds: [], completedStageIds: [], waitingStageIds: [],
+      }),
+    });
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await vi.waitFor(() => expect(interventionTitles(detail.run.runRef))
+        .toEqual(['Launch reconciliation required', 'Activation dispatch needs reconciliation']));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(interventionTitles(detail.run.runRef))
+        .toEqual(['Launch reconciliation required', 'Activation dispatch needs reconciliation']);
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('never kicks a second time on a replayed response', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    const payload = respondPayload(boundary, 'responded');
+    // Record the decision on the unarmed daemon: durable, no resume.
+    const first = await app.inject({
+      method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+      headers: headers(token), payload,
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const wired = await activatedApp();
+    try {
+      // The identical re-submit now reaches an ARMED daemon with the boundary predicate satisfied. It is
+      // still a replay — it records no new decision, so it starts nothing.
+      const replayed = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload,
+      });
+      expect(replayed.statusCode, replayed.body).toBe(200);
+      expect(replayed.json()).toMatchObject({ replayed: true });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'waiting-human' } },
+      });
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  /**
+   * Review lineage spliced onto a REAL parked run: the gate request, the response and every post-resolve
+   * read stay real (which is the whole point — the resume predicate reads post-resolve state), while the
+   * receipt/loop pair the route validates is supplied here.
+   */
+  function spliceCompletionGate(detail: { run: { runRef: string }; stages: Array<{ stageRef: string; stageId: string }> }, requestRef: string, owner = 'operator') {
+    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
+    const subjectStage = detail.stages.find((stage) => stage.stageId === 'verify');
+    if (!reviewStage || !subjectStage) throw new Error('splice stages missing');
+    const receipt = {
+      reviewReceiptRef: 'receipt-splice', runRef: detail.run.runRef, reviewStageRef: reviewStage.stageRef,
+      subjectStageRef: subjectStage.stageRef, subjectGenerationRef: 'generation-1', subjectResultHash: 'a'.repeat(64),
+      checkerAttemptRef: 'attempt-check', outcome: {}, outcomeHash: 'b'.repeat(64),
+      operationKey: `review-outcome:${detail.run.runRef}:report:g1`, state: 'awaiting-completion-gate',
+      completionRequestRef: requestRef, interventionRequestRef: null, version: 7,
+      createdAt: '2026-08-11T12:00:00.000Z', finalizedAt: null,
+    };
+    const loop = {
+      reviewLoopRef: 'loop-splice', runRef: detail.run.runRef, reviewStageRef: reviewStage.stageRef,
+      subjectStageRef: subjectStage.stageRef, maxCreatorReworks: 1, reviewDefinitionHash: 'c'.repeat(64),
+      reworksUsed: 0, state: 'awaiting-gate', activeGenerationRef: 'generation-1', acceptedGenerationRef: null,
+      activeReceiptRef: receipt.reviewReceiptRef, interventionRequestRef: null, version: 8,
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    };
+    const realGetRun = controlStore.getRun.bind(controlStore);
+    vi.spyOn(controlStore, 'getRun').mockImplementation(((subjectId: string, runRef: string, scope?: never) => {
+      const found = realGetRun(subjectId, runRef, scope);
+      if (!found.ok || found.value.run.runRef !== detail.run.runRef) return found;
+      return { ...found, value: { ...found.value, reviewReceipts: [receipt], reviewLoops: [loop] } };
+    }) as never);
+    vi.spyOn(controlStore, 'resolveReviewCompletionGate').mockImplementation(((
+      subjectId: string,
+      gateRequestRef: string,
+      input: { expectedRequestRevision: number; decision: string; idempotencyKey: string; response: string | null },
+      scope?: never,
+    ) => {
+      const responded = controlStore.respondHumanRequest(subjectId, gateRequestRef, {
+        expectedRevision: input.expectedRequestRevision,
+        decision: input.decision as 'approved',
+        idempotencyKey: input.idempotencyKey,
+        response: input.response,
+      }, scope);
+      if (!responded.ok) return responded;
+      return {
+        ok: true,
+        replayed: responded.replayed ?? false,
+        value: {
+          request: responded.value, receipt, loop, reviewStage, subjectStage,
+          interventionRequest: input.decision === 'approved' ? null : { requestRef: 'intervention-splice' },
+        },
+      };
+    }) as never);
+    return { receipt, loop, reviewStage, owner };
+  }
+
+  it('resumes the run when an approved completion gate clears its last boundary', async () => {
+    const detail = seedActivatableRun(false);
+    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
+    if (!reviewStage) throw new Error('review stage missing');
+    const gate = seedOpenBoundary(detail.run.runRef, 'operator', {
+      kind: 'approval', title: 'Approve the checker result', stageRef: reviewStage.stageRef,
+    });
+    spliceCompletionGate(detail, gate.requestRef);
+    const wired = await activatedApp();
+    try {
+      const resolved = await wired.activated.inject({
+        method: 'POST', url: `/api/control/review-completion-gates/${gate.requestRef}/resolve`,
+        headers: headers(token),
+        payload: {
+          expectedRequestRevision: gate.revision, decision: 'approved',
+          idempotencyKey: `gate:${gate.requestRef}:approved`, response: 'Approved.',
+        },
+      });
+      expect(resolved.statusCode, resolved.body).toBe(200);
+      await vi.waitFor(() => expect(wired.runAutomatic).toHaveBeenCalledTimes(1));
+      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({
+        subject: 'operator', runRef: detail.run.runRef,
+      }));
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('leaves a completion-gate approval parked while the daemon is locked', async () => {
+    const detail = seedActivatableRun(false);
+    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
+    if (!reviewStage) throw new Error('review stage missing');
+    const gate = seedOpenBoundary(detail.run.runRef, 'operator', {
+      kind: 'approval', title: 'Approve the checker result', stageRef: reviewStage.stageRef,
+    });
+    spliceCompletionGate(detail, gate.requestRef);
+    const resolved = await app.inject({
+      method: 'POST', url: `/api/control/review-completion-gates/${gate.requestRef}/resolve`,
+      headers: headers(token),
+      payload: {
+        expectedRequestRevision: gate.revision, decision: 'approved',
+        idempotencyKey: `gate:${gate.requestRef}:approved`, response: 'Approved.',
+      },
+    });
+    expect(resolved.statusCode, resolved.body).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+      ok: true, value: { run: { state: 'waiting-human', version: detail.run.version } },
+    });
+    expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
+      .toMatchObject({ ok: true, value: null });
+  });
+
+  /**
+   * The lock is keyed by the RUN (its owner + ref), not by whoever called. Keyed by the caller, an
+   * operator activation ('operator') and any engine-side operation on the same run ('dashboard-engine')
+   * would take DIFFERENT locks and interleave — the exclusion would be gone on exactly the headless runs
+   * it exists for. This is the cross-subject twin of the own-subject stop-race test above.
+   */
+  it('serializes cross-subject controls on one run behind its activation', async () => {
+    const detail = seedActivatableRun(true, ':engine-lock', 'dashboard-engine');
+    let releasePreparation!: () => void;
+    let preparationEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { preparationEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releasePreparation = resolve; });
+    const { activated, cancelAutomatic, runAutomatic } = await activatedApp(async () => {
+      preparationEntered();
+      await release;
+    });
+    try {
+      const activationPromise = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`, headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version, expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:engine-lock`,
+        },
+      });
+      await entered;
+      let stopSettled = false;
+      const stopPromise = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/manager/stop`, headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version, expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `stop:${detail.run.runRef}:${detail.run.version}`,
+        },
+      }).then((value) => { stopSettled = true; return value; });
+      // Long enough for an UNSERIALIZED stop to run to completion: at this point the activation has not
+      // yet claimed, so a stop that reached the store would pass CAS and cancel the run. Keyed by the
+      // caller instead of the run, that is exactly what happened here.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(stopSettled).toBe(false);
+      expect(cancelAutomatic).not.toHaveBeenCalled();
+      releasePreparation();
+      const [activation, stop] = await Promise.all([activationPromise, stopPromise]);
+      expect(activation.statusCode, activation.body).toBe(202);
+      expect(runAutomatic).toHaveBeenCalledWith(expect.objectContaining({ subject: 'dashboard-engine' }));
+      expect(stop.statusCode, stop.body).toBe(409);
+      expect(stop.json()).toMatchObject({ error: 'run-state-changed' });
+      expect(cancelAutomatic).not.toHaveBeenCalled();
+    } finally {
+      releasePreparation();
       await activated.close();
     }
   });
@@ -2894,6 +3391,651 @@ describe('operator cross-subject authority', () => {
       if (!owned.ok) throw new Error(owned.detail);
       expect(owned.value.run.state).toBe('waiting-human');
       expect(owned.value.humanRequests).toEqual([expect.objectContaining({ requestRef, state: 'open' })]);
+    } finally { await app.close(); }
+  });
+});
+
+/**
+ * Operator cross-subject authority, round 3 — the four remaining dead ends a route-surface audit found
+ * after the mutation widening landed (2026-08-12).
+ *
+ * Same ruling, same idiom as the block above: the target is resolved from the VERIFIED SESSION's read
+ * scope, the work then executes AS THE TARGET'S OWNER, ownership never moves, and the audit row names
+ * the operator as the actor beside `runOwnerSubject`. What these four add is that they are the surfaces
+ * where the SPA offers a button and the server answered `not-found`:
+ *
+ *   - launch/retry     RunDetail's "Run it again" and the pre-publication resume, both 404 on an
+ *                      engine-owned revision before anything was written;
+ *   - reroute          the per-stage runtime/model controls;
+ *   - retention        "Stored data" -> "Review archiving";
+ *   - the single       run detail's steering CHECKPOINT pick-list, which failed SILENTLY and degraded
+ *     revision GET     to a free-text box.
+ */
+describe('operator cross-subject authority — launch, reroute, retention, revision read', () => {
+  const ENGINE = 'dashboard-engine';
+
+  function surface(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    /** An audit sink that REJECTS — the durable-row precondition every mutation here is gated on. */
+    appendAudit?: (repoRoot: string, event: Record<string, unknown>) => unknown,
+  ) {
+    const audit: Array<Record<string, unknown>> = [];
+    const routingWrites: Array<Record<string, unknown>> = [];
+    const capture = (_repoRoot: string, event: Record<string, unknown>) => {
+      audit.push(event);
+      return { ts: '2026-08-12T00:00:00.000Z', ...event };
+    };
+    let composerId = 0;
+    const app = Fastify();
+    registerWriteSurface(app, makeSurfaceContext({
+      repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
+      sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: store,
+      composerStore: createInMemoryComposerStore({
+        protector: { seal: (value: string) => value, open: (value: string) => value },
+        newId: () => `composer-${++composerId}`,
+      }),
+      appendAudit: appendAudit ?? capture, appendAuditLocal: capture,
+      runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
+      opsGit: (_repoRoot: string, args: string[]) => {
+        if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+        if (args.join(' ') === 'rev-parse HEAD') return `${'a'.repeat(40)}\n`;
+        return '';
+      },
+      // One runner for both shapes this suite drives: a card-routing operation (reroute) carries
+      // `cardId`; a workflow publication carries `runId` + `stages`.
+      runPy: (_repoRoot: string, _code: string, jsonArg: string) => {
+        const payload = JSON.parse(jsonArg) as {
+          cardId?: string; runId?: string; managed?: boolean; stages?: Array<{ id: string; dependsOn: string[] }>;
+        };
+        if (typeof payload.cardId === 'string') {
+          routingWrites.push(payload as Record<string, unknown>);
+          return {
+            exitCode: 0, stderr: '',
+            stdout: `${JSON.stringify({ id: payload.cardId, path: `queue/inbox/${payload.cardId}.md`, state: 'inbox' })}\n`,
+          };
+        }
+        return {
+          exitCode: 0, stderr: '', stdout: JSON.stringify({
+            runId: payload.runId,
+            cards: (payload.stages ?? []).map((stage) => {
+              const cardId = workflowCardId(String(payload.runId), stage.id);
+              const state = payload.managed || stage.dependsOn.length ? 'blocked' : 'inbox';
+              return { stageId: stage.id, cardId, state, cardPath: `queue/${state === 'blocked' ? 'inbox' : state}/${cardId}.md` };
+            }),
+          }),
+        };
+      },
+    } as never));
+    return { app, audit, routingWrites, token: mintSession('operator', SESSION).token };
+  }
+
+  /** One APPROVED revision owned by `owner` — the shape the queue bridge imports from a card. */
+  function approvedRevisionFor(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    owner: string,
+    key: string,
+    snapshot: PlanProposal = proposal,
+  ): { proposalRef: string; hash: string } {
+    const created = store.createProposalRevision(owner, {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: key, title: snapshot.title,
+      snapshot: snapshot as unknown as JsonObject,
+    });
+    if (!created.ok) throw new Error(created.detail);
+    const approved = store.decideProposal(owner, created.value.proposalRef, 1, {
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    return { proposalRef: created.value.proposalRef, hash: created.value.hash };
+  }
+
+  /** The run the queue bridge itself creates from that revision, under its own launch operation key. */
+  function bridgeRunFor(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    revision: { proposalRef: string; hash: string },
+    idempotencyKey: string,
+  ) {
+    const run = store.createRun(ENGINE, {
+      title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
+      expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
+      idempotencyKey,
+      stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+    });
+    if (!run.ok) throw new Error(run.detail);
+    return run.value;
+  }
+
+  // ── GAP-3: launch / retry ────────────────────────────────────────────────────────────────────────
+
+  it('launches an engine-owned revision AS the engine, with the operator audited as the actor', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `x-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-launch');
+    const { app, audit, token } = surface(store);
+    try {
+      const launched = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+      // The P0 symptom was a 404 here, from the very first revision lookup.
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+
+      // OWNERSHIP NEVER MOVES: the run, its stages and their canonical cards are all the engine's, and
+      // the operator's own partition stays empty.
+      const owned = store.getRun(ENGINE, runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.ownerSubject).toBe(ENGINE);
+      expect(owned.value.run.publicationState).toBe('published');
+      expect(owned.value.stages.map((stage) => stage.canonicalCardRef))
+        .toEqual(proposal.stages.map((stage) => workflowCardId(runRef, stage.id)));
+      expect(store.listRuns('operator')).toEqual([]);
+      expect(store.getRun('operator', runRef)).toMatchObject({ ok: false, reason: 'not-found' });
+
+      // ATTRIBUTION: `owner` is the operator (the actor), `runOwnerSubject` is whose run it is.
+      expect(audit.find((row) => row.action === 'control-run-launch')).toMatchObject({
+        owner: 'operator', result: `launched:${runRef}:${revision.hash}`,
+        detail: expect.objectContaining({ runOwnerSubject: ENGINE, proposalHash: revision.hash }),
+      });
+    } finally { await app.close(); }
+  });
+
+  it('resolves the Retry predecessor as the run OWNER, not the caller', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `y-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-retry');
+    const predecessor = bridgeRunFor(store, revision, 'queue-bridge:card-retry');
+    const interrupted = store.transitionRun(ENGINE, predecessor.run.runRef, predecessor.run.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    const { app, token } = surface(store);
+    try {
+      const retried = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: {
+          expectedHash: revision.hash, idempotencyKey: `retry:${predecessor.run.runRef}:${interrupted.value.version}`,
+          predecessorRunRef: predecessor.run.runRef, expectedPredecessorVersion: interrupted.value.version,
+        },
+      });
+      // The mechanism under test is WHICH SUBJECT the predecessor is read as. Read as the caller it was
+      // `not-found`; read as the owner it is found, its version matches, and the launch proceeds to the
+      // canonical quiescence check — which this in-memory surface has no committed cards to satisfy.
+      expect(retried.statusCode, retried.body).toBe(409);
+      expect(retried.json()).toMatchObject({ error: 'retry-predecessor-not-quiescent' });
+    } finally { await app.close(); }
+  });
+
+  /**
+   * BRIDGE IDEMPOTENCY SAFETY, both directions.
+   *
+   * `createRun` keys replay on `(subject, launchOperationKey)`. A cross-subject launch writes into the
+   * OWNER's key space, so a client-supplied key could name an operation the operator never performed —
+   * and the bridge's keys are derived from card ids, which a browser can read off the run. The operator's
+   * key is therefore namespaced inside `executeApprovedLaunch`.
+   */
+  it('namespaces the operator launch key so it can neither replay nor poison the bridge record', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `z-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-idem');
+    const bridgeKey = 'queue-bridge:card-collide';
+    const bridgeRun = bridgeRunFor(store, revision, bridgeKey);
+    // SETTLED first: a LIVE run for this revision is refused outright now (see the one-run-per-revision
+    // test below), so the namespace property is exercised where a second launch is legitimate.
+    const settled = store.transitionRun(ENGINE, bridgeRun.run.runRef, bridgeRun.run.version, 'stopped');
+    if (!settled.ok) throw new Error(settled.detail);
+    const { app, token } = surface(store);
+    try {
+      // DIRECTION 1 — operator -> bridge. The operator presents the BRIDGE's exact key. Without the
+      // namespace this replays the bridge's own run (same fingerprint) and answers for a launch the
+      // operator never made; with it, the operator gets a launch of its own and the bridge's record is
+      // not consulted at all.
+      const collided = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: bridgeKey },
+      });
+      expect(collided.statusCode, collided.body).toBe(202);
+      const operatorRunRef = collided.json().runRef as string;
+      expect(operatorRunRef).not.toBe(bridgeRun.run.runRef);
+
+      // The bridge's run is untouched — same version as the settle left it, still unpublished.
+      const untouched = store.getRun(ENGINE, bridgeRun.run.runRef);
+      if (!untouched.ok) throw new Error(untouched.detail);
+      expect(untouched.value.run).toMatchObject({
+        version: settled.value.version, publicationState: 'pending', state: 'stopped',
+      });
+
+      // DIRECTION 2 — bridge -> operator. The bridge re-ticks the SAME card and still replays ITS OWN
+      // run, because nothing the operator wrote can occupy `queue-bridge:<cardId>`.
+      const replay = store.createRun(ENGINE, {
+        title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
+        expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
+        idempotencyKey: bridgeKey,
+        stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+      });
+      expect(replay).toMatchObject({ ok: true, replayed: true });
+      expect(replay.ok && replay.value.run.runRef).toBe(bridgeRun.run.runRef);
+
+      // And the operator's own key stays idempotent among the operator's own launches.
+      const again = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: bridgeKey },
+      });
+      expect(again.statusCode, again.body).toBe(200);
+      expect(again.json()).toMatchObject({ runRef: operatorRunRef, replayed: true });
+    } finally { await app.close(); }
+  });
+
+  /**
+   * ONE RUN PER REVISION, ACROSS SUBJECTS.
+   *
+   * The namespace above means an operator key can never equal the owner's, so `createRun` cannot replay
+   * the owner's in-flight run: the SPA's pre-publication resume (RunDetail -> `launch:<proposalHash>`)
+   * used to mint a SECOND engine-owned run for the same revision and strand the bridge's original.
+   */
+  it('refuses a cross-subject launch while a live run already exists for that revision', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `u-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-duplicate');
+    const bridgeRun = bridgeRunFor(store, revision, 'queue-bridge:card-live');
+    // Parked pre-publication — the exact state the SPA offers its resume button on.
+    const parked = store.transitionRun(ENGINE, bridgeRun.run.runRef, bridgeRun.run.version, 'waiting-human');
+    if (!parked.ok) throw new Error(parked.detail);
+    const { app, audit, token } = surface(store);
+    const resume = { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` };
+    const url = `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`;
+    try {
+      const refused = await app.inject({ method: 'POST', url, headers: headers(token), payload: resume });
+      expect(refused.statusCode, refused.body).toBe(409);
+      expect(refused.json()).toMatchObject({
+        error: 'run-already-exists-for-revision', runRef: bridgeRun.run.runRef, runOwnerSubject: ENGINE,
+      });
+
+      // ZERO SIDE EFFECTS: no second run anywhere, the live run untouched, nothing audited.
+      expect(store.listRuns(ENGINE).map((run) => run.runRef)).toEqual([bridgeRun.run.runRef]);
+      expect(store.listRuns('operator')).toEqual([]);
+      const untouched = store.getRun(ENGINE, bridgeRun.run.runRef);
+      if (!untouched.ok) throw new Error(untouched.detail);
+      expect(untouched.value.run).toMatchObject({
+        version: parked.value.version, publicationState: 'pending', state: 'waiting-human',
+      });
+      expect(untouched.value.humanRequests).toEqual([]);
+      expect(audit).toEqual([]);
+
+      // RETRY IS EXEMPT: it carries a predecessor and is gated by the quiescence check instead.
+      const retried = await app.inject({
+        method: 'POST', url, headers: headers(token),
+        payload: {
+          expectedHash: revision.hash, idempotencyKey: `retry:${bridgeRun.run.runRef}`,
+          predecessorRunRef: bridgeRun.run.runRef, expectedPredecessorVersion: parked.value.version,
+        },
+      });
+      expect(retried.json().error).not.toBe('run-already-exists-for-revision');
+
+      // A TERMINAL prior run does not block a fresh launch of the same revision.
+      const settled = store.transitionRun(ENGINE, bridgeRun.run.runRef, parked.value.version, 'stopped');
+      if (!settled.ok) throw new Error(settled.detail);
+      const launched = await app.inject({ method: 'POST', url, headers: headers(token), payload: resume });
+      expect(launched.statusCode, launched.body).toBe(202);
+      expect(launched.json().runRef).not.toBe(bridgeRun.run.runRef);
+      // ...and that new run is itself live now, so the same request stops duplicating it — it replays
+      // its OWN launch record instead (the operator's namespaced key), never a fresh run.
+      const replayed = await app.inject({ method: 'POST', url, headers: headers(token), payload: resume });
+      expect(replayed.statusCode, replayed.body).toBe(200);
+      expect(replayed.json()).toMatchObject({ runRef: launched.json().runRef, replayed: true });
+    } finally { await app.close(); }
+  });
+
+  it('refuses to namespace a launch key for any actor but the one operator subject', async () => {
+    // `operator:<actor>:<key>` is injectively parseable ONLY while the actor is the single literal
+    // operator subject: actor 'a' + key 'b:c' and actor 'a:b' + key 'c' produce the same string, so two
+    // different operations would share one launch identity. No route reaches this today (`readScope`
+    // widens for `operator` alone) — the guard is what keeps the invariant true if one ever does, and it
+    // refuses before touching the store, the ops tree, or the run.
+    const outcome = await executeApprovedLaunch({} as never, ENGINE, {
+      proposalRef: 'proposal-collide', revision: 1, storedHash: 'a'.repeat(64), snapshot: {},
+      sessionToken: undefined, actorSubject: 'a:b', idempotencyKey: 'c',
+      predecessorRunRef: null, expectedPredecessorVersion: -1,
+    });
+    expect(outcome).toMatchObject({ status: 403, body: { error: 'cross-subject-launch-actor-refused' } });
+  });
+
+  it('keeps an own-subject launch key un-namespaced, byte for byte', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `w-${++n}`; })() });
+    const revision = approvedRevisionFor(store, 'operator', 'own-launch');
+    const { app, audit, token } = surface(store);
+    try {
+      const launched = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+      // The un-namespaced client key still identifies this launch: an SPA re-entry with the SAME key
+      // replays the same run (the pre-publication resume depends on exactly this).
+      const resumed = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
+        payload: { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` },
+      });
+      expect(resumed.json()).toMatchObject({ runRef, replayed: true });
+      // Actor and owner are the same subject here, and the row says so rather than going quiet.
+      expect(audit.find((row) => row.action === 'control-run-launch')).toMatchObject({
+        owner: 'operator', detail: expect.objectContaining({ runOwnerSubject: 'operator' }),
+      });
+    } finally { await app.close(); }
+  });
+
+  it('refuses a third subject the launch of a foreign revision, with zero side effects', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `v-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-foreign');
+    const { app, audit } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(otherToken),
+        payload: { expectedHash: revision.hash, idempotencyKey: 'foreign-launch' },
+      });
+      expect(refused.statusCode, refused.body).toBe(404);
+      expect(refused.json()).toMatchObject({ error: 'not-found' });
+      expect(audit).toEqual([]);
+      expect(store.listRuns(ENGINE)).toEqual([]);
+      expect(store.listRuns('other-agent')).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  // ── GAP-4: per-stage reroute ─────────────────────────────────────────────────────────────────────
+
+  /** A published engine-owned run whose first stage is a legal reroute source (ready / queued / pending). */
+  function reroutableEngineRun(store: ReturnType<typeof createInMemoryControlPlaneStore>) {
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-reroute');
+    const created = bridgeRunFor(store, revision, 'queue-bridge:card-reroute');
+    const runRef = created.run.runRef;
+    const stage = created.stages[0];
+    const cardRef = workflowCardId(runRef, stage.stageId);
+    const linked = store.linkStageCard(ENGINE, stage.stageRef, stage.version, cardRef);
+    if (!linked.ok) throw new Error(linked.detail);
+    const publishing = store.transitionPublication(ENGINE, runRef, created.run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const published = store.transitionPublication(ENGINE, runRef, publishing.value.version, 'published');
+    if (!published.ok) throw new Error(published.detail);
+    const attempt = store.createAttempt(ENGINE, stage.stageRef, {
+      expectedStageVersion: linked.value.version, runtime: 'codex', model: 'gpt-5.6-sol',
+    });
+    if (!attempt.ok) throw new Error(attempt.detail);
+    const session = store.createWorkerSession(ENGINE, attempt.value.attemptRef, { expectedAttemptVersion: attempt.value.version });
+    if (!session.ok) throw new Error(session.detail);
+    const current = store.getRun(ENGINE, runRef);
+    if (!current.ok) throw new Error(current.detail);
+    // Re-read both: linking the attempt bumps the stage and `createWorkerSession` bumps the attempt.
+    const live = current.value.stages.find((item) => item.stageRef === stage.stageRef);
+    const liveAttempt = current.value.attempts.find((item) => item.attemptRef === attempt.value.attemptRef);
+    if (!live || !liveAttempt) throw new Error('reroute source missing');
+    return {
+      runRef, cardRef, stageRef: stage.stageRef,
+      payload: {
+        expectedStageVersion: live.version, expectedAttemptRef: liveAttempt.attemptRef,
+        expectedAttemptVersion: liveAttempt.version, runtime: 'claude', model: 'claude-sonnet-5',
+        idempotencyKey: `reroute:${runRef}:1`,
+      },
+    };
+  }
+
+  it('reroutes a stage on an engine-owned run: successor attempt under the engine, operator audited', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `r-${++n}`; })() });
+    const target = reroutableEngineRun(store);
+    const { app, audit, routingWrites, token } = surface(store);
+    try {
+      const response = await app.inject({
+        method: 'POST', url: `/api/control/runs/${target.runRef}/stages/${target.stageRef}/reroute`,
+        headers: headers(token), payload: target.payload,
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({
+        ok: true,
+        value: {
+          attempt: { generation: 2, runtime: 'claude', model: 'claude-sonnet-5', state: 'queued' },
+          session: { state: 'pending' },
+        },
+      });
+      expect(routingWrites).toEqual([expect.objectContaining({ cardId: target.cardRef, runtime: 'claude', model: 'claude-sonnet-5' })]);
+
+      // The successor attempt, its session and the timeline event all landed under the RUN's OWNER.
+      const owned = store.getRun(ENGINE, target.runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.attempts.map((attempt) => [attempt.generation, attempt.runtime, attempt.model]))
+        .toEqual([[1, 'codex', 'gpt-5.6-sol'], [2, 'claude', 'claude-sonnet-5']]);
+      expect(store.listRuns('operator')).toEqual([]);
+      const events = store.listEvents(ENGINE, target.runRef);
+      if (!events.ok) throw new Error(events.detail);
+      expect(events.value.map((event) => event.summary))
+        .toContain('queued successor attempt 2 with claude/claude-sonnet-5');
+
+      // The canonical routing audit names the ACTOR — the verified operator session, not the run owner.
+      expect(audit.find((row) => row.action === 'card-routing')).toMatchObject({ owner: 'operator' });
+      // ...and it names a CARD, so run-owner attribution is this surface's own row, written before the
+      // canonical write like every other cross-subject mutation here.
+      expect(audit.find((row) => row.action === 'control-run-reroute-authorize')).toMatchObject({
+        owner: 'operator', riskTier: 'T2', result: 'authorized:claude:claude-sonnet-5',
+        detail: expect.objectContaining({
+          runRef: target.runRef, runOwnerSubject: ENGINE, stageRef: target.stageRef, cardId: target.cardRef,
+        }),
+      });
+      expect(audit.findIndex((row) => row.action === 'control-run-reroute-authorize'))
+        .toBeLessThan(audit.findIndex((row) => row.action === 'card-routing'));
+    } finally { await app.close(); }
+  });
+
+  it('refuses a third subject the reroute of a foreign stage, with zero side effects', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `q-${++n}`; })() });
+    const target = reroutableEngineRun(store);
+    const { app, audit, routingWrites } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/runs/${target.runRef}/stages/${target.stageRef}/reroute`,
+        headers: headers(otherToken), payload: target.payload,
+      });
+      expect(refused.statusCode, refused.body).toBe(404);
+      expect(refused.json()).toMatchObject({ error: 'not-found' });
+      expect(routingWrites).toEqual([]);
+      expect(audit).toEqual([]);
+      const owned = store.getRun(ENGINE, target.runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.attempts).toHaveLength(1);
+    } finally { await app.close(); }
+  });
+
+  // ── GAP-5: retention ─────────────────────────────────────────────────────────────────────────────
+
+  /** An engine-owned run settled into the one shape quarantine accepts. */
+  function quarantinableEngineRun(store: ReturnType<typeof createInMemoryControlPlaneStore>): string {
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-retention');
+    const created = bridgeRunFor(store, revision, 'queue-bridge:card-retention');
+    const runRef = created.run.runRef;
+    const interrupted = store.transitionRun(ENGINE, runRef, created.run.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    for (const stage of created.stages) {
+      const stopped = store.transitionStage(ENGINE, stage.stageRef, stage.version, 'stopped');
+      if (!stopped.ok) throw new Error(stopped.detail);
+    }
+    for (const session of created.sessions) {
+      const stopped = store.transitionSession(ENGINE, session.sessionRef, session.version, 'stopped');
+      if (!stopped.ok) throw new Error(stopped.detail);
+    }
+    return runRef;
+  }
+
+  it('plans, quarantines and restores an engine-owned bundle without ever relabelling it', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `s-${++n}`; })() });
+    const runRef = quarantinableEngineRun(store);
+    const { app, audit, token } = surface(store);
+    try {
+      const planned = await app.inject({
+        method: 'POST', url: '/api/control/retention/dry-run', headers: headers(token), payload: { runRefs: [runRef] },
+      });
+      expect(planned.statusCode, planned.body).toBe(200);
+      const plan = planned.json().value as { planHash: string; items: Array<{ runRef: string; eligible: boolean; ownerSubject: string }> };
+      // The plan describes the OWNER's records — read as the caller the bundle would come back empty,
+      // reporting a foreign run as costless and trivially eligible.
+      expect(plan.items).toEqual([expect.objectContaining({ runRef, eligible: true, ownerSubject: ENGINE })]);
+
+      const quarantined = await app.inject({
+        method: 'POST', url: '/api/control/retention/quarantine', headers: headers(token),
+        payload: { runRefs: [runRef], expectedPlanHash: plan.planHash },
+      });
+      expect(quarantined.statusCode, quarantined.body).toBe(200);
+      expect(audit.find((row) => row.action === 'control-retention-quarantine-authorize')).toMatchObject({
+        owner: 'operator', riskTier: 'T2',
+        detail: expect.objectContaining({ runRefs: [runRef], runOwnerSubjects: [ENGINE] }),
+      });
+
+      // The bundle is filed under the ENGINE, never adopted into the operator's storage.
+      expect(store.inventory(ENGINE).quarantinedRuns).toEqual([expect.objectContaining({ runRef, ownerSubject: ENGINE })]);
+      expect(store.inventory('operator')).toMatchObject({ activeRuns: [], quarantinedRuns: [] });
+      expect(store.getRun(ENGINE, runRef)).toMatchObject({ ok: false, reason: 'not-found' });
+
+      const restored = await app.inject({
+        method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
+      });
+      expect(restored.statusCode, restored.body).toBe(200);
+      expect(restored.json()).toMatchObject({ ok: true, value: { runRef, ownerSubject: ENGINE } });
+      expect(audit.find((row) => row.action === 'control-retention-restore-authorize')).toMatchObject({
+        owner: 'operator', detail: { runRef, runOwnerSubject: ENGINE },
+      });
+
+      // Restored to its OWN subject, with its record tree and a recovery event on its own timeline.
+      const back = store.getRun(ENGINE, runRef);
+      if (!back.ok) throw new Error(back.detail);
+      expect(back.value.ownerSubject).toBe(ENGINE);
+      expect(back.value.stages).toHaveLength(proposal.stages.length);
+      expect(store.listRuns('operator')).toEqual([]);
+      const events = store.listEvents(ENGINE, runRef);
+      if (!events.ok) throw new Error(events.detail);
+      expect(events.value.map((event) => event.summary)).toContain('run restored from quarantine');
+    } finally { await app.close(); }
+  });
+
+  /**
+   * The retention rows are a PRECONDITION, not a trailer: the row must be durable before the bundle
+   * moves. Left unawaited, the rejection escaped as an unhandled rejection and the destructive op ran
+   * anyway, so the only record of who moved whose data was the one that failed to write.
+   */
+  it('moves no bundle when the retention audit row cannot be written', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `n-${++n}`; })() });
+    const runRef = quarantinableEngineRun(store);
+    const rejecting = async () => { throw new Error('ops audit push refused'); };
+    const planning = surface(store);
+    const planned = await planning.app.inject({
+      method: 'POST', url: '/api/control/retention/dry-run', headers: headers(planning.token), payload: { runRefs: [runRef] },
+    });
+    const planHash = (planned.json().value as { planHash: string }).planHash;
+    await planning.app.close();
+
+    const { app, token } = surface(store, rejecting as never);
+    try {
+      const quarantined = await app.inject({
+        method: 'POST', url: '/api/control/retention/quarantine', headers: headers(token),
+        payload: { runRefs: [runRef], expectedPlanHash: planHash },
+      });
+      expect(quarantined.statusCode, quarantined.body).toBe(500);
+      expect(quarantined.json()).toMatchObject({ error: 'quarantine-audit-required' });
+      // The run is still live under its owner and nothing is in quarantine.
+      expect(store.getRun(ENGINE, runRef)).toMatchObject({ ok: true });
+      expect(store.inventory(ENGINE).quarantinedRuns).toEqual([]);
+
+      // Same rule on the way back: quarantine it with a working sink, then fail the restore row.
+      const working = surface(store);
+      const ok = await working.app.inject({
+        method: 'POST', url: '/api/control/retention/quarantine', headers: headers(working.token),
+        payload: { runRefs: [runRef], expectedPlanHash: planHash },
+      });
+      expect(ok.statusCode, ok.body).toBe(200);
+      await working.app.close();
+
+      const restored = await app.inject({
+        method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
+      });
+      expect(restored.statusCode, restored.body).toBe(500);
+      expect(restored.json()).toMatchObject({ error: 'restore-audit-required' });
+      expect(store.inventory(ENGINE).quarantinedRuns).toEqual([expect.objectContaining({ runRef })]);
+      expect(store.getRun(ENGINE, runRef)).toMatchObject({ ok: false, reason: 'not-found' });
+    } finally { await app.close(); }
+  });
+
+  it('shows an engine-owned bundle in the operator inventory and hides it from a third subject', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `t-${++n}`; })() });
+    const runRef = quarantinableEngineRun(store);
+    const { app, token } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      const mine = await app.inject({ method: 'GET', url: '/api/control/retention/inventory', headers: headers(token) });
+      expect((mine.json() as { inventory: { activeRuns: Array<{ runRef: string; ownerSubject: string }> } }).inventory.activeRuns)
+        .toEqual([expect.objectContaining({ runRef, ownerSubject: ENGINE })]);
+
+      const theirs = await app.inject({ method: 'GET', url: '/api/control/retention/inventory', headers: headers(otherToken) });
+      expect((theirs.json() as { inventory: Record<string, unknown> }).inventory)
+        .toMatchObject({ activeRuns: [], quarantinedRuns: [], proposalRevisionCount: 0 });
+    } finally { await app.close(); }
+  });
+
+  it('refuses a third subject every retention route on a foreign run, with zero side effects', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `u-${++n}`; })() });
+    const runRef = quarantinableEngineRun(store);
+    const { app, audit, token } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      // A real plan hash, taken by the operator — a third subject must not be able to spend it either.
+      const planned = await app.inject({
+        method: 'POST', url: '/api/control/retention/dry-run', headers: headers(token), payload: { runRefs: [runRef] },
+      });
+      const planHash = (planned.json().value as { planHash: string }).planHash;
+      audit.length = 0;
+
+      for (const [url, payload] of [
+        ['/api/control/retention/dry-run', { runRefs: [runRef] }],
+        ['/api/control/retention/quarantine', { runRefs: [runRef], expectedPlanHash: planHash }],
+        ['/api/control/retention/restore', { runRef }],
+      ] as Array<[string, Record<string, unknown>]>) {
+        const response = await app.inject({ method: 'POST', url, headers: headers(otherToken), payload });
+        expect(response.statusCode, `${url}: ${response.body}`).toBe(404);
+        expect(response.json()).toMatchObject({ error: 'not-found' });
+      }
+      expect(audit).toEqual([]);
+      const owned = store.getRun(ENGINE, runRef);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.run.state).toBe('interrupted');
+      expect(store.inventory(ENGINE).quarantinedRuns).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  // ── GAP-6: the single-revision read ──────────────────────────────────────────────────────────────
+
+  it('serves an engine-owned revision so the steering checkpoint pick-list populates', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `p-${++n}`; })() });
+    const planned: PlanProposal = {
+      ...proposal,
+      stages: proposal.stages.map((stage) => ({ ...stage, checkpoints: [{ id: `safe-${stage.id}`, label: `After ${stage.title}` }] })),
+    };
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-checkpoints', planned);
+    const { app, token } = surface(store);
+    const otherToken = mintSession('other-agent', SESSION).token;
+    try {
+      const read = await app.inject({
+        method: 'GET', url: `/api/control/proposals/${revision.proposalRef}/revisions/1`, headers: headers(token),
+      });
+      // Before this, run detail's poll threw here and the steering control degraded SILENTLY to a
+      // free-text box — the operator had to type a checkpoint id from memory on exactly the headless
+      // runs steering exists for.
+      expect(read.statusCode, read.body).toBe(200);
+      const value = read.json().value as {
+        ownerSubject: string; snapshot: { stages: Array<{ checkpoints: Array<{ id: string }> }> };
+      };
+      expect(value.ownerSubject).toBe(ENGINE);
+      expect(value.snapshot.stages.flatMap((stage) => stage.checkpoints.map((point) => point.id)))
+        .toEqual(['safe-verify', 'safe-report']);
+
+      // Every other subject keeps exact own-subject scoping on this read too.
+      expect((await app.inject({
+        method: 'GET', url: `/api/control/proposals/${revision.proposalRef}/revisions/1`, headers: headers(otherToken),
+      })).statusCode).toBe(404);
+
+      // BOUNDARY: only the single-revision GET widened. The proposals LIST stays own-subject — bridge
+      // adoption safety — so the operator's Composer list is not filled with imported def-card plans.
+      const list = await app.inject({ method: 'GET', url: '/api/control/proposals', headers: headers(token) });
+      expect((list.json() as { proposals: unknown[] }).proposals).toEqual([]);
     } finally { await app.close(); }
   });
 });
