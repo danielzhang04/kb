@@ -21,9 +21,24 @@ function Get-KeepAwakeRoot {
 # keeps the test suite from ever touching it.
 function Get-KeepAwakeMutexName {
     if (-not $env:KB_KEEPAWAKE_ROOT) { return 'Global\kb-keepawake-supervisor' }
+    # Normalize before hashing: 'C:\x', 'C:\x\' and 'C:\X' are the same store
+    # on Windows and must not derive three different mutex names.
+    $normalized = $env:KB_KEEPAWAKE_ROOT.TrimEnd('\', '/').ToLowerInvariant()
     $sha = [System.Security.Cryptography.SHA256]::Create()
-    $hash = [System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($env:KB_KEEPAWAKE_ROOT))).Replace('-', '').Substring(0, 16)
+    try {
+        $hash = [System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($normalized))).Replace('-', '').Substring(0, 16)
+    } finally { $sha.Dispose() }
     return "Global\kb-keepawake-supervisor-$hash"
+}
+
+# Every state file here (log, armed.json, supervisor.pid, respawn.json) can be
+# the FIRST thing written on a given machine -- only Get-LeaseDir used to create
+# the root, so anything writing before the first lease landed in a missing
+# directory.
+function Confirm-KeepAwakeRoot {
+    $root = Get-KeepAwakeRoot
+    if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force -ErrorAction SilentlyContinue | Out-Null }
+    return $root
 }
 
 function Get-LeaseDir {
@@ -62,8 +77,7 @@ function Invoke-KeepAwakeLogRotation {
 function Write-KeepAwakeLog {
     param([Parameter(Mandatory)][string]$Message)
     try {
-        $root = Get-KeepAwakeRoot
-        if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force -ErrorAction SilentlyContinue | Out-Null }
+        $root = Confirm-KeepAwakeRoot
         # FileStream resolves relative paths against the process working
         # directory, not the PowerShell location -- normalize first.
         $path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath((Join-Path $root 'keepawake.log'))
@@ -573,8 +587,7 @@ function Save-PowerBaseline {
             hibernateidle_ac = (& $read $script:SUB_SLEEP $script:HIBERNATEIDLE 'hibernateidle_ac')
         }
     }
-    $root = Get-KeepAwakeRoot
-    if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
+    Confirm-KeepAwakeRoot | Out-Null
     # Atomic write (temp file + Move-Item -Force) rather than a direct
     # Set-Content -- a crash or power loss mid-write is exactly the scenario
     # that would otherwise leave a corrupt armed.json behind.
@@ -829,6 +842,70 @@ function Test-SupervisorShouldContinueAfterEmptyPass {
     return ((& $GetLiveLeaseCount) -gt 0)
 }
 
+function Get-SupervisorPidFilePath { return (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') }
+
+# Reads any file with FileShare.ReadWrite: the watchdog reads the pidfile on
+# every tool call while the supervisor may be replacing it, and Get-Content's
+# default sharing turned that into a measured 778/800 failure rate.
+function Read-KeepAwakeSharedText {
+    param([Parameter(Mandatory)][string]$Path)
+    $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    $fs = New-Object System.IO.FileStream($full, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+        $sr = New-Object System.IO.StreamReader($fs)
+        try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
+    } finally { $fs.Dispose() }
+}
+
+# A pid ALONE is not an identity: Windows recycles pids, so a recycled pid made
+# the watchdog read a long-dead supervisor as alive forever -- the outage
+# returning silently with the fix in place. Identity is pid + process start
+# time, so the pidfile is a JSON record, written atomically like every other
+# state file here.
+function Write-SupervisorPidFile {
+    param([int]$ProcessId = $PID)
+    Confirm-KeepAwakeRoot | Out-Null
+    $ticks = 0
+    try { $ticks = [long](Get-Process -Id $ProcessId -ErrorAction Stop).StartTime.Ticks } catch { }
+    Write-JsonFileAtomic -Path (Get-SupervisorPidFilePath) -Data ([ordered]@{ pid = $ProcessId; start_ticks = $ticks })
+}
+
+# Format values: 'absent', 'json' (current), 'legacy' (bare int written by a
+# pre-2026-08-12 supervisor still running -- no start time, so identity is
+# unknowable and callers must treat it as dead), 'unreadable'.
+function Read-SupervisorPidRecord {
+    $path = Get-SupervisorPidFilePath
+    if (-not (Test-Path $path)) { return @{ Format = 'absent'; Pid = 0; StartTicks = [long]0 } }
+    $raw = $null
+    try { $raw = Read-KeepAwakeSharedText -Path $path } catch { return @{ Format = 'unreadable'; Pid = 0; StartTicks = [long]0 } }
+    if ([string]::IsNullOrWhiteSpace($raw)) { return @{ Format = 'unreadable'; Pid = 0; StartTicks = [long]0 } }
+    $trimmed = $raw.Trim()
+    try {
+        $obj = $trimmed | ConvertFrom-Json
+        if ($null -ne $obj.PSObject.Properties['pid'] -and $null -ne $obj.PSObject.Properties['start_ticks']) {
+            return @{ Format = 'json'; Pid = [int]$obj.pid; StartTicks = [long]$obj.start_ticks }
+        }
+    } catch { }
+    $n = 0
+    if ([int]::TryParse($trimmed, [ref]$n) -and $n -gt 0) {
+        return @{ Format = 'legacy'; Pid = $n; StartTicks = [long]0 }
+    }
+    return @{ Format = 'unreadable'; Pid = 0; StartTicks = [long]0 }
+}
+
+# Alive AND the same process: a start-time mismatch means the pid was recycled.
+# StartTicks of 0 means "identity unknown", which fails closed to dead so the
+# watchdog respawns rather than trusting a bare pid.
+function Test-SupervisorProcessAlive {
+    param([Parameter(Mandatory)][int]$ProcessId, [long]$StartTicks = 0)
+    if ($ProcessId -le 0 -or $StartTicks -le 0) { return $false }
+    try {
+        $p = Get-Process -Id $ProcessId -ErrorAction Stop
+        if ($p.HasExited) { return $false }
+        return ([long]$p.StartTime.Ticks -eq $StartTicks)
+    } catch { return $false }
+}
+
 # The overnight failure mode this closes: the supervisor dies (crash, kill,
 # anything), and until the next SessionStart nothing respawns it -- Heartbeat
 # was a pure lease write. Heartbeat fires on every tool call of every session,
@@ -837,13 +914,97 @@ function Test-SupervisorShouldContinueAfterEmptyPass {
 function Test-SupervisorRespawnNeeded {
     $leases = @(Get-KeepAwakeLeases)
     if ($leases.Count -eq 0) { return $false }
-    $pidFile = Join-Path (Get-KeepAwakeRoot) 'supervisor.pid'
-    if (-not (Test-Path $pidFile)) { return $true }
+    $rec = Read-SupervisorPidRecord
+    if ($rec.Format -ne 'json') { return $true }
+    return (-not (Test-SupervisorProcessAlive -ProcessId $rec.Pid -StartTicks $rec.StartTicks))
+}
+
+# Respawn-storm guard. -Heartbeat fires at least twice per tool call per
+# session, and several failure states never self-clear (module import error,
+# execution-policy refusal, mutex held while the pidfile is gone), so an
+# unthrottled watchdog is worth ~57,600 spawns/day. State lives in the keepawake
+# root so it is shared across every session's hook process.
+$script:RespawnMinIntervalSeconds = 60
+$script:RespawnMaxIntervalSeconds = 900
+
+function Get-RespawnStatePath { return (Join-Path (Get-KeepAwakeRoot) 'respawn.json') }
+
+function Get-SupervisorRespawnBackoffSeconds {
+    param([Parameter(Mandatory)][int]$Attempts)
+    if ($Attempts -le 1) { return $script:RespawnMinIntervalSeconds }
+    # Doubling in the exponent domain, then capped -- 60, 120, 240, 480, 900...
+    $shift = [math]::Min($Attempts - 1, 20)
+    $seconds = $script:RespawnMinIntervalSeconds * [math]::Pow(2, $shift)
+    if ($seconds -gt $script:RespawnMaxIntervalSeconds) { return $script:RespawnMaxIntervalSeconds }
+    return [int]$seconds
+}
+
+function Get-SupervisorRespawnState {
+    $empty = @{ Attempts = 0; LastAttempt = $null; ThrottleNoticeLogged = $false }
+    $path = Get-RespawnStatePath
+    if (-not (Test-Path $path)) { return $empty }
     try {
-        $sp = [int](Get-Content $pidFile -Raw -ErrorAction Stop).Trim()
-    } catch { return $true }
-    if ($sp -le 0) { return $true }
-    return (-not (Test-ProcessAlive -ProcessId $sp))
+        $obj = (Read-KeepAwakeSharedText -Path $path) | ConvertFrom-Json
+        $state = @{ Attempts = 0; LastAttempt = $null; ThrottleNoticeLogged = $false }
+        if ($null -ne $obj.PSObject.Properties['attempts']) { $state.Attempts = [int]$obj.attempts }
+        if ($null -ne $obj.PSObject.Properties['throttle_notice_logged']) { $state.ThrottleNoticeLogged = [bool]$obj.throttle_notice_logged }
+        if ($null -ne $obj.PSObject.Properties['last_attempt'] -and -not [string]::IsNullOrWhiteSpace([string]$obj.last_attempt)) {
+            try { $state.LastAttempt = [datetimeoffset]::Parse([string]$obj.last_attempt) } catch { }
+        }
+        return $state
+    } catch { return $empty }
+}
+
+function Save-SupervisorRespawnState {
+    param([Parameter(Mandatory)][hashtable]$State)
+    # Best effort: failing to persist must never throw into a hook. Worst case
+    # one extra spawn, which the mutex arbitrates anyway.
+    try {
+        Confirm-KeepAwakeRoot | Out-Null
+        $last = ''
+        if ($null -ne $State.LastAttempt) { $last = $State.LastAttempt.ToString($script:TimeFormat) }
+        Write-JsonFileAtomic -Path (Get-RespawnStatePath) -Data ([ordered]@{
+            attempts               = [int]$State.Attempts
+            last_attempt           = $last
+            throttle_notice_logged = [bool]$State.ThrottleNoticeLogged
+        })
+    } catch { }
+}
+
+function Clear-SupervisorRespawnState {
+    Remove-Item (Get-RespawnStatePath) -Force -ErrorAction SilentlyContinue
+}
+
+# The single decision the -Heartbeat watchdog asks: may I spawn a supervisor
+# right now? Returns @{ Respawn; Reason; Attempt }. -Now is injectable so the
+# backoff schedule is testable without sleeping.
+function Resolve-SupervisorRespawnDecision {
+    param([datetimeoffset]$Now = [datetimeoffset]::Now)
+    if (-not (Test-SupervisorRespawnNeeded)) {
+        # A live supervisor (or no leases at all) means whatever was wrong is
+        # over -- the next failure deserves a fresh 60 s window, not a
+        # backed-off one carried over from an unrelated earlier outage.
+        Clear-SupervisorRespawnState
+        return @{ Respawn = $false; Reason = 'not-needed'; Attempt = 0 }
+    }
+    $state = Get-SupervisorRespawnState
+    $window = Get-SupervisorRespawnBackoffSeconds -Attempts $state.Attempts
+    if ($state.Attempts -gt 0 -and $null -ne $state.LastAttempt -and ($Now - $state.LastAttempt).TotalSeconds -lt $window) {
+        if (-not $state.ThrottleNoticeLogged) {
+            $remaining = [math]::Round($window - ($Now - $state.LastAttempt).TotalSeconds)
+            Write-KeepAwakeLog ("supervisor-respawn-THROTTLED attempts=$($state.Attempts) window=${window}s next-attempt-in=${remaining}s -- supervisor still not running")
+            $state.ThrottleNoticeLogged = $true
+            Save-SupervisorRespawnState -State $state
+        }
+        return @{ Respawn = $false; Reason = 'throttled'; Attempt = $state.Attempts }
+    }
+    $attempt = $state.Attempts + 1
+    Save-SupervisorRespawnState -State @{ Attempts = $attempt; LastAttempt = $Now; ThrottleNoticeLogged = $false }
+    # Logged as an ATTEMPT, never as a success: this function cannot observe
+    # whether the spawn actually took, and the next heartbeat's liveness check
+    # is what confirms it.
+    Write-KeepAwakeLog ("supervisor-respawn-attempt attempt=$attempt next-window=$(Get-SupervisorRespawnBackoffSeconds -Attempts $attempt)s")
+    return @{ Respawn = $true; Reason = 'attempt'; Attempt = $attempt }
 }
 
 # Test seam for Start-KeepAwakeSupervisor's per-iteration work: F2's tests
@@ -880,13 +1041,12 @@ function Start-KeepAwakeSupervisor {
         return 0
     }
 
-    $root = Get-KeepAwakeRoot
     # Defensive: on a truly first-ever run nothing has created the root yet
-    # (Get-LeaseDir only runs once a lease is written), so this write would
-    # otherwise fail silently. The mutex above is the real singleton guard;
-    # this just keeps -Status able to find the pid file on that first run.
-    if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
-    $pidFile = Join-Path $root 'supervisor.pid'
+    # (Get-LeaseDir only runs once a lease is written), so the pidfile write
+    # would otherwise fail. The mutex above is the real singleton guard; this
+    # just keeps -Status able to find the pid file on that first run.
+    Confirm-KeepAwakeRoot | Out-Null
+    $pidFile = Get-SupervisorPidFilePath
 
     $deadline = (Get-Date).AddHours($MaxHours)
     $exit = 0
@@ -895,7 +1055,10 @@ function Start-KeepAwakeSupervisor {
         # Inside the try (review finding 8): the pidfile write used to sit
         # outside it, so a failure there killed the starting supervisor under
         # $ErrorActionPreference='Stop' before the `finally` could clean up.
-        Set-Content -Path $pidFile -Value $PID -Encoding utf8
+        # Atomic JSON record (pid + start_ticks) rather than Set-Content of a
+        # bare int: measured 778/800 Set-Content failures against a concurrent
+        # reader, and a bare pid cannot survive pid recycling.
+        Write-SupervisorPidFile
         Set-ExecutionStateHold | Out-Null
         Write-KeepAwakeLog ("supervisor-start pid=$PID poll=${PollSeconds}s cap=${MaxHours}h idle=${IdleTimeoutMinutes}m")
         while ($true) {
@@ -977,4 +1140,6 @@ Export-ModuleMember -Function Get-KeepAwakeRoot, Get-KeepAwakeMutexName, Get-Lea
     Set-PowerArmed, Restore-PowerBaseline, Test-PowerArmed, Resolve-StaleArmReconciliation,
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass,
     Test-SupervisorShouldContinueAfterEmptyPass, Set-SupervisorPassInvoker, Start-KeepAwakeSupervisor,
-    Test-SupervisorRespawnNeeded
+    Test-SupervisorRespawnNeeded, Get-SupervisorPidFilePath, Write-SupervisorPidFile, Read-SupervisorPidRecord,
+    Test-SupervisorProcessAlive, Get-SupervisorRespawnBackoffSeconds, Get-SupervisorRespawnState,
+    Resolve-SupervisorRespawnDecision, Clear-SupervisorRespawnState

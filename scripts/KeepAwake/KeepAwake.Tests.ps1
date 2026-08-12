@@ -1152,20 +1152,151 @@ Describe 'Test-SupervisorRespawnNeeded (F3: heartbeat watchdog self-heals a dead
         New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
         $dead = Start-Process powershell -ArgumentList '-NoProfile','-Command','exit' -PassThru -WindowStyle Hidden
         $dead.WaitForExit()
-        Set-Content (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') -Value $dead.Id -Encoding utf8
+        Write-JsonFileAtomic -Path (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') `
+            -Data ([ordered]@{ pid = $dead.Id; start_ticks = $dead.StartTime.Ticks })
         Test-SupervisorRespawnNeeded | Should -BeTrue
     }
 
-    It 'false when a lease exists and the recorded pid is alive' {
+    It 'false when a lease exists and the recorded pid AND start time both match a live process' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Write-SupervisorPidFile
+        Test-SupervisorRespawnNeeded | Should -BeFalse
+    }
+
+    # Review finding 4: a bare-int pidfile plus a liveness check alone means a
+    # RECYCLED pid reads as "supervisor alive" forever -- the watchdog never
+    # fires again and the outage returns silently. Process identity is
+    # pid + start time, never pid alone.
+    It 'true when the recorded pid is alive but its start time does not match (pid recycling)' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Write-JsonFileAtomic -Path (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') `
+            -Data ([ordered]@{ pid = $PID; start_ticks = 1 })
+        Test-SupervisorRespawnNeeded | Should -BeTrue
+    }
+
+    It 'true when the pid file is in the legacy bare-int format (identity unknowable)' {
         New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
         Set-Content (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') -Value $PID -Encoding utf8
-        Test-SupervisorRespawnNeeded | Should -BeFalse
+        (Read-SupervisorPidRecord).Format | Should -Be 'legacy'
+        Test-SupervisorRespawnNeeded | Should -BeTrue
     }
 
     It 'true when the pid file is unreadable garbage' {
         New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
         Set-Content (Join-Path (Get-KeepAwakeRoot) 'supervisor.pid') -Value 'not-a-pid' -Encoding utf8
         Test-SupervisorRespawnNeeded | Should -BeTrue
+    }
+
+    It 'Write-SupervisorPidFile records pid and start_ticks as JSON, atomically' {
+        Write-SupervisorPidFile
+        $rec = Read-SupervisorPidRecord
+        $rec.Format     | Should -Be 'json'
+        $rec.Pid        | Should -Be $PID
+        $rec.StartTicks | Should -Be (Get-Process -Id $PID).StartTime.Ticks
+        @(Get-ChildItem (Get-KeepAwakeRoot) -Filter '*.tmp').Count | Should -Be 0
+    }
+
+    It 'reports absent when no pid file exists' {
+        (Read-SupervisorPidRecord).Format | Should -Be 'absent'
+    }
+}
+
+Describe 'supervisor respawn throttle (review-1 finding 3: the watchdog must not become a spawn storm)' {
+    # -Heartbeat fires at least twice per tool call per session. A
+    # non-self-clearing failure state (import error, exec-policy refusal,
+    # mutex held but pidfile gone) turns the F3 watchdog into ~57,600 spawns
+    # a day. Throttle: 60 s minimum, doubling per consecutive attempt to a
+    # 15-minute ceiling, reset the moment a live supervisor is observed.
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        $script:Now = [datetimeoffset]::Parse('2026-08-12T03:00:00+09:00')
+    }
+    AfterEach {
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'backs off 60s, doubling per consecutive attempt, capped at 15 minutes' {
+        Get-SupervisorRespawnBackoffSeconds -Attempts 0 | Should -Be 60
+        Get-SupervisorRespawnBackoffSeconds -Attempts 1 | Should -Be 60
+        Get-SupervisorRespawnBackoffSeconds -Attempts 2 | Should -Be 120
+        Get-SupervisorRespawnBackoffSeconds -Attempts 3 | Should -Be 240
+        Get-SupervisorRespawnBackoffSeconds -Attempts 4 | Should -Be 480
+        Get-SupervisorRespawnBackoffSeconds -Attempts 5 | Should -Be 900
+        Get-SupervisorRespawnBackoffSeconds -Attempts 99 | Should -Be 900
+    }
+
+    It 'allows the first attempt and logs exactly one supervisor-respawn-attempt line' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        $d = Resolve-SupervisorRespawnDecision -Now $script:Now
+        $d.Respawn | Should -BeTrue
+        $d.Attempt | Should -Be 1
+        $log = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        ([regex]::Matches($log, 'supervisor-respawn-attempt')).Count | Should -Be 1
+        # Nit 14: the old code logged an unconditional "respawned" success line
+        # for a spawn it never confirmed.
+        $log | Should -Not -Match 'supervisor-respawned-by-heartbeat'
+    }
+
+    It 'throttles every further attempt inside the backoff window' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        (Resolve-SupervisorRespawnDecision -Now $script:Now).Respawn | Should -BeTrue
+        (Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(1)).Respawn  | Should -BeFalse
+        (Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(30)).Respawn | Should -BeFalse
+        (Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(59)).Reason  | Should -Be 'throttled'
+    }
+
+    It 'logs at most one throttle notice per backoff window' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Resolve-SupervisorRespawnDecision -Now $script:Now | Out-Null
+        1..5 | ForEach-Object { Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds($_) | Out-Null }
+        $log = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        ([regex]::Matches($log, 'supervisor-respawn-THROTTLED')).Count | Should -Be 1
+    }
+
+    It 'allows the next attempt once the backoff window has elapsed, and doubles it' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        (Resolve-SupervisorRespawnDecision -Now $script:Now).Respawn | Should -BeTrue
+        (Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(61)).Respawn | Should -BeTrue
+        # Second attempt made -> next window is 120 s, so 61 s later is still throttled.
+        (Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(122)).Respawn | Should -BeFalse
+        (Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(182)).Respawn | Should -BeTrue
+    }
+
+    It 'resets the throttle state as soon as a live supervisor is observed' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Resolve-SupervisorRespawnDecision -Now $script:Now | Out-Null
+        Test-Path (Join-Path $script:TestRoot 'respawn.json') | Should -BeTrue
+
+        Write-SupervisorPidFile
+        $d = Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(5)
+        $d.Respawn | Should -BeFalse
+        $d.Reason  | Should -Be 'not-needed'
+        Test-Path (Join-Path $script:TestRoot 'respawn.json') | Should -BeFalse
+
+        # And the very next failure starts from a fresh 60 s window, not a backed-off one.
+        Remove-Item (Join-Path $script:TestRoot 'supervisor.pid') -Force
+        $d2 = Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(6)
+        $d2.Respawn | Should -BeTrue
+        $d2.Attempt | Should -Be 1
+    }
+
+    It 'never respawns (and clears state) when there are no leases at all' {
+        Resolve-SupervisorRespawnDecision -Now $script:Now | Out-Null
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Resolve-SupervisorRespawnDecision -Now $script:Now | Out-Null
+        Remove-KeepAwakeLease -Label 't' | Out-Null
+        $d = Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(1)
+        $d.Respawn | Should -BeFalse
+        Test-Path (Join-Path $script:TestRoot 'respawn.json') | Should -BeFalse
+    }
+
+    It 'treats a corrupt respawn.json as no state rather than throwing' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        Set-Content (Join-Path $script:TestRoot 'respawn.json') -Value '{not json' -Encoding utf8
+        { $script:d3 = Resolve-SupervisorRespawnDecision -Now $script:Now } | Should -Not -Throw
+        $script:d3.Respawn | Should -BeTrue
     }
 }
 

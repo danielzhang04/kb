@@ -112,9 +112,15 @@ try {
             # died mid-run (2026-08-12 outage). Start-DetachedSupervisor is
             # idempotent via the named mutex -- a duplicate spawn just loses
             # the race and exits immediately.
-            if (Test-SupervisorRespawnNeeded) {
+            # Throttled (review finding 3): several failure states never
+            # self-clear, and -Heartbeat fires at least twice per tool call per
+            # session, so an unconditional respawn here is a spawn storm.
+            # Resolve-SupervisorRespawnDecision owns the backoff schedule AND
+            # the logging -- it logs one supervisor-respawn-attempt per allowed
+            # attempt (never a success line for a spawn nobody confirmed) and
+            # at most one throttle notice per backoff window.
+            if ((Resolve-SupervisorRespawnDecision).Respawn) {
                 Start-DetachedSupervisor
-                Write-KeepAwakeLog ("supervisor-respawned-by-heartbeat label=$Label")
             }
         }
         'Release' {
@@ -126,11 +132,16 @@ try {
             Write-Output "armed: $(Test-PowerArmed)"
             $b = Get-PowerBaseline
             if ($b) { Write-Output "baseline: lid=$($b.original.lidaction_ac) standby=$($b.original.standbyidle_ac) hibernate=$($b.original.hibernateidle_ac) armed_at=$($b.armed_at)" }
-            $pidFile = Join-Path (Get-KeepAwakeRoot) 'supervisor.pid'
-            if (Test-Path $pidFile) {
-                $sp = [int](Get-Content $pidFile -Raw).Trim()
-                Write-Output "supervisor: pid=$sp alive=$(Test-ProcessAlive -ProcessId $sp)"
-            } else { Write-Output 'supervisor: none' }
+            # Same pid+start-time identity the watchdog uses -- reporting a
+            # recycled pid as "alive" here would hide exactly the failure the
+            # watchdog exists to catch.
+            $rec = Read-SupervisorPidRecord
+            switch ($rec.Format) {
+                'absent'     { Write-Output 'supervisor: none' }
+                'legacy'     { Write-Output "supervisor: pid=$($rec.Pid) alive=unknown (legacy bare-pid file written by a pre-hardening supervisor; treated as dead by the watchdog)" }
+                'unreadable' { Write-Output 'supervisor: pidfile present but unreadable -- treated as dead by the watchdog' }
+                default      { Write-Output "supervisor: pid=$($rec.Pid) alive=$(Test-SupervisorProcessAlive -ProcessId $rec.Pid -StartTicks $rec.StartTicks)" }
+            }
             Write-Output "leases: $($leases.Count)"
             foreach ($l in $leases) {
                 Write-Output ("  {0} mode={1} pid={2} alive={3} heartbeat={4}" -f `
