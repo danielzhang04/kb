@@ -366,9 +366,29 @@ def make_kit(tmp):
 
 
 def test_import_surface_contract_matches_forge():
+    import ast
     import inspect
     import forge
     import forge_codex  # noqa: F401
+    # Plan "Task C1 — module skeleton, import-surface contract, no-key construction" §Interfaces:
+    # keep the 14-symbol forge.py dependency surface exact, not merely signature-compatible.
+    expected_imports = [
+        "Kit", "SeedIntegrityError", "SEED_CAP", "_existing_staging_png",
+        "_publish_staging_png", "_release_staging_lock", "_reserve_staging_output",
+        "_staging_png", "_stem", "preflight_batch", "resolve_request_seeds",
+        "to_png_bytes", "validate_png", "verify_request_seed_digests",
+    ]
+    tree = ast.parse((HERE / "forge_codex.py").read_text(encoding="utf-8"))
+    imported_from_forge = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "forge"
+        for alias in node.names
+    }
+    assert imported_from_forge == set(expected_imports), (
+        f"forge_codex import set drifted: {sorted(imported_from_forge)} != "
+        f"{sorted(expected_imports)}"
+    )
     expected = {
         "Kit": ["kit", "dry"],
         "preflight_batch": ["k", "reqs", "force", "dry"],
@@ -396,9 +416,69 @@ def test_import_surface_contract_matches_forge():
 def test_importing_forge_has_no_side_effects():
     tmp = Path(tempfile.mkdtemp(prefix="importsafe-"))
     before = set(os.listdir(tmp))
-    r = subprocess.run([sys.executable, "-c",
-                        "import sys; sys.path.insert(0, r'%s'); import forge, forge_codex" % HERE],
-                       cwd=str(tmp), capture_output=True, text=True)
+    # BOSS RULING (C1 Fix Round 1): os.path.expanduser and USERPROFILE/HOME reads during import
+    # are permitted home-dir resolution; only credential-key reads are the blocked class.
+    fresh_import = """
+import os
+import shutil
+import socket
+import sys
+from collections.abc import MutableMapping
+
+SCRIPT_DIR = %r
+CREDENTIAL_KEYS = {"OPENAI_API_KEY", "CODEX_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"}
+
+class CredentialTracingEnviron(MutableMapping):
+    def __init__(self, data):
+        self.data = {key: value for key, value in data.items() if key not in CREDENTIAL_KEYS}
+        self.reads = []
+
+    def _track(self, key):
+        if key in CREDENTIAL_KEYS:
+            self.reads.append(key)
+            raise AssertionError("credential environment key read during import: %%s" %% key)
+
+    def __getitem__(self, key):
+        self._track(key)
+        return self.data[key]
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+
+    def __delitem__(self, key):
+        del self.data[key]
+
+    def __iter__(self):
+        return iter(self.data)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __contains__(self, key):
+        self._track(key)
+        return key in self.data
+
+    def get(self, key, default=None):
+        self._track(key)
+        return self.data.get(key, default)
+
+def forbidden_which(*_args, **_kwargs):
+    raise AssertionError("shutil.which called during import")
+
+class ForbiddenSocket(socket.socket):
+    def __new__(cls, *_args, **_kwargs):
+        raise AssertionError("socket.socket called during import")
+
+os.environ = CredentialTracingEnviron(os.environ)
+shutil.which = forbidden_which
+socket.socket = ForbiddenSocket
+sys.path.insert(0, SCRIPT_DIR)
+import forge
+import forge_codex
+assert os.environ.reads == [], os.environ.reads
+""" % str(HERE)
+    r = subprocess.run(["py", "-3", "-c", fresh_import], cwd=str(tmp), capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == ""
     assert set(os.listdir(tmp)) == before
