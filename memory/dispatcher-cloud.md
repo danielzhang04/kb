@@ -431,3 +431,20 @@
 - sync_skills --check in sync. preamble + pyyaml OK. Queue: inbox 18, working 2 (6a6bc3dd halted
   codex + this card), done 291, approvals 0, archived 1.
 - Push path: recorded in the run summary.
+
+## 2026-08-12 nightly (cloud)
+- Dispatch emitted 1 card (6a7c0e28 nightly-review); self-executed inbox->working, dashboards
+  regenerated, Result written, ->done.
+- sync_daemon_dirs.py STILL absent on ops (recurring; 6a605ebb). Ran origin/main copy in
+  refs-fallback per precedent. THIS TIME the drift set CHANGED: same 10 fyt files (5 main-only,
+  5 content-differs) PLUS a NEW `ops-only` extra `orgs/kb-ops/workflows/acceptance-run.md`
+  (written directly to ops 2026-08-11 by codex workflow-platform P0; absent from main). Per step
+  2b + the "file when the drift set CHANGES" rule (same trigger as 6a718533 on 08-04), filed a
+  FRESH wake-me card 6a7c0ebf — NOT a dedupe violation because the set genuinely changed. Flagged
+  the ops-only file as a back-port-or-prune HUMAN decision (do NOT auto --sync --prune legit ops
+  content). LESSON: the dedupe rule is "no new card when UNCHANGED" — an ops-only extra appearing
+  is a change and DOES warrant a card; distinguish "recurring identical drift" (skip) from
+  "drift set grew/changed" (file). Read memory first, as always.
+- sync_skills --check in sync. preamble + pyyaml OK. Queue: inbox 28, working 2 (6a6bc3dd halted
+  codex + this card), done 352, approvals 0, archived 1. 17 codex cost rows today, all $0.00 subscription.
+- Push path: recorded in the run summary.
