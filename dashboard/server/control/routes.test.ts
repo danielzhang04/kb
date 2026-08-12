@@ -219,22 +219,23 @@ describe('control proposal routes', () => {
     return { request, resolve };
   }
 
-  function seedActivatableRun(withAcceptedRequest = true, suffix = '') {
-    const stored = controlStore.createProposalRevision('operator', {
+  /** `owner` is whose run it is: 'operator' for an SPA launch, 'dashboard-engine' for a bridge launch. */
+  function seedActivatableRun(withAcceptedRequest = true, suffix = '', owner = 'operator') {
+    const stored = controlStore.createProposalRevision(owner, {
       sourceComposerRef: 'composer-activation',
       sourceTurnId: 'turn-activation',
       title: proposal.title,
       snapshot: proposal as unknown as JsonObject,
     });
     if (!stored.ok) throw new Error(stored.detail);
-    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, stored.value.revision, {
+    const approved = controlStore.decideProposal(owner, stored.value.proposalRef, stored.value.revision, {
       expectedHash: stored.value.hash,
       expectedApprovalRevision: 0,
       decision: 'approved',
       idempotencyKey: `approve-activation${suffix}`,
     });
     if (!approved.ok) throw new Error(approved.detail);
-    const created = controlStore.createRun('operator', {
+    const created = controlStore.createRun(owner, {
       title: proposal.title,
       proposalRef: stored.value.proposalRef,
       proposalRevision: stored.value.revision,
@@ -250,45 +251,45 @@ describe('control proposal routes', () => {
     });
     if (!created.ok) throw new Error(created.detail);
     for (const stage of created.value.stages.filter((candidate) => candidate.dependsOn.length === 0)) {
-      const linked = controlStore.linkStageCard('operator', stage.stageRef, stage.version, workflowCardId(created.value.run.runRef, stage.stageId));
+      const linked = controlStore.linkStageCard(owner, stage.stageRef, stage.version, workflowCardId(created.value.run.runRef, stage.stageId));
       if (!linked.ok) throw new Error(linked.detail);
     }
     const publishing = controlStore.transitionPublication(
-      'operator',
+      owner,
       created.value.run.runRef,
       created.value.run.version,
       'publishing',
     );
     if (!publishing.ok) throw new Error(publishing.detail);
     const published = controlStore.transitionPublication(
-      'operator',
+      owner,
       created.value.run.runRef,
       publishing.value.version,
       'published',
     );
     if (!published.ok) throw new Error(published.detail);
     const waiting = controlStore.transitionRun(
-      'operator',
+      owner,
       created.value.run.runRef,
       published.value.version,
       'waiting-human',
     );
     if (!waiting.ok) throw new Error(waiting.detail);
     if (withAcceptedRequest) {
-      const request = controlStore.createHumanRequest('operator', created.value.run.runRef, {
+      const request = controlStore.createHumanRequest(owner, created.value.run.runRef, {
         kind: 'intervention',
         title: 'Execution report',
         prompt: 'Acknowledge the report before resuming.',
       });
       if (!request.ok) throw new Error(request.detail);
-      const responded = controlStore.respondHumanRequest('operator', request.value.requestRef, {
+      const responded = controlStore.respondHumanRequest(owner, request.value.requestRef, {
         expectedRevision: request.value.revision,
         decision: 'responded',
         idempotencyKey: `accept-activation${suffix}`,
       });
       if (!responded.ok) throw new Error(responded.detail);
     }
-    const detail = controlStore.getRun('operator', created.value.run.runRef);
+    const detail = controlStore.getRun(owner, created.value.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
     return detail.value;
   }
@@ -1317,6 +1318,413 @@ describe('control proposal routes', () => {
         value: { run: { state: 'waiting-human', version: detail.run.version } },
       });
     } finally {
+      await activated.close();
+    }
+  });
+
+  /** The open ask an operator actually answers in the Inbox, on an already parked run. */
+  function seedOpenBoundary(
+    runRef: string,
+    owner = 'operator',
+    input: { kind?: 'intervention' | 'approval'; title?: string; stageRef?: string } = {},
+  ) {
+    const request = controlStore.createHumanRequest(owner, runRef, {
+      kind: input.kind ?? 'intervention',
+      title: input.title ?? 'Launch reconciliation required',
+      prompt: 'Acknowledge this before the run continues.',
+      ...(input.stageRef ? { stageRef: input.stageRef } : {}),
+    });
+    if (!request.ok) throw new Error(request.detail);
+    return request.value;
+  }
+
+  function respondPayload(request: { requestRef: string; revision: number }, decision: string) {
+    return {
+      expectedRevision: request.revision,
+      decision,
+      idempotencyKey: `human:${request.requestRef}:${request.revision}:${decision}`,
+      response: null,
+    };
+  }
+
+  /** The key the server derives for an auto-resume; used to read the receipt it did (or did not) write. */
+  function autoResumeInput(run: { runRef: string; version: number; managerGeneration: number; proposalHash: string }) {
+    return {
+      expectedRunVersion: run.version,
+      expectedManagerGeneration: run.managerGeneration,
+      idempotencyKey: `auto-resume:${run.runRef}:${run.version}:${run.managerGeneration}:${run.proposalHash}`,
+    };
+  }
+
+  it('resumes a parked run the moment a human answer clears its last boundary', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    const wired = await activatedApp();
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      // Answering the gate IS the go: no second control, and the answer's own response never waits on
+      // Manager startup.
+      await vi.waitFor(() => expect(wired.runAutomatic).toHaveBeenCalledTimes(1));
+      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({
+        subject: 'operator', runRef: detail.run.runRef,
+      }));
+      await vi.waitFor(() => expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'running' } },
+      }));
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
+        .toMatchObject({ ok: true, value: { phase: 'dispatched' } });
+      expect(wired.activateManagedRoots).toHaveBeenCalledTimes(1);
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('resumes an engine-owned run AS ITS OWNER when the operator answers its last boundary', async () => {
+    const detail = seedActivatableRun(false, ':engine', 'dashboard-engine');
+    const boundary = seedOpenBoundary(detail.run.runRef, 'dashboard-engine');
+    const wired = await activatedApp(undefined, {
+      appendAudit: (_root: string, event: unknown) => {
+        auditRows.push(event as Record<string, unknown>);
+        return { ts: new Date().toISOString(), ...(event as Record<string, unknown>) };
+      },
+    });
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await vi.waitFor(() => expect(wired.runAutomatic).toHaveBeenCalledTimes(1));
+      // The operator authorized it; the engine that OWNS the run is what executes, exactly like the
+      // stop route's cancellation. Ownership never moves.
+      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({
+        subject: 'dashboard-engine', runRef: detail.run.runRef,
+      }));
+      await vi.waitFor(() => expect(controlStore.getRun('dashboard-engine', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'running' } },
+      }));
+      expect(controlStore.getRunActivationReceipt('dashboard-engine', detail.run.runRef, autoResumeInput(detail.run)))
+        .toMatchObject({ ok: true, value: { phase: 'dispatched' } });
+      // Both the answer and the activation it triggered name the operator as ACTOR and the engine as
+      // the run's owner. Ownership is never laundered by a cross-subject control.
+      expect(auditRows).toContainEqual(expect.objectContaining({
+        action: 'control-human-response-authorize', owner: 'operator',
+        detail: expect.objectContaining({ runOwnerSubject: 'dashboard-engine' }),
+      }));
+      expect(auditRows).toContainEqual(expect.objectContaining({
+        action: 'control-run-activate-authorize', owner: 'operator',
+        detail: expect.objectContaining({ runOwnerSubject: 'dashboard-engine' }),
+      }));
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('activates an engine-owned run for the operator and stays not-found for every other subject', async () => {
+    const detail = seedActivatableRun(true, ':engine-activate', 'dashboard-engine');
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:manual`,
+    };
+    const wired = await activatedApp(undefined, {
+      appendAudit: (_root: string, event: unknown) => {
+        auditRows.push(event as Record<string, unknown>);
+        return { ts: new Date().toISOString(), ...(event as Record<string, unknown>) };
+      },
+    });
+    try {
+      // The live 2026-08-11 refusal: the operator's Resume click on a bridge-launched run died as
+      // not-found inside the receipt lookup, leaving activationReceipts empty.
+      const stranger = await wired.activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(mintSession('another-agent', SESSION).token), payload,
+      });
+      expect(stranger.statusCode).toBe(404);
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRunActivationReceipt('dashboard-engine', detail.run.runRef, payload))
+        .toMatchObject({ ok: true, value: null });
+
+      const operator = await wired.activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token), payload,
+      });
+      expect(operator.statusCode, operator.body).toBe(202);
+      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({ subject: 'dashboard-engine' }));
+      expect(controlStore.getRunActivationReceipt('dashboard-engine', detail.run.runRef, payload))
+        .toMatchObject({ ok: true, value: { phase: 'dispatched' } });
+      // The actor is the operator; the run's owner is recorded beside it, never laundered.
+      expect(auditRows).toContainEqual(expect.objectContaining({
+        action: 'control-run-activate-authorize',
+        owner: 'operator',
+        detail: expect.objectContaining({ runOwnerSubject: 'dashboard-engine' }),
+      }));
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('starts nothing while another boundary on the same run is still open', async () => {
+    const detail = seedActivatableRun(false);
+    const first = seedOpenBoundary(detail.run.runRef, 'operator', { title: 'First gate' });
+    seedOpenBoundary(detail.run.runRef, 'operator', { title: 'Second gate' });
+    const wired = await activatedApp();
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${first.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(first, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'waiting-human' } },
+      });
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('never resumes on a rejected decision', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef, 'operator', { kind: 'approval', title: 'Publish approval' });
+    const wired = await activatedApp();
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'rejected'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'waiting-human' } },
+      });
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('records the answer and leaves the run parked while the daemon is locked', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    // `app` is the unarmed daemon: no broker, no executor. A locked daemon must never auto-start work.
+    const responded = await app.inject({
+      method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+      headers: headers(token), payload: respondPayload(boundary, 'responded'),
+    });
+    expect(responded.statusCode, responded.body).toBe(200);
+    expect(responded.json()).toMatchObject({ ok: true, value: { state: 'resolved' } });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+      ok: true, value: { run: { state: 'waiting-human', version: detail.run.version } },
+    });
+    expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
+      .toMatchObject({ ok: true, value: null });
+    // The manual Resume stays the fallback, and is what tells the operator the runtime is gated.
+    const manual = await app.inject({
+      method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`, headers: headers(token),
+      payload: {
+        expectedRunVersion: detail.run.version,
+        expectedManagerGeneration: detail.run.managerGeneration,
+        idempotencyKey: `activate:${detail.run.runRef}:manual`,
+      },
+    });
+    expect(manual.statusCode).toBe(409);
+    // The locked daemon's own refusal, which is what raises the unlock prompt in the UI.
+    expect(manual.json()).toMatchObject({ error: 'execution-locked' });
+  });
+
+  it('never kicks a second time on a replayed response', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    const payload = respondPayload(boundary, 'responded');
+    // Record the decision on the unarmed daemon: durable, no resume.
+    const first = await app.inject({
+      method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+      headers: headers(token), payload,
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const wired = await activatedApp();
+    try {
+      // The identical re-submit now reaches an ARMED daemon with the boundary predicate satisfied. It is
+      // still a replay — it records no new decision, so it starts nothing.
+      const replayed = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload,
+      });
+      expect(replayed.statusCode, replayed.body).toBe(200);
+      expect(replayed.json()).toMatchObject({ replayed: true });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'waiting-human' } },
+      });
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  /**
+   * Review lineage spliced onto a REAL parked run: the gate request, the response and every post-resolve
+   * read stay real (which is the whole point — the resume predicate reads post-resolve state), while the
+   * receipt/loop pair the route validates is supplied here.
+   */
+  function spliceCompletionGate(detail: { run: { runRef: string }; stages: Array<{ stageRef: string; stageId: string }> }, requestRef: string, owner = 'operator') {
+    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
+    const subjectStage = detail.stages.find((stage) => stage.stageId === 'verify');
+    if (!reviewStage || !subjectStage) throw new Error('splice stages missing');
+    const receipt = {
+      reviewReceiptRef: 'receipt-splice', runRef: detail.run.runRef, reviewStageRef: reviewStage.stageRef,
+      subjectStageRef: subjectStage.stageRef, subjectGenerationRef: 'generation-1', subjectResultHash: 'a'.repeat(64),
+      checkerAttemptRef: 'attempt-check', outcome: {}, outcomeHash: 'b'.repeat(64),
+      operationKey: `review-outcome:${detail.run.runRef}:report:g1`, state: 'awaiting-completion-gate',
+      completionRequestRef: requestRef, interventionRequestRef: null, version: 7,
+      createdAt: '2026-08-11T12:00:00.000Z', finalizedAt: null,
+    };
+    const loop = {
+      reviewLoopRef: 'loop-splice', runRef: detail.run.runRef, reviewStageRef: reviewStage.stageRef,
+      subjectStageRef: subjectStage.stageRef, maxCreatorReworks: 1, reviewDefinitionHash: 'c'.repeat(64),
+      reworksUsed: 0, state: 'awaiting-gate', activeGenerationRef: 'generation-1', acceptedGenerationRef: null,
+      activeReceiptRef: receipt.reviewReceiptRef, interventionRequestRef: null, version: 8,
+      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
+    };
+    const realGetRun = controlStore.getRun.bind(controlStore);
+    vi.spyOn(controlStore, 'getRun').mockImplementation(((subjectId: string, runRef: string, scope?: never) => {
+      const found = realGetRun(subjectId, runRef, scope);
+      if (!found.ok || found.value.run.runRef !== detail.run.runRef) return found;
+      return { ...found, value: { ...found.value, reviewReceipts: [receipt], reviewLoops: [loop] } };
+    }) as never);
+    vi.spyOn(controlStore, 'resolveReviewCompletionGate').mockImplementation(((
+      subjectId: string,
+      gateRequestRef: string,
+      input: { expectedRequestRevision: number; decision: string; idempotencyKey: string; response: string | null },
+      scope?: never,
+    ) => {
+      const responded = controlStore.respondHumanRequest(subjectId, gateRequestRef, {
+        expectedRevision: input.expectedRequestRevision,
+        decision: input.decision as 'approved',
+        idempotencyKey: input.idempotencyKey,
+        response: input.response,
+      }, scope);
+      if (!responded.ok) return responded;
+      return {
+        ok: true,
+        replayed: responded.replayed ?? false,
+        value: {
+          request: responded.value, receipt, loop, reviewStage, subjectStage,
+          interventionRequest: input.decision === 'approved' ? null : { requestRef: 'intervention-splice' },
+        },
+      };
+    }) as never);
+    return { receipt, loop, reviewStage, owner };
+  }
+
+  it('resumes the run when an approved completion gate clears its last boundary', async () => {
+    const detail = seedActivatableRun(false);
+    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
+    if (!reviewStage) throw new Error('review stage missing');
+    const gate = seedOpenBoundary(detail.run.runRef, 'operator', {
+      kind: 'approval', title: 'Approve the checker result', stageRef: reviewStage.stageRef,
+    });
+    spliceCompletionGate(detail, gate.requestRef);
+    const wired = await activatedApp();
+    try {
+      const resolved = await wired.activated.inject({
+        method: 'POST', url: `/api/control/review-completion-gates/${gate.requestRef}/resolve`,
+        headers: headers(token),
+        payload: {
+          expectedRequestRevision: gate.revision, decision: 'approved',
+          idempotencyKey: `gate:${gate.requestRef}:approved`, response: 'Approved.',
+        },
+      });
+      expect(resolved.statusCode, resolved.body).toBe(200);
+      await vi.waitFor(() => expect(wired.runAutomatic).toHaveBeenCalledTimes(1));
+      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({
+        subject: 'operator', runRef: detail.run.runRef,
+      }));
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('leaves a completion-gate approval parked while the daemon is locked', async () => {
+    const detail = seedActivatableRun(false);
+    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
+    if (!reviewStage) throw new Error('review stage missing');
+    const gate = seedOpenBoundary(detail.run.runRef, 'operator', {
+      kind: 'approval', title: 'Approve the checker result', stageRef: reviewStage.stageRef,
+    });
+    spliceCompletionGate(detail, gate.requestRef);
+    const resolved = await app.inject({
+      method: 'POST', url: `/api/control/review-completion-gates/${gate.requestRef}/resolve`,
+      headers: headers(token),
+      payload: {
+        expectedRequestRevision: gate.revision, decision: 'approved',
+        idempotencyKey: `gate:${gate.requestRef}:approved`, response: 'Approved.',
+      },
+    });
+    expect(resolved.statusCode, resolved.body).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+      ok: true, value: { run: { state: 'waiting-human', version: detail.run.version } },
+    });
+    expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
+      .toMatchObject({ ok: true, value: null });
+  });
+
+  /**
+   * The lock is keyed by the RUN (its owner + ref), not by whoever called. Keyed by the caller, an
+   * operator activation ('operator') and any engine-side operation on the same run ('dashboard-engine')
+   * would take DIFFERENT locks and interleave — the exclusion would be gone on exactly the headless runs
+   * it exists for. This is the cross-subject twin of the own-subject stop-race test above.
+   */
+  it('serializes cross-subject controls on one run behind its activation', async () => {
+    const detail = seedActivatableRun(true, ':engine-lock', 'dashboard-engine');
+    let releasePreparation!: () => void;
+    let preparationEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { preparationEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releasePreparation = resolve; });
+    const { activated, cancelAutomatic, runAutomatic } = await activatedApp(async () => {
+      preparationEntered();
+      await release;
+    });
+    try {
+      const activationPromise = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`, headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version, expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:engine-lock`,
+        },
+      });
+      await entered;
+      let stopSettled = false;
+      const stopPromise = activated.inject({
+        method: 'POST', url: `/api/control/runs/${detail.run.runRef}/manager/stop`, headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version, expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `stop:${detail.run.runRef}:${detail.run.version}`,
+        },
+      }).then((value) => { stopSettled = true; return value; });
+      // Long enough for an UNSERIALIZED stop to run to completion: at this point the activation has not
+      // yet claimed, so a stop that reached the store would pass CAS and cancel the run. Keyed by the
+      // caller instead of the run, that is exactly what happened here.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(stopSettled).toBe(false);
+      expect(cancelAutomatic).not.toHaveBeenCalled();
+      releasePreparation();
+      const [activation, stop] = await Promise.all([activationPromise, stopPromise]);
+      expect(activation.statusCode, activation.body).toBe(202);
+      expect(runAutomatic).toHaveBeenCalledWith(expect.objectContaining({ subject: 'dashboard-engine' }));
+      expect(stop.statusCode, stop.body).toBe(409);
+      expect(stop.json()).toMatchObject({ error: 'run-state-changed' });
+      expect(cancelAutomatic).not.toHaveBeenCalled();
+    } finally {
+      releasePreparation();
       await activated.close();
     }
   });

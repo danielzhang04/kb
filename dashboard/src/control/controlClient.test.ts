@@ -334,7 +334,10 @@ describe('control client run and retention writes', () => {
     });
   });
 
-  it('keeps an accepted Human Request successful when automatic runtime activation is intentionally gated', async () => {
+  // ONE activation per answered gate. The server resumes a published run itself the moment the last
+  // boundary is accepted; a client-side activate here would be a second, differently-keyed activation
+  // of the same run that nothing dedupes.
+  it('never activates a published run from the client after a Human Request response', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(response({ ok: true, value: {
         run: {
@@ -342,20 +345,36 @@ describe('control client run and retention writes', () => {
           publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
         },
         humanRequests: [{ kind: 'approval', state: 'resolved', response: { decision: 'approved' } }],
-      } }))
-      .mockResolvedValueOnce(response({ error: 'automatic-runtime-not-activated' }, 409)) as unknown as FetchLike;
+      } })) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.map((call) => String(call[0])))
+      .toEqual(['/api/control/runs/run-1']);
+  });
+
+  // The PRE-publication half is untouched: a run still waiting on publication has no run to activate,
+  // so the accepted boundary re-enters the exact launch operation from here.
+  it('re-enters the exact launch operation for a run still waiting on publication', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({ ok: true, value: {
+        run: {
+          runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
+          publicationState: 'waiting-human', state: 'waiting-human', version: 5, managerGeneration: 1,
+        },
+        humanRequests: [{ kind: 'approval', state: 'resolved', response: { decision: 'approved' } }],
+      } }))
+      .mockResolvedValueOnce(response({ ok: true, value: {} })) as unknown as FetchLike;
+
+    await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
-      '/api/control/runs/run-1/activate',
+      '/api/control/proposals/proposal-1/revisions/1/launch',
       expect.objectContaining({ method: 'POST' }),
     );
     expect(JSON.parse(String((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[1][1]?.body))).toEqual({
-      expectedRunVersion: 5,
-      expectedManagerGeneration: 1,
-      idempotencyKey: `activate:run-1:5:${'a'.repeat(64)}:1`,
+      expectedHash: 'a'.repeat(64),
+      idempotencyKey: `launch:${'a'.repeat(64)}`,
     });
   });
 
@@ -429,7 +448,9 @@ describe('control client run and retention writes', () => {
     expect(isAuthorizedFailedRunPublishedUncommitted(new Error('unrelated'))).toBe(false);
   });
 
-  it('keeps a durable Human Request response successful when the exact execution latch remains locked', async () => {
+  // A locked daemon is no longer this function's problem either: it never activates a published run, so
+  // the durable response flow ends after the refresh read and the operator keeps the manual Resume.
+  it('keeps a durable Human Request response successful without touching a locked execution latch', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(response({ ok: true, value: {
         run: {
@@ -437,14 +458,10 @@ describe('control client run and retention writes', () => {
           publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
         },
         humanRequests: [{ kind: 'intervention', state: 'resolved', response: { decision: 'responded' } }],
-      } }))
-      .mockResolvedValueOnce(response({
-        error: 'execution-locked',
-        detail: 'execution is locked; unlock it with your passkey before launching a run',
-      }, 409)) as unknown as FetchLike;
+      } })) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).resolves.toBeUndefined();
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('strictly activates one existing run and surfaces an inactive runtime', async () => {
@@ -474,19 +491,19 @@ describe('control client run and retention writes', () => {
     );
   });
 
-  it('does not swallow non-gate activation failures after a Human Request response', async () => {
+  it('does not swallow a failed pre-publication launch after a Human Request response', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(response({ ok: true, value: {
         run: {
           runRef: 'run-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64),
-          publicationState: 'published', state: 'waiting-human', version: 5, managerGeneration: 1,
+          publicationState: 'waiting-human', state: 'waiting-human', version: 5, managerGeneration: 1,
         },
         humanRequests: [{ kind: 'intervention', state: 'resolved', response: { decision: 'responded' } }],
       } }))
-      .mockResolvedValueOnce(response({ error: 'activation-state-changed' }, 409)) as unknown as FetchLike;
+      .mockResolvedValueOnce(response({ error: 'canonical-reconciliation-failed' }, 409)) as unknown as FetchLike;
 
     await expect(resumeRunAfterHumanResponse('run-1', 'bearer', fetchImpl)).rejects.toMatchObject({
-      reason: 'activation-state-changed',
+      reason: 'canonical-reconciliation-failed',
       status: 409,
     });
   });
