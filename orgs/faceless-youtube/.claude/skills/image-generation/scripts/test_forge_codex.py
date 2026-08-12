@@ -2,6 +2,7 @@
 """Unit tests for forge_codex.py + the fake codex binary fixture.
 Plain asserts, no pytest (house style). Run: py -3 test_forge_codex.py
 NO NETWORK, NO API SPEND: every codex invocation in this file is _fake_codex.py."""
+import hashlib
 import json
 import os
 import subprocess
@@ -64,7 +65,7 @@ def _scratch():
     (tmp / "generated_images").mkdir()
     (tmp / "sessions").mkdir()
     prompt = tmp / "L29.txt"
-    prompt.write_text("Use case: illustration-story\nAvoid: photorealism\n", encoding="utf-8")
+    prompt.write_text("Use case: illustration-story\nAvoid: photorealism\n", encoding="utf-8", newline="\n")
     seed = tmp / "seed.png"
     seed.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 2048)
     return tmp, prompt, seed
@@ -1050,6 +1051,14 @@ def _fc_with_roots(mode, tmp):
     return fc
 
 
+def _write_synthetic_rollout(sessions_root, thread_id, rows):
+    directory = sessions_root / "2026" / "08" / "12"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"rollout-2026-08-12T12-00-00-{thread_id}.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    return path
+
+
 def test_fidelity_verified_on_a_literal_pass_through():
     tmp, prompt, seed = _scratch()
     fc = _fc_with_roots("ok", tmp)
@@ -1089,7 +1098,7 @@ def test_audit_reads_only_the_rollout_file_matching_its_own_thread_id():
     r1 = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
                            timeout_s=120)
     other = tmp / "L44.txt"
-    other.write_text("a completely different composed prompt\n", encoding="utf-8")
+    other.write_text("a completely different composed prompt\n", encoding="utf-8", newline="\n")
     r2 = fc.run_codex_exec(envelope=fc.build_envelope(str(other), [str(seed)]), cwd=str(tmp),
                            timeout_s=120)
     assert r1["thread_id"] != r2["thread_id"]
@@ -1105,6 +1114,65 @@ def test_pre_call_tool_calls_counts_the_ambient_detour():
                           timeout_s=120)
     assert fc.count_pre_call_tool_calls(r["thread_id"]) == 3
     assert fc.count_pre_call_tool_calls("019ff000-0000-7000-0000-000000000000") is None
+
+
+def test_pre_call_tool_calls_ignores_image_tool_name_inside_a_prior_call_input():
+    tmp, _, _ = _scratch()
+    import forge_codex as fc
+
+    thread_id = "input-poison"
+    _write_synthetic_rollout(tmp / "sessions", thread_id, [
+        {"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "shell",
+            "input": "const shot = {prompt: 'image_gen__imagegen'};",
+        }},
+        {"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "exec",
+            "input": "const result = await tools.image_gen__imagegen({prompt: 'real'});",
+        }},
+    ])
+
+    assert fc.count_pre_call_tool_calls(thread_id, str(tmp / "sessions")) == 1
+
+
+def test_pre_call_tool_calls_ignores_custom_tool_call_text_outside_a_tool_item():
+    tmp, _, _ = _scratch()
+    import forge_codex as fc
+
+    thread_id = "text-poison"
+    _write_synthetic_rollout(tmp / "sessions", thread_id, [
+        {"type": "item.completed", "item": {
+            "type": "agent_message", "text": "custom_tool_call",
+        }},
+        {"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "shell", "input": "Get-ChildItem",
+        }},
+        {"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "exec",
+            "input": "const result = await tools.image_gen__imagegen({prompt: 'real'});",
+        }},
+    ])
+
+    assert fc.count_pre_call_tool_calls(thread_id, str(tmp / "sessions")) == 1
+
+
+def test_fidelity_preserves_crlf_in_the_prompt_archive():
+    tmp, prompt, _ = _scratch()
+    import forge_codex as fc
+
+    composed = "line one\r\nline two\r\n"
+    prompt.write_bytes(composed.encode("utf-8"))
+    thread_id = "crlf-fidelity"
+    _write_synthetic_rollout(tmp / "sessions", thread_id, [
+        {"type": "response_item", "payload": {
+            "type": "custom_tool_call", "name": "exec",
+            "input": "const result = await tools.image_gen__imagegen({prompt: %s});"
+                     % json.dumps(composed),
+        }},
+    ])
+
+    verdict, sha = fc.audit_fidelity(thread_id, str(prompt), str(tmp / "sessions"))
+    assert verdict == "verified" and sha == hashlib.sha256(composed.encode("utf-8")).hexdigest()
 
 
 def test_harvest_accepts_exactly_one_new_png_and_ignores_pre_existing_files():

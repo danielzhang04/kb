@@ -490,6 +490,7 @@ def run_codex_exec(*, envelope: str, cwd: str, timeout_s: float | None = None,
 # --- for what the tool actually saw. Shape-tolerant on purpose: P2b observed the prompt both as a
 # --- JS string literal in `custom_tool_call.input` AND echoed in `custom_tool_call_output`.
 _JS_PROMPT = re.compile(r'(?:(?:"prompt")|\bprompt)\s*:\s*("(?:[^"\\]|\\.)*")')
+_IMAGEGEN_INVOCATION = re.compile(r'\btools\.image_gen__imagegen\s*\(')
 
 
 def rollout_path(thread_id, sessions_root=None):
@@ -511,6 +512,25 @@ def _string_leaves(node):
     elif isinstance(node, (list, tuple)):
         for value in node:
             yield from _string_leaves(value)
+
+
+def _custom_tool_call(row):
+    """Return a decoded custom-tool-call item from a rollout row, if it has one."""
+    if not isinstance(row, dict):
+        return None
+    for key in ("payload", "item"):
+        item = row.get(key)
+        if isinstance(item, dict) and item.get("type") == "custom_tool_call":
+            return item
+    return None
+
+
+def _is_image_generation_call(tool_call):
+    """Whether this decoded custom-tool-call item invokes image generation."""
+    if any(tool_call.get(key) == "image_gen__imagegen" for key in ("tool", "name")):
+        return True
+    call_input = tool_call.get("input")
+    return isinstance(call_input, str) and bool(_IMAGEGEN_INVOCATION.search(call_input))
 
 
 def extract_captured_prompt(body):
@@ -545,23 +565,28 @@ def audit_fidelity(thread_id, prompt_path, sessions_root=None):
         captured = extract_captured_prompt(rollout.read())
     if captured is None:
         return "unverifiable", None
-    with open(prompt_path, encoding="utf-8") as prompt_file:
+    with open(prompt_path, encoding="utf-8", newline="") as prompt_file:
         composed = prompt_file.read()
     sha = hashlib.sha256(captured.encode("utf-8")).hexdigest()
     return ("verified" if captured == composed else "mismatch"), sha
 
 
 def count_pre_call_tool_calls(thread_id, sessions_root=None):
-    """Return custom-tool-call count before image generation, or None without this thread's log."""
+    """Return decoded custom-tool-call count before image generation, or None without its log."""
     path = rollout_path(thread_id, sessions_root)
     if not path:
         return None
     count = 0
     with open(path, encoding="utf-8", errors="replace") as rollout:
         for line in rollout:
-            if "custom_tool_call" not in line:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
                 continue
-            if "image_gen__imagegen" in line:
+            tool_call = _custom_tool_call(row)
+            if tool_call is None:
+                continue
+            if _is_image_generation_call(tool_call):
                 return count
             count += 1
     return count
