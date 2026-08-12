@@ -46,6 +46,15 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'KeepAwake\KeepAwake.psm1') -Force
 
 function Start-DetachedSupervisor {
+    # Test seam (review finding 6: the watchdog respawn branch had zero
+    # coverage because exercising it meant spawning a real supervisor against
+    # this machine's real power settings). Records the spawn instead of making
+    # it. Requires BOTH env vars, and production sets neither -- KB_KEEPAWAKE_ROOT
+    # already gates the whole lease store away from the real one.
+    if ($env:KB_KEEPAWAKE_ROOT -and $env:KB_KEEPAWAKE_SPAWN_SENTINEL) {
+        Add-Content -Path $env:KB_KEEPAWAKE_SPAWN_SENTINEL -Value ("spawn $(Get-Date -Format o)") -Encoding utf8
+        return
+    }
     $self = Join-Path $PSScriptRoot 'keep_awake.ps1'
     # -WindowStyle Hidden so overnight work never pops a console window.
     Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @(

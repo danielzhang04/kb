@@ -937,9 +937,21 @@ function Test-SupervisorProcessAlive {
 # was a pure lease write. Heartbeat fires on every tool call of every session,
 # so it is the one signal guaranteed to still be firing overnight while work
 # runs. Duplicate spawns are safe: the named mutex arbitrates, losers exit.
+# Presence only -- deliberately NOT Get-KeepAwakeLeases. This runs on every tool
+# call of every session, and Get-KeepAwakeLeases parses each lease and DELETES
+# any that fail to parse; a zero-length read of a live lease (possible
+# mid-replace) would mean the watchdog deleting a live session's protection.
+# Corrupt-lease deletion stays a supervisor-only decision. Also does not create
+# the lease directory the way Get-LeaseDir does.
+function Test-AnyKeepAwakeLeaseFile {
+    $dir = Join-Path (Get-KeepAwakeRoot) 'leases'
+    if (-not (Test-Path $dir)) { return $false }
+    $first = Get-ChildItem -Path $dir -Filter '*.lease' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    return ($null -ne $first)
+}
+
 function Test-SupervisorRespawnNeeded {
-    $leases = @(Get-KeepAwakeLeases)
-    if ($leases.Count -eq 0) { return $false }
+    if (-not (Test-AnyKeepAwakeLeaseFile)) { return $false }
     $rec = Read-SupervisorPidRecord
     if ($rec.Format -ne 'json') { return $true }
     return (-not (Test-SupervisorProcessAlive -ProcessId $rec.Pid -StartTicks $rec.StartTicks))
@@ -1166,6 +1178,6 @@ Export-ModuleMember -Function Get-KeepAwakeRoot, Get-KeepAwakeMutexName, Get-Lea
     Set-PowerArmed, Restore-PowerBaseline, Test-PowerArmed, Resolve-StaleArmReconciliation,
     Set-ExecutionStateHold, Clear-ExecutionStateHold, Invoke-SupervisorPass,
     Test-SupervisorShouldContinueAfterEmptyPass, Set-SupervisorPassInvoker, Start-KeepAwakeSupervisor,
-    Test-SupervisorRespawnNeeded, Get-SupervisorPidFilePath, Write-SupervisorPidFile, Read-SupervisorPidRecord,
+    Test-SupervisorRespawnNeeded, Test-AnyKeepAwakeLeaseFile, Get-SupervisorPidFilePath, Write-SupervisorPidFile, Read-SupervisorPidRecord,
     Test-SupervisorProcessAlive, Get-SupervisorRespawnBackoffSeconds, Get-SupervisorRespawnState,
     Resolve-SupervisorRespawnDecision, Clear-SupervisorRespawnState

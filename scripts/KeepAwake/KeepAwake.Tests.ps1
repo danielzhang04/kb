@@ -1114,6 +1114,72 @@ Describe 'CLI entry point (scripts/keep_awake.ps1 invoked as a real subprocess)'
     }
 }
 
+Describe 'CLI -Heartbeat watchdog wiring (review-1 finding 6: the F3 branch had zero coverage)' {
+    # The respawn branch in keep_awake.ps1 was never executed by any test -- the
+    # only heartbeat test had no lease, so Test-SupervisorRespawnNeeded returned
+    # $false before reaching it. These drive the real CLI as a child process
+    # with Start-DetachedSupervisor replaced by a sentinel write, so the branch
+    # runs end to end without ever spawning a real supervisor or touching this
+    # machine's real power settings. The sentinel seam requires BOTH
+    # KB_KEEPAWAKE_ROOT and KB_KEEPAWAKE_SPAWN_SENTINEL, and production sets
+    # neither.
+    BeforeAll {
+        $script:CliPath = (Resolve-Path (Join-Path $PSScriptRoot '..\keep_awake.ps1')).Path
+    }
+    BeforeEach {
+        $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-wd-" + [guid]::NewGuid())
+        $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        New-Item -ItemType Directory -Path $script:TestRoot -Force | Out-Null
+        $script:Sentinel = Join-Path $script:TestRoot 'spawn-sentinel.txt'
+        $env:KB_KEEPAWAKE_SPAWN_SENTINEL = $script:Sentinel
+    }
+    AfterEach {
+        Remove-Item Env:\KB_KEEPAWAKE_SPAWN_SENTINEL -ErrorAction SilentlyContinue
+        Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'spawns a supervisor when a lease exists and no supervisor is recorded' {
+        New-KeepAwakeLease -Label 'wd' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Heartbeat -Label 'wd' | Out-Null
+        Test-Path $script:Sentinel | Should -BeTrue
+        @(Get-Content $script:Sentinel).Count | Should -Be 1
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'supervisor-respawn-attempt attempt=1'
+    }
+
+    It 'does not spawn when a live supervisor is recorded' {
+        New-KeepAwakeLease -Label 'wd' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        Write-SupervisorPidFile
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Heartbeat -Label 'wd' | Out-Null
+        Test-Path $script:Sentinel | Should -BeFalse
+    }
+
+    It 'does not spawn when there is no lease at all' {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Heartbeat -Label 'wd' | Out-Null
+        Test-Path $script:Sentinel | Should -BeFalse
+    }
+
+    It 'throttles the immediately following heartbeat instead of storming (finding 3, end to end)' {
+        New-KeepAwakeLease -Label 'wd' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        1..4 | ForEach-Object {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Heartbeat -Label 'wd' | Out-Null
+        }
+        @(Get-Content $script:Sentinel).Count | Should -Be 1
+        $log = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        ([regex]::Matches($log, 'supervisor-respawn-attempt')).Count   | Should -Be 1
+        ([regex]::Matches($log, 'supervisor-respawn-THROTTLED')).Count | Should -Be 1
+    }
+
+    It 'still updates the lease heartbeat while the watchdog is throttled' {
+        New-KeepAwakeLease -Label 'wd' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        $before = (@(Get-KeepAwakeLeases)[0]).heartbeat
+        Start-Sleep -Seconds 1
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Heartbeat -Label 'wd' | Out-Null
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Heartbeat -Label 'wd' | Out-Null
+        (@(Get-KeepAwakeLeases)[0]).heartbeat | Should -Not -Be $before
+    }
+}
+
 Describe 'Start-KeepAwakeSupervisor pass-failure resilience (F2: one bad pass must never kill the supervisor)' {
     # Incident 2026-08-12 01:29: a single lease-file write collision escaped
     # Invoke-SupervisorPass with no try/catch around it, and the `finally`
@@ -1257,6 +1323,27 @@ Describe 'Test-SupervisorRespawnNeeded (F3: heartbeat watchdog self-heals a dead
 
     It 'reports absent when no pid file exists' {
         (Read-SupervisorPidRecord).Format | Should -Be 'absent'
+    }
+
+    # Review finding 7: this now runs on every tool call of every session, and
+    # it used to go through Get-KeepAwakeLeases -- which parses every lease and
+    # DELETES any that fail to parse. A zero-length read of a live lease
+    # (perfectly possible mid-replace) therefore meant the watchdog deleting a
+    # live session's protection. Presence is all this decision needs;
+    # corrupt-lease deletion stays supervisor-only.
+    It 'answers from a cheap presence check: never parses or deletes lease files' {
+        $dir = Join-Path (Get-KeepAwakeRoot) 'leases'
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $corrupt = Join-Path $dir 'mid-replace.lease'
+        Set-Content -Path $corrupt -Value '' -Encoding utf8
+        Test-SupervisorRespawnNeeded | Should -BeTrue
+        Test-Path $corrupt | Should -BeTrue
+        (Test-AnyKeepAwakeLeaseFile) | Should -BeTrue
+    }
+
+    It 'does not create the lease directory just by asking whether a lease exists' {
+        (Test-AnyKeepAwakeLeaseFile) | Should -BeFalse
+        Test-Path (Join-Path (Get-KeepAwakeRoot) 'leases') | Should -BeFalse
     }
 }
 
