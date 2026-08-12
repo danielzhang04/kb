@@ -424,8 +424,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
    * Ruling 3 reaches this route (2026-08-11 audit): the revision is resolved under the caller's READ
    * SCOPE, so a verified operator can launch or retry a revision the queue bridge imported, and the
    * launch then executes AS THE REVISION'S OWNER. Before this, RunDetail's "Run it again" on a failed
-   * engine run and the pre-publication resume branch both 404'd inside the very first revision lookup —
-   * the two triggers the SPA offers for a headless run, both dead ends.
+   * engine run and the pre-publication resume branch both 404'd inside the very first revision lookup.
+   * "Run it again" is now delivered; the pre-publication resume branch stays a dead end BY DESIGN —
+   * it 409s `run-already-exists-for-revision` (naming the run already on screen) instead of minting
+   * a duplicate engine-owned run for the same revision.
    *
    * Ownership never moves: the successor run, its stages, attempts, sessions, boundaries and events are
    * all the owner's, and the executor is handed the owner. The operator is the ACTOR — audited as the

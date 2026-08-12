@@ -136,7 +136,10 @@ export async function executeApprovedLaunch(
     ? `operator:${actorSubject}:${input.idempotencyKey}`
     : input.idempotencyKey;
   return withOpsTransaction(async (): Promise<LaunchOutcome> => {
-    // ONE RUN PER REVISION, ACROSS SUBJECTS.
+    // NO CROSS-SUBJECT LAUNCH MAY DUPLICATE A LIVE RUN.
+    //
+    // One-directional by design: only cross-subject launches consult this guard. The owner's own
+    // launcher (e.g. the queue bridge) skips it — an own-subject fresh key is a deliberate second run.
     //
     // The namespace above buys collision safety at the cost of recognition: an operator key can never
     // equal the owner's, so `createRun` cannot replay the owner's in-flight run and would mint a SECOND
