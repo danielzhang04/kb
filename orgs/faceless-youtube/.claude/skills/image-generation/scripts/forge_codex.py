@@ -16,6 +16,7 @@ import os
 import re
 import signal
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -472,8 +473,18 @@ def write_prompt_file(staging: str, name: str, text: str, *, no_clobber: bool = 
             if os.path.exists(tmp):
                 os.unlink(tmp)
         return path
-    with open(path, "w", encoding="utf-8", newline="") as output:
-        output.write(text)
+    fd, tmp = tempfile.mkstemp(prefix=f".{name}.", suffix=".txt.tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as output:
+            output.write(text)
+            output.flush()
+            os.fsync(output.fileno())
+        # Replacing the directory entry, rather than opening ``path`` for write, leaves a planted
+        # symlink or hard link untouched and makes the archive itself a fresh regular file.
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
     return path
 
 
@@ -528,8 +539,57 @@ def build_log_row(*, name, meta, composed_path, composed_text, seed_shas, residu
 
 def append_log_row(path, row):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    existed = False
+    try:
+        before = os.lstat(path)
+    except FileNotFoundError:
+        before = None
+    else:
+        existed = True
+        if stat.S_ISLNK(before.st_mode):
+            raise CodexContractError(f"refusing to append engine log through symlink: {path}")
+        if before.st_nlink > 1:
+            raise CodexContractError(f"refusing to append engine log with multiple hard links: {path}")
+
+    pre_append_size = 0
+    output = None
+    opened = False
+    fsynced = False
+    failure = None
+    try:
+        output = open(path, "a", encoding="utf-8")
+        opened = True
+        pre_append_size = os.fstat(output.fileno()).st_size
+        output.write(json.dumps(row, ensure_ascii=False) + "\n")
+        output.flush()
+        os.fsync(output.fileno())
+        fsynced = True
+    except BaseException:
+        failure = sys.exc_info()
+    finally:
+        if output is not None:
+            try:
+                output.close()
+            except BaseException:
+                # A close error after fsync cannot undo the row: report success so the caller keeps
+                # the matching published PNG rather than rolling it back and double-logging later.
+                if not fsynced and failure is None:
+                    failure = sys.exc_info()
+        if failure is not None and not fsynced and opened:
+            try:
+                if existed:
+                    with open(path, "r+b") as rollback:
+                        rollback.truncate(pre_append_size)
+                        rollback.flush()
+                        os.fsync(rollback.fileno())
+                elif os.path.exists(path):
+                    os.unlink(path)
+            except BaseException:
+                # Preserve the original append failure; its cause is the caller-visible transaction
+                # failure even if best-effort restoration itself hits an I/O problem.
+                pass
+    if failure is not None and not fsynced:
+        raise failure[1].with_traceback(failure[2])
 
 
 def run_totals_text(rows):

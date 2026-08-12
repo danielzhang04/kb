@@ -5,6 +5,7 @@ NO NETWORK, NO API SPEND: every codex invocation in this file is _fake_codex.py.
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1773,6 +1774,188 @@ def test_run_item_log_append_failure_rolls_back_output_before_retry():
         assert len(rows) == 1 and rows[0] == row
     finally:
         fc.generate = original_generate
+
+
+def test_run_item_close_after_durable_log_is_success_and_retry_skips():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    log = staging / "_codex" / "engine-log.jsonl"
+    original_open = open
+    original_generate = fc.generate
+
+    class ClosePoison:
+        def __init__(self, real):
+            self.real = real
+
+        def __getattr__(self, name):
+            return getattr(self.real, name)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.close()
+
+        def close(self):
+            self.real.close()
+            raise OSError("close after durable log write")
+
+    def poisoned_open(path, mode="r", *args, **kwargs):
+        real = original_open(path, mode, *args, **kwargs)
+        if os.fspath(path) == str(log) and mode == "a":
+            return ClosePoison(real)
+        return real
+
+    def generated(**_kwargs):
+        return _png_bytes((1376, 768)), _meta_stub()
+
+    fc.open = poisoned_open
+    fc.generate = generated
+    try:
+        status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    finally:
+        fc.open = original_open
+        fc.generate = original_generate
+    assert status == "OK" and row is not None
+    assert (staging / "L29.png").is_file()
+    rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert rows == [row]
+    status, retry_row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    assert status.startswith("SKIP") and retry_row is None
+    assert [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] == [row]
+
+
+def test_run_item_pre_fsync_log_failure_restores_exact_prior_bytes_then_retries():
+    import forge
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    log = staging / "_codex" / "engine-log.jsonl"
+    log.parent.mkdir(parents=True)
+    before = b'{"preexisting": true}\n'
+    log.write_bytes(before)
+    original_open = open
+    original_generate = fc.generate
+
+    class WritePoison:
+        def __init__(self, real):
+            self.real = real
+
+        def __getattr__(self, name):
+            return getattr(self.real, name)
+
+        def write(self, text):
+            self.real.write(text[:len(text) // 2])
+            raise OSError("log write poison")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return self.real.__exit__(*args)
+
+    def poisoned_open(path, mode="r", *args, **kwargs):
+        real = original_open(path, mode, *args, **kwargs)
+        if os.fspath(path) == str(log) and mode == "a":
+            return WritePoison(real)
+        return real
+
+    def generated(**_kwargs):
+        return _png_bytes((1376, 768)), _meta_stub()
+
+    fc.open = poisoned_open
+    fc.generate = generated
+    raised = None
+    try:
+        try:
+            fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+        except OSError as e:
+            raised = str(e)
+    finally:
+        fc.open = original_open
+        fc.generate = original_generate
+    assert raised == "log write poison"
+    out = forge._staging_png(k, "L29")
+    assert not os.path.exists(out) and not os.path.exists(out + ".lock")
+    assert log.read_bytes() == before
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    assert status == "OK" and row is not None
+    assert [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] == [
+        {"preexisting": True}, row]
+
+
+def test_run_item_live_archive_replaces_a_planted_symlink_without_touching_victim():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    archive = staging / "_codex" / "prompts" / "L29.txt"
+    archive.parent.mkdir(parents=True)
+    victim = tmp / "outside-symlink-victim.txt"
+    before = b"outside symlink victim\n"
+    victim.write_bytes(before)
+    try:
+        os.symlink(victim, archive)
+    except OSError as e:
+        # This Windows runner does not hold SeCreateSymbolicLinkPrivilege. The hard-link regression
+        # below proves the same os.replace directory-entry behavior on this platform.
+        if getattr(e, "winerror", None) == 1314:
+            return
+        raise
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    assert status == "OK" and row is not None
+    assert victim.read_bytes() == before
+    assert archive.is_file() and not archive.is_symlink()
+    assert archive.read_text(encoding="utf-8") == fc.compose_prompt(
+        _item_L29(), reg=k.reg, canvas=(1376, 768), aspect="16:9")
+
+
+def test_run_item_live_archive_replaces_a_planted_hardlink_without_touching_victim():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    archive = staging / "_codex" / "prompts" / "L29.txt"
+    archive.parent.mkdir(parents=True)
+    victim = tmp / "outside-hardlink-victim.txt"
+    before = b"outside hardlink victim\n"
+    victim.write_bytes(before)
+    os.link(victim, archive)
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    assert status == "OK" and row is not None
+    assert victim.read_bytes() == before
+    assert archive.is_file() and not archive.is_symlink() and not os.path.samefile(archive, victim)
+    assert archive.read_text(encoding="utf-8") == fc.compose_prompt(
+        _item_L29(), reg=k.reg, canvas=(1376, 768), aspect="16:9")
+
+
+def test_run_item_rejects_a_planted_log_symlink_without_writing_the_victim():
+    import forge
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    log = staging / "_codex" / "engine-log.jsonl"
+    log.parent.mkdir(parents=True)
+    victim = tmp / "outside-log-victim.jsonl"
+    before = b"outside log victim\n"
+    victim.write_bytes(before)
+    original_lstat = fc.os.lstat
+    try:
+        os.symlink(victim, log)
+    except OSError as e:
+        if getattr(e, "winerror", None) != 1314:
+            raise
+        # Model the unprivileged-platform symlink metadata while retaining a real outside-write
+        # target: current code appends to this hard-linked victim; fixed code rejects before open.
+        os.link(victim, log)
+
+        def symlink_lstat(path):
+            if os.fspath(path) == str(log):
+                actual = original_lstat(path)
+                return os.stat_result((stat.S_IFLNK,) + tuple(actual)[1:])
+            return original_lstat(path)
+
+        fc.os.lstat = symlink_lstat
+    raised = None
+    try:
+        fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    except fc.CodexContractError as e:
+        raised = str(e)
+    finally:
+        fc.os.lstat = original_lstat
+    assert raised is not None and "symlink" in raised
+    assert victim.read_bytes() == before
+    out = forge._staging_png(k, "L29")
+    assert not os.path.exists(out) and not os.path.exists(out + ".lock")
 
 
 def test_run_item_false_publish_reports_concurrent_survivor_and_logs_once():
