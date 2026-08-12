@@ -12,7 +12,9 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export type ProposalDecision = 'approved' | 'rejected' | 'changes-requested';
-export type HumanRequestDecision = 'responded' | 'approved' | 'rejected' | 'changes-requested';
+/** `'auto-closed'` is engine-written only (a terminal run, or the orphan sweep) — never an operator's
+ *  own decision; see the server-side type for the full note. */
+export type HumanRequestDecision = 'responded' | 'approved' | 'rejected' | 'changes-requested' | 'auto-closed';
 
 export interface ProposalRoutingDto {
   runtime: string;
@@ -156,6 +158,13 @@ export interface RunDto {
 }
 
 export interface RunMetadataDto extends RunDto {
+  /**
+   * The subject that owns this run: `operator` for one launched by hand here, `dashboard-engine` for
+   * one the queue bridge or the executor launched headlessly. A verified operator session lists every
+   * subject's runs in one list, so the rows need this to be told apart — including the daemon's own
+   * synthetic acceptance runs, which are deliberately listed rather than filtered.
+   */
+  ownerSubject: string;
   stageCount: number;
   attemptCount: number;
   sessionCount: number;
@@ -267,6 +276,8 @@ export interface ReviewReceiptDto {
 
 export interface RunDetailDto {
   run: RunDto;
+  /** The subject that owns this run. See {@link RunMetadataDto.ownerSubject}. */
+  ownerSubject: string;
   stages: StageDto[];
   attempts: AttemptDto[];
   sessions: ManagedSessionDto[];

@@ -12,6 +12,11 @@
  * card deep-links into Tasks (whose detail pane owns verify + reply/resolve). Nothing is recorded here
  * as "handled": when a writer anywhere moves a card or run on, the item stops being projected and the
  * row goes away by itself.
+ *
+ * Run asks need the passkey session the card feed does not — a real boundary, not a display toggle — so
+ * a locked tab cannot fetch them at all. It used to just render the card side with no sign anything was
+ * missing; `Approvals`' `locked` prop now carries an explicit notice instead, so "I can't find shit" is
+ * never actually "there was more, and this surface hid it silently."
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Approvals, inboxRows, type RunAskRow } from './Approvals';
@@ -57,6 +62,7 @@ function asksForRun(detail: RunDetailDto): RunAskRow[] {
         category,
         categoryLabel: labelOf(category),
         urgency: tierForHumanRequest(request.kind) === 'T3' ? 'high' : 'normal',
+        createdAt: request.createdAt,
       };
     });
   }
@@ -73,11 +79,13 @@ function asksForRun(detail: RunDetailDto): RunAskRow[] {
     category: 'intervention',
     categoryLabel: 'Intervention',
     urgency: 'normal',
+    // No request to date this row on — the run's own createdAt is the closest honest stand-in.
+    createdAt: detail.run.createdAt,
   }];
 }
 
 export function ApprovalsLive({ fetchImpl, onNavigate }: ApprovalsLiveProps): React.JSX.Element {
-  const { session } = useSession();
+  const { session, locked } = useSession();
   const token = session?.token;
   const [items, setItems] = useState<HumanInboxItem[]>([]);
   const [runAsks, setRunAsks] = useState<RunAskRow[]>([]);
@@ -107,8 +115,10 @@ export function ApprovalsLive({ fetchImpl, onNavigate }: ApprovalsLiveProps): Re
   }, [count, fetchImpl]);
 
   useEffect(() => {
-    // Run asks need the session the card feed does not. A locked tab simply shows the card side; there
-    // is no unlock button here — the app has ONE unlock, and any governed click runs it.
+    // Run asks need the session the card feed does not. A locked tab cannot fetch them at all — that is
+    // a real boundary (the WebAuthn session, not a display toggle) — so it shows the card side and the
+    // `locked` prop below carries an EXPLICIT notice that run-side asks may exist and are hidden; there
+    // is no second unlock button here, the app has ONE (the top-bar chip), and any governed click runs it.
     if (!token) {
       setRunAsks([]);
       return;
@@ -131,7 +141,7 @@ export function ApprovalsLive({ fetchImpl, onNavigate }: ApprovalsLiveProps): Re
   return (
     <section className="v-approvals-live">
       {error ? <p className="v-approvals__outcome v-approvals__outcome--error" role="alert">{error}</p> : null}
-      <Approvals rows={inboxRows(items, runAsks)} onNavigate={onNavigate} />
+      <Approvals rows={inboxRows(items, runAsks)} onNavigate={onNavigate} locked={locked} />
     </section>
   );
 }

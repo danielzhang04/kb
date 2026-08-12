@@ -11,6 +11,7 @@ const assignment = (agentId: string) => ({
 
 function runDetail(states: [string, string, string] = ['succeeded', 'running', 'waiting-human']): RunDetailDto {
   return {
+    ownerSubject: 'operator',
     run: {
       runRef: 'run-1', predecessorRunRef: null, title: 'Run graph', displayName: 'Run graph', shortRef: 1,
       workflowRef: 'workflow-1', proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'b'.repeat(64),

@@ -279,6 +279,41 @@ function humanIdempotencyKey(request: HumanRequestDto, decision: HumanRequestDec
   return `human:${request.requestRef}:${request.revision}:${decision}`;
 }
 
+/**
+ * The headline for a request in the "Already answered" section.
+ *
+ * `request.ask` (server-derived, `humanRequestAsk.ts`) is written for an OPEN request: it is present
+ * tense and ends in an instruction — "…needs your sign-off before it can go any further. Open the run
+ * to approve or turn it down." Printing that under a resolved request, and especially under one the
+ * platform auto-closed with nobody answering, makes a settled record read as a live demand. So a
+ * resolved request gets a past-tense headline naming what it HAD asked for; the decision line below it
+ * (decision · reason · timestamp) is untouched and remains the record of how it ended.
+ *
+ * Kind-keyed, not pattern-keyed: this says only what the request WAS, so it needs none of the ask
+ * map's cause-detection. Typed as a total map over the kind union, so a new kind fails to compile here
+ * rather than silently falling through to a vaguer sentence.
+ */
+const RESOLVED_HEADLINE: Record<HumanRequestDto['kind'], (runName: string) => string> = {
+  approval: (runName) => `${runName} asked for your sign-off.`,
+  review: (runName) => `${runName} asked you to review a finished step.`,
+  input: (runName) => `${runName} asked you for an answer before carrying on.`,
+  intervention: (runName) => `${runName} stopped and asked for a person to look at it.`,
+  'governance-refusal': (runName) => `${runName} was refused on governance grounds and asked what to do next.`,
+};
+
+/**
+ * {@link RESOLVED_HEADLINE} with a runtime floor. The map stays total over the kind union at COMPILE
+ * time — a new kind still fails to build until it is given real words above — but the DTOs reaching this
+ * view are unvalidated `as` casts off the wire, so a kind this build has never heard of (an older SPA
+ * against a newer server) arrives typed but unmapped. Indexing then yields `undefined`, and calling it
+ * throws a TypeError that unmounts the WHOLE run page over one settled record in a secondary section.
+ * The fallback says the only thing certainly true of every resolved request, in the same past tense.
+ */
+function resolvedHeadline(request: HumanRequestDto): string {
+  const headline = RESOLVED_HEADLINE[request.kind] as ((runName: string) => string) | undefined;
+  return headline ? headline(request.displayName) : `${request.displayName} asked for a person, and this was answered.`;
+}
+
 /* ============================================================================
  * Section bodies.
  * ========================================================================= */
@@ -1199,7 +1234,10 @@ export function RunDetail({
               <h4 className="entity-block__title">Already answered</h4>
               {resolvedRequests.map((request) => (
                 <article key={request.requestRef} className="control-request" data-testid={`resolved-request-${request.requestRef}`}>
-                  <h4>{request.title}</h4>
+                  {/* spec §3b, same law as the open card above: plain words, never the machine's raw
+                    * `automatic:policy:...` title — but in the PAST tense, because this one is settled
+                    * (see resolvedHeadline, which also floors an unrecognized kind rather than throwing). */}
+                  <h4>{resolvedHeadline(request)}</h4>
                   {request.response ? (
                     <p className="control-help">
                       <span className="mc-mono">{request.response.decision}</span>
@@ -1335,6 +1373,11 @@ export function RunDetail({
       facts={[
         { label: 'Steps', value: detail.stages.length, mono: true },
         { label: 'Waiting on you', value: openRequests.length, mono: true },
+        // Who owns this run — `operator` when it was launched by hand here, `dashboard-engine` when
+        // the queue bridge or the executor launched it headlessly. Stated on every run, like the other
+        // facts, rather than only on foreign ones: the facts row is a uniform strip, and a slot that
+        // appears conditionally would read as a warning instead of provenance.
+        { label: 'Owner', value: detail.ownerSubject, mono: true },
         { label: 'Started', value: timestampLabel(detail.run.createdAt), mono: true },
         { label: 'Updated', value: timestampLabel(detail.run.updatedAt), mono: true },
       ]}

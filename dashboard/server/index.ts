@@ -19,6 +19,8 @@ import { originPlugin } from './security/origin.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 import { startStrandedArchiver } from './write/strandedArchiver.ts';
+import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
+import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -73,6 +75,34 @@ export function resolveStrandedArchiveWindowMs(env: NodeJS.ProcessEnv = process.
   if (raw === undefined || raw === '') return DEFAULT_STRANDED_ARCHIVE_WINDOW_MS;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_STRANDED_ARCHIVE_WINDOW_MS;
+}
+
+/** Human Request orphan-sweep cadence — ON BY DEFAULT (unlike the stranded-card archiver above, this
+ *  only ever mutates the control-plane JSON document it already owns; there is no filesystem move or
+ *  git commit to gate behind a dry-run). 5 minutes, matching the merge-gate reconciler's cadence. */
+export const DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS = 300_000;
+export function resolveHumanRequestSweepIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
+  if (raw === undefined || raw === '') return DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
+}
+
+/**
+ * One daemon-log line for a sweep that actually closed something, or `null` for the overwhelmingly
+ * common empty sweep (a 5-minute cadence must never narrate its own no-ops). Says WHAT closed and WHY,
+ * because the reason is the only thing that distinguishes a correct close from a bug, and flags any
+ * request whose audit row could not be written so a short trail is never silent.
+ */
+export function humanRequestSweepLogLine(result: HumanRequestSweepResult): string | null {
+  if (result.closed.length === 0) return null;
+  const closed = result.closed
+    .map((request) => `${request.requestRef} (run ${request.runRef}: ${request.reason ?? 'no reason recorded'})`)
+    .join('; ');
+  const audit = result.auditFailures.length > 0
+    ? ` — AUDIT ROW FAILED for ${result.auditFailures.join(', ')}`
+    : '';
+  return `[human-request-sweep] auto-closed ${result.closed.length}: ${closed}${audit}`;
 }
 
 /**
@@ -204,6 +234,32 @@ export function buildApp(): FastifyInstance {
     resolveStrandedArchiveIntervalMs(),
   );
   app.addHook('onClose', async () => { stopStrandedArchiver(); });
+
+  // Human Request orphan sweeper — ON BY DEFAULT. Runs once immediately (the boot sweep — clears any
+  // request left open on a run that had already gone terminal before this process started, which is how
+  // stale 2026-07 requests were found still open on 2026-08-11: nothing had ever re-checked them) and
+  // then on the interval. Terminal run state is its ONLY predicate. Every failure just leaves requests
+  // open — the pre-fix status quo — so there is no unsafe direction for this to fail toward. Each close
+  // writes one line to the daemon log saying what and why, plus one audit-ledger row COMMITTED to `ops`
+  // through `appendAudit` — deliberately not the bare local appender the merge-gate reconciler and
+  // stranded archiver use above (each of those stages the ledger inside its own card-mutation commit;
+  // this sweep has no card commit to ride on, and an uncommitted local row would leave the shared
+  // checkout dirty and abort every later coordination write). See humanRequestSweep.ts's header.
+  const stopHumanRequestSweeper = startHumanRequestSweeper(
+    {
+      store: surfaceCtx.controlStore,
+      repoRoot: surfaceCtx.repoRoot,
+      appendAudit: surfaceCtx.appendAudit,
+      now: surfaceCtx.now,
+      onSweep: (result) => {
+        const line = humanRequestSweepLogLine(result);
+        // eslint-disable-next-line no-console
+        if (line) console.info(line);
+      },
+    },
+    resolveHumanRequestSweepIntervalMs(),
+  );
+  app.addHook('onClose', async () => { stopHumanRequestSweeper(); });
 
   // Always-on: serve the built SPA (dist/) with an SPA fallback, if it exists; API-only otherwise.
   // Registered last — every /api/* route above and the hub's /events + /ws already claim their exact

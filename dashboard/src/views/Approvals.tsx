@@ -20,6 +20,7 @@ import type { HumanInboxCategory, HumanInboxItem, HumanInboxUrgency } from '../.
 import { EntityName, type EntityKind } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
 import { cardLink, runLink } from '../control/entityLinks';
+import { relativeAge, timestampLabel } from '../control/runEvents';
 import type { NavTarget } from '../nav/stack';
 import '../styles/views/approvals.css';
 
@@ -38,6 +39,13 @@ export interface InboxRow {
   entity: { kind: EntityKind; id: string; displayName: string; shortRef: number };
   /** Where the gate is actually addressed, with context. */
   target: NavTarget;
+  /**
+   * When this ask was filed — a card's id-epoch prefix (`cards.new_id`, same convention as
+   * `server/approvals/humanInbox.ts#cardAgeMs`), or the server's own `createdAt` for a run ask. Null only
+   * for a legacy/hand-authored card id that carries no epoch. Drives the "time added" readout and the
+   * newest-first tiebreak in {@link inboxRows}.
+   */
+  createdAt: string | null;
 }
 
 /** A run that needs the operator: one open request, or a run parked with no request at all. */
@@ -51,6 +59,8 @@ export interface RunAskRow {
   category: HumanInboxCategory;
   categoryLabel: 'Gate' | 'Input' | 'Intervention';
   urgency: HumanInboxUrgency;
+  /** The request's own `createdAt` (or the run's, for the synthetic "parked with nothing to answer" row). */
+  createdAt: string;
 }
 
 function tierRank(tier: string | null): number {
@@ -64,6 +74,18 @@ function urgencyRank(urgency: HumanInboxUrgency): number {
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value : String(value ?? '');
+}
+
+/** `cards.new_id` prefixes every id with an 8-hex-digit unix-epoch-seconds stamp — the same convention
+ *  `server/approvals/humanInbox.ts#cardAgeMs` reads server-side. Decoded here too so a card row can carry
+ *  a "time added" without a wire change: the id is already on every card DTO. Null for a non-matching
+ *  (legacy/hand-authored) id, exactly like the server-side reader. */
+const CARD_ID_EPOCH_RE = /^([0-9a-f]{8})-/;
+function cardCreatedAt(id: string): string | null {
+  const match = CARD_ID_EPOCH_RE.exec(id);
+  if (!match) return null;
+  const epochSec = parseInt(match[1] as string, 16);
+  return Number.isFinite(epochSec) ? new Date(epochSec * 1000).toISOString() : null;
 }
 
 /**
@@ -89,6 +111,7 @@ export function inboxRows(cards: HumanInboxItem[], runAsks: RunAskRow[] = []): I
       shortRef: item.card.shortRef,
     },
     target: cardLink(text(item.card.meta.id)),
+    createdAt: cardCreatedAt(text(item.card.meta.id)),
   }));
   const fromRuns: InboxRow[] = runAsks.map((ask) => ({
     key: `run:${ask.requestRef}`,
@@ -99,11 +122,17 @@ export function inboxRows(cards: HumanInboxItem[], runAsks: RunAskRow[] = []): I
     urgency: ask.urgency,
     entity: { kind: 'run', id: ask.runRef, displayName: ask.displayName, shortRef: ask.shortRef },
     target: runLink(ask.runRef),
+    createdAt: ask.createdAt,
   }));
   return [...fromCards, ...fromRuns].sort((a, b) => {
     if (a.urgency !== b.urgency) return urgencyRank(a.urgency) - urgencyRank(b.urgency);
     const tier = tierRank(b.tier) - tierRank(a.tier);
     if (tier !== 0) return tier;
+    // Newest-first tiebreak: two items at the same urgency and tier are equally actionable by that law,
+    // so the one that showed up most recently — the one most likely to still need a fresh look — leads.
+    const at = a.createdAt ? Date.parse(a.createdAt) : NaN;
+    const bt = b.createdAt ? Date.parse(b.createdAt) : NaN;
+    if (!Number.isNaN(at) && !Number.isNaN(bt) && at !== bt) return bt - at;
     return a.categoryLabel.localeCompare(b.categoryLabel);
   });
 }
@@ -112,12 +141,74 @@ export interface ApprovalsProps {
   rows: InboxRow[];
   /** Open the surface that owns a gate. Absent in a bare render; then rows are inert text. */
   onNavigate?: (target: NavTarget) => void;
+  /**
+   * True when the tab's session is locked, so run-side asks (which need it) are not in `rows` at all.
+   * Renders an explicit notice instead of the old silent gap — a locked tab must say gated items may
+   * exist, never look identical to "nothing is waiting".
+   */
+  locked?: boolean;
 }
 
-export function Approvals({ rows, onNavigate }: ApprovalsProps): React.JSX.Element {
+function InboxRowView({ row, onNavigate }: { row: InboxRow; onNavigate?: (target: NavTarget) => void }): React.JSX.Element {
+  const tier = tierRank(row.tier);
+  const rowClass = [
+    'v-approvals__row',
+    tier >= 3 ? 'v-approvals__row--t3' : '',
+    row.urgency === 'high' || row.urgency === 'critical' ? 'v-approvals__row--urgent' : '',
+  ].filter(Boolean).join(' ');
+  return (
+    <li key={row.key}>
+      <div
+        className={rowClass}
+        data-testid={`inbox-row-${row.key}`}
+        aria-label={`Open ${row.entity.displayName}`}
+        {...entityRowProps(() => onNavigate?.(row.target))}
+      >
+        <span className="v-approvals__row-copy">
+          {/* The plain line leads; the entity names WHERE it lives; the id is behind the tooltip. */}
+          <span className="v-approvals__row-action">{row.ask}</span>
+          <span className="v-approvals__row-id">
+            <EntityName
+              kind={row.entity.kind}
+              id={row.entity.id}
+              displayName={row.entity.displayName}
+              shortRef={row.entity.shortRef}
+              muted
+            />
+          </span>
+        </span>
+        <span className="v-approvals__row-meta">
+          <span className={`v-approvals__category v-approvals__category--${row.category}`}>
+            {row.categoryLabel}
+          </span>
+          {row.tier ? (
+            <span className={`v-approvals__row-badge mc-badge mc-badge--t${tier || 1}`}>{row.tier}</span>
+          ) : null}
+          {row.createdAt ? (
+            <span className="v-approvals__row-time" title={timestampLabel(row.createdAt)}>
+              {relativeAge(row.createdAt)}
+            </span>
+          ) : null}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+export function Approvals({ rows, onNavigate, locked }: ApprovalsProps): React.JSX.Element {
+  // A locked tab hides run-side asks entirely upstream (they need the session); this is the one place
+  // that says so out loud instead of letting the list look complete with a silent gap in it. It points at
+  // the app's ONE standing unlock affordance (the top-bar chip) rather than growing a second unlock here.
+  const lockedNotice = locked ? (
+    <p className="v-approvals__notice" data-testid="approvals-locked-notice" role="status">
+      This tab is locked — run-side requests are hidden until you unlock it. Use Unlock in the top bar to see and answer them.
+    </p>
+  ) : null;
+
   if (rows.length === 0) {
     return (
       <div className="v-approvals" aria-label="Human Inbox">
+        {lockedNotice}
         <div className="v-approvals__empty" data-testid="approvals-empty">
           <p className="v-approvals__empty-title">No human attention waiting</p>
           <p className="v-approvals__empty-sub">Decisions, operator gates, questions, wake-me cards, and halted runs will appear here.</p>
@@ -126,51 +217,32 @@ export function Approvals({ rows, onNavigate }: ApprovalsProps): React.JSX.Eleme
     );
   }
 
+  // Triage: an item at `urgency: 'low'` (a replied input awaiting agent pickup, or a stranded/owned-but-
+  // not-progressing card) has nothing left for the operator to DO right now. Splitting it into a
+  // collapsed section — rather than interleaving it by tier the way the ranking otherwise would — is what
+  // makes "which ones I need to address" obvious at a glance instead of requiring a full read of the list.
+  const actionable = rows.filter((row) => row.urgency !== 'low');
+  const stale = rows.filter((row) => row.urgency === 'low');
+
   return (
     <div className="v-approvals" aria-label="Human Inbox">
-      <p className="v-approvals__list-head">Needs you · {rows.length}</p>
-      <ul className="v-approvals__list">
-        {rows.map((row) => {
-          const tier = tierRank(row.tier);
-          const rowClass = [
-            'v-approvals__row',
-            tier >= 3 ? 'v-approvals__row--t3' : '',
-            row.urgency === 'high' || row.urgency === 'critical' ? 'v-approvals__row--urgent' : '',
-          ].filter(Boolean).join(' ');
-          return (
-            <li key={row.key}>
-              <div
-                className={rowClass}
-                data-testid={`inbox-row-${row.key}`}
-                aria-label={`Open ${row.entity.displayName}`}
-                {...entityRowProps(() => onNavigate?.(row.target))}
-              >
-                <span className="v-approvals__row-copy">
-                  {/* The plain line leads; the entity names WHERE it lives; the id is behind the tooltip. */}
-                  <span className="v-approvals__row-action">{row.ask}</span>
-                  <span className="v-approvals__row-id">
-                    <EntityName
-                      kind={row.entity.kind}
-                      id={row.entity.id}
-                      displayName={row.entity.displayName}
-                      shortRef={row.entity.shortRef}
-                      muted
-                    />
-                  </span>
-                </span>
-                <span className="v-approvals__row-meta">
-                  <span className={`v-approvals__category v-approvals__category--${row.category}`}>
-                    {row.categoryLabel}
-                  </span>
-                  {row.tier ? (
-                    <span className={`v-approvals__row-badge mc-badge mc-badge--t${tier || 1}`}>{row.tier}</span>
-                  ) : null}
-                </span>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      {lockedNotice}
+      {actionable.length > 0 ? (
+        <>
+          <p className="v-approvals__list-head">Needs you · {actionable.length}</p>
+          <ul className="v-approvals__list">
+            {actionable.map((row) => <InboxRowView key={row.key} row={row} onNavigate={onNavigate} />)}
+          </ul>
+        </>
+      ) : null}
+      {stale.length > 0 ? (
+        <details className="v-approvals__stale" data-testid="approvals-stale-section">
+          <summary>Older / stale · {stale.length}</summary>
+          <ul className="v-approvals__list">
+            {stale.map((row) => <InboxRowView key={row.key} row={row} onNavigate={onNavigate} />)}
+          </ul>
+        </details>
+      ) : null}
     </div>
   );
 }

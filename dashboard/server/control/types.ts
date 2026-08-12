@@ -94,6 +94,15 @@ export interface Run {
 }
 
 export interface RunMetadata extends Run {
+  /**
+   * The subject that OWNS this run — `operator` for a run launched by hand from the SPA,
+   * `dashboard-engine` for one the queue bridge or the executor launched headlessly.
+   *
+   * A verified operator session reads (and now mutates) across every subject, so one list mixes both;
+   * without this the rows are indistinguishable. Display/attribution provenance only: nothing
+   * authorizes off it, and ownership never changes, not even when the operator acts on a foreign run.
+   */
+  ownerSubject: string;
   stageCount: number;
   attemptCount: number;
   sessionCount: number;
@@ -231,7 +240,14 @@ export interface ManagedSession {
 }
 
 export type HumanRequestKind = 'input' | 'approval' | 'review' | 'intervention' | 'governance-refusal';
-export type HumanRequestDecision = 'responded' | 'approved' | 'rejected' | 'changes-requested';
+/**
+ * `'auto-closed'` is written ONLY by the engine (`transitionRun` on a terminal state, or the orphan
+ * sweep in `closeOrphanedHumanRequests` — see store.ts), never accepted from an operator's own decision
+ * (the public `respondHumanRequest` route validates against `HUMAN_DECISIONS`, which omits it). Keeping
+ * it a distinct value — rather than reusing `'responded'` — means a closed record never claims a human
+ * answered when nobody did.
+ */
+export type HumanRequestDecision = 'responded' | 'approved' | 'rejected' | 'changes-requested' | 'auto-closed';
 
 export interface HumanResponse {
   requestRevision: number;
@@ -307,6 +323,8 @@ export interface OperationalEvent {
 
 export interface RunDetail {
   run: Run;
+  /** The subject that owns this run. See {@link RunMetadata.ownerSubject}. */
+  ownerSubject: string;
   stages: Stage[];
   attempts: Attempt[];
   sessions: ManagedSession[];

@@ -489,7 +489,9 @@ describe('control proposal routes', () => {
     expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({
       expectedRequestRevision: 1, expectedReceiptVersion: 7, expectedLoopVersion: 8,
       expectedReviewStageVersion: 9, expectedSubjectStageVersion: 10, decision: 'approved',
-    }));
+    // The operator's scope rides along on this mutation too — the run tab submits gates through this
+    // route as well as the generic respond route, so both had to be widened together.
+    }), 'all-subjects');
   });
 
   it.each(['rejected', 'changes-requested'] as const)('parks a %s completion decision through the dedicated route', async (decision) => {
@@ -499,7 +501,7 @@ describe('control proposal routes', () => {
       payload: { expectedRequestRevision: 1, decision, idempotencyKey: `human:request-gate:1:${decision}` },
     });
     expect(response.statusCode, response.body).toBe(200);
-    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({ decision }));
+    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({ decision }), 'all-subjects');
   });
 
   it('rejects a stale completion-gate request revision before audit or resolution', async () => {
@@ -2593,5 +2595,305 @@ describe('control run archive route', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+/**
+ * Operator cross-subject authority (rulings, 2026-08-11).
+ *
+ * Runs are owned by the subject that created them. The SPA session is `operator`; everything the queue
+ * bridge and the executor launch is owned by `dashboard-engine`. Before the first ruling, the operator's
+ * own session could not see those runs AT ALL — not in the list, not in the Workflows graph, not by ref,
+ * not their events — which is what made every def-card run look like it had never happened.
+ *
+ * That ruling widened READS only, and the consequence was worse than the symptom it fixed: the Inbox
+ * then LISTED human gates on engine-owned runs, rendered them answerable, and 404'd on submit; operator
+ * message / steer / stop / archive were unreachable on exactly the headless runs those controls exist
+ * for. Daniel's follow-up ruling: the verified operator session carries FULL MUTATION AUTHORITY across
+ * every subject's runs.
+ *
+ * Every other subject keeps exact own-subject scoping on reads AND mutations, a widened mutation never
+ * moves ownership, and the audit row names the operator as the actor beside the run's owner.
+ */
+describe('operator cross-subject authority', () => {
+  /** One approved+launched run owned by `subject`, imported the way the workflow registry imports one. */
+  function seedRunFor(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    subject: string,
+    key: string,
+    workflowDefId: string,
+  ): string {
+    const created = store.createProposalRevision(subject, {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: workflowDefId, title: `Run ${key}`,
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!created.ok) throw new Error(created.detail);
+    if (!store.decideProposal(subject, created.value.proposalRef, 1, {
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+    }).ok) throw new Error('approval failed');
+    const run = store.createRun(subject, {
+      title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
+      expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
+      idempotencyKey: `${key}-launch`,
+      stages: proposal.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+    });
+    if (!run.ok) throw new Error(run.detail);
+    const event = store.appendEvent(subject, run.value.run.runRef, {
+      kind: 'lifecycle', source: 'system', summary: `${key} started`,
+    });
+    if (!event.ok) throw new Error(event.detail);
+    return run.value.run.runRef;
+  }
+
+  it('lists, opens and streams a dashboard-engine run, and files it under its workflow definition', async () => {
+    const { app, store, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+
+      const list = await app.inject({ method: 'GET', url: '/api/control/runs', headers: headers(token) });
+      expect(list.statusCode).toBe(200);
+      const listed = (list.json() as { runs: Array<{ runRef: string; workflowRef: string | null }> }).runs;
+      // The run is reachable AND labelled: `workflowRefIndex` is built at the same scope as the list, so
+      // the def-card run lands under its definition's row instead of falling out of the graph.
+      expect(listed).toEqual([expect.objectContaining({ runRef: engineRun, workflowRef: 'daily-news' })]);
+
+      const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${engineRun}`, headers: headers(token) });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json()).toMatchObject({ ok: true, value: { run: { runRef: engineRun, workflowRef: 'daily-news' } } });
+      // Child records come back under the RUN's subject, not the reader's — an empty stage list here
+      // would be a run that "opens" and shows nothing.
+      expect((detail.json() as { value: { stages: unknown[] } }).value.stages).toHaveLength(proposal.stages.length);
+
+      const events = await app.inject({ method: 'GET', url: `/api/control/runs/${engineRun}/events`, headers: headers(token) });
+      expect(events.statusCode).toBe(200);
+      expect((events.json() as { value: Array<{ summary: string }> }).value.map((event) => event.summary))
+        .toContain('engine started');
+    } finally { await app.close(); }
+  });
+
+  it('gives a non-operator subject its OWN runs only — the widening is the operator identity, not the session', async () => {
+    const { app, store } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+      seedRunFor(store, 'other-agent', 'other', 'other-workflow');
+      const otherToken = mintSession('other-agent', SESSION).token;
+
+      const list = await app.inject({ method: 'GET', url: '/api/control/runs', headers: headers(otherToken) });
+      expect((list.json() as { runs: Array<{ runRef: string }> }).runs.map((run) => run.runRef)).not.toContain(engineRun);
+
+      expect((await app.inject({
+        method: 'GET', url: `/api/control/runs/${engineRun}`, headers: headers(otherToken),
+      })).statusCode).toBe(404);
+      expect((await app.inject({
+        method: 'GET', url: `/api/control/runs/${engineRun}/events`, headers: headers(otherToken),
+      })).statusCode).toBe(404);
+    } finally { await app.close(); }
+  });
+
+  /** Park an engine-owned run on `waiting-human` with one open gate — the state the Inbox lists it in. */
+  function parkEngineRunWithGate(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    runRef: string,
+  ): { requestRef: string; version: number } {
+    const run = store.getRun('dashboard-engine', runRef);
+    if (!run.ok) throw new Error(run.detail);
+    const publishing = store.transitionPublication('dashboard-engine', runRef, run.value.run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const published = store.transitionPublication('dashboard-engine', runRef, publishing.value.version, 'published');
+    if (!published.ok) throw new Error(published.detail);
+    const parked = store.transitionRun('dashboard-engine', runRef, published.value.version, 'waiting-human');
+    if (!parked.ok) throw new Error(parked.detail);
+    const request = store.createHumanRequest('dashboard-engine', runRef, {
+      kind: 'approval', title: 'Publish the cut?', prompt: 'Approve the render before it goes out.',
+    });
+    if (!request.ok) throw new Error(request.detail);
+    return { requestRef: request.value.requestRef, version: parked.value.version };
+  }
+
+  it('names the owning subject on every listed run and on run detail', async () => {
+    const { app, store, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+      const ownRun = seedRunFor(store, 'operator', 'own', 'daily-news');
+
+      const list = await app.inject({ method: 'GET', url: '/api/control/runs', headers: headers(token) });
+      const listed = (list.json() as { runs: Array<{ runRef: string; ownerSubject: string }> }).runs;
+      expect(listed.map((run) => [run.runRef, run.ownerSubject]).sort())
+        .toEqual([[engineRun, 'dashboard-engine'], [ownRun, 'operator']].sort());
+
+      const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${engineRun}`, headers: headers(token) });
+      expect(detail.json()).toMatchObject({ ok: true, value: { ownerSubject: 'dashboard-engine' } });
+    } finally { await app.close(); }
+  });
+
+  it('answers a human gate on a dashboard-engine run end to end: operator audited and recorded, run resumable', async () => {
+    const { app, store, audit, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+      const { requestRef, version } = parkEngineRunWithGate(store, engineRun);
+
+      // The exact P0 symptom: the Inbox lists this gate (via the widened read) and the SPA submits here.
+      const answered = await app.inject({
+        method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`, headers: headers(token),
+        payload: { expectedRevision: 1, decision: 'approved', idempotencyKey: `respond:${requestRef}`, response: 'ship it' },
+      });
+      expect(answered.statusCode, answered.body).toBe(200);
+
+      // ATTRIBUTION: the T3 row names the operator as the ACTOR and the engine as the run's owner, so a
+      // cross-subject answer is attributable from the ledger alone.
+      expect(audit.find((row) => row.action === 'control-human-response-authorize')).toMatchObject({
+        owner: 'operator', target: requestRef, riskTier: 'T3', result: 'authorized:approved',
+        detail: { requestRef, runRef: engineRun, runOwnerSubject: 'dashboard-engine' },
+      });
+
+      // The RESPONSE names the operator; the RUN is still the engine's, with its whole record tree.
+      const owned = store.getRun('dashboard-engine', engineRun);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.ownerSubject).toBe('dashboard-engine');
+      expect(owned.value.humanRequests).toEqual([expect.objectContaining({
+        requestRef, state: 'resolved', response: expect.objectContaining({ respondedBy: 'operator', decision: 'approved' }),
+      })]);
+      expect(store.listRuns('operator')).toEqual([]);
+      // The governance event landed on the run's OWN timeline, not on an operator partition.
+      const events = store.listEvents('dashboard-engine', engineRun);
+      if (!events.ok) throw new Error(events.detail);
+      expect(events.value.map((event) => event.summary)).toContain('Human Request approved at revision 1');
+
+      // Boundary accepted, so the owner can move the run on — it is genuinely unblocked, not just green.
+      // Answering a gate resolves the REQUEST; it does not itself bump the run — the owner's own
+      // transition below is what moves the run, and it is now allowed to.
+      expect(owned.value.run.version).toBe(version);
+      expect(store.transitionRun('dashboard-engine', engineRun, owned.value.run.version, 'running'))
+        .toMatchObject({ ok: true });
+    } finally { await app.close(); }
+  });
+
+  it('messages, steers and stops a dashboard-engine run — the executor still acts as the run`s owner', async () => {
+    const queued: Array<[string, string]> = [];
+    const cancelAutomatic = vi.fn(async () => ({
+      state: 'stopped' as const, stoppedSessionRefs: [], interruptedSessionRefs: [], replayed: false,
+    }));
+    const controlBroker = {
+      isRunning: () => true,
+      drain: () => {},
+      queueInstruction: (_session: string, message: string) => { queued.push(['message', message]); return true; },
+      queueInstructionAtCheckpoint: (_s: string, checkpoint: string, instruction: string) => {
+        queued.push([checkpoint, instruction]); return true;
+      },
+    };
+    const { app, store, token } = buildApp({ controlBroker, cancelAutomatic });
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+      const current = store.getRun('dashboard-engine', engineRun);
+      if (!current.ok) throw new Error(current.detail);
+      const cas = { expectedRunVersion: current.value.run.version, expectedManagerGeneration: current.value.run.managerGeneration };
+
+      const message = await app.inject({
+        method: 'POST', url: `/api/control/runs/${engineRun}/manager/messages`, headers: headers(token),
+        payload: { ...cas, idempotencyKey: 'operator-message', message: 'Start with the failing test.' },
+      });
+      expect(message.statusCode, message.body).toBe(200);
+
+      const steer = await app.inject({
+        method: 'POST', url: `/api/control/runs/${engineRun}/manager/steer`, headers: headers(token),
+        payload: { ...cas, idempotencyKey: 'operator-steer', checkpoint: 'safe-1', instruction: 'Inspect the diff.' },
+      });
+      expect(steer.statusCode, steer.body).toBe(200);
+      expect(queued).toEqual([['message', 'Start with the failing test.'], ['safe-1', 'Inspect the diff.']]);
+
+      const stop = await app.inject({
+        method: 'POST', url: `/api/control/runs/${engineRun}/manager/stop`, headers: headers(token),
+        payload: { ...cas, idempotencyKey: 'operator-stop' },
+      });
+      expect(stop.statusCode, stop.body).toBe(200);
+      // The executor is handed the RUN'S OWNER, not the caller: it walks the run's whole record tree
+      // with one subject and every one of those store writes is own-subject by design. Nothing about
+      // the engine widened — the operator's authority was spent at the session gate and the scoped read.
+      expect(cancelAutomatic).toHaveBeenCalledWith(expect.objectContaining({
+        subject: 'dashboard-engine', runRef: engineRun, reason: 'operator requested stop',
+      }));
+
+      // Both manager commands are on the ENGINE's own timeline.
+      const events = store.listEvents('dashboard-engine', engineRun);
+      if (!events.ok) throw new Error(events.detail);
+      expect(events.value.map((event) => event.summary))
+        .toEqual(['engine started', 'Start with the failing test.', 'Inspect the diff.']);
+      expect(store.listRuns('operator')).toEqual([]);
+    } finally { await app.close(); }
+  });
+
+  it('archives a dashboard-engine run with unchanged semantics, audited to the operator', async () => {
+    const { app, store, audit, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+      const { requestRef } = parkEngineRunWithGate(store, engineRun);
+      const payload = { idempotencyKey: `archive:${engineRun}:1`, reason: 'obsolete validation run' };
+
+      const archived = await app.inject({
+        method: 'POST', url: `/api/control/runs/${engineRun}/archive`, headers: headers(token), payload,
+      });
+      expect(archived.statusCode, archived.body).toBe(200);
+      expect(archived.json()).toMatchObject({ ok: true, value: { run: { runRef: engineRun, state: 'archived' } } });
+      expect(audit.find((row) => row.action === 'control-run-archive-authorize')).toMatchObject({
+        owner: 'operator', target: engineRun, riskTier: 'T3',
+        detail: { runRef: engineRun, runOwnerSubject: 'dashboard-engine', openHumanRequestCount: 1, reason: payload.reason },
+      });
+
+      // Same archive semantics as an own-subject archive: the open ask is resolved in the same commit,
+      // in the operator's name, and the run is gone from the default list but readable by ref.
+      const owned = store.getRun('dashboard-engine', engineRun);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.humanRequests).toEqual([expect.objectContaining({
+        requestRef, state: 'resolved',
+        response: expect.objectContaining({ respondedBy: 'operator', decision: 'responded', response: payload.reason }),
+      })]);
+      const list = await app.inject({ method: 'GET', url: '/api/control/runs', headers: headers(token) });
+      expect((list.json() as { runs: unknown[] }).runs).toEqual([]);
+
+      // A replay is still a replay and writes no second audit row.
+      const replay = await app.inject({
+        method: 'POST', url: `/api/control/runs/${engineRun}/archive`, headers: headers(token), payload,
+      });
+      expect(replay.json()).toMatchObject({ replayed: true });
+      expect(audit.filter((row) => row.action === 'control-run-archive-authorize')).toHaveLength(1);
+    } finally { await app.close(); }
+  });
+
+  it('refuses every one of those mutations to a NON-operator session on a foreign run', async () => {
+    const cancelAutomatic = vi.fn();
+    const controlBroker = {
+      isRunning: () => true, drain: () => {}, queueInstruction: () => true, queueInstructionAtCheckpoint: () => true,
+    };
+    const { app, store, audit } = buildApp({ controlBroker, cancelAutomatic });
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+      const { requestRef, version } = parkEngineRunWithGate(store, engineRun);
+      seedRunFor(store, 'other-agent', 'other', 'other-workflow');
+      // A real verified session — just not the operator's. The widening is the operator IDENTITY, never
+      // the session, and there is no header, query param or body field that can select it.
+      const otherToken = mintSession('other-agent', SESSION).token;
+      const cas = { expectedRunVersion: version, expectedManagerGeneration: 1 };
+
+      for (const [url, payload] of [
+        [`/api/control/human-requests/${requestRef}/respond`,
+          { expectedRevision: 1, decision: 'approved', idempotencyKey: 'k', response: null }],
+        [`/api/control/runs/${engineRun}/manager/messages`, { ...cas, idempotencyKey: 'k', message: 'hi' }],
+        [`/api/control/runs/${engineRun}/manager/steer`, { ...cas, idempotencyKey: 'k', checkpoint: 'c', instruction: 'i' }],
+        [`/api/control/runs/${engineRun}/manager/stop`, { ...cas, idempotencyKey: 'k' }],
+        [`/api/control/runs/${engineRun}/archive`, { idempotencyKey: 'k', reason: 'not mine' }],
+      ] as Array<[string, Record<string, unknown>]>) {
+        const response = await app.inject({ method: 'POST', url, headers: headers(otherToken), payload });
+        expect(response.statusCode, `${url}: ${response.body}`).toBe(404);
+        expect(response.json()).toMatchObject({ error: 'not-found' });
+      }
+
+      // Refused before any audit row, any executor call, and any change to the run.
+      expect(audit).toEqual([]);
+      expect(cancelAutomatic).not.toHaveBeenCalled();
+      const owned = store.getRun('dashboard-engine', engineRun);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.run.state).toBe('waiting-human');
+      expect(owned.value.humanRequests).toEqual([expect.objectContaining({ requestRef, state: 'open' })]);
+    } finally { await app.close(); }
   });
 });

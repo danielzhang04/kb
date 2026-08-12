@@ -94,6 +94,41 @@ const STAGE_STATES = new Set<StageState>(['blocked', 'ready', 'running', 'waitin
 const ATTEMPT_STATES = new Set<AttemptState>(['queued', 'starting', 'running', 'waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']);
 const SESSION_STATES = new Set<ManagedSessionState>(['pending', 'starting', 'running', 'waiting', 'completed', 'failed', 'stopped', 'interrupted']);
 const TERMINAL_RUN = new Set<RunState>(['succeeded', 'failed', 'stopped', 'archived']);
+
+/** The single human identity the daemon mints WebAuthn sessions for (`server/auth/routes.ts` OPERATOR.id).
+ *  Every other subject in this document is a machine: the dashboard engine, an executor, a test fixture. */
+export const OPERATOR_SUBJECT = 'operator';
+
+/**
+ * How far one call reaches across subjects.
+ *
+ * Every record here is stamped with the subject that created it. The daemon's runs are not all created
+ * by the same subject: the SPA session is `operator` while the queue bridge and the executor own their
+ * runs under `dashboard-engine`, so an own-subject-only view showed the one human on this machine only
+ * the half of the plane they happened to launch by hand.
+ *
+ * `'all-subjects'` is what a verified operator session resolves to (`routes.ts#readScope`) and nothing
+ * else ever does — it is derived from the verified session subject alone, never from a header, query
+ * param or body field, and every parameter below defaults to `'own-subject'` so any caller that does
+ * not opt in keeps the exact ownership check it always had.
+ *
+ * READS took it first. Since Daniel's ruling of 2026-08-11 the OPERATOR-DRIVEN MUTATIONS take it too
+ * (respond to a Human Request, resolve a review completion gate, Manager message/steer/stop, archive a
+ * run, and the events/intervention requests those write): a gate the Inbox listed but the operator
+ * could not answer, on exactly the headless runs these controls exist for, is not a boundary — it is a
+ * dead end. Two invariants hold under a widened mutation and are pinned in `store.test.ts`:
+ *
+ *  - OWNERSHIP NEVER MOVES. Every record a widened mutation touches or creates stays partitioned under
+ *    the RUN's subject (`run.subject`), so the run's own machinery — the engine, the quarantine bundle,
+ *    the timeline read, every count — still finds its whole record tree. Nothing transfers.
+ *  - THE ACTOR IS RECORDED HONESTLY. Where a record names WHO acted (`response.respondedBy`) it names
+ *    the caller — the operator — never the run's owner. The route layer additionally lands the audit
+ *    row under the operator's identity.
+ *
+ * Engine and bridge paths never pass it, so they are unchanged and stay own-subject.
+ */
+export type ReadScope = 'own-subject' | 'all-subjects';
+
 const TERMINAL_STAGE = new Set<StageState>(['succeeded', 'failed', 'stopped']);
 const TERMINAL_ATTEMPT = new Set<AttemptState>(['succeeded', 'failed', 'stopped']);
 const TERMINAL_SESSION = new Set<ManagedSessionState>(['completed', 'failed', 'stopped']);
@@ -561,6 +596,11 @@ export interface ArchiveRunResult {
   pinnedRequestRefs: string[];
 }
 
+export interface CloseOrphanedHumanRequestsResult {
+  /** Every request auto-closed this sweep, across every subject and run, in one commit. */
+  closed: HumanRequest[];
+}
+
 export interface RecoverAuthorized20260731ExecutionLockInput {
   expectedRunVersion: number;
   expectedManagerGeneration: number;
@@ -694,13 +734,15 @@ export interface BrokerStoreBackend {
 
 export interface ControlPlaneStore extends BrokerStoreBackend {
   listProposalRevisions(subject: string, proposalRef?: string): ProposalRevisionMetadata[];
-  listProposalRevisionsForComposer(subject: string, sourceComposerRef: string): ProposalRevisionMetadata[];
+  listProposalRevisionsForComposer(subject: string, sourceComposerRef: string, scope?: ReadScope): ProposalRevisionMetadata[];
   getProposalRevision(subject: string, proposalRef: string, revision: number): ControlResult<ProposalRevision>;
   createProposalRevision(subject: string, input: CreateProposalRevisionInput): ControlResult<ProposalRevision>;
   decideProposal(subject: string, proposalRef: string, revision: number, input: ApproveProposalInput): ControlResult<ProposalRevision>;
 
-  listRuns(subject: string): RunMetadata[];
-  getRun(subject: string, runRef: string): ControlResult<RunDetail>;
+  /** `scope` defaults to `'own-subject'` everywhere it appears; only a verified operator session widens
+   *  it (see {@link ReadScope}). Reads first; the operator-driven mutations below take it too. */
+  listRuns(subject: string, scope?: ReadScope): RunMetadata[];
+  getRun(subject: string, runRef: string, scope?: ReadScope): ControlResult<RunDetail>;
   createRun(subject: string, input: CreateRunInput): ControlResult<RunDetail>;
   /** Read an exact durable activation receipt without claiming a new activation. */
   getRunActivationReceipt(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt | null>;
@@ -719,7 +761,7 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   failRunActivation(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt>;
   transitionRun(subject: string, runRef: string, expectedVersion: number, state: RunState): ControlResult<Run>;
   /** Terminal operator dismissal: `archived` run + its answerable open requests resolved, one commit. */
-  archiveRun(subject: string, runRef: string, input: ArchiveRunInput): ControlResult<ArchiveRunResult>;
+  archiveRun(subject: string, runRef: string, input: ArchiveRunInput, scope?: ReadScope): ControlResult<ArchiveRunResult>;
   transitionPublication(
     subject: string,
     runRef: string,
@@ -736,7 +778,7 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   recordStageGeneration(subject: string, stageRef: string, input: RecordStageGenerationInput): ControlResult<StageGeneration>;
   recordReviewReceipt(subject: string, reviewStageRef: string, input: RecordReviewReceiptInput): ControlResult<ReviewReceipt>;
   attachReviewCompletionGate(subject: string, reviewReceiptRef: string, input: AttachReviewCompletionGateInput): ControlResult<ReviewCompletionGateResult>;
-  resolveReviewCompletionGate(subject: string, requestRef: string, input: ResolveReviewCompletionGateInput): ControlResult<ReviewCompletionGateResult>;
+  resolveReviewCompletionGate(subject: string, requestRef: string, input: ResolveReviewCompletionGateInput, scope?: ReadScope): ControlResult<ReviewCompletionGateResult>;
   advanceReviewGeneration(subject: string, runRef: string, input: AdvanceReviewGenerationInput): ControlResult<StageGeneration>;
   parkExhaustedReview(subject: string, runRef: string, input: ParkExhaustedReviewInput): ControlResult<ParkExhaustedReviewResult>;
   linkStageCard(subject: string, stageRef: string, expectedVersion: number, canonicalCardRef: string): ControlResult<Stage>;
@@ -747,19 +789,38 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   createWorkerSession(subject: string, attemptRef: string, input: CreateWorkerSessionInput): ControlResult<ManagedSession>;
   transitionSession(subject: string, sessionRef: string, expectedVersion: number, state: ManagedSessionState): ControlResult<ManagedSession>;
   createManagerSuccessor(subject: string, runRef: string, input: CreateManagerSuccessorInput): ControlResult<ManagedSession>;
-  recordManagerCommand(subject: string, runRef: string, input: ManagerCommandInput): ControlResult<ManagerCommandResult>;
+  recordManagerCommand(subject: string, runRef: string, input: ManagerCommandInput, scope?: ReadScope): ControlResult<ManagerCommandResult>;
   /** Atomically persists run-wide cancellation intent before any adapter is signaled. */
   requestRunCancellation(subject: string, runRef: string, input: RequestRunCancellationInput): ControlResult<ManagerCommandResult>;
 
-  getHumanRequest(subject: string, requestRef: string): ControlResult<HumanRequest>;
-  createHumanRequest(subject: string, runRef: string, input: CreateHumanRequestInput): ControlResult<HumanRequest>;
+  getHumanRequest(subject: string, requestRef: string, scope?: ReadScope): ControlResult<HumanRequest>;
+  createHumanRequest(subject: string, runRef: string, input: CreateHumanRequestInput, scope?: ReadScope): ControlResult<HumanRequest>;
   createHumanRequests(
     subject: string,
     runRef: string,
     input: CreateHumanRequestBatchInput,
   ): ControlResult<HumanRequest[]>;
   reviseHumanRequest(subject: string, requestRef: string, expectedRevision: number, title: string, prompt: string): ControlResult<HumanRequest>;
-  respondHumanRequest(subject: string, requestRef: string, input: RespondHumanRequestInput): ControlResult<HumanRequest>;
+  respondHumanRequest(subject: string, requestRef: string, input: RespondHumanRequestInput, scope?: ReadScope): ControlResult<HumanRequest>;
+  /**
+   * Housekeeping sweep, not a governed HTTP write — no subject, no session, no idempotency key from a
+   * caller. Auto-closes every OPEN, non-review-linked Human Request whose parent run has reached a
+   * terminal state (mirrors `TERMINAL_RUN`), with an honest `'auto-closed'` response — it never claims
+   * a human answered. `transitionRun` calls the same predicate inline (same commit as the transition);
+   * this method additionally sweeps the WHOLE document, so it also catches a request whose run went
+   * terminal before this shipped or by some path other than a transition. Called from the boot +
+   * interval sweep wired in `humanRequestSweep.ts`. Idempotent: an already-resolved request is simply
+   * skipped on the next sweep.
+   *
+   * TERMINAL STATE IS THE ONLY PREDICATE (ruling, 2026-08-11). An age-based predicate shipped here
+   * first and was removed: closure is IRREVERSIBLE — nothing reopens a resolved request, both
+   * `respondHumanRequest` and `reviseHumanRequest` conflict on one, and `stageBoundary` then refuses
+   * the run forever — so an age heuristic could permanently wedge a run that is legitimately parked on
+   * a human gate simply because the human took a week. A run that is genuinely dead reaches a terminal
+   * state (or an operator archives it, which resolves its requests in the same commit); a run that has
+   * not is still the operator's to answer.
+   */
+  closeOrphanedHumanRequests(nowMs: number): CloseOrphanedHumanRequestsResult;
   /** Daniel-authorized, exact-run repair for the 2026-07-31 execution-lock launch defect. */
   preflightAuthorized20260731ExecutionLock(
     subject: string,
@@ -784,8 +845,8 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
     canonicalCommit: string,
   ): ControlResult<ReconcileAuthorized20260801FailedRunResult>;
 
-  appendEvent(subject: string, runRef: string, input: OperationalEventInput): ControlResult<OperationalEvent>;
-  listEvents(subject: string, runRef: string, afterCursor?: number, limit?: number): ControlResult<OperationalEvent[]>;
+  appendEvent(subject: string, runRef: string, input: OperationalEventInput, scope?: ReadScope): ControlResult<OperationalEvent>;
+  listEvents(subject: string, runRef: string, afterCursor?: number, limit?: number, scope?: ReadScope): ControlResult<OperationalEvent[]>;
 
   inventory(subject: string): StorageInventory;
   dryRunQuarantine(subject: string, runRefs: string[]): ControlResult<QuarantinePlan>;
@@ -1205,6 +1266,70 @@ function recordHumanResponse(
   request.updatedAt = at;
 }
 
+/** The per-request idempotency key an engine-side auto-close writes; `tag` names the terminal state the
+ *  run reached, so the key is unique per (run outcome, request) and a replay recognizes its own record. */
+function autoCloseResponseKey(tag: string, runRef: string, requestRef: string): string {
+  return `auto-close:${tag}:${runRef}:${requestRef}`.slice(0, MAX_SHORT_TEXT);
+}
+
+/**
+ * Resolve every OPEN, non-review-linked Human Request on one run with an honest auto-close record —
+ * same shape as `archiveRun`'s resolution, except the decision is `'auto-closed'`, never `'responded'`,
+ * so the record can never be misread as a human having answered. A review-linked request is left exactly
+ * as `archiveRun` leaves it: untouched, pinned open by the review lineage invariants.
+ *
+ * Each close ALSO writes one governance event onto the run's timeline, from the same commit: an
+ * operator reading the run has to be able to see that the platform, not a person, resolved the ask —
+ * a resolution that appears only on the request record is invisible in the place the operator actually
+ * reads the run's history. Mirrors the event `routes.ts` appends for a human response, with
+ * `source: 'system'` because no human was involved. The run's event budget is respected: at the cap the
+ * request still closes and the event is dropped rather than the close failing (the timeline is the
+ * audit copy, not the record of truth — the sweep's audit ledger row is the durable one).
+ */
+function autoCloseOpenHumanRequestsForRun(
+  document: StoreDocument, subject: string, runRef: string, atISO: string, tag: string, reason: string, maxEvents: number,
+): StoredHumanRequest[] {
+  const closed: StoredHumanRequest[] = [];
+  let eventCount = document.events.filter((item) => item.subject === subject && item.runRef === runRef).length;
+  for (const request of document.humanRequests) {
+    if (request.subject !== subject || request.runRef !== runRef || request.state !== 'open') continue;
+    if (isReviewLinkedRequest(document, request.requestRef)) continue;
+    // A `review` kind carries retention/audit weight beyond its own run — `quarantinePlan` requires
+    // every Human Request resolved precisely so a review outcome is never silently bypassed by an
+    // ordinary state transition. It is left for an explicit `respondHumanRequest` or a deliberate,
+    // reason-carrying `archiveRun`, never for this ambient close.
+    if (request.kind === 'review') continue;
+    recordHumanResponse(request, subject, {
+      decision: 'auto-closed',
+      idempotencyKey: autoCloseResponseKey(tag, runRef, request.requestRef),
+      response: reason,
+    }, atISO);
+    closed.push(request);
+    if (eventCount >= maxEvents) continue;
+    eventCount += 1;
+    document.events.push({
+      subject,
+      cursor: document.nextEventCursor,
+      runRef,
+      kind: 'governance',
+      source: 'system',
+      stageRef: request.stageRef,
+      attemptRef: null,
+      sessionRef: null,
+      status: 'stopped',
+      summary: `Human Request auto-closed without an answer (${tag}): ${reason}`,
+      command: null,
+      toolName: null,
+      path: null,
+      diff: null,
+      checkpoint: null,
+      createdAt: atISO,
+    });
+    document.nextEventCursor += 1;
+  }
+  return closed;
+}
+
 function publicEvent(value: StoredEvent): OperationalEvent {
   const {
     subject: _subject,
@@ -1238,6 +1363,9 @@ function publicGenerationSupersession(value: StoredGenerationSupersession): Gene
 function detail(document: StoreDocument, subject: string, run: StoredRun): RunDetail {
   return {
     run: publicRun(run),
+    // Always the RUN's own subject, never the caller's: under `'all-subjects'` those differ, and the
+    // field exists precisely to name the owner of a run the caller does not own.
+    ownerSubject: run.subject,
     stages: document.stages.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicStage),
     attempts: document.attempts.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicAttempt),
     sessions: document.sessions.filter((item) => item.subject === subject && item.runRef === run.runRef).map(publicSession),
@@ -1252,6 +1380,7 @@ function detail(document: StoreDocument, subject: string, run: StoredRun): RunDe
 function metadata(document: StoreDocument, subject: string, run: StoredRun): RunMetadata {
   return {
     ...publicRun(run),
+    ownerSubject: run.subject,
     stageCount: document.stages.filter((item) => item.subject === subject && item.runRef === run.runRef).length,
     attemptCount: document.attempts.filter((item) => item.subject === subject && item.runRef === run.runRef).length,
     sessionCount: document.sessions.filter((item) => item.subject === subject && item.runRef === run.runRef).length,
@@ -2767,8 +2896,25 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
   const ref = (prefix: string): string => `${prefix}-${newId()}`;
   const stamp = (): string => now().toISOString();
 
-  const findRun = (document: StoreDocument, subject: string, runRef: string): StoredRun | undefined =>
-    document.runs.find((item) => item.subject === subject && item.runRef === runRef);
+  /**
+   * The one place a run is resolved from a ref. `scope` defaults to `'own-subject'`, so every path
+   * below keeps the exact ownership check it always had unless it explicitly opts in; only the calls a
+   * verified operator session drives ever pass `'all-subjects'` (see {@link ReadScope}). Run refs are
+   * globally unique (`run-<uuid>`), so widening the scope can never resolve a ref to a different
+   * subject's run by accident — it only stops hiding one.
+   *
+   * A caller that widens must then read ownership off the RESOLVED RUN (`run.subject`), never off its
+   * own `subject`, for every sibling-record lookup and every record it stamps. `run.subject` is
+   * immutable — no path assigns it after `createRun` — so it is a stable partition key.
+   */
+  const findRun = (document: StoreDocument, subject: string, runRef: string, scope: ReadScope = 'own-subject'): StoredRun | undefined =>
+    document.runs.find((item) => item.runRef === runRef && (scope === 'all-subjects' || item.subject === subject));
+
+  /** {@link findRun} for a Human Request, which the respond paths resolve by ref without a run ref. */
+  const findHumanRequest = (
+    document: StoreDocument, subject: string, requestRef: string, scope: ReadScope = 'own-subject',
+  ): StoredHumanRequest | undefined =>
+    document.humanRequests.find((item) => item.requestRef === requestRef && (scope === 'all-subjects' || item.subject === subject));
 
   const findSession = (document: StoreDocument, subject: string, runRef: string, sessionRef: string): StoredSession | undefined =>
     document.sessions.find((item) => item.subject === subject && item.runRef === runRef && item.sessionRef === sessionRef);
@@ -2920,9 +3066,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         .map(proposalMetadata);
     },
 
-    listProposalRevisionsForComposer(subject, sourceComposerRef) {
+    listProposalRevisionsForComposer(subject, sourceComposerRef, scope = 'own-subject') {
       return load().proposals
-        .filter((item) => item.subject === subject && item.sourceComposerRef === sourceComposerRef)
+        .filter((item) => (scope === 'all-subjects' || item.subject === subject) && item.sourceComposerRef === sourceComposerRef)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.revision - a.revision)
         .map(proposalMetadata);
     },
@@ -2999,15 +3145,21 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return ok(publicProposal(proposal));
     },
 
-    listRuns(subject) {
+    listRuns(subject, scope = 'own-subject') {
       const document = load();
-      return document.runs.filter((item) => item.subject === subject).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((run) => metadata(document, subject, run));
+      return document.runs
+        .filter((item) => scope === 'all-subjects' || item.subject === subject)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        // Child records are gathered under the RUN's own subject, never the caller's: under
+        // `'all-subjects'` those differ, and counting a foreign run's stages under the caller's subject
+        // would report zeros for everything.
+        .map((run) => metadata(document, run.subject, run));
     },
 
-    getRun(subject, runRef) {
+    getRun(subject, runRef, scope = 'own-subject') {
       const document = load();
-      const run = findRun(document, subject, runRef);
-      return run ? ok(detail(document, subject, run)) : fail('not-found', 'run was not found');
+      const run = findRun(document, subject, runRef, scope);
+      return run ? ok(detail(document, run.subject, run)) : fail('not-found', 'run was not found');
     },
 
     createRun(subject, input) {
@@ -3413,6 +3565,16 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       run.state = state;
       run.version += 1;
       run.updatedAt = stamp();
+      // A bare transition can land a run on a terminal state (`archived` goes through `archiveRun`
+      // exclusively — rejected above). Close its open requests in the SAME commit, so a run that just
+      // failed/stopped/succeeded can never leave a haunting ask behind the way the pre-fix zombies did.
+      if (TERMINAL_RUN.has(state)) {
+        autoCloseOpenHumanRequestsForRun(
+          document, subject, runRef, run.updatedAt, `terminal:${state}`,
+          `Automatically closed — the run reached its terminal state ('${state}') without this being answered.`,
+          maxEvents,
+        );
+      }
       commit(document);
       return ok(publicRun(run));
     },
@@ -3816,16 +3978,20 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return ok({ receipt: publicReviewReceipt(receipt), loop: publicReviewLoop(loop), request: publicRequest(request), subjectStage: publicStage(subjectStage), reviewStage: publicStage(reviewStage), interventionRequest: null });
     },
 
-    resolveReviewCompletionGate(subject, requestRef, input) {
+    resolveReviewCompletionGate(subject, requestRef, input, scope = 'own-subject') {
       if (!SAFE_REF_RE.test(requestRef) || !validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)
         || !['approved', 'rejected', 'changes-requested'].includes(input.decision)) return fail('invalid', 'review gate resolution is invalid');
       const document = load();
-      const request = document.humanRequests.find((item) => item.subject === subject && item.requestRef === requestRef);
+      const request = findHumanRequest(document, subject, requestRef, scope);
       if (!request) return fail('not-found', 'review gate request was not found');
-      const receipt = document.reviewReceipts.find((item) => item.subject === subject && item.completionRequestRef === requestRef);
-      const loop = receipt ? document.reviewLoops.find((item) => item.subject === subject && item.reviewStageRef === receipt.reviewStageRef) : undefined;
-      const reviewStage = receipt ? document.stages.find((item) => item.subject === subject && item.stageRef === receipt.reviewStageRef) : undefined;
-      const subjectStage = receipt ? document.stages.find((item) => item.subject === subject && item.stageRef === receipt.subjectStageRef) : undefined;
+      // The whole review lineage below is the RUN's, so it resolves under the request's owner; only
+      // `respondedBy` names the caller. A widened caller resolving this must still see exactly the same
+      // lineage the owner would, or the CAS tuple would silently fail to link.
+      const owner = request.subject;
+      const receipt = document.reviewReceipts.find((item) => item.subject === owner && item.completionRequestRef === requestRef);
+      const loop = receipt ? document.reviewLoops.find((item) => item.subject === owner && item.reviewStageRef === receipt.reviewStageRef) : undefined;
+      const reviewStage = receipt ? document.stages.find((item) => item.subject === owner && item.stageRef === receipt.reviewStageRef) : undefined;
+      const subjectStage = receipt ? document.stages.find((item) => item.subject === owner && item.stageRef === receipt.subjectStageRef) : undefined;
       if (!receipt || !loop || !reviewStage || !subjectStage) return fail('conflict', 'review gate linkage is incomplete');
       const response = input.response == null ? null : cleanText(input.response, MAX_LONG_TEXT);
       const resolutionFingerprint = reviewGateResolutionFingerprint(requestRef, input, response);
@@ -3833,7 +3999,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         if (request.response.idempotencyKey !== input.idempotencyKey || request.resolutionOperationFingerprint !== resolutionFingerprint) return fail('idempotency-conflict', 'review gate response was reused with different content');
         return ok({ receipt: publicReviewReceipt(receipt), loop: publicReviewLoop(loop), request: publicRequest(request), subjectStage: publicStage(subjectStage), reviewStage: publicStage(reviewStage), interventionRequest: receipt.interventionRequestRef === null ? null : publicRequest(document.humanRequests.find((item) => item.requestRef === receipt.interventionRequestRef) as StoredHumanRequest) }, true);
       }
-      const generation = document.stageGenerations.find((item) => item.subject === subject && item.generationRef === receipt.subjectGenerationRef);
+      const generation = document.stageGenerations.find((item) => item.subject === owner && item.generationRef === receipt.subjectGenerationRef);
       const gateOperationKey = generation ? reviewGateOperationKey(receipt.runRef, reviewStage.stageId, generation.generation) : '';
       const attachInput: AttachReviewCompletionGateInput = {
         expectedReceiptVersion: receipt.version - 1,
@@ -3852,10 +4018,11 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         || request.revision !== 1 || request.response !== null || request.resolutionOperationFingerprint !== null
         || request.revision !== input.expectedRequestRevision || receipt.version !== input.expectedReceiptVersion || loop.version !== input.expectedLoopVersion
         || reviewStage.version !== input.expectedReviewStageVersion || subjectStage.version !== input.expectedSubjectStageVersion) return fail('conflict', 'review gate resolution changed');
-      if (input.decision !== 'approved' && document.humanRequests.filter((item) => item.subject === subject && item.runRef === receipt.runRef).length >= MAX_HUMAN_REQUESTS_PER_RUN) {
+      if (input.decision !== 'approved' && document.humanRequests.filter((item) => item.subject === owner && item.runRef === receipt.runRef).length >= MAX_HUMAN_REQUESTS_PER_RUN) {
         return fail('limit', 'run has reached the Human Request limit');
       }
       const createdAt = stamp();
+      // `respondedBy: subject` — the caller who decided the gate, not the run's owner.
       request.response = { requestRevision: request.revision, decision: input.decision, respondedBy: subject, idempotencyKey: input.idempotencyKey, response, respondedAt: createdAt };
       request.resolutionOperationFingerprint = resolutionFingerprint;
       request.state = 'resolved'; request.updatedAt = createdAt;
@@ -3866,11 +4033,11 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       subjectStage.version += 1; subjectStage.updatedAt = createdAt;
       if (input.decision !== 'approved') {
         const interventionOperationKey = reviewInterventionOperationKey(receipt.runRef, reviewStage.stageId, generation.generation);
-        if (document.humanRequests.some((item) => item.subject === subject && item.runRef === receipt.runRef && item.operationKey === interventionOperationKey)) {
+        if (document.humanRequests.some((item) => item.subject === owner && item.runRef === receipt.runRef && item.operationKey === interventionOperationKey)) {
           return fail('conflict', 'review intervention operationKey is already reserved');
         }
         const intervention: StoredHumanRequest = {
-          subject, operationKey: interventionOperationKey, operationFingerprint: sha256(`${requestRef}\0${input.idempotencyKey}`),
+          subject: owner, operationKey: interventionOperationKey, operationFingerprint: sha256(`${requestRef}\0${input.idempotencyKey}`),
           requestRef: ref('request'), runRef: receipt.runRef, stageRef: reviewStage.stageRef, kind: 'intervention', revision: 1, state: 'open',
           title: cleanText(`Review intervention: ${reviewStage.title}`, MAX_TITLE), resolutionOperationFingerprint: null,
           prompt: cleanText(`Review gate ${input.decision}: ${receipt.outcome.summary}`, MAX_LONG_TEXT), response: null, createdAt, updatedAt: createdAt,
@@ -4384,10 +4551,15 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return ok(publicSession(session));
     },
 
-    recordManagerCommand(subject, runRef, input) {
+    recordManagerCommand(subject, runRef, input, scope = 'own-subject') {
       const document = load();
-      const run = findRun(document, subject, runRef);
+      const run = findRun(document, subject, runRef, scope);
       if (!run) return fail('not-found', 'run was not found');
+      // Everything below is partitioned by the RUN's owner, not the caller: the command's event belongs
+      // on the run's own timeline (`listEvents`, the event cap, the quarantine bundle all key off it),
+      // and the Manager session it targets is the run's. Who ISSUED it is carried by `source: 'human'`
+      // plus the route's session gate and audit row — see {@link ReadScope}.
+      const owner = run.subject;
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT) || !['message', 'steer', 'stop'].includes(input.kind)) {
         return fail('invalid', 'manager command and idempotencyKey are required');
       }
@@ -4406,7 +4578,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         checkpoint,
       }));
       const replay = document.events.find((item) =>
-        item.subject === subject && item.runRef === runRef && item.operationKey === input.idempotencyKey,
+        item.subject === owner && item.runRef === runRef && item.operationKey === input.idempotencyKey,
       );
       if (replay) {
         if (replay.operationFingerprint !== fingerprint) {
@@ -4419,12 +4591,12 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       }
       if (TERMINAL_RUN.has(run.state)) return fail('invalid', 'terminal runs cannot accept manager commands');
       const manager = document.sessions.find((item) =>
-        item.subject === subject && item.sessionRef === run.managerSessionRef && item.role === 'manager',
+        item.subject === owner && item.sessionRef === run.managerSessionRef && item.role === 'manager',
       );
       if (!manager) return fail('conflict', 'current manager session is missing');
       const createdAt = stamp();
       const event: StoredEvent = {
-        subject,
+        subject: owner,
         operationKey: input.idempotencyKey,
         operationFingerprint: fingerprint,
         cursor: document.nextEventCursor,
@@ -4801,27 +4973,30 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return { status: 'applied', revision: session.version };
     },
 
-    getHumanRequest(subject, requestRef) {
-      const request = load().humanRequests.find((item) => item.subject === subject && item.requestRef === requestRef);
+    getHumanRequest(subject, requestRef, scope = 'own-subject') {
+      const request = findHumanRequest(load(), subject, requestRef, scope);
       return request ? ok(publicRequest(request)) : fail('not-found', 'Human Request was not found');
     },
 
-    createHumanRequest(subject, runRef, input) {
+    createHumanRequest(subject, runRef, input, scope = 'own-subject') {
       const document = load();
-      const run = findRun(document, subject, runRef);
+      const run = findRun(document, subject, runRef, scope);
       if (!run) return fail('not-found', 'run was not found');
-      if (document.humanRequests.filter((item) => item.subject === subject && item.runRef === runRef).length >= MAX_HUMAN_REQUESTS_PER_RUN) {
+      // The request belongs to the RUN, so it is filed under the run's owner: the engine that owns the
+      // run has to be able to see and resolve the ask a widened caller filed on it.
+      const owner = run.subject;
+      if (document.humanRequests.filter((item) => item.subject === owner && item.runRef === runRef).length >= MAX_HUMAN_REQUESTS_PER_RUN) {
         return fail('limit', 'run has reached the Human Request limit');
       }
       if (!validNonEmpty(input.title, MAX_TITLE) || !validNonEmpty(input.prompt, MAX_LONG_TEXT)) return fail('invalid', 'Human Request title and prompt are required');
       const stageRef = input.stageRef ?? null;
-      if (stageRef && !document.stages.some((item) => item.subject === subject && item.runRef === runRef && item.stageRef === stageRef)) {
+      if (stageRef && !document.stages.some((item) => item.subject === owner && item.runRef === runRef && item.stageRef === stageRef)) {
         return fail('invalid', 'Human Request stageRef does not belong to this run');
       }
       if (!HUMAN_REQUEST_KINDS.has(input.kind)) return fail('invalid', 'Human Request kind is invalid');
       const createdAt = stamp();
       const request: StoredHumanRequest = {
-        subject,
+        subject: owner,
         requestRef: ref('request'),
         runRef,
         stageRef,
@@ -5061,9 +5236,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       });
     },
 
-    respondHumanRequest(subject, requestRef, input) {
+    respondHumanRequest(subject, requestRef, input, scope = 'own-subject') {
       const document = load();
-      const request = document.humanRequests.find((item) => item.subject === subject && item.requestRef === requestRef);
+      const request = findHumanRequest(document, subject, requestRef, scope);
       if (!request) return fail('not-found', 'Human Request was not found');
       if (isReviewLinkedRequest(document, requestRef)) {
         return fail('invalid', 'review-linked Human Requests are resolved only by the review gate resolver');
@@ -5079,6 +5254,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         return ok(publicRequest(request), true);
       }
       if (request.revision !== input.expectedRevision || request.state !== 'open') return fail('conflict', 'Human Request revision changed');
+      // `subject`, deliberately, not `request.subject`: `respondedBy` is the record of WHO ANSWERED, so
+      // under a widened scope it must name the operator. The request itself keeps its owner — the
+      // resolution is a fact about the run's ask, not a transfer of it.
       recordHumanResponse(request, subject, {
         decision: input.decision, idempotencyKey: input.idempotencyKey, response,
       }, stamp());
@@ -5094,19 +5272,22 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
      * same key and the same reason returns the archived run; a reused key with different content is an
      * `idempotency-conflict`, and a second, different archive of an already-archived run is a `conflict`.
      */
-    archiveRun(subject, runRef, input) {
+    archiveRun(subject, runRef, input, scope = 'own-subject') {
       const document = load();
-      const run = findRun(document, subject, runRef);
+      const run = findRun(document, subject, runRef, scope);
       if (!run) return fail('not-found', 'run was not found');
+      // The run's requests are filed under the run's owner, so the sweep below reads them from there;
+      // only the RESPONSE each one gets names the caller (see `recordHumanResponse` call).
+      const owner = run.subject;
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)) return fail('invalid', 'idempotencyKey is required');
       const reason = input.reason == null ? null : cleanText(input.reason, MAX_LONG_TEXT);
       const fingerprint = sha256(`${runRef}\0${reason ?? ''}`);
       const resolvedRequests = (): HumanRequest[] => document.humanRequests
-        .filter((item) => item.subject === subject && item.runRef === runRef
+        .filter((item) => item.subject === owner && item.runRef === runRef
           && item.response?.idempotencyKey === archiveResponseKey(input.idempotencyKey, item.requestRef))
         .map(publicRequest);
       const pinned = (): string[] => document.humanRequests
-        .filter((item) => item.subject === subject && item.runRef === runRef && item.state === 'open')
+        .filter((item) => item.subject === owner && item.runRef === runRef && item.state === 'open')
         .map((item) => item.requestRef);
       if (run.archiveOperationKey) {
         if (run.archiveOperationKey !== input.idempotencyKey) return fail('conflict', 'run is already archived');
@@ -5120,7 +5301,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       }
       const archivedAt = stamp();
       for (const request of document.humanRequests) {
-        if (request.subject !== subject || request.runRef !== runRef || request.state !== 'open') continue;
+        if (request.subject !== owner || request.runRef !== runRef || request.state !== 'open') continue;
         // A review-linked request is pinned open by the review lineage invariants; touching it here would
         // make the document fail its own validation on the next load. Reported, never forced.
         if (isReviewLinkedRequest(document, request.requestRef)) continue;
@@ -5139,20 +5320,50 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return ok({ run: publicRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() });
     },
 
-    appendEvent(subject, runRef, input) {
+    /**
+     * The boot/tick sweep's write path — see the interface doc for the single predicate. Runs across
+     * every subject in one pass (a background job has no caller subject to scope to); a real
+     * per-transition close already happened inline in `transitionRun` for a run that reaches terminal
+     * state after this shipped, so this mostly re-covers PRE-EXISTING orphans on its first sweep and is
+     * a cheap no-op on every sweep after. One commit total, only when something actually closed.
+     */
+    closeOrphanedHumanRequests(nowMs) {
       const document = load();
-      if (!findRun(document, subject, runRef)) return fail('not-found', 'run was not found');
+      const atISO = new Date(nowMs).toISOString();
+      const closed: StoredHumanRequest[] = [];
+      for (const run of document.runs) {
+        if (!TERMINAL_RUN.has(run.state)) continue;
+        closed.push(...autoCloseOpenHumanRequestsForRun(
+          document, run.subject, run.runRef, atISO, `terminal:${run.state}`,
+          `Automatically closed — the run reached its terminal state ('${run.state}') without this being answered.`,
+          maxEvents,
+        ));
+      }
+      if (closed.length > 0) commit(document);
+      return { closed: closed.map(publicRequest) };
+    },
+
+    appendEvent(subject, runRef, input, scope = 'own-subject') {
+      const document = load();
+      const run = findRun(document, subject, runRef, scope);
+      if (!run) return fail('not-found', 'run was not found');
+      // An event is a line on the RUN's timeline, so it is filed under the run's owner even when a
+      // widened caller writes it: `listEvents` pages by `run.subject`, the per-run cap counts by it,
+      // and the quarantine bundle collects by it — an operator-stamped event would be invisible in the
+      // first, uncapped in the second, and orphaned by the third. Who acted lives in the summary text
+      // (`source: 'human'`) and in the route's audit row.
+      const owner = run.subject;
       if (Object.keys(input as object).some((field) => !EVENT_FIELDS.has(field))) return fail('invalid', 'operational event contains an unknown field');
       if (!EVENT_KINDS.has(input.kind) || !EVENT_SOURCES.has(input.source) || (input.status != null && !EVENT_STATUSES.has(input.status))) {
         return fail('invalid', 'operational event kind, source, or status is invalid');
       }
       if (!validOptionalEventText(input)) return fail('invalid', 'operational event text fields must be strings without NUL bytes');
-      const currentCount = document.events.filter((item) => item.subject === subject && item.runRef === runRef).length;
+      const currentCount = document.events.filter((item) => item.subject === owner && item.runRef === runRef).length;
       if (currentCount >= maxEvents) return fail('limit', 'run has reached the operational event limit');
-      const refError = validateRefs(document, subject, runRef, input);
+      const refError = validateRefs(document, owner, runRef, input);
       if (refError) return fail('invalid', refError);
       const event: StoredEvent = {
-        subject,
+        subject: owner,
         cursor: document.nextEventCursor,
         runRef,
         kind: input.kind,
@@ -5175,14 +5386,15 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return ok(publicEvent(event));
     },
 
-    listEvents(subject, runRef, afterCursor = 0, limit = 250) {
+    listEvents(subject, runRef, afterCursor = 0, limit = 250, scope = 'own-subject') {
       const document = load();
-      if (!findRun(document, subject, runRef)) return fail('not-found', 'run was not found');
+      const run = findRun(document, subject, runRef, scope);
+      if (!run) return fail('not-found', 'run was not found');
       if (!Number.isSafeInteger(afterCursor) || afterCursor < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_EVENT_PAGE) {
         return fail('invalid', `event cursor must be non-negative and limit must be 1-${MAX_EVENT_PAGE}`);
       }
       return ok(document.events
-        .filter((event) => event.subject === subject && event.runRef === runRef && event.cursor > afterCursor)
+        .filter((event) => event.subject === run.subject && event.runRef === runRef && event.cursor > afterCursor)
         .slice(0, limit)
         .map(publicEvent));
     },

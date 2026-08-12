@@ -19,6 +19,7 @@ function unlocked(ui: React.ReactElement): React.JSX.Element {
 }
 
 const detail: RunDetailDto = {
+  ownerSubject: 'operator',
   run: {
     runRef: 'run-1', predecessorRunRef: null, title: 'Run', displayName: 'Run', shortRef: 1, workflowRef: 'wf',
     proposalRef: 'proposal-1', proposalRevision: 1, proposalHash: 'a'.repeat(64), publicationState: 'published',

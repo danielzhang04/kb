@@ -186,6 +186,12 @@ export function RunRow({
         <span className={`mc-status-dot mc-status-dot--${runDot(run.state)}`} aria-hidden="true" />
         {runStateLabel(run.state)}
       </span>
+      {/* Who owns this run. Rendered on EVERY row, not only foreign ones: a verified operator session
+          lists every subject's runs in one list (including the daemon's synthetic acceptance runs,
+          which are deliberately not filtered out — this badge is what disambiguates them), and a badge
+          that appears only sometimes reads as an alert rather than as provenance. Plain mono meta, the
+          same treatment as the age stamp it sits beside. */}
+      <span className="mc-mono entity-row__meta" data-testid={`workflow-run-${run.runRef}-owner`}>{run.ownerSubject}</span>
       {run.openHumanRequestCount > 0 ? (
         <span className="entity-row__meta" data-testid={`workflow-run-${run.runRef}-needs-you`}>
           {run.openHumanRequestCount} waiting on you

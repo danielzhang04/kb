@@ -19,7 +19,7 @@ import {
   proposalSnapshotHash,
 } from './store.ts';
 import type { ControlPlaneStore } from './store.ts';
-import type { JsonObject, ProposalRevision } from './types.ts';
+import type { JsonObject, ProposalRevision, Run } from './types.ts';
 
 const roots: string[] = [];
 const SOURCE = { sourceComposerRef: 'composer-1', sourceTurnId: 'turn-1' } as const;
@@ -3483,5 +3483,484 @@ describe('run archival', () => {
     // The idempotency record survived the restart too, so a retried request still replays.
     expect(reopened.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead' }))
       .toMatchObject({ ok: true, replayed: true });
+  });
+});
+
+/**
+ * Engine-side auto-close of orphaned Human Requests (dashboard Inbox revamp).
+ *
+ * ONE predicate keeps a request from haunting the Inbox forever, and it never fabricates a human answer:
+ * the resolution always carries `decision: 'auto-closed'`, never `'responded'` (see
+ * `HumanRequestDecision`'s doc comment). `transitionRun` closes inline, in the same commit, the moment a
+ * run it is attached to reaches a terminal state; `closeOrphanedHumanRequests` is the boot/interval sweep
+ * that ALSO catches a request whose run was already terminal before this shipped.
+ *
+ * An AGE predicate shipped alongside it and was removed by ruling (2026-08-11): closure is irreversible,
+ * so closing a request merely for being old can permanently wedge a run that is legitimately parked on a
+ * human gate. The tests below pin the removal, not just the terminal path.
+ */
+describe('Human Request auto-close', () => {
+  function requestOnRun(store: ControlPlaneStore, runRef: string, subject = 'alice') {
+    const created = store.createHumanRequest(subject, runRef, {
+      kind: 'approval',
+      title: 'automatic:policy:draft:spending-language-requires-human-review',
+      prompt: 'spending-language-requires-human-review',
+    });
+    if (!created.ok) throw new Error(created.detail);
+    return created.value;
+  }
+
+  it('closes an open request in the SAME commit the run reaches a terminal state, never claiming a human answered', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+
+    const failed = store.transitionRun('alice', run.runRef, running.value.version, 'failed');
+    expect(failed).toMatchObject({ ok: true, value: { state: 'failed' } });
+
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests).toEqual([expect.objectContaining({
+      requestRef: request.requestRef,
+      state: 'resolved',
+      response: expect.objectContaining({ decision: 'auto-closed', respondedBy: 'alice' }),
+    })]);
+    const reason = detail.value.humanRequests[0]!.response!.response;
+    expect(reason).toMatch(/terminal state/);
+    expect(reason).toMatch(/'failed'/);
+    // Honesty check: never the label a real human response carries.
+    expect(detail.value.humanRequests[0]!.response!.decision).not.toBe('responded');
+  });
+
+  it('leaves an open request untouched when the run only becomes waiting-human or interrupted (both resumable)', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+
+    const waiting = store.transitionRun('alice', run.runRef, running.value.version, 'waiting-human');
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const afterWaiting = store.getRun('alice', run.runRef);
+    if (!afterWaiting.ok) throw new Error(afterWaiting.detail);
+    expect(afterWaiting.value.humanRequests[0]).toMatchObject({ requestRef: request.requestRef, state: 'open' });
+
+    const interrupted = store.transitionRun('alice', run.runRef, waiting.value.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests[0]).toMatchObject({ requestRef: request.requestRef, state: 'open' });
+  });
+
+  it('never auto-closes a `review` kind request — retention/quarantine requires it stay an explicit human decision', () => {
+    // REGRESSION GUARD for 'durability, crash recovery, and retention > requires every descendant to be
+    // settled and every Human Request to be resolved': that test relies on a `review` request surviving
+    // a bare `transitionRun` to `stopped` unresolved, so quarantine dry-run correctly reports ineligible
+    // until a human actually answers it. This kind is exempted from BOTH auto-close predicates on purpose.
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = store.createHumanRequest('alice', run.runRef, { kind: 'review', title: 'Final review', prompt: 'Confirm retention is safe.' });
+    if (!request.ok) throw new Error(request.detail);
+
+    const stopped = store.transitionRun('alice', run.runRef, running.value.version, 'stopped');
+    expect(stopped).toMatchObject({ ok: true, value: { state: 'stopped' } });
+    const afterStop = store.getRun('alice', run.runRef);
+    if (!afterStop.ok) throw new Error(afterStop.detail);
+    expect(afterStop.value.humanRequests[0]).toMatchObject({ requestRef: request.value.requestRef, state: 'open' });
+
+    // The sweep's terminal-run predicate must not reach it either, however long it sits there.
+    const farFuture = Date.parse(request.value.createdAt) + 365 * 24 * 60 * 60 * 1000;
+    expect(store.closeOrphanedHumanRequests(farFuture).closed).toEqual([]);
+  });
+
+  it('sweep: NEVER closes an open request for being old while its run is still waiting-human', () => {
+    // The removed age predicate (ruling 2026-08-11). This request is 21 days old on a run that is parked
+    // exactly where a human gate parks it. Closing is irreversible — nothing reopens a resolved request,
+    // `respondHumanRequest`/`reviseHumanRequest` both conflict on one, and `stageBoundary` then refuses
+    // the run permanently — so an age heuristic here wedges a run whose only fault is a patient operator.
+    let hour = 0;
+    const store = createInMemoryControlPlaneStore({
+      newId: (() => { let id = 0; return () => String(++id); })(),
+      now: () => new Date(Date.UTC(2026, 6, 21, hour++, 0, 0)), // 2026-07-21, one hour per call
+    });
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const waiting = store.transitionRun('alice', run.runRef, running.value.version, 'waiting-human');
+    if (!waiting.ok) throw new Error(waiting.detail);
+    const oldRequest = requestOnRun(store, run.runRef);
+
+    const nowMs = Date.UTC(2026, 7, 11); // 2026-08-11 — 21 days after the request was filed
+    expect(store.closeOrphanedHumanRequests(nowMs).closed).toEqual([]);
+    // A year later it is still the operator's to answer.
+    expect(store.closeOrphanedHumanRequests(nowMs + 365 * 24 * 60 * 60 * 1000).closed).toEqual([]);
+
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests[0]).toMatchObject({ requestRef: oldRequest.requestRef, state: 'open', response: null });
+    // …and it is still answerable, which is the whole point: a closed one would refuse here.
+    expect(store.respondHumanRequest('alice', oldRequest.requestRef, {
+      expectedRevision: detail.value.humanRequests[0]!.revision,
+      decision: 'approved',
+      idempotencyKey: 'late-but-valid',
+      response: 'answered three weeks later',
+    })).toMatchObject({ ok: true, value: { state: 'resolved' } });
+  });
+
+  it('writes one governance event onto the run timeline for every request it auto-closes', () => {
+    // A resolution recorded only on the request record is invisible where the operator actually reads
+    // the run's history. `source: 'system'` because no human was involved; the summary carries the why.
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+
+    const failed = store.transitionRun('alice', run.runRef, running.value.version, 'failed');
+    if (!failed.ok) throw new Error(failed.detail);
+
+    const events = store.listEvents('alice', run.runRef);
+    if (!events.ok) throw new Error(events.detail);
+    const autoClosed = events.value.filter((event) => event.summary?.includes('auto-closed'));
+    expect(autoClosed).toEqual([expect.objectContaining({
+      kind: 'governance',
+      source: 'system',
+      status: 'stopped',
+      summary: expect.stringContaining("terminal:failed"),
+    })]);
+    expect(autoClosed[0]!.summary).toContain('terminal state');
+    expect(request.requestRef).toBeTruthy();
+  });
+
+  it('at the run event cap the request still closes and only the timeline event is dropped', () => {
+    // Pins `autoCloseOpenHumanRequestsForRun`'s `if (eventCount >= maxEvents) continue;` branch. The
+    // direction matters: the close is the record of truth and the timeline event is the audit copy, so at
+    // the budget it is the EVENT that gives way — never the close, and never the transition itself.
+    const store = createInMemoryControlPlaneStore({ ...deterministicOptions(), maxEventsPerRun: 1 });
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+    // Spend the run's ENTIRE event budget before the terminal transition.
+    const filler = store.appendEvent('alice', run.runRef, { kind: 'lifecycle', source: 'system', summary: 'budget filler' });
+    if (!filler.ok) throw new Error(filler.detail);
+
+    const failed = store.transitionRun('alice', run.runRef, running.value.version, 'failed');
+    expect(failed).toMatchObject({ ok: true }); // the cap never fails the transition
+
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests[0]).toMatchObject({
+      requestRef: request.requestRef,
+      state: 'resolved',
+      response: expect.objectContaining({ decision: 'auto-closed' }),
+    });
+
+    const events = store.listEvents('alice', run.runRef);
+    if (!events.ok) throw new Error(events.detail);
+    expect(events.value).toHaveLength(1); // still just the filler: the governance copy was dropped
+    expect(events.value.filter((event) => event.summary?.includes('auto-closed'))).toEqual([]);
+  });
+
+  it('sweep: also closes an orphan whose run was already terminal before this shipped (file-store, pre-fix shape)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-orphan-sweep-'));
+    roots.push(root);
+    const path = join(root, 'control', 'control-plane.json');
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+
+    // Simulate data written before this fix existed: the run reached `failed` WITHOUT going through the
+    // (now-patched) `transitionRun`, so its request is still `open` on disk — the shape every pre-existing
+    // zombie was actually found in.
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>> };
+    const record = document.runs.find((candidate) => candidate.runRef === run.runRef);
+    if (!record) throw new Error('seeded run missing from the raw document');
+    record.state = 'failed';
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+
+    const reopened = createFileControlPlaneStore(root, deterministicOptions());
+    const swept = reopened.closeOrphanedHumanRequests(Date.now());
+    expect(swept.closed).toEqual([expect.objectContaining({ requestRef: request.requestRef, state: 'resolved' })]);
+    expect(swept.closed[0]!.response).toMatchObject({ decision: 'auto-closed' });
+    expect(swept.closed[0]!.response!.response).toMatch(/terminal state/);
+  });
+});
+
+/**
+ * Cross-subject scope (rulings, 2026-08-11).
+ *
+ * Runs are subject-scoped, and the daemon's runs are not all created by the same subject: the SPA
+ * session is `operator`, everything the queue bridge and the executor launch is `dashboard-engine`. The
+ * store's reads therefore take an explicit {@link ReadScope}, and — since Daniel's follow-up ruling —
+ * so do the operator-driven mutations. `'own-subject'` is the default everywhere, so a caller that
+ * passes nothing (every engine, executor and bridge call) is byte-for-byte unchanged.
+ *
+ * These tests pin three things: what widening reaches; that a widened mutation moves NO ownership and
+ * records the OPERATOR as the actor; and that a mutation called without the widened scope still refuses
+ * a foreign run, per mutation.
+ */
+describe('read scope', () => {
+  function engineRunWithHistory(store: ControlPlaneStore) {
+    const created = createRun(store, 'dashboard-engine');
+    const appended = store.appendEvent('dashboard-engine', created.run.runRef, {
+      kind: 'lifecycle', source: 'system', summary: 'engine run started',
+    });
+    if (!appended.ok) throw new Error(appended.detail);
+    return created.run;
+  }
+
+  /** Park `run` on `waiting-human` as its owner would — the state a gate is actually answered in. */
+  function publishAndPark(store: ControlPlaneStore, subject: string, run: Run): Run {
+    const publishing = store.transitionPublication(subject, run.runRef, run.version, 'publishing');
+    if (!publishing.ok) throw new Error(publishing.detail);
+    const published = store.transitionPublication(subject, run.runRef, publishing.value.version, 'published');
+    if (!published.ok) throw new Error(published.detail);
+    const parked = store.transitionRun(subject, run.runRef, published.value.version, 'waiting-human');
+    if (!parked.ok) throw new Error(parked.detail);
+    return parked.value;
+  }
+
+  it('all-subjects lists, opens and streams a run owned by another subject; own-subject cannot see it at all', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const engineRun = engineRunWithHistory(store);
+    const ownRun = createRun(store, 'operator').run;
+
+    expect(store.listRuns('operator').map((run) => run.runRef)).toEqual([ownRun.runRef]);
+    expect(store.listRuns('operator', 'all-subjects').map((run) => run.runRef).sort())
+      .toEqual([engineRun.runRef, ownRun.runRef].sort());
+
+    expect(store.getRun('operator', engineRun.runRef)).toMatchObject({ ok: false, reason: 'not-found' });
+    const detail = store.getRun('operator', engineRun.runRef, 'all-subjects');
+    if (!detail.ok) throw new Error(detail.detail);
+    // Child records are gathered under the RUN's subject, not the caller's — otherwise the run would
+    // open with every list empty, which is worse than not opening.
+    expect(detail.value.run.runRef).toBe(engineRun.runRef);
+    expect(detail.value.stages.map((stage) => stage.stageId)).toEqual(['build', 'verify']);
+
+    expect(store.listEvents('operator', engineRun.runRef)).toMatchObject({ ok: false, reason: 'not-found' });
+    const events = store.listEvents('operator', engineRun.runRef, 0, 250, 'all-subjects');
+    if (!events.ok) throw new Error(events.detail);
+    expect(events.value.map((event) => event.summary)).toContain('engine run started');
+  });
+
+  it('all-subjects reaches another subject`s workflow-registry revisions (the Workflows-graph join)', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = store.createProposalRevision('dashboard-engine', {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: 'daily-news',
+      title: 'Daily news', snapshot: { schema: 'kb.plan-proposal/v1' },
+    });
+    if (!created.ok) throw new Error(created.detail);
+
+    expect(store.listProposalRevisionsForComposer('operator', 'workflow-registry')).toEqual([]);
+    expect(store.listProposalRevisionsForComposer('operator', 'workflow-registry', 'all-subjects'))
+      .toEqual([expect.objectContaining({ sourceTurnId: 'daily-news', proposalRef: created.value.proposalRef })]);
+  });
+
+  it('every mutation still refuses a foreign run when it is not explicitly widened', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const engineRun = engineRunWithHistory(store);
+    const ask = store.createHumanRequest('dashboard-engine', engineRun.runRef, {
+      kind: 'approval', title: 'Gate', prompt: 'Approve?',
+    });
+    if (!ask.ok) throw new Error(ask.detail);
+
+    // `'own-subject'` is the default on every one of these, so a caller that does not opt in — which is
+    // EVERY caller except a verified operator session — sees a foreign run exactly as it did before:
+    // not-found. This is also the whole of the "a non-operator subject cannot do this" pin, because a
+    // non-operator never obtains `'all-subjects'` (`routes.ts#readScope` derives it from the session
+    // subject alone, and is pinned over HTTP in routes.test.ts).
+    expect(store.transitionRun('operator', engineRun.runRef, engineRun.version, 'running'))
+      .toMatchObject({ ok: false, reason: 'not-found' });
+    expect(store.createHumanRequest('operator', engineRun.runRef, { kind: 'input', title: 'x', prompt: 'y' }))
+      .toMatchObject({ ok: false, reason: 'not-found' });
+    expect(store.appendEvent('operator', engineRun.runRef, { kind: 'lifecycle', source: 'system', summary: 'nope' }))
+      .toMatchObject({ ok: false, reason: 'not-found' });
+    expect(store.archiveRun('operator', engineRun.runRef, { idempotencyKey: 'k', reason: null }))
+      .toMatchObject({ ok: false, reason: 'not-found' });
+    expect(store.getHumanRequest('operator', ask.value.requestRef)).toMatchObject({ ok: false, reason: 'not-found' });
+    expect(store.respondHumanRequest('operator', ask.value.requestRef, {
+      expectedRevision: 1, decision: 'approved', idempotencyKey: 'k', response: null,
+    })).toMatchObject({ ok: false, reason: 'not-found' });
+    expect(store.recordManagerCommand('operator', engineRun.runRef, {
+      expectedRunVersion: engineRun.version, expectedManagerGeneration: engineRun.managerGeneration,
+      idempotencyKey: 'k', kind: 'message', message: 'nope',
+    })).toMatchObject({ ok: false, reason: 'not-found' });
+    expect(store.resolveReviewCompletionGate('operator', ask.value.requestRef, {
+      expectedRequestRevision: 1, expectedReceiptVersion: 1, expectedLoopVersion: 1,
+      expectedReviewStageVersion: 1, expectedSubjectStageVersion: 1,
+      decision: 'approved', idempotencyKey: 'k', response: null,
+    })).toMatchObject({ ok: false, reason: 'not-found' });
+
+    // Nothing above left a mark on the foreign run.
+    const owned = store.getRun('dashboard-engine', engineRun.runRef);
+    if (!owned.ok) throw new Error(owned.detail);
+    expect(owned.value.run.state).toBe('planned');
+    expect(owned.value.humanRequests).toEqual([expect.objectContaining({ state: 'open' })]);
+  });
+
+  it('names the owning subject on every run DTO, so one mixed list can be told apart', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const engineRun = engineRunWithHistory(store);
+    const ownRun = createRun(store, 'operator').run;
+
+    expect(store.listRuns('operator', 'all-subjects').map((run) => [run.runRef, run.ownerSubject]).sort())
+      .toEqual([[engineRun.runRef, 'dashboard-engine'], [ownRun.runRef, 'operator']].sort());
+    const detail = store.getRun('operator', engineRun.runRef, 'all-subjects');
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.ownerSubject).toBe('dashboard-engine');
+  });
+
+  it('lets the operator answer a gate on a dashboard-engine run: operator recorded, ownership unmoved, run resumable', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const engineRun = engineRunWithHistory(store);
+    const published = publishAndPark(store, 'dashboard-engine', engineRun);
+    const ask = store.createHumanRequest('dashboard-engine', engineRun.runRef, {
+      kind: 'approval', title: 'Publish the cut?', prompt: 'Approve the render.',
+    });
+    if (!ask.ok) throw new Error(ask.detail);
+
+    // Before the answer the run is genuinely stuck: its boundary is unresolved.
+    expect(store.transitionRun('dashboard-engine', engineRun.runRef, published.version, 'running'))
+      .toMatchObject({ ok: false, reason: 'invalid' });
+
+    const answered = store.respondHumanRequest('operator', ask.value.requestRef, {
+      expectedRevision: 1, decision: 'approved', idempotencyKey: 'operator-answers', response: 'ship it',
+    }, 'all-subjects');
+    if (!answered.ok) throw new Error(answered.detail);
+    // THE ACTOR IS THE OPERATOR — the record of who answered names the human, not the run's owner.
+    expect(answered.value.response).toMatchObject({ respondedBy: 'operator', decision: 'approved', response: 'ship it' });
+
+    // OWNERSHIP IS UNMOVED: the request is still the engine's, still on the engine's run, and the
+    // operator still owns no runs of their own.
+    expect(store.getHumanRequest('dashboard-engine', ask.value.requestRef))
+      .toMatchObject({ ok: true, value: { requestRef: ask.value.requestRef, state: 'resolved' } });
+    expect(store.listRuns('operator')).toEqual([]);
+    const owned = store.getRun('dashboard-engine', engineRun.runRef);
+    if (!owned.ok) throw new Error(owned.detail);
+    expect(owned.value.ownerSubject).toBe('dashboard-engine');
+    expect(owned.value.humanRequests).toHaveLength(1);
+
+    // The boundary is accepted, so the run its owner drives is resumable again — the point of the ruling.
+    expect(store.transitionRun('dashboard-engine', engineRun.runRef, owned.value.run.version, 'running'))
+      .toMatchObject({ ok: true });
+  });
+
+  it('files a widened event and a widened intervention request under the RUN, never under the operator', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const engineRun = engineRunWithHistory(store);
+
+    const appended = store.appendEvent('operator', engineRun.runRef, {
+      kind: 'governance', source: 'human', status: 'success', summary: 'Human Request approved at revision 1',
+    }, 'all-subjects');
+    if (!appended.ok) throw new Error(appended.detail);
+    const filed = store.createHumanRequest('operator', engineRun.runRef, {
+      kind: 'intervention', title: 'Manager message delivery needs reconciliation', prompt: 'Delivery failed.',
+    }, 'all-subjects');
+    if (!filed.ok) throw new Error(filed.detail);
+
+    // Both land on the OWNER's partition: the engine reading its own run sees them without any scope.
+    const events = store.listEvents('dashboard-engine', engineRun.runRef);
+    if (!events.ok) throw new Error(events.detail);
+    expect(events.value.map((event) => event.summary)).toContain('Human Request approved at revision 1');
+    const owned = store.getRun('dashboard-engine', engineRun.runRef);
+    if (!owned.ok) throw new Error(owned.detail);
+    expect(owned.value.humanRequests.map((request) => request.requestRef)).toEqual([filed.value.requestRef]);
+    // And nothing at all was created under the operator.
+    expect(store.listRuns('operator')).toEqual([]);
+  });
+
+  it('lets the operator steer and stop a dashboard-engine run, with the command on the run`s own timeline', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const engineRun = engineRunWithHistory(store);
+
+    const steered = store.recordManagerCommand('operator', engineRun.runRef, {
+      expectedRunVersion: engineRun.version, expectedManagerGeneration: engineRun.managerGeneration,
+      idempotencyKey: 'operator-steers', kind: 'steer', message: 'Inspect the diff first.', checkpoint: 'safe-1',
+    }, 'all-subjects');
+    if (!steered.ok) throw new Error(steered.detail);
+    expect(steered.value.event).toMatchObject({ kind: 'checkpoint', source: 'human', checkpoint: 'safe-1' });
+
+    const stopped = store.recordManagerCommand('operator', engineRun.runRef, {
+      expectedRunVersion: steered.value.run.version, expectedManagerGeneration: engineRun.managerGeneration,
+      idempotencyKey: 'operator-stops', kind: 'stop',
+    }, 'all-subjects');
+    if (!stopped.ok) throw new Error(stopped.detail);
+    expect(stopped.value.run.state).toBe('stopping');
+
+    // Both events are on the ENGINE's timeline — an operator-partitioned event would be invisible to
+    // the run's own reader, uncounted against its event cap, and orphaned by a quarantine.
+    const events = store.listEvents('dashboard-engine', engineRun.runRef);
+    if (!events.ok) throw new Error(events.detail);
+    expect(events.value.map((event) => event.summary))
+      .toEqual(['engine run started', 'Inspect the diff first.', 'operator requested Manager stop']);
+    expect(store.getRun('dashboard-engine', engineRun.runRef)).toMatchObject({
+      ok: true, value: { ownerSubject: 'dashboard-engine', run: { state: 'stopping' } },
+    });
+  });
+
+  it('lets the operator archive a dashboard-engine run, resolving its asks in the operator`s name', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const engineRun = engineRunWithHistory(store);
+    publishAndPark(store, 'dashboard-engine', engineRun);
+    const ask = store.createHumanRequest('dashboard-engine', engineRun.runRef, {
+      kind: 'intervention', title: 'Manager boot failed', prompt: 'spawn claude ENOENT',
+    });
+    if (!ask.ok) throw new Error(ask.detail);
+
+    const archived = store.archiveRun('operator', engineRun.runRef, {
+      idempotencyKey: 'operator-archives', reason: 'obsolete validation run',
+    }, 'all-subjects');
+    if (!archived.ok) throw new Error(archived.detail);
+    // Existing archive semantics, unchanged: terminal `archived` run, every answerable ask resolved in
+    // the same commit with the operator's reason, and the resolution reported back.
+    expect(archived.value.run.state).toBe('archived');
+    expect(archived.value.pinnedRequestRefs).toEqual([]);
+    expect(archived.value.resolvedRequests).toEqual([expect.objectContaining({
+      requestRef: ask.value.requestRef, state: 'resolved',
+    })]);
+    expect(archived.value.resolvedRequests[0]!.response)
+      .toMatchObject({ respondedBy: 'operator', decision: 'responded', response: 'obsolete validation run' });
+
+    // The run and its request are still the engine's.
+    expect(store.getRun('dashboard-engine', engineRun.runRef)).toMatchObject({
+      ok: true, value: { ownerSubject: 'dashboard-engine', run: { state: 'archived' } },
+    });
+    expect(store.listRuns('operator', 'all-subjects').map((run) => run.ownerSubject)).toEqual(['dashboard-engine']);
+
+    // A replay on the same key is still a replay, and a second, different archive still conflicts.
+    expect(store.archiveRun('operator', engineRun.runRef, {
+      idempotencyKey: 'operator-archives', reason: 'obsolete validation run',
+    }, 'all-subjects')).toMatchObject({ ok: true, replayed: true });
+    expect(store.archiveRun('operator', engineRun.runRef, {
+      idempotencyKey: 'operator-archives-again', reason: 'again',
+    }, 'all-subjects')).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('lets the operator resolve a review completion gate owned by another subject, lineage intact', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    // The run-tab submits a gate through EITHER the generic respond path or this one, so both are
+    // widened or half the Inbox still dead-ends. The owner here is the checker fixture's own subject —
+    // what matters is only that it is not the caller.
+    const { attached } = attachCheckerGate(store);
+    const input = reviewGateResolutionInput(attached, 'approved');
+
+    expect(store.resolveReviewCompletionGate('operator', attached.request.requestRef, input))
+      .toMatchObject({ ok: false, reason: 'not-found' });
+
+    const resolved = store.resolveReviewCompletionGate('operator', attached.request.requestRef, input, 'all-subjects');
+    if (!resolved.ok) throw new Error(resolved.detail);
+    expect(resolved.value.request.response).toMatchObject({ respondedBy: 'operator', decision: 'approved' });
+    expect(resolved.value.receipt.state).toBe('passed');
+    expect(resolved.value.loop.state).toBe('passed');
+    // The whole lineage stayed with its owner, who can still read the resolved gate without a scope.
+    expect(store.getHumanRequest('alice', attached.request.requestRef))
+      .toMatchObject({ ok: true, value: { state: 'resolved' } });
   });
 });
