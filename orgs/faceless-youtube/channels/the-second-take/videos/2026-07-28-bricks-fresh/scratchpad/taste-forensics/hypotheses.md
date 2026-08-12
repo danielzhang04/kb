@@ -1,6 +1,16 @@
 # G0 hypotheses — falsifiable, traced to Daniel's answers
 
-Status: DRAFT awaiting Daniel's confirmation. Each hypothesis names its evidence (panel/beat in
+Status: CONFIRMED by Daniel 2026-08-12 ("Sure") with two binding amendments — **G0 LOCKED**.
+
+**Amendment 1 (two-sided targets, Daniel verbatim):** "by bigger, I don't mean super big with
+lots of space. Same with by it's too cool I don't mean i want super not cool." H1 and H3 are
+MODERATE corrections toward a bounded middle, never direction-maximizations. Any proposal or
+measurement target derived from them must state both bounds.
+
+**Amendment 2 (Daniel verbatim):** "your goal includes not bloating function across the board.
+Generalized implementations, not adding specific features to solve specific problems when much
+cleaner solutions exist." (Restates the spec's rollback-over-addition + generalized-rules-only
+laws; binds every proposal and implementation unit.) Each hypothesis names its evidence (panel/beat in
 `elicit-answers.md`) and the test that would falsify or confirm it. Tracks: A = archaeology,
 B = measurement, C = routing trace, G4 = validation re-mint verdict.
 
