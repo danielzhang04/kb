@@ -1629,6 +1629,205 @@ def _kit_for_run(mode):
     return fc, k, tmp, staging, seed
 
 
+def _assert_run_item_rejects_traversal(*, dry_run):
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    item = dict(_item_L29(), name="../../../escaped-c12")
+    escaped = (staging / "_codex" / "prompts" / f"{item['name']}.txt").resolve()
+    assert os.path.commonpath((str(escaped), str(staging.resolve()))) != str(staging.resolve())
+    raised = None
+    try:
+        fc.run_item(k, item, [seed], fc.RunOptions(dry_run=dry_run))
+    except fc.CodexContractError as e:
+        raised = str(e)
+    assert raised is not None and "filename stem" in raised
+    assert not escaped.exists(), escaped
+    assert list(staging.iterdir()) == []
+    assert not (staging / "_codex" / "engine-log.jsonl").exists()
+
+
+def test_run_item_dry_run_rejects_traversal_before_any_write():
+    _assert_run_item_rejects_traversal(dry_run=True)
+
+
+def test_run_item_live_rejects_traversal_before_any_write():
+    _assert_run_item_rejects_traversal(dry_run=False)
+
+
+def test_run_item_concurrent_loser_cannot_overwrite_winners_prompt():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    winner = dict(_item_L29(), payload=_item_L29()["payload"] + "\nWINNER REQUEST")
+    loser = dict(_item_L29(), payload=_item_L29()["payload"] + "\nLOSER REQUEST")
+    winner_text = fc.compose_prompt(winner, reg=k.reg, canvas=(1376, 768), aspect="16:9")
+    ready = threading.Event()
+    proceed = threading.Event()
+    result = {}
+    original_generate = fc.generate
+
+    def blocked_generate(**kwargs):
+        ready.set()
+        assert proceed.wait(5), "loser never reached the reservation seam"
+        result["tool_prompt"] = Path(kwargs["prompt_path"]).read_text(encoding="utf-8")
+        return _png_bytes((1376, 768)), _meta_stub()
+
+    def run_winner():
+        try:
+            result["winner"] = fc.run_item(k, winner, [seed], fc.RunOptions())
+        except BaseException as e:
+            result["exception"] = e
+
+    fc.generate = blocked_generate
+    thread = threading.Thread(target=run_winner)
+    try:
+        thread.start()
+        assert ready.wait(5), "winner never reached generation"
+        result["loser"] = fc.run_item(k, loser, [seed], fc.RunOptions())
+        proceed.set()
+        thread.join(5)
+    finally:
+        proceed.set()
+        thread.join(5)
+        fc.generate = original_generate
+    assert not thread.is_alive()
+    assert "exception" not in result, result.get("exception")
+    winner_status, winner_row = result["winner"]
+    loser_status, loser_row = result["loser"]
+    assert winner_status == "OK"
+    assert loser_status == "SKIP skip (reserved by concurrent generator)" and loser_row is None
+    archive = staging / "_codex" / "prompts" / "L29.txt"
+    assert archive.read_text(encoding="utf-8") == winner_text
+    assert result["tool_prompt"] == winner_text
+    assert winner_row["composed_prompt_sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
+    rows = [json.loads(line) for line in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1 and rows[0] == winner_row
+
+
+def test_run_item_dry_run_does_not_clobber_an_existing_prompt_archive():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    archive = Path(fc.write_prompt_file(k.staging, "L29", "LIVE WINNER\n"))
+    original = archive.read_bytes()
+    item = dict(_item_L29(), payload=_item_L29()["payload"] + "\nDRY LOSER")
+    status, row = fc.run_item(k, item, [seed], fc.RunOptions(dry_run=True))
+    assert status == "DRY" and row is None
+    assert archive.read_bytes() == original
+    assert not (staging / "_codex" / "engine-log.jsonl").exists()
+
+
+def test_run_item_seed_digest_failure_never_reserves_or_archives_and_is_retryable():
+    import forge
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    original_seed_digests = fc.seed_digests
+
+    def explode(_seeds):
+        raise OSError("digest read exploded")
+
+    fc.seed_digests = explode
+    raised = None
+    try:
+        try:
+            fc.run_item(k, _item_L29(), [seed], fc.RunOptions(keep_composed=False))
+        except OSError as e:
+            raised = str(e)
+    finally:
+        fc.seed_digests = original_seed_digests
+    assert raised == "digest read exploded"
+    out = forge._staging_png(k, "L29")
+    assert not os.path.exists(out) and not os.path.exists(out + ".lock")
+    assert not (staging / "_codex" / "prompts" / "L29.txt").exists()
+    assert not (staging / "_codex" / "engine-log.jsonl").exists()
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    assert status == "OK" and row is not None
+
+
+def test_run_item_log_append_failure_rolls_back_output_before_retry():
+    import forge
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    original_append_log_row = fc.append_log_row
+    original_generate = fc.generate
+
+    def explode(_path, _row):
+        raise OSError("log disk full")
+
+    def generated(**_kwargs):
+        return _png_bytes((1376, 768)), _meta_stub()
+
+    fc.generate = generated
+    raised = None
+    try:
+        fc.append_log_row = explode
+        try:
+            try:
+                fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+            except OSError as e:
+                raised = str(e)
+        finally:
+            fc.append_log_row = original_append_log_row
+        assert raised == "log disk full"
+        out = forge._staging_png(k, "L29")
+        assert not os.path.exists(out) and not os.path.exists(out + ".lock")
+        assert not (staging / "_codex" / "engine-log.jsonl").exists()
+        status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+        assert status == "OK" and row is not None
+        rows = [json.loads(line) for line in
+                (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+        assert len(rows) == 1 and rows[0] == row
+    finally:
+        fc.generate = original_generate
+
+
+def test_run_item_false_publish_reports_concurrent_survivor_and_logs_once():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    survivor = _png_bytes((1376, 768), colour=(11, 22, 33))
+    original_publish = fc._publish_staging_png
+
+    def concurrent_publish(_k, _name, out, _data, _force):
+        Path(out).write_bytes(survivor)
+        return False
+
+    fc._publish_staging_png = concurrent_publish
+    try:
+        status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    finally:
+        fc._publish_staging_png = original_publish
+    assert status == "SKIP publish (concurrent survivor)" and row is not None
+    assert (staging / "L29.png").read_bytes() == survivor
+    rows = [json.loads(line) for line in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1 and rows[0] == row
+
+
+def test_run_item_validates_generated_bytes_before_publish():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    data = _png_bytes((1376, 768))
+    original_generate = fc.generate
+    original_validate = fc.validate_png
+    original_publish = fc._publish_staging_png
+    order = []
+
+    def generated(**_kwargs):
+        return data, _meta_stub()
+
+    def validating(candidate):
+        order.append(("validate", candidate))
+        return original_validate(candidate)
+
+    def publishing(*args):
+        order.append(("publish", args[3]))
+        return original_publish(*args)
+
+    fc.generate = generated
+    fc.validate_png = validating
+    fc._publish_staging_png = publishing
+    try:
+        status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    finally:
+        fc.generate = original_generate
+        fc.validate_png = original_validate
+        fc._publish_staging_png = original_publish
+    assert status == "OK" and row is not None
+    assert order == [("validate", data), ("publish", data)]
+
+
 def test_run_item_publishes_through_forge_primitives_and_logs_one_row():
     import io
     from PIL import Image
@@ -1683,13 +1882,15 @@ def test_run_item_respects_a_concurrent_lock():
 def test_a_failed_gen_leaves_no_file_and_no_stale_lock():
     import forge
     fc, k, tmp, staging, seed = _kit_for_run("no_image")
-    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions(keep_composed=False))
     assert status.startswith("ERR no_image"), status
     assert not (staging / "L29.png").exists()
     assert not os.path.exists(forge._staging_png(k, "L29") + ".lock")
+    assert not (staging / "_codex" / "prompts" / "L29.txt").exists()
     rows = [json.loads(l) for l in
             (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert rows[-1]["failure_class"] == "no_image" and rows[-1]["reissues"] == 1
+    assert len(rows) == 1
+    assert rows[0]["failure_class"] == "no_image" and rows[0]["reissues"] == 1
 
 
 def test_dry_run_prints_the_prompt_and_spawns_no_subprocess():
