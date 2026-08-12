@@ -121,8 +121,15 @@ async function assertCleanIndex(repoRoot: string, runGit: GitRunner): Promise<vo
   if (paths.length > 0) throw new DirtyIndexError(paths);
 }
 
-/** Query the real checkout through the injected runner and fail closed unless it is exactly `ops`. */
-async function assertCoordinationCheckout(repoRoot: string, runGit: GitRunner): Promise<void> {
+/**
+ * Query the real checkout through the injected runner and fail closed unless it is exactly `ops`.
+ *
+ * Exported because it is a precondition of PULLING, not merely of committing: `pull --rebase origin ops`
+ * on a checkout that is no longer `ops` rebases an unrelated HEAD, and a conflict there leaves this
+ * SHARED checkout mid-rebase for the next writer (the 2026-07-30 jam class). Every reconciling pull —
+ * including the ones `opsPushRetry.ts` issues for callers outside this module — must be guarded by it.
+ */
+export async function assertCoordinationCheckout(repoRoot: string, runGit: GitRunner): Promise<void> {
   const branch = (await runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
   if (branch !== 'ops') throw new CoordinationCheckoutError(branch);
 }

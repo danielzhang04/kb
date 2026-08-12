@@ -307,6 +307,13 @@ describe('control proposal routes', () => {
       managerStartAckTimeoutMs?: number;
       /** Override the ops runner — a throwing one is the cheapest deterministic pre-claim refusal. */
       opsGit?: (root: string, args: string[]) => string;
+      /**
+       * How many lost push races the activation seam should simulate. The real
+       * `activateManagedRootCards` calls `authorizeAfterPrepare` ONCE after its opening pull, then
+       * `reassertAfterReconcile` once per reconciling `pull --rebase` a rejected push forces. Modelling
+       * that here is what pins which half of the route's authorization is safe to repeat.
+       */
+      reconcileRaces?: number;
     } = {},
   ) {
     const runAutomatic = vi.fn(overrides.runAutomatic ?? (async (input: ExecuteRunInput) => {
@@ -330,10 +337,15 @@ describe('control proposal routes', () => {
     })));
     const containManagerStart = vi.fn(overrides.containManagerStart ?? (async () => {}));
     const verifyCanonicalResult = vi.fn(async () => overrides.verifyCanonicalResult ?? true);
-    const activateManagedRoots = vi.fn(async (options: { runRef: string; cardRefs: string[]; authorizeAfterPrepare?: () => void | Promise<void>; verifyCompletedRoots?: (input: { runRef: string; cardRefs: string[] }) => Promise<void> }) => {
+    const activateManagedRoots = vi.fn(async (options: { runRef: string; cardRefs: string[]; authorizeAfterPrepare?: () => void | Promise<void>; reassertAfterReconcile?: () => void | Promise<void>; verifyCompletedRoots?: (input: { runRef: string; cardRefs: string[] }) => Promise<void> }) => {
       await beforeRootAuthorization?.();
       if (overrides.completedRoot) await options.verifyCompletedRoots?.({ runRef: options.runRef, cardRefs: [options.cardRefs[0]] });
       await options.authorizeAfterPrepare?.();
+      // Each lost push race reconciles onto a newer canonical head and re-proves against it. Only the
+      // PURE half may run here; the real function passes exactly this callback.
+      for (let race = 0; race < (overrides.reconcileRaces ?? 0); race += 1) {
+        await options.reassertAfterReconcile?.();
+      }
       return {
         replayed: false,
         cardPaths: options.cardRefs.map((cardRef) => `queue/inbox/${cardRef}.md`),
@@ -1250,6 +1262,54 @@ describe('control proposal routes', () => {
       expect(runAutomatic).toHaveBeenCalledTimes(1);
       expect(activateManagedRoots).toHaveBeenCalledTimes(1);
     } finally {
+      await activated.close();
+    }
+  });
+
+  /**
+   * A lost push race must NOT re-authorize.
+   *
+   * `activateManagedRootCards` reconciles and retries a push rejected non-fast-forward, and it re-proves
+   * authorization after every reconcile. That re-proof has to be the PURE half of the route's
+   * authorization — read state, compare policy, throw — because the other half emits a T3
+   * `control-run-activate-authorize` audit row (which carries its OWN nested ops commit+push) and takes
+   * the activation claim. Wiring the whole closure to the reconcile hook would bill one authorization as
+   * three: three audit rows, three claims, for one operator act.
+   */
+  it('re-proves purely on every reconciled push race: still exactly one authorize row and one claim', async () => {
+    const detail = seedActivatableRun();
+    const auditRows: Array<Record<string, unknown>> = [];
+    const claim = vi.spyOn(controlStore, 'claimRunActivation');
+    const { activated, activateManagedRoots } = await activatedApp(undefined, {
+      // Two writers beat this activation to `ops`; both are transient, and neither is a new authorization.
+      reconcileRaces: 2,
+      appendAudit: (_root: string, event: unknown) => {
+        auditRows.push(event as Record<string, unknown>);
+        return { ts: new Date().toISOString(), ...(event as Record<string, unknown>) };
+      },
+    });
+    try {
+      const activateResponse = await activated.inject({
+        method: 'POST',
+        url: `/api/control/runs/${detail.run.runRef}/activate`,
+        headers: headers(token),
+        payload: {
+          expectedRunVersion: detail.run.version,
+          expectedManagerGeneration: detail.run.managerGeneration,
+          idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:${detail.run.proposalHash}:${detail.run.managerGeneration}`,
+        },
+      });
+
+      expect(activateResponse.statusCode, activateResponse.body).toBe(202);
+      expect(activateManagedRoots).toHaveBeenCalledTimes(1);
+      // Both re-proofs ran — the retry path really was exercised, not skipped.
+      const wiring = activateManagedRoots.mock.calls[0][0] as { reassertAfterReconcile?: unknown };
+      expect(typeof wiring.reassertAfterReconcile).toBe('function');
+      // ...and neither of them authorized anything a second time.
+      expect(auditRows.filter((row) => row.action === 'control-run-activate-authorize')).toHaveLength(1);
+      expect(claim).toHaveBeenCalledTimes(1);
+    } finally {
+      claim.mockRestore();
       await activated.close();
     }
   });

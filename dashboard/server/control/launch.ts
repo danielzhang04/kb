@@ -436,6 +436,10 @@ export async function executeApprovedLaunch(
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
         authorizeAfterPrepare: reassertCompiledPolicy,
+        // The same proof at a different moment: `authorizeAfterPrepare` runs once after the opening
+        // pull, `reassertAfterReconcile` after every pull a rejected push forces. This closure is pure
+        // (recompile and compare, no writes), so repeating it costs nothing and duplicates nothing.
+        reassertAfterReconcile: reassertCompiledPolicy,
       });
       ctx.controlStore.appendEvent(sub, runRef, {
         kind: 'lifecycle', source: 'system', status: 'running',

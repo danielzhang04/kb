@@ -16,7 +16,9 @@ import { defaultOwnerRouting } from './launch.ts';
 import type { OwnerRouting, PyRunner } from './launch.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
 import type { PreambleRunner } from './preambleGate.ts';
-import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from './branch.ts';
+import {
+  assertCoordinationCheckout, commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner,
+} from './branch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
 import { pushOpsWithReconcile } from './opsPushRetry.ts';
 
@@ -194,8 +196,23 @@ export interface ManagedRootActivationOptions {
   runGit?: GitRunner;
   /** Locally prepared audit/coordination paths committed in the same exact-path transaction. */
   alsoStage?: string[];
-  /** Re-prove policy/approval against the just-reconciled canonical ops head before local mutation. */
+  /**
+   * ONE-SHOT authorization, run exactly once after the opening pull and before local mutation. Callers
+   * put their SIDE EFFECTS here — the T3 authorize audit row, the post-audit preamble, the activation
+   * claim. It is never re-run on a push reconcile; see {@link reassertAfterReconcile}.
+   */
   authorizeAfterPrepare?: () => void | Promise<void>;
+  /**
+   * PURE re-proof, re-run after EVERY reconciling `pull --rebase` that a rejected push triggers. It must
+   * only read state and throw — no audit rows, no preamble, no claims — because a run that loses two
+   * push races calls it twice for one act, and a side-effecting re-proof would emit three authorize rows
+   * for one authorization.
+   *
+   * REQUIRED (not optional in practice): this function throws at entry when it is absent, because the
+   * publication below reconciles and retries a lost race, and a retry with no re-proof would publish
+   * under a canonical head nothing ever authorized.
+   */
+  reassertAfterReconcile?: () => void | Promise<void>;
   /** Remotely prove every terminal root before a claim or queue mutation. */
   verifyCompletedRoots?: (input: { runRef: string; cardRefs: string[] }) => Promise<void>;
 }
@@ -210,6 +227,14 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
     || new Set(options.cardRefs).size !== options.cardRefs.length
     || options.cardRefs.some((ref) => !SAFE_ID_RE.test(ref))) {
     throw new Error('managed root activation identity is invalid');
+  }
+  // Fail loud at entry, never silently: the publication below reconciles and retries a lost push race,
+  // so without a pure re-proof to run after each reconcile this would publish an activation under a
+  // canonical head that was never authorized. Refusing here makes that structurally impossible rather
+  // than leaving it to each caller to remember.
+  const reassertAfterReconcile = options.reassertAfterReconcile;
+  if (!reassertAfterReconcile) {
+    throw new Error('managed root activation requires a reassertAfterReconcile re-proof');
   }
   const runGit = options.runGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
@@ -261,14 +286,20 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
       message: `chore(queue): activate managed run ${options.runRef}`,
       // Losing the push race with another ops writer is transient, so it reconciles and retries rather
       // than parking the run — but the activation was authorized against the pre-rebase canonical head,
-      // so `authorizeAfterPrepare` re-proves that authorization against every newer head before the
-      // retried push. A changed policy still throws, exactly as it would have before the pull.
-      onReconciled: options.authorizeAfterPrepare,
+      // so the PURE re-proof runs against every newer head before the retried push. Changed state or
+      // policy still throws. Never `authorizeAfterPrepare` here: that half emits the T3 authorize audit
+      // row and takes the activation claim, and two lost races would triple both for one act.
+      onReconciled: reassertAfterReconcile,
     });
   } else {
-    // An idempotent replay still proves the committed canonical branch reached the remote.
+    // An idempotent replay still proves the committed canonical branch reached the remote. Its reconcile
+    // pulls, so it carries the same checkout guard the commit path uses — an unproven checkout must
+    // never be rebased (2026-07-30 jam class).
     await pushOpsWithReconcile({
-      repoRoot: options.repoRoot, runGit, onReconciled: options.authorizeAfterPrepare,
+      repoRoot: options.repoRoot,
+      runGit,
+      beforeReconcile: () => assertCoordinationCheckout(options.repoRoot, runGit),
+      onReconciled: reassertAfterReconcile,
     });
   }
   for (const path of cardPaths) {
