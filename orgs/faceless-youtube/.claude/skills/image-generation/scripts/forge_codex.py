@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import warnings
+from dataclasses import dataclass
 if os.name == "nt":
     import ctypes
     from ctypes import wintypes
@@ -874,3 +875,67 @@ def generate(*, prompt_path, seeds, canvas, name, session=None, poll_delay=1.0):
     if session:
         session.record(tid)
     return data, meta
+
+
+@dataclass
+class RunOptions:
+    force: bool = False
+    dry_run: bool = False
+    image_size: str | None = None  # None => the item's own image_size, else "1K"
+    session_mode: str = "isolated"
+    session_span: int = 8
+    keep_composed: bool = True
+
+
+def run_item(k, item, seeds, opts, session=None):
+    """One frame, end to end: compose -> write prompt file -> reserve -> re-verify digests ->
+    invoke -> harvest -> audit -> validate -> normalize -> publish -> log row.
+    Returns (status, row); `row` is None for SKIP and DRY."""
+    name = item["name"]
+    aspect = item.get("aspect") or "16:9"
+    size = opts.image_size or item.get("image_size") or "1K"
+    canvas = resolve_canvas(aspect, size)
+    composed = compose_prompt(item, reg=k.reg, canvas=canvas, aspect=aspect)
+    residual = residual_idiom(item.get("payload") or "")
+    prepared = prepare_seeds(item, seeds or [])
+    composed_path = write_prompt_file(k.staging, name, composed)
+
+    if opts.dry_run:
+        print(f"--- {name} ({aspect}, {size} -> {canvas[0]}x{canvas[1]}, "
+              f"{len(prepared)} seed(s), {len(composed)} chars) ---", flush=True)
+        print(composed, flush=True)
+        if residual:
+            print(f"  WARN {name}: residual staging idiom {residual}", flush=True)
+        return "DRY", None
+
+    out, lock, token, skip = _reserve_staging_output(k, name, opts.force)
+    if skip:
+        return f"SKIP {skip}", None
+    shas = seed_digests(prepared)
+    row = None
+    try:
+        reverify_seed_digests(name, shas)
+        data, meta = generate(prompt_path=composed_path, seeds=prepared, canvas=canvas,
+                              name=name, session=session)
+        validate_png(data)
+        _publish_staging_png(k, name, out, data, opts.force)
+        row = build_log_row(name=name, meta=meta, composed_path=composed_path,
+                            composed_text=composed, seed_shas=shas, residual=residual,
+                            kit_root=k.kit)
+        status = "OK"
+    except CodexRunError as e:
+        meta = {"session_mode": "session" if session else "isolated",
+                "reissues": getattr(e, "reissues", 0), "failure_class": e.failure_class}
+        row = build_log_row(name=name, meta=meta, composed_path=composed_path,
+                            composed_text=composed, seed_shas=shas, residual=residual,
+                            kit_root=k.kit)
+        status = f"ERR {e.failure_class}: {e}"
+    finally:
+        if lock:
+            _release_staging_lock(lock, token)
+        if not opts.keep_composed and os.path.exists(composed_path):
+            os.unlink(composed_path)
+    append_log_row(engine_log_path(k.staging), row)
+    if residual:
+        sys.stderr.write(f"  WARN {name}: residual staging idiom {residual}\n")
+    return status, row

@@ -1610,6 +1610,98 @@ def test_run_totals_names_every_non_verified_row():
     assert "mean pre_call_tool_calls 3.0" in text
 
 
+def _kit_for_run(mode):
+    """A dry Kit whose staging is an ARC-style directory outside the kit (kit read-only)."""
+    import forge
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="runitem-"))
+    kit, root = make_kit(tmp)
+    k = forge.Kit(kit, dry=True)
+    staging = tmp / "arc-staging"
+    staging.mkdir()
+    k.staging = str(staging)
+    (tmp / "generated_images").mkdir()
+    (tmp / "sessions").mkdir()
+    fc.CODEX_ARGV_PREFIX = fake_prefix(mode, tmp / "generated_images", tmp / "sessions")
+    fc.IMAGE_ROOT = str(tmp / "generated_images")
+    fc.SESSIONS_ROOT = str(tmp / "sessions")
+    seed = _png(tmp / "seed.png")
+    return fc, k, tmp, staging, seed
+
+
+def test_run_item_publishes_through_forge_primitives_and_logs_one_row():
+    import io
+    from PIL import Image
+    import forge
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    item = _item_L29()
+    status, row = fc.run_item(k, item, [seed], fc.RunOptions())
+    assert status == "OK", status
+    out = forge._staging_png(k, "L29")
+    assert os.path.isfile(out)
+    assert Image.open(io.BytesIO(open(out, "rb").read())).size == (1376, 768)
+    assert not os.path.exists(out + ".lock")
+    assert (staging / "_codex" / "prompts" / "L29.txt").is_file()
+    rows = [json.loads(l) for l in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1 and rows[0]["name"] == "L29" and rows[0]["fidelity_audit"] == "verified"
+    assert row["seed_sha256"] and list(row["seed_sha256"].values())[0]
+
+
+def test_run_item_skips_an_existing_survivor_without_a_subprocess():
+    import forge
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    (staging / "L29.png").write_bytes(_png_bytes((1376, 768)))
+    fc.CODEX_ARGV_PREFIX = ["definitely-not-a-real-binary-xyz"]
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    assert status.startswith("SKIP")
+    assert row is None
+    assert forge._existing_staging_png(forge._staging_png(k, "L29")) is True
+
+
+def test_run_item_force_overwrites_the_survivor():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    (staging / "L29.png").write_bytes(_png_bytes((900, 900)))
+    status, _row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions(force=True))
+    assert status == "OK"
+    import io
+    from PIL import Image
+    assert Image.open(io.BytesIO((staging / "L29.png").read_bytes())).size == (1376, 768)
+
+
+def test_run_item_respects_a_concurrent_lock():
+    import forge
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    lock = forge._staging_png(k, "L29") + ".lock"
+    Path(lock).write_text(json.dumps({"pid": os.getpid(), "token": "x",
+                                      "created_at": __import__("time").time()}), encoding="utf-8")
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    assert "concurrent" in status and row is None
+    assert not (staging / "L29.png").exists()
+
+
+def test_a_failed_gen_leaves_no_file_and_no_stale_lock():
+    import forge
+    fc, k, tmp, staging, seed = _kit_for_run("no_image")
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions())
+    assert status.startswith("ERR no_image"), status
+    assert not (staging / "L29.png").exists()
+    assert not os.path.exists(forge._staging_png(k, "L29") + ".lock")
+    rows = [json.loads(l) for l in
+            (staging / "_codex" / "engine-log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert rows[-1]["failure_class"] == "no_image" and rows[-1]["reissues"] == 1
+
+
+def test_dry_run_prints_the_prompt_and_spawns_no_subprocess():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    fc.CODEX_ARGV_PREFIX = ["definitely-not-a-real-binary-xyz"]
+    status, row = fc.run_item(k, _item_L29(), [seed], fc.RunOptions(dry_run=True))
+    assert status == "DRY" and row is None
+    assert (staging / "_codex" / "prompts" / "L29.txt").is_file()
+    assert not (staging / "L29.png").exists()
+    assert not any(Path(tmp / "generated_images").rglob("*.png"))
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":
