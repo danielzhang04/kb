@@ -650,6 +650,28 @@ def test_residual_scan_uses_original_offsets_after_prior_translation():
     assert hits and any("wings" in hit for hit in hits)
 
 
+def test_canvas_table_and_framing_line():
+    import forge_codex as fc
+    assert fc.resolve_canvas("16:9", "1K") == (1376, 768)
+    assert fc.resolve_canvas("16:9", "2K") == (2752, 1536)
+    assert fc.resolve_canvas("2:3", "1K") == (832, 1248)
+    assert fc.resolve_canvas("9:16", "1K") == (768, 1344)
+    assert fc.framing_line("16:9", (1376, 768)) == (
+        "Composition/framing: Compose for a 1376\u00d7768 pixel frame \u2014 a 16:9 landscape "
+        "aspect ratio.")
+    assert fc.framing_line("2:3", (832, 1248)).endswith("a 2:3 portrait aspect ratio.")
+
+
+def test_unknown_canvas_pair_fails_loud_naming_the_pair():
+    import forge_codex as fc
+    raised = None
+    try:
+        fc.resolve_canvas("21:9", "1K")
+    except SystemExit as e:
+        raised = str(e)
+    assert raised is not None and "21:9" in raised and "1K" in raised
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

@@ -31,6 +31,37 @@ ENGINE_ID = "codex-imagegen"
 CODEX_SEED_CAP = 4
 TRANSPORT_SEED_CEILING = 5
 
+# --- §4.6 normalization canvas. (16:9,1K) is VERIFIED MEASURED: all 23 baseline frames in
+# --- scratch-codex-image-engine/gemini-baseline/ are 1376×768 (SKILL.md L130's "~1344×768"
+# --- is an approximation). The (2:3,1K) and (9:16,1K) rows are UNVERIFIED and carried from
+# --- SKILL.md L130; no frame at either ratio may be promoted at P5 until a real Gemini frame is
+# --- measured (spec §8.5 probe 7). 2K rows are 2× linear. A pair absent from this table is an
+# --- error, never a guess.
+CANVAS: dict[tuple[str, str], tuple[int, int]] = {
+    ("16:9", "1K"): (1376, 768),
+    ("16:9", "2K"): (2752, 1536),
+    ("2:3", "1K"): (832, 1248),
+    ("2:3", "2K"): (1664, 2496),
+    ("9:16", "1K"): (768, 1344),
+    ("9:16", "2K"): (1536, 2688),
+}
+
+
+def resolve_canvas(aspect: str, image_size: str) -> tuple[int, int]:
+    key = (str(aspect), str(image_size))
+    if key not in CANVAS:
+        raise SystemExit(f"no canvas row for (aspect={key[0]!r}, image_size={key[1]!r}) — measure a "
+                         f"real frame of that pair before generating one (spec §4.6, §8.5 probe 7)")
+    return CANVAS[key]
+
+
+def framing_line(aspect: str, canvas: tuple[int, int]) -> str:
+    """Return the mandatory prompt line that requests the intended frame dimensions and ratio."""
+    w, h = canvas
+    orientation = "landscape" if w > h else ("portrait" if h > w else "square")
+    return (f"Composition/framing: Compose for a {w}×{h} pixel frame — a {aspect} "
+            f"{orientation} aspect ratio.")
+
 
 class RatioError(RuntimeError):
     """The native ratio exceeds the 5% normalization tolerance (failure class 7)."""
