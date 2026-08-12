@@ -79,6 +79,57 @@ def test_baseline_shas_reverify_clean():
     assert bad == [], f"baseline frames altered: {bad}"
 
 
+def test_iqr_width_is_the_interquartile_span():
+    import study_metrics as sm
+    assert abs(sm.iqr_width([1, 2, 3, 4, 5, 6, 7, 8, 9]) - 4.0) < 1e-9
+    assert sm.iqr_width([5.0]) == 0.0
+
+
+def test_baseline_table_and_bands_over_the_23_verified_frames():
+    import study_metrics as sm
+    table = sm.baseline_table(str(HERE / "gemini-baseline"))
+    assert len(table) == 23
+    for shot in sm.CORPUS:
+        assert shot in table, shot
+        assert table[shot]["dims"] == [1376, 768]
+    bands = sm.baseline_bands(str(HERE / "gemini-baseline"))
+    assert set(bands) == {"m1", "m2", "m3", "m4"}
+    assert all(v >= 0 for v in bands.values())
+    assert bands["m1"] > 0, "a zero M1 band over 23 real frames means the metric is broken"
+
+
+def test_paired_distances_are_absolute_per_metric():
+    import study_metrics as sm
+    d = sm.paired_distances({"m1": 4.6, "m2": 0.70, "m3": 9, "m4": 0.012},
+                            {"m1": 0.5, "m2": 0.78, "m3": 7, "m4": 0.010})
+    assert abs(d["m1"] - 4.1) < 1e-9
+    assert abs(d["m2"] - 0.08) < 1e-9
+    assert d["m3"] == 2 and abs(d["m4"] - 0.002) < 1e-9
+
+
+def test_evaluate_floor_passes_on_three_of_four_shots():
+    import study_metrics as sm
+    bands = {"m1": 20.0, "m2": 0.20, "m3": 6.0, "m4": 0.05}
+    good = {"m1": 2.0, "m2": 0.05, "m3": 1, "m4": 0.001}
+    bad_m1 = {"m1": 9.0, "m2": 0.05, "m3": 1, "m4": 0.001}
+    dist = {"L26": good, "L44": good, "L33": good, "L29": bad_m1}
+    got = sm.evaluate_floor(dist, bands)
+    assert got["pass"] is True
+    assert got["passing_shots"]["m1"] == 3
+    dist["L33"] = bad_m1
+    assert sm.evaluate_floor(dist, bands)["pass"] is False
+
+
+def test_evaluate_floor_fails_when_a_band_metric_slips():
+    import study_metrics as sm
+    bands = {"m1": 20.0, "m2": 0.02, "m3": 1.0, "m4": 0.001}
+    d = {"m1": 1.0, "m2": 0.30, "m3": 5, "m4": 0.02}
+    got = sm.evaluate_floor({s: d for s in sm.CORPUS}, bands)
+    assert got["pass"] is False
+    assert got["passing_shots"]["m2"] == 0
+    assert "m2" in got["reason"]
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

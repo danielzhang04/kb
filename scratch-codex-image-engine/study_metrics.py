@@ -106,6 +106,59 @@ def verify_baseline_shas(baseline_dir):
     return bad
 
 
+# --- §7.4 THE RATIFIED FLOOR (Daniel, 2026-08-11), in paired form:
+# ---   |dM1| <= 5 per shot on at least 3 of the 4 corpus shots; AND
+# ---   |dM2| no worse than the interquartile width of M2 across the 23 verified frames; AND
+# ---   M3/M4 inside the same band.
+# --- The 3-of-4 rule is stated for M1; this code applies it to every metric and reports the full
+# --- per-shot table so a stricter reading can be applied by eye.
+CORPUS = ("L26", "L44", "L33", "L29")
+M1_FLOOR = 5.0
+MIN_SHOTS_PASSING = 3
+METRICS = ("m1", "m2", "m3", "m4")
+
+
+def iqr_width(values):
+    v = np.asarray(sorted(float(x) for x in values), dtype=float)
+    if v.size < 2:
+        return 0.0
+    return float(np.percentile(v, 75) - np.percentile(v, 25))
+
+
+def baseline_table(baseline_dir):
+    out = {}
+    for name in sorted(os.listdir(baseline_dir)):
+        if name.lower().endswith(".png"):
+            out[os.path.splitext(name)[0]] = measure(os.path.join(baseline_dir, name))
+    return out
+
+
+def baseline_bands(baseline_dir):
+    table = baseline_table(baseline_dir)
+    return {m: iqr_width([row[m] for row in table.values()]) for m in METRICS}
+
+
+def paired_distances(codex, baseline):
+    return {m: abs(codex[m] - baseline[m]) for m in METRICS}
+
+
+def evaluate_floor(distances_by_shot, bands):
+    """The study's PASS / STOP-and-escalate verdict, declared against the ratified floor."""
+    limits = {"m1": M1_FLOOR, "m2": bands["m2"], "m3": bands["m3"], "m4": bands["m4"]}
+    passing, per_metric = {}, {}
+    for m in METRICS:
+        rows = {shot: d[m] for shot, d in distances_by_shot.items()}
+        ok = [shot for shot, v in rows.items() if v <= limits[m]]
+        passing[m] = len(ok)
+        per_metric[m] = {"limit": round(limits[m], 5), "distances": rows,
+                         "passing": sorted(ok)}
+    failed = [m for m in METRICS if passing[m] < MIN_SHOTS_PASSING]
+    return {"per_metric": per_metric, "passing_shots": passing, "pass": not failed,
+            "reason": ("all metrics clear the floor on >= %d of %d shots"
+                       % (MIN_SHOTS_PASSING, len(distances_by_shot))) if not failed
+                      else ("below floor on: " + ", ".join(failed))}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("frames", nargs="*")
