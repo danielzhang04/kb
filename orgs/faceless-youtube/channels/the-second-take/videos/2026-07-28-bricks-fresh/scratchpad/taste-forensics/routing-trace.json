@@ -1,0 +1,511 @@
+{
+  "_schema": "bricks-taste-forensics/routing-trace@1",
+  "_produced_by": "Track C — forge routing trace (task-5), read-only, $0, dry-run payload construction only",
+  "_sources": [
+    "forge.py @ claude/bricks-taste-forensics (orgs/faceless-youtube/.claude/skills/image-generation/scripts/forge.py, 2607 lines)",
+    "the ACTUAL run slates: scratchpad/6c2-slate.json (L26-L50 + 19 STEP-1 cards), scratchpad/p6b-slate.json / p6b-slate2.json / p6b-retry-slate.json (L01-L25)",
+    "scratchpad/6c2-genlog.md, scratchpad/p6b-genlog.md, scratchpad/restore-genlog.md, scratchpad/round5-genlog-V.md",
+    "the OLD 214-shot shots.json at git 7cfa9ab (gen-A frames Daniel named)",
+    "a full dry-run rebuild of the CURRENT 246-shot shots.json through cmd_batch (preflight stubbed; 401 items, 0 provider calls)"
+  ],
+  "_verdict_values": {
+    "authored_boring": "the shot's own authoring chose the content/tier that produced the defect — the render obeyed",
+    "authored_fine_rendered_wrong": "the payload carried the correct seed + instruction and the engine did not honour it"
+  },
+  "_mechanism_key": {
+    "M1_PERFORMER_TIER": "the `base` seeded-performer tier: an identity-less, bald, cream-headed (#f5ead6) rig template admitted as an on-screen figure. forge.py:494-495 (`if n in chars:` — the `and n != \"base\"` guard was DELETED at commit 27bc7e2, 2026-08-06); seed_roles_text:1287-1291 ('an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere'). Blast radius 116/246 shots.",
+    "M2_POSE_VOCAB_GAP": "the scene authors a bodily ACTION no library primitive covers; the STEP-1 card is minted on the nearest static stance (forge.py:1377-1378 — a pose-less card is told 'standing squarely at rest'), so the acting body and its hands are re-synthesized in the scene. 30 body primitives exist (registry: 17 pose + 13 action), none of them 'haul', 'shove', 'rake', 'reach into'. Blast radius: 91/154 figure-bearing scenes seed a card carrying a static stance.",
+    "M3_CROWD_PROSE_ONLY": "crowd tier = ONE exemplar image granting 'only its anonymous crowd proportion and face tier' (forge.py:1317) plus the §2d clause as prose; visual-grammar §2 was amended at 27bc7e2 to state outright that 'a crowd-rig figure names no asset and carries no seeded pose or expression, so its expression and attitude are authored in plain prose'. The §2c rig-hold block explicitly EXEMPTS crowd figures from the four-digit-hand rig it states. Blast radius 66/246 shots declare crowd; 18 of them carry no cast seed at all.",
+    "M4_DELTA_CANONICAL_EXPRESSION_LEAK": "a delta beat drops the figure's STEP-1 card and seeds parent + canonical only (forge.py:1734-1750). No seed in that slate is declared the owner of the FACE: the canonical role prose grants 'identity, head tone, hair and the pinned costume' (1306-1307) and the parent grants 'its held set and existing composition' (1309). The expression gate (913-920) fires only when the delta authors an expression DIFFERENT from the one its chain already holds (1715-1718), so a delta restating the held expression is ungated by design. Already diagnosed independently as 'CANONICAL EXPRESSION LEAK … a spec gap, not a generator lottery' (6c2-genlog.md STAGE 6b, L34). Blast radius 31/44 delta beats.",
+    "M5_UNANCHORED_ENVIRONMENT": "a figure-bearing scene that declares no `place` and no chain parent seeds no plate, and is excluded BY DESIGN from the §5 scene style tile (forge.py:1834 `cast_free = not (fig_roles or canon_roles or crowd or anon_declared)`), so its whole environment exists only as prose. Blast radius 121/154 figure-bearing scenes.",
+    "M6_RETRY_CLASS_GAP": "no repair class exists for a pose/action drift. A scene retry accepts defect content|seed|mechanism only (forge.py:2118-2119) and hard-refuses any additive instruction (2125-2127) and any expression word (_EXPRESSION_RETRY, 1981-1984); a STEP-1 retry accepts defect expression|rig only (2228). The 6c2 worker hit this exact wall and logged it ('a POSE/ACTION drift is neither, so the card itself cannot be re-minted through the sanctioned retry path').",
+    "M7_GATE_COVERAGE": "the pre-gen human gate (SKILL.md Pass-1 step 2, 'HUMAN PRE-GEN APPROVAL — the gate. STOP.') covers only assets that earn a Pass-1 SLOT: named characters, groups, recurring props, and pose/expression/interaction primitives that must be BUILT. SKILL.md Pass-1 step 1 last bullet: 'Environments, plates, one-off props and anonymous crowds get NO slot.' In code the only forge-side gate is C-6 on STEP-1 figure-card REUSE (forge.py:1769-1775) plus a refusal to inherit a PARKED scene parent (2086-2088).",
+    "M8_SEED_CAP_DISPLACEMENT": "FALSIFIED for this video. The ordered displacement added at commit 0e7e8d8 (crowd -> interaction template -> tagged prop, forge.py:1861-1906) fires ZERO times across all 246 shots: max seed count is 4, exactly ONE shot sits at the cap, and `assets_omitted` is empty on every scene. No card was ever dropped by the cap on bricks-fresh."
+  },
+
+  "traces": [
+    {
+      "beat_id": "L27",
+      "frame_judged": "assets/scenes/L27.png (= promoted `L27-fix`, 6c2 retry round 1)",
+      "generation": "gen-C-new246-6c2-tenth2-current",
+      "spec": "scratchpad/6c2-slate.json#L27 (+ 6c2-w2retry.overlay.json corrective)",
+      "seeds_in_payload": ["_staging/fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce.png"],
+      "seed_roles": [["figure", "base"]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "base (seeded performer, costume key `l27-d4b1f2ce` = 'brown warehouse coat')",
+          "prose_intent_tier": "anonymous story-bearing individual",
+          "resolved_tier": "seeded-performer",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "the character is cream and bald. It's not a cast character. Doesn't make sense.",
+          "verdict": "authored_boring",
+          "mechanism": "M1_PERFORMER_TIER",
+          "evidence": "the shot casts `base`. The card is minted off refs/base/base.png whose registry head_tone is #f5ead6 and whose role reads 'BASE TEMPLATE / rig anchor — not an on-screen character'; the derived dress clause supplies GARMENTS only ('Take from that description ONLY the CLOTHING it implies', forge.py:1380-1383) and nothing in the route can give it hair or another head tone. Cream + bald is the tier working exactly as specified, not drift."
+        },
+        {
+          "daniel": "It just has 5 fingers (in a pose that wasn't seeded from anything).",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M2_POSE_VOCAB_GAP",
+          "evidence": "the seeded pose is `hold-one-hand` — a static two-hand-free hold — while the scene authors 'hauling a grey dust sheet off the front face of a shrink-wrapped pallet stack'. The card itself was fresh-eyes rig-verified 4-digit and is cited in 6c2-genlog.md as a PASSING reference for hand register; the acting hands in the scene are therefore re-drawn, not copied. The retry corrective ('BOTH hands closed on the sheet's leading edge, both full 4-digit rig hands at matched size') was authored, minted as L27-fix and passed 8/8 by fresh eyes — and Daniel still counts five fingers, so the prose route failed twice. SKILL.md's own seed law already forbids this: 'Exposed hands are seeded, never free-drawn … No library pose covers it -> that was a Pass-1 gate item, not an ad-hoc scene invention.'"
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M2_POSE_VOCAB_GAP (hands) + M1_PERFORMER_TIER (identity)"
+    },
+
+    {
+      "beat_id": "L29",
+      "frame_judged": "assets/scenes/L29.png (6c2 wave-2 round-1 clean pass, promoted unchanged)",
+      "generation": "gen-C-new246-6c2-tenth2-current",
+      "spec": "scratchpad/6c2-slate.json#L29",
+      "seeds_in_payload": ["_staging/fig-miniscribe-rep--action-powerstance--expr-delighted.png", "_staging/L28.png", "refs/env/lettering-marker-italic.png"],
+      "seed_roles": [["figure", "miniscribe-rep"], ["place", null], ["environment", "lettering-marker-italic"]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "miniscribe-rep",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "parent (place plate L28)"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "unnamed because the facial expression isn't seeded from any existing one",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M4_DELTA_CANONICAL_EXPRESSION_LEAK (scene-side variant)",
+          "evidence": "`expr-delighted` IS seeded — but only INDIRECTLY, baked into the STEP-1 card. In a scene gen the expression is never its own image part (it is one at STEP-1 only: 6c2-slate.json#fig-miniscribe-rep--action-powerstance--expr-delighted carries expr-delighted as a `expression` role). The scene's only expression authority is the sentence 'carry that figure's identity, costume, pose, hands and expression exactly' (forge.py:1293-1294) attached to a full-height 2:3 reference sheet, while the shot re-stages him 'planted centre in the entrance at the BACK of the assembly floor' — i.e. re-scaled and re-framed, which is precisely where the face is re-synthesized. Same failure the 6c2 r2 verifier measured on L34: change confined 100% to one head, place seed 0.00-0.11% changed."
+        },
+        {
+          "daniel": "I don't like the background, as I said in P01 [the plate]",
+          "verdict": "authored_boring",
+          "mechanism": "plate reuse (Track A/B owns the plate itself)",
+          "evidence": "the `place` seed is `_staging/L28.png`, the miniscribe-floor plate minted by this same wave and re-seeded into L29/L33/L44/L46/L47/L48 — 6 children off one plate (6c2-genlog.md STEP C)."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M4_DELTA_CANONICAL_EXPRESSION_LEAK"
+    },
+
+    {
+      "beat_id": "L30/L31 — the frame Daniel called 'named'",
+      "frame_judged": "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-b5V.png (shown on BOTH the L30 and L31 rows of the then-and-now panel)",
+      "generation": "gen-A-old-214shot (round-5 lane V, 2026-08-04, 2K)",
+      "spec": "old shots.json @ git 7cfa9ab #L28; seeds recorded in scratchpad/round5-genlog-V.md",
+      "seeds_in_payload": ["staged terry-johnson STEP-1", "staged miniscribe-rep STEP-1", "prop-drive"],
+      "seed_roles": [["figure", "terry-johnson"], ["figure", "miniscribe-rep"], ["prop", "prop-drive"]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "terry-johnson",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        },
+        {
+          "name": "miniscribe-rep",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "Terry eyes aren't seeded from the character itself, they are crowd rig bead eyes",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M2_POSE_VOCAB_GAP is NOT implicated; this is a pure two-figure transfer failure",
+          "evidence": "3 seeds, under the cap of 4 — nothing was displaced and BOTH figures' STEP-1 cards were in the payload (round5-genlog-V.md row L28). The lane's own preliminary verdict even claims 'both named figures retain their seeded identity, pose, and readable faces'. The seeds were correct and the engine did not carry the face. NB the old shot ALSO declared no `figures.crowd`, so no §2d crowd clause was in that prompt at all — the bead eyes are the engine's own simplification prior, reached with the right seed present."
+        },
+        {
+          "daniel": "characters are too big",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "scale is prose-only",
+          "evidence": "the old prose authored the opposite ('Eye-level medium-wide framing keeps both founders at natural body scale across the bench', 7cfa9ab#L28). Every figure seed is a head-to-feet 2:3 reference sheet; nothing in seed_roles_text grants SCALE, so relative figure size survives only as words."
+        },
+        {
+          "daniel": "mountains in the back don't make sense",
+          "verdict": "authored_boring",
+          "mechanism": "authored content",
+          "evidence": "the old L28 prose says verbatim 'tool racks, a rolling cart and MOUNTAIN WINDOWS fill the Colorado plant' (7cfa9ab#L28). The mountains were written, not hallucinated."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "two-figure face transfer failure with both cards seeded; mountains authored"
+    },
+
+    {
+      "beat_id": "L30",
+      "frame_judged": "assets/scenes/L30.png (6c2 round-1 clean pass)",
+      "generation": "gen-C-new246-6c2-tenth2-current",
+      "spec": "scratchpad/6c2-slate.json#L30",
+      "seeds_in_payload": ["_staging/fig-terry-johnson--action-armscrossed--expr-thinking.png"],
+      "seed_roles": [["figure", "terry-johnson"]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "terry-johnson",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "(panel context) I don't believe I chose this shot / too little detail",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M5_UNANCHORED_ENVIRONMENT",
+          "evidence": "ONE seed in the whole payload — the figure card. No place, no parent, and the §5 scene style tile is withheld because the frame is not cast-free (forge.py:1834). The bare rented unit, its breeze-block walls, trestle, stool and roller shutter exist only as prose; nothing pins the room's detail level, palette weight or depth. 121 of the 154 figure-bearing scenes in this file are in that state."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M5_UNANCHORED_ENVIRONMENT"
+    },
+
+    {
+      "beat_id": "L31",
+      "frame_judged": "assets/scenes/L31.png (6c2 round-1 clean pass)",
+      "generation": "gen-C-new246-6c2-tenth2-current",
+      "spec": "scratchpad/6c2-slate.json#L31",
+      "seeds_in_payload": ["_staging/L30.png", "refs/terry-johnson/terry-johnson.png", "refs/env/prop-drive.png"],
+      "seed_roles": [["parent", null], ["canonical", "terry-johnson"], ["prop", "prop-drive"]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "terry-johnson",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": false,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "parent+canonical"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "Terry eyes … are crowd rig bead eyes (if the complaint lands on the new frame)",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M4_DELTA_CANONICAL_EXPRESSION_LEAK",
+          "evidence": "this is a DELTA: forge.py:1734-1750 drops the verified STEP-1 card that L30 used and seeds canonical + parent instead. `expression_change` is empty because the delta restates the expression its chain already holds (walk: 1715-1718), so the expression gate at 913-920 never fires. Result: the only face authority in the payload is the canonical, whose role prose grants 'identity, head tone, hair and the pinned costume' and says nothing about the eyes/brow/mouth. This is the identical spec gap the 6c2 r2 verifier isolated on L34 and the reason L34 is parked."
+        },
+        {
+          "daniel": "the shot doesn't really match the text",
+          "verdict": "authored_boring",
+          "mechanism": "authoring — delta content vs VO",
+          "evidence": "L31's VO is 'a guy named Terry Johnson.' and its authored delta is 'Only this changes: one finished `prop-drive` now stands upright on the trestle in front of him.' The beat names the MAN and the frame changes a PROP. Nothing in the render path chose that."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M4_DELTA_CANONICAL_EXPRESSION_LEAK (+ authored text mismatch)"
+    },
+
+    {
+      "beat_id": "L33",
+      "frame_judged": "assets/scenes/L33.png (= promoted `L33-fix`, 6c2 retry round 1)",
+      "generation": "gen-C-new246-6c2-tenth2-current",
+      "spec": "scratchpad/6c2-slate.json#L33 (+ 6c2-w2retry.overlay.json corrective)",
+      "seeds_in_payload": ["_staging/fig-ibm-suit--expr-smug.png", "_staging/fig-miniscribe-rep--expr-delighted.png", "refs/base/handshake.png", "_staging/L28.png"],
+      "seed_roles": [["figure", "ibm-suit"], ["figure", "miniscribe-rep"], ["interaction", null], ["place", null]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "ibm-suit",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "parent (place plate L28)"
+        },
+        {
+          "name": "miniscribe-rep",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "parent (place plate L28)"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "hair is off rig",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M2_POSE_VOCAB_GAP (re-posed heads) with both cards seeded",
+          "evidence": "this is the ONE shot in the whole 246-shot file that sits exactly AT the seed cap (4/4) — and still nothing was displaced. Both figure cards are POSE-LESS ('no pose' in the STEP-1 `why`; payload 'standing squarely at rest, arms relaxed at the sides'), because the contact geometry lives in the scene-level `handshake` template (forge.py:608-621). So both bodies AND both heads are re-drawn in the scene from a standing sheet. The retry corrective had to spell the hair back out — 'warm dark BROWN hair never black, side-parted quiff with a visible sideburn, the same head outline' — i.e. prose was asked to restate what the card's pixels already carried."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M2_POSE_VOCAB_GAP"
+    },
+
+    {
+      "beat_id": "L38",
+      "frame_judged": "assets/scenes/L38.png (6c2 r2, fresh root, PASS)",
+      "generation": "gen-C-new246-6c2-tenth2-current",
+      "spec": "scratchpad/6c2-slate.json#L38",
+      "seeds_in_payload": ["_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png", "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png"],
+      "seed_roles": [["figure", "base"], ["figure", "miniscribe-rep"]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "base (seeded performer, costume key `l38-3412012a` = 'oversized charcoal three-piece suit')",
+          "prose_intent_tier": "the customer institution (COMPAQ) as a colossal actor",
+          "resolved_tier": "seeded-performer",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        },
+        {
+          "name": "miniscribe-rep",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "the big guy in named is the COMPAQ character, in unnamed, he's nobody",
+          "verdict": "authored_boring",
+          "mechanism": "M1_PERFORMER_TIER",
+          "evidence": "EXACT, and mechanical. The old file staged this beat with a NAMED registry character: 7cfa9ab#L34 = '`ibm-suit`, the customer institution personified (`sit`, `expr-deadpan`), sits colossal above the loading apron … The loading bay's signboard above the roller door is lettered COMPAQ.' The re-authored file (d680fda#L38) stages the same colossus as '`base` … One seeded performer'. Daniel's word 'nobody' is the tier's own contract: seed_roles_text:1287-1291 tells the engine the figure 'is an ANONYMOUS figure, not a recurring identity: it claims no name and recurs nowhere'. He is reading the routing correctly."
+        },
+        {
+          "daniel": "the art style/color is a little off",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "no register anchor on a two-figure cast frame",
+          "evidence": "the frame carries no place, no parent and no style tile (excluded because it is not cast-free, forge.py:1834). Its only register anchors are the two figure cards. Track B owns the chroma measurement."
+        }
+      ],
+      "verdict": "authored_boring",
+      "mechanism": "M1_PERFORMER_TIER"
+    },
+
+    {
+      "beat_id": "L39",
+      "frame_judged": "visual-kit/_staging/L39-fix.png — a PARKED frame, never promoted",
+      "generation": "gen-C-new246-6c2-tenth2 retry round 1 (r2 verdict FAIL)",
+      "spec": "scratchpad/6c2-slate.json#L39 (+ 6c2-w2retry.overlay.json corrective)",
+      "seeds_in_payload": ["_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png", "refs/env/lettering-marker-italic.png"],
+      "seed_roles": [["figure", "miniscribe-rep"], ["environment", "lettering-marker-italic"]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "miniscribe-rep",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "character isn't seeded from any library pose, thus he's off rig … a bunch of shots in the new gen that are random and thus fucked",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M2_POSE_VOCAB_GAP + M6_RETRY_CLASS_GAP",
+          "evidence": "the seeded pose is `hold-both-hands` — a static two-hand hold — while the shot authors 'shoving the rear doors of an armoured cash truck SHUT against a wall of banded notes'. No shove/push primitive exists in the 30-primitive library, so the whole action is prose over a standing card. The run's own r2 verifier reached the same conclusion twice from pixels: 'EXPRESSION UNDER PHYSICAL EFFORT — L39's miniscribe-rep has now drifted off expr-greedy TWICE IN A ROW toward an open mouth under a shoving-doors-shut action', plus a new nose and ear on a face the prior held clean. There is no sanctioned repair: a pose/action drift is not `content|seed|mechanism` (scene retry, forge.py:2118) and not `expression|rig` (STEP-1 retry, 2228)."
+        },
+        {
+          "daniel": "shot is way too cool, colors are off",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M5_UNANCHORED_ENVIRONMENT",
+          "evidence": "no place, no parent, no style tile (not cast-free). The depot yard's palette is authored prose only. Track B owns the measurement."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M2_POSE_VOCAB_GAP"
+    },
+
+    {
+      "beat_id": "L48",
+      "frame_judged": "assets/scenes/L48.png (= promoted `L48-fix`, 6c2 retry round 1)",
+      "generation": "gen-C-new246-6c2-tenth2-current",
+      "spec": "scratchpad/6c2-slate.json#L48 (+ 6c2-w2retry.overlay.json corrective)",
+      "seeds_in_payload": ["_staging/fig-miniscribe-rep--action-slump--expr-worried.png", "_staging/L28.png"],
+      "seed_roles": [["figure", "miniscribe-rep"], ["place", null]],
+      "figures_declaration": null,
+      "figures": [
+        {
+          "name": "miniscribe-rep",
+          "prose_intent_tier": "named cast",
+          "resolved_tier": "named-cast",
+          "card_in_payload": true,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "parent (place plate L28)"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "the expression isn't seeded off asset expressions and is thus off",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M2_POSE_VOCAB_GAP + M6_RETRY_CLASS_GAP",
+          "evidence": "`expr-worried` IS on the card. The card itself, however, failed its own pose: the round-1 verifier caught `fig-miniscribe-rep--action-slump--expr-worried` rendering 'an upright arms-at-sides stand where a slump was ordered'. The retry then had to argue the body back — and the 6c2 worker logged the contradiction in advance: 'L48-fix's seed-role header says carry that figure's identity, costume, pose, hands and expression EXACTLY … so the scene prose is arguing against the image the same payload tells it to copy exactly.' A payload that overrides its own figure seed's body necessarily re-draws the head that sits on it, and the expression goes with it. The pose defect could not be repaired at the card (M6), so it was repaired in scene prose, which is what moved the face."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M2_POSE_VOCAB_GAP + M6_RETRY_CLASS_GAP"
+    },
+
+    {
+      "beat_id": "L07",
+      "frame_judged": "visual-kit/_staging/L07-retry1.png (the 'unchosen' side of the P08 pair)",
+      "generation": "gen-C-new246-p6b-tenth1-2026-08-06 (parked)",
+      "spec": "scratchpad/p6b-slate2.json#L07 + p6b-retry-slate.json#L07-retry1",
+      "seeds_in_payload": ["_staging/L05.png", "refs/base/crowd-exemplar.png"],
+      "seed_roles": [["place", null], ["crowd", null]],
+      "figures_declaration": {"crowd": true},
+      "figures": [
+        {
+          "name": "the queue of eager buyers (every human in frame)",
+          "prose_intent_tier": "crowd mass",
+          "resolved_tier": "crowd",
+          "card_in_payload": false,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "parent (place plate L05)"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "crowd is off rig, proportions wise",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M3_CROWD_PROSE_ONLY",
+          "evidence": "the entire human content of the frame routes through ONE seed whose role prose reads 'the crowd exemplar — use only its anonymous crowd proportion and face tier' (forge.py:1317). Proportion is the one thing that seed is supposed to carry and the §2d clause states it twice in capitals ('the EXACT same squat head-to-body proportion as the base rig … NOT taller/lanky'), so this is a rendered failure against a correctly-built payload — one exemplar image cannot govern N ranked figures at depth. The retry added spatial/hand correctives ('EVERY raised banknote is GRIPPED BY A VISIBLE CARTOON HAND') and still parked."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M3_CROWD_PROSE_ONLY"
+    },
+
+    {
+      "beat_id": "L10",
+      "frame_judged": "visual-kit/_staging/L10-retry1.png (the 'unchosen' side of the P08 pair)",
+      "generation": "gen-C-new246-p6b-tenth1-2026-08-06 (parked)",
+      "spec": "scratchpad/p6b-slate2.json#L10 / p6b-slate3.json#L10",
+      "seeds_in_payload": ["_staging/L05.png", "refs/base/crowd-exemplar.png"],
+      "seed_roles": [["place", null], ["crowd", null]],
+      "figures_declaration": {"crowd": true},
+      "figures": [
+        {
+          "name": "the overnight queue beyond the glass",
+          "prose_intent_tier": "crowd mass",
+          "resolved_tier": "crowd",
+          "card_in_payload": false,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "parent (place plate L05)"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "crowd rig problems / [faces carrying noses]",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M3_CROWD_PROSE_ONLY",
+          "evidence": "the §2d clause in the assembled payload says 'NO noses, NO ears, NO teeth … Apply this identical simplified face … to EVERY crowd figure individually and without exception … a single detailed or individuated face anywhere in the group is a rig FAIL' — and the §2c rig-hold block sitting right under it EXPLICITLY hands crowd figures back to that clause ('do NOT force this full rig onto them'). So the no-nose law reaches the engine as prose with exactly one 848px exemplar behind it, at a queue seen through glass at distance. Verified by dry assembly of the real request (this trace's own $0 prompt build)."
+        },
+        {
+          "daniel": "nothing going on there, I don't like the staging of the environment",
+          "verdict": "authored_boring",
+          "mechanism": "authoring",
+          "evidence": "the shot's own prose stages an unlit foreground interior and puts every event behind glass ('the varnished oak counter and the bare shelf bays sit UNLIT across the foreground')."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M3_CROWD_PROSE_ONLY"
+    },
+
+    {
+      "beat_id": "L19 (chosen side — 'raking it in')",
+      "frame_judged": "assets/_archive-pre-regen-2026-08-06/L19.png — the OLD gen-A frame, human-restored into assets/scenes on 2026-08-06 (restore-genlog.md)",
+      "generation": "gen-A-old-214shot (round-5 lane V, 2026-08-04, 2K)",
+      "spec": "old shots.json @ git 7cfa9ab #L19; seeds recorded in scratchpad/round5-genlog-V.md ('crowd exemplar')",
+      "seeds_in_payload": ["refs/base/crowd-exemplar.png"],
+      "seed_roles": [["crowd", null]],
+      "figures_declaration": {"crowd": true},
+      "figures": [
+        {
+          "name": "the blue-boilersuit loading-yard crew, incl. the foreground centre figure at the rake",
+          "prose_intent_tier": "a mass — but with ONE story-bearing individual doing the raking",
+          "resolved_tier": "crowd",
+          "card_in_payload": false,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "since the pose isn't seeded, the guy has four fingers",
+          "verdict": "authored_boring",
+          "mechanism": "M3_CROWD_PROSE_ONLY (tier chosen by the author)",
+          "evidence": "the old shot declares `figures: {crowd: true}` with an EMPTY `assets` block (7cfa9ab#L19), and the lane log confirms the frame's only seed was the crowd exemplar. There was never a pose or a hand in the payload's pixels: the four-digit law reached the engine only through the §2d sentence 'hands, where visible, are the same four-digit cartoon hand'. Daniel's diagnosis is exactly right, and the tier was an AUTHORING choice — a man working a rake is a performance, not a mass."
+        },
+        {
+          "daniel": "one center character foreground, can be character rig instead of crowd rig",
+          "verdict": "authored_boring",
+          "mechanism": "M3_CROWD_PROSE_ONLY / tier routing",
+          "evidence": "he is naming the tier routing law itself. visual-grammar §2 (current): 'A SEEDED PERFORMER is the anonymous but STORY-BEARING individual … CROWD … reserved for genuine masses.' The rule he wants already exists on paper for the CURRENT file; the frame he is looking at predates it (2026-08-04) — and the current file's answer to it is the cream/bald `base` performer, which he rejects elsewhere in the same session."
+        }
+      ],
+      "verdict": "authored_boring",
+      "mechanism": "M3_CROWD_PROSE_ONLY"
+    },
+
+    {
+      "beat_id": "L19 (unchosen side)",
+      "frame_judged": "assets/_archive-pre-restore-2026-08-06/L19.png — the p6b frame the restore displaced",
+      "generation": "gen-C-new246-p6b-tenth1-2026-08-06",
+      "spec": "scratchpad/p6b-slate.json#L19",
+      "seeds_in_payload": ["refs/base/crowd-exemplar.png"],
+      "seed_roles": [["crowd", null]],
+      "figures_declaration": {"crowd": true},
+      "figures": [
+        {
+          "name": "the crew of packers (every human in frame)",
+          "prose_intent_tier": "crowd mass",
+          "resolved_tier": "crowd",
+          "card_in_payload": false,
+          "displaced_by_seed_cap": false,
+          "chain_inheritance": "none"
+        }
+      ],
+      "observations": [
+        {
+          "daniel": "characters all have noses",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M3_CROWD_PROSE_ONLY",
+          "evidence": "dry-assembled the REAL p6b request at $0 for this trace: the provider prompt is [§2b style descriptor] + [§2d crowd clause: 'NO noses, NO ears, NO teeth'] + [§2c rig-hold, which then EXEMPTS crowd figures from itself] + [SEED ROLES: 'The FIRST image is the crowd exemplar — use only its anonymous crowd proportion and face tier'] + [the shot prose]. One image seed, zero pose seeds, zero expression seeds, and the no-nose rule stated only in words. A nose is the predicted failure of that payload, not a surprise."
+        },
+        {
+          "daniel": "the cooler palette / staging is a little off",
+          "verdict": "authored_fine_rendered_wrong",
+          "mechanism": "M5_UNANCHORED_ENVIRONMENT",
+          "evidence": "no place seed, no parent, and no §5 style tile (the crowd declaration alone makes the frame non-cast-free at forge.py:1834). Track B owns the chroma measurement."
+        }
+      ],
+      "verdict": "authored_fine_rendered_wrong",
+      "mechanism": "M3_CROWD_PROSE_ONLY"
+    }
+  ],
+
+  "blast_radius_over_all_246_shots": {
+    "_method": "full dry-run rebuild of the current shots.json through cmd_batch with preflight stubbed (401 items: 246 scenes + 155 STEP-1 cards); zero provider calls",
+    "M5_UNANCHORED_ENVIRONMENT": {"count": 121, "denominator": "154 figure-bearing scenes"},
+    "M1_PERFORMER_TIER": {"count": 116, "denominator": "246 shots", "note": "every one of these mints a cream/bald anonymous figure"},
+    "M2_POSE_VOCAB_GAP": {"count": 91, "denominator": "154 figure-bearing scenes seed a card carrying a static stance (incl. 10 wholly pose-less cards)"},
+    "M3_CROWD_PROSE_ONLY": {"count": 66, "denominator": "246 shots declare figures.crowd; 18 of them carry NO cast seed at all", "ids_zero_cast": ["L15", "L53", "L75", "L80", "L131", "L140", "L162", "L169", "L170", "L178", "L183", "L189", "L193", "L196", "L230", "L231", "L244", "L245"]},
+    "M4_DELTA_CANONICAL_EXPRESSION_LEAK": {"count": 31, "denominator": "44 delta beats"},
+    "M8_SEED_CAP_DISPLACEMENT": {"count": 0, "denominator": "246 shots", "note": "max seeds 4, one shot at cap (L33), assets_omitted empty everywhere — the suspected mechanism never fired"}
+  }
+}
