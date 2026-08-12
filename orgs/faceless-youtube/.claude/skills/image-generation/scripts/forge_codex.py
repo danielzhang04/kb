@@ -16,6 +16,7 @@ import signal
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import warnings
 if os.name == "nt":
@@ -197,11 +198,12 @@ def reverify_seed_digests(name: str, expected: dict[str, str]) -> None:
 
 
 class CodexRunError(RuntimeError):
-    """A per-item transport/provider failure; ``failure_class`` names its section-6 class."""
+    """A per-item transport/provider failure. `.failure_class` names the §6 class."""
 
     def __init__(self, failure_class, message):
         super().__init__(message)
         self.failure_class = failure_class
+        self.reissues = 0
 
 
 import re  # noqa: E402
@@ -693,3 +695,100 @@ def harvest_new_pngs(thread_id, before, *, image_root=None, polls=5, delay=1.0, 
         if attempt + 1 < polls:
             time.sleep(delay)
     return [os.path.join(d, n) for n in new]
+
+
+# --- §6 FAILURE LAW. The doctrine is unchanged (SKILL.md L384-393: exactly ONE surgical retry per
+# --- frame, ruled by the next fresh-eyes pass). This adds ONE strictly separate notion: a TRANSPORT
+# --- re-issue of the IDENTICAL prompt file, because no image was produced at all.
+REISSUABLE = ("no_image", "stall", "exec_failed")
+_QUOTA_MARKERS = ("usage limit", "rate limit", "quota", "try again later")
+_REFUSAL_MARKERS = ("can't help", "cannot help", "can't create", "cannot create", "i'm unable",
+                    "i am unable", "won't be able")
+
+
+def agent_texts(events):
+    return [e.get("item", {}).get("text", "") for e in (events or [])
+            if e.get("item", {}).get("type") == "agent_message"]
+
+
+def classify_turn(result, new_pngs):
+    """None means the turn produced exactly one image. Otherwise the §6 class id."""
+    if result.get("timed_out"):
+        return "stall"
+    if result.get("returncode") != 0 or not result.get("thread_id"):
+        return "exec_failed"
+    if len(new_pngs) > 1:
+        return "multi_emit"
+    if not new_pngs:
+        text = " ".join(agent_texts(result.get("events"))).lower()
+        if any(m in text for m in _QUOTA_MARKERS):
+            return "quota"
+        if any(m in text for m in _REFUSAL_MARKERS):
+            return "refusal"
+        return "no_image"
+    return None
+
+
+def _fail(cls, message, reissues):
+    err = CodexRunError(cls, message)
+    err.reissues = reissues
+    return err
+
+
+def generate(*, prompt_path, seeds, canvas, name, session=None, poll_delay=1.0):
+    """Invoke codex on an already-composed prompt FILE; return (validated PNG bytes, metadata).
+
+    Returns BYTES so publication flows through forge's `_publish_staging_png` unchanged — one
+    writer of staging (§3.2). `canvas` is explicit (W, H); aspect resolution happened in the
+    composer."""
+    envelope = build_envelope(prompt_path, seeds)
+    reissues = 0
+    while True:
+        resume = session.thread_id if (session and session.thread_id and reissues == 0) else None
+        cwd = tempfile.mkdtemp(prefix="forge-codex-")
+        try:
+            result = run_codex_exec(envelope=envelope, cwd=cwd, timeout_s=TIMEOUT_S,
+                                    resume_thread=resume)
+        finally:
+            shutil.rmtree(cwd, ignore_errors=True)
+        tid = result["thread_id"] or resume
+        before = session.snapshot if (session and resume) else set()
+        new = harvest_new_pngs(tid, before, polls=5, delay=poll_delay) if tid else []
+        cls = classify_turn(result, new)
+        if cls is None:
+            break
+        if cls in REISSUABLE and reissues == 0 and not new:
+            reissues = 1
+            if session:
+                session.reset()          # a re-issue always starts a FRESH thread (§6 guard rail)
+            continue
+        detail = (", ".join(new) if cls == "multi_emit"
+                  else (result.get("stderr_tail")
+                        or " / ".join(agent_texts(result["events"]))[:160]))
+        raise _fail(cls, f"{name}: {cls} — {detail}", reissues)
+    src = new[0]
+    raw = open(src, "rb").read()
+    try:
+        data, native, r_err = normalize_to_canvas(raw, canvas)
+    except RatioError as e:
+        raise _fail("ratio", f"{name}: {e}", reissues)
+    except RuntimeError as e:
+        raise _fail("invalid_bytes", f"{name}: {e}", reissues)
+    verdict, fsha = audit_fidelity(tid, prompt_path)
+    if verdict == "mismatch":
+        sys.stderr.write(f"  !! {name}: FIDELITY MISMATCH — the tool did not receive the composed "
+                         f"prompt; frame published and marked for the fresh-eyes pass\n")
+    meta = {"thread_id": tid,
+            "turn_index": (session.turns + 1) if session else 1,
+            "session_mode": "session" if session else "isolated",
+            "wall_s": result["wall_s"], "usage": result["usage"],
+            "native": [native[0], native[1]], "canvas": [canvas[0], canvas[1]],
+            "ratio_error": r_err, "reissues": reissues,
+            "source_png": src.replace("\\", "/"),
+            "source_sha256": hashlib.sha256(raw).hexdigest(),
+            "fidelity_audit": verdict, "fidelity_sha256": fsha,
+            "pre_call_tool_calls": count_pre_call_tool_calls(tid),
+            "failure_class": None}
+    if session:
+        session.record(tid)
+    return data, meta

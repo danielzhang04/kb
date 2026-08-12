@@ -1370,6 +1370,148 @@ def test_normalization_rejects_invalid_bytes_before_touching_pillow():
     assert raised is not None and "too small" in raised
 
 
+def test_classify_turn_maps_every_documented_class():
+    import forge_codex as fc
+    ok = {"timed_out": False, "returncode": 0, "thread_id": "t", "events": []}
+    assert fc.classify_turn(ok, ["a.png"]) is None
+    assert fc.classify_turn(ok, []) == "no_image"
+    assert fc.classify_turn(ok, ["a.png", "b.png"]) == "multi_emit"
+    assert fc.classify_turn(dict(ok, timed_out=True), []) == "stall"
+    assert fc.classify_turn(dict(ok, returncode=1), []) == "exec_failed"
+    assert fc.classify_turn(dict(ok, thread_id=None), []) == "exec_failed"
+    refuse = dict(ok, events=[{"type": "item.completed",
+                               "item": {"type": "agent_message",
+                                        "text": "I can't help with that."}}])
+    assert fc.classify_turn(refuse, []) == "refusal"
+    quota = dict(ok, events=[{"type": "item.completed",
+                              "item": {"type": "agent_message",
+                                       "text": "You've hit your usage limit."}}])
+    assert fc.classify_turn(quota, []) == "quota"
+
+
+def test_generate_happy_path_returns_canvas_bytes_and_full_metadata():
+    import io
+    from PIL import Image
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("ok", tmp)
+    data, meta = fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768),
+                             name="L29")
+    assert Image.open(io.BytesIO(data)).size == (1376, 768)
+    assert meta["native"] == [1672, 941]
+    assert meta["canvas"] == [1376, 768]
+    assert meta["reissues"] == 0 and meta["failure_class"] is None
+    assert meta["fidelity_audit"] == "verified"
+    assert meta["pre_call_tool_calls"] == 3
+    assert meta["source_png"].endswith(".png") and len(meta["source_sha256"]) == 64
+    assert meta["usage"]["input_tokens"] == 75742
+    assert meta["turn_index"] == 1 and meta["session_mode"] == "isolated"
+
+
+def test_generate_reissues_once_on_no_image_then_gives_up():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("no_image", tmp)
+    raised = None
+    try:
+        fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768), name="L29",
+                    poll_delay=0.05)
+    except fc.CodexRunError as e:
+        raised = e
+    assert raised is not None and raised.failure_class == "no_image"
+    assert raised.reissues == 1, "exactly ONE transport re-issue, ever"
+
+
+def test_generate_does_not_reissue_refusal_quota_or_multi_emit():
+    tmp, prompt, seed = _scratch()
+    for mode, cls in (("refuse", "refusal"), ("quota", "quota"), ("two_images", "multi_emit")):
+        fc = _fc_with_roots(mode, tmp)
+        raised = None
+        try:
+            fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768),
+                        name="L29", poll_delay=0.05)
+        except fc.CodexRunError as e:
+            raised = e
+        assert raised is not None and raised.failure_class == cls, mode
+        assert raised.reissues == 0, mode
+
+
+def test_generate_publishes_a_mismatch_frame_but_marks_it():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("paraphrase", tmp)
+    data, meta = fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768),
+                             name="L29")
+    assert data and meta["fidelity_audit"] == "mismatch"
+    assert meta["failure_class"] is None, "a mismatch is marked, never discarded"
+
+
+def test_generate_raises_ratio_without_a_transport_reissue():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("wrong_ratio", tmp)
+    raised = None
+    try:
+        fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768), name="L29")
+    except fc.CodexRunError as e:
+        raised = e
+    assert raised is not None and raised.failure_class == "ratio" and raised.reissues == 0
+
+
+def test_generate_raises_on_invalid_bytes_with_no_reissue():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("tiny_png", tmp)
+    raised = None
+    try:
+        fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768), name="L29")
+    except fc.CodexRunError as e:
+        raised = e
+    assert raised is not None and raised.failure_class == "invalid_bytes" and raised.reissues == 0
+
+
+def test_generate_transport_reissue_reuses_envelope_but_not_thread():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("no_image", tmp)
+    original_run_codex_exec = fc.run_codex_exec
+    calls = []
+
+    def spy_run_codex_exec(**kwargs):
+        result = original_run_codex_exec(**kwargs)
+        calls.append((kwargs["envelope"], kwargs["resume_thread"]))
+        return result
+
+    fc.run_codex_exec = spy_run_codex_exec
+    try:
+        try:
+            fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768), name="L29",
+                        poll_delay=0.05)
+        except fc.CodexRunError:
+            pass
+    finally:
+        fc.run_codex_exec = original_run_codex_exec
+    assert len(calls) == 2
+    assert calls[0][0] == calls[1][0]
+    assert calls[0][1] is None and calls[1][1] is None
+
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("ok", tmp)
+    original_run_codex_exec = fc.run_codex_exec
+    calls = []
+
+    def spy_stalled_after_image(**kwargs):
+        calls.append(kwargs)
+        return dict(original_run_codex_exec(**kwargs), timed_out=True)
+
+    fc.run_codex_exec = spy_stalled_after_image
+    raised = None
+    try:
+        try:
+            fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768), name="L29",
+                        poll_delay=0.05)
+        except fc.CodexRunError as e:
+            raised = e
+    finally:
+        fc.run_codex_exec = original_run_codex_exec
+    assert raised is not None and raised.failure_class == "stall" and raised.reissues == 0
+    assert len(calls) == 1, "an emitted image forbids the transport re-issue"
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":
