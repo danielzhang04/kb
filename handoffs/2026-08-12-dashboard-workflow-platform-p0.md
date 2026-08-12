@@ -1,9 +1,12 @@
-# 2026-08-12 — Workflow-platform P0: COMPLETE. Acceptance run PASSED live; PR #117 open (merge = Daniel's click)
+# 2026-08-12 — Workflow-platform P0: COMPLETE. Acceptance PASSED; launch-race fluency fix added; PR #117 @ b8fd772 merge-ready (Daniel's click)
 
 ## Load list
 - `memory/claude-boss.md` (ops) — lessons through this arc
-- PR #117 (claude/workflow-platform @ 4c1e6bf → main) — full 14-commit stack, all delta-reviews SHIP
-- Prod pin `claude/dashboard-prod-pin` @ **da9c79f** (= branch tip merged) — LIVE on pm2 :5317, verified
+- PR #117 (claude/workflow-platform @ b8fd772 → main) — 18-commit stack, all delta-reviews SHIP
+  (post-acceptance addition: fluency item 1 — ops-push reconcile-and-retry, 1843b06+bdb1e14+b8fd772:
+  non-fast-forward launch pushes now rebase+retry with pure re-proof per reconcile, LC_ALL=C pinned
+  both git runners, replay-branch checkout guard, stale ps1 test literal fixed — suite fully green)
+- Prod pin `claude/dashboard-prod-pin` @ **c1fc83d** (= branch tip merged) — LIVE on pm2 :5317, verified
 - Acceptance evidence: run-74383969 SUCCEEDED, signoff verdict PASS on managed branch
   `codex/managed-c08a71ee84040459c07dc89d` (409f64f draft → 2865b0f revise → c24cd83 signoff);
   cost `ledgers/cost/dashboard-engine-2026-08-12.tsv` (3 stages, $0 subscription)
@@ -37,6 +40,9 @@ same-session (all invisible to 900+ green tests):
 
 ## Non-blocking follow-ups (from final SHIP reviews)
 - Duplicate-run guard is one-directional (bridge's own-subject launch skips it) — launch.ts:143.
+- cardRouting.ts:392 reroute push answers 409 routing-conflict instead of reconcile-and-retry (card
+  re-read reconcile owed, per final review).
+- env override on createAsyncGitRunner can silently drop the LC_ALL pin (test-only seam today).
 - Usable window = window − attempt_limit (settled+held cliff); durable shape = reserve expected
   usage, reconcile at settle. One overage burns 1M/200k/$2.50 of the window (charged at ceiling).
 - Client: treat 409 run-already-exists-for-revision as benign no-op in resumeRunAfterHumanResponse.
