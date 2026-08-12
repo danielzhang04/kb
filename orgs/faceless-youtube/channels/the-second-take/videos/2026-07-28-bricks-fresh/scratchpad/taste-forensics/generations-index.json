@@ -5679,6 +5679,41 @@
     "generation_count": 2
   },
   {
+    "beat_id": "OLD-L215",
+    "named_by": "daniel-named:OLD-full-board",
+    "old_L": "L215",
+    "old_L_candidates": null,
+    "new_L": null,
+    "vo_text": "they would've gone on selling those bricks.",
+    "join_confidence": "low",
+    "generations": [
+      {
+        "generation_tag": "gen-A-old-214shot-2026-08-04",
+        "provenance_type": "archive-file",
+        "source": "assets/_archive-pre-reset/scenes/L215.png",
+        "sha256": "e1787f3ac5fa0b0ca26e3cc7ffcc0b63e4d08390776cf6b54dc1c28694286801",
+        "date": "2026-07-31T04:27:24.356539",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": null
+      },
+      {
+        "generation_tag": "board-embed:full-board.html",
+        "provenance_type": "board-html",
+        "source": "full-board.html#L215",
+        "sha256": null,
+        "date": null,
+        "exists_on_disk": true,
+        "review_status": "verified",
+        "round": null,
+        "caption_or_script": "they would've gone on selling those bricks."
+      }
+    ],
+    "note": "Narration is the tail half of the sentence already joined to beat_id L246 (old L214+L215 merge, see that row's old_L_candidates/join_confidence). No standalone new-generation shot exists for this fragment alone -- the new-side beat it would join is already fully claimed and rendered under L246 -- so new_L is left null rather than duplicated onto an already-occupied slot.",
+    "generation_count": 2
+  },
+  {
     "beat_id": "OLD-L27",
     "named_by": "daniel-named:OLD-full-board",
     "old_L": "L27",

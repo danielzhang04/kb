@@ -613,6 +613,9 @@ class QBook(object):
                                          if answer_type == "tag" else None)))
         return qid
 
+    def get(self, qid):
+        return next(q for q in self.qs if q["qid"] == qid)
+
 
 def vo(ctx, bid):
     return ctx["by_id"][bid]["vo_text"]
@@ -811,6 +814,7 @@ def build_panels(ctx, reg, qb, S):
                "free", order, beat=hq),
     ]
     panels.append(p)
+    p07_panel, p07_group, p07_qids = p, g, list(p["questions"])
 
     # ---------------- BOARD 2 : first tenth + the old-generation arc -------------------
     # P08 - the p6b beats you did not name, against their old frames
@@ -989,6 +993,45 @@ def build_panels(ctx, reg, qb, S):
                          "questions asked about?", "free", []),
     ]
     panels.append(p)
+
+    # Old-board L215 - the final card of the old full-video board (Daniel's OLD-named range runs
+    # L212-215; beat-map.json row OLD-L215). It never had a beat-map row or a place on either
+    # board until now. Registered last, after every other frame on both boards, purely so this
+    # board-1-only addition cannot shift the frame index any board-2 cell already relies on.
+    # Sourced with the exact same board-anchored + pixel-match-upgrade rule as gap_frame(): the
+    # old board's own embed is the anchor, a higher-resolution pixel-pool match upgrades it only
+    # on an unambiguous match, and an ambiguous distance dies loud instead of guessing.
+    l215_ref = BIDX.get("full-board.html", "L215 current best")
+    if l215_ref is None:
+        die("full-board.html card 'L215 current best' not found")
+    raw_emb215, size_emb215, dh_emb215 = l215_ref
+    rel215, dist215, size215, abspath215 = best_pool_match(dh_emb215)
+    if 1.0 <= dist215 <= 5.0:
+        die("L215: closest pixel match to its old-board card is ambiguous (distance %.2f)"
+            % dist215)
+    tag215 = "gen-A-old-214shot-2026-08-04"
+    if dist215 < 1.0 and size215[0] > size_emb215[0]:
+        l215_idx = reg.add(
+            key=rel215, loader=lambda p=abspath215: open(p, "rb").read(),
+            caption="%s - old board, final shot (L215)" % GEN_LABELS.get(tag215, tag215),
+            gen_tag=tag215, date=file_date(abspath215), badges=[], beat="OLD-L215",
+            provenance="%s (matches full-board.html card 'L215 current best' at distance %.2f)"
+                       % (rel215, dist215))
+    else:
+        l215_idx = reg.add(
+            key="board:full-board.html#L215 current best", loader=lambda r=raw_emb215: r,
+            caption="%s - old board, final shot (L215)" % GEN_LABELS.get(tag215, tag215),
+            gen_tag=tag215, date="", beat="OLD-L215",
+            badges=[("warn", "board copy at %dx%d - no higher-resolution file survives"
+                              % size_emb215)],
+            provenance="full-board.html card 'L215 current best' (embedded copy)")
+    p07_group["cells"].append(cell_img(ctx, reg, l215_idx, "OLD-L215", show_beat=False))
+    old_count_sentence = "These are the %d frames that exist for it." % len(order)
+    new_count_sentence = "These are the %d frames that exist for it." % (len(order) + 1)
+    assert old_count_sentence in p07_panel["lede"], "P07 lede count sentence not found verbatim"
+    p07_panel["lede"] = p07_panel["lede"].replace(old_count_sentence, new_count_sentence)
+    for qid in p07_qids:
+        qb.get(qid)["images"].append(l215_idx)
     return panels
 
 
