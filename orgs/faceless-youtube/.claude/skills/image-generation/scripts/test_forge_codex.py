@@ -226,12 +226,45 @@ def test_fake_no_image_refuse_and_quota_complete_the_turn_with_no_png():
 def test_fake_transport_failure_modes():
     tmp, prompt, seed = _scratch()
     r = _run("nonzero_exit", tmp, prompt, seed)
-    assert r.returncode == 1 and "stream error" in r.stderr
+    assert r.returncode == 1
+    transport_types = [event["type"] for event in _events(r.stdout)]
+    assert transport_types == (
+        ["thread.started", "turn.started"]
+        + ["error"] * 4
+        + ["item.completed"]
+        + ["error"] * 6
+        + ["turn.failed"]
+    )
+    assert "turn.completed" not in transport_types
+    assert r.stderr == (
+        "ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: "
+        "IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses\n"
+    )
+    assert not list((tmp / "generated_images").rglob("*.png"))
     r = _run("bad_json", tmp, prompt, seed)
-    assert "not json at all" in r.stdout
+    bad_json_lines = [line for line in r.stdout.splitlines() if line.strip()]
+    assert any(
+        _line_raises_json_decode_error(line)
+        for line in bad_json_lines
+    )
+    try:
+        for line in bad_json_lines:
+            json.loads(line)
+    except json.JSONDecodeError:
+        pass
+    else:
+        raise AssertionError("a strict all-lines JSON consumer must fail")
     r = _run("no_thread_event", tmp, prompt, seed)
     assert all(json.loads(l)["type"] != "thread.started"
                for l in r.stdout.splitlines() if l.strip())
+
+
+def _line_raises_json_decode_error(line):
+    try:
+        json.loads(line)
+    except json.JSONDecodeError:
+        return True
+    return False
 
 
 def test_fake_stall_mode_does_not_return_within_two_seconds():

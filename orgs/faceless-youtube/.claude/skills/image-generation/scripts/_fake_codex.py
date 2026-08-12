@@ -207,7 +207,31 @@ def main():
             "text": "You've hit your usage limit. Try again later.",
         }})
     elif mode == "nonzero_exit":
-        sys.stderr.write("stream error: unexpected end of stream\n")
+        for message in (
+            "Reconnecting... 2/5 (stream disconnected before completion: invalid peer certificate: UnknownIssuer)",
+            "Reconnecting... 3/5 (stream disconnected before completion: invalid peer certificate: UnknownIssuer)",
+            "Reconnecting... 4/5 (stream disconnected before completion: invalid peer certificate: UnknownIssuer)",
+            "Reconnecting... 5/5 (stream disconnected before completion: invalid peer certificate: UnknownIssuer)",
+        ):
+            emit({"type": "error", "message": message})
+        emit({"type": "item.completed", "item": {
+            "id": "item_0", "type": "error",
+            "message": "Falling back from WebSockets to HTTPS transport. stream disconnected before completion: invalid peer certificate: UnknownIssuer",
+        }})
+        for message in (
+            "Reconnecting... 1/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))",
+            "Reconnecting... 2/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))",
+            "Reconnecting... 3/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))",
+            "Reconnecting... 4/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))",
+            "Reconnecting... 5/5 (stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses))",
+            "stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses)",
+        ):
+            emit({"type": "error", "message": message})
+        emit({"type": "turn.failed", "error": {
+            "message": "stream disconnected before completion: error sending request for url (https://api.openai.com/v1/responses)",
+        }})
+        sys.stderr.write("ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: "
+                         "IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses\n")
         return 1
     else:
         sys.stderr.write(f"fake codex: unknown --mode {mode}\n")
