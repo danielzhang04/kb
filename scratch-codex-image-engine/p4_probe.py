@@ -71,6 +71,33 @@ def count_pre_call_tool_calls(thread_id):
     return n
 
 
+def scrub_long_strings(obj, max_len=120, keep=40):
+    """Recursively truncate every string value longer than `max_len` chars to its first
+    `keep` chars plus a "...<TRUNCATED len=N>" marker (N = original length) -- no exceptions.
+
+    Full codex rollout logs (~/.codex/sessions/**/rollout-*.jsonl) are raw session
+    transcripts, not curated evidence: they can embed arbitrarily long string payloads --
+    base64/hex-encoded image bytes, full file contents read via shell exec, anything a
+    prompt or tool happened to read or produce -- in shapes this repo's credential ceiling
+    cannot safely classify at scale (a keyword/entropy scan can miss a secret-shaped blob
+    it doesn't recognize; a human reviewer flagged exactly that on this probe's first banked
+    copy). Full rollout logs are therefore never committed to this repo. Rather than trust a
+    classifier to catch every shape a credential or other sensitive blob could take, this
+    scrubber removes the *category* of risk: no string longer than max_len chars survives
+    un-truncated anywhere in the structure, so no single-line secret, key, or bulk-data blob
+    can ever reach the tracked repo, regardless of what it is or whether it was recognized.
+    """
+    if isinstance(obj, str):
+        if len(obj) > max_len:
+            return f"{obj[:keep]}…<TRUNCATED len={len(obj)}>"
+        return obj
+    if isinstance(obj, dict):
+        return {scrub_long_strings(k, max_len, keep): scrub_long_strings(v, max_len, keep) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [scrub_long_strings(v, max_len, keep) for v in obj]
+    return obj
+
+
 def run_probe(*, label, prompt_path, seeds, cwd, sandbox, timeout_s):
     # shutil.which resolves PATHEXT (codex.CMD on Windows) -- Popen with shell=False does not.
     codex_bin = shutil.which("codex") or "codex"

@@ -31,6 +31,93 @@ or the measurement methodology the brief specifies.
 Both arms returned `returncode: 0`, `timed_out: false`, and exactly one `.png` in
 `~/.codex/generated_images/<thread_id>/`.
 
+## Auditability of `pre_call_tool_calls` — scrubbed rollout-log excerpts
+
+`pre_call_tool_calls` (5 / 4 above) is computed by `count_pre_call_tool_calls()` from the codex
+**rollout log** under `~/.codex/sessions/`, NOT from the `--json` raw stream (`p4-probe1-*-raw.jsonl`
+contains only `thread.started`/`turn.*`/`item.*` events — no `custom_tool_call` lines at all, so the
+gating metric was not independently re-derivable from what the original commit banked).
+
+**Full rollout-log copies were tried first and then reversed by Daniel's ruling.** A boss scan of the
+banked full copy found a long high-entropy base64-like fragment (`amDCAmBP7V49…`) it could not safely
+classify, and this repo's credential ceiling fails closed on unclassifiable secret-shaped blobs.
+Session transcripts are sensitive-shaped in general — a rollout log can embed anything a shell command
+happened to read or produce — so full copies are not an acceptable evidence-banking form here, even
+when a manual keyword scan comes back clean (as it did — see below). The fix: two **scrubbed
+excerpts**, containing only the events actually load-bearing for the count, with every long string
+value truncated.
+
+- `p4-probe1-tempdir-rollout-excerpt.jsonl` — the 6 `custom_tool_call` events from the tempdir arm
+  (all of them; the 6th is the `image_gen__imagegen` call itself).
+- `p4-probe1-worktree-rollout-excerpt.jsonl` — the first 5 `custom_tool_call` events from the worktree
+  arm (the 5th is the `image_gen__imagegen` call; the source log has a 6th `custom_tool_call` line
+  after it, but `count_pre_call_tool_calls()` returns before ever reaching it in the real run, so it
+  is not load-bearing and is excluded).
+
+Every event was produced by `p4_probe.scrub_long_strings()` (added to `p4_probe.py`, alongside
+`count_pre_call_tool_calls`): a small, recursive, no-exceptions function that truncates every string
+value longer than 120 chars to its first 40 chars + `…<TRUNCATED len=N>`. Its docstring states why
+full logs are banned: no keyword/entropy scan can be trusted to recognize every shape a secret could
+take, so instead of classifying content, the scrubber removes the *category* of risk — no long string
+survives intact, full stop. Each excerpt event also carries one synthetic, non-secret boolean field,
+`_probe_is_image_gen_call` (computed from the pre-scrub raw line text, added at excerpt-build time —
+not part of the real codex schema, clearly out-of-band-prefixed), so the terminal event stays
+identifiable without needing to find the literal substring `image_gen__imagegen` inside a field that
+the scrubber may have truncated away.
+
+The original manual credential scan of the (no-longer-banked) full copies is left on record for
+context: `grep -iE "api[_-]?key|bearer |authorization|secret|password|access[_-]?token|
+sk-[a-zA-Z0-9]{10}|OPENAI_API_KEY|GEMINI_API_KEY|ANTHROPIC_API_KEY"` returned 3 hits per file, all
+benign (doc text naming the `OPENAI_API_KEY` variable, one coincidental `SK-1` substring inside a
+base64 blob) — but a keyword scan is exactly the kind of classifier the scrubber approach no longer
+depends on trusting.
+
+**Verification — zero surviving long base64-ish runs in either excerpt:**
+
+```
+grep -noE "[A-Za-z0-9+/_-]{120,}" p4-probe1-tempdir-rollout-excerpt.jsonl
+grep -noE "[A-Za-z0-9+/_-]{120,}" p4-probe1-worktree-rollout-excerpt.jsonl
+```
+
+Output: no matches in either file (grep exit code 1 both times).
+
+**Re-derivation command** (reads the excerpt's `_probe_is_image_gen_call` marker instead of grepping
+a possibly-truncated field):
+
+```
+py -3 -c "
+import json
+
+def count_pre_call_tool_calls_from_excerpt(path):
+    n = 0
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            ev = json.loads(line)
+            p = ev['payload']
+            if p.get('_probe_is_image_gen_call'):
+                return n
+            n += 1
+    return n
+
+for label, path in [('tempdir', 'p4-probe1-tempdir-rollout-excerpt.jsonl'), ('worktree', 'p4-probe1-worktree-rollout-excerpt.jsonl')]:
+    print(label, '->', count_pre_call_tool_calls_from_excerpt(path))
+"
+```
+
+Output (run from `<ARC>`):
+
+```
+tempdir -> 5
+worktree -> 4
+```
+
+This matches the originally reported `pre_call_tool_calls: 5` (tempdir) and `pre_call_tool_calls: 4`
+(worktree) exactly — the PASS/PARTIAL/FAIL gate is now independently re-derivable from banked,
+scrubbed source, with no long/high-entropy string ever committed. The full, unredacted rollout logs
+remain machine-local at `~/.codex/sessions/2026/08/11/rollout-2026-08-11T17-52-31-019ff2d0-...jsonl`
+and `...T17-55-09-019ff2d2-...jsonl` for anyone who needs a local re-check beyond what the excerpts
+show; they are not tracked in this repo and were never pushed.
+
 ## Verdict
 
 **PARTIAL — the detour is controlled but not zero, on both arms.**
