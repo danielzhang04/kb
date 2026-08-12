@@ -523,6 +523,68 @@ def test_resolve_codex_binary_is_never_called_at_import_and_fails_loud():
         forge_codex.CODEX_ARGV_PREFIX = saved
 
 
+L46_PAYLOAD = ("One seeded performer, `base`, `expr-crestfallen`, `hold-both-hands`, in a grey work "
+               "coat, stage-left, carrying a cardboard box of desk things down the length of the "
+               "assembly floor toward the roller door. On the far side of the far bench a subdued "
+               "crowd stands and watches him go, arms down, faces flat and tired. Cool grey-teal "
+               "palette drained toward grey, flat strip light with every fourth ceiling fitting "
+               "dark, foreground depth from a cropped bench end at the lower-right.")
+
+L47_PAYLOAD = ("`terry-johnson`, `expr-crestfallen`, `carry-by-handle`, stage-right, stepping out "
+               "through a glass door onto a car park apron with a document case at his side, his "
+               "back half turned to the floor behind him. Through the glass the assembly floor runs "
+               "away into the depth with its benches bare. Grey-cream-teal palette, flat overcast "
+               "light outside against warm strip light inside, foreground depth from a cropped kerb "
+               "at the lower-left.")
+
+
+def test_idiom_table_translates_every_documented_direction():
+    import forge_codex as fc
+    assert fc.translate_idiom("stage-left,") == "on the left of the frame,"
+    assert fc.translate_idiom("Stage Right") == "on the right of the frame"
+    assert fc.translate_idiom("stage-centre") == "centred in the frame"
+    assert fc.translate_idiom("stage center") == "centred in the frame"
+    assert fc.translate_idiom("upstage") == "toward the back of the frame"
+    assert fc.translate_idiom("up stage") == "toward the back of the frame"
+    assert fc.translate_idiom("downstage") == "toward the front of the frame"
+    assert fc.translate_idiom("camera-left") == "on the left of the frame"
+    assert fc.translate_idiom("camera right") == "on the right of the frame"
+    assert fc.translate_idiom("off-stage") == "outside the frame"
+    assert fc.translate_idiom("offstage") == "outside the frame"
+
+
+def test_idiom_translation_on_real_shot_payloads_keeps_every_fact():
+    import forge_codex as fc
+    out46 = fc.translate_idiom(L46_PAYLOAD)
+    assert "stage-left" not in out46 and "on the left of the frame" in out46
+    for noun in ("grey work coat", "cardboard box", "roller door", "subdued", "bench"):
+        assert noun in out46, noun
+    assert len(out46.split()) >= len(L46_PAYLOAD.split())
+    out47 = fc.translate_idiom(L47_PAYLOAD)
+    assert "stage-right" not in out47 and "on the right of the frame" in out47
+    for noun in ("glass door", "car park apron", "document case", "kerb"):
+        assert noun in out47, noun
+
+
+def test_idiom_translation_never_touches_quoted_literals():
+    import forge_codex as fc
+    src = "a painted board reading 'STAGE-LEFT' hanging stage-left over him"
+    out = fc.translate_idiom(src)
+    assert "'STAGE-LEFT'" in out
+    assert "hanging on the left of the frame over him" in out
+    src2 = 'the sign "UPSTAGE DOCK" seen from upstage'
+    out2 = fc.translate_idiom(src2)
+    assert '"UPSTAGE DOCK"' in out2 and "from toward the back of the frame" in out2
+
+
+def test_residual_scan_warns_without_raising():
+    import forge_codex as fc
+    assert fc.residual_idiom(L47_PAYLOAD) == []
+    hits = fc.residual_idiom("he waits in the wings, left of the blocking mark")
+    assert hits and any("wings" in h for h in hits)
+    assert isinstance(hits, list)
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

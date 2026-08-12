@@ -48,6 +48,59 @@ class CodexRunError(RuntimeError):
         self.failure_class = failure_class
 
 
+import re  # noqa: E402
+
+# --- §4.3 idiom translation: this pipeline's STAGING idiom renders as literal signage on codex
+# --- (p1 probe E2 minted a "TOTE RACK / STAGE-LEFT" sign). Ordered, word-boundary, case-insensitive.
+# --- It changes WORDING only: dropping a load-bearing staging fact would be the fidelity violation
+# --- named at SKILL.md L395-397.
+IDIOM_TABLE: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\boff[-\s]?stage\b", re.I), "outside the frame"),
+    (re.compile(r"\bstage[-\s](?:centre|center)\b", re.I), "centred in the frame"),
+    (re.compile(r"\bstage[-\s]left\b", re.I), "on the left of the frame"),
+    (re.compile(r"\bstage[-\s]right\b", re.I), "on the right of the frame"),
+    (re.compile(r"\bup\s?stage\b", re.I), "toward the back of the frame"),
+    (re.compile(r"\bdown\s?stage\b", re.I), "toward the front of the frame"),
+    (re.compile(r"\bcamera[-\s]left\b", re.I), "on the left of the frame"),
+    (re.compile(r"\bcamera[-\s]right\b", re.I), "on the right of the frame"),
+]
+
+# A quoted span is diegetic and load-bearing (SKILL.md L136-138): it must render verbatim, so the
+# table is applied only to the UNQUOTED spans between them.
+_QUOTED_SPAN = re.compile(r'"[^"\n]{1,60}"' r"|'[^'\n]{1,60}'")
+
+_RESIDUAL = re.compile(r"\b(stage|wings|blocking)\b", re.I)
+_DIRECTION_NEAR = re.compile(r"\b(left|right|centre|center|front|back|up|down|mark)\b", re.I)
+
+
+def translate_idiom(text: str) -> str:
+    """Apply IDIOM_TABLE to every unquoted span of `text`; quoted literals pass through untouched."""
+    out, pos = [], 0
+    for m in _QUOTED_SPAN.finditer(text or ""):
+        out.append(_translate_span(text[pos:m.start()]))
+        out.append(m.group(0))
+        pos = m.end()
+    out.append(_translate_span((text or "")[pos:]))
+    return "".join(out)
+
+
+def _translate_span(span: str) -> str:
+    for pattern, replacement in IDIOM_TABLE:
+        span = pattern.sub(replacement, span)
+    return span
+
+
+def residual_idiom(text: str) -> list[str]:
+    """WARN-level scan for staging idiom the table cannot claim to cover. Never raises: the table
+    is not provably exhaustive and hard-failing on authored prose would block legitimate shots."""
+    hits = []
+    for m in _RESIDUAL.finditer(translate_idiom(text or "")):
+        window = (text or "")[max(0, m.start() - 40):m.end() + 40]
+        if _DIRECTION_NEAR.search(window):
+            hits.append(window.strip())
+    return hits
+
+
 def resolve_codex_binary() -> str:
     """Resolve the executable at run time, failing loudly without a Codex installation.
 
