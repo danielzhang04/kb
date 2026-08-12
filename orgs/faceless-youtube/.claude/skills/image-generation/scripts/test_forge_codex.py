@@ -1588,6 +1588,15 @@ def test_engine_log_is_append_only_jsonl():
     assert Path(path) == tmp / "_codex" / "engine-log.jsonl"
 
 
+def test_rel_to_kit_ignores_windows_drive_letter_case():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="kit-"))
+    inside = str(tmp / "_codex" / "prompts" / "L29.txt")
+    swapped = inside[0].swapcase() + inside[1:]
+    assert fc._rel_to_kit(swapped, str(tmp)) == "_codex/prompts/L29.txt"
+    assert fc._rel_to_kit("D:/elsewhere/x.txt", str(tmp)) == "D:/elsewhere/x.txt"
+
+
 def test_run_totals_names_every_non_verified_row():
     import forge_codex as fc
     rows = [dict(_meta_stub(), name="L26", tokens_in=1, tokens_cached=0, tokens_out=0,

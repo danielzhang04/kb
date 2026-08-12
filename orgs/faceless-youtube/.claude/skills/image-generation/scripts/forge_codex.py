@@ -474,7 +474,11 @@ def engine_log_path(staging):
 def _rel_to_kit(path, kit_root):
     p = os.path.abspath(path).replace("\\", "/")
     root = os.path.abspath(kit_root).replace("\\", "/")
-    return p[len(root) + 1:] if p.startswith(root + "/") else p
+    # normcase: Windows drive letters are case-insensitive but abspath preserves the caller's
+    # spelling — a c:/ vs C:/ mismatch must not turn an in-kit archive link absolute.
+    if os.path.normcase(p).startswith(os.path.normcase(root + "/")):
+        return p[len(root) + 1:]
+    return p
 
 
 def build_log_row(*, name, meta, composed_path, composed_text, seed_shas, residual, kit_root):
