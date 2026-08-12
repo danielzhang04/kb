@@ -1170,6 +1170,23 @@ Describe 'CLI -Heartbeat watchdog wiring (review-1 finding 6: the F3 branch had 
         ([regex]::Matches($log, 'supervisor-respawn-THROTTLED')).Count | Should -Be 1
     }
 
+    It 'does not spawn at all while the throttle state is unpersistable (2.1, end to end)' {
+        New-KeepAwakeLease -Label 'wd' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        # An elapsed window with an unwritable state file: pre-fix EVERY
+        # heartbeat spawned here, because the failed write was swallowed and
+        # the next heartbeat read the same stale, already-elapsed state.
+        $statePath = Join-Path $script:TestRoot 'respawn.json'
+        Set-Content $statePath -Encoding utf8 -Value ('{"attempts":1,"last_attempt":"' +
+            ([datetimeoffset]::Now.AddHours(-2).ToString('yyyy-MM-ddTHH:mm:sszzz')) + '","throttle_notice_logged":true}')
+        $lock = New-Object System.IO.FileStream($statePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            1..3 | ForEach-Object {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:CliPath -Heartbeat -Label 'wd' | Out-Null
+            }
+        } finally { $lock.Dispose() }
+        Test-Path $script:Sentinel | Should -BeFalse
+    }
+
     It 'still updates the lease heartbeat while the watchdog is throttled' {
         New-KeepAwakeLease -Label 'wd' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
         $before = (@(Get-KeepAwakeLeases)[0]).heartbeat
@@ -1443,6 +1460,40 @@ Describe 'supervisor respawn throttle (review-1 finding 3: the watchdog must not
         Set-Content (Join-Path $script:TestRoot 'respawn.json') -Value '{not json' -Encoding utf8
         { $script:d3 = Resolve-SupervisorRespawnDecision -Now $script:Now } | Should -Not -Throw
         $script:d3.Respawn | Should -BeTrue
+    }
+
+    # Re-review 2.1: the throttle used to fail OPEN. Save swallowed every
+    # failure and the gate required Attempts>0 AND a parseable LastAttempt, so
+    # an unpersistable respawn.json meant every heartbeat spawning (reviewer
+    # measured 40/40 allowed with the file locked) -- under exactly the
+    # disk/AV/contention conditions that break the supervisor in the first
+    # place. A watchdog that cannot remember what it just did must not act.
+    It 'denies the spawn when the throttle state cannot be persisted (fails CLOSED)' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        (Resolve-SupervisorRespawnDecision -Now $script:Now).Respawn | Should -BeTrue
+        # FileShare.Read lets our reads through but denies MoveFileExW the
+        # destination, so state reads still work and only the write fails.
+        $lock = New-Object System.IO.FileStream((Join-Path $script:TestRoot 'respawn.json'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            $d = Resolve-SupervisorRespawnDecision -Now $script:Now.AddSeconds(61)
+            $d.Respawn | Should -BeFalse
+            $d.Reason  | Should -Be 'persist-failed'
+            1..5 | ForEach-Object {
+                (Resolve-SupervisorRespawnDecision -Now $script:Now.AddHours($_)).Respawn | Should -BeFalse
+            }
+        } finally { $lock.Dispose() }
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'supervisor-respawn-DENIED'
+    }
+
+    It 'falls back to the state file mtime when last_attempt is unusable, instead of bypassing the window' {
+        New-KeepAwakeLease -Label 't' -ProcessId $PID | Out-Null
+        # attempts>0 with an unparseable timestamp: the swallowed Parse failure
+        # left LastAttempt null, which skipped the window check entirely.
+        Set-Content (Join-Path $script:TestRoot 'respawn.json') `
+            -Value '{"attempts":2,"last_attempt":"not-a-timestamp","throttle_notice_logged":false}' -Encoding utf8
+        $d = Resolve-SupervisorRespawnDecision -Now ([datetimeoffset]::Now)
+        $d.Respawn | Should -BeFalse
+        $d.Reason  | Should -Be 'throttled'
     }
 }
 

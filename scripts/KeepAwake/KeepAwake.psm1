@@ -993,10 +993,11 @@ function Get-SupervisorRespawnState {
     } catch { return $empty }
 }
 
+# Returns $true only if the state is durably on disk. It must never THROW into
+# a hook, but it must never lie either: the caller denies the spawn on $false,
+# because a throttle that cannot remember its own attempt is no throttle at all.
 function Save-SupervisorRespawnState {
     param([Parameter(Mandatory)][hashtable]$State)
-    # Best effort: failing to persist must never throw into a hook. Worst case
-    # one extra spawn, which the mutex arbitrates anyway.
     try {
         Confirm-KeepAwakeRoot | Out-Null
         $last = ''
@@ -1006,11 +1007,15 @@ function Save-SupervisorRespawnState {
             last_attempt           = $last
             throttle_notice_logged = [bool]$State.ThrottleNoticeLogged
         })
-    } catch { }
+        return $true
+    } catch { return $false }
 }
 
 function Clear-SupervisorRespawnState {
-    Remove-Item (Get-RespawnStatePath) -Force -ErrorAction SilentlyContinue
+    # Gated on existence: this runs on the happy path of every heartbeat, where
+    # the file is normally absent.
+    $path = Get-RespawnStatePath
+    if (Test-Path $path) { Remove-Item $path -Force -ErrorAction SilentlyContinue }
 }
 
 # The single decision the -Heartbeat watchdog asks: may I spawn a supervisor
@@ -1027,17 +1032,37 @@ function Resolve-SupervisorRespawnDecision {
     }
     $state = Get-SupervisorRespawnState
     $window = Get-SupervisorRespawnBackoffSeconds -Attempts $state.Attempts
-    if ($state.Attempts -gt 0 -and $null -ne $state.LastAttempt -and ($Now - $state.LastAttempt).TotalSeconds -lt $window) {
-        if (-not $state.ThrottleNoticeLogged) {
-            $remaining = [math]::Round($window - ($Now - $state.LastAttempt).TotalSeconds)
-            Write-KeepAwakeLog ("supervisor-respawn-THROTTLED attempts=$($state.Attempts) window=${window}s next-attempt-in=${remaining}s -- supervisor still not running")
-            $state.ThrottleNoticeLogged = $true
-            Save-SupervisorRespawnState -State $state
+    if ($state.Attempts -gt 0) {
+        $last = $state.LastAttempt
+        if ($null -eq $last) {
+            # An unparseable/absent last_attempt used to skip the window check
+            # entirely -- a free pass on every heartbeat. The state file's own
+            # mtime is a sound lower bound on when that attempt happened.
+            try { $last = [datetimeoffset](Get-Item (Get-RespawnStatePath) -ErrorAction Stop).LastWriteTime } catch { }
         }
-        return @{ Respawn = $false; Reason = 'throttled'; Attempt = $state.Attempts }
+        if ($null -eq $last) {
+            # Attempts were made but nothing can date them: fail closed.
+            Write-KeepAwakeLog ("supervisor-respawn-DENIED reason=attempt-time-unknowable attempts=$($state.Attempts) -- refusing to spawn unthrottled")
+            return @{ Respawn = $false; Reason = 'throttled'; Attempt = $state.Attempts }
+        }
+        if (($Now - $last).TotalSeconds -lt $window) {
+            if (-not $state.ThrottleNoticeLogged) {
+                $remaining = [math]::Round($window - ($Now - $last).TotalSeconds)
+                Write-KeepAwakeLog ("supervisor-respawn-THROTTLED attempts=$($state.Attempts) window=${window}s next-attempt-in=${remaining}s -- supervisor still not running")
+                $state.ThrottleNoticeLogged = $true
+                Save-SupervisorRespawnState -State $state | Out-Null
+            }
+            return @{ Respawn = $false; Reason = 'throttled'; Attempt = $state.Attempts }
+        }
     }
     $attempt = $state.Attempts + 1
-    Save-SupervisorRespawnState -State @{ Attempts = $attempt; LastAttempt = $Now; ThrottleNoticeLogged = $false }
+    # Deny BEFORE spawning, never after: the record of this attempt has to be
+    # durable first, or the next heartbeat reads stale state and spawns again,
+    # and again, unthrottled.
+    if (-not (Save-SupervisorRespawnState -State @{ Attempts = $attempt; LastAttempt = $Now; ThrottleNoticeLogged = $false })) {
+        Write-KeepAwakeLog ("supervisor-respawn-DENIED reason=throttle-state-unpersistable attempt=$attempt -- refusing to spawn without a durable record of it")
+        return @{ Respawn = $false; Reason = 'persist-failed'; Attempt = $state.Attempts }
+    }
     # Logged as an ATTEMPT, never as a success: this function cannot observe
     # whether the spawn actually took, and the next heartbeat's liveness check
     # is what confirms it.
