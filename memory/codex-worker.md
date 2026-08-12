@@ -317,3 +317,67 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   explicit authorization to publish the operational checkpoint to the Codex Git remote, and browser
   discovery still returned no backend. No push or run mutation occurred.
 
+
+# codex-worker
+
+## 2026-08-11 — Task A2, codex image engine
+
+- A single `p4_probe.py --sandbox read-only` attempt exited in 34.1 seconds with certificate and
+  transport failures, no images, and no timeout; do not re-issue it because the probe budget is one.
+- A before/after `Get-Process codex` count of 13/12 showed no excess process, but `kill_tree()` was
+  not called because the process exited early; this does not verify the timeout kill path.
+- In this sandbox the linked-worktree Git metadata at `C:/Users/danie/kb/.git/worktrees/...` is
+  read-only: local `git config` and the exact `git add` both fail on lock creation. The A2 artifacts
+  are prepared but cannot be committed until the worktree Git metadata is writable.
+
+## 2026-08-11 — Task A2 evidence rewrite
+
+- A nested `codex exec` launched by a dispatch worker measures the worker cage when that cage blocks
+  shell-level network; it is not evidence about the child's requested sandbox mode. Real codex-API
+  probes must run from the host shell, and evidence should preserve the confounded raw/stderr pair
+  separately from the valid measurement.
+
+## 2026-08-11 — Task A3, exec-resume session contract
+
+- `exec resume` re-emits `thread.started` and writes cleanly into the existing thread image
+  directory, but replayed history made uncached input about 3x higher than a like-for-like fresh
+  call; do not enable session mode by default on this evidence.
+- Fidelity checks over JSONL must decode each event before matching multi-line source text; raw
+  substring checks produce false negatives when newlines are escaped as `\\n`.
+
+## 2026-08-11 — Task A4, canvas rows
+
+- The verbatim local measurement commands found 23 baseline Gemini PNGs at `1376x768` and no PNGs
+  under the specified video assets tree; the baseline SHA re-verification returned `MISMATCHES: none`.
+
+## Synthetic identifiers do not prove transport freshness
+
+### Context
+- A transport-reissue regression incorrectly expected two fresh fake subprocesses to return distinct
+  thread IDs, even though the frozen fake deterministically initializes the same synthetic ID.
+
+### Root Cause / Core Insight
+- Freshness is an invocation contract, while an identifier's uniqueness is provider behavior; a fake
+  may model the former faithfully without reproducing the latter.
+
+### The Pattern (transferable)
+- Next time I test a fresh-vs-resume transport boundary, I will assert the call shape directly (for
+  example, `resume_thread=None`) and treat returned ID uniqueness as a separate provider contract.
+- Signal to recognize: a test infers how a call was made from a synthetic output value that the fake
+  generates independently in each process.
+
+## Expected red failures must respect expression evaluation order
+
+### Context
+- A TDD plan predicted that a call using two not-yet-implemented attributes would first fail on the
+  argument attribute, but Python resolved the callable attribute first.
+
+### Root Cause / Core Insight
+- An expected exception names an observable execution path, not just a set of missing symbols;
+  language evaluation order determines which missing symbol is observable first.
+
+### The Pattern (transferable)
+- Next time a plan requires an exact red failure, I will trace expression evaluation order before
+  promising the failing symbol and will preserve the genuine output if the prediction is impossible.
+- Signal to recognize: one statement references multiple absent names or attributes and the plan
+  asserts which one must fail first.
