@@ -2643,6 +2643,17 @@
         "review_status": "VERIFIED",
         "round": null,
         "caption_or_script": null
+      },
+      {
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "provenance_type": "staging-file",
+        "source": "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-r1probe.png",
+        "sha256": "3cf81c52116f6a8ff73c9869bd019c534b611324d304f30570493f1934296624",
+        "date": "2026-08-06T00:27:32.031598",
+        "exists_on_disk": true,
+        "review_status": null,
+        "staging_provenance": null,
+        "note": "Place-plate probe render -- head-on symmetric view down the center aisle toward the roller door, no figures. Never appeared on any board; recovered directly from the pre-6c2 staging archive."
       }
     ],
     "text_generations": {
@@ -2653,7 +2664,7 @@
       "notable_concept_delta": "materially different concept (ratio 0.12)",
       "join_frac": 1.0
     },
-    "generation_count": 9
+    "generation_count": 10
   },
   {
     "beat_id": "L29",

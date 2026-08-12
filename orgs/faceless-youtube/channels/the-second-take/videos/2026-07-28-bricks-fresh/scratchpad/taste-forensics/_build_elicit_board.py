@@ -400,11 +400,15 @@ def best_pool_match(dh):
 
 
 def real_renders(row):
-    """Render entries that point at a real file on disk (not manifest:/git-show pointers)."""
+    """Render entries that point at a real file on disk (not manifest:/git-show pointers, and not
+    a loose visual-kit/_staging/ path - those are documentation-only entries in beat-map.json; a
+    staging file only enters automatic panel-surfacing via the established staging_provenance/
+    parked_candidates() route, or is deliberately hand-spliced into a panel by path (e.g. the P07
+    place-plate probe) rather than picked up generically here."""
     out = []
     for r in row["renders"]:
         p = r["path_or_board"]
-        if p.startswith("manifest:") or p.startswith("git show"):
+        if p.startswith("manifest:") or p.startswith("git show") or p.startswith("visual-kit/"):
             continue
         if not r.get("exists_on_disk"):
             continue
@@ -1032,6 +1036,35 @@ def build_panels(ctx, reg, qb, S):
     p07_panel["lede"] = p07_panel["lede"].replace(old_count_sentence, new_count_sentence)
     for qid in p07_qids:
         qb.get(qid)["images"].append(l215_idx)
+
+    # L28 place-plate probe (visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-r1probe.png) - the
+    # MiniScribe place plate, head-on symmetric camera angle down the center aisle toward the
+    # roller door, no figures. It has no board embed anywhere (never boarded), so it is sourced
+    # directly as a pool original rather than through the board-anchor+pixel-match-upgrade rule
+    # used for L215 above - the same die-loud-if-missing guard gap_frame() uses substitutes for
+    # the ambiguous-match guard, since there is no board embed to disambiguate against. Registered
+    # last, after every other frame on both boards (including L215 above), so it lands as P07's
+    # 6th image and cannot shift any board-2 frame index. real_renders() deliberately excludes
+    # this file's beat-map.json documentation entry from automatic panel-surfacing (see that
+    # function) so this hand-splice is the only place it is sourced from.
+    probe_rel = "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-r1probe.png"
+    probe_abs = resolve("_pre-6c2-archive-2026-08-06/L28-r1probe.png", KIT_STAGING_ROOTS)
+    if probe_abs is None:
+        die("pixel source missing for L28 place-plate probe: %s" % probe_rel)
+    probe_tag = "gen-C-new246-p6b-tenth1-2026-08-06"
+    probe_idx = reg.add(
+        key=probe_rel, loader=lambda p=probe_abs: open(p, "rb").read(),
+        caption="gen-C era - staging archive - place-plate probe (L28-r1probe)",
+        gen_tag=probe_tag, date=file_date(probe_abs), badges=[], beat="L28",
+        provenance="%s (never boarded; recovered directly from the pre-6c2 staging archive)"
+                   % probe_rel)
+    p07_group["cells"].append(cell_img(ctx, reg, probe_idx, "L28", show_beat=False))
+    old_count_sentence2 = "These are the %d frames that exist for it." % (len(order) + 1)
+    new_count_sentence2 = "These are the %d frames that exist for it." % (len(order) + 2)
+    assert old_count_sentence2 in p07_panel["lede"], "P07 lede count sentence not found verbatim"
+    p07_panel["lede"] = p07_panel["lede"].replace(old_count_sentence2, new_count_sentence2)
+    for qid in p07_qids:
+        qb.get(qid)["images"].append(probe_idx)
     return panels
 
 

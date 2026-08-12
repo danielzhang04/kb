@@ -2360,6 +2360,17 @@
           }
         ],
         "note": null
+      },
+      {
+        "path_or_board": "visual-kit/_staging/_pre-6c2-archive-2026-08-06/L28-r1probe.png",
+        "generation_tag": "gen-C-new246-p6b-tenth1-2026-08-06",
+        "date": "2026-08-06T00:27:32.031598",
+        "sha256": "3cf81c52116f6a8ff73c9869bd019c534b611324d304f30570493f1934296624",
+        "exists_on_disk": true,
+        "review_status": null,
+        "parked_reasons": null,
+        "staging_provenance": null,
+        "note": "Place-plate probe render -- head-on symmetric view down the center aisle toward the roller door, no figures. Never appeared on any board; recovered directly from the pre-6c2 staging archive."
       }
     ],
     "text_generations": {
