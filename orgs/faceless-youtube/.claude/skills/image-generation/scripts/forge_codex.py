@@ -30,7 +30,8 @@ SESSIONS_ROOT = os.path.expanduser("~/.codex/sessions")
 TIMEOUT_S = 240
 
 ENGINE_ID = "codex-imagegen"
-CODEX_SEED_CAP = 5
+# §4.7: four content seeds per spec; reserve transport slot five for C15's study-only register seed.
+CODEX_SEED_CAP = 4
 TRANSPORT_SEED_CEILING = 5
 
 # --- §4.6 normalization canvas. (16:9,1K) is VERIFIED MEASURED: all 23 baseline frames in
@@ -74,7 +75,7 @@ class CodexContractError(RuntimeError):
 
 
 def prepare_seeds(item: dict, seeds: list[str]) -> list[str]:
-    """§4.5 + §4.7: canonicalize absolute seeds, then enforce transport and doctrine limits."""
+    """§4.5 + §4.7: canonicalize the spec's content seeds and enforce its doctrine cap."""
     name = item.get("name", "<unnamed>")
     out = []
     for seed in seeds or []:
@@ -84,15 +85,24 @@ def prepare_seeds(item: dict, seeds: list[str]) -> list[str]:
                 f"{name}: seed path is not absolute: {seed!r} — codex rejects relative paths outright "
                 "(AbsolutePathBuf deserialized without a base path)")
         out.append(os.path.realpath(supplied))
-    if len(out) > TRANSPORT_SEED_CEILING:
-        raise CodexContractError(
-            f"{name}: {len(out)} seeds — referenced_image_paths must contain at most "
-            f"{TRANSPORT_SEED_CEILING} paths")
     if len(out) > CODEX_SEED_CAP:
         raise CodexContractError(
             f"{name}: slate carries {len(out)} seeds, over CODEX_SEED_CAP={CODEX_SEED_CAP} — "
             "refusing to truncate; re-derive the slate with forge.py batch instead")
     return out
+
+
+def assert_transport_seed_ceiling(item: dict, seeds: list[str]) -> None:
+    """Fail loud at the invocation boundary if referenced_image_paths exceeds Codex's ceiling.
+
+    This is deliberately separate from ``prepare_seeds``: C15 may append its study-only register
+    seed after the four content seeds have passed the §4.7 doctrine cap.
+    """
+    if len(seeds) > TRANSPORT_SEED_CEILING:
+        name = item.get("name", "<unnamed>")
+        raise CodexContractError(
+            f"{name}: {len(seeds)} seeds — referenced_image_paths must contain at most "
+            f"{TRANSPORT_SEED_CEILING} paths")
 
 
 def seed_digests(seeds: list[str]) -> dict[str, str]:

@@ -767,10 +767,10 @@ def test_composer_warns_for_a_residual_from_a_poisoned_registry_item():
     assert "wings left" in str(reported[0].message)
 
 
-def test_composer_pins_zero_one_and_five_seed_boundaries():
+def test_composer_pins_zero_one_and_four_content_seed_boundaries():
     import forge_codex as fc
 
-    for count in (0, 1, 5):
+    for count in (0, 1, 4):
         item = dict(_item_L26(), seed_roles=[
             {"path": f"C:/k/seed-{n}.png", "role": "prop", "character": None}
             for n in range(1, count + 1)
@@ -894,30 +894,32 @@ def test_prepare_seeds_requires_absolute_paths_and_realpaths_them():
     assert raised is not None and "L29" in raised and "absolute" in raised
 
 
-def test_prepare_seeds_enforces_transport_ceiling_then_doctrine_cap():
+def test_prepare_seeds_rejects_five_content_seeds_at_doctrine_cap():
     import forge_codex as fc
     tmp = Path(tempfile.mkdtemp(prefix="seeds-"))
-    many = [_png(tmp / f"s{i}.png") for i in range(6)]
-    assert fc.CODEX_SEED_CAP == 5
+    content = [_png(tmp / f"content-{i}.png") for i in range(5)]
     raised = None
     try:
-        fc.prepare_seeds({"name": "L33"}, many)
+        fc.prepare_seeds({"name": "L33"}, content)
+    except fc.CodexContractError as e:
+        raised = str(e)
+    assert raised is not None and "L33" in raised and "CODEX_SEED_CAP=4" in raised
+    assert "truncat" in raised
+    four_content = fc.prepare_seeds({"name": "L33"}, content[:4])
+    assert len(four_content) == fc.CODEX_SEED_CAP == 4
+
+    # C15 will supply this fifth, study-only register seed after content preparation.
+    register_seed = _png(tmp / "register.png")
+    transport_seeds = four_content + [register_seed]
+    assert len(transport_seeds) == fc.TRANSPORT_SEED_CEILING == 5
+    assert fc.assert_transport_seed_ceiling({"name": "L33"}, transport_seeds) is None
+
+    raised = None
+    try:
+        fc.assert_transport_seed_ceiling({"name": "L33"}, transport_seeds + [content[4]])
     except fc.CodexContractError as e:
         raised = str(e)
     assert raised is not None and "L33" in raised and "at most 5" in raised
-    saved_ceiling = fc.TRANSPORT_SEED_CEILING
-    fc.TRANSPORT_SEED_CEILING = 6
-    try:
-        raised = None
-        try:
-            fc.prepare_seeds({"name": "L33"}, many)
-        except fc.CodexContractError as e:
-            raised = str(e)
-    finally:
-        fc.TRANSPORT_SEED_CEILING = saved_ceiling
-    assert raised is not None and "L33" in raised and "CODEX_SEED_CAP" in raised
-    assert "truncat" in raised
-    assert len(fc.prepare_seeds({"name": "L33"}, many[:5])) == 5
 
 
 def test_seed_digests_reverify_raises_seed_integrity_error_on_mutation():
