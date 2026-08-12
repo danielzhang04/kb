@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { renameWithRetrySync } from '../atomicRename.ts';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
@@ -418,7 +419,7 @@ function saveState(path: string, state: IntegrationState): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
   writeFileSync(temp, encoded, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
-  renameSync(temp, path);
+  renameWithRetrySync(temp, path);
 }
 
 function statusPaths(output: Buffer): string[] {

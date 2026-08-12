@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { renameWithRetrySync } from '../atomicRename.ts';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -358,7 +359,7 @@ export function createFileComposerStore(stateRoot: string, options: StoreOptions
     const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
     try {
       writeFileSync(temp, `${JSON.stringify(document)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-      renameSync(temp, path);
+      renameWithRetrySync(temp, path);
     } finally {
       if (existsSync(temp)) rmSync(temp, { force: true });
     }
