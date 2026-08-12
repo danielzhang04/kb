@@ -2595,3 +2595,106 @@ describe('control run archive route', () => {
     }
   });
 });
+
+/**
+ * Operator cross-subject READ scope (ruling, 2026-08-11).
+ *
+ * Runs are owned by the subject that created them. The SPA session is `operator`; everything the queue
+ * bridge and the executor launch is owned by `dashboard-engine`. Before this, the operator's own session
+ * could not see those runs AT ALL — not in the list, not in the Workflows graph, not by ref, not their
+ * events — which is what made every def-card run look like it had never happened.
+ *
+ * A verified operator session now READS across subjects. Nothing else changes: any other subject keeps
+ * its own scope, and every mutation stays owned by the run's subject, including refusing the operator.
+ */
+describe('operator cross-subject read scope', () => {
+  /** One approved+launched run owned by `subject`, imported the way the workflow registry imports one. */
+  function seedRunFor(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    subject: string,
+    key: string,
+    workflowDefId: string,
+  ): string {
+    const created = store.createProposalRevision(subject, {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: workflowDefId, title: `Run ${key}`,
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!created.ok) throw new Error(created.detail);
+    if (!store.decideProposal(subject, created.value.proposalRef, 1, {
+      expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: `${key}-approve`,
+    }).ok) throw new Error('approval failed');
+    const run = store.createRun(subject, {
+      title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
+      expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
+      idempotencyKey: `${key}-launch`,
+      stages: proposal.stages.map((item) => ({ stageId: item.id, title: item.title, dependsOn: item.dependsOn })),
+    });
+    if (!run.ok) throw new Error(run.detail);
+    const event = store.appendEvent(subject, run.value.run.runRef, {
+      kind: 'lifecycle', source: 'system', summary: `${key} started`,
+    });
+    if (!event.ok) throw new Error(event.detail);
+    return run.value.run.runRef;
+  }
+
+  it('lists, opens and streams a dashboard-engine run, and files it under its workflow definition', async () => {
+    const { app, store, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+
+      const list = await app.inject({ method: 'GET', url: '/api/control/runs', headers: headers(token) });
+      expect(list.statusCode).toBe(200);
+      const listed = (list.json() as { runs: Array<{ runRef: string; workflowRef: string | null }> }).runs;
+      // The run is reachable AND labelled: `workflowRefIndex` is built at the same scope as the list, so
+      // the def-card run lands under its definition's row instead of falling out of the graph.
+      expect(listed).toEqual([expect.objectContaining({ runRef: engineRun, workflowRef: 'daily-news' })]);
+
+      const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${engineRun}`, headers: headers(token) });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json()).toMatchObject({ ok: true, value: { run: { runRef: engineRun, workflowRef: 'daily-news' } } });
+      // Child records come back under the RUN's subject, not the reader's — an empty stage list here
+      // would be a run that "opens" and shows nothing.
+      expect((detail.json() as { value: { stages: unknown[] } }).value.stages).toHaveLength(proposal.stages.length);
+
+      const events = await app.inject({ method: 'GET', url: `/api/control/runs/${engineRun}/events`, headers: headers(token) });
+      expect(events.statusCode).toBe(200);
+      expect((events.json() as { value: Array<{ summary: string }> }).value.map((event) => event.summary))
+        .toContain('engine started');
+    } finally { await app.close(); }
+  });
+
+  it('gives a non-operator subject its OWN runs only — the widening is the operator identity, not the session', async () => {
+    const { app, store } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+      seedRunFor(store, 'other-agent', 'other', 'other-workflow');
+      const otherToken = mintSession('other-agent', SESSION).token;
+
+      const list = await app.inject({ method: 'GET', url: '/api/control/runs', headers: headers(otherToken) });
+      expect((list.json() as { runs: Array<{ runRef: string }> }).runs.map((run) => run.runRef)).not.toContain(engineRun);
+
+      expect((await app.inject({
+        method: 'GET', url: `/api/control/runs/${engineRun}`, headers: headers(otherToken),
+      })).statusCode).toBe(404);
+      expect((await app.inject({
+        method: 'GET', url: `/api/control/runs/${engineRun}/events`, headers: headers(otherToken),
+      })).statusCode).toBe(404);
+    } finally { await app.close(); }
+  });
+
+  it('does NOT widen mutations: the operator archiving another subject`s run is still not-found', async () => {
+    const { app, store, audit, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
+      const response = await app.inject({
+        method: 'POST', url: `/api/control/runs/${engineRun}/archive`, headers: headers(token),
+        payload: { idempotencyKey: 'operator-tries-to-archive', reason: 'not mine to dismiss' },
+      });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ error: 'not-found' });
+      // Refused BEFORE any audit row or store write — identical to the pre-widening behaviour.
+      expect(audit).toEqual([]);
+      expect(store.getRun('dashboard-engine', engineRun)).toMatchObject({ ok: true, value: { run: { state: 'planned' } } });
+    } finally { await app.close(); }
+  });
+});

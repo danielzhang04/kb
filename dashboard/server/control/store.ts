@@ -94,6 +94,25 @@ const STAGE_STATES = new Set<StageState>(['blocked', 'ready', 'running', 'waitin
 const ATTEMPT_STATES = new Set<AttemptState>(['queued', 'starting', 'running', 'waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']);
 const SESSION_STATES = new Set<ManagedSessionState>(['pending', 'starting', 'running', 'waiting', 'completed', 'failed', 'stopped', 'interrupted']);
 const TERMINAL_RUN = new Set<RunState>(['succeeded', 'failed', 'stopped', 'archived']);
+
+/** The single human identity the daemon mints WebAuthn sessions for (`server/auth/routes.ts` OPERATOR.id).
+ *  Every other subject in this document is a machine: the dashboard engine, an executor, a test fixture. */
+export const OPERATOR_SUBJECT = 'operator';
+
+/**
+ * How far a READ reaches across subjects.
+ *
+ * Every record here is stamped with the subject that created it, and every WRITE is — and stays —
+ * scoped to exactly one subject. That is the ownership boundary and nothing below widens it. But the
+ * daemon's runs are not all created by the same subject: the SPA session is `operator` while the queue
+ * bridge and the executor own their runs under `dashboard-engine`, so an own-subject-only read showed
+ * the one human on this machine only the half of the plane they happened to launch by hand.
+ *
+ * `'all-subjects'` is what a verified operator session resolves to (`routes.ts#readScope`). It changes
+ * WHICH records a read may return, never who may mutate them: no write path takes this type at all.
+ */
+export type ReadScope = 'own-subject' | 'all-subjects';
+
 const TERMINAL_STAGE = new Set<StageState>(['succeeded', 'failed', 'stopped']);
 const TERMINAL_ATTEMPT = new Set<AttemptState>(['succeeded', 'failed', 'stopped']);
 const TERMINAL_SESSION = new Set<ManagedSessionState>(['completed', 'failed', 'stopped']);
@@ -699,13 +718,15 @@ export interface BrokerStoreBackend {
 
 export interface ControlPlaneStore extends BrokerStoreBackend {
   listProposalRevisions(subject: string, proposalRef?: string): ProposalRevisionMetadata[];
-  listProposalRevisionsForComposer(subject: string, sourceComposerRef: string): ProposalRevisionMetadata[];
+  listProposalRevisionsForComposer(subject: string, sourceComposerRef: string, scope?: ReadScope): ProposalRevisionMetadata[];
   getProposalRevision(subject: string, proposalRef: string, revision: number): ControlResult<ProposalRevision>;
   createProposalRevision(subject: string, input: CreateProposalRevisionInput): ControlResult<ProposalRevision>;
   decideProposal(subject: string, proposalRef: string, revision: number, input: ApproveProposalInput): ControlResult<ProposalRevision>;
 
-  listRuns(subject: string): RunMetadata[];
-  getRun(subject: string, runRef: string): ControlResult<RunDetail>;
+  /** Reads. `scope` defaults to `'own-subject'`; only a verified operator session widens it (see
+   *  {@link ReadScope}). No mutation on this interface takes a scope. */
+  listRuns(subject: string, scope?: ReadScope): RunMetadata[];
+  getRun(subject: string, runRef: string, scope?: ReadScope): ControlResult<RunDetail>;
   createRun(subject: string, input: CreateRunInput): ControlResult<RunDetail>;
   /** Read an exact durable activation receipt without claiming a new activation. */
   getRunActivationReceipt(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt | null>;
@@ -768,15 +789,22 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   /**
    * Housekeeping sweep, not a governed HTTP write — no subject, no session, no idempotency key from a
    * caller. Auto-closes every OPEN, non-review-linked Human Request whose parent run has reached a
-   * terminal state (mirrors `TERMINAL_RUN`) or whose own age exceeds `staleWindowMs`, with an honest
-   * `'auto-closed'` response — it never claims a human answered. `transitionRun` calls the same
-   * terminal-state predicate inline (same commit as the transition); this method additionally sweeps
-   * the WHOLE document, so it also catches a request whose run went terminal before this shipped, or
-   * whose run never leaves `waiting-human` at all (an abandoned run with a dead manager). Called from
-   * the boot + interval sweep wired in `humanRequestSweep.ts`. Idempotent: an already-resolved request
-   * is simply skipped on the next sweep.
+   * terminal state (mirrors `TERMINAL_RUN`), with an honest `'auto-closed'` response — it never claims
+   * a human answered. `transitionRun` calls the same predicate inline (same commit as the transition);
+   * this method additionally sweeps the WHOLE document, so it also catches a request whose run went
+   * terminal before this shipped or by some path other than a transition. Called from the boot +
+   * interval sweep wired in `humanRequestSweep.ts`. Idempotent: an already-resolved request is simply
+   * skipped on the next sweep.
+   *
+   * TERMINAL STATE IS THE ONLY PREDICATE (ruling, 2026-08-11). An age-based predicate shipped here
+   * first and was removed: closure is IRREVERSIBLE — nothing reopens a resolved request, both
+   * `respondHumanRequest` and `reviseHumanRequest` conflict on one, and `stageBoundary` then refuses
+   * the run forever — so an age heuristic could permanently wedge a run that is legitimately parked on
+   * a human gate simply because the human took a week. A run that is genuinely dead reaches a terminal
+   * state (or an operator archives it, which resolves its requests in the same commit); a run that has
+   * not is still the operator's to answer.
    */
-  closeOrphanedHumanRequests(nowMs: number, staleWindowMs: number): CloseOrphanedHumanRequestsResult;
+  closeOrphanedHumanRequests(nowMs: number): CloseOrphanedHumanRequestsResult;
   /** Daniel-authorized, exact-run repair for the 2026-07-31 execution-lock launch defect. */
   preflightAuthorized20260731ExecutionLock(
     subject: string,
@@ -802,7 +830,7 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   ): ControlResult<ReconcileAuthorized20260801FailedRunResult>;
 
   appendEvent(subject: string, runRef: string, input: OperationalEventInput): ControlResult<OperationalEvent>;
-  listEvents(subject: string, runRef: string, afterCursor?: number, limit?: number): ControlResult<OperationalEvent[]>;
+  listEvents(subject: string, runRef: string, afterCursor?: number, limit?: number, scope?: ReadScope): ControlResult<OperationalEvent[]>;
 
   inventory(subject: string): StorageInventory;
   dryRunQuarantine(subject: string, runRefs: string[]): ControlResult<QuarantinePlan>;
@@ -1222,9 +1250,8 @@ function recordHumanResponse(
   request.updatedAt = at;
 }
 
-/** The per-request idempotency key an engine-side auto-close writes; `tag` distinguishes the terminal-run
- *  path from the age-based stale path so a request legitimately closed by one is never reprocessed by
- *  the other's key derivation (both check `state === 'open'` first regardless, but the key stays unique). */
+/** The per-request idempotency key an engine-side auto-close writes; `tag` names the terminal state the
+ *  run reached, so the key is unique per (run outcome, request) and a replay recognizes its own record. */
 function autoCloseResponseKey(tag: string, runRef: string, requestRef: string): string {
   return `auto-close:${tag}:${runRef}:${requestRef}`.slice(0, MAX_SHORT_TEXT);
 }
@@ -1234,11 +1261,20 @@ function autoCloseResponseKey(tag: string, runRef: string, requestRef: string): 
  * same shape as `archiveRun`'s resolution, except the decision is `'auto-closed'`, never `'responded'`,
  * so the record can never be misread as a human having answered. A review-linked request is left exactly
  * as `archiveRun` leaves it: untouched, pinned open by the review lineage invariants.
+ *
+ * Each close ALSO writes one governance event onto the run's timeline, from the same commit: an
+ * operator reading the run has to be able to see that the platform, not a person, resolved the ask —
+ * a resolution that appears only on the request record is invisible in the place the operator actually
+ * reads the run's history. Mirrors the event `routes.ts` appends for a human response, with
+ * `source: 'system'` because no human was involved. The run's event budget is respected: at the cap the
+ * request still closes and the event is dropped rather than the close failing (the timeline is the
+ * audit copy, not the record of truth — the sweep's audit ledger row is the durable one).
  */
 function autoCloseOpenHumanRequestsForRun(
-  document: StoreDocument, subject: string, runRef: string, atISO: string, tag: string, reason: string,
+  document: StoreDocument, subject: string, runRef: string, atISO: string, tag: string, reason: string, maxEvents: number,
 ): StoredHumanRequest[] {
   const closed: StoredHumanRequest[] = [];
+  let eventCount = document.events.filter((item) => item.subject === subject && item.runRef === runRef).length;
   for (const request of document.humanRequests) {
     if (request.subject !== subject || request.runRef !== runRef || request.state !== 'open') continue;
     if (isReviewLinkedRequest(document, request.requestRef)) continue;
@@ -1253,6 +1289,27 @@ function autoCloseOpenHumanRequestsForRun(
       response: reason,
     }, atISO);
     closed.push(request);
+    if (eventCount >= maxEvents) continue;
+    eventCount += 1;
+    document.events.push({
+      subject,
+      cursor: document.nextEventCursor,
+      runRef,
+      kind: 'governance',
+      source: 'system',
+      stageRef: request.stageRef,
+      attemptRef: null,
+      sessionRef: null,
+      status: 'stopped',
+      summary: `Human Request auto-closed without an answer (${tag}): ${reason}`,
+      command: null,
+      toolName: null,
+      path: null,
+      diff: null,
+      checkpoint: null,
+      createdAt: atISO,
+    });
+    document.nextEventCursor += 1;
   }
   return closed;
 }
@@ -2819,8 +2876,15 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
   const ref = (prefix: string): string => `${prefix}-${newId()}`;
   const stamp = (): string => now().toISOString();
 
-  const findRun = (document: StoreDocument, subject: string, runRef: string): StoredRun | undefined =>
-    document.runs.find((item) => item.subject === subject && item.runRef === runRef);
+  /**
+   * The one place a run is resolved from a ref. `scope` defaults to `'own-subject'`, so every WRITE
+   * path below keeps the exact ownership check it always had; only the reads that a verified operator
+   * session drives ever pass `'all-subjects'` (see {@link ReadScope}). Run refs are globally unique
+   * (`run-<uuid>`), so widening the scope can never resolve a ref to a different subject's run by
+   * accident — it only stops hiding one.
+   */
+  const findRun = (document: StoreDocument, subject: string, runRef: string, scope: ReadScope = 'own-subject'): StoredRun | undefined =>
+    document.runs.find((item) => item.runRef === runRef && (scope === 'all-subjects' || item.subject === subject));
 
   const findSession = (document: StoreDocument, subject: string, runRef: string, sessionRef: string): StoredSession | undefined =>
     document.sessions.find((item) => item.subject === subject && item.runRef === runRef && item.sessionRef === sessionRef);
@@ -2972,9 +3036,9 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         .map(proposalMetadata);
     },
 
-    listProposalRevisionsForComposer(subject, sourceComposerRef) {
+    listProposalRevisionsForComposer(subject, sourceComposerRef, scope = 'own-subject') {
       return load().proposals
-        .filter((item) => item.subject === subject && item.sourceComposerRef === sourceComposerRef)
+        .filter((item) => (scope === 'all-subjects' || item.subject === subject) && item.sourceComposerRef === sourceComposerRef)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.revision - a.revision)
         .map(proposalMetadata);
     },
@@ -3051,15 +3115,21 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return ok(publicProposal(proposal));
     },
 
-    listRuns(subject) {
+    listRuns(subject, scope = 'own-subject') {
       const document = load();
-      return document.runs.filter((item) => item.subject === subject).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((run) => metadata(document, subject, run));
+      return document.runs
+        .filter((item) => scope === 'all-subjects' || item.subject === subject)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        // Child records are gathered under the RUN's own subject, never the caller's: under
+        // `'all-subjects'` those differ, and counting a foreign run's stages under the caller's subject
+        // would report zeros for everything.
+        .map((run) => metadata(document, run.subject, run));
     },
 
-    getRun(subject, runRef) {
+    getRun(subject, runRef, scope = 'own-subject') {
       const document = load();
-      const run = findRun(document, subject, runRef);
-      return run ? ok(detail(document, subject, run)) : fail('not-found', 'run was not found');
+      const run = findRun(document, subject, runRef, scope);
+      return run ? ok(detail(document, run.subject, run)) : fail('not-found', 'run was not found');
     },
 
     createRun(subject, input) {
@@ -3472,6 +3542,7 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         autoCloseOpenHumanRequestsForRun(
           document, subject, runRef, run.updatedAt, `terminal:${state}`,
           `Automatically closed — the run reached its terminal state ('${state}') without this being answered.`,
+          maxEvents,
         );
       }
       commit(document);
@@ -5201,13 +5272,13 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
     },
 
     /**
-     * The boot/tick sweep's write path — see the interface doc for the two predicates. Runs across every
-     * subject in one pass (a background job has no caller subject to scope to); a real per-transition
-     * close already happened inline in `transitionRun` for a run that reaches terminal state after this
-     * shipped, so this mostly re-covers PRE-EXISTING orphans on its first sweep and is a cheap no-op on
-     * every sweep after. One commit total, only when something actually closed.
+     * The boot/tick sweep's write path — see the interface doc for the single predicate. Runs across
+     * every subject in one pass (a background job has no caller subject to scope to); a real
+     * per-transition close already happened inline in `transitionRun` for a run that reaches terminal
+     * state after this shipped, so this mostly re-covers PRE-EXISTING orphans on its first sweep and is
+     * a cheap no-op on every sweep after. One commit total, only when something actually closed.
      */
-    closeOrphanedHumanRequests(nowMs, staleWindowMs) {
+    closeOrphanedHumanRequests(nowMs) {
       const document = load();
       const atISO = new Date(nowMs).toISOString();
       const closed: StoredHumanRequest[] = [];
@@ -5216,25 +5287,8 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
         closed.push(...autoCloseOpenHumanRequestsForRun(
           document, run.subject, run.runRef, atISO, `terminal:${run.state}`,
           `Automatically closed — the run reached its terminal state ('${run.state}') without this being answered.`,
+          maxEvents,
         ));
-      }
-      // Age-based staleness: independent of run state, because a run can sit in `waiting-human` forever
-      // with a dead manager and never reach a terminal state on its own — exactly what stranded the five
-      // 2026-07 requests this sweep was built to clear. Already-closed requests (including the ones the
-      // loop above just resolved) read `state !== 'open'` and are skipped.
-      for (const request of document.humanRequests) {
-        if (request.state !== 'open') continue;
-        const ageMs = nowMs - Date.parse(request.createdAt);
-        if (!Number.isFinite(ageMs) || ageMs <= staleWindowMs) continue;
-        if (isReviewLinkedRequest(document, request.requestRef)) continue;
-        if (request.kind === 'review') continue; // see the terminal-close note above — reviews stay explicit
-        const days = Math.max(1, Math.round(ageMs / 86_400_000));
-        recordHumanResponse(request, request.subject, {
-          decision: 'auto-closed',
-          idempotencyKey: autoCloseResponseKey('stale', request.runRef, request.requestRef),
-          response: `Automatically closed — no response for ${days} days; presumed orphaned.`,
-        }, atISO);
-        closed.push(request);
       }
       if (closed.length > 0) commit(document);
       return { closed: closed.map(publicRequest) };
@@ -5276,14 +5330,15 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       return ok(publicEvent(event));
     },
 
-    listEvents(subject, runRef, afterCursor = 0, limit = 250) {
+    listEvents(subject, runRef, afterCursor = 0, limit = 250, scope = 'own-subject') {
       const document = load();
-      if (!findRun(document, subject, runRef)) return fail('not-found', 'run was not found');
+      const run = findRun(document, subject, runRef, scope);
+      if (!run) return fail('not-found', 'run was not found');
       if (!Number.isSafeInteger(afterCursor) || afterCursor < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_EVENT_PAGE) {
         return fail('invalid', `event cursor must be non-negative and limit must be 1-${MAX_EVENT_PAGE}`);
       }
       return ok(document.events
-        .filter((event) => event.subject === subject && event.runRef === runRef && event.cursor > afterCursor)
+        .filter((event) => event.subject === run.subject && event.runRef === runRef && event.cursor > afterCursor)
         .slice(0, limit)
         .map(publicEvent));
     },

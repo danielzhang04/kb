@@ -334,20 +334,25 @@ describe('the run surface', () => {
     expect(screen.getByTestId('entity-detail-status').textContent).toContain('running');
   });
 
-  it('leads a resolved request with its plain ask too, never the raw machine title', () => {
-    // REGRESSION: "Already answered" rendered `request.title` verbatim — the exact
-    // `automatic:policy:draft:spending-language-requires-human-review` shape Daniel saw live. The open
-    // gate above already leads with `ask`; this closes the same gap on the resolved side.
+  it('leads a resolved request with plain words in the PAST tense — never the raw title, never a live demand', () => {
+    // REGRESSION 1: "Already answered" rendered `request.title` verbatim — the exact
+    // `automatic:policy:draft:spending-language-requires-human-review` shape Daniel saw live.
+    // REGRESSION 2: the fix for that printed `request.ask`, which is written for an OPEN request:
+    // present tense, ending in an instruction ("Open the run to approve or turn it down"). Under
+    // "Already answered", and especially on one the platform auto-closed with nobody answering, that
+    // reads as a live request for something the operator can no longer do. Past tense headline, and the
+    // decision line below it — which is the actual record of how it ended — is untouched.
     const detail = makeDetail({
       humanRequests: [{
         requestRef: 'req-closed', runRef: 'run-1', stageRef: 'ref-idea', kind: 'approval', revision: 1,
         state: 'resolved', title: 'automatic:policy:draft:spending-language-requires-human-review',
         prompt: 'spending-language-requires-human-review',
-        ask: 'headless run needs your sign-off before it can go any further.',
+        ask: 'headless run needs your sign-off before it can go any further. Open the run to approve or turn it down.',
         technicalDetail: 'automatic:policy:draft:spending-language-requires-human-review',
         displayName: 'headless run', shortRef: 1,
         response: {
-          requestRevision: 1, decision: 'auto-closed', response: "Automatically closed — no response for 15 days; presumed orphaned.",
+          requestRevision: 1, decision: 'auto-closed',
+          response: "Automatically closed — the run reached its terminal state ('failed') without this being answered.",
           respondedAt: '2026-08-11T00:00:00.000Z',
         },
         createdAt: '2026-07-21T00:00:00.000Z', updatedAt: '2026-08-11T00:00:00.000Z',
@@ -356,10 +361,14 @@ describe('the run surface', () => {
     render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
 
     const resolved = screen.getByTestId('resolved-request-req-closed');
-    expect(resolved.querySelector('h4')?.textContent).toBe('headless run needs your sign-off before it can go any further.');
+    expect(resolved.querySelector('h4')?.textContent).toBe('headless run asked for your sign-off.');
     expect(resolved.textContent).not.toContain('automatic:policy:draft:spending-language-requires-human-review');
+    // No present-tense demand and no instruction to act on something already settled.
+    expect(resolved.textContent).not.toContain('needs your sign-off');
+    expect(resolved.textContent).not.toContain('Open the run to');
+    // The decision line survives in full: what the platform decided, why, and when.
     expect(resolved.textContent).toContain('auto-closed');
-    expect(resolved.textContent).toContain('presumed orphaned');
+    expect(resolved.textContent).toContain('terminal state');
   });
 
   it('links back to the workflow that produced it, off the server grouping key', () => {

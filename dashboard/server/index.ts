@@ -20,6 +20,7 @@ import { installShutdownHandlers } from './shutdown.ts';
 import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 import { startStrandedArchiver } from './write/strandedArchiver.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
+import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -85,6 +86,23 @@ export function resolveHumanRequestSweepIntervalMs(env: NodeJS.ProcessEnv = proc
   if (raw === undefined || raw === '') return DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
+}
+
+/**
+ * One daemon-log line for a sweep that actually closed something, or `null` for the overwhelmingly
+ * common empty sweep (a 5-minute cadence must never narrate its own no-ops). Says WHAT closed and WHY,
+ * because the reason is the only thing that distinguishes a correct close from a bug, and flags any
+ * request whose audit row could not be written so a short trail is never silent.
+ */
+export function humanRequestSweepLogLine(result: HumanRequestSweepResult): string | null {
+  if (result.closed.length === 0) return null;
+  const closed = result.closed
+    .map((request) => `${request.requestRef} (run ${request.runRef}: ${request.reason ?? 'no reason recorded'})`)
+    .join('; ');
+  const audit = result.auditFailures.length > 0
+    ? ` — AUDIT ROW FAILED for ${result.auditFailures.join(', ')}`
+    : '';
+  return `[human-request-sweep] auto-closed ${result.closed.length}: ${closed}${audit}`;
 }
 
 /**
@@ -218,12 +236,23 @@ export function buildApp(): FastifyInstance {
   app.addHook('onClose', async () => { stopStrandedArchiver(); });
 
   // Human Request orphan sweeper — ON BY DEFAULT. Runs once immediately (the boot sweep — clears any
-  // request already stranded before this process started, which is exactly how five 2026-07 requests
-  // were found still open on 2026-08-11: their runs sat in `waiting-human` with a manager that never
-  // came back, and nothing had ever re-checked them) and then on the interval. Every failure just leaves
-  // requests open — the pre-fix status quo — so there is no unsafe direction for this to fail toward.
+  // request left open on a run that had already gone terminal before this process started, which is how
+  // stale 2026-07 requests were found still open on 2026-08-11: nothing had ever re-checked them) and
+  // then on the interval. Terminal run state is its ONLY predicate. Every failure just leaves requests
+  // open — the pre-fix status quo — so there is no unsafe direction for this to fail toward. Each close
+  // writes an audit-ledger row under the repo root and one line to the daemon log saying what and why.
   const stopHumanRequestSweeper = startHumanRequestSweeper(
-    { store: surfaceCtx.controlStore },
+    {
+      store: surfaceCtx.controlStore,
+      repoRoot: surfaceCtx.repoRoot,
+      appendAuditLocal: surfaceCtx.appendAuditLocal,
+      now: surfaceCtx.now,
+      onSweep: (result) => {
+        const line = humanRequestSweepLogLine(result);
+        // eslint-disable-next-line no-console
+        if (line) console.info(line);
+      },
+    },
     resolveHumanRequestSweepIntervalMs(),
   );
   app.addHook('onClose', async () => { stopHumanRequestSweeper(); });

@@ -469,8 +469,15 @@ export function cardToWorkflowRequest(card: ParsedCard, options: CardToWorkflowO
  * raised `TypeError: Object of type date is not JSON serializable` for any such card, so the bridge could
  * never read it (a 500 'failed' dispatch outcome, plus a noisy traceback on stderr). `default=str` is the
  * standard escape hatch: for any value `json.dumps` cannot natively encode, it calls `str(value)` instead
- * of raising. `date`/`datetime` objects' `str()` IS their ISO-8601 form (`date(2026,8,4)` -> "2026-08-04"),
- * so this reaches the TS side as a plain ISO string meta value — never a thrown parse failure.
+ * of raising, so the value reaches the TS side as a string and the card is readable.
+ *
+ * What that string IS, precisely: for `date`, `str()` is the ISO-8601 form (`date(2026,8,4)` ->
+ * "2026-08-04"). For `datetime` it is NOT — `str()` joins date and time with a SPACE where ISO-8601 uses
+ * 'T' ("2026-08-04 09:30:00"), and the same goes for any other type this fallback stringifies. Nothing
+ * downstream parses a meta value as a timestamp (the bridge reads `id`/`owner`/`state`/`profile`/
+ * `action`/`target`/`risk-tier`/`parameters`, all strings by construction), so this is a faithfulness
+ * note, not a live defect: if a consumer ever does need one, normalize it in THIS script with an
+ * `isoformat()`-aware default rather than teaching the TS side to parse Python's `str()`.
  */
 export const QUEUE_BRIDGE_READ_CARD_SCRIPT = `
 import sys, json
@@ -619,8 +626,20 @@ export async function dispatchClaimedCard(
   // prior tick whose decision audit threw AFTER createProposalRevision, or that crashed before deciding)
   // is REUSED rather than left behind — otherwise a repeatedly-failing audit mints a fresh undecided
   // revision every re-dispatch and leaks an unbounded pile of them. The audit + idempotent decide below
-  // then run against whichever revision (fresh or reused-undecided) we settled on. A revision the bridge
-  // created is only ever approved by the bridge, so an undecided one is always safe to re-drive to approved.
+  // then run against whichever revision (fresh or reused-undecided) we settled on.
+  //
+  // WHY ADOPTING AN UNDECIDED REVISION IS SAFE — and what actually makes it safe. Re-driving someone
+  // else's undecided revision to `approved` would be a real defect: `server/workflows/routes.ts` can
+  // 500 AFTER `createProposalRevision` and leave an undecided revision behind for the SAME definition
+  // id, and the bridge must never adopt that and approve it on the human's behalf. What prevents it is
+  // NOT the sourceTurnId (since the Bug-B fix below, the bridge and the SPA route use the identical
+  // one) and NOT the hash: it is SUBJECT OWNERSHIP. Proposal revisions are subject-scoped, the SPA
+  // route creates under the operator's session subject, and this read is `'own-subject'` — the bridge's
+  // own `dashboard-engine` — so the only revisions in `matching` are ones the bridge itself created.
+  // The default read scope is therefore load-bearing here, not incidental: it must stay own-subject
+  // even though the operator's READ surface is now cross-subject (`store.ts` {@link ReadScope}).
+  // Pinned by 'refuses to adopt an undecided revision owned by another subject' in queueBridge.test.ts.
+  //
   // Bug B fix (2026-08-11): match the SPA launch route's convention EXACTLY — routes.ts's
   // `launchDefinition` creates its proposal revision with `sourceComposerRef: 'workflow-registry'`,
   // `sourceTurnId: def.id` (no prefix). The Workflows view's run -> definition linkage
@@ -634,7 +653,9 @@ export async function dispatchClaimedCard(
   const sourceTurnId = mapped.def.id;
   const idempotencyKey = `queue-bridge:${card.id}`;
   const matching = ctx.controlStore
-    .listProposalRevisionsForComposer(subject, 'workflow-registry')
+    // Own-subject scope, explicitly: see the ownership argument above — this is what stops the bridge
+    // approving a revision a human's failed launch left behind.
+    .listProposalRevisionsForComposer(subject, 'workflow-registry', 'own-subject')
     .filter((c) => c.sourceTurnId === sourceTurnId && c.hash === contentHash);
   const approved = matching.find((c) => c.approval?.decision === 'approved');
 

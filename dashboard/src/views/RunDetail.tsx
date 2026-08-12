@@ -279,6 +279,28 @@ function humanIdempotencyKey(request: HumanRequestDto, decision: HumanRequestDec
   return `human:${request.requestRef}:${request.revision}:${decision}`;
 }
 
+/**
+ * The headline for a request in the "Already answered" section.
+ *
+ * `request.ask` (server-derived, `humanRequestAsk.ts`) is written for an OPEN request: it is present
+ * tense and ends in an instruction — "…needs your sign-off before it can go any further. Open the run
+ * to approve or turn it down." Printing that under a resolved request, and especially under one the
+ * platform auto-closed with nobody answering, makes a settled record read as a live demand. So a
+ * resolved request gets a past-tense headline naming what it HAD asked for; the decision line below it
+ * (decision · reason · timestamp) is untouched and remains the record of how it ended.
+ *
+ * Kind-keyed, not pattern-keyed: this says only what the request WAS, so it needs none of the ask
+ * map's cause-detection. Typed as a total map over the kind union, so a new kind fails to compile here
+ * rather than silently falling through to a vaguer sentence.
+ */
+const RESOLVED_HEADLINE: Record<HumanRequestDto['kind'], (runName: string) => string> = {
+  approval: (runName) => `${runName} asked for your sign-off.`,
+  review: (runName) => `${runName} asked you to review a finished step.`,
+  input: (runName) => `${runName} asked you for an answer before carrying on.`,
+  intervention: (runName) => `${runName} stopped and asked for a person to look at it.`,
+  'governance-refusal': (runName) => `${runName} was refused on governance grounds and asked what to do next.`,
+};
+
 /* ============================================================================
  * Section bodies.
  * ========================================================================= */
@@ -1199,9 +1221,10 @@ export function RunDetail({
               <h4 className="entity-block__title">Already answered</h4>
               {resolvedRequests.map((request) => (
                 <article key={request.requestRef} className="control-request" data-testid={`resolved-request-${request.requestRef}`}>
-                  {/* spec §3b, same law as the open card above: the plain ASK, never the machine's raw
-                    * `automatic:policy:...` title. */}
-                  <h4>{request.ask}</h4>
+                  {/* spec §3b, same law as the open card above: plain words, never the machine's raw
+                    * `automatic:policy:...` title — but in the PAST tense, because this one is settled
+                    * (see resolvedRequestHeadline). */}
+                  <h4>{RESOLVED_HEADLINE[request.kind](request.displayName)}</h4>
                   {request.response ? (
                     <p className="control-help">
                       <span className="mc-mono">{request.response.decision}</span>

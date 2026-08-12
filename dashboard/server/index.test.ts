@@ -6,6 +6,7 @@ import {
   DEFAULT_STRANDED_ARCHIVE_INTERVAL_MS,
   DEFAULT_STRANDED_ARCHIVE_WINDOW_MS,
   STRANDED_ARCHIVE_LIVE_MOVE_ALLOWED,
+  humanRequestSweepLogLine,
   resolveHumanRequestSweepIntervalMs,
   resolveStrandedArchiveIntervalMs,
   resolveStrandedArchiveDryRun,
@@ -100,5 +101,32 @@ describe('Human Request orphan-sweep wiring — ON BY DEFAULT (data-only, no fil
 
   it('falls back to the default on a non-numeric override rather than disabling silently', () => {
     expect(resolveHumanRequestSweepIntervalMs({ DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS: 'nonsense' })).toBe(300_000);
+  });
+
+  // The `onSweep` sink the sweeper documents is wired in `buildApp` to log through this function — the
+  // sweep used to declare the callback and nothing ever passed one, so an auto-close left no daemon-log
+  // trace at all. What it prints is what makes the log worth having: which requests, on which runs, why.
+  it('logs a line naming every closed request, its run and its reason — and stays silent on an empty sweep', () => {
+    expect(humanRequestSweepLogLine({ closed: [], auditFailures: [] })).toBeNull();
+
+    const line = humanRequestSweepLogLine({
+      closed: [
+        { requestRef: 'request-1', runRef: 'run-9', reason: "terminal state ('failed')" },
+        { requestRef: 'request-2', runRef: 'run-9', reason: null },
+      ],
+      auditFailures: [],
+    });
+    expect(line).toContain('auto-closed 2');
+    expect(line).toContain("request-1 (run run-9: terminal state ('failed'))");
+    expect(line).toContain('request-2 (run run-9: no reason recorded)');
+    expect(line).not.toContain('AUDIT ROW FAILED');
+  });
+
+  it('flags an unwritten audit row in the same line, so a short trail is never silent', () => {
+    const line = humanRequestSweepLogLine({
+      closed: [{ requestRef: 'request-1', runRef: 'run-9', reason: 'terminal:failed' }],
+      auditFailures: ['request-1'],
+    });
+    expect(line).toContain('AUDIT ROW FAILED for request-1');
   });
 });

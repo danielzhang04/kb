@@ -28,7 +28,9 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_REF,
   AUTHORIZED_20260801_FAILED_RUN_MANAGER_SESSION_REF,
   AUTHORIZED_20260801_FAILED_RUN_STAGES,
+  OPERATOR_SUBJECT,
   exactAuthorized20260801ProposalRevision,
+  type ReadScope,
   type RunActivationPhase,
 } from './store.ts';
 import {
@@ -67,6 +69,25 @@ function subject(req: FastifyRequest): string | null {
 }
 
 /**
+ * The read scope this request resolves to — the ONE place cross-subject read visibility is decided
+ * (ruling, 2026-08-11).
+ *
+ * This daemon serves exactly one human, who owns the whole machine; but a run is owned by whichever
+ * subject created it, and only the runs launched by hand through the SPA carry the operator's. Every
+ * run the queue bridge or the executor launches is owned by `dashboard-engine` (`activation.ts`), so an
+ * own-subject-only read hid them from the runs list, from the Workflows graph, and from run detail —
+ * unreachable, not merely unlabelled.
+ *
+ * So a VERIFIED operator session READS across every subject. Nothing else does: any other subject keeps
+ * its own scope. And this value never reaches a mutation — no write method on the store accepts a scope
+ * at all — so approvals, responses, reroutes and transitions stay owned by their subject exactly as
+ * before, including refusing the operator on another subject's run.
+ */
+function readScope(req: FastifyRequest): ReadScope {
+  return subject(req) === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
+}
+
+/**
  * The `sourceComposerRef` that `server/workflows/routes.ts` stamps on every revision it creates from a
  * workflow definition; such a revision carries that definition's id in `sourceTurnId`.
  */
@@ -78,10 +99,14 @@ const WORKFLOW_COMPOSER_REF = 'workflow-registry';
  * This join used to be re-derived in the BROWSER, which forced every surface listing runs to also fetch
  * the whole revision list just to answer "which workflow does this run belong to". The revisions are
  * already in the store here, so the grouping key is stamped at the DTO-build site instead.
+ *
+ * Built at the SAME `scope` as the runs it labels: a run read under `'all-subjects'` whose revision was
+ * looked up under the caller's own subject would come back with `workflowRef: null` and silently drop
+ * out of the Workflows graph — the exact symptom this index exists to prevent.
  */
-function workflowRefIndex(ctx: SurfaceContext, sub: string): Map<string, string> {
+function workflowRefIndex(ctx: SurfaceContext, sub: string, scope: ReadScope): Map<string, string> {
   const byProposal = new Map<string, string>();
-  for (const revision of ctx.controlStore.listProposalRevisionsForComposer(sub, WORKFLOW_COMPOSER_REF)) {
+  for (const revision of ctx.controlStore.listProposalRevisionsForComposer(sub, WORKFLOW_COMPOSER_REF, scope)) {
     if (revision.sourceTurnId) byProposal.set(revision.proposalRef, revision.sourceTurnId);
   }
   return byProposal;
@@ -125,10 +150,10 @@ function humanRequestDisplay(
 }
 
 /** The `/api/control/runs/:runRef` DTO: the run and each of its requests carry the run's display identity. */
-function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail): RunDetail {
+function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope: ReadScope): RunDetail {
   return {
     ...detail,
-    run: runDisplay(ctx, detail.run, workflowRefIndex(ctx, sub)),
+    run: runDisplay(ctx, detail.run, workflowRefIndex(ctx, sub, scope)),
     humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
   };
 }
@@ -583,13 +608,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   scope.get('/api/control/runs', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const scope = readScope(req);
     // One revision walk for the whole list, not one per run.
-    const workflows = workflowRefIndex(ctx, sub);
+    const workflows = workflowRefIndex(ctx, sub, scope);
     // An archived run is one the operator explicitly dismissed. It stays fully readable by ref and is
     // still listable on request, but it is out of the DEFAULT projection every surface renders —
     // otherwise "archive" would mean nothing and dead runs would keep haunting every list.
     const includeArchived = string((req.query as { includeArchived?: unknown }).includeArchived) === '1';
-    const runs = ctx.controlStore.listRuns(sub).filter((run) => includeArchived || run.state !== 'archived');
+    const runs = ctx.controlStore.listRuns(sub, scope).filter((run) => includeArchived || run.state !== 'archived');
     return reply.send({ runs: runs.map((run) => runDisplay(ctx, run, workflows)) });
   });
 
@@ -597,11 +623,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const runRef = (req.params as { runRef: string }).runRef;
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const scope = readScope(req);
+    const detail = ctx.controlStore.getRun(sub, runRef, scope);
     if (!detail.ok) return sendResult(reply, detail);
     return reply.send({
       ok: true,
-      value: runDetailDto(ctx, sub, detail.value),
+      value: runDetailDto(ctx, sub, detail.value, scope),
       replayed: detail.replayed ?? false,
       execution: executionPosture(ctx),
     });
@@ -611,7 +638,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const { runRef, attemptRef } = req.params as { runRef: string; attemptRef: string };
-    const detail = ctx.controlStore.getRun(sub, runRef);
+    const detail = ctx.controlStore.getRun(sub, runRef, readScope(req));
     if (!detail.ok) return sendResult(reply, detail);
     if (!detail.value.attempts.some((attempt) => attempt.attemptRef === attemptRef)) {
       return reply.code(404).send({ error: 'attempt-not-found' });
@@ -630,7 +657,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const query = req.query as { after?: string; limit?: string };
-    return sendResult(reply, ctx.controlStore.listEvents(sub, (req.params as { runRef: string }).runRef, Number(query.after ?? 0), Number(query.limit ?? 200)));
+    return sendResult(reply, ctx.controlStore.listEvents(
+      sub, (req.params as { runRef: string }).runRef, Number(query.after ?? 0), Number(query.limit ?? 200), readScope(req),
+    ));
   });
 
   scope.post('/api/control/runs/:runRef/stages/:stageRef/reroute', { preHandler }, async (req, reply) => {
