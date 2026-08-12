@@ -45,11 +45,23 @@ function Get-LeasePath {
 
 # Shared atomic-write helper: a plain Set-Content is not atomic on Windows,
 # so a crash or power loss mid-write leaves a truncated file that the next
-# reader chokes on. Writing to a unique temp file then Move-Item -Force into
-# place means a reader always sees either the fully-old or fully-new
-# content. The PID + GUID suffix keeps concurrent writers (e.g. a -Heartbeat
-# CLI call racing the supervisor) from colliding on the temp file itself --
-# only the final Move-Item is a race, and -Force resolves that atomically.
+# reader chokes on. Writing to a unique temp file then kernel-atomically
+# replacing the destination means a reader always sees either the fully-old
+# or fully-new content. The PID + GUID suffix keeps concurrent writers (e.g.
+# a -Heartbeat CLI call racing the supervisor) from colliding on the temp
+# file itself -- only the final replace is a race.
+#
+# 2026-08-12 incident: Move-Item -Force onto an existing destination is
+# delete-then-create, not atomic -- a window in which a concurrent writer's
+# own create can land and throw "Cannot create a file when that file already
+# exists." That escaped into the supervisor's own lease rewrite (no
+# try/catch there at the time) and killed a live supervisor with four leases
+# still held. MoveFileExW with MOVEFILE_REPLACE_EXISTING is a single kernel
+# call -- no delete-then-create window -- so this replaces Move-Item outright.
+# Retried up to 3 times with a short jittered sleep for the residual sharing-
+# violation case (another process has the destination open), then throws --
+# callers decide (F2 catches it in the supervisor loop; the Heartbeat CLI
+# already catches and exits 0).
 function Write-JsonFileAtomic {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -58,7 +70,13 @@ function Write-JsonFileAtomic {
     $tmp = "$Path.$PID.$([guid]::NewGuid().ToString('N')).tmp"
     try {
         $Data | ConvertTo-Json -Compress -Depth 5 | Set-Content -Path $tmp -Encoding utf8
-        Move-Item -Path $tmp -Destination $Path -Force
+        $lastWin32 = 0
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            if ([KbPower.FileNative]::MoveFileExW($tmp, $Path, $script:MOVEFILE_REPLACE_EXISTING)) { return }
+            $lastWin32 = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            Start-Sleep -Milliseconds (15 + (Get-Random -Maximum 26))
+        }
+        throw "Write-JsonFileAtomic: MoveFileExW failed for '$Path' after 3 attempts (win32=$lastWin32)"
     } finally {
         Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
     }
@@ -623,6 +641,19 @@ Add-Type -Namespace KbPower -Name Native -MemberDefinition @'
 [DllImport("kernel32.dll", SetLastError = true)]
 public static extern uint SetThreadExecutionState(uint esFlags);
 '@ -ErrorAction SilentlyContinue
+
+# Separate type from KbPower.Native above (not an added member on it): that
+# type's -ErrorAction SilentlyContinue means a partial prior load (e.g. a
+# stale in-process module from an earlier version) could otherwise hide this
+# member never having been added. Used by Write-JsonFileAtomic, defined
+# earlier in this file -- function bodies resolve at call time, after the
+# whole module (including this Add-Type) has loaded, so definition order
+# here does not matter.
+Add-Type -Namespace KbPower -Name FileNative -MemberDefinition @'
+[DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+public static extern bool MoveFileExW(string lpExistingFileName, string lpNewFileName, uint dwFlags);
+'@ -ErrorAction SilentlyContinue
+$script:MOVEFILE_REPLACE_EXISTING = [uint32]0x1
 
 # The L suffix on 0x80000000 is required: PowerShell 5.1 parses a bare
 # 0x80000000 literal as a negative Int32, and casting that to [uint32] throws

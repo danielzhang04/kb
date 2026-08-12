@@ -67,6 +67,60 @@ Describe 'lease store' {
     }
 }
 
+Describe 'Write-JsonFileAtomic concurrency (F1: MoveFileExW ends the delete-then-create race)' {
+    # Incident 2026-08-12 01:29: the OLD Move-Item -Force implementation is
+    # delete-then-create on an existing destination -- a window in which a
+    # concurrent writer's own create can collide, throwing "Cannot create a
+    # file when that file already exists." That escaped into the supervisor's
+    # own lease rewrite (no try/catch there at the time) and killed it with
+    # four live leases still held. See docs/specs/2026-08-12-keepawake-
+    # supervisor-hardening.md.
+    BeforeEach {
+        $script:root = Join-Path $env:TEMP ("ka-test-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $script:root | Out-Null
+        $env:KB_KEEPAWAKE_ROOT = $script:root
+    }
+    AfterEach {
+        Remove-Item $script:root -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
+    }
+
+    It 'survives two concurrent writers hammering the same path' {
+        $target = Join-Path $script:root 'contended.lease'
+        $modPath = (Resolve-Path "$PSScriptRoot\KeepAwake.psm1").Path
+        $writer = {
+            param($ModPath, $Target, $Tag)
+            Import-Module $ModPath -Force
+            for ($i = 0; $i -lt 200; $i++) {
+                Write-JsonFileAtomic -Path $Target -Data @{ tag = $Tag; i = $i }
+            }
+        }
+        $j1 = Start-Job -ScriptBlock $writer -ArgumentList $modPath, $target, 'a'
+        $j2 = Start-Job -ScriptBlock $writer -ArgumentList $modPath, $target, 'b'
+        $out = Receive-Job -Job $j1, $j2 -Wait -AutoRemoveJob -ErrorAction Stop
+        # The old Move-Item -Force implementation throws
+        # "Cannot create a file when that file already exists" here.
+        (Get-Content $target -Raw | ConvertFrom-Json).tag | Should -BeIn @('a', 'b')
+    }
+
+    It 'file content is never torn mid-write' {
+        $target = Join-Path $script:root 'contended.lease'
+        Write-JsonFileAtomic -Path $target -Data @{ tag = 'seed'; i = 0 }
+        $modPath = (Resolve-Path "$PSScriptRoot\KeepAwake.psm1").Path
+        $writerJob = Start-Job -ScriptBlock {
+            param($ModPath, $Target)
+            Import-Module $ModPath -Force
+            for ($i = 0; $i -lt 300; $i++) { Write-JsonFileAtomic -Path $Target -Data @{ tag = 'w'; i = $i } }
+        } -ArgumentList $modPath, $target
+        for ($r = 0; $r -lt 300; $r++) {
+            $raw = $null
+            try { $raw = [System.IO.File]::ReadAllText($target) } catch { continue } # reader may race the replace instant; only content matters
+            if ($raw) { { $raw | ConvertFrom-Json | Out-Null } | Should -Not -Throw }
+        }
+        Receive-Job -Job $writerJob -Wait -AutoRemoveJob -ErrorAction Stop
+    }
+}
+
 Describe 'lease heartbeat update (I3: atomic, corruption-safe, moved off the CLI)' {
     BeforeEach {
         $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
