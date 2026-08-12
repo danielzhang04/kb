@@ -2172,14 +2172,38 @@ def test_cli_reports_failures_with_a_nonzero_exit():
 
 
 def test_cli_never_loads_a_key():
+    """A tracing environ proves main() performs ZERO credential-key reads — absence of the key
+    succeeding is not evidence (an os.environ.get would still succeed with it absent)."""
     fc, k, tmp, staging, seed = _cli_env("ok")
     spec = _spec_file(tmp, [_runnable_item("A1", seed)])
-    saved = os.environ.pop("GEMINI_API_KEY", None)
+    forbidden = {"GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CODEX_API_KEY"}
+    reads = []
+
+    class TracingEnviron(dict):
+        def __getitem__(self, key):
+            if key in forbidden:
+                reads.append(("getitem", key))
+            return super().__getitem__(key)
+
+        def get(self, key, default=None):
+            if key in forbidden:
+                reads.append(("get", key))
+            return super().get(key, default)
+
+        def __contains__(self, key):
+            if key in forbidden:
+                reads.append(("contains", key))
+            return super().__contains__(key)
+
+    saved = os.environ
+    os.environ = TracingEnviron({k_: v_ for k_, v_ in saved.items()
+                                 if k_ not in forbidden})
     try:
-        assert fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging)]) == 0
+        rc = fc.main(["gen", "--kit", k.kit, "--batch", spec, "--staging", str(staging)])
     finally:
-        if saved is not None:
-            os.environ["GEMINI_API_KEY"] = saved
+        os.environ = saved
+    assert rc == 0
+    assert reads == [], f"main() read credential keys: {reads}"
 
 
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
