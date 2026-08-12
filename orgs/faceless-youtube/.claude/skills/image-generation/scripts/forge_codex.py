@@ -78,6 +78,51 @@ class RatioError(RuntimeError):
     """The native ratio exceeds the 5% normalization tolerance (failure class 7)."""
 
 
+# --- §4.6 NORMALIZATION. Ratio is prose-steerable to ~0.1-2% but pixel dims are NEVER honored and
+# --- the same ask returns a different resolution each run (p1 probe D). Downstream assumes a stated
+# --- canvas, so every frame is brought to it exactly. Register consequence, stated not hidden: a
+# --- codex frame is never RENDERED at the 1K era instrument; the downscale is a post-hoc proxy.
+RATIO_TOLERANCE = 0.05
+
+
+def crop_to_ratio(im, target_ratio):
+    """Centre-crop the excess axis so the result is exactly `target_ratio`. Never stretches."""
+    w, h = im.size
+    if w / h > target_ratio:                       # too wide -> trim width
+        new_w = int(round(h * target_ratio))
+        left = (w - new_w) // 2
+        return im.crop((left, 0, left + new_w, h))
+    new_h = int(round(w / target_ratio))           # too tall -> trim height
+    top = (h - new_h) // 2
+    return im.crop((0, top, w, top + new_h))
+
+
+def normalize_to_canvas(data, canvas):
+    """(bytes at exactly `canvas`, native (W,H), ratio error). Validates before AND after, so
+    nothing unvalidated ever reaches _publish_staging_png."""
+    import io
+    from PIL import Image
+    data = to_png_bytes(data)
+    validate_png(data)
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    native = im.size
+    target_ratio = canvas[0] / canvas[1]
+    r_err = abs((native[0] / native[1]) / target_ratio - 1.0)
+    if r_err > RATIO_TOLERANCE:
+        raise RatioError(f"native {native[0]}x{native[1]} is {r_err:.1%} off the "
+                         f"{canvas[0]}x{canvas[1]} target ratio (tolerance "
+                         f"{RATIO_TOLERANCE:.0%}) — the model mis-framed; re-author the framing "
+                         f"line through the surgical-retry overlay")
+    if r_err > 0:
+        im = crop_to_ratio(im, target_ratio)
+    im = im.resize(canvas, Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    out = buf.getvalue()
+    validate_png(out)
+    return out, native, round(r_err, 4)
+
+
 class CodexContractError(RuntimeError):
     """A deterministic contract violation detected before a subprocess is invoked (class 1)."""
 

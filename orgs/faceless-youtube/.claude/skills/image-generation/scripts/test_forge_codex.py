@@ -1256,6 +1256,69 @@ def test_harvest_leaves_the_source_file_in_place():
     assert os.path.commonpath([got, fc.IMAGE_ROOT]) == os.path.normpath(fc.IMAGE_ROOT)
 
 
+def _png_bytes(size, colour=(36, 26, 18)):
+    import io
+    from PIL import Image
+    im = Image.new("RGB", size, (240, 240, 235))
+    im.paste(Image.new("RGB", (size[0], max(1, size[1] // 8)), colour), (0, 0))
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_normalization_crops_then_resizes_to_the_exact_canvas():
+    import io
+    import forge_codex as fc
+    from PIL import Image
+    data = _png_bytes((1659, 948))
+    out, native, err = fc.normalize_to_canvas(data, (1376, 768))
+    assert native == (1659, 948)
+    assert 0 < err <= fc.RATIO_TOLERANCE
+    assert Image.open(io.BytesIO(out)).size == (1376, 768)
+    import forge
+    forge.validate_png(out)
+
+
+def test_normalization_is_a_pure_resize_when_the_ratio_already_matches():
+    import io
+    import forge_codex as fc
+    from PIL import Image
+    out, native, err = fc.normalize_to_canvas(_png_bytes((1672, 941)), (1376, 768))
+    assert native == (1672, 941)
+    assert err <= fc.RATIO_TOLERANCE
+    assert Image.open(io.BytesIO(out)).size == (1376, 768)
+
+
+def test_normalization_crops_the_excess_axis_not_both():
+    import io
+    import forge_codex as fc
+    from PIL import Image
+    # 1659x948 is WIDER-than-target?  target 16:9 = 1.7917, native = 1.7500 -> too TALL, crop height
+    cropped = fc.crop_to_ratio(Image.open(io.BytesIO(_png_bytes((1659, 948)))), 1376 / 768)
+    assert cropped.size[0] == 1659
+    assert abs(cropped.size[0] / cropped.size[1] - 1376 / 768) < 1e-3
+
+
+def test_normalization_raises_ratio_error_beyond_tolerance():
+    import forge_codex as fc
+    raised = None
+    try:
+        fc.normalize_to_canvas(_png_bytes((1200, 900)), (1376, 768))
+    except fc.RatioError as e:
+        raised = str(e)
+    assert raised is not None and "1200" in raised and "900" in raised
+
+
+def test_normalization_rejects_invalid_bytes_before_touching_pillow():
+    import forge_codex as fc
+    raised = None
+    try:
+        fc.normalize_to_canvas(b"\x89PNG\r\n\x1a\n" + b"\x00" * 200, (1376, 768))
+    except RuntimeError as e:
+        raised = str(e)
+    assert raised is not None and "too small" in raised
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":
