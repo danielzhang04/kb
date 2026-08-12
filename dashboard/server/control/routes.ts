@@ -528,6 +528,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (input.expectedRunVersion !== 4 || input.expectedManagerGeneration !== 1 || input.expectedRequestRevision !== 1) {
       return reply.code(409).send({ error: 'legacy-recovery-cas-mismatch' });
     }
+    // The run-control lock is keyed by the CALLER here, not by a resolved owner, and that is only safe
+    // because this route is own-subject: every store call below reads and writes as `sub`, so `sub` IS
+    // the owner. If this frozen route is ever scope-widened, the lock must key by the resolved owner
+    // first — otherwise a cross-subject caller would serialise against its own subject and race the
+    // owner's activation.
     return ctx.runControlTransactions.run(sub, AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF, async () => {
       const preflight = ctx.controlStore.preflightAuthorized20260731ExecutionLock(sub, input);
       if (!preflight.ok) return sendResult(reply, preflight);
@@ -591,6 +596,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       || input.idempotencyKey !== AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY) {
       return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-cas-mismatch' });
     }
+    // Caller-keyed lock, same invariant as the 2026-07-31 route above: own-subject route ⇒ `sub` IS the
+    // owner of this run. A scope widening here must resolve the owner and key the lock by it.
     return ctx.runControlTransactions.run(sub, AUTHORIZED_20260801_FAILED_RUN_REF, async () =>
       withOpsTransaction(async () => {
         const grant = authorizedFailedRunReconciliationGrant(ctx, sub);
@@ -847,6 +854,21 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       }
       return reply.code(initial.status).send({ error: initial.error, detail: initial.detail, ...('disposition' in initial ? { disposition: initial.disposition } : {}) });
     }
+    // Attribution BEFORE the canonical write, like every other cross-subject mutation on this surface.
+    // The `card-routing` row `setCardRouting` writes names the card, not the run or its owner, so on an
+    // engine-owned run nothing recorded WHO rerouted WHOSE run. `owner` is the actor; `runOwnerSubject`
+    // is whose run it is.
+    try {
+      await auditFn(ctx)(ctx.repoRoot, {
+        action: 'control-run-reroute-authorize', owner: sub, target: stageRef, riskTier: 'T2',
+        result: `authorized:${runtime}:${model}`,
+        detail: {
+          runRef, runOwnerSubject: owner, stageRef, cardId: initial.cardId, runtime, model,
+        },
+      }, { runGit: ctx.opsGit, now: ctx.now });
+    } catch {
+      return reply.code(500).send({ error: 'reroute-audit-required' });
+    }
     const canonical = await setCardRouting({
       repoRoot: ctx.repoRoot,
       cardId: initial.cardId,
@@ -929,7 +951,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     });
     if (!reconciled.ok) return reply.code(409).send({ error: reconciled.reason, detail: reconciled.detail });
     try {
-      auditFn(ctx)(ctx.repoRoot, {
+      await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-publication-reconcile', owner: sub, target: runRef, riskTier: 'T2',
         result: `verified:${runRef}:${stored.value.hash}`,
         detail: {
@@ -1401,7 +1423,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       }, runScope);
       // Answering the LAST open boundary resumes the run — see resumeRunAfterBoundaryAccepted. Only a
       // fresh decision kicks; a replayed re-submit records nothing new and must start nothing.
-      resumeRunAfterBoundaryAccepted(ctx, { actorSubject: sub, runRef: responded.value.runRef, scope: runScope });
+      resumeRunAfterBoundaryAccepted(ctx, {
+        actorSubject: sub, runRef: responded.value.runRef, answeredTitle: responded.value.title, scope: runScope,
+      });
     }
     // Unit-B's spend-grant mint marker used to live here. Unit D moved it to STAGE LAUNCH (see
     // execution.ts `provisionSpendGrant` + spendGrantProvision.ts): the token FILE must exist inside the
@@ -1497,7 +1521,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       // resumes the run. A `rejected`/`changes-requested` gate mints its own intervention inside the
       // store call above, so it fails the all-boundaries-accepted predicate and starts nothing.
       resumeRunAfterBoundaryAccepted(ctx, {
-        actorSubject: sub, runRef: resolved.value.request.runRef, scope: runScope,
+        actorSubject: sub, runRef: resolved.value.request.runRef, answeredTitle: resolved.value.request.title,
+        scope: runScope,
       });
     }
     return sendResult(reply, resolved);
@@ -1544,7 +1569,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(400).send({ error: 'ineligible', detail: 'only quiescent settled run bundles can be quarantined' });
     }
     try {
-      auditFn(ctx)(ctx.repoRoot, {
+      await auditFn(ctx)(ctx.repoRoot, {
         // `owner` is the ACTOR; `runOwnerSubjects` names whose bundles are being moved (they differ on a
         // cross-subject quarantine), ordered like the plan's own items.
         action: 'control-retention-quarantine-authorize', owner: sub, target: runRefs.join(','), riskTier: 'T2',
@@ -1571,7 +1596,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(404).send({ error: 'not-found', detail: 'quarantined run was not found' });
     }
     try {
-      auditFn(ctx)(ctx.repoRoot, {
+      await auditFn(ctx)(ctx.repoRoot, {
         // `owner` is the ACTOR; `runOwnerSubject` names whose bundle is coming back. Restore returns it
         // to that same subject — a cross-subject restore never adopts the run.
         action: 'control-retention-restore-authorize', owner: sub, target: runRef, riskTier: 'T2',
@@ -1908,6 +1933,18 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
 }
 
 /**
+ * The two titles an activation refusal parks a run under: the dispatch-failure ask minted inside
+ * {@link activateRunUnderOwner} and the auto-resume ask minted by `park()` below.
+ *
+ * These strings are a DURABLE IDENTITY, not a description — both the mint guard and the
+ * do-not-re-fire guard match on them, so renaming one reopens the intervention storm they prevent.
+ */
+const ACTIVATION_PARK_TITLES = new Set<string>([
+  'Activation dispatch needs reconciliation',
+  'Automatic resume needs intervention',
+]);
+
+/**
  * Answering a gate IS the operator's go.
  *
  * A run parked in `waiting-human` sits there until something drives it again. Recording the answer used
@@ -1933,10 +1970,19 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
 function resumeRunAfterBoundaryAccepted(ctx: SurfaceContext, input: {
   actorSubject: string;
   runRef: string;
+  /** The title of the boundary just answered — see {@link ACTIVATION_PARK_TITLES}. */
+  answeredTitle: string;
   scope: ReadScope;
 }): void {
   const { actorSubject, runRef, scope } = input;
   if (!executorArmed(ctx)) return;
+  // ANSWERING AN ACTIVATION PARK NEVER RE-FIRES THE ACTIVATION. Every refusal reachable before
+  // `claimRunActivation` is deterministic and leaves no receipt and no version bump, so a retry driven
+  // by the answer fails identically and mints the next park — one per answer, to
+  // MAX_HUMAN_REQUESTS_PER_RUN, after which the run is parked forever with nothing left to answer. The
+  // operator fixes the cause and uses the manual Resume, which is exactly this activation without the
+  // self-feeding loop.
+  if (ACTIVATION_PARK_TITLES.has(input.answeredTitle)) return;
   const detail = ctx.controlStore.getRun(actorSubject, runRef, scope);
   if (!detail.ok) return;
   const run = detail.value.run;
@@ -1952,6 +1998,10 @@ function resumeRunAfterBoundaryAccepted(ctx: SurfaceContext, input: {
   const park = (reason: string): void => {
     const current = ctx.controlStore.getRun(ownerSubject, runRef);
     if (!current.ok || current.value.run.state !== 'waiting-human') return;
+    // At most ONE open activation park per run, whichever surface minted it: a dispatch failure already
+    // files 'Activation dispatch needs reconciliation' inside `activateRunUnderOwner` and then returns
+    // the refusal here, so without this one event produced two asks for the same thing.
+    if (current.value.humanRequests.some((request) => request.state === 'open' && ACTIVATION_PARK_TITLES.has(request.title))) return;
     ctx.controlStore.createHumanRequest(ownerSubject, runRef, {
       kind: 'intervention',
       title: 'Automatic resume needs intervention',

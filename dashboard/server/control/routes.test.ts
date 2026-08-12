@@ -19,6 +19,7 @@ import type { SurfaceContext } from '../http/context.ts';
 import { authorizedFailedRunReconciliationGrant, authorizedFailedRunReconciliationRefusal } from './routes.ts';
 import { AuthorizedFailedRunPublishedUncommittedError } from './authorizedFailedRunReconciliation.ts';
 import { createAttemptIoStore } from './attemptIo.ts';
+import { executeApprovedLaunch } from './launch.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -304,6 +305,8 @@ describe('control proposal routes', () => {
       completedRoot?: boolean;
       verifyCanonicalResult?: boolean;
       managerStartAckTimeoutMs?: number;
+      /** Override the ops runner — a throwing one is the cheapest deterministic pre-claim refusal. */
+      opsGit?: (root: string, args: string[]) => string;
     } = {},
   ) {
     const runAutomatic = vi.fn(overrides.runAutomatic ?? (async (input: ExecuteRunInput) => {
@@ -356,7 +359,8 @@ describe('control proposal routes', () => {
       }))) as never,
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
-      opsGit: (_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : '',
+      opsGit: overrides.opsGit
+        ?? ((_root, args) => args.join(' ') === 'rev-parse --abbrev-ref HEAD' ? 'ops\n' : ''),
     }));
     await activated.ready();
     return { activated, runAutomatic, cancelAutomatic, containManagerStart, activateManagedRoots, verifyCanonicalResult };
@@ -1537,6 +1541,91 @@ describe('control proposal routes', () => {
     expect(manual.statusCode).toBe(409);
     // The locked daemon's own refusal, which is what raises the unlock prompt in the UI.
     expect(manual.json()).toMatchObject({ error: 'execution-locked' });
+  });
+
+  /** Every intervention on the run, in mint order, by title — the storm is visible as a length. */
+  function interventionTitles(runRef: string, owner = 'operator'): string[] {
+    const detail = controlStore.getRun(owner, runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    return detail.value.humanRequests.filter((request) => request.kind === 'intervention').map((request) => request.title);
+  }
+
+  /**
+   * A DETERMINISTIC activation refusal must not become an intervention treadmill.
+   *
+   * Every refusal reachable before `claimRunActivation` writes no receipt and does not bump the run
+   * version, so the auto-resume key is byte-identical on the next try: answering the park re-fired the
+   * same failure, which minted the next park, up to MAX_HUMAN_REQUESTS_PER_RUN — then the run was parked
+   * forever with nothing left to answer.
+   */
+  it('parks a deterministically refused resume ONCE and never re-fires it from its own answer', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    // Canonical reconciliation fails => `canonical-reconciliation-failed`, before any claim.
+    const wired = await activatedApp(undefined, {
+      opsGit: () => { throw new Error('ops fetch refused'); },
+    });
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await vi.waitFor(() => expect(interventionTitles(detail.run.runRef))
+        .toEqual(['Launch reconciliation required', 'Automatic resume needs intervention']));
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+
+      // Answering the park itself: the run is still parked and every boundary is accepted, so the
+      // predicate that drives the resume is satisfied — only the do-not-re-fire rule stops it.
+      const parked = controlStore.getRun('operator', detail.run.runRef);
+      if (!parked.ok) throw new Error(parked.detail);
+      const parkRequest = parked.value.humanRequests.find((request) => request.title === 'Automatic resume needs intervention');
+      if (!parkRequest) throw new Error('park intervention missing');
+      const answeredPark = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${parkRequest.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(parkRequest, 'responded'),
+      });
+      expect(answeredPark.statusCode, answeredPark.body).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(interventionTitles(detail.run.runRef))
+        .toEqual(['Launch reconciliation required', 'Automatic resume needs intervention']);
+      // No second activation attempt at all: no receipt, no executor call, run untouched.
+      expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
+        .toMatchObject({ ok: true, value: null });
+      expect(wired.runAutomatic).not.toHaveBeenCalled();
+      expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
+        ok: true, value: { run: { state: 'waiting-human' } },
+      });
+    } finally {
+      await wired.activated.close();
+    }
+  });
+
+  it('files ONE intervention for a failed activation dispatch, not one per surface', async () => {
+    const detail = seedActivatableRun(false);
+    const boundary = seedOpenBoundary(detail.run.runRef);
+    // The executor returns without ever acknowledging durable Manager startup: the dispatch path fails,
+    // files its own 'Activation dispatch needs reconciliation', and returns the refusal that the
+    // auto-resume park would otherwise report a SECOND time for the same event.
+    const wired = await activatedApp(undefined, {
+      runAutomatic: async () => ({
+        state: 'succeeded' as const, startedStageIds: [], completedStageIds: [], waitingStageIds: [],
+      }),
+    });
+    try {
+      const responded = await wired.activated.inject({
+        method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+        headers: headers(token), payload: respondPayload(boundary, 'responded'),
+      });
+      expect(responded.statusCode, responded.body).toBe(200);
+      await vi.waitFor(() => expect(interventionTitles(detail.run.runRef))
+        .toEqual(['Launch reconciliation required', 'Activation dispatch needs reconciliation']));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(interventionTitles(detail.run.runRef))
+        .toEqual(['Launch reconciliation required', 'Activation dispatch needs reconciliation']);
+    } finally {
+      await wired.activated.close();
+    }
   });
 
   it('never kicks a second time on a replayed response', async () => {
@@ -3325,7 +3414,11 @@ describe('operator cross-subject authority', () => {
 describe('operator cross-subject authority — launch, reroute, retention, revision read', () => {
   const ENGINE = 'dashboard-engine';
 
-  function surface(store: ReturnType<typeof createInMemoryControlPlaneStore>) {
+  function surface(
+    store: ReturnType<typeof createInMemoryControlPlaneStore>,
+    /** An audit sink that REJECTS — the durable-row precondition every mutation here is gated on. */
+    appendAudit?: (repoRoot: string, event: Record<string, unknown>) => unknown,
+  ) {
     const audit: Array<Record<string, unknown>> = [];
     const routingWrites: Array<Record<string, unknown>> = [];
     const capture = (_repoRoot: string, event: Record<string, unknown>) => {
@@ -3341,7 +3434,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
         protector: { seal: (value: string) => value, open: (value: string) => value },
         newId: () => `composer-${++composerId}`,
       }),
-      appendAudit: capture, appendAuditLocal: capture,
+      appendAudit: appendAudit ?? capture, appendAuditLocal: capture,
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
       opsGit: (_repoRoot: string, args: string[]) => {
         if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
@@ -3481,12 +3574,16 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     const revision = approvedRevisionFor(store, ENGINE, 'engine-idem');
     const bridgeKey = 'queue-bridge:card-collide';
     const bridgeRun = bridgeRunFor(store, revision, bridgeKey);
+    // SETTLED first: a LIVE run for this revision is refused outright now (see the one-run-per-revision
+    // test below), so the namespace property is exercised where a second launch is legitimate.
+    const settled = store.transitionRun(ENGINE, bridgeRun.run.runRef, bridgeRun.run.version, 'stopped');
+    if (!settled.ok) throw new Error(settled.detail);
     const { app, token } = surface(store);
     try {
       // DIRECTION 1 — operator -> bridge. The operator presents the BRIDGE's exact key. Without the
-      // namespace this replays the bridge's own pending run (same fingerprint) and answers for a launch
-      // the operator never made; with it, the operator gets a launch of its own and the bridge's record
-      // is not consulted at all.
+      // namespace this replays the bridge's own run (same fingerprint) and answers for a launch the
+      // operator never made; with it, the operator gets a launch of its own and the bridge's record is
+      // not consulted at all.
       const collided = await app.inject({
         method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`, headers: headers(token),
         payload: { expectedHash: revision.hash, idempotencyKey: bridgeKey },
@@ -3495,11 +3592,11 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const operatorRunRef = collided.json().runRef as string;
       expect(operatorRunRef).not.toBe(bridgeRun.run.runRef);
 
-      // The bridge's run is untouched — same version, still unpublished.
+      // The bridge's run is untouched — same version as the settle left it, still unpublished.
       const untouched = store.getRun(ENGINE, bridgeRun.run.runRef);
       if (!untouched.ok) throw new Error(untouched.detail);
       expect(untouched.value.run).toMatchObject({
-        version: bridgeRun.run.version, publicationState: 'pending', state: 'planned',
+        version: settled.value.version, publicationState: 'pending', state: 'stopped',
       });
 
       // DIRECTION 2 — bridge -> operator. The bridge re-ticks the SAME card and still replays ITS OWN
@@ -3521,6 +3618,79 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       expect(again.statusCode, again.body).toBe(200);
       expect(again.json()).toMatchObject({ runRef: operatorRunRef, replayed: true });
     } finally { await app.close(); }
+  });
+
+  /**
+   * ONE RUN PER REVISION, ACROSS SUBJECTS.
+   *
+   * The namespace above means an operator key can never equal the owner's, so `createRun` cannot replay
+   * the owner's in-flight run: the SPA's pre-publication resume (RunDetail -> `launch:<proposalHash>`)
+   * used to mint a SECOND engine-owned run for the same revision and strand the bridge's original.
+   */
+  it('refuses a cross-subject launch while a live run already exists for that revision', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `u-${++n}`; })() });
+    const revision = approvedRevisionFor(store, ENGINE, 'engine-duplicate');
+    const bridgeRun = bridgeRunFor(store, revision, 'queue-bridge:card-live');
+    // Parked pre-publication — the exact state the SPA offers its resume button on.
+    const parked = store.transitionRun(ENGINE, bridgeRun.run.runRef, bridgeRun.run.version, 'waiting-human');
+    if (!parked.ok) throw new Error(parked.detail);
+    const { app, audit, token } = surface(store);
+    const resume = { expectedHash: revision.hash, idempotencyKey: `launch:${revision.hash}` };
+    const url = `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`;
+    try {
+      const refused = await app.inject({ method: 'POST', url, headers: headers(token), payload: resume });
+      expect(refused.statusCode, refused.body).toBe(409);
+      expect(refused.json()).toMatchObject({
+        error: 'run-already-exists-for-revision', runRef: bridgeRun.run.runRef, runOwnerSubject: ENGINE,
+      });
+
+      // ZERO SIDE EFFECTS: no second run anywhere, the live run untouched, nothing audited.
+      expect(store.listRuns(ENGINE).map((run) => run.runRef)).toEqual([bridgeRun.run.runRef]);
+      expect(store.listRuns('operator')).toEqual([]);
+      const untouched = store.getRun(ENGINE, bridgeRun.run.runRef);
+      if (!untouched.ok) throw new Error(untouched.detail);
+      expect(untouched.value.run).toMatchObject({
+        version: parked.value.version, publicationState: 'pending', state: 'waiting-human',
+      });
+      expect(untouched.value.humanRequests).toEqual([]);
+      expect(audit).toEqual([]);
+
+      // RETRY IS EXEMPT: it carries a predecessor and is gated by the quiescence check instead.
+      const retried = await app.inject({
+        method: 'POST', url, headers: headers(token),
+        payload: {
+          expectedHash: revision.hash, idempotencyKey: `retry:${bridgeRun.run.runRef}`,
+          predecessorRunRef: bridgeRun.run.runRef, expectedPredecessorVersion: parked.value.version,
+        },
+      });
+      expect(retried.json().error).not.toBe('run-already-exists-for-revision');
+
+      // A TERMINAL prior run does not block a fresh launch of the same revision.
+      const settled = store.transitionRun(ENGINE, bridgeRun.run.runRef, parked.value.version, 'stopped');
+      if (!settled.ok) throw new Error(settled.detail);
+      const launched = await app.inject({ method: 'POST', url, headers: headers(token), payload: resume });
+      expect(launched.statusCode, launched.body).toBe(202);
+      expect(launched.json().runRef).not.toBe(bridgeRun.run.runRef);
+      // ...and that new run is itself live now, so the same request stops duplicating it — it replays
+      // its OWN launch record instead (the operator's namespaced key), never a fresh run.
+      const replayed = await app.inject({ method: 'POST', url, headers: headers(token), payload: resume });
+      expect(replayed.statusCode, replayed.body).toBe(200);
+      expect(replayed.json()).toMatchObject({ runRef: launched.json().runRef, replayed: true });
+    } finally { await app.close(); }
+  });
+
+  it('refuses to namespace a launch key for any actor but the one operator subject', async () => {
+    // `operator:<actor>:<key>` is injectively parseable ONLY while the actor is the single literal
+    // operator subject: actor 'a' + key 'b:c' and actor 'a:b' + key 'c' produce the same string, so two
+    // different operations would share one launch identity. No route reaches this today (`readScope`
+    // widens for `operator` alone) — the guard is what keeps the invariant true if one ever does, and it
+    // refuses before touching the store, the ops tree, or the run.
+    const outcome = await executeApprovedLaunch({} as never, ENGINE, {
+      proposalRef: 'proposal-collide', revision: 1, storedHash: 'a'.repeat(64), snapshot: {},
+      sessionToken: undefined, actorSubject: 'a:b', idempotencyKey: 'c',
+      predecessorRunRef: null, expectedPredecessorVersion: -1,
+    });
+    expect(outcome).toMatchObject({ status: 403, body: { error: 'cross-subject-launch-actor-refused' } });
   });
 
   it('keeps an own-subject launch key un-namespaced, byte for byte', async () => {
@@ -3635,6 +3805,16 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
 
       // The canonical routing audit names the ACTOR — the verified operator session, not the run owner.
       expect(audit.find((row) => row.action === 'card-routing')).toMatchObject({ owner: 'operator' });
+      // ...and it names a CARD, so run-owner attribution is this surface's own row, written before the
+      // canonical write like every other cross-subject mutation here.
+      expect(audit.find((row) => row.action === 'control-run-reroute-authorize')).toMatchObject({
+        owner: 'operator', riskTier: 'T2', result: 'authorized:claude:claude-sonnet-5',
+        detail: expect.objectContaining({
+          runRef: target.runRef, runOwnerSubject: ENGINE, stageRef: target.stageRef, cardId: target.cardRef,
+        }),
+      });
+      expect(audit.findIndex((row) => row.action === 'control-run-reroute-authorize'))
+        .toBeLessThan(audit.findIndex((row) => row.action === 'card-routing'));
     } finally { await app.close(); }
   });
 
@@ -3725,6 +3905,53 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const events = store.listEvents(ENGINE, runRef);
       if (!events.ok) throw new Error(events.detail);
       expect(events.value.map((event) => event.summary)).toContain('run restored from quarantine');
+    } finally { await app.close(); }
+  });
+
+  /**
+   * The retention rows are a PRECONDITION, not a trailer: the row must be durable before the bundle
+   * moves. Left unawaited, the rejection escaped as an unhandled rejection and the destructive op ran
+   * anyway, so the only record of who moved whose data was the one that failed to write.
+   */
+  it('moves no bundle when the retention audit row cannot be written', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `n-${++n}`; })() });
+    const runRef = quarantinableEngineRun(store);
+    const rejecting = async () => { throw new Error('ops audit push refused'); };
+    const planning = surface(store);
+    const planned = await planning.app.inject({
+      method: 'POST', url: '/api/control/retention/dry-run', headers: headers(planning.token), payload: { runRefs: [runRef] },
+    });
+    const planHash = (planned.json().value as { planHash: string }).planHash;
+    await planning.app.close();
+
+    const { app, token } = surface(store, rejecting as never);
+    try {
+      const quarantined = await app.inject({
+        method: 'POST', url: '/api/control/retention/quarantine', headers: headers(token),
+        payload: { runRefs: [runRef], expectedPlanHash: planHash },
+      });
+      expect(quarantined.statusCode, quarantined.body).toBe(500);
+      expect(quarantined.json()).toMatchObject({ error: 'quarantine-audit-required' });
+      // The run is still live under its owner and nothing is in quarantine.
+      expect(store.getRun(ENGINE, runRef)).toMatchObject({ ok: true });
+      expect(store.inventory(ENGINE).quarantinedRuns).toEqual([]);
+
+      // Same rule on the way back: quarantine it with a working sink, then fail the restore row.
+      const working = surface(store);
+      const ok = await working.app.inject({
+        method: 'POST', url: '/api/control/retention/quarantine', headers: headers(working.token),
+        payload: { runRefs: [runRef], expectedPlanHash: planHash },
+      });
+      expect(ok.statusCode, ok.body).toBe(200);
+      await working.app.close();
+
+      const restored = await app.inject({
+        method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
+      });
+      expect(restored.statusCode, restored.body).toBe(500);
+      expect(restored.json()).toMatchObject({ error: 'restore-audit-required' });
+      expect(store.inventory(ENGINE).quarantinedRuns).toEqual([expect.objectContaining({ runRef })]);
+      expect(store.getRun(ENGINE, runRef)).toMatchObject({ ok: false, reason: 'not-found' });
     } finally { await app.close(); }
   });
 

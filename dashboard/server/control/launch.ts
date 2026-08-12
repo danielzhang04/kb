@@ -23,7 +23,7 @@ import { compileApprovedProposal } from './compiler.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
-import type { CreateHumanRequestInput } from './store.ts';
+import { OPERATOR_SUBJECT, type CreateHumanRequestInput } from './store.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 
 /** A transport-neutral HTTP outcome. Routes serialise it with `reply.code(status).send(body)`. */
@@ -123,11 +123,38 @@ export async function executeApprovedLaunch(
    *
    * Operator retries stay idempotent among themselves (the namespace is deterministic). Own-subject
    * launches are untouched — same key, byte for byte.
+   *
+   * The namespace parses back injectively only while the actor is the ONE literal operator subject: for
+   * a free-form actor, `a` + `b:c` and `a:b` + `c` build the same key, so two distinct operations would
+   * share one launch identity. The guard below ENFORCES that invariant instead of inheriting it from the
+   * fact that `readScope` widens for `operator` alone.
    */
+  if (crossSubject && actorSubject !== OPERATOR_SUBJECT) {
+    return { status: 403, body: { error: 'cross-subject-launch-actor-refused' } };
+  }
   const idempotencyKey = crossSubject && input.idempotencyKey
     ? `operator:${actorSubject}:${input.idempotencyKey}`
     : input.idempotencyKey;
   return withOpsTransaction(async (): Promise<LaunchOutcome> => {
+    // ONE RUN PER REVISION, ACROSS SUBJECTS.
+    //
+    // The namespace above buys collision safety at the cost of recognition: an operator key can never
+    // equal the owner's, so `createRun` cannot replay the owner's in-flight run and would mint a SECOND
+    // engine-owned run for the same revision — stranding the first (this is exactly what the SPA's
+    // pre-publication resume did to a bridge-launched run). Own-subject launches keep their existing
+    // contract: their raw key IS their launch identity, and a fresh key there is a deliberate second run.
+    //
+    // Retry is exempt because it carries a predecessor and is already gated by the quiescence check
+    // below; a TERMINAL prior run never blocks a fresh launch.
+    if (crossSubject && input.predecessorRunRef === null) {
+      const active = ctx.controlStore.findActiveRunForRevision(sub, proposalRef, revision, idempotencyKey);
+      if (active) {
+        return {
+          status: 409,
+          body: { error: 'run-already-exists-for-revision', runRef: active.runRef, runOwnerSubject: sub },
+        };
+      }
+    }
     try {
       // Reconcile canonical ops before loading executable policy, routing, or running the post-pull
       // preamble. The launcher below receives no second pull hook, so approval checks and publication

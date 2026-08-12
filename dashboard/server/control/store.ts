@@ -749,6 +749,20 @@ export interface ControlPlaneStore extends BrokerStoreBackend {
   listRuns(subject: string, scope?: ReadScope): RunMetadata[];
   getRun(subject: string, runRef: string, scope?: ReadScope): ControlResult<RunDetail>;
   createRun(subject: string, input: CreateRunInput): ControlResult<RunDetail>;
+  /**
+   * The non-terminal run this SUBJECT already holds for `(proposalRef, revision)`, ignoring the one a
+   * launch keyed `launchOperationKey` would replay.
+   *
+   * A cross-subject launch consults it before creating a run: the operator's launch key is namespaced
+   * away from the owner's key space, so replay can never find the owner's in-flight run, and a second
+   * launch of the same revision would strand it behind a duplicate.
+   */
+  findActiveRunForRevision(
+    subject: string,
+    proposalRef: string,
+    revision: number,
+    launchOperationKey: string,
+  ): RunMetadata | null;
   /** Read an exact durable activation receipt without claiming a new activation. */
   getRunActivationReceipt(subject: string, runRef: string, input: RunActivationInput): ControlResult<RunActivationReceipt | null>;
   /** Internal lifecycle guard used to exclude competing Manager recovery while activation owns the run. */
@@ -3188,6 +3202,19 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const document = load();
       const run = findRun(document, subject, runRef, scope);
       return run ? ok(detail(document, run.subject, run)) : fail('not-found', 'run was not found');
+    },
+
+    findActiveRunForRevision(subject, proposalRef, revision, launchOperationKey) {
+      const document = load();
+      // Own-subject only, by construction: the caller asks about the OWNER's key space, which is the
+      // space a launch would create in. `launchOperationKey` names the run this launch would REPLAY, and
+      // replaying is not duplicating.
+      const active = document.runs.find((item) => item.subject === subject
+        && item.proposalRef === proposalRef
+        && item.proposalRevision === revision
+        && item.launchOperationKey !== launchOperationKey
+        && !TERMINAL_RUN.has(item.state));
+      return active ? metadata(document, subject, active) : null;
     },
 
     createRun(subject, input) {
