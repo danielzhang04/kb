@@ -8,6 +8,7 @@ log. ``git diff forge.py`` must stay empty.
 
 Subscription-billed: $0 API spend. No key is ever loaded — every Kit is built dry.
 """
+import datetime
 import glob
 import hashlib
 import json
@@ -454,6 +455,74 @@ def write_prompt_file(staging: str, name: str, text: str) -> str:
     with open(path, "w", encoding="utf-8", newline="") as output:
         output.write(text)
     return path
+
+
+# --- §5.3 OBSERVABILITY. `turn.completed.usage` is the authoritative token source (p1 probe A);
+# --- the human-readable "tokens used" text is never scraped. The COST LEDGER row is written by the
+# --- ORCHESTRATOR, not here: a generation script must not perform a coordination write.
+LOG_KEYS = ("ts", "engine", "name", "thread_id", "turn_index", "session_mode", "wall_s",
+            "tokens_in", "tokens_cached", "tokens_out", "reasoning_out", "pre_call_tool_calls",
+            "native", "canvas", "ratio_error", "reissues", "source_png", "source_sha256",
+            "composed_prompt", "composed_prompt_sha256", "composed_chars", "fidelity_audit",
+            "seed_sha256", "residual_idiom", "failure_class")
+
+
+def engine_log_path(staging):
+    return os.path.join(str(staging), "_codex", "engine-log.jsonl")
+
+
+def _rel_to_kit(path, kit_root):
+    p = os.path.abspath(path).replace("\\", "/")
+    root = os.path.abspath(kit_root).replace("\\", "/")
+    return p[len(root) + 1:] if p.startswith(root + "/") else p
+
+
+def build_log_row(*, name, meta, composed_path, composed_text, seed_shas, residual, kit_root):
+    usage = meta.get("usage") or {}
+    return {
+        "ts": datetime.datetime.now(datetime.timezone.utc)
+                      .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "engine": ENGINE_ID, "name": name,
+        "thread_id": meta.get("thread_id"), "turn_index": meta.get("turn_index"),
+        "session_mode": meta.get("session_mode"), "wall_s": meta.get("wall_s"),
+        "tokens_in": usage.get("input_tokens"), "tokens_cached": usage.get("cached_input_tokens"),
+        "tokens_out": usage.get("output_tokens"),
+        "reasoning_out": usage.get("reasoning_output_tokens"),
+        "pre_call_tool_calls": meta.get("pre_call_tool_calls"),
+        "native": meta.get("native"), "canvas": meta.get("canvas"),
+        "ratio_error": meta.get("ratio_error"), "reissues": meta.get("reissues"),
+        "source_png": meta.get("source_png"), "source_sha256": meta.get("source_sha256"),
+        "composed_prompt": _rel_to_kit(composed_path, kit_root),
+        "composed_prompt_sha256": hashlib.sha256(composed_text.encode("utf-8")).hexdigest(),
+        "composed_chars": len(composed_text),
+        "fidelity_audit": meta.get("fidelity_audit"),
+        "seed_sha256": dict(seed_shas or {}),
+        "residual_idiom": list(residual or []),
+        "failure_class": meta.get("failure_class"),
+    }
+
+
+def append_log_row(path, row):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def run_totals_text(rows):
+    n = len(rows)
+    def total(key):
+        return sum(r.get(key) or 0 for r in rows)
+    detours = [r.get("pre_call_tool_calls") for r in rows if r.get("pre_call_tool_calls") is not None]
+    mean_detour = round(sum(detours) / len(detours), 1) if detours else 0.0
+    flagged = [f"{r.get('name')}={r.get('fidelity_audit')}" for r in rows
+               if r.get("fidelity_audit") not in (None, "verified")]
+    lines = [f"  == {n} frame(s) | tokens in {total('tokens_in')} "
+             f"(cached {total('tokens_cached')}) out {total('tokens_out')} "
+             f"reasoning {total('reasoning_out')} | wall {round(total('wall_s'), 1)}s "
+             f"| mean pre_call_tool_calls {mean_detour} =="]
+    if flagged:
+        lines.append("  == fidelity NOT verified: " + ", ".join(flagged) + " ==")
+    return "\n".join(lines)
 
 
 def _windows_kernel32():

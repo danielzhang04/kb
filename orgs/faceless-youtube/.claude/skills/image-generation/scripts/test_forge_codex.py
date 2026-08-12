@@ -1544,6 +1544,63 @@ def test_generate_transport_reissue_reuses_envelope_but_not_thread():
     assert len(calls) == 1, "an emitted image forbids the transport re-issue"
 
 
+def _meta_stub():
+    return {"thread_id": "019ffabc-1111-7222-3333-444455556666", "turn_index": 1,
+            "session_mode": "isolated", "wall_s": 107.4,
+            "usage": {"input_tokens": 75742, "cached_input_tokens": 48384,
+                      "output_tokens": 1593, "reasoning_output_tokens": 742},
+            "native": [1672, 941], "canvas": [1376, 768], "ratio_error": 0.0039, "reissues": 0,
+            "source_png": "C:/Users/x/.codex/generated_images/019ffabc/exec-5a2c2c62.png",
+            "source_sha256": "a" * 64, "fidelity_audit": "verified", "fidelity_sha256": "b" * 64,
+            "pre_call_tool_calls": 3, "failure_class": None}
+
+
+def test_engine_log_row_carries_every_documented_key():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="log-"))
+    composed = fc.write_prompt_file(str(tmp), "L29", L29_GOLDEN)
+    row = fc.build_log_row(name="L29", meta=_meta_stub(), composed_path=composed,
+                           composed_text=L29_GOLDEN, seed_shas={"C:/k/a.png": "c" * 64},
+                           residual=[], kit_root=str(tmp))
+    for key in fc.LOG_KEYS:
+        assert key in row, key
+    assert set(row) == set(fc.LOG_KEYS)
+    assert row["engine"] == "codex-imagegen" and row["name"] == "L29"
+    assert row["tokens_in"] == 75742 and row["tokens_cached"] == 48384
+    assert row["tokens_out"] == 1593 and row["reasoning_out"] == 742
+    assert row["composed_chars"] == len(L29_GOLDEN)
+    assert row["composed_prompt_sha256"] == \
+        __import__("hashlib").sha256(L29_GOLDEN.encode("utf-8")).hexdigest()
+    assert row["composed_prompt"].endswith("_codex/prompts/L29.txt")
+    assert row["seed_sha256"] == {"C:/k/a.png": "c" * 64}
+    assert row["residual_idiom"] == [] and row["failure_class"] is None
+    assert row["ts"].endswith("Z")
+
+
+def test_engine_log_is_append_only_jsonl():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="log-"))
+    path = fc.engine_log_path(str(tmp))
+    fc.append_log_row(path, {"name": "L26"})
+    fc.append_log_row(path, {"name": "L29"})
+    rows = [json.loads(l) for l in Path(path).read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert [r["name"] for r in rows] == ["L26", "L29"]
+    assert Path(path) == tmp / "_codex" / "engine-log.jsonl"
+
+
+def test_run_totals_names_every_non_verified_row():
+    import forge_codex as fc
+    rows = [dict(_meta_stub(), name="L26", tokens_in=1, tokens_cached=0, tokens_out=0,
+                 reasoning_out=0, fidelity_audit="verified", pre_call_tool_calls=2),
+            dict(_meta_stub(), name="L29", tokens_in=3, tokens_cached=0, tokens_out=0,
+                 reasoning_out=0, fidelity_audit="mismatch", pre_call_tool_calls=4)]
+    text = fc.run_totals_text(rows)
+    assert "2 frame" in text
+    assert "L29" in text and "mismatch" in text
+    assert "L26" not in text
+    assert "mean pre_call_tool_calls 3.0" in text
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":
