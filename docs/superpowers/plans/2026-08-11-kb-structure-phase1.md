@@ -8,18 +8,23 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
 
+## Ruling log
+
+- **Daniel, 2026-08-12 — restart authority:** no persistent secret or credential is stored on the VM, including a local dashboard HMAC key. A daemon restart drops every session and all execution authority. The restart canary observes durable files across the restart; any authenticated post-restart action requires Daniel to re-arm with his passkey. No machine-auth path, service token, bearer handoff, or replacement credential is permitted.
+- **Daniel, 2026-08-12 — delivery partition:** merge-independent Phase I work ships now. Execution-plane work whose correct signatures depend on the workflow-platform merge is an explicit sub-plan gated on the merged `origin/main` tip at or after `804acec`; its acceptance criteria are fixed here, and its failing tests are written only after the merged files are re-read.
+
 ## Global Constraints
 
 - The monorepo remains the sole source repository.
 - The platform is built on merge into an immutable, versioned VM release artifact.
 - The running platform is never a live checkout that shares state with data.
-- The VM has no GitHub, backup-store, signing, deploy, SSH-agent, or other external-authority credential. The only persistent secret permitted on the VM is the dashboard's local HMAC session key required by Task 24's restart test; bootstrap generates it locally into a root-owned `0600` file outside the repository, and no code, report, command line, log, or evidence package reads or prints its value.
+- The VM stores no credential of any kind. It has no GitHub, backup-store, signing, deploy, SSH-agent, dashboard-session, or other external-authority credential.
 - During a GitHub outage, reads remain live and the outbox grows visibly with bounded retry and reconciliation; new side-effecting work follows the degraded-mode policy rather than silently losing state.
 - Cutover Gate 1 (read-only web) does not arm the daemon or transfer execution authority.
 - The Linux canary is run with production command resolution, not the test-only `python3` substitution.
 - Existing platform-specific PTY and runner behavior is either made Linux-capable or disabled outside its supported platform.
 - The corrected dashboard-bridge finding does not relax the Phase I Gate 1 boundary.
-- The Phase I Gate 1 boundary establishes a controlled VM execution plane; it does not change GitHub trust anchors or authorize a repository split.
+- The Phase I Gate 1 boundary establishes only an authenticated read plane; Gate 2 establishes the controlled VM execution plane. Neither gate changes GitHub trust anchors or authorizes a repository split.
 - **State-root disaster recovery:** the tier-0 backup, restore test, RPO, and RTO are Phase I conditions, not documentation-only controls.
 - **Worker/restart safety:** quiescent deployment is mandatory until draining, process-group kill, idempotency receipts, and restart recovery are demonstrated.
 - **Isolation:** worker, daemon/writer, render, and PTY identities remain a hardening concern; cloud PTY/Vibe capabilities stay disabled or isolated until their environment boundaries hold.
@@ -32,8 +37,8 @@
 - Plan against `main` at `a2e6e2b` plus the approved spec/evidence commit(s) already present in this planning worktree. Before every task, run `git status --short` and stop if a named target contains unrelated changes.
 - Shared TypeScript tests run on Windows and Ubuntu. Linux-only release, symlink, systemd, tailnet, and restart behavior is verified by the scripted VM acceptance commands named below.
 - Every implementation task begins red, goes green with the smallest change shown, and gets its own reviewer and commit. Run the task's narrow command before its broader command.
-- Never add a credential value, credential document, GitHub token, deploy key, signing key, backup-store key, SSH agent socket, or credential-bearing remote to the VM. `credentialIdentity` is a recorded non-secret label, not operational authority in Phase I. The Task 24 local HMAC session key is generated on the VM, remains in `/etc/kb-dashboard/session.env`, and authenticates only this dashboard; it grants no external-system authority.
-- Tasks 1-8 may land independently. The explicit workflow-platform checkpoint after Task 8 blocks every later dispatch-path change.
+- Never add a credential value, credential document, GitHub token, deploy key, signing key, backup-store key, SSH agent socket, or credential-bearing remote to the VM. `credentialIdentity` is a recorded non-secret label, not operational authority in Phase I.
+- Ship-now Tasks 1-8, 10-20, and 22 may land without the workflow-platform merge, subject to their stated ordering. Task 13's recovery-canary hook, Task 18's bridge-claim admission hook, and Task 22's activation/worker wiring are deferred with Tasks 9, 21, and 23-25. The explicit workflow-platform checkpoint blocks only that deferred execution-plane sub-plan.
 
 ## A. Immediate defect and prerequisite fixes
 
@@ -776,7 +781,7 @@ Choice: startup scans queue cards and direct `orgs/*/workflows/*.md` definitions
 
 ### Task 8: Load a closed project-to-repository registry
 
-Choice: the registry hashes the checked-in symbolic root record before expanding `${DASHBOARD_REPO_ROOT}`. The identity is therefore stable across desktop and VM absolute paths, while any change to the root contract, remote, base ref, scope, or credential label changes the identity. Phase I enforces root, scope, identity, and the cheap `baseRef` consistency check. `remote` and `credentialIdentity` are recorded and hash-bound but explicitly not operationally enforced until the Phase II external-repository canary; they grant no authority.
+Choice: the registry hashes the checked-in symbolic root record before expanding `${DASHBOARD_REPO_ROOT}`. The identity is therefore stable across desktop and VM absolute paths, while any change to the root contract, remote, base ref, scope, or credential label changes the identity. This ship-now loader enforces root, scope, identity, and the closed Phase-I declaration `baseRef: ops`; deferred Task 9 enforces that declaration against the merged activation checkout's actual `HEAD`. `remote` and `credentialIdentity` are recorded and hash-bound but explicitly not operationally enforced until the Phase II external-repository canary; they grant no authority.
 
 **Files**
 
@@ -888,166 +893,6 @@ Choice: the registry hashes the checked-in symbolic root record before expanding
 - [ ] Run `cd dashboard; npm test -- server/control/repositoryRegistry.test.ts server/control/environment.test.ts; npm run typecheck` and verify exit code 0 on Windows and Ubuntu.
 
 - [ ] Commit with `git add dashboard/config/repositories.json dashboard/server/control/repositoryRegistry.ts dashboard/server/control/repositoryRegistry.test.ts dashboard/server/control/environment.ts dashboard/server/control/environment.test.ts; git commit -m "feat(control): add server-owned repository registry"`.
-
-## Required workflow-platform merge checkpoint — between Tasks 8 and 9
-
-This is a blocking checkpoint, not an implementation task and not a commit. The workflow-platform branch has merged to `main`; its branch tip may continue advancing, so every re-read and implementation target is the tip actually merged into `origin/main`, and that merged tip must be at or after `804acec`.
-
-- [ ] Run `git fetch origin main claude/workflow-platform; $mergedTip = git merge-base origin/main origin/claude/workflow-platform; git merge-base --is-ancestor 804acec $mergedTip; if ($LASTEXITCODE -ne 0) { Write-Error 'merged workflow-platform tip predates 804acec'; exit 1 }; git merge-base --is-ancestor $mergedTip origin/main; if ($LASTEXITCODE -ne 0) { Write-Error 'workflow-platform merged tip is not on main'; exit 1 }; Write-Output $mergedTip`. Require both ancestry checks to exit 0 and record `$mergedTip`; branch-tip commits newer than `$mergedTip` are not implementation inputs until they also merge.
-- [ ] Incorporate the updated `origin/main` using the repository's normal non-destructive branch workflow and run `git merge-base --is-ancestor $mergedTip HEAD`; require exit code 0.
-- [ ] Re-read `dashboard/server/control/claudeWorkerAdapter.ts`, `dashboard/server/control/queueBridge.ts`, `dashboard/server/control/activation.ts`, `dashboard/server/control/routes.ts`, `dashboard/server/http/context.ts`, `dashboard/server/http/surface.ts`, their tests, and every caller reached by `rg -n "dispatchQueueCard|buildQueueBridge|createQueueBridge|createClaudeWorkerAdapter|buildActivatedExecution|executionLatch|\.lock\(" dashboard/server`. Record the merged-tip signatures in the Task 9 reviewer notes.
-- [ ] Do not edit `claudeWorkerAdapter.ts`; Task 21's draining registry handles its post-spawn registration race. Edits to `queueBridge.ts` are limited to Task 21's reviewed `stopAndDrain()` change and Task 24's durable card→run receipt. If the merged-tip contracts invalidate either named edit or any later interface, stop and amend this plan through review before implementation.
-
-### Task 9: Bind approved proposals to the immutable registry identity
-
-Choice: Phase I still executes only from the configured ops root. A proposal whose registry record resolves to another root is refused; routing work across multiple roots remains Phase II. Activation resolves the declared `baseRef: ops`, requires that ref to equal checkout `HEAD`, and fails loud on a mismatch. `remote` and `credentialIdentity` remain recorded-not-enforced-until-Phase-II fields.
-
-**Files**
-
-- Modify: `dashboard/server/control/proposal.ts:47-59,152-180,213-230,656-836,1013-1020`
-- Modify: `dashboard/server/control/proposal.test.ts:1-420`
-- Modify: `dashboard/server/control/activation.ts:167-262,328-576`
-- Modify: `dashboard/server/control/activation.test.ts:32-180,500-580`
-- Modify: `dashboard/server/control/environment.ts:142-176`
-- Modify: `dashboard/server/control/environment.test.ts:1-70`
-
-**Interfaces**
-
-- Changes: `ProposalRegistry.repositories: RepositoryRegistry`
-- Produces: `PlanProposal.repository: RepositoryBinding`
-- Produces: `bindProposalRepository(project: string, registry: ProposalRegistry): RepositoryBinding`
-- Produces: `ActivatedRepositoryBase = Readonly<{ ref: string; commit: string }>`
-- Produces: `resolveActivatedRepositoryBase(repoRoot: string, baseRef: string): ActivatedRepositoryBase`
-- Produces: `assertProposalRepository(proposal: PlanProposal, repositories: RepositoryRegistry, activeRepoRoot: string, activatedBase: ActivatedRepositoryBase): RepositoryRecord`
-- Consumes after checkpoint: the post-merge proposal passed into `ActivatedExecution.runAutomatic`
-
-- [ ] Add failing proposal and activation tests:
-
-  ```ts
-  it('server-binds a browser proposal and rejects a caller-supplied binding', () => {
-    const parsed = validatePlanProposal(proposal, REGISTRY);
-    expect(parsed).toMatchObject({ ok: true, value: { repository: { registryId: 'kb-ops@1', identity: 'a'.repeat(64) } } });
-    expect(validatePlanProposal({ ...proposal, repository: { registryId: 'evil', identity: 'b'.repeat(64) } }, REGISTRY))
-      .toMatchObject({ ok: false, detail: expect.stringMatching(/repository.*server/i) });
-  });
-
-  it('accepts the exact compiled binding and rejects stale compiled identity', () => {
-    const binding = { registryId: 'kb-ops@1', identity: 'a'.repeat(64) };
-    expect(validateServerCompiledPlanProposal({ ...proposal, repository: binding }, REGISTRY).ok).toBe(true);
-    expect(validateServerCompiledPlanProposal({ ...proposal, repository: { ...binding, identity: '0'.repeat(64) } }, REGISTRY))
-      .toMatchObject({ ok: false, detail: expect.stringMatching(/identity/) });
-  });
-  ```
-
-  ```ts
-  import type { PlanProposal } from './proposal.ts';
-
-  it('refuses activation when an approved proposal resolves outside the active ops root', () => {
-    const record = { id: 'kb-ops@1', registryId: 'kb-ops@1', identity: 'a'.repeat(64), projects: ['kb-ops'], root: '/other-repo', remote: 'origin', baseRef: 'ops', scope: ['orgs/kb-ops/**'], credentialIdentity: 'desktop-promotion' };
-    const repositories = { forProject: () => record, resolve: () => record };
-    const approved = { project: 'kb-ops', repository: { registryId: record.id, identity: record.identity } } as PlanProposal;
-    expect(() => assertProposalRepository(approved, repositories, '/repo', { ref: 'ops', commit: 'b'.repeat(40) })).toThrow(/active ops root/);
-  });
-
-  it('refuses an approved proposal path outside its immutable repository scope', () => {
-    const record = { id: 'kb-ops@1', registryId: 'kb-ops@1', identity: 'a'.repeat(64), projects: ['kb-ops'], root: '/repo', remote: 'origin', baseRef: 'ops', scope: ['orgs/kb-ops/**'], credentialIdentity: 'desktop-promotion' };
-    const repositories = { forProject: () => record, resolve: () => record };
-    const approved = { project: 'kb-ops', repository: { registryId: record.id, identity: record.identity }, scope: { read: ['orgs/kb-ops/input.md'], write: ['orgs/other/output.md'] } } as PlanProposal;
-    expect(() => assertProposalRepository(approved, repositories, '/repo', { ref: 'ops', commit: 'b'.repeat(40) })).toThrow(/repository scope/);
-  });
-
-  it('refuses a declared base ref that is not the ref activation resolved', () => {
-    const record = { id: 'kb-ops@1', registryId: 'kb-ops@1', identity: 'a'.repeat(64), projects: ['kb-ops'], root: '/repo', remote: 'origin', baseRef: 'ops', scope: ['orgs/kb-ops/**'], credentialIdentity: 'desktop-promotion' };
-    const repositories = { forProject: () => record, resolve: () => record };
-    const approved = { project: 'kb-ops', repository: { registryId: record.id, identity: record.identity }, scope: { read: ['orgs/kb-ops/input.md'], write: [] } } as PlanProposal;
-    expect(() => assertProposalRepository(approved, repositories, '/repo', { ref: 'main', commit: 'b'.repeat(40) })).toThrow(/baseRef/);
-  });
-  ```
-
-- [ ] Run `cd dashboard; npm test -- server/control/proposal.test.ts server/control/activation.test.ts` and verify the repository fields/functions are missing.
-
-- [ ] Extend `ProposalRegistry` and `PlanProposal`, then add the closed binding helpers:
-
-  ```ts
-  import type { RepositoryBinding, RepositoryRecord, RepositoryRegistry } from './repositoryRegistry.ts';
-
-  export interface ProposalRegistry {
-    runtimes: Readonly<Record<string, readonly string[]>>;
-    skills: readonly string[];
-    workflowProfiles?: readonly string[];
-    repositories: RepositoryRegistry;
-  }
-
-  export interface PlanProposal {
-    schema: typeof PLAN_PROPOSAL_SCHEMA;
-    proposalId: string;
-    repository: RepositoryBinding;
-    project: string;
-    title: string;
-    summary: string;
-    manager: ProposalManager;
-    scope: ProposalScope;
-    governanceRefs: string[];
-    stages: ProposalStage[];
-    profile?: string;
-    parameters?: Record<string, string>;
-  }
-
-  export function bindProposalRepository(project: string, registry: ProposalRegistry): RepositoryBinding {
-    const record = registry.repositories.forProject(project);
-    return Object.freeze({ registryId: record.id, identity: record.identity });
-  }
-
-  export interface ActivatedRepositoryBase { readonly ref: string; readonly commit: string }
-
-  export function resolveActivatedRepositoryBase(repoRoot: string, baseRef: string): ActivatedRepositoryBase {
-    if (baseRef !== 'ops') throw new Error(`Phase I activation requires baseRef ops, received ${baseRef}`);
-    const declared = execFileSync('git', ['rev-parse', '--verify', `refs/heads/${baseRef}^{commit}`], { cwd: repoRoot, encoding: 'utf8' }).trim();
-    const head = execFileSync('git', ['rev-parse', '--verify', 'HEAD^{commit}'], { cwd: repoRoot, encoding: 'utf8' }).trim();
-    if (!/^[0-9a-f]{40}$/.test(declared) || !/^[0-9a-f]{40}$/.test(head) || declared !== head) {
-      throw new Error(`declared repository baseRef ${baseRef} does not equal the checkout HEAD activation would resolve`);
-    }
-    return Object.freeze({ ref: baseRef, commit: head });
-  }
-
-  export function assertProposalRepository(
-    proposal: PlanProposal,
-    repositories: RepositoryRegistry,
-    activeRepoRoot: string,
-    activatedBase: ActivatedRepositoryBase,
-  ): RepositoryRecord {
-    const record = repositories.resolve(proposal.repository);
-    if (record.root !== activeRepoRoot) throw new Error('approved proposal repository does not match the active ops root');
-    if (record.baseRef !== activatedBase.ref) throw new Error('approved proposal repository baseRef does not match the activated baseRef');
-    if (!record.projects.includes(proposal.project)) throw new Error('approved proposal project is outside its repository registration');
-    const permits = (path: string) => {
-      const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
-      if (!normalized || normalized === '..' || normalized.startsWith('../') || normalized.includes('/../')) return false;
-      return record.scope.some((rule) => rule.endsWith('/**')
-        ? normalized === rule.slice(0, -3) || normalized.startsWith(rule.slice(0, -2))
-        : normalized === rule);
-    };
-    if ([...proposal.scope.read, ...proposal.scope.write].some((path) => !permits(path))) {
-      throw new Error('approved proposal path is outside its immutable repository scope');
-    }
-    return record;
-  }
-  ```
-
-  Import `execFileSync` in `activation.ts`, place `ActivatedRepositoryBase` and `resolveActivatedRepositoryBase` there, and import the type into `proposal.ts` for `assertProposalRepository`. In untrusted validation, reject a present `repository` key and synthesize `bindProposalRepository(project, registry)`. In server-compiled validation, require exactly `{registryId, identity}` and call `registry.repositories.resolve`. Include the binding in `canonicalProposal`, so approval hashes cover it. Document on `RepositoryRecord.remote` and `.credentialIdentity` that they are recorded and identity-hashed but not enforcement inputs until Phase II.
-
-- [ ] After re-reading the merged activation path, pass `repositories` through `BuildActivatedExecutionOptions`. Resolve the registry record for the held project during activation construction, call `resolveActivatedRepositoryBase(repoRoot, heldRecord.baseRef)`, and use its `commit` as the engine's `baseCommit` instead of the old unqualified `git rev-parse HEAD` result. Call this exact guard immediately before the existing `engine.runToBoundary` invocation:
-
-  ```ts
-  assertProposalRepository(input.proposal, options.repositories, repoRoot, activatedBase);
-  return engine.runToBoundary(input);
-  ```
-
-  Update `loadWorkflowCompileEnvironment` to expose the same `repositories` instance, so browser-authored and canonical-workflow proposals produce identical bindings.
-
-- [ ] Run `cd dashboard; npm test -- server/control/proposal.test.ts server/control/activation.test.ts server/control/environment.test.ts; npm run typecheck; npm test` and verify the full suite passes.
-
-- [ ] Commit with `git add dashboard/server/control/proposal.ts dashboard/server/control/proposal.test.ts dashboard/server/control/activation.ts dashboard/server/control/activation.test.ts dashboard/server/control/environment.ts dashboard/server/control/environment.test.ts; git commit -m "feat(control): bind proposals to repository identities"`.
 
 ## D. Immutable release, activation, rollback, and state recovery
 
@@ -1215,7 +1060,7 @@ Choice: the release name is `kb-platform-$GITHUB_SHA.tar.gz`, where `GITHUB_SHA`
 
 ### Task 11: Expose an unauthenticated, minimal quiescence readiness probe
 
-Choice: `/readyz` exposes only a transition state and counts; it contains no repository data. A release may restart only after the asynchronous `locking -> locked` transition has closed admission, cancelled queued work, stopped and drained the bridge, drained every registered worker/Git/PTY/Composer process, and corroborated that the service cgroup has no child processes.
+Choice: `/readyz` exposes only the current execution-lock state and process counts; it contains no repository data. In the ship-now Gate-1 posture, execution is locked and the current bridge has no admitted internal queue. The asynchronous `locking -> locked` coordinator that closes merged admission, cancels queued work, stops the bridge, and drains registered workers is deferred below the workflow-platform checkpoint.
 
 **Files**
 
@@ -1329,7 +1174,7 @@ Choice: `/readyz` exposes only a transition state and counts; it contains no rep
   }
   ```
 
-- [ ] Add these read-only counters beside the existing drain functions, pin each with its current drain test, and add an injectable asynchronous `readiness` function to `SurfaceContext` backed by the activation lock state, bridge state, Task 22 queued count (zero until that task lands), the counters, `ptySessions.size()`, and `serviceCgroupChildCount()`:
+- [ ] Add these read-only counters beside the existing drain functions, pin each with its current drain test, and add an injectable asynchronous `readiness` function to `SurfaceContext` backed by the current activation-latch snapshot, current bridge started/stopped state, an exact zero queued count for the pre-merge launch path, the counters, `ptySessions.size()`, and `serviceCgroupChildCount()`:
 
   ```ts
   export function activeAsyncGitCount(): number { return liveChildren.size; }
@@ -1342,7 +1187,7 @@ Choice: `/readyz` exposes only a transition state and counts; it contains no rep
   app.get('/readyz', async () => await surfaceCtx.readiness());
   ```
 
-  Keep `/healthz` unchanged. Task 21 replaces the initial worker count with the draining registry's live count and supplies the asynchronous lock/bridge state; Task 22 supplies the limiter queue count without changing this interface. If cgroup identity cannot be read, readiness fails closed with `service-cgroup-unknown` and `quiescent: false`.
+  Keep `/healthz` unchanged. The deferred coordinator must preserve this public return shape when it replaces the initial worker/queue/bridge inputs after the merged signatures are known. If cgroup identity cannot be read, readiness fails closed with `service-cgroup-unknown` and `quiescent: false`.
 
 - [ ] Run `cd dashboard; npm test -- server/release/quiescence.test.ts server/release/serviceCgroup.test.ts server/index.test.ts server/write/asyncGit.test.ts server/vibe/session.test.ts; npm run typecheck` and verify all tests pass.
 
@@ -1406,12 +1251,19 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
   def test_candidate_code_is_not_touched_before_root_validator_accepts(tmp_path):
       events = []
       with pytest.raises(RuntimeError, match="signature"):
-          activate_release.activate_from_upload(tmp_path, fake_paths(tmp_path), fake_io(events, signature_ok=False))
-      assert events == ["secure-copy", "verify-signature"]
+          activate_release.copy_and_verify_upload(tmp_path, tmp_path / "stage", fake_io(events, signature_ok=False))
+      assert events == ["secure-copy", "secure-copy", "secure-copy", "verify-signature"]
+
+
+  def test_activation_refuses_staging_not_owned_by_root_or_not_mode_0700():
+      with pytest.raises(RuntimeError, match="root:root 0700"):
+          require_root_staging(SimpleNamespace(st_uid=1000, st_gid=1000, st_mode=stat.S_IFDIR | 0o700))
+      with pytest.raises(RuntimeError, match="root:root 0700"):
+          require_root_staging(SimpleNamespace(st_uid=0, st_gid=0, st_mode=stat.S_IFDIR | 0o755))
   ```
 
   ```py
-  @pytest.mark.parametrize("name", ["GITHUB_TOKEN", "GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK"])
+  @pytest.mark.parametrize("name", ["GITHUB_TOKEN", "GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK", "DASHBOARD_SESSION_SECRET", "KB_CANARY_SESSION", "OPENAI_API_KEY", "AWS_ACCESS_KEY_ID"])
   def test_vm_validation_rejects_credential_channels(name, tmp_path):
       with pytest.raises(RuntimeError, match=name):
           validate_vm_runtime.validate_environment({name: "present"})
@@ -1445,6 +1297,8 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
 
   ```py
   from dataclasses import dataclass
+  from types import SimpleNamespace
+  from typing import Protocol
 
   @dataclass(frozen=True)
   class RuntimePaths:
@@ -1464,6 +1318,11 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
       pending.unlink(missing_ok=True)
       pending.symlink_to(target.name, target_is_directory=True)
       pending.replace(link)
+
+
+  def require_root_staging(value: os.stat_result) -> None:
+      if value.st_uid != 0 or value.st_gid != 0 or not stat.S_ISDIR(value.st_mode) or stat.S_IMODE(value.st_mode) != 0o700:
+          raise RuntimeError("release staging must be root:root 0700")
 
 
   ATTESTATION_KEYS = {"archive", "schema", "sha256", "sourceCommit", "workflow"}
@@ -1486,8 +1345,8 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
   def secure_copy(source: Path, destination: Path) -> None:
       source_fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
       try:
-          stat = os.fstat(source_fd)
-          if not stat.S_ISREG(stat.st_mode) or stat.st_nlink != 1:
+          source_stat = os.fstat(source_fd)
+          if not stat.S_ISREG(source_stat.st_mode) or source_stat.st_nlink != 1:
               raise RuntimeError("upload must be one regular file")
           destination_fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400)
           try:
@@ -1508,31 +1367,49 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
       if result.returncode != 0: raise RuntimeError("release signature verification failed")
 
 
-  def activate_from_upload(upload_dir: Path, paths: RuntimePaths = RuntimePaths()) -> str:
+  class ActivationIo(Protocol):
+      def secure_copy(self, source: Path, destination: Path) -> None: ...
+      def verify_signature(self, attestation: Path, signature: Path) -> None: ...
+      def run(self, argv: list[str], **kwargs) -> subprocess.CompletedProcess: ...
+      def wait_healthy(self) -> None: ...
+
+
+  def production_activation_io() -> ActivationIo:
+      return SimpleNamespace(secure_copy=secure_copy, verify_signature=verify_signature, run=subprocess.run, wait_healthy=wait_healthy)
+
+
+  def copy_and_verify_upload(upload_dir: Path, stage: Path, io: ActivationIo | None = None) -> None:
+      io = io or production_activation_io()
+      for name in ("release.tar.gz", "attestation.json", "attestation.json.sig"):
+          io.secure_copy(upload_dir / name, stage / name)
+      io.verify_signature(stage / "attestation.json", stage / "attestation.json.sig")
+
+
+  def activate_from_upload(upload_dir: Path, paths: RuntimePaths = RuntimePaths(), io: ActivationIo | None = None) -> str:
+      io = io or production_activation_io()
       if os.geteuid() != 0: raise RuntimeError("activation requires root")
       stage = paths.staging / secrets.token_hex(16)
       stage.mkdir(mode=0o700)
-      for name in ("release.tar.gz", "attestation.json", "attestation.json.sig"):
-          secure_copy(upload_dir / name, stage / name)
-      verify_signature(stage / "attestation.json", stage / "attestation.json.sig")
+      require_root_staging(stage.stat())
+      copy_and_verify_upload(upload_dir, stage, io)
       attestation = parse_attestation((stage / "attestation.json").read_bytes())
       archive = stage / "release.tar.gz"
       actual = sha256_file(archive)
       if not hmac.compare_digest(attestation["sha256"], actual): raise RuntimeError("release digest mismatch")
       if paths.current.exists():
           require_quiescence(read_readiness(), "release activation")
-      elif subprocess.run(["systemctl", "is-active", "--quiet", "kb-dashboard.service"]).returncode == 0:
+      elif io.run(["systemctl", "is-active", "--quiet", "kb-dashboard.service"]).returncode == 0:
           raise RuntimeError("initial activation requires the old live-checkout service to be stopped")
       version = attestation["sourceCommit"]
       destination = paths.releases / version
       extract_read_only(archive, destination)
       if (destination / "VERSION").read_text(encoding="ascii").strip() != version: raise RuntimeError("release VERSION mismatch")
-      subprocess.run(["python3", "/usr/local/lib/kb/validate_vm_runtime.py", "--ops-root", str(paths.ops_root), "--unit", "kb-dashboard.service"], check=True)
+      io.run(["python3", "/usr/local/lib/kb/validate_vm_runtime.py", "--ops-root", str(paths.ops_root), "--unit", "kb-dashboard.service"], check=True)
       old = paths.current.resolve() if paths.current.exists() else None
       if old is not None: atomic_link(paths.previous, old)
       atomic_link(paths.current, destination)
-      subprocess.run(["systemctl", "restart", "kb-dashboard.service"], check=True)
-      wait_healthy()
+      io.run(["systemctl", "restart", "kb-dashboard.service"], check=True)
+      io.wait_healthy()
       return version
 
 
@@ -1592,23 +1469,20 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
       run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "--push", "origin", "disabled://desktop-promotion-only"], check=True)
       run(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", "/var/lib/kb/state"], check=True)
       install_root_validators(release_public_key)
-      secret = secrets.token_hex(32)
-      Path("/etc/kb-dashboard").mkdir(mode=0o700, exist_ok=True)
-      fd = os.open("/etc/kb-dashboard/session.env", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-      try: os.write(fd, f"DASHBOARD_SESSION_SECRET={secret}\n".encode("ascii"))
-      finally: os.close(fd)
   ```
 
-  Add pytest assertions that the old service stops before clone, `DATA_PATTERNS` excludes `dashboard`, `scripts`, `schemas`, `deploy`, and `.github`, both remote URLs are disabled, staging stays root-owned, the session env file is `root:root 0600`, its value is never logged, and generated validator source contains the exact supplied public key but no private key. On the desktop create the seed with `git bundle create kb-ops-bootstrap.bundle ops`, derive the public key with `ssh-keygen -y -f $env:KB_RELEASE_SIGNING_KEY | Set-Content -NoNewline kb-release-signing.pub`, transfer the bundle, public key, and reviewed deploy scripts, run bootstrap once, install the unit and validators under `/etc/systemd/system` and `/usr/local/lib/kb`, delete the transferred public-key input after installation, then use the normal desktop deploy command for the first release.
+  Add pytest assertions that the old service stops before clone, `DATA_PATTERNS` excludes `dashboard`, `scripts`, `schemas`, `deploy`, and `.github`, both remote URLs are disabled, staging stays root-owned, neither bootstrap nor the unit creates or reads a session-secret file, and generated validator source contains the exact supplied public key but no private key. Do not set `DASHBOARD_SESSION_SECRET`: `auth/session.ts` must retain its process-local random secret, so every daemon restart invalidates every session and restores the locked, human-re-arm-required posture. On the desktop create the seed with `git bundle create kb-ops-bootstrap.bundle ops`, derive the public key with `ssh-keygen -y -f $env:KB_RELEASE_SIGNING_KEY | Set-Content -NoNewline kb-release-signing.pub`, transfer the bundle, public key, and reviewed deploy scripts, run bootstrap once, install the unit and validators under `/etc/systemd/system` and `/usr/local/lib/kb`, delete the transferred public-key input after installation, then use the normal desktop deploy command for the first release.
 
 - [ ] Implement `validate_vm_runtime.py` so it inspects names only, never prints values, and enforces the data-only checkout and disabled push remote:
 
   ```py
-  FORBIDDEN_ENV = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK"})
+  FORBIDDEN_ENV = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK", "DASHBOARD_SESSION_SECRET", "KB_CANARY_SESSION"})
+  CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTIAL|API_KEY|ACCESS_KEY|AUTH_SOCK|ASKPASS|COOKIE|SESSION)")
+  EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL"}
 
 
   def validate_environment(env: dict[str, str]) -> None:
-      present = sorted(FORBIDDEN_ENV.intersection(env))
+      present = sorted(name for name in env if name in FORBIDDEN_ENV or CREDENTIAL_ENV_NAME.search(name))
       if present:
           raise RuntimeError("forbidden VM credential channel: " + ",".join(present))
 
@@ -1641,11 +1515,15 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
       expected = {"User": "kb-dashboard", "Group": "kb-dashboard", "WorkingDirectory": "/opt/kb-releases/current/dashboard", "KillMode": "control-group"}
       for name, value in expected.items():
           if show[name] != value: raise RuntimeError(f"effective unit {name} mismatch")
-      if "/etc/kb-dashboard/session.env" not in show["EnvironmentFiles"] or "/usr/bin/node" not in show["ExecStart"]:
-          raise RuntimeError("effective unit executable or environment file mismatch")
+      if show["EnvironmentFiles"]:
+          raise RuntimeError("effective unit must not load credential-bearing environment files")
+      if "/usr/bin/node" not in show["ExecStart"]:
+          raise RuntimeError("effective unit executable mismatch")
       if not show["ControlGroup"].startswith("/system.slice/kb-dashboard.service"):
           raise RuntimeError("effective unit cgroup mismatch")
       assigned = {match.group(1) for match in re.finditer(r"(?m)^Environment=(?:\"?)([A-Za-z_][A-Za-z0-9_]*)=", text)}
+      if assigned != EXPECTED_UNIT_ENV:
+          raise RuntimeError("dashboard unit environment assignment set is not closed")
       forbidden = sorted(FORBIDDEN_ENV.intersection(assigned))
       if forbidden:
           raise RuntimeError("dashboard unit assigns a forbidden credential name: " + ",".join(forbidden))
@@ -1659,7 +1537,7 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
           raise RuntimeError("effective unit filesystem policy mismatch")
   ```
 
-  The CLI runs `validate_environment(dict(os.environ))`, `validate_ops_root(args.ops_root)`, `read_effective_unit(args.unit)`, and `validate_effective_unit(show, text)` in that order and exits nonzero on any refusal. It prints only field names and refusal text, never environment values or the contents of the session env file. Tests also inject a malicious drop-in via a fake `systemctl cat` result and prove refusal.
+  The CLI runs `validate_environment(dict(os.environ))`, `validate_ops_root(args.ops_root)`, `read_effective_unit(args.unit)`, and `validate_effective_unit(show, text)` in that order and exits nonzero on any refusal. It prints only field names and refusal text, never environment values. Tests also inject a malicious drop-in via a fake `systemctl cat` result and prove refusal, and prove any nonempty `EnvironmentFiles` value is rejected.
 
 - [ ] Create the systemd unit:
 
@@ -1681,8 +1559,7 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
   Environment=KB_COORDINATION_PUBLICATION=outbox
   Environment=KB_VM_RUNTIME=1
   Environment=GIT_CONFIG_GLOBAL=/dev/null
-  EnvironmentFile=/etc/kb-dashboard/session.env
-  UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK
+  UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
   ExecStartPre=/usr/bin/python3 /usr/local/lib/kb/validate_vm_runtime.py --ops-root /var/lib/kb/ops --unit kb-dashboard.service
   ExecStart=/usr/bin/node --experimental-strip-types server/index.ts
   Restart=on-failure
@@ -1698,46 +1575,113 @@ Choice: the trusted desktop signs Task 10's closed attestation with an offline S
   WantedBy=multi-user.target
   ```
 
-  Add `deploy` to Task 10's `RELEASE_ROOTS`, and add an archive assertion for the Task 13 restore utility. Root validators remain bootstrap-installed trust code and are never refreshed from the candidate archive.
+  Add `deploy` to Task 10's `RELEASE_ROOTS` now that this task creates that directory, and assert this task's deploy files are archived. Task 13 adds the archive assertion for `deploy/export_tier0.py` when it creates that file. Root validators remain bootstrap-installed trust code and are never refreshed from the candidate archive.
 
-- [ ] Run `python -m pytest tests/test_deploy_release.py tests/test_bootstrap_vm.py tests/test_validate_vm_runtime.py -q`. On a fresh Ubuntu staging VM run the documented bundle/bootstrap transition, then deploy one signed artifact; run `sudo test "$(stat -c '%U:%G:%a' /var/lib/kb-release-staging)" = 'root:root:700'; sudo test "$(stat -c '%U:%G:%a' /etc/kb-dashboard/session.env)" = 'root:root:600'; sudo systemctl show kb-dashboard.service -p FragmentPath -p DropInPaths -p User -p Group -p ExecStart -p EnvironmentFiles -p KillMode -p ControlGroup; sudo systemctl cat kb-dashboard.service; release_version=$(cat /opt/kb-releases/current/VERSION); test "$(readlink -f /proc/$(systemctl show -p MainPID --value kb-dashboard)/cwd)" = "/opt/kb-releases/$release_version/dashboard"`; deploy a second signed artifact; run the rollback command and verify `readlink -f /opt/kb-releases/current` returns the first version. Preserve redacted output that contains names/paths but no secret value in the Task 19/25 evidence directories.
+- [ ] Run `python -m pytest tests/test_deploy_release.py tests/test_bootstrap_vm.py tests/test_validate_vm_runtime.py -q`. On a fresh Ubuntu staging VM run the documented bundle/bootstrap transition, then deploy one signed artifact; run `sudo test "$(stat -c '%U:%G:%a' /var/lib/kb-release-staging)" = 'root:root:700'; sudo test ! -e /etc/kb-dashboard/session.env; sudo systemctl show kb-dashboard.service -p FragmentPath -p DropInPaths -p User -p Group -p ExecStart -p EnvironmentFiles -p KillMode -p ControlGroup; sudo systemctl cat kb-dashboard.service; release_version=$(cat /opt/kb-releases/current/VERSION); test "$(readlink -f /proc/$(systemctl show -p MainPID --value kb-dashboard)/cwd)" = "/opt/kb-releases/$release_version/dashboard"`; require `EnvironmentFiles=` to be empty, deploy a second signed artifact, run the rollback command, and verify `readlink -f /opt/kb-releases/current` returns the first version. Preserve the redacted effective-config and rollback output for the deferred Gate-2 inventory.
 
 - [ ] Commit with `git add scripts/deploy_platform_release.py deploy/activate_release.py deploy/bootstrap_vm.py deploy/validate_vm_runtime.py deploy/systemd/kb-dashboard.service tests/test_deploy_release.py tests/test_bootstrap_vm.py tests/test_validate_vm_runtime.py scripts/build_platform_release.py tests/test_build_platform_release.py; git commit -m "feat(deploy): activate and roll back immutable releases"`.
 
 ### Task 13: Back up and restore the release, ops checkout, and state root
 
-Choice: the VM holds no backup-store credential. A root VM exporter first acquires the maintenance lock, requires Task 11 readiness, stops the service to eliminate writers, corroborates an empty service cgroup, creates one self-describing tier-zero archive, restarts into the locked posture, and only then gives that archive to the desktop. Desktop-side restic supplies encryption and off-VM storage. The 15-minute RPO and 60-minute RTO are proven by restoring into a fresh isolated root, running full Git and state invariants, booting a distinct service instance, and running Task 24's recovery canary against it.
+Choice: the VM holds no backup-store credential. A root VM exporter acquires a filesystem maintenance lock, stops the service to eliminate writers, corroborates an empty service cgroup, creates one self-describing tier-zero archive, restarts into the locked posture, and only then gives that archive to the desktop. Service stop plus an empty cgroup is the ship-now quiescence boundary; it does not depend on the deferred launch/drain wiring. Desktop-side restic supplies encryption and off-VM storage. This task proves the 15-minute RPO and 60-minute RTO by restoring into a fresh isolated root, running full Git and state invariants, and booting a distinct locked service instance. The recovery-canary extension is explicitly deferred below the workflow-platform checkpoint.
 
 **Files**
 
 - Create: `deploy/export_tier0.py`
 - Create: `scripts/backup_tier0.py`
 - Create: `tests/test_state_backup.py`
+- Modify: `tests/test_build_platform_release.py:1-80`
 
 **Interfaces**
 
-- Produces VM CLI: `sudo python3 /opt/kb-releases/current/deploy/export_tier0.py --output /var/tmp/kb-tier0-EXPORT_ID.tar --readiness http://127.0.0.1:4317/readyz`
+- Produces VM CLI: `sudo python3 /opt/kb-releases/current/deploy/export_tier0.py --output /var/tmp/kb-tier0-EXPORT_ID.tar`
 - Produces desktop CLI: `python scripts/backup_tier0.py backup --host HOST --output DIR --rpo-minutes 15`
 - Produces desktop CLI: `python scripts/backup_tier0.py restore-drill --target PATH --report FILE --rto-minutes 60`
 - Consumes paths: `/opt/kb-releases`, `/var/lib/kb/ops`, `/var/lib/kb/state`
-- Consumes after Task 24: `linuxDispatchCanary.ts --restore-drill --base-url URL --state-root PATH --capability-fd 0 --output FILE`
-- Produces: `BackupReport = { version: 2; operation: 'backup' | 'restore-drill'; startedAt: string; finishedAt: string; durationSeconds: number; snapshot: string; archiveSha256: string; quiescentExport: boolean; gitFsck: boolean; invariants: boolean; booted: boolean; recoveryCanary: boolean; rpoMet: boolean; rtoMet: boolean; verified: boolean }`
+- Produces: `BackupReportV1 = { version: 1; operation: 'backup' | 'restore-drill'; startedAt: string; finishedAt: string; durationSeconds: number; snapshot: string; archiveSha256: string; quiescentExport: boolean; gitFsck: boolean; invariants: boolean; booted: boolean; rpoMet: boolean; rtoMet: boolean; verified: boolean }`
 
 - [ ] Add failing tests with an injected command runner:
 
   ```py
+  import hashlib
+  import json
   import subprocess
   from datetime import datetime, timezone
+  from pathlib import Path
+
+  COMMIT = "a" * 40
+
+
+  def canonical(value: dict) -> bytes:
+      return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+  def valid_restored_tree(tmp_path: Path) -> Path:
+      target = tmp_path / "restore"
+      release = target / "opt/kb-releases" / COMMIT
+      dashboard = release / "dashboard/server"
+      dashboard.mkdir(parents=True)
+      index = dashboard / "index.ts"; index.write_text("export {};\n", encoding="utf-8")
+      (release / "VERSION").write_text(COMMIT + "\n", encoding="ascii")
+      (release / "MANIFEST.sha256").write_text(
+          f"{hashlib.sha256(index.read_bytes()).hexdigest()}  dashboard/server/index.ts\n", encoding="ascii",
+      )
+      releases = release.parent
+      (releases / "current").symlink_to(COMMIT, target_is_directory=True)
+      (releases / "previous").symlink_to(COMMIT, target_is_directory=True)
+      ops = target / "var/lib/kb/ops"; ops.mkdir(parents=True)
+      state = target / "var/lib/kb/state"
+      control = state / "control"; control.mkdir(parents=True)
+      control_plane = {
+          "version": 1, "nextEventCursor": 1, "proposals": [],
+          "runs": [{"runRef": "run-1"}],
+          "stages": [{"stageRef": "stage-1", "runRef": "run-1"}],
+          "attempts": [{"attemptRef": "attempt-1", "stageRef": "stage-1", "runRef": "run-1"}],
+          "sessions": [], "humanRequests": [], "events": [], "quarantine": [],
+      }
+      (control / "control-plane.json").write_text(json.dumps(control_plane), encoding="utf-8")
+      ready = state / "outbox/ready"; receipts = state / "outbox/receipts"
+      ready.mkdir(parents=True); receipts.mkdir()
+      bundle = ready / f"{COMMIT}.bundle"; bundle.write_bytes(b"bundle")
+      manifest = {
+          "schema": "kb.ops-outbox/v1", "id": COMMIT, "parent": "b" * 40, "commit": COMMIT,
+          "paths": ["queue/inbox/card.md"], "createdAt": "2026-08-11T00:00:00.000Z",
+          "bundleSha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+      }
+      (ready / f"{COMMIT}.json").write_bytes(canonical(manifest))
+      receipt = {
+          "schema": "kb.ops-promotion/v1", "id": COMMIT, "sourceCommit": COMMIT,
+          "promotedCommit": "c" * 40, "promotedAt": "2026-08-11T00:00:01.000Z",
+      }
+      (receipts / f"{COMMIT}.json").write_bytes(canonical(receipt))
+      return target
+
+
+  def fake_restore_runner(ops: Path, fsck: bool = True, readiness: dict | None = None):
+      readiness = readiness or {"ok": True, "quiescent": True, "blockers": []}
+      def run(argv, **_kwargs):
+          if "fsck" in argv:
+              return subprocess.CompletedProcess(argv, 0 if fsck else 1, stdout="", stderr="")
+          if "symbolic-ref" in argv:
+              return subprocess.CompletedProcess(argv, 0, stdout="refs/heads/ops\n", stderr="")
+          if "rev-parse" in argv and "--git-path" in argv:
+              return subprocess.CompletedProcess(argv, 0, stdout=str(ops / ".git" / argv[-1]) + "\n", stderr="")
+          if "rev-parse" in argv:
+              return subprocess.CompletedProcess(argv, 0, stdout=COMMIT + "\n", stderr="")
+          if argv[0] == "curl":
+              return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(readiness), stderr="")
+          return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+      return run
 
   def test_export_stops_all_writers_before_tar_and_restarts_locked(tmp_path):
       calls = []
       export_tier0.export(tmp_path / "tier0.tar", io=fake_export_io(calls))
-      assert calls == ["lock", "ready:quiescent", "systemctl:stop", "cgroup:empty", "tar", "fsync", "systemctl:start", "ready:locked"]
+      assert calls == ["lock", "systemctl:stop", "cgroup:empty", "tar", "fsync", "systemctl:start", "ready:locked"]
 
 
-  def test_export_refuses_queued_work_even_when_worker_count_is_zero(tmp_path):
-      with pytest.raises(RuntimeError, match="work-queued"):
-          export_tier0.export(tmp_path / "tier0.tar", io=fake_export_io([], readiness={"ok": True, "quiescent": False, "blockers": ["work-queued"]}))
+  def test_export_refuses_to_archive_when_the_stopped_service_cgroup_is_not_empty(tmp_path):
+      with pytest.raises(RuntimeError, match="cgroup is not empty"):
+          export_tier0.export(tmp_path / "tier0.tar", io=fake_export_io([], cgroup_children=1))
 
 
   def test_backup_runs_restic_only_on_desktop_copy(tmp_path):
@@ -1755,17 +1699,74 @@ Choice: the VM holds no backup-store credential. A root VM exporter first acquir
               rto_minutes=60,
               run=lambda argv: subprocess.CompletedProcess(argv, 0, stdout="", stderr=""),
               monotonic=lambda: next(ticks),
-              verify=lambda _target: {"gitFsck": True, "invariants": True, "booted": True, "recoveryCanary": True},
+              restore=lambda _target, _run: ("snapshot-1", tmp_path / "kb-tier0.tar", "b" * 64),
+              extract=lambda _archive, _target: None,
+              verify=lambda _target, run=None: {"gitFsck": True, "invariants": True, "booted": True},
           )
 
 
-  def test_restore_requires_fsck_invariants_boot_and_recovery(tmp_path):
-      result = backup_tier0.verify_restored_tree(tmp_path, run=fake_restore_runner(fsck=False))
-      assert result == {"gitFsck": False, "invariants": True, "booted": True, "recoveryCanary": True}
+  def test_restore_requires_fsck_invariants_and_isolated_boot(tmp_path):
+      target = valid_restored_tree(tmp_path)
+      result = backup_tier0.verify_restored_tree(target, run=fake_restore_runner(target / "var/lib/kb/ops", fsck=False))
+      assert result == {"gitFsck": False, "invariants": True, "booted": True}
       assert backup_tier0.decide_restore(result) is False
+
+
+  def test_consistent_restored_tree_passes_every_restore_validator(tmp_path):
+      target = valid_restored_tree(tmp_path)
+      run = fake_restore_runner(target / "var/lib/kb/ops")
+      assert backup_tier0.validate_release_links(target) is True
+      assert backup_tier0.validate_ops_head(target / "var/lib/kb/ops", run=run) is True
+      assert backup_tier0.validate_state_json(target) is True
+      assert backup_tier0.validate_outbox_manifests_receipts(target) is True
+      assert backup_tier0.resolve_restored_release(target) == target / "opt/kb-releases" / COMMIT
+      assert backup_tier0.wait_for_locked_readiness("http://restore/readyz", run=run, timeout_seconds=0) is True
+
+
+  def test_release_link_validator_rejects_a_dangling_symlink(tmp_path):
+      target = valid_restored_tree(tmp_path)
+      current = target / "opt/kb-releases/current"; current.unlink(); current.symlink_to("missing", target_is_directory=True)
+      assert backup_tier0.validate_release_links(target) is False
+
+
+  def test_ops_head_validator_rejects_a_missing_ops_ref_object(tmp_path):
+      target = valid_restored_tree(tmp_path)
+      def missing_ref(argv, **_kwargs):
+          if "rev-parse" in argv and argv[-1] == "refs/heads/ops^{commit}":
+              return subprocess.CompletedProcess(argv, 1, stdout="", stderr="missing")
+          return fake_restore_runner(target / "var/lib/kb/ops")(argv)
+      assert backup_tier0.validate_ops_head(target / "var/lib/kb/ops", run=missing_ref) is False
+
+
+  def test_state_validator_rejects_a_stage_that_references_an_absent_run(tmp_path):
+      target = valid_restored_tree(tmp_path)
+      path = target / "var/lib/kb/state/control/control-plane.json"
+      value = json.loads(path.read_text(encoding="utf-8")); value["runs"] = []
+      path.write_text(json.dumps(value), encoding="utf-8")
+      assert backup_tier0.validate_state_json(target) is False
+
+
+  def test_outbox_validator_rejects_an_orphaned_receipt(tmp_path):
+      target = valid_restored_tree(tmp_path)
+      orphan = {"schema": "kb.ops-promotion/v1", "id": "d" * 40, "sourceCommit": "d" * 40, "promotedCommit": "e" * 40, "promotedAt": "2026-08-11T00:00:01.000Z"}
+      (target / "var/lib/kb/state/outbox/receipts" / f"{'d' * 40}.json").write_bytes(canonical(orphan))
+      assert backup_tier0.validate_outbox_manifests_receipts(target) is False
+
+
+  def test_restored_release_resolver_rejects_a_dangling_current_symlink(tmp_path):
+      target = valid_restored_tree(tmp_path)
+      current = target / "opt/kb-releases/current"; current.unlink(); current.symlink_to("missing", target_is_directory=True)
+      with pytest.raises(RuntimeError, match="current"):
+          backup_tier0.resolve_restored_release(target)
+
+
+  def test_locked_readiness_validator_rejects_an_unlocked_instance(tmp_path):
+      target = valid_restored_tree(tmp_path)
+      run = fake_restore_runner(target / "var/lib/kb/ops", readiness={"ok": True, "quiescent": False, "blockers": ["execution-unlocked"]})
+      assert backup_tier0.wait_for_locked_readiness("http://restore/readyz", run=run, timeout_seconds=0) is False
   ```
 
-- [ ] Run `python -m pytest tests/test_state_backup.py -q` and verify the module is absent.
+- [ ] Run `python -m pytest tests/test_state_backup.py tests/test_build_platform_release.py -q` and verify the backup module is absent and the release archive lacks `deploy/export_tier0.py`.
 
 - [ ] Implement the VM export with an exclusive `flock` on `/run/lock/kb-maintenance.lock`, an argv-only runner, a `finally` restart, and no backup credential access:
 
@@ -1774,10 +1775,9 @@ Choice: the VM holds no backup-store credential. A root VM exporter first acquir
 
 
   def export(output: Path, io: ExportIo = production_io) -> None:
-      if os.geteuid() != 0 or output.exists() or output.parent != Path("/var/tmp"):
+      if not io.is_root() or output.exists() or output.parent != io.output_root():
           raise RuntimeError("export requires root and a fresh /var/tmp target")
       with io.exclusive_lock(Path("/run/lock/kb-maintenance.lock")):
-          io.require_quiescence(io.read_readiness(), "tier-zero export")
           io.run(["systemctl", "stop", "kb-dashboard.service"])
           try:
               if io.service_cgroup_children("kb-dashboard.service") != 0: raise RuntimeError("service cgroup is not empty")
@@ -1792,12 +1792,20 @@ Choice: the VM holds no backup-store credential. A root VM exporter first acquir
 - [ ] Implement desktop backup, isolated restore, and the closed verifier. `safe_extract` rejects absolute/`..` names, devices, hardlinks, and symlinks whose normalized target escapes the isolated root. Every command is argv-only:
 
   ```py
+  import posixpath
+  import tarfile
+  import time
+  from datetime import datetime, timezone
+  from pathlib import Path, PurePosixPath
+
+
   def backup(host: str, output: Path, rpo_minutes: int = 15, run=run_command, now=utc_now) -> dict:
+      started = now()
       output.mkdir(parents=True, exist_ok=True)
       archive = output / "kb-tier0.tar"
       export_id = secrets.token_hex(16)
       remote = f"/var/tmp/kb-tier0-{export_id}.tar"
-      run(["ssh", host, "sudo", "python3", "/opt/kb-releases/current/deploy/export_tier0.py", "--output", remote, "--readiness", "http://127.0.0.1:4317/readyz"])
+      run(["ssh", host, "sudo", "python3", "/opt/kb-releases/current/deploy/export_tier0.py", "--output", remote])
       run(["scp", f"{host}:{remote}", str(archive)])
       run(["ssh", host, "sudo", "rm", "--", remote])
       digest = sha256_file(archive)
@@ -1805,29 +1813,317 @@ Choice: the VM holds no backup-store credential. A root VM exporter first acquir
       snapshots = json.loads(run(["restic", "snapshots", "--tag", "kb-tier0", "--latest", "1", "--json"]).stdout)
       latest = snapshots[-1]
       age = (now() - parse_utc(latest["time"])).total_seconds() / 60
-      return make_report("backup", latest["short_id"], digest, quiescentExport=True, rpoMet=age <= rpo_minutes)
+      finished = now()
+      return make_report("backup", latest["short_id"], digest, started, finished, quiescentExport=True, rpoMet=age <= rpo_minutes)
+
+
+  def safe_extract(archive_path: Path, target: Path) -> None:
+      target.mkdir(parents=True, exist_ok=False)
+      with tarfile.open(archive_path, "r:") as archive:
+          members = archive.getmembers()
+          for member in members:
+              name = PurePosixPath(member.name)
+              if name.is_absolute() or ".." in name.parts or member.isdev() or member.isfifo() or member.islnk():
+                  raise RuntimeError("unsafe tier-zero archive member")
+              if member.issym():
+                  normalized = posixpath.normpath(posixpath.join(posixpath.dirname(member.name), member.linkname))
+                  if normalized == ".." or normalized.startswith("../") or posixpath.isabs(member.linkname):
+                      raise RuntimeError("tier-zero symlink escapes isolated root")
+              elif not (member.isfile() or member.isdir()):
+                  raise RuntimeError("unsupported tier-zero archive member")
+          archive.extractall(target, members=members, filter="data")
+
+
+  def restore_latest_snapshot(target: Path, run=run_command) -> tuple[str, Path, str]:
+      if target.exists(): raise RuntimeError("restore target must be fresh")
+      staging = target.with_name(target.name + "-restic")
+      if staging.exists(): raise RuntimeError("restic staging target must be fresh")
+      result = run(["restic", "snapshots", "--tag", "kb-tier0", "--latest", "1", "--json"])
+      snapshots = json.loads(result.stdout)
+      if len(snapshots) != 1: raise RuntimeError("one latest tier-zero snapshot is required")
+      snapshot = snapshots[0]["short_id"]
+      run(["restic", "restore", snapshot, "--target", str(staging)])
+      archives = list(staging.rglob("kb-tier0.tar"))
+      if len(archives) != 1 or archives[0].is_symlink(): raise RuntimeError("restored snapshot must contain one regular tier-zero archive")
+      return snapshot, archives[0], sha256_file(archives[0])
+
+
+  def restore_drill(
+      target: Path, rto_minutes: int = 60, report_path: Path | None = None, run=run_command,
+      monotonic=time.monotonic, restore=restore_latest_snapshot, extract=safe_extract,
+      verify=None, now=utc_now,
+  ) -> dict:
+      verify = verify or verify_restored_tree
+      started_tick = monotonic(); started_at = now()
+      snapshot, archive, digest = restore(target, run)
+      extract(archive, target)
+      checks = verify(target, run=run)
+      duration = monotonic() - started_tick; finished_at = now()
+      report = make_report("restore-drill", snapshot, digest, started_at, finished_at, durationSeconds=duration, rtoMet=duration <= rto_minutes * 60, **checks)
+      if report_path is not None: write_canonical_exclusive(report_path, report)
+      if not report["rtoMet"]: raise RuntimeError("restore drill exceeded RTO")
+      if not report["verified"]: raise RuntimeError("restore drill verification failed")
+      return report
 
 
   def verify_restored_tree(target: Path, run=run_command) -> dict[str, bool]:
       ops = target / "var/lib/kb/ops"
-      fsck = run(["git", "-C", str(ops), "fsck", "--full", "--strict", "--no-dangling"]).returncode == 0
-      invariants = validate_release_links(target) and validate_ops_head(ops) and validate_state_json(target) and validate_outbox_manifests_receipts(target)
+      try: fsck = run(["git", "-C", str(ops), "fsck", "--full", "--strict", "--no-dangling"]).returncode == 0
+      except OSError: fsck = False
+      invariants = validate_release_links(target) and validate_ops_head(ops, run=run) and validate_state_json(target) and validate_outbox_manifests_receipts(target)
       unit = "kb-restore-drill-" + secrets.token_hex(8)
       port = "14317"
-      boot = run(["systemd-run", f"--unit={unit}", "--property=KillMode=control-group", "--property=NoNewPrivileges=yes", "--setenv=DASHBOARD_EXECUTION_ACTIVATED=0", f"--setenv=DASHBOARD_REPO_ROOT={ops}", f"--setenv=DASHBOARD_STATE_ROOT={target / 'var/lib/kb/state'}", f"--setenv=PORT={port}", "/usr/bin/node", "--experimental-strip-types", str(resolve_restored_release(target) / "dashboard/server/index.ts")]).returncode == 0
-      capability = json.dumps({"schema": "kb.restore-capability/v1", "authority": "recover-approved-interrupted-only", "stateRoot": str(target / "var/lib/kb/state")}).encode()
-      canary = run(["node", "--experimental-strip-types", str(resolve_restored_release(target) / "dashboard/server/acceptance/linuxDispatchCanary.ts"), "--restore-drill", "--base-url", f"http://127.0.0.1:{port}", "--state-root", str(target / "var/lib/kb/state"), "--capability-fd", "0", "--output", str(target / "recovery-canary.json")], input=capability).returncode == 0
-      run(["systemctl", "stop", unit])
-      return {"gitFsck": fsck, "invariants": invariants, "booted": boot, "recoveryCanary": canary}
+      started = False; boot = False
+      try:
+          release = resolve_restored_release(target)
+          started = run(["systemd-run", f"--unit={unit}", f"--working-directory={release / 'dashboard'}", "--property=KillMode=control-group", "--property=NoNewPrivileges=yes", f"--setenv=DASHBOARD_PLATFORM_ROOT={release}", f"--setenv=PYTHONPATH={release}", "--setenv=DASHBOARD_EXECUTION_ACTIVATED=0", f"--setenv=DASHBOARD_REPO_ROOT={ops}", f"--setenv=DASHBOARD_STATE_ROOT={target / 'var/lib/kb/state'}", f"--setenv=PORT={port}", "/usr/bin/node", "--experimental-strip-types", str(release / "dashboard/server/index.ts")]).returncode == 0
+          boot = started and wait_for_locked_readiness(f"http://127.0.0.1:{port}/readyz", run=run)
+      except (OSError, RuntimeError, UnicodeError, ValueError):
+          boot = False
+      finally:
+          if started:
+              try: run(["systemctl", "stop", unit])
+              except OSError: boot = False
+      return {"gitFsck": fsck, "invariants": invariants, "booted": boot}
+
+
+  BACKUP_REPORT_KEYS = {"version", "operation", "startedAt", "finishedAt", "durationSeconds", "snapshot", "archiveSha256", "quiescentExport", "gitFsck", "invariants", "booted", "rpoMet", "rtoMet", "verified"}
+
+
+  def make_report(operation: str, snapshot: str, digest: str, started_at: datetime, finished_at: datetime, **values) -> dict:
+      if operation not in {"backup", "restore-drill"} or not snapshot or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+          raise RuntimeError("backup report identity is invalid")
+      duration = float(values.pop("durationSeconds", (finished_at - started_at).total_seconds()))
+      checks = {
+          "quiescentExport": bool(values.pop("quiescentExport", True)),
+          "gitFsck": bool(values.pop("gitFsck", False)),
+          "invariants": bool(values.pop("invariants", False)),
+          "booted": bool(values.pop("booted", False)),
+          "rpoMet": bool(values.pop("rpoMet", operation == "restore-drill")),
+          "rtoMet": bool(values.pop("rtoMet", operation == "backup")),
+      }
+      if values: raise RuntimeError("unknown backup report field")
+      verified = checks["quiescentExport"] and (checks["rpoMet"] if operation == "backup" else checks["gitFsck"] and checks["invariants"] and checks["booted"] and checks["rtoMet"])
+      report = {
+          "version": 1, "operation": operation,
+          "startedAt": started_at.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+          "finishedAt": finished_at.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+          "durationSeconds": duration, "snapshot": snapshot, "archiveSha256": digest,
+          **checks, "verified": verified,
+      }
+      if set(report) != BACKUP_REPORT_KEYS or duration < 0: raise RuntimeError("closed backup report required")
+      return report
+
+
+  def write_canonical_exclusive(path: Path, value: dict) -> None:
+      if path.exists(): raise RuntimeError("backup report output already exists")
+      temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+      with temporary.open("x", encoding="utf-8", newline="\n") as handle:
+          json.dump(value, handle, sort_keys=True, separators=(",", ":")); handle.write("\n"); handle.flush(); os.fsync(handle.fileno())
+      os.replace(temporary, path)
+      if os.name != "nt":
+          directory_fd = os.open(path.parent, os.O_RDONLY)
+          try: os.fsync(directory_fd)
+          finally: os.close(directory_fd)
+
+
+  import hashlib
+  import hmac
+
+  COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+  DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+  OUTBOX_MANIFEST_KEYS = {"schema", "id", "parent", "commit", "paths", "createdAt", "bundleSha256"}
+  PROMOTION_RECEIPT_KEYS = {"schema", "id", "sourceCommit", "promotedCommit", "promotedAt"}
+
+
+  def _inside(root: Path, candidate: Path) -> bool:
+      try:
+          candidate.relative_to(root)
+          return True
+      except ValueError:
+          return False
+
+
+  def _release_link(releases: Path, name: str) -> Path:
+      link = releases / name
+      if not os.path.lexists(link) or not link.is_symlink():
+          raise RuntimeError(f"release {name} symlink is absent")
+      try:
+          selected = link.resolve(strict=True)
+      except OSError as error:
+          raise RuntimeError(f"release {name} symlink is dangling") from error
+      root = releases.resolve(strict=True)
+      if not _inside(root, selected) or selected.parent != root or selected.is_symlink() or not selected.is_dir():
+          raise RuntimeError(f"release {name} symlink escapes the release root")
+      return selected
+
+
+  def _validate_release_directory(release: Path) -> None:
+      version = (release / "VERSION")
+      manifest = (release / "MANIFEST.sha256")
+      if not version.is_file() or version.is_symlink() or not manifest.is_file() or manifest.is_symlink():
+          raise RuntimeError("release VERSION or manifest is absent")
+      commit = version.read_text(encoding="ascii").strip()
+      if COMMIT_RE.fullmatch(commit) is None or release.name != commit:
+          raise RuntimeError("release directory name and VERSION disagree")
+      rows: dict[str, str] = {}
+      for row in manifest.read_text(encoding="ascii").splitlines():
+          try: digest, relative = row.split("  ", 1)
+          except ValueError: raise RuntimeError("release manifest row is malformed")
+          path = Path(relative)
+          if DIGEST_RE.fullmatch(digest) is None or not relative or path.is_absolute() or ".." in path.parts or relative in rows:
+              raise RuntimeError("release manifest entry is invalid")
+          rows[relative] = digest
+      actual = {
+          item.relative_to(release).as_posix()
+          for item in release.rglob("*")
+          if item.is_file() and not item.is_symlink() and item.name not in {"VERSION", "MANIFEST.sha256"}
+      }
+      if set(rows) != actual:
+          raise RuntimeError("release manifest does not cover exactly the release files")
+      for relative, digest in rows.items():
+          payload = release / relative
+          if not payload.is_file() or payload.is_symlink() or not hmac.compare_digest(hashlib.sha256(payload.read_bytes()).hexdigest(), digest):
+              raise RuntimeError("release manifest digest mismatch")
+
+
+  def resolve_restored_release(target: Path) -> Path:
+      releases = target / "opt/kb-releases"
+      if not releases.is_dir() or releases.is_symlink():
+          raise RuntimeError("restored release root is absent")
+      current = _release_link(releases, "current")
+      _validate_release_directory(current)
+      return current
+
+
+  def validate_release_links(target: Path) -> bool:
+      try:
+          current = resolve_restored_release(target)
+          previous = target / "opt/kb-releases/previous"
+          if os.path.lexists(previous): _validate_release_directory(_release_link(previous.parent, "previous"))
+          return current.is_dir()
+      except (OSError, RuntimeError, UnicodeError, ValueError):
+          return False
+
+
+  def validate_ops_head(ops: Path, run=run_command) -> bool:
+      try:
+          symbolic = run(["git", "-C", str(ops), "symbolic-ref", "-q", "HEAD"])
+          head = run(["git", "-C", str(ops), "rev-parse", "--verify", "HEAD^{commit}"])
+          branch = run(["git", "-C", str(ops), "rev-parse", "--verify", "refs/heads/ops^{commit}"])
+          if symbolic.returncode != 0 or head.returncode != 0 or branch.returncode != 0:
+              return False
+          if symbolic.stdout.strip() != "refs/heads/ops" or head.stdout.strip() != branch.stdout.strip() or COMMIT_RE.fullmatch(head.stdout.strip()) is None:
+              return False
+          for operation in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG"):
+              git_path = run(["git", "-C", str(ops), "rev-parse", "--git-path", operation])
+              operation_path = Path(git_path.stdout.strip())
+              if git_path.returncode != 0 or (operation_path if operation_path.is_absolute() else ops / operation_path).exists(): return False
+          return True
+      except (OSError, RuntimeError, TypeError):
+          return False
+
+
+  def _json_object(path: Path) -> dict:
+      if not path.is_file() or path.is_symlink(): raise RuntimeError("JSON file is not a regular file")
+      def reject_duplicates(pairs):
+          value = {}
+          for key, item in pairs:
+              if key in value: raise RuntimeError("duplicate JSON key")
+              value[key] = item
+          return value
+      value = json.loads(path.read_bytes(), object_pairs_hook=reject_duplicates)
+      if type(value) is not dict: raise RuntimeError("JSON object is required")
+      return value
+
+
+  def validate_state_json(target: Path) -> bool:
+      try:
+          document = _json_object(target / "var/lib/kb/state/control/control-plane.json")
+          required = {"version", "nextEventCursor", "proposals", "runs", "stages", "attempts", "sessions", "humanRequests", "events", "quarantine"}
+          if document.get("version") != 1 or type(document.get("nextEventCursor")) is not int or document["nextEventCursor"] < 1 or not required.issubset(document) or any(type(document[key]) is not list for key in required - {"version", "nextEventCursor"}):
+              return False
+          runs = document["runs"]; stages = document["stages"]; attempts = document["attempts"]
+          run_refs = {item.get("runRef") for item in runs if type(item) is dict and type(item.get("runRef")) is str}
+          if len(run_refs) != len(runs) or any(not item for item in run_refs): return False
+          stage_refs = {}
+          for stage in stages:
+              if type(stage) is not dict or type(stage.get("stageRef")) is not str or not stage["stageRef"] or stage["stageRef"] in stage_refs or stage.get("runRef") not in run_refs:
+                  return False
+              stage_refs[stage["stageRef"]] = stage["runRef"]
+          attempt_refs = set()
+          for attempt in attempts:
+              if type(attempt) is not dict or type(attempt.get("attemptRef")) is not str or not attempt["attemptRef"] or attempt["attemptRef"] in attempt_refs or attempt.get("runRef") not in run_refs or attempt.get("stageRef") not in stage_refs or stage_refs[attempt["stageRef"]] != attempt["runRef"]:
+                  return False
+              attempt_refs.add(attempt["attemptRef"])
+          return True
+      except (OSError, RuntimeError, UnicodeError, json.JSONDecodeError):
+          return False
+
+
+  def _canonical_utc(value: object) -> bool:
+      if type(value) is not str: return False
+      try: parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+      except ValueError: return False
+      return parsed.isoformat(timespec="milliseconds").replace("+00:00", "Z") == value
+
+
+  def _closed_json(path: Path, keys: set[str]) -> dict:
+      value = _json_object(path)
+      if set(value) != keys or path.read_bytes() != (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8"):
+          raise RuntimeError("closed canonical JSON is required")
+      return value
+
+
+  def validate_outbox_manifests_receipts(target: Path) -> bool:
+      try:
+          outbox = target / "var/lib/kb/state/outbox"; ready = outbox / "ready"; receipts = outbox / "receipts"
+          if not ready.is_dir() or ready.is_symlink() or not receipts.is_dir() or receipts.is_symlink(): return False
+          ready_entries = list(ready.iterdir())
+          if any(not item.is_file() or item.is_symlink() or item.suffix not in {".json", ".bundle"} for item in ready_entries): return False
+          manifest_ids = {item.stem for item in ready_entries if item.suffix == ".json"}
+          bundle_ids = {item.stem for item in ready_entries if item.suffix == ".bundle"}
+          if manifest_ids != bundle_ids: return False
+          manifests = {}
+          for identity in manifest_ids:
+              manifest = _closed_json(ready / f"{identity}.json", OUTBOX_MANIFEST_KEYS)
+              if any(type(manifest[key]) is not str for key in {"schema", "id", "parent", "commit", "createdAt", "bundleSha256"}): return False
+              if manifest["schema"] != "kb.ops-outbox/v1" or identity != manifest["id"] or manifest["id"] != manifest["commit"] or COMMIT_RE.fullmatch(identity) is None or COMMIT_RE.fullmatch(manifest["parent"]) is None:
+                  return False
+              if type(manifest["paths"]) is not list or not manifest["paths"] or any(type(path) is not str for path in manifest["paths"]) or manifest["paths"] != sorted(set(manifest["paths"])) or not _canonical_utc(manifest["createdAt"]) or DIGEST_RE.fullmatch(manifest["bundleSha256"]) is None:
+                  return False
+              if not hmac.compare_digest(hashlib.sha256((ready / f"{identity}.bundle").read_bytes()).hexdigest(), manifest["bundleSha256"]): return False
+              manifests[identity] = manifest
+          receipt_entries = list(receipts.iterdir())
+          if any(not item.is_file() or item.is_symlink() or item.suffix != ".json" or item.stem not in manifests for item in receipt_entries): return False
+          for receipt_path in receipt_entries:
+              receipt = _closed_json(receipt_path, PROMOTION_RECEIPT_KEYS); manifest = manifests[receipt_path.stem]
+              if any(type(receipt[key]) is not str for key in PROMOTION_RECEIPT_KEYS): return False
+              if receipt["schema"] != "kb.ops-promotion/v1" or receipt["id"] != receipt_path.stem or receipt["sourceCommit"] != manifest["commit"] or COMMIT_RE.fullmatch(receipt["promotedCommit"]) is None or not _canonical_utc(receipt["promotedAt"]): return False
+          return True
+      except (OSError, RuntimeError, UnicodeError, json.JSONDecodeError):
+          return False
+
+
+  def wait_for_locked_readiness(url: str, timeout_seconds: float = 30, interval_seconds: float = 0.25, run=run_command, monotonic=time.monotonic, sleep=time.sleep) -> bool:
+      deadline = monotonic() + timeout_seconds
+      while True:
+          try: response = run(["curl", "--fail", "--silent", "--show-error", url])
+          except OSError: return False
+          try: payload = json.loads(response.stdout)
+          except (TypeError, json.JSONDecodeError): payload = None
+          if payload == {"ok": True, "quiescent": True, "blockers": []}: return True
+          if monotonic() >= deadline: return False
+          sleep(interval_seconds)
   ```
 
-  `validate_release_links` requires `current` and `previous`, when present, to resolve inside `opt/kb-releases`, requires the selected directory name, `VERSION`, and 40-hex commit to match, and rechecks its manifest. `validate_ops_head` requires `HEAD == refs/heads/ops` and no in-progress Git operation. `validate_state_json` parses every control-store JSON document and rejects unknown schema versions. `validate_outbox_manifests_receipts` calls the closed Task 16/17 validators, requires every ready bundle digest to match, and rejects a receipt without a corresponding manifest id. `make_report` emits `BackupReport` atomically only when every named boolean and the applicable RPO/RTO boolean is true.
+  `wait_for_locked_readiness` polls the isolated instance's `/readyz` until timeout and returns true only for `{ ok: true, quiescent: true }` with execution still locked. `validate_release_links` requires `current` and `previous`, when present, to resolve inside `opt/kb-releases`, requires the selected directory name, `VERSION`, and 40-hex commit to match, and rechecks its manifest. `validate_ops_head` requires `HEAD == refs/heads/ops` and no in-progress Git operation. `validate_state_json` parses every control-store JSON document and rejects unknown schema versions. `validate_outbox_manifests_receipts` independently parses canonical, duplicate-free `kb.ops-outbox/v1` manifests and `kb.ops-promotion/v1` receipts using their closed key sets, requires manifest filename/id/commit equality, verifies every ready bundle digest, and rejects a receipt without a matching manifest id/source commit; Tasks 16-17 later use the identical schemas. `make_report` emits canonical `BackupReportV1` atomically only when every named boolean and the applicable RPO/RTO boolean is true.
 
 - [ ] Install no VM backup service, timer, restic binary, restic environment, or backup user. On the trusted desktop configure its existing credential manager for restic and schedule the exact command `python scripts/backup_tier0.py backup --host $env:KB_VM_HOST --output $env:KB_BACKUP_EXPORT_ROOT --rpo-minutes 15`; the scheduler's credential configuration remains outside the repo and VM. The script rejects `--repository`, `--password`, token flags, and credential-value logging.
 
-- [ ] Run `python -m pytest tests/test_state_backup.py -q`. After Task 24 lands, on the trusted desktop run `$drillId = Get-Date -AsUTC -Format 'yyyyMMddTHHmmssZ'; python scripts/backup_tier0.py backup --host $env:KB_VM_HOST --output "$env:TEMP/kb-backup-$drillId" --rpo-minutes 15; python scripts/backup_tier0.py restore-drill --target "$env:TEMP/kb-restore-$drillId" --report "$env:TEMP/kb-restore-$drillId.json" --rto-minutes 60`; require full `git fsck`, all invariant booleans, isolated boot, recovery canary, RPO, and RTO to pass. Preserve the report for Task 25.
+- [ ] Run `python -m pytest tests/test_state_backup.py tests/test_build_platform_release.py -q`. On the trusted desktop run `$drillId = Get-Date -AsUTC -Format 'yyyyMMddTHHmmssZ'; python scripts/backup_tier0.py backup --host $env:KB_VM_HOST --output "$env:TEMP/kb-backup-$drillId" --rpo-minutes 15; python scripts/backup_tier0.py restore-drill --target "$env:TEMP/kb-restore-$drillId" --report "$env:TEMP/kb-restore-$drillId.json" --rto-minutes 60`; require full `git fsck`, every state/outbox invariant, locked isolated boot, RPO, and RTO to pass. Preserve the canonical v1 report for the deferred Gate-2 inventory. The deferred restore-canary hook must not alter this v1 producer in the ship-now commit.
 
-- [ ] Commit with `git add deploy/export_tier0.py scripts/backup_tier0.py tests/test_state_backup.py; git commit -m "feat(backup): protect tier-zero runtime state"`.
+- [ ] Commit with `git add deploy/export_tier0.py scripts/backup_tier0.py tests/test_state_backup.py tests/test_build_platform_release.py; git commit -m "feat(backup): protect tier-zero runtime state"`.
 
 ## F1. Gate-1 boundary hardening
 
@@ -1952,13 +2248,14 @@ Choice: the generic browser can read only `docs`, `orgs`, `queue`, `ledgers`, `m
     expect(() => resolveWithinAllowedRoot(REPO_A, relpath)).not.toThrow();
   });
 
-  it.each(['approved-root', 'intermediate'])('rejects a symlink at the %s component', (position) => {
+  it.each(['approved-root', 'intermediate', 'final-file'])('rejects a symlink at the %s component', (position) => {
     const root = mkdtempSync(join(tmpdir(), 'kb-read-link-'));
     const outside = mkdtempSync(join(tmpdir(), 'kb-read-outside-'));
     writeFileSync(join(outside, 'secret.md'), 'secret', 'utf8');
     if (position === 'approved-root') symlinkSync(outside, join(root, 'docs'), process.platform === 'win32' ? 'junction' : 'dir');
-    else { mkdirSync(join(root, 'docs')); symlinkSync(outside, join(root, 'docs', 'linked'), process.platform === 'win32' ? 'junction' : 'dir'); }
-    const relpath = position === 'approved-root' ? 'docs/secret.md' : 'docs/linked/secret.md';
+    else if (position === 'intermediate') { mkdirSync(join(root, 'docs')); symlinkSync(outside, join(root, 'docs', 'linked'), process.platform === 'win32' ? 'junction' : 'dir'); }
+    else { mkdirSync(join(root, 'docs')); symlinkSync(outside, join(root, 'docs', 'note.md'), process.platform === 'win32' ? 'junction' : 'dir'); }
+    const relpath = position === 'approved-root' ? 'docs/secret.md' : position === 'intermediate' ? 'docs/linked/secret.md' : 'docs/note.md';
     expect(() => resolveWithinAllowedRoot(root, relpath)).toThrow(/symlink component/);
   });
   ```
@@ -2243,6 +2540,7 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
 - Produces: `InstructionApproval = { schema: 'kb.ops-instruction-approval/v1'; chainDigest: string; firstParent: string; lastCommit: string; ids: string[] }`
 - Produces: `fetch_vm_outbox(vm_host: str, snapshot_root: Path, run=subprocess.run) -> Path`
 - Produces: `validate_quarantine_chain(spool: Path, repo: Path, trusted_head: str, quarantine_prefix: str, run=run_git) -> list[dict]`
+- Produces: `promote_pending(spool: Path, operator_repo: Path, work_root: Path, trusted_ops_head: str, max_attempts: int = 3, run_git=run_git, clone_fresh=clone_fresh) -> dict[str, int]`
 - Consumes: Task 16 `OutboxManifest`
 
 - [ ] Add failing replay tests:
@@ -2260,14 +2558,14 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
       ready.mkdir(parents=True); receipts.mkdir(); repo = tmp_path / "repo"; repo.mkdir()
       commit = "b" * 40
       bundle = b"bundle"
-      manifest = {"schema": "kb.ops-outbox/v1", "id": commit, "parent": "a" * 40, "commit": commit, "paths": paths or ["memory/worker.md"], "createdAt": "2026-08-11T12:00:00.000Z", "bundleSha256": hashlib.sha256(bundle).hexdigest()}
+      manifest = {"schema": "kb.ops-outbox/v1", "id": commit, "parent": "a" * 40, "commit": commit, "paths": paths or ["ledgers/test.jsonl"], "createdAt": "2026-08-11T12:00:00.000Z", "bundleSha256": hashlib.sha256(bundle).hexdigest()}
       (ready / f"{commit}.json").write_text(json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
       (ready / f"{commit}.bundle").write_bytes(bundle)
       return spool, repo, manifest
 
 
   def git_succeeds(_repo: Path, args: list[str]):
-      if args[0] == "diff-tree": stdout = "memory/worker.md\0"
+      if args[0] == "diff-tree": stdout = "ledgers/test.jsonl\0"
       elif args[:2] == ["rev-parse", "HEAD"]: stdout = "c" * 40 + "\n"
       else: stdout = ""
       return subprocess.CompletedProcess(args, 0, stdout=stdout, stderr="")
@@ -2285,19 +2583,37 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
 
   def test_outage_leaves_item_pending_and_next_run_promotes_once(tmp_path):
       spool, repo, manifest = fixture_bundle(tmp_path)
-      first = promote_pending(spool, repo, max_attempts=3, run=network_fails)
+      first = promote_pending(spool, repo, tmp_path / "work-first", "a" * 40, max_attempts=3, run_git=network_fails, clone_fresh=fake_clone)
       assert first == {"promoted": 0, "pending": 1, "failed": 1}
       assert not (spool / "receipts" / f"{manifest['id']}.json").exists()
-      second = promote_pending(spool, repo, max_attempts=3, run=git_succeeds)
+      second = promote_pending(spool, repo, tmp_path / "work-second", "a" * 40, max_attempts=3, run_git=git_succeeds, clone_fresh=fake_clone)
       assert second == {"promoted": 1, "pending": 0, "failed": 0}
-      third = promote_pending(spool, repo, max_attempts=3, run=must_not_run)
+      third = promote_pending(spool, repo, tmp_path / "work-third", "a" * 40, max_attempts=3, run_git=must_not_run, clone_fresh=fake_clone)
       assert third["promoted"] == 0
+
+
+  def test_retry_recovers_push_succeeded_response_lost_without_duplicate_commit(tmp_path):
+      spool, repo, manifest = fixture_bundle(tmp_path)
+      promoted = "c" * 40
+      git = fake_git_with_receiptless_remote(manifest, promoted)
+      result = promote_pending(spool, repo, tmp_path / "work", "a" * 40, run_git=git, clone_fresh=fake_clone)
+      receipt = json.loads((spool / "receipts" / f"{manifest['id']}.json").read_text(encoding="utf-8"))
+      assert result == {"promoted": 1, "pending": 0, "failed": 0}
+      assert receipt["promotedCommit"] == promoted
+      assert git.cherry_picks == 0
 
 
   def test_promoter_rejects_bundle_with_durable_path(tmp_path):
       spool, repo, _manifest = fixture_bundle(tmp_path, paths=["docs/design.md"])
       with pytest.raises(RuntimeError, match="non-coordination"):
-          promote_pending(spool, repo, run=git_succeeds)
+          promote_pending(spool, repo, tmp_path / "work", "a" * 40, run_git=git_succeeds, clone_fresh=fake_clone)
+
+
+  def test_two_item_chain_promotes_in_parent_order_and_writes_two_receipts(tmp_path):
+      spool, repo, manifests = fixture_bundle_chain(tmp_path, count=2)
+      result = promote_pending(spool, repo, tmp_path / "work", "a" * 40, run_git=git_succeeds, clone_fresh=fake_clone)
+      assert result == {"promoted": 2, "pending": 0, "failed": 0}
+      assert [path.stem for path in sorted((spool / "receipts").glob("*.json"))] == [item["id"] for item in manifests]
 
 
   @pytest.mark.parametrize("mutation,match", [
@@ -2324,6 +2640,15 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
       chain = validate_quarantine_chain(spool, repo, "a" * 40, "refs/kb-quarantine/run", run=fake_git("ok"))
       with pytest.raises(RuntimeError, match="trusted-desktop approval"):
           require_instruction_approval(chain, None, None, None)
+
+
+  def test_instruction_approval_accepts_valid_signature_and_rejects_mismatch(tmp_path):
+      spool, repo, _ = fixture_bundle(tmp_path, paths=["queue/inbox/card.md"])
+      chain = validate_quarantine_chain(spool, repo, "a" * 40, "refs/kb-quarantine/run", run=fake_git("ok"))
+      approval, signature, allowed = write_exact_chain_approval(tmp_path, spool, chain)
+      require_instruction_approval(chain, approval, signature, allowed, run=fake_ssh_verify(returncode=0))
+      with pytest.raises(RuntimeError, match="signature failed"):
+          require_instruction_approval(chain, approval, signature, allowed, run=fake_ssh_verify(returncode=1))
   ```
 
   ```py
@@ -2405,14 +2730,25 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
       return manifests
 
 
+  def order_from_parent(manifests: list[dict], trusted_head: str) -> list[dict]:
+      by_parent: dict[str, list[dict]] = {}
+      for manifest in manifests: by_parent.setdefault(manifest["parent"], []).append(manifest)
+      ordered: list[dict] = []; previous = trusted_head; seen: set[str] = set()
+      while previous in by_parent:
+          children = by_parent[previous]
+          if len(children) != 1: raise RuntimeError("outbox chain forks from a parent")
+          item = children[0]
+          if item["commit"] in seen: raise RuntimeError("outbox chain contains a cycle")
+          ordered.append(item); seen.add(item["commit"]); previous = item["commit"]
+      if len(ordered) != len(manifests): raise RuntimeError("outbox is not one parent-topological chain from trusted ops head")
+      return ordered
+
+
   def validate_quarantine_chain(spool: Path, repo: Path, trusted_head: str, quarantine_prefix: str, run=run_git) -> list[dict]:
       if re.fullmatch(r"[0-9a-f]{40}", trusted_head) is None: raise RuntimeError("trusted ops head is invalid")
-      remaining = {item["commit"]: item for item in validate_snapshot(spool)}
-      ordered = []; previous = trusted_head
-      while remaining:
-          children = [item for item in remaining.values() if item["parent"] == previous]
-          if len(children) != 1: raise RuntimeError("outbox is not one parent-topological chain from trusted ops head")
-          manifest = children[0]; bundle = spool / "ready" / f"{manifest['id']}.bundle"
+      ordered = order_from_parent(validate_snapshot(spool), trusted_head)
+      for manifest in ordered:
+          bundle = spool / "ready" / f"{manifest['id']}.bundle"
           ref = f"{quarantine_prefix}/{manifest['id']}"
           run(repo, ["bundle", "verify", str(bundle)])
           heads = run(repo, ["bundle", "list-heads", str(bundle)]).stdout.splitlines()
@@ -2425,13 +2761,12 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
           modes, changed = parse_raw_diff(raw)
           if any(old not in SAFE_CHANGED_MODES or new not in SAFE_CHANGED_MODES for old, new in modes): raise RuntimeError("symlink, gitlink, executable, or unsafe object mode")
           if changed != manifest["paths"] or any(COORDINATION.fullmatch(path) is None for path in changed): raise RuntimeError("quarantined paths do not equal closed manifest")
-          ordered.append(manifest); previous = manifest["commit"]; del remaining[manifest["commit"]]
       return ordered
 
 
   def promote_one(spool: Path, repo: Path, manifest: dict, quarantine_prefix: str, run=run_git) -> dict:
       source_ref = f"{quarantine_prefix}/{manifest['id']}"
-      promoted = run(repo, ["log", "origin/ops", "--format=%H", "--fixed-strings", f"--grep=KB-Outbox-ID: {manifest['id']}", "-1"]).stdout.strip()
+      promoted = run(repo, ["log", "HEAD", "--format=%H", "--fixed-strings", f"--grep=KB-Outbox-ID: {manifest['id']}", "-1"]).stdout.strip()
       if not promoted:
           run(repo, ["cherry-pick", "--no-commit", source_ref])
           run(repo, ["commit", "-m", f"chore(outbox): promote {manifest['id']}", "-m", f"KB-Outbox-ID: {manifest['id']}"])
@@ -2441,25 +2776,84 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
       return {"schema": "kb.ops-promotion/v1", "id": manifest["id"], "sourceCommit": manifest["commit"], "promotedCommit": promoted, "promotedAt": promoted_at}
   ```
 
-  `parse_raw_diff` parses Git's NUL-delimited raw format without decoding paths early; it rejects malformed rows, duplicate paths, non-UTF-8, absolute paths, `..`, backslashes, and control characters and returns sorted paths. Thus modes `120000` and `160000` are rejected explicitly; only regular non-executable files and deletion are allowed. Return immediately when every manifest has a closed valid receipt; otherwise validate the entire source chain before selecting pending items. Compute `InstructionApproval` from the ordered instruction-bearing ids and SHA-256 of their canonical manifests. When that list is nonempty, verify exact closed approval bytes with `ssh-keygen -Y verify -I kb-ops-approver -n kb-ops-instructions` and the operator-supplied desktop allowed-signers file; a missing or mismatched signature leaves every ref quarantined and exits nonzero. Create a fresh clone for each bounded attempt; the `KB-Outbox-ID` trailer makes a retry after “push succeeded, receipt write failed” converge without a duplicate commit:
+  `parse_raw_diff` parses Git's NUL-delimited raw format without decoding paths early; it rejects malformed rows, duplicate paths, non-UTF-8, absolute paths, `..`, backslashes, and control characters and returns sorted paths. Thus modes `120000` and `160000` are rejected explicitly; only regular non-executable files and deletion are allowed. Return immediately when every manifest has a closed valid receipt; otherwise validate the entire source chain before selecting pending items. `InstructionApproval.ids` contains the ordered instruction-bearing ids, while `chainDigest` hashes every canonical manifest in the full ordered chain so its `firstParent` and `lastCommit` endpoints cannot hide intervening non-instruction commits. When any instruction path is present, verify exact closed approval bytes with `ssh-keygen -Y verify -I kb-ops-approver -n kb-ops-instructions` and the operator-supplied desktop allowed-signers file; a missing or mismatched signature leaves every ref quarantined and exits nonzero. Create a fresh clone for each bounded attempt; the `KB-Outbox-ID` trailer makes a retry after “push succeeded, receipt write failed” converge without a duplicate commit:
 
   ```py
-  remote = run_git(operator_repo, ["remote", "get-url", "origin"]).stdout.strip()
-  for attempt in range(1, max_attempts + 1):
-      repo = work_root / f"attempt-{attempt}-{secrets.token_hex(8)}"
-      run_process(["git", "clone", "--no-tags", "--branch", "ops", "--single-branch", remote, str(repo)])
-      try:
-          trusted = run_git(repo, ["rev-parse", "refs/remotes/origin/ops^{commit}"]).stdout.strip()
-          if trusted != trusted_ops_head: raise RuntimeError("origin/ops does not equal the last trusted head")
-          quarantine_prefix = f"refs/kb-quarantine/{run_id}"
-          chain = validate_quarantine_chain(spool, repo, trusted, quarantine_prefix, run_git)
-          require_instruction_approval(chain, approval, approval_signature, approval_allowed_signers)
-          receipt = promote_one(spool, repo, manifest, quarantine_prefix, run_git)
+  RECEIPT_KEYS = {"schema", "id", "sourceCommit", "promotedCommit", "promotedAt"}
+
+
+  def read_matching_receipt(spool: Path, manifest: dict) -> dict | None:
+      path = spool / "receipts" / f"{manifest['id']}.json"
+      if not path.exists(): return None
+      value = parse_closed_json(path, RECEIPT_KEYS)
+      if value["schema"] != "kb.ops-promotion/v1" or value["id"] != manifest["id"] or value["sourceCommit"] != manifest["commit"]:
+          raise RuntimeError("promotion receipt does not match its manifest")
+      if re.fullmatch(r"[0-9a-f]{40}", value["promotedCommit"]) is None: raise RuntimeError("promotion receipt commit is invalid")
+      parsed = datetime.strptime(value["promotedAt"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+      if parsed.isoformat(timespec="milliseconds").replace("+00:00", "Z") != value["promotedAt"]: raise RuntimeError("promotion time is not canonical UTC")
+      return value
+
+
+  def clone_fresh(operator_repo: Path, target: Path, run=subprocess.run) -> Path:
+      remote = run_git(operator_repo, ["remote", "get-url", "origin"]).stdout.strip()
+      target.parent.mkdir(parents=True, exist_ok=True)
+      run(["git", "clone", "--no-tags", "--branch", "ops", "--single-branch", remote, str(target)], check=True)
+      return target
+
+
+  def recover_receiptless_remote_prefix(spool: Path, repo: Path, chain: list[dict], expected_remote: str, remote_head: str, quarantine_prefix: str, run=run_git) -> None:
+      rows = run(repo, ["rev-list", "--reverse", "--parents", f"{expected_remote}..{remote_head}"]).stdout.splitlines()
+      pending = [item for item in chain if read_matching_receipt(spool, item) is None]
+      if len(rows) > len(pending): raise RuntimeError("origin/ops contains commits outside the pending outbox prefix")
+      previous = expected_remote
+      for row, manifest in zip(rows, pending):
+          fields = row.split()
+          if len(fields) != 2 or fields[1] != previous: raise RuntimeError("receiptless remote prefix is not single-parent")
+          promoted = fields[0]
+          message = run(repo, ["show", "-s", "--format=%B", promoted]).stdout.splitlines()
+          if message.count(f"KB-Outbox-ID: {manifest['id']}") != 1: raise RuntimeError("receiptless remote commit has the wrong outbox trailer")
+          source_ref = f"{quarantine_prefix}/{manifest['id']}"
+          if run(repo, ["diff", "--quiet", source_ref, promoted]).returncode != 0: raise RuntimeError("receiptless remote commit tree differs from its source commit")
+          receipt = {"schema": "kb.ops-promotion/v1", "id": manifest["id"], "sourceCommit": manifest["commit"], "promotedCommit": promoted, "promotedAt": utc_now().isoformat(timespec="milliseconds").replace("+00:00", "Z")}
           write_receipt_durably(spool / "receipts" / f"{manifest['id']}.json", receipt)
-          break
-      except subprocess.CalledProcessError:
-          run_git(repo, ["cherry-pick", "--abort"], check=False)
-          if attempt == max_attempts: failed += 1
+          previous = promoted
+      if previous != remote_head: raise RuntimeError("receiptless remote prefix does not reach origin/ops")
+
+
+  def promote_pending(
+      spool: Path, operator_repo: Path, work_root: Path, trusted_ops_head: str,
+      max_attempts: int = 3, run_git=run_git, clone_fresh=clone_fresh,
+      approval: Path | None = None, approval_signature: Path | None = None,
+      approval_allowed_signers: Path | None = None,
+  ) -> dict[str, int]:
+      if max_attempts < 1: raise ValueError("max_attempts must be positive")
+      chain = order_from_parent(validate_snapshot(spool), trusted_ops_head)
+      receipt_chain = [read_matching_receipt(spool, item) for item in chain]
+      first_gap = next((index for index, receipt in enumerate(receipt_chain) if receipt is None), len(receipt_chain))
+      if any(receipt is not None for receipt in receipt_chain[first_gap:]): raise RuntimeError("promotion receipts are not a parent-order prefix")
+      initial_pending = chain[first_gap:]
+      if not initial_pending: return {"promoted": 0, "pending": 0, "failed": 0}
+      for attempt in range(1, max_attempts + 1):
+          repo = clone_fresh(operator_repo, work_root / f"attempt-{attempt}-{secrets.token_hex(8)}")
+          try:
+              remote_head = run_git(repo, ["rev-parse", "refs/remotes/origin/ops^{commit}"]).stdout.strip()
+              quarantine_prefix = f"refs/kb-quarantine/{secrets.token_hex(12)}"
+              validated = validate_quarantine_chain(spool, repo, trusted_ops_head, quarantine_prefix, run_git)
+              require_instruction_approval(validated, approval, approval_signature, approval_allowed_signers)
+              receipts = [read_matching_receipt(spool, item) for item in validated]
+              completed = [receipt for receipt in receipts if receipt is not None]
+              expected_remote = completed[-1]["promotedCommit"] if completed else trusted_ops_head
+              recover_receiptless_remote_prefix(spool, repo, validated, expected_remote, remote_head, quarantine_prefix, run_git)
+              for manifest in validated:
+                  if read_matching_receipt(spool, manifest) is not None: continue
+                  receipt = promote_one(spool, repo, manifest, quarantine_prefix, run_git)
+                  write_receipt_durably(spool / "receipts" / f"{manifest['id']}.json", receipt)
+              remaining = sum(read_matching_receipt(spool, item) is None for item in chain)
+              return {"promoted": len(initial_pending) - remaining, "pending": remaining, "failed": 0}
+          except subprocess.CalledProcessError:
+              run_git(repo, ["cherry-pick", "--abort"], check=False)
+      remaining = sum(read_matching_receipt(spool, item) is None for item in chain)
+      return {"promoted": len(initial_pending) - remaining, "pending": remaining, "failed": remaining}
   ```
 
   The operator checkout is queried only for `remote get-url origin`; tests snapshot its `HEAD`, index, worktree, refs, and reflog before promotion and require byte-for-byte equality afterward. Failed attempt clones are retained under `--work-root` for inspection. A later operator cleanup is separate from this CLI.
@@ -2494,9 +2888,9 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
       if not instructions: return
       if approval is None or signature is None or allowed_signers is None: raise RuntimeError("trusted-desktop approval is required for instruction-bearing paths")
       value = parse_closed_json(approval, APPROVAL_KEYS)
-      canonical_manifests = b"".join((approval.parent / f"{item['id']}.manifest.json").read_bytes() for item in instructions)
+      canonical_chain = b"".join((json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8") for item in chain)
       expected = {
-          "schema": "kb.ops-instruction-approval/v1", "chainDigest": hashlib.sha256(canonical_manifests).hexdigest(),
+          "schema": "kb.ops-instruction-approval/v1", "chainDigest": hashlib.sha256(canonical_chain).hexdigest(),
           "firstParent": chain[0]["parent"], "lastCommit": chain[-1]["commit"], "ids": [item["id"] for item in instructions],
       }
       if value != expected: raise RuntimeError("trusted-desktop approval does not bind the quarantined chain")
@@ -2504,7 +2898,7 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
       if result.returncode != 0: raise RuntimeError("trusted-desktop approval signature failed")
   ```
 
-  Before requesting approval, copy each canonical instruction manifest beside the approval file as `<id>.manifest.json`, write the expected closed `InstructionApproval` bytes, show the operator `git diff --stat` and `git diff --no-ext-diff --binary <parent> <quarantine-ref> -- <instruction paths>`, and exit 3. The trusted desktop signs exactly with `ssh-keygen -Y sign -f $env:KB_OPS_APPROVAL_KEY -n kb-ops-instructions instruction-approval.json`; the rerun verifies it. Neither the private key nor its value is copied to the VM or repository.
+  Before requesting approval, copy every canonical chain manifest beside the approval file as `<id>.manifest.json`, write the expected closed `InstructionApproval` bytes, show the operator `git diff --stat` and `git diff --no-ext-diff --binary <parent> <quarantine-ref> -- <instruction paths>`, and exit 3. The trusted desktop signs exactly with `ssh-keygen -Y sign -f $env:KB_OPS_APPROVAL_KEY -n kb-ops-instructions instruction-approval.json`; the rerun verifies it. Neither the private key nor its value is copied to the VM or repository.
 
 - [ ] After all manifests have receipts, create a return bundle from the exact pushed `origin/ops`, transfer it over SSH, and invoke the VM apply command. Implement the VM guard and ref replacement as:
 
@@ -2531,7 +2925,10 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
       if head != expected_source_head:
           raise RuntimeError("ops checkout advanced after promotion snapshot")
       manifests = validate_snapshot(spool)
-      source_chain = order_from_parent(manifests, manifests[0]["parent"])
+      commits = {item["commit"] for item in manifests}
+      roots = [item for item in manifests if item["parent"] not in commits]
+      if len(roots) != 1: raise RuntimeError("source manifests do not have one topological root")
+      source_chain = order_from_parent(manifests, roots[0]["parent"])
       if source_chain[-1]["commit"] != head: raise RuntimeError("source head is not the validated manifest-chain tip")
       trusted_base = source_chain[0]["parent"]
       run(repo, ["bundle", "verify", str(bundle)])
@@ -2567,7 +2964,7 @@ Choice: promotion is a fail-closed trust validator, not a bundle replay shortcut
 
 ### Task 18: Alert on spool growth and block only new side-effecting work
 
-Choice: degraded mode starts at 100 pending items or an oldest pending age of 15 minutes. It blocks new saves, launches, reruns, workflow launches, unlocks, and bridge claims; it permits reads, health, settlement, replies, stop-card, fleet STOP, and execution lock.
+Choice: degraded mode starts at 100 pending items or an oldest pending age of 15 minutes. This ship-now task blocks new saves, launches, reruns, workflow launches, and unlocks while permitting reads, health, settlement, replies, stop-card, fleet STOP, and execution lock. The queue-bridge claim hook is deferred below because its exact claim/dispatch boundary belongs to the workflow-platform merge.
 
 **Files**
 
@@ -2575,10 +2972,10 @@ Choice: degraded mode starts at 100 pending items or an oldest pending age of 15
 - Create: `dashboard/server/write/outboxStatus.test.ts`
 - Create: `dashboard/server/control/admission.ts`
 - Create: `dashboard/server/control/admission.test.ts`
-- Modify after checkpoint re-read: `dashboard/server/http/context.ts:90-130`
-- Modify after checkpoint re-read: `dashboard/server/http/surface.ts:207-270`
-- Modify after checkpoint re-read: `dashboard/server/control/routes.ts:271-398,580-760`
-- Modify after checkpoint re-read: `dashboard/server/control/routes.test.ts:240-380,760-920`
+- Modify: `dashboard/server/http/context.ts:90-130`
+- Modify: `dashboard/server/http/surface.ts:207-270`
+- Modify: `dashboard/server/control/routes.ts:271-398,580-760`
+- Modify: `dashboard/server/control/routes.test.ts:240-380,760-920`
 - Modify: `dashboard/server/write/routes.ts:90-260`
 - Modify: `dashboard/server/http/surface.test.ts:820-910`
 
@@ -2588,7 +2985,7 @@ Choice: degraded mode starts at 100 pending items or an oldest pending age of 15
 - Produces: `OutboxStatus = { pending: number; oldestAgeMs: number; degraded: boolean; reasons: string[] }`
 - Produces: `AdmissionKind = 'new-work' | 'settlement' | 'reply' | 'stop' | 'lock' | 'read'`
 - Produces: `admit(kind: AdmissionKind, status: OutboxStatus): { ok: true } | { ok: false; status: 503; reason: 'outbox-degraded' }`
-- Consumes in dispatch callback: `ctx.admission('new-work')`
+- Consumes in ship-now route handlers: `ctx.admission('new-work')`
 
 - [ ] Add failing policy and route tests:
 
@@ -2655,7 +3052,7 @@ Choice: degraded mode starts at 100 pending items or an oldest pending age of 15
   }
   ```
 
-- [ ] Thread one `ctx.admission(kind)` function into routes. Run it before each named new-work route and immediately before the post-merge queue-bridge dispatch callback claims a card. Return the exact 503 shape on refusal. Do not reject terminal result integration, ledger settlement, operator replies, stops, locks, health, or reads.
+- [ ] Thread one `ctx.admission(kind)` function into the current HTTP routes and run it before each named ship-now new-work route. Return the exact 503 shape on refusal. Do not reject terminal result integration, ledger settlement, operator replies, stops, locks, health, or reads. Do not edit `queueBridge.ts` in this task; the deferred bridge-claim acceptance criterion below consumes this same interface after the merged dispatch path is re-read.
 
 - [ ] Run `cd dashboard; npm test -- server/write/outboxStatus.test.ts server/control/admission.test.ts server/control/routes.test.ts server/http/surface.test.ts; npm run typecheck; npm test` and verify all tests pass. Simulate 100 manifests on Ubuntu and verify reads remain 200, launch/unlock return 503, STOP remains available, and removing/promoting the backlog returns admission to normal without restart.
 
@@ -2665,7 +3062,7 @@ Choice: degraded mode starts at 100 pending items or an oldest pending age of 15
 
 ### Task 19: Produce the authenticated-read and tailnet boundary evidence package
 
-Choice: the collector writes JSON plus a human-readable Markdown index outside the repository. It also establishes the one closed evidence payload used by every Gate 2 key: release artifact digest and commit, hashed host identity and boot id, exact redacted argv, canonical start/finish timestamps, result, and raw-output digest. VM jobs emit unsigned payloads because the VM holds no signing key; the trusted desktop verifies and signs each exact payload before Task 25 accepts it. The collector does not modify Tailscale configuration.
+Choice: the collector writes closed, canonical JSON evidence envelopes plus a human-readable Markdown index outside the repository. Each envelope binds the release artifact digest and commit, hashed host identity and boot id, exact redacted argv, canonical start/finish timestamps, result, and raw-output digest. VM jobs emit unsigned envelopes because the VM holds no signing key or other credential. After Daniel records approval on the trusted desktop, the desktop signs every envelope and approval, inventories every package file, recomputes that complete inventory with no extras or duplicates, and signs the final inventory digest. This is the Gate-1 implementation of the signed/versioned pattern that deferred Gate 2 must reuse. The collector does not modify Tailscale configuration.
 
 **Files**
 
@@ -2674,14 +3071,17 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
 
 **Interfaces**
 
-- Produces CLI: `python3 scripts/gates/phase1_gate1.py --base-url URL --output DIR --session-env KB_GATE_SESSION --route-report FILE --acl-authorized FILE --acl-denied FILE`
-- Produces: `gate1.json`, `gate1.md`, `tailscale-serve.json`, `tailscale-funnel.json`, `route-matrix.json`
+- Produces VM CLI: `python3 scripts/gates/phase1_gate1.py collect --base-url URL --external-serve-endpoint URL --output DIR --session-env KB_GATE_SESSION --route-report FILE --acl-authorized FILE --acl-denied FILE --release-commit SHA --artifact-sha256 SHA256`
+- Produces desktop CLI: `python scripts/gates/phase1_gate1.py finalize --package DIR --approval FILE --signing-key PATH`
+- Produces desktop verification CLI: `python scripts/gates/phase1_gate1.py verify --package DIR --allowed-signers FILE`
+- Produces: `gate1.json`, `gate1.md`, `tailscale-serve.json`, `tailscale-funnel.json`, `route-matrix.json`, `gate1Boundary.evidence.json`, `gate1Boundary.evidence.json.sig`, `APPROVED.txt`, `APPROVED.txt.sig`, `evidence.inventory.json`, `evidence.sha256`, `evidence.sha256.sig`
 - Produces: `AclProbeResult = { role: Literal['authorized', 'denied']; endpoint: str; outcome: Literal['reached', 'connection-refused', 'timeout'] }`
 - Produces: `TailnetEvidence = { serveTailnetOnly: bool; funnelDisabled: bool; aclAuthorized: bool; aclDenied: bool }`
-- Produces: `derive_tailnet_evidence(serve_status_json: str, funnel_status_json: str, acl_probe_results: list[AclProbeResult]) -> TailnetEvidence`
+- Produces: `derive_tailnet_evidence(serve_status_json: str, funnel_status_json: str, acl_probe_results: list[AclProbeResult], external_serve_endpoint: str) -> TailnetEvidence`
 - Produces: `EvidencePayload = { schema: 'kb.phase1-evidence/v1'; key: str; passed: bool; release: { commit: str; artifactSha256: str }; host: { machineIdSha256: str; bootId: str }; command: list[str]; startedAt: str; finishedAt: str; rawOutput: { file: str; sha256: str } }`
-- Produces desktop CLI: `python scripts/gates/phase1_gate1.py --sign-evidence FILE --signing-key PATH`
-- Produces: `FILE.sig` via SSH signature namespace `kb-phase1-evidence`
+- Produces: `EvidenceInventoryV1 = { schema: 'kb.phase1-inventory/v1'; gate: 1; release: { commit: str; artifactSha256: str }; files: list[{ path: str; sha256: str }] }`
+- Produces: `verify_inventory(package: Path, allowed_signers: Path, run=subprocess.run) -> EvidenceInventoryV1`
+- Produces: per-envelope signatures in namespace `kb-phase1-evidence`, approval signature in `kb-phase1-approval`, and final-digest signature in `kb-phase1-inventory`
 - Consumes: `tailscale serve status --json`, `tailscale funnel status --json`, authorized session supplied only through the named process environment key
 
 - [ ] Add a failing evidence-decision test:
@@ -2720,10 +3120,11 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
       AclProbeResult(role="authorized", endpoint="https://kb.example.ts.net:443", outcome="reached"),
       AclProbeResult(role="denied", endpoint="https://kb.example.ts.net:443", outcome="connection-refused"),
   ]
+  EXTERNAL_SERVE_ENDPOINT = "https://kb.example.ts.net:443"
 
 
   def test_derive_tailnet_evidence_accepts_loopback_serve_no_funnel_and_acl_probes():
-      assert derive_tailnet_evidence(PASSING_SERVE, PASSING_FUNNEL, ACL_PROBES) == {
+      assert derive_tailnet_evidence(PASSING_SERVE, PASSING_FUNNEL, ACL_PROBES, EXTERNAL_SERVE_ENDPOINT) == {
           "serveTailnetOnly": True, "funnelDisabled": True,
           "aclAuthorized": True, "aclDenied": True,
       }
@@ -2734,8 +3135,20 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
       (PASSING_SERVE, json.dumps({"AllowFunnel": {"kb.example.ts.net:443": True}}), {"serveTailnetOnly": True, "funnelDisabled": False}),
   ])
   def test_derive_tailnet_evidence_rejects_non_loopback_proxy_or_public_funnel(serve, funnel, expected):
-      evidence = derive_tailnet_evidence(serve, funnel, ACL_PROBES)
+      evidence = derive_tailnet_evidence(serve, funnel, ACL_PROBES, EXTERNAL_SERVE_ENDPOINT)
       assert {key: evidence[key] for key in expected} == expected
+
+
+  def test_tailnet_evidence_binds_serve_and_acl_probes_to_the_exact_external_host():
+      wrong_serve = PASSING_SERVE.replace("kb.example.ts.net:443", "other.example.ts.net:443")
+      wrong_probes = [
+          AclProbeResult(role="authorized", endpoint="https://other.example.ts.net:443", outcome="reached"),
+          AclProbeResult(role="denied", endpoint="https://other.example.ts.net:443", outcome="timeout"),
+      ]
+      assert derive_tailnet_evidence(wrong_serve, PASSING_FUNNEL, wrong_probes, EXTERNAL_SERVE_ENDPOINT) == {
+          "serveTailnetOnly": False, "funnelDisabled": True,
+          "aclAuthorized": False, "aclDenied": False,
+      }
 
 
   def test_evidence_payload_binds_release_host_command_time_and_raw_digest(tmp_path):
@@ -2744,6 +3157,37 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
       assert payload["rawOutput"]["sha256"] == hashlib.sha256(b"ok\n").hexdigest()
       assert payload["host"]["machineIdSha256"] == hashlib.sha256(b"vm-1").hexdigest()
       assert set(payload) == {"schema", "key", "passed", "release", "host", "command", "startedAt", "finishedAt", "rawOutput"}
+
+
+  def test_finalize_signs_envelopes_approval_and_final_inventory_digest(tmp_path):
+      package, approval, key, calls = unsigned_gate1_fixture(tmp_path)
+      finalize_package(package, approval, key, run=fake_ssh_signer(calls))
+      namespaces = [argv[argv.index("-n") + 1] for argv in calls if argv[:3] == ["ssh-keygen", "-Y", "sign"]]
+      assert namespaces.count("kb-phase1-evidence") == len(list(package.glob("*.evidence.json")))
+      assert namespaces[-2:] == ["kb-phase1-approval", "kb-phase1-inventory"]
+      assert (package / "evidence.sha256.sig").is_file()
+
+
+  def test_verify_inventory_recomputes_the_complete_set_and_rejects_extras_or_duplicates(tmp_path):
+      package, allowed = finalized_gate1_fixture(tmp_path)
+      assert verify_inventory(package, allowed, run=fake_ssh_verifier).get("schema") == "kb.phase1-inventory/v1"
+      (package / "unlisted.txt").write_text("extra\n", encoding="utf-8")
+      with pytest.raises(RuntimeError, match="extras or missing"):
+          verify_inventory(package, allowed, run=fake_ssh_verifier)
+      (package / "unlisted.txt").unlink()
+      inventory_path = package / "evidence.inventory.json"
+      inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+      inventory["files"].append(inventory["files"][0])
+      inventory_path.write_text(canonical_json(inventory), encoding="utf-8")
+      with pytest.raises(RuntimeError, match="duplicate inventory path"):
+          verify_inventory(package, allowed, run=fake_ssh_verifier)
+
+
+  @pytest.mark.parametrize("namespace", ["kb-phase1-evidence", "kb-phase1-approval", "kb-phase1-inventory"])
+  def test_verify_inventory_rejects_each_invalid_signature_class(tmp_path, namespace):
+      package, allowed = finalized_gate1_fixture(tmp_path)
+      with pytest.raises(RuntimeError, match="invalid"):
+          verify_inventory(package, allowed, run=fake_ssh_verifier_fail_namespace(namespace))
   ```
 
 - [ ] Run `python -m pytest tests/test_phase1_gate1.py -q` and verify the module is absent.
@@ -2779,13 +3223,28 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
       aclDenied: bool
 
 
-  def _serve_handler_proxies(config: dict) -> list[str] | None:
+  def normalize_external_serve_endpoint(value: str) -> str:
+      parsed = urlsplit(value)
+      if parsed.scheme.lower() != "https" or parsed.username or parsed.password or parsed.query or parsed.fragment:
+          raise RuntimeError("external Serve endpoint must be HTTPS without credentials, query, or fragment")
+      if parsed.path not in {"", "/"} or not parsed.hostname or (parsed.port or 443) != 443:
+          raise RuntimeError("external Serve endpoint must identify one HTTPS host on port 443")
+      return f"https://{parsed.hostname.lower()}:443"
+
+
+  def _serve_handler_proxies(config: dict, external_serve_endpoint: str) -> list[str] | None:
       # Serve status includes the local config plus any named Tailscale Services.
-      scopes = [config, *config.get("Services", {}).values()]
+      services = config.get("Services", {})
+      if not isinstance(services, dict): return None
+      scopes = [config, *services.values()]
       proxies: list[str] = []
       for scope in scopes:
           if not isinstance(scope, dict) or not isinstance(scope.get("Web", {}), dict): return None
-          for web_server in scope["Web"].values():
+          for authority, web_server in scope["Web"].items():
+              try:
+                  if normalize_external_serve_endpoint("https://" + authority) != external_serve_endpoint: return None
+              except (RuntimeError, ValueError):
+                  return None
               handlers = web_server.get("Handlers", {}) if isinstance(web_server, dict) else {}
               if not isinstance(handlers, dict): return None
               for handler in handlers.values():
@@ -2804,7 +3263,9 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
 
 
   def _funnel_entries(config: dict) -> list[str] | None:
-      scopes = [config, *config.get("Services", {}).values()]
+      services = config.get("Services", {})
+      if not isinstance(services, dict): return None
+      scopes = [config, *services.values()]
       entries: list[str] = []
       for scope in scopes:
           if not isinstance(scope, dict): return None
@@ -2814,12 +3275,20 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
       return entries
 
 
-  def derive_tailnet_evidence(serve_status_json: str, funnel_status_json: str, acl_probe_results: list[AclProbeResult]) -> TailnetEvidence:
+  def _probe_matches(probe: AclProbeResult, expected: str, outcomes: set[str]) -> bool:
+      try:
+          return normalize_external_serve_endpoint(probe.endpoint) == expected and probe.outcome in outcomes
+      except (RuntimeError, ValueError):
+          return False
+
+
+  def derive_tailnet_evidence(serve_status_json: str, funnel_status_json: str, acl_probe_results: list[AclProbeResult], external_serve_endpoint: str) -> TailnetEvidence:
       try:
           serve, funnel = json.loads(serve_status_json), json.loads(funnel_status_json)
-      except json.JSONDecodeError:
+          expected = normalize_external_serve_endpoint(external_serve_endpoint)
+      except (json.JSONDecodeError, RuntimeError, ValueError):
           return {"serveTailnetOnly": False, "funnelDisabled": False, "aclAuthorized": False, "aclDenied": False}
-      proxies = _serve_handler_proxies(serve) if isinstance(serve, dict) else None
+      proxies = _serve_handler_proxies(serve, expected) if isinstance(serve, dict) else None
       serve_funnel_entries = _funnel_entries(serve) if isinstance(serve, dict) else None
       funnel_entries = _funnel_entries(funnel) if isinstance(funnel, dict) else None
       authorized = [probe for probe in acl_probe_results if probe.role == "authorized"]
@@ -2827,8 +3296,8 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
       return {
           "serveTailnetOnly": bool(proxies) and all(_is_loopback_proxy(proxy) for proxy in proxies),
           "funnelDisabled": serve_funnel_entries == [] and funnel_entries == [],
-          "aclAuthorized": any(urlsplit(probe.endpoint).scheme == "https" and urlsplit(probe.endpoint).port == 443 and probe.outcome == "reached" for probe in authorized),
-          "aclDenied": any(urlsplit(probe.endpoint).scheme == "https" and urlsplit(probe.endpoint).port == 443 and probe.outcome in {"connection-refused", "timeout"} for probe in denied),
+          "aclAuthorized": any(_probe_matches(probe, expected, {"reached"}) for probe in authorized),
+          "aclDenied": any(_probe_matches(probe, expected, {"connection-refused", "timeout"}) for probe in denied),
       }
 
 
@@ -2840,12 +3309,81 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
       rows = ["# Phase I Gate 1", "", f"Decision: {'PASS' if decision['passed'] else 'FAIL'}", "", "## Failures", ""] + [f"- {item}" for item in decision["failures"]]
       (output / "gate1.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
       return 0 if decision["passed"] else 1
+
+
+  def write_gate1_envelope(output: Path, evidence: dict, release_commit: str, artifact_sha256: str, command: list[str], started_at: str, finished_at: str, machine_id: str, boot_id: str) -> Path:
+      raw_file = output / "gate1.json"
+      payload = build_evidence_payload(
+          "gate1Boundary", decide(evidence)["passed"], release_commit, artifact_sha256,
+          command, started_at, finished_at, raw_file, machine_id, boot_id,
+      )
+      target = output / "gate1Boundary.evidence.json"
+      target.write_text(canonical_json(payload), encoding="utf-8", newline="\n")
+      return target
   ```
 
-- [ ] Add the shared closed evidence writer and desktop signer. `canonical_utc` accepts only exact millisecond UTC text and rejects reversed time; `safe_command` rejects empty argv, control characters, and any argument whose name matches `token|secret|password|session` case-insensitively:
+- [ ] Add the shared closed evidence writer and desktop signer. `canonical_utc` accepts only exact millisecond UTC text and rejects reversed time. `safe_command` rejects empty argv, control characters, authorization-header values, private-key material, and credential assignments matching `token|secret|password|session` case-insensitively; it permits the literal `--session-env KB_GATE_SESSION` selector because the bearer value is absent from argv and output:
 
   ```py
   EVIDENCE_KEYS = {"schema", "key", "passed", "release", "host", "command", "startedAt", "finishedAt", "rawOutput"}
+  RELEASE_KEYS = {"commit", "artifactSha256"}
+  HOST_KEYS = {"machineIdSha256", "bootId"}
+  RAW_OUTPUT_KEYS = {"file", "sha256"}
+
+
+  def sha256_file(path: Path) -> str:
+      digest = hashlib.sha256()
+      with path.open("rb") as handle:
+          for chunk in iter(lambda: handle.read(1024 * 1024), b""): digest.update(chunk)
+      return digest.hexdigest()
+
+
+  def canonical_utc(value: str) -> datetime:
+      if type(value) is not str or re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", value) is None:
+          raise RuntimeError("timestamp must be canonical millisecond UTC")
+      return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+
+
+  def safe_command(command: list[str]) -> list[str]:
+      if type(command) is not list or not command or any(type(arg) is not str or not arg for arg in command):
+          raise RuntimeError("evidence command must be nonempty argv")
+      for arg in command:
+          if re.search(r"[\x00-\x1f\x7f]", arg): raise RuntimeError("control character in evidence command")
+          if re.fullmatch(r"(?i)--?(?:token|secret|password|passkey|credential|api-key|access-key|authorization)(?:=.*)?", arg) or re.search(r"(?i)(authorization\s*:|-----BEGIN .*PRIVATE KEY-----|(?:token|secret|password|session)[A-Za-z0-9_]*=)", arg):
+              raise RuntimeError("credential value in evidence command")
+      return list(command)
+
+
+  def require_uuid(value: str) -> str:
+      parsed = uuid.UUID(value)
+      if str(parsed) != value: raise RuntimeError("boot id must be canonical UUID")
+      return value
+
+
+  def parse_closed_evidence(raw: bytes, expected_keys: set[str] = EVIDENCE_KEYS) -> dict:
+      value = load_json_without_duplicates(raw)
+      if type(value) is not dict or set(value) != expected_keys or canonical_json(value).encode() != raw:
+          raise RuntimeError("closed canonical evidence required")
+      if value.get("schema") != "kb.phase1-evidence/v1" or type(value.get("passed")) is not bool:
+          raise RuntimeError("unsupported evidence payload")
+      if type(value["release"]) is not dict or set(value["release"]) != RELEASE_KEYS:
+          raise RuntimeError("closed release evidence required")
+      if type(value["host"]) is not dict or set(value["host"]) != HOST_KEYS:
+          raise RuntimeError("closed host evidence required")
+      if type(value["rawOutput"]) is not dict or set(value["rawOutput"]) != RAW_OUTPUT_KEYS:
+          raise RuntimeError("closed raw-output evidence required")
+      scalar_strings = [value["key"], value["startedAt"], value["finishedAt"], value["release"]["commit"], value["release"]["artifactSha256"], value["host"]["machineIdSha256"], value["host"]["bootId"], value["rawOutput"]["file"], value["rawOutput"]["sha256"]]
+      if any(type(item) is not str for item in scalar_strings): raise RuntimeError("evidence scalar types are invalid")
+      start, finish = canonical_utc(value["startedAt"]), canonical_utc(value["finishedAt"])
+      if finish < start or re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", value["key"]) is None: raise RuntimeError("invalid evidence identity or time range")
+      if re.fullmatch(r"[0-9a-f]{40}", value["release"]["commit"]) is None or re.fullmatch(r"[0-9a-f]{64}", value["release"]["artifactSha256"]) is None:
+          raise RuntimeError("invalid release evidence")
+      safe_command(value["command"]); require_uuid(value["host"]["bootId"])
+      if Path(value["rawOutput"]["file"]).name != value["rawOutput"]["file"]:
+          raise RuntimeError("raw-output filename must be package-local")
+      if re.fullmatch(r"[0-9a-f]{64}", value["host"]["machineIdSha256"]) is None or re.fullmatch(r"[0-9a-f]{64}", value["rawOutput"]["sha256"]) is None:
+          raise RuntimeError("invalid evidence digest")
+      return value
 
 
   def build_evidence_payload(key: str, passed: bool, commit: str, artifact_sha256: str, command: list[str], started_at: str, finished_at: str, raw_file: Path, machine_id: str, boot_id: str) -> dict:
@@ -2869,19 +3407,135 @@ Choice: the collector writes JSON plus a human-readable Markdown index outside t
       run(["ssh-keygen", "-Y", "sign", "-f", str(signing_key), "-n", "kb-phase1-evidence", str(report)], check=True)
       if not signature.is_file() or value["schema"] != "kb.phase1-evidence/v1": raise RuntimeError("evidence signing failed")
       return signature
+
+
+  INVENTORY_KEYS = {"schema", "gate", "release", "files"}
+  INVENTORY_ROW_KEYS = {"path", "sha256"}
+  FINAL_CONTROL_FILES = {"evidence.inventory.json", "evidence.sha256", "evidence.sha256.sig"}
+  UNSIGNED_GATE1_FILES = {"gate1.json", "gate1.md", "tailscale-serve.json", "tailscale-funnel.json", "route-matrix.json", "gate1Boundary.evidence.json"}
+
+
+  def canonical_json(value: object) -> str:
+      return json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
+
+
+  def load_json_without_duplicates(raw: bytes) -> object:
+      def closed_pairs(pairs: list[tuple[str, object]]) -> dict:
+          result = {}
+          for key, value in pairs:
+              if key in result: raise RuntimeError(f"duplicate JSON key: {key}")
+              result[key] = value
+          return result
+      return json.loads(raw, object_pairs_hook=closed_pairs)
+
+
+  def sign_file(path: Path, signing_key: Path, namespace: str, run=subprocess.run) -> Path:
+      signature = path.with_suffix(path.suffix + ".sig")
+      signature.unlink(missing_ok=True)
+      run(["ssh-keygen", "-Y", "sign", "-f", str(signing_key), "-n", namespace, str(path)], check=True)
+      if not signature.is_file(): raise RuntimeError(f"{namespace} signature was not produced")
+      return signature
+
+
+  def finalize_package(package: Path, approval: Path, signing_key: Path, run=subprocess.run) -> dict:
+      initial = {path.name for path in package.iterdir() if path.is_file() and not path.is_symlink()}
+      if initial != UNSIGNED_GATE1_FILES or any(not path.is_file() or path.is_symlink() for path in package.iterdir()):
+          raise RuntimeError("unsigned Gate-1 package has extras, missing files, or non-regular entries")
+      envelopes = sorted(package.glob("*.evidence.json"))
+      if not envelopes: raise RuntimeError("Gate-1 package has no evidence envelopes")
+      release = None
+      for envelope in envelopes:
+          value = parse_closed_evidence(envelope.read_bytes(), EVIDENCE_KEYS)
+          raw_path = package / value["rawOutput"]["file"]
+          if raw_path.parent != package or not raw_path.is_file() or raw_path.is_symlink(): raise RuntimeError("evidence raw file is not a regular package file")
+          if sha256_file(raw_path) != value["rawOutput"]["sha256"]: raise RuntimeError("evidence raw digest mismatch")
+          release = value["release"] if release is None else release
+          if value["release"] != release: raise RuntimeError("evidence release identities differ")
+          sign_evidence(envelope, signing_key, run=run)
+      approval_text = approval.read_text(encoding="utf-8")
+      expected = re.fullmatch(r"APPROVED gate=1 release=([0-9a-f]{40}) by=Daniel at=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\n", approval_text)
+      if expected is None or expected.group(1) != release["commit"]: raise RuntimeError("approval does not bind Gate 1 and the release commit")
+      canonical_utc(expected.group(2))
+      approval_target = package / "APPROVED.txt"
+      approval_target.write_text(approval_text, encoding="utf-8", newline="\n")
+      sign_file(approval_target, signing_key, "kb-phase1-approval", run=run)
+      rows = []
+      for path in sorted(package.iterdir(), key=lambda item: item.name):
+          if path.name in FINAL_CONTROL_FILES: continue
+          if not path.is_file() or path.is_symlink(): raise RuntimeError("Gate-1 package contains a non-regular entry")
+          rows.append({"path": path.name, "sha256": sha256_file(path)})
+      inventory = {"schema": "kb.phase1-inventory/v1", "gate": 1, "release": release, "files": rows}
+      inventory_path = package / "evidence.inventory.json"
+      inventory_path.write_text(canonical_json(inventory), encoding="utf-8", newline="\n")
+      digest_path = package / "evidence.sha256"
+      digest_path.write_text(f"{sha256_file(inventory_path)}  evidence.inventory.json\n", encoding="ascii", newline="\n")
+      sign_file(digest_path, signing_key, "kb-phase1-inventory", run=run)
+      return inventory
+
+
+  def verify_ssh_signature(path: Path, signature: Path, allowed_signers: Path, namespace: str, run=subprocess.run) -> None:
+      result = run(["ssh-keygen", "-Y", "verify", "-f", str(allowed_signers), "-I", "kb-phase1", "-n", namespace, "-s", str(signature)], input=path.read_bytes(), capture_output=True)
+      if result.returncode != 0: raise RuntimeError(f"invalid {namespace} signature")
+
+
+  def verify_inventory(package: Path, allowed_signers: Path, run=subprocess.run) -> dict:
+      inventory_path = package / "evidence.inventory.json"
+      raw_inventory = inventory_path.read_bytes()
+      inventory = load_json_without_duplicates(raw_inventory)
+      if type(inventory) is not dict or set(inventory) != INVENTORY_KEYS or canonical_json(inventory).encode() != raw_inventory:
+          raise RuntimeError("closed canonical inventory required")
+      if inventory["schema"] != "kb.phase1-inventory/v1" or inventory["gate"] != 1 or type(inventory["files"]) is not list:
+          raise RuntimeError("unsupported Gate-1 inventory")
+      if type(inventory["release"]) is not dict or set(inventory["release"]) != RELEASE_KEYS or any(type(inventory["release"].get(key)) is not str for key in RELEASE_KEYS):
+          raise RuntimeError("closed inventory release identity required")
+      if re.fullmatch(r"[0-9a-f]{40}", inventory["release"]["commit"]) is None or re.fullmatch(r"[0-9a-f]{64}", inventory["release"]["artifactSha256"]) is None:
+          raise RuntimeError("closed inventory release identity required")
+      listed: dict[str, str] = {}
+      for row in inventory["files"]:
+          if type(row) is not dict or set(row) != INVENTORY_ROW_KEYS or type(row["path"]) is not str or type(row["sha256"]) is not str:
+              raise RuntimeError("closed inventory row required")
+          if row["path"] in listed: raise RuntimeError("duplicate inventory path")
+          if Path(row["path"]).name != row["path"] or re.fullmatch(r"[0-9a-f]{64}", row["sha256"]) is None:
+              raise RuntimeError("unsafe inventory row")
+          listed[row["path"]] = row["sha256"]
+      if list(listed) != sorted(listed): raise RuntimeError("inventory rows must be path-sorted")
+      actual = {path.name for path in package.iterdir() if path.is_file() and not path.is_symlink()}
+      if actual != set(listed) | FINAL_CONTROL_FILES: raise RuntimeError("inventory has extras or missing files")
+      if any(not path.is_file() or path.is_symlink() for path in package.iterdir()): raise RuntimeError("package contains a non-regular entry")
+      for name, digest in listed.items():
+          if sha256_file(package / name) != digest: raise RuntimeError(f"inventory digest mismatch: {name}")
+      expected_digest = f"{hashlib.sha256(raw_inventory).hexdigest()}  evidence.inventory.json\n".encode("ascii")
+      digest_path = package / "evidence.sha256"
+      if digest_path.read_bytes() != expected_digest: raise RuntimeError("final inventory digest mismatch")
+      envelopes = sorted(package.glob("*.evidence.json"))
+      if [path.name for path in envelopes] != ["gate1Boundary.evidence.json"]:
+          raise RuntimeError("Gate-1 inventory must contain exactly the boundary envelope")
+      for envelope in envelopes:
+          value = parse_closed_evidence(envelope.read_bytes(), EVIDENCE_KEYS)
+          if value["release"] != inventory["release"]: raise RuntimeError("envelope release differs from inventory")
+          raw_file = package / value["rawOutput"]["file"]
+          if sha256_file(raw_file) != value["rawOutput"]["sha256"]: raise RuntimeError("envelope raw-output digest mismatch")
+          verify_ssh_signature(envelope, envelope.with_suffix(envelope.suffix + ".sig"), allowed_signers, "kb-phase1-evidence", run=run)
+      approval_text = (package / "APPROVED.txt").read_text(encoding="utf-8")
+      approval = re.fullmatch(r"APPROVED gate=1 release=([0-9a-f]{40}) by=Daniel at=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\n", approval_text)
+      if approval is None or approval.group(1) != inventory["release"]["commit"]: raise RuntimeError("approval does not bind the inventoried release")
+      canonical_utc(approval.group(2))
+      verify_ssh_signature(package / "APPROVED.txt", package / "APPROVED.txt.sig", allowed_signers, "kb-phase1-approval", run=run)
+      verify_ssh_signature(digest_path, package / "evidence.sha256.sig", allowed_signers, "kb-phase1-inventory", run=run)
+      return inventory
   ```
 
-  Import `dataclass`, `Literal`, `TypedDict`, `ipaddress`, and `urlsplit` for the shown types and parser. The HTTP probe sends no token first, then an `Authorization: Bearer` header whose value comes from the named environment key; it never writes the value to output. The route report is Vitest JSON from Task 14's complete route-matrix plus SSE/WebSocket tests; set `routeInventoryCovered` only when all named files and tests passed. Run `tailscale serve status --json` and `tailscale funnel status --json`, retain their raw output, parse them with `derive_tailnet_evidence`, and merge its four returned booleans into `evidence` before `decide(evidence)`. The parser accepts only documented `Web`/`Handlers`/`Proxy` Serve handlers whose targets are loopback and rejects every `AllowFunnel` entry from either status as a public listener. Parse the two operator-captured probe files into `AclProbeResult` rows, requiring the normalized external Serve endpoint `https://<tailnet-name>:443`: authorized reaches it and denied gets connection refusal or timeout. Port `4317` is only the loopback proxy target and is never an ACL probe endpoint.
+  Import `dataclass`, `datetime`, `timezone`, `Literal`, `TypedDict`, `uuid`, `ipaddress`, and `urlsplit` for the shown types and parser. The HTTP probe sends no token first, then an `Authorization: Bearer` header whose value comes from the named environment key; it never writes the value to output. The route report is Vitest JSON from Task 14's complete route-matrix plus SSE/WebSocket tests; set `routeInventoryCovered` only when all named files and tests passed. Run `tailscale serve status --json` and `tailscale funnel status --json`, retain their raw output, parse them with `derive_tailnet_evidence`, and merge its four returned booleans into `evidence` before `decide(evidence)`. Pass the CLI's normalized `--external-serve-endpoint` into that parser and into both ACL comparisons: every accepted `Web` authority and both probe endpoints must equal that one host on HTTPS port 443. The parser accepts only documented `Web`/`Handlers`/`Proxy` Serve handlers whose targets are loopback and rejects every `AllowFunnel` entry from either status as a public listener. Port `4317` is only the loopback proxy target and is never an ACL probe endpoint. After `write_package`, call `write_gate1_envelope` with the exact redacted collector argv, `/etc/machine-id`, `/proc/sys/kernel/random/boot_id`, the deployed release commit, and the verified archive digest; the unsigned VM directory contains exactly one Gate-1 envelope and its bound raw files. Signing and inventory finalization run only after that directory is copied to the trusted desktop.
 
 - [ ] Run `python -m pytest tests/test_phase1_gate1.py -q` and verify the collector tests pass.
 
 - [ ] Commit with `git add scripts/gates/phase1_gate1.py tests/test_phase1_gate1.py; git commit -m "test(gate): assemble phase one boundary evidence"`.
 
-- [ ] After Tasks 1-19 have merged to `main`, deploy that exact immutable artifact from the desktop while the VM is locked and quiescent: `$releaseSha = git rev-parse origin/main; New-Item -ItemType Directory -Force "artifacts/$releaseSha" | Out-Null; gh run download --name "kb-platform-$releaseSha" --dir "artifacts/$releaseSha"; python scripts/deploy_platform_release.py "artifacts/$releaseSha/kb-platform-$releaseSha.tar.gz" "artifacts/$releaseSha/kb-platform-$releaseSha.attestation.json" --signing-key $env:KB_RELEASE_SIGNING_KEY --host $env:KB_VM_HOST`. Verify `/opt/kb-releases/current/VERSION` equals `$releaseSha` before probing.
+- [ ] After ship-now Tasks 1-8 and 10-19 have merged to `main`, deploy that exact immutable artifact from the desktop while the VM is locked and quiescent: `$releaseSha = git rev-parse origin/main; New-Item -ItemType Directory -Force "artifacts/$releaseSha" | Out-Null; gh run download --name "kb-platform-$releaseSha" --dir "artifacts/$releaseSha"; python scripts/deploy_platform_release.py "artifacts/$releaseSha/kb-platform-$releaseSha.tar.gz" "artifacts/$releaseSha/kb-platform-$releaseSha.attestation.json" --signing-key $env:KB_RELEASE_SIGNING_KEY --host $env:KB_VM_HOST`. Verify `/opt/kb-releases/current/VERSION` equals `$releaseSha` before probing.
 
-- [ ] Run `python -m pytest tests/test_phase1_gate1.py -q`; on Ubuntu before production pruning, run `cd dashboard; npm test -- --reporter=json --outputFile=/var/lib/kb/gates/phase1/read-auth-vitest.json server/index.test.ts server/http/middleware.test.ts server/hub/sse.test.ts server/hub/ws.test.ts server/kb/routes.test.ts`. From one ACL-authorized tailnet client save `curl -fsS "$KB_TAILNET_URL/healthz"` output as `/var/lib/kb/gates/phase1/acl-authorized.txt`; from one ACL-denied client save the failed connection transcript as `/var/lib/kb/gates/phase1/acl-denied.txt`. On the staging VM run `gate_id=$(date -u +%Y%m%dT%H%M%SZ); python3 /opt/kb-releases/current/scripts/gates/phase1_gate1.py --base-url "$KB_TAILNET_URL" --output "/var/lib/kb/gates/phase1/gate1-$gate_id" --session-env KB_GATE_SESSION --route-report /var/lib/kb/gates/phase1/read-auth-vitest.json --acl-authorized /var/lib/kb/gates/phase1/acl-authorized.txt --acl-denied /var/lib/kb/gates/phase1/acl-denied.txt`; verify exit 0, then inspect the generated `gate1.md` and confirm it shows `PASS` while `/readyz` still reports execution locked.
+- [ ] Run `python -m pytest tests/test_phase1_gate1.py -q`; on Ubuntu before production pruning, run `cd dashboard; npm test -- --reporter=json --outputFile=/var/lib/kb/gates/phase1/read-auth-vitest.json server/index.test.ts server/http/middleware.test.ts server/hub/sse.test.ts server/hub/ws.test.ts server/kb/routes.test.ts`. From one ACL-authorized tailnet client save `curl -fsS "$KB_TAILNET_URL/healthz"` output as `/var/lib/kb/gates/phase1/acl-authorized.txt`; from one ACL-denied client save the failed connection transcript as `/var/lib/kb/gates/phase1/acl-denied.txt`. With `KB_GATE_SESSION` freshly armed by Daniel for this run and `KB_RELEASE_ARTIFACT_SHA256` copied from the desktop-verified Task 10 attestation, run `gate_id=$(date -u +%Y%m%dT%H%M%SZ); release_commit=$(cat /opt/kb-releases/current/VERSION); python3 /opt/kb-releases/current/scripts/gates/phase1_gate1.py collect --base-url "$KB_TAILNET_URL" --external-serve-endpoint "$KB_TAILNET_URL" --output "/var/lib/kb/gates/phase1/gate1-$gate_id" --session-env KB_GATE_SESSION --route-report /var/lib/kb/gates/phase1/read-auth-vitest.json --acl-authorized /var/lib/kb/gates/phase1/acl-authorized.txt --acl-denied /var/lib/kb/gates/phase1/acl-denied.txt --release-commit "$release_commit" --artifact-sha256 "$KB_RELEASE_ARTIFACT_SHA256"`; verify exit 0, confirm `gate1.md` shows `PASS`, and confirm `/readyz` still reports execution locked. Unset `KB_GATE_SESSION` immediately after collection; it is a human-session bearer for this one live shell, not a persisted VM credential.
 
-- [ ] Present the complete generated directory to Daniel. Record approval outside the repository as `APPROVED.txt` in that directory; do not arm execution in this task.
+- [ ] Copy the unsigned directory to the trusted desktop and present its raw files, `gate1.md`, and `gate1Boundary.evidence.json` to Daniel. After he approves, set `$package` to the copied directory and run `$approvalPath = "${package}.approval.txt"; $allowedSignersPath = "${package}.allowed-signers"; $approvedAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ'); $releaseSha = (Get-Content "$package/gate1Boundary.evidence.json" -Raw | ConvertFrom-Json).release.commit; "APPROVED gate=1 release=$releaseSha by=Daniel at=$approvedAt" | Set-Content -Encoding ascii $approvalPath; python scripts/gates/phase1_gate1.py finalize --package "$package" --approval $approvalPath --signing-key $env:KB_EVIDENCE_SIGNING_KEY; $public = ssh-keygen -y -f $env:KB_EVIDENCE_SIGNING_KEY; "kb-phase1 $public" | Set-Content -Encoding ascii $allowedSignersPath; python scripts/gates/phase1_gate1.py verify --package "$package" --allowed-signers $allowedSignersPath`. Require verification exit 0, then present the exact final inventory digest and its signature. Neither sibling input is part of the package inventory. Do not arm execution in this task.
 
 ## F2. Gate-2 runtime hardening
 
@@ -3008,230 +3662,34 @@ Choice: Phase I does not port the interactive PTY or Task Scheduler runner, and 
 
   `buildEvidencePayload` rejects unknown keys, a command containing a secret-bearing flag/value, noncanonical time, a report/raw path outside the requested evidence directory, and an existing output. The JSON `rawOutput.file` is the raw file's basename, never an absolute path. The test verifies the payload against Task 19's Python parser to prevent schema drift.
 
-- [ ] Run `cd dashboard; npm test -- server/runtime/capabilities.test.ts server/runtime/evidence.test.ts server/index.test.ts server/http/surface.test.ts server/composer/routes.test.ts server/runner/trigger.test.ts server/runner/liveness.test.ts src/views/Terminal.test.tsx; npm run typecheck; npm test` and verify all tests pass on Windows and Ubuntu. On Ubuntu set `release_commit=$(cat /opt/kb-releases/current/VERSION)` and read `artifact_sha256` from the root-staged attestation through the root validator's digest-only CLI. Emit `pythonProductionResolver.json` with the exact argv `npm test -- server/runtime/capabilities.test.ts server/runtime/evidence.test.ts`; emit `unsupportedVmSurfacesSafe.json` with the argv-only `probe-unsupported-surfaces` subcommand in `evidence.ts`, which authenticates a Composer request, checks its 503, scans `/proc/$MainPID/cmdline` for `powershell.exe`/`schtasks.exe`, and scans descendants for the Composer child. Run each as `node --experimental-strip-types server/runtime/evidence.ts --key KEY --release-commit "$release_commit" --artifact-sha256 "$artifact_sha256" --raw "/var/lib/kb/gates/phase1/KEY.raw.json" --report "/var/lib/kb/gates/phase1/KEY.json" -- COMMAND ARGS`; require both report `passed` values true and preserve the files for Task 25.
+- [ ] Run `cd dashboard; npm test -- server/runtime/capabilities.test.ts server/runtime/evidence.test.ts server/index.test.ts server/http/surface.test.ts server/composer/routes.test.ts server/runner/trigger.test.ts server/runner/liveness.test.ts src/views/Terminal.test.tsx; npm run typecheck; npm test` and verify all tests pass on Windows and Ubuntu. On Ubuntu set `release_commit=$(cat /opt/kb-releases/current/VERSION)` and set `artifact_sha256=$KB_RELEASE_ARTIFACT_SHA256`, where the environment value was copied from the desktop-verified Task 10 attestation and is not a credential. Emit `pythonProductionResolver.json` with the exact argv `npm test -- server/runtime/capabilities.test.ts server/runtime/evidence.test.ts`; emit `unsupportedVmSurfacesSafe.json` with the argv-only `probe-unsupported-surfaces` subcommand in `evidence.ts`, which authenticates a Composer request with a freshly human-armed session, checks its 503, scans `/proc/$MainPID/cmdline` for `powershell.exe`/`schtasks.exe`, and scans descendants for the Composer child. Run each as `node --experimental-strip-types server/runtime/evidence.ts --key KEY --release-commit "$release_commit" --artifact-sha256 "$artifact_sha256" --raw "/var/lib/kb/gates/phase1/KEY.raw.json" --report "/var/lib/kb/gates/phase1/KEY.json" -- COMMAND ARGS`; require both report `passed` values true and preserve the files for the deferred Gate-2 inventory.
 
 - [ ] Commit with `git add dashboard/server/runtime/capabilities.ts dashboard/server/runtime/capabilities.test.ts dashboard/server/runtime/evidence.ts dashboard/server/runtime/evidence.test.ts dashboard/server/index.ts dashboard/server/index.test.ts dashboard/server/http/context.ts dashboard/server/http/surface.ts dashboard/server/http/surface.test.ts dashboard/server/composer/routes.ts dashboard/server/composer/routes.test.ts dashboard/server/runner/trigger.test.ts dashboard/server/runner/liveness.test.ts dashboard/src/views/Terminal.tsx dashboard/src/views/Terminal.test.tsx; git commit -m "fix(runtime): disable unsafe VM subprocess surfaces"`.
 
-### Task 21: Make lock and shutdown drain every admitted execution
-
-Choice: both activation lock and shutdown are asynchronous `unlocked -> locking -> locked` transitions. They close Task 22 limiter admission, cancel queued work, await the merged bridge's in-flight tick through `stopAndDrain()`, cancel and drain every registered worker (including a child that registers after draining begins), and then drain broker/Composer/Git/PTY. The state becomes `locked` only after every count is zero; systemd's 90-second stop window leaves a 30-second margin before cgroup termination.
-
-**Files**
-
-- Modify after checkpoint re-read: `dashboard/server/control/managedExecution.ts:26-52`
-- Modify: `dashboard/server/control/managedExecution.test.ts:1-158`
-- Modify: `dashboard/server/control/codexExecAdapter.ts:97-112,205-310`
-- Modify: `dashboard/server/control/codexExecAdapter.test.ts:120-260`
-- Modify after checkpoint re-read: `dashboard/server/control/activation.ts:167-262,414-570`
-- Modify after checkpoint re-read: `dashboard/server/control/activation.test.ts:32-180,500-580`
-- Modify after checkpoint re-read: `dashboard/server/control/queueBridge.ts:350-470,610-690`
-- Modify after checkpoint re-read: `dashboard/server/control/queueBridge.test.ts:1-220`
-- Modify: `dashboard/server/http/context.ts:90-130`
-- Modify after checkpoint re-read: `dashboard/server/http/surface.ts:275-287`
-- Modify: `dashboard/server/http/surface.test.ts:820-910`
-
-**Interfaces**
-
-- Changes: `WorkerCancellationRegistry.activeCount(): number`
-- Changes: `WorkerCancellationRegistry.drain(timeoutMs: number): Promise<{ drained: boolean; remaining: string[] }>`
-- Produces: `DrainResult = { drained: boolean; remaining: string[] }`
-- Changes: `CodexExecAdapterOptions.registerCancellation?: (operationKey: string, cancel: () => void) => void`
-- Changes: `CodexExecAdapterOptions.deregisterCancellation?: (operationKey: string) => void`
-- Produces: `ActivatedExecution.drainWorkers(timeoutMs?: number): Promise<DrainResult>`
-- Produces: `ActivatedExecution.activeWorkers(): number`
-- Changes: `ActivatedExecution.lock(timeoutMs?: number): Promise<LockDrainResult>`
-- Produces: `LockDrainResult = { drained: boolean; queuedCancelled: number; remaining: string[] }`
-- Produces: `QueueBridge.stopAndDrain(): Promise<void>`
-- Changes: `SurfaceContext.lockExecution(): Promise<LockDrainResult>`
-- Changes: every lock route/fleet STOP caller awaits `lockExecution()` and returns 503 while state is `locking`
-- Produces report: `workerDrain.json` plus its named raw-output file
-- Consumes: Task 11 `ExecutionLockState`, `QuiescenceSnapshot`; Task 20 `runEvidenceCommand()`
-
-- [ ] Add failing drain and Codex registration tests:
-
-  ```ts
-  it('cancels every worker and resolves only after all deregister', async () => {
-    const registry = createWorkerCancellationRegistry();
-    const cancelled: string[] = [];
-    registry.register('a', () => { cancelled.push('a'); registry.clear('a'); });
-    registry.register('b', () => { cancelled.push('b'); registry.clear('b'); });
-    await expect(registry.drain(100)).resolves.toEqual({ drained: true, remaining: [] });
-    expect(cancelled.sort()).toEqual(['a', 'b']);
-    expect(registry.activeCount()).toBe(0);
-  });
-
-  it('returns remaining operation keys at the timeout', async () => {
-    vi.useFakeTimers();
-    const registry = createWorkerCancellationRegistry();
-    registry.register('stuck', () => undefined);
-    const pending = registry.drain(50); await vi.advanceTimersByTimeAsync(50);
-    await expect(pending).resolves.toEqual({ drained: false, remaining: ['stuck'] });
-    vi.useRealTimers();
-  });
-
-  it('immediately cancels a worker registered after drain begins and counts it until clear', async () => {
-    const registry = createWorkerCancellationRegistry();
-    registry.register('stuck', () => undefined);
-    const pending = registry.drain(100);
-    const lateCancel = vi.fn(); registry.register('late', lateCancel);
-    expect(lateCancel).toHaveBeenCalledOnce();
-    expect(registry.activeCount()).toBe(2);
-    registry.clear('stuck'); registry.clear('late');
-    await expect(pending).resolves.toEqual({ drained: true, remaining: [] });
-  });
-
-  it('does not report locked until queued work, bridge tick, and live worker drain', async () => {
-    const h = lockHarness({ queued: ['q1'], bridgeTickHeld: true, workerHeld: true });
-    const pending = h.lock();
-    expect(h.state()).toBe('locking');
-    expect(h.cancelledQueued()).toEqual(['q1']);
-    h.releaseBridge(); await Promise.resolve(); expect(h.state()).toBe('locking');
-    h.releaseWorker(); await pending; expect(h.state()).toBe('locked');
-  });
-
-  it('stopAndDrain waits for the current tick and prevents another tick', async () => {
-    const h = bridgeHarnessWithHeldTick();
-    const pending = h.bridge.stopAndDrain();
-    expect(h.drained).toBe(false); h.releaseTick(); await pending;
-    await h.advancePollInterval(); expect(h.tickCount()).toBe(1);
-  });
-  ```
-
-  ```ts
-  it('registers the Codex child kill and always deregisters after exit', async () => {
-    const register = vi.fn(); const clear = vi.fn(); const fake = fakeProcess();
-    const adapter = createCodexExecAdapter({ spawner: () => fake.proc, registerCancellation: register, deregisterCancellation: clear });
-    const pending = adapter.execute(executeInput({ attemptRef: 'attempt-7' }));
-    expect(register).toHaveBeenCalledWith('automatic-attempt:attempt-7', expect.any(Function));
-    fake.emitExit(1); await pending;
-    expect(clear).toHaveBeenCalledWith('automatic-attempt:attempt-7');
-  });
-  ```
-
-- [ ] Run `cd dashboard; npm test -- server/control/managedExecution.test.ts server/control/codexExecAdapter.test.ts server/control/activation.test.ts server/http/surface.test.ts` and verify the new methods/options are absent.
-
-- [ ] Extend the registry with waiter notification:
-
-  ```ts
-  export interface WorkerCancellationRegistry {
-    register(operationKey: string, cancel: () => void): void;
-    cancel(operationKey: string): void;
-    clear(operationKey: string): void;
-    activeCount(): number;
-    drain(timeoutMs: number): Promise<{ drained: boolean; remaining: string[] }>;
-    reopen(): void;
-  }
-
-  export function createWorkerCancellationRegistry(): WorkerCancellationRegistry {
-    const cancels = new Map<string, () => void>();
-    const waiters = new Set<() => void>();
-    let draining = false;
-    const notify = () => { if (cancels.size === 0) for (const waiter of [...waiters]) waiter(); };
-    return {
-      register(key, cancel) { cancels.set(key, cancel); if (draining) cancel(); },
-      cancel(key) { cancels.get(key)?.(); },
-      clear(key) { cancels.delete(key); notify(); },
-      activeCount() { return cancels.size; },
-      async drain(timeoutMs) {
-        draining = true;
-        for (const cancel of [...cancels.values()]) cancel();
-        if (cancels.size === 0) return { drained: true, remaining: [] };
-        let timer: NodeJS.Timeout | undefined;
-        let waiter: (() => void) | undefined;
-        await Promise.race([
-          new Promise<void>((resolve) => { waiter = resolve; waiters.add(resolve); }),
-          new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
-        ]);
-        if (timer) clearTimeout(timer);
-        if (waiter) waiters.delete(waiter);
-        return { drained: cancels.size === 0, remaining: [...cancels.keys()].sort() };
-      },
-      reopen() { if (cancels.size !== 0) throw new Error('cannot reopen worker admission before drain'); draining = false; },
-    };
-  }
-  ```
-
-- [ ] Register the Codex process kill immediately after spawn and clear it in the one settle/finally path. Pass the same registry seams to both post-merge Claude and Codex adapters in `activation.ts`; expose `drainWorkers` and `activeWorkers`. Do not edit `claudeWorkerAdapter.ts`.
-
-- [ ] Amend the merged bridge with one explicit in-flight promise; `tick()` owns it until its `finally`, and stop is idempotent:
-
-  ```ts
-  let stopped = false;
-  let inFlight: Promise<void> | undefined;
-  async function runTick(): Promise<void> {
-    if (stopped || inFlight) return;
-    inFlight = tick().finally(() => { inFlight = undefined; });
-    await inFlight;
-  }
-  async function stopAndDrain(): Promise<void> {
-    stopped = true;
-    if (timer) { clearInterval(timer); timer = undefined; }
-    await inFlight;
-  }
-  ```
-
-  The existing synchronous `stop()` becomes a private timer-closing helper; every production caller uses and awaits `stopAndDrain()`. A later `start()` is allowed only after an approved unlock and creates one new timer.
-
-- [ ] Replace the activation boolean setter with one coordinator used by the lock route, fleet STOP, startup-locked path, and surface `preClose`:
-
-  ```ts
-  async function lockExecution(timeoutMs = 60_000): Promise<LockDrainResult> {
-    if (executionState === 'locked') return { drained: true, queuedCancelled: 0, remaining: [] };
-    if (lockPromise) return await lockPromise;
-    executionState = 'locking';
-    lockPromise = (async () => {
-      const queuedCancelled = resourceAdmission.closeAndCancel('execution-lock');
-      await bridge.stopAndDrain();
-      broker.drain();
-      const workers = await activatedExecution.drainWorkers(timeoutMs);
-      await Promise.all([drainAsyncGit(), drainVibeProcesses(), ptyHost?.drain() ?? Promise.resolve()]);
-      const remaining = [...workers.remaining, ...liveResourceKeys()].sort();
-      if (!workers.drained || remaining.length > 0 || resourceAdmission.queuedCount() > 0) return { drained: false, queuedCancelled, remaining };
-      executionState = 'locked';
-      return { drained: true, queuedCancelled, remaining: [] };
-    })().finally(() => { lockPromise = undefined; });
-    return await lockPromise;
-  }
-  ```
-
-  On timeout, remain `locking`, return/raise a 503 `execution-drain-incomplete`, and let systemd cgroup termination be the final shutdown fence; never report quiescent. Unlock refuses from `locking`; from `locked`, it calls `workerRegistry.reopen()`, reopens Task 22 admission, and starts the bridge only after the existing approval checks succeed. Feed `executionState`, `bridge.stopped`, `resourceAdmission.queuedCount()`, and `activeWorkers()` into Task 11 readiness.
-
-- [ ] Run `cd dashboard; npm test -- server/control/managedExecution.test.ts server/control/codexExecAdapter.test.ts server/control/activation.test.ts server/control/queueBridge.test.ts server/http/surface.test.ts; npm run typecheck; npm test` and verify all tests pass. On Ubuntu emit Task 20's closed report with `node --experimental-strip-types server/runtime/evidence.ts --key workerDrain --release-commit "$release_commit" --artifact-sha256 "$artifact_sha256" --raw /var/lib/kb/gates/phase1/workerDrain.raw.json --report /var/lib/kb/gates/phase1/workerDrain.json -- npm test -- server/control/managedExecution.test.ts server/control/codexExecAdapter.test.ts server/control/activation.test.ts server/control/queueBridge.test.ts server/http/surface.test.ts`; require `passed: true` and preserve both files for Task 25.
-
-- [ ] Commit with `git add dashboard/server/control/managedExecution.ts dashboard/server/control/managedExecution.test.ts dashboard/server/control/codexExecAdapter.ts dashboard/server/control/codexExecAdapter.test.ts dashboard/server/control/activation.ts dashboard/server/control/activation.test.ts dashboard/server/control/queueBridge.ts dashboard/server/control/queueBridge.test.ts dashboard/server/http/context.ts dashboard/server/http/surface.ts dashboard/server/http/surface.test.ts; git commit -m "fix(control): drain workers before daemon shutdown"`.
-
 ### Task 22: Enforce per-resource-class concurrency limits
 
-Choice: Phase I limits control transitions to 4, general agent workers to 2, render workers to 1, live PTYs to 4, and ops-checkout Git transactions to 1. The limiter is also Task 21's admission fence: lock atomically closes every class, rejects new work, cancels every queued promise with a typed error, exposes a total queued count to readiness, and reopens only after an approved unlock. Limits are configurable positive integers; zero/unbounded is refused.
+Choice: this ship-now task defines and tests the standalone limiter before any execution-plane consumer. It enforces resource defaults of control 4, agents 2, render 1, PTY 4, and Git 1; closes admission, rejects new work, cancels queued promises with a typed error, and refuses zero or unbounded limits. Only the merge-independent Git transaction integration lands now. Worker-adapter, activation, PTY-observation, readiness, close-on-lock, and reopen-on-unlock wiring is deferred below the workflow-platform checkpoint.
 
 **Files**
 
 - Create: `dashboard/server/control/resourceLimits.ts`
 - Create: `dashboard/server/control/resourceLimits.test.ts`
-- Modify after checkpoint re-read: `dashboard/server/control/activation.ts:225-262,328-576`
-- Modify after checkpoint re-read: `dashboard/server/control/activation.test.ts:128-220,500-580`
 - Modify: `dashboard/server/write/asyncGit.ts:25-63`
 - Modify: `dashboard/server/write/asyncGit.test.ts:1-107`
-- Modify: `dashboard/server/http/context.ts:90-130`
-- Modify: `dashboard/server/http/surface.ts:120-205`
-- Modify: `dashboard/server/pty/route.ts:80-85,338-412,699-704`
-- Modify: `dashboard/server/pty/route.test.ts:760-850`
 
 **Interfaces**
 
 - Produces: `ResourceClass = 'control' | 'agents' | 'render' | 'pty' | 'git'`
 - Produces: `ResourceLimiter.run<T>(kind: ResourceClass, operation: () => Promise<T>): Promise<T>`
 - Produces: `ResourceLimiter.snapshot(): Record<ResourceClass, { limit: number; active: number; queued: number }>`
-- Produces: `ResourceLimiter.observePty(active: number): void`
 - Produces: `ResourceLimiter.closeAndCancel(reason: string): number`
 - Produces: `ResourceLimiter.open(): void`
 - Produces: `ResourceLimiter.queuedCount(): number`
 - Produces: `ResourceLimiter.accepting(): boolean`
 - Produces: `createResourceLimiter(limits?: Partial<Record<ResourceClass, number>>): ResourceLimiter`
 - Produces: `runtimeResourceLimiter: ResourceLimiter`
-- Produces: `limitWorkerAdapter(adapter: WorkerAdapter, limiter: ResourceLimiter): WorkerAdapter`
 - Produces report: `resourceLimits.json` plus its named raw-output file
-- Consumes: Task 20 `runEvidenceCommand()`; Task 21 activation-lock coordinator
+- Consumes: Task 20 `runEvidenceCommand()`
 
 - [ ] Add a failing FIFO/isolation test:
 
@@ -3252,18 +3710,30 @@ Choice: Phase I limits control transitions to 4, general agent workers to 2, ren
     expect(secondStarted).toHaveBeenCalledOnce();
   });
 
-  it('routes render work separately from general agents', async () => {
-    const kinds: ResourceClass[] = [];
-    const limiter = { run: async (kind: ResourceClass, operation: () => Promise<unknown>) => { kinds.push(kind); return operation(); }, snapshot: () => ({}) } as unknown as ResourceLimiter;
-    const adapter = { execute: vi.fn().mockResolvedValue({ state: 'succeeded', summary: 'ok', usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [] }) } as WorkerAdapter;
-    const limited = limitWorkerAdapter(adapter, limiter);
-    await limited.execute({ action: 'build:render' } as never);
-    await limited.execute({ action: 'report:self-lint' } as never);
-    expect(kinds).toEqual(['render', 'agents']);
+  it('keeps render and agent queues independent', async () => {
+    const limiter = createResourceLimiter({ agents: 1, render: 1 });
+    const events: string[] = [];
+    let release!: () => void;
+    const held = limiter.run('agents', () => new Promise<void>((resolve) => { release = resolve; }));
+    await limiter.run('render', async () => { events.push('render'); });
+    expect(events).toEqual(['render']);
+    release(); await held;
   });
 
-  it('sets the live PTY resource ceiling to four', () => {
-    expect(MAX_CONCURRENT_PTY).toBe(4);
+  it('reserves a released slot for the FIFO waiter before a new caller can enter', async () => {
+    const limiter = createResourceLimiter({ agents: 1 });
+    const events: string[] = [];
+    let release!: () => void;
+    const first = limiter.run('agents', () => new Promise<void>((resolve) => { release = resolve; }));
+    const second = limiter.run('agents', async () => { events.push('second'); });
+    await Promise.resolve(); release();
+    const third = limiter.run('agents', async () => { events.push('third'); });
+    await Promise.all([first, second, third]);
+    expect(events).toEqual(['second', 'third']);
+  });
+
+  it('sets the PTY resource ceiling to four', () => {
+    expect(createResourceLimiter().snapshot().pty.limit).toBe(4);
   });
 
   it('closes admission and rejects all queued work before lock can drain', async () => {
@@ -3303,7 +3773,7 @@ Choice: Phase I limits control transitions to 4, general agent workers to 2, ren
   });
   ```
 
-- [ ] Run `cd dashboard; npm test -- server/control/resourceLimits.test.ts server/write/asyncGit.test.ts server/control/activation.test.ts` and verify the module is absent.
+- [ ] Run `cd dashboard; npm test -- server/control/resourceLimits.test.ts server/write/asyncGit.test.ts` and verify the limiter module is absent.
 
 - [ ] Implement a FIFO semaphore per resource class:
 
@@ -3312,7 +3782,6 @@ Choice: Phase I limits control transitions to 4, general agent workers to 2, ren
   export type ResourceSnapshot = Record<ResourceClass, { limit: number; active: number; queued: number }>;
   export interface ResourceLimiter {
     run<T>(kind: ResourceClass, operation: () => Promise<T>): Promise<T>;
-    observePty(active: number): void;
     snapshot(): ResourceSnapshot;
     closeAndCancel(reason: string): number;
     open(): void;
@@ -3327,18 +3796,27 @@ Choice: Phase I limits control transitions to 4, general agent workers to 2, ren
     type Waiter = { resolve: () => void; reject: (error: Error) => void };
     const state = Object.fromEntries(Object.keys(limits).map((kind) => [kind, { active: 0, queue: [] as Waiter[] }])) as Record<ResourceClass, { active: number; queue: Waiter[] }>;
     let admission: { accepting: true } | { accepting: false; reason: string } = { accepting: true };
-    async function run<T>(kind: ResourceClass, operation: () => Promise<T>): Promise<T> {
+    async function acquire(kind: ResourceClass): Promise<void> {
       if (!admission.accepting) throw new ExecutionAdmissionClosedError(admission.reason);
       const slot = state[kind];
-      if (slot.active >= limits[kind]) await new Promise<void>((resolve, reject) => slot.queue.push({ resolve, reject }));
-      if (!admission.accepting) throw new ExecutionAdmissionClosedError(admission.reason);
-      slot.active += 1;
-      try { return await operation(); }
-      finally { slot.active -= 1; slot.queue.shift()?.resolve(); }
+      if (slot.active < limits[kind]) { slot.active += 1; return; }
+      await new Promise<void>((resolve, reject) => slot.queue.push({ resolve, reject }));
+    }
+    function release(kind: ResourceClass): void {
+      const slot = state[kind];
+      const next = admission.accepting ? slot.queue.shift() : undefined;
+      if (next) next.resolve();
+      else slot.active -= 1;
+    }
+    async function run<T>(kind: ResourceClass, operation: () => Promise<T>): Promise<T> {
+      await acquire(kind);
+      try {
+        if (!admission.accepting) throw new ExecutionAdmissionClosedError(admission.reason);
+        return await operation();
+      } finally { release(kind); }
     }
     return {
       run,
-      observePty(active) { if (!Number.isInteger(active) || active < 0) throw new Error('PTY active count must be a non-negative integer'); state.pty.active = active; },
       snapshot: () => Object.fromEntries((Object.keys(limits) as ResourceClass[]).map((kind) => [kind, { limit: limits[kind], active: state[kind].active, queued: state[kind].queue.length }])) as ResourceSnapshot,
       closeAndCancel(reason) {
         if (!reason || /[\r\n]/.test(reason)) throw new Error('admission close reason is invalid');
@@ -3356,430 +3834,205 @@ Choice: Phase I limits control transitions to 4, general agent workers to 2, ren
   export const runtimeResourceLimiter = createResourceLimiter();
 
   export class ExecutionAdmissionClosedError extends Error {
-    readonly name = 'ExecutionAdmissionClosedError';
-    constructor(readonly reason: string) { super(`execution admission is closed: ${reason}`); }
+      readonly name = 'ExecutionAdmissionClosedError';
+      constructor(readonly reason: string) { super(`execution admission is closed: ${reason}`); }
   }
 
-  export function limitWorkerAdapter(adapter: WorkerAdapter, limiter: ResourceLimiter): WorkerAdapter {
-    return { execute: (input) => limiter.run(/(?:^|:)render(?:$|:)/.test(input.action) ? 'render' : 'agents', () => adapter.execute(input)) };
+  const opsTransactionContext = new AsyncLocalStorage<boolean>();
+
+  export async function withOpsTransaction<T>(operation: () => Promise<T>): Promise<T> {
+    if (opsTransactionContext.getStore() === true) return operation();
+    return runtimeResourceLimiter.run('git', () => opsTransactionContext.run(true, operation));
   }
   ```
 
-- [ ] Inject `runtimeResourceLimiter` into the surface context. Wrap both worker adapters without changing them, wrap each activated `runAutomatic` call in `control`, and replace the private Git FIFO's acquire/release with `runtimeResourceLimiter.run('git', ...)` while preserving `AsyncLocalStorage` reentrancy. Pass `runtimeResourceLimiter.snapshot().pty.limit` as the existing `PtyRouteContext.maxConcurrent`, and call `runtimeResourceLimiter.observePty(registry.liveCount())` before readiness/operational snapshots. Wire `closeAndCancel`, `queuedCount`, and `open` into Task 21's activation-lock coordinator; startup calls `closeAndCancel('startup-locked')`, and only successful approved unlock calls `open()`. Feed `queuedCount()` to Task 11. Tests inject a fresh limiter; production uses the singleton so telemetry observes every class.
+- [ ] Replace the private Git FIFO's outermost acquire/release with `runtimeResourceLimiter.run('git', ...)`. Keep the existing `AsyncLocalStorage` guard: when `withOpsTransaction` sees its transaction context it invokes the nested operation directly; only the outermost call enters the limiter. Do not edit activation, worker-adapter, queue-bridge, readiness, surface, or PTY files in this ship-now task.
 
-- [ ] Add a worker-wrapper test proving `build:render` queues under `render` while `report:self-lint` consumes `agents`, retain the existing PTY `too-many-terminals` assertion with default 4, and prove startup/lock/unlock close-cancel-reopen order in `activation.test.ts`. Run `cd dashboard; npm test -- server/control/resourceLimits.test.ts server/write/asyncGit.test.ts server/control/activation.test.ts server/pty/route.test.ts; npm run typecheck; npm test` on Windows and Ubuntu. On Ubuntu emit Task 20's closed report with `node --experimental-strip-types server/runtime/evidence.ts --key resourceLimits --release-commit "$release_commit" --artifact-sha256 "$artifact_sha256" --raw /var/lib/kb/gates/phase1/resourceLimits.raw.json --report /var/lib/kb/gates/phase1/resourceLimits.json -- npm test -- server/control/resourceLimits.test.ts server/write/asyncGit.test.ts server/control/activation.test.ts server/pty/route.test.ts`; require `passed: true` and preserve both files for Task 25.
+- [ ] Run `cd dashboard; npm test -- server/control/resourceLimits.test.ts server/write/asyncGit.test.ts; npm run typecheck; npm test` on Windows and Ubuntu. On Ubuntu emit Task 20's closed report with `node --experimental-strip-types server/runtime/evidence.ts --key resourceLimits --release-commit "$release_commit" --artifact-sha256 "$artifact_sha256" --raw /var/lib/kb/gates/phase1/resourceLimits.raw.json --report /var/lib/kb/gates/phase1/resourceLimits.json -- npm test -- server/control/resourceLimits.test.ts server/write/asyncGit.test.ts`; require `passed: true` and preserve both files for the deferred Gate-2 inventory.
 
-- [ ] Commit with `git add dashboard/server/control/resourceLimits.ts dashboard/server/control/resourceLimits.test.ts dashboard/server/control/activation.ts dashboard/server/control/activation.test.ts dashboard/server/write/asyncGit.ts dashboard/server/write/asyncGit.test.ts dashboard/server/http/context.ts dashboard/server/http/surface.ts dashboard/server/pty/route.ts dashboard/server/pty/route.test.ts; git commit -m "feat(control): bound runtime resource concurrency"`.
+- [ ] Commit with `git add dashboard/server/control/resourceLimits.ts dashboard/server/control/resourceLimits.test.ts dashboard/server/write/asyncGit.ts dashboard/server/write/asyncGit.test.ts; git commit -m "feat(control): bound runtime resource concurrency"`.
+
+## Required workflow-platform merge checkpoint — before deferred execution-plane tasks
+
+This is a blocking checkpoint, not an implementation task and not a commit. The workflow-platform has merged to `main`; every re-read targets the merged `origin/main` tip, and that merged tip must be at or after `804acec`.
+
+- [ ] Run `git fetch origin main claude/workflow-platform; $mergedTip = git merge-base origin/main origin/claude/workflow-platform; git merge-base --is-ancestor 804acec $mergedTip; if ($LASTEXITCODE -ne 0) { Write-Error 'merged workflow-platform tip predates 804acec'; exit 1 }; git merge-base --is-ancestor $mergedTip origin/main; if ($LASTEXITCODE -ne 0) { Write-Error 'workflow-platform merged tip is not on main'; exit 1 }; Write-Output $mergedTip`. Require both ancestry checks to exit 0 and record `$mergedTip`; branch-tip commits newer than `$mergedTip` are not implementation inputs until they also merge.
+- [ ] Incorporate the updated `origin/main` using the repository's normal non-destructive branch workflow and run `git merge-base --is-ancestor $mergedTip HEAD`; require exit code 0.
+- [ ] Run `rg -n "dispatchQueueCard|buildQueueBridge|createQueueBridge|createClaudeWorkerAdapter|buildActivatedExecution|executeApprovedLaunch|runAutomatic|executionLatch|\.lock\(" dashboard/server` at the merged tip. Record every definition and caller in the deferred-task reviewer notes before writing tests or changing an interface.
+- [ ] If the merged contracts cannot meet any acceptance criterion below without changing its authority boundary, stop and amend this plan through review. Do not infer a compatibility shim from the pre-merge signatures.
+
+## DEFERRED: execution-plane tasks — specify after workflow-platform merges
+
+The five tasks below retain their Phase-I scope and task numbers, but they are not commit-ready in the ship-now sequence. Their post-merge pass starts with failing tests against the re-read signatures; this section fixes the required behavior and files to inspect without guessing implementation code.
+
+### Task 9: Bind approved proposals to the immutable registry identity
+
+**Why deferred**
+
+The proposal accepted by `ActivatedExecution.runAutomatic` and the construction seam in `buildActivatedExecution` are workflow-platform contracts. The post-merge code must decide where the Task 8 `RepositoryBinding` enters the canonical proposal and where the active checkout/base commit is resolved; specifying calls against the current signatures would be stale.
+
+**Files to re-read post-merge**
+
+- `dashboard/server/control/proposal.ts` and `dashboard/server/control/proposal.test.ts`
+- `dashboard/server/control/activation.ts` and `dashboard/server/control/activation.test.ts`
+- `dashboard/server/control/environment.ts` and `dashboard/server/control/environment.test.ts`
+- `dashboard/server/control/repositoryRegistry.ts` and `dashboard/server/control/repositoryRegistry.test.ts`
+- Every merged caller returned by `rg -n "validatePlanProposal|validateServerCompiledPlanProposal|buildActivatedExecution|runAutomatic|baseCommit" dashboard/server`
+
+**Interface intent**
+
+- Preserve Task 8 `RepositoryBinding = Readonly<{ registryId: string; identity: string }>` and `RepositoryRegistry.resolve(binding)`.
+- Add a server-owned binding to the canonical proposal; untrusted input cannot supply or override it.
+- Resolve `baseRef: ops` to an immutable commit and require it to equal the active checkout `HEAD` before execution.
+
+**Acceptance criteria**
+
+- Browser-authored and canonical-workflow proposals receive the same server-computed binding, and approval hashing covers it.
+- Activation rejects an unknown/stale identity, a project outside the record, a path outside the closed scope, a record rooted outside the active ops checkout, and `baseRef` or resolved commit drift.
+- `remote` and `credentialIdentity` remain hash-bound, recorded-not-enforced-until-Phase-II fields and grant no authority.
+- The post-merge pass adds the failing proposal/activation/environment tests first, updates every caller of each changed signature, and runs their narrow tests, typecheck, and the full dashboard suite.
+
+### Task 21: Make lock and shutdown drain every admitted execution
+
+**Why deferred**
+
+The real current synchronous owner is `ExecutionLatch.lock(input): ExecutionLatchState` in `activation.ts`; `ActivatedExecution` has no `lock`. The bridge tick/stop contract, worker registration race, route unlock path, and launch/activation dispatch path are all workflow-platform merge targets, so the coordinator must be designed against their merged shapes.
+
+**Files to re-read post-merge**
+
+- `dashboard/server/control/activation.ts` and `dashboard/server/control/activation.test.ts`
+- `dashboard/server/control/queueBridge.ts` and `dashboard/server/control/queueBridge.test.ts`
+- `dashboard/server/control/claudeWorkerAdapter.ts` and `dashboard/server/control/claudeWorkerAdapter.test.ts`
+- `dashboard/server/control/launch.ts` and `dashboard/server/control/launch.test.ts`
+- `dashboard/server/control/routes.ts` and `dashboard/server/control/routes.test.ts`
+- `dashboard/server/http/context.ts`, `dashboard/server/http/surface.ts`, and their tests
+- `dashboard/server/index.ts`, `dashboard/server/release/quiescence.ts`, and their tests
+- `dashboard/server/write/asyncGit.ts`, `dashboard/server/vibe/session.ts`, `dashboard/server/pty/route.ts`, and their drain/count tests
+
+**Interface intent**
+
+- Keep `ExecutionLatch.lock` as the synchronous state owner; add an asynchronous coordinator around that owner rather than inventing `ActivatedExecution.lock`.
+- Consume the shipped Task 22 `ResourceLimiter` for close/cancel/reopen and queue counts.
+- Preserve the existing public `tick(): Promise<QueueBridgeTickResult>` contract while adding a reviewed bridge stop-and-drain operation.
+- Add a draining cancellation registry around merged worker launches without editing away the adapter's real spawn/registration lifecycle.
+
+**Acceptance criteria**
+
+- Lock transitions are exactly `unlocked -> locking -> locked`: admission closes atomically, every queued limiter promise rejects with `ExecutionAdmissionClosedError`, the bridge stops claiming, admitted bridge work drains, registered workers/Git/PTY/Composer children drain or are contained, and only then does readiness report locked/quiescent.
+- Startup is locked. Only a successful human-approved unlock reopens the limiter; a failed unlock never reopens it.
+- The draining registry preserves same-key registration-wins semantics: install the replacement before canceling the displaced callback, and an unregister closure deletes only if its callback is still current. Bulk cancellation removes each entry before invoking its callback so reentrant cancellation cannot delete a replacement.
+- Shutdown covers the post-spawn/pre-registration race visible in the merged `claudeWorkerAdapter.ts` and corroborates zero descendants through the service cgroup.
+- Task 18's deferred hook calls `ctx.admission('new-work')` immediately before the merged queue bridge claims a card; degraded mode never blocks settlement, replies, stops, locks, health, or reads.
+- Task 22's deferred wiring wraps the merged control and worker execution seams, maps render actions to `render` and other agent actions to `agents`, observes PTY count, and feeds total queued count to Task 11 without changing Task 11's public response.
+- The post-merge pass writes failing state-order, reentrancy, overwrite, delete-before-cancel, spawn-race, route, bridge-contract, and cgroup-drain tests before implementation and runs the complete dashboard suite on Windows and Ubuntu.
 
 ### Task 23: Expose live operational telemetry in Sentinel
 
-Choice: a single authenticated snapshot powers the panel. A wrapper appends a redacted `meta` heartbeat to the existing attempt-I/O store every 15 seconds while any worker adapter is executing; queue age is measured from `createdAt`, and failure rate covers terminal attempts in the last 24 hours.
+**Why deferred**
 
-**Files**
+Heartbeats, queue age, worker identity, saturation, outcomes, and failure rate must be derived from the merged attempt/worker/bridge lifecycle. Binding telemetry now would either count the pre-merge lifecycle or create a second source of truth.
 
-- Create: `dashboard/server/operations/snapshot.ts`
-- Create: `dashboard/server/operations/snapshot.test.ts`
-- Create: `dashboard/server/operations/heartbeat.ts`
-- Create: `dashboard/server/operations/heartbeat.test.ts`
-- Create: `dashboard/server/operations/routes.ts`
-- Create: `dashboard/server/operations/routes.test.ts`
-- Modify after checkpoint re-read: `dashboard/server/control/activation.ts:225-262,328-576`
-- Modify after checkpoint re-read: `dashboard/server/control/activation.test.ts:128-220,500-580`
-- Modify: `dashboard/server/index.ts:95-124`
-- Modify: `dashboard/src/views/panels/Sentinel.tsx:13-165`
-- Modify: `dashboard/src/views/panels/Sentinel.test.tsx:33-125`
-- Modify: `dashboard/src/styles/views/panels.css:1-205`
+**Files to re-read post-merge**
 
-**Interfaces**
+- `dashboard/server/control/store.ts`, `dashboard/server/control/execution.ts`, and their tests
+- `dashboard/server/control/activation.ts`, `dashboard/server/control/queueBridge.ts`, `dashboard/server/control/claudeWorkerAdapter.ts`, and their tests
+- `dashboard/server/control/resourceLimits.ts` and `dashboard/server/write/outboxStatus.ts`
+- `dashboard/server/index.ts` and `dashboard/server/http/context.ts`
+- `dashboard/src/views/panels/Sentinel.tsx`, its tests, and `dashboard/src/styles/views/panels.css`
 
-- Produces: `OperationalSnapshot = { asOf: string; attempts: AttemptSignal[]; resources: ReturnType<ResourceLimiter['snapshot']>; outbox: OutboxStatus; failureRate24h: number }`
-- Produces: `heartbeatWorkerAdapter(adapter: WorkerAdapter, attemptIo: AttemptIoSink, intervalMs?: number): WorkerAdapter`
-- Produces: `buildOperationalSnapshot(store: ControlPlaneStore, subject: string, attemptIo: AttemptIoStore, resources: ResourceLimiter, outbox: OutboxStatus, now?: () => Date): OperationalSnapshot`
-- Produces authenticated route: `GET /api/operations`
+**Interface intent**
 
-- [ ] Add a failing snapshot/UI test:
+- Produce one read-only operational snapshot from durable run/attempt state plus live merged worker/bridge state, Task 22 limiter snapshots, and Task 18 outbox status.
+- Expose the snapshot only through the authenticated read scope; telemetry must not unlock, claim, retry, settle, or otherwise mutate execution.
 
-  ```ts
-  import type { ControlPlaneStore } from '../control/store.ts';
-  import type { ResourceLimiter } from '../control/resourceLimits.ts';
-  import type { AttemptIoStore } from '../control/attemptIo.ts';
+**Acceptance criteria**
 
-  const DETAIL = {
-    run: { runRef: 'run-1' },
-    stages: [
-      { stageRef: 'stage-1', assignment: { profileId: 'worker:codex' } },
-      { stageRef: 'stage-2', assignment: { profileId: 'worker:claude' } },
-      { stageRef: 'stage-3', assignment: { profileId: 'worker:claude' } },
-    ],
-    attempts: [
-      { attemptRef: 'attempt-1', runRef: 'run-1', stageRef: 'stage-1', runtime: 'codex', model: 'gpt-5.6-sol', state: 'queued', createdAt: '2026-08-11T11:59:00.000Z', updatedAt: '2026-08-11T11:59:00.000Z' },
-      { attemptRef: 'attempt-2', runRef: 'run-1', stageRef: 'stage-2', runtime: 'claude', model: 'sonnet', state: 'failed', createdAt: '2026-08-11T11:57:00.000Z', updatedAt: '2026-08-11T11:58:00.000Z' },
-      { attemptRef: 'attempt-3', runRef: 'run-1', stageRef: 'stage-3', runtime: 'claude', model: 'sonnet', state: 'succeeded', createdAt: '2026-08-11T11:55:00.000Z', updatedAt: '2026-08-11T11:56:00.000Z' },
-    ],
-  } as never;
-  const STORE_WITH_ATTEMPTS = { listRuns: () => [{ runRef: 'run-1' }], getRun: () => ({ ok: true, value: DETAIL }) } as ControlPlaneStore;
-  const ATTEMPT_IO = { read: (attemptRef: string) => attemptRef === 'attempt-1' ? [{ seq: 1, t: '2026-08-11T11:59:30.000Z', dir: 'meta', line: 'heartbeat' }] : [] } as unknown as AttemptIoStore;
-  const LIMITER = { snapshot: () => ({ control: { limit: 4, active: 1, queued: 0 }, agents: { limit: 2, active: 2, queued: 1 }, render: { limit: 1, active: 1, queued: 0 }, pty: { limit: 4, active: 0, queued: 0 }, git: { limit: 1, active: 0, queued: 0 } }) } as unknown as ResourceLimiter;
-  const OUTBOX = { pending: 100, oldestAgeMs: 900_000, degraded: true, reasons: ['pending-limit'] };
-
-  it('reports heartbeat, queue age, worker identity, saturation, outcome, and failure rate', () => {
-    const snapshot = buildOperationalSnapshot(STORE_WITH_ATTEMPTS, 'operator', ATTEMPT_IO, LIMITER, OUTBOX, () => new Date('2026-08-11T12:00:00Z'));
-    expect(snapshot.attempts[0]).toMatchObject({ attemptRef: 'attempt-1', worker: 'worker:codex', heartbeatAt: '2026-08-11T11:59:30.000Z', queueAgeMs: 60_000, outcome: null });
-    expect(snapshot.attempts[1]).toMatchObject({ attemptRef: 'attempt-2', outcome: 'failed' });
-    expect(snapshot.resources.agents).toEqual({ limit: 2, active: 2, queued: 1 });
-    expect(snapshot.failureRate24h).toBe(0.5);
-    expect(snapshot.outbox.degraded).toBe(true);
-  });
-  ```
-
-  ```ts
-  it('emits periodic heartbeats and clears the timer after execution', async () => {
-    vi.useFakeTimers();
-    let finish!: () => void;
-    const held = new Promise<void>((resolve) => { finish = resolve; });
-    const append = vi.fn();
-    const result = { state: 'succeeded', summary: 'ok', usage: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }, artifacts: [], checkpoints: [] } as const;
-    const adapter = heartbeatWorkerAdapter({ execute: async () => { await held; return result; } } as WorkerAdapter, { append }, 15_000);
-    const pending = adapter.execute({ attemptRef: 'attempt-1' } as never);
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(append).toHaveBeenCalledTimes(2);
-    expect(append).toHaveBeenLastCalledWith('attempt-1', 'meta', 'heartbeat');
-    finish(); await pending; await vi.advanceTimersByTimeAsync(15_000);
-    expect(append).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
-  });
-  ```
-
-  ```tsx
-  import type { OperationalSnapshot } from '../../../server/operations/snapshot';
-
-  function renderSentinel(panel: HealthPanel, stored?: string, operations?: OperationalSnapshot): void {
-    if (stored) persistSession({ token: stored, expiresAt: Date.now() + 60_000 });
-    render(<SessionProvider><Sentinel panel={panel} operations={operations} /></SessionProvider>);
-  }
-
-  const OPERATIONS: OperationalSnapshot = {
-    asOf: '2026-08-11T12:00:00.000Z',
-    attempts: [{ attemptRef: 'attempt-2', runRef: 'run-1', state: 'failed', outcome: 'failed', worker: 'worker:codex', heartbeatAt: '2026-08-11T11:58:00.000Z', queueAgeMs: 60_000 }],
-    resources: { control: { limit: 4, active: 1, queued: 0 }, agents: { limit: 2, active: 2, queued: 1 }, render: { limit: 1, active: 1, queued: 0 }, pty: { limit: 4, active: 0, queued: 0 }, git: { limit: 1, active: 0, queued: 0 } },
-    outbox: { pending: 100, oldestAgeMs: 900_000, degraded: true, reasons: ['pending-limit'] },
-    failureRate24h: 0.5,
-  };
-
-  it('renders saturation, outbox alert, queue age, worker and outcome', async () => {
-    renderSentinel(PANEL, 'session-token', OPERATIONS);
-    expect(await screen.findByText('Outbox degraded')).toBeTruthy();
-    expect(screen.getByText('2 / 2 agents')).toBeTruthy();
-    expect(screen.getByText('worker:codex')).toBeTruthy();
-    expect(screen.getByText('failed')).toBeTruthy();
-  });
-  ```
-
-- [ ] Run `cd dashboard; npm test -- server/operations/heartbeat.test.ts server/operations/snapshot.test.ts server/operations/routes.test.ts src/views/panels/Sentinel.test.tsx` and verify the modules and UI section are absent.
-
-- [ ] Implement the adapter wrapper and apply it to both post-merge worker adapters in `activation.ts` before the Task 22 resource wrapper; do not edit `claudeWorkerAdapter.ts`:
-
-  ```ts
-  export function heartbeatWorkerAdapter(adapter: WorkerAdapter, attemptIo: AttemptIoSink, intervalMs = 15_000): WorkerAdapter {
-    if (!Number.isFinite(intervalMs) || intervalMs < 1) throw new Error('heartbeat interval must be positive');
-    return {
-      async execute(input) {
-        const timer = setInterval(() => attemptIo.append(input.attemptRef, 'meta', 'heartbeat'), intervalMs);
-        timer.unref?.();
-        try { return await adapter.execute(input); }
-        finally { clearInterval(timer); }
-      },
-    };
-  }
-  ```
-
-- [ ] Build the snapshot only from the caller's `listRuns(subject)` and `getRun(subject, runRef)` results:
-
-  ```ts
-  export function buildOperationalSnapshot(
-    store: ControlPlaneStore,
-    subject: string,
-    attemptIo: AttemptIoStore,
-    resources: ResourceLimiter,
-    outbox: OutboxStatus,
-    now: () => Date = () => new Date(),
-  ): OperationalSnapshot {
-    const details = store.listRuns(subject).flatMap((run) => {
-      const result = store.getRun(subject, run.runRef);
-      return result.ok ? [result.value] : [];
-    });
-    const attempts = details.flatMap((detail) => detail.attempts.map((attempt) => {
-      const stage = detail.stages.find((candidate) => candidate.stageRef === attempt.stageRef);
-      const latestIo = attemptIo.read(attempt.attemptRef).at(-1);
-      return { attemptRef: attempt.attemptRef, runRef: attempt.runRef, state: attempt.state, outcome: TERMINAL.has(attempt.state) ? attempt.state : null, worker: stage?.assignment?.profileId ?? `${attempt.runtime}:${attempt.model}`, heartbeatAt: latestIo?.t ?? attempt.updatedAt, queueAgeMs: attempt.state === 'queued' ? Math.max(0, now().getTime() - Date.parse(attempt.createdAt)) : 0 };
-    }));
-    const recent = attempts.filter((attempt) => Date.parse(attempt.heartbeatAt) >= now().getTime() - 86_400_000 && attempt.outcome !== null);
-    const failures = recent.filter((attempt) => attempt.outcome === 'failed' || attempt.outcome === 'interrupted').length;
-    return { asOf: now().toISOString(), attempts: attempts.sort((left, right) => Date.parse(right.heartbeatAt) - Date.parse(left.heartbeatAt)).slice(0, 20), resources: resources.snapshot(), outbox, failureRate24h: recent.length === 0 ? 0 : failures / recent.length };
-  }
-  ```
-
-- [ ] Register `/api/operations` inside the authenticated read scope. In Sentinel, fetch it with the existing same-origin session cookie, render an alert when `outbox.degraded`, resource active/limit/queued values, the failure rate, and a bounded table of the 20 newest attempt signals. Do not add a mutation to the telemetry route.
-
-- [ ] Run `cd dashboard; npm test -- server/operations/heartbeat.test.ts server/operations/snapshot.test.ts server/operations/routes.test.ts src/views/panels/Sentinel.test.tsx server/control/activation.test.ts; npm run typecheck; npm test` and verify all tests pass on Windows and Ubuntu.
-
-- [ ] Commit with `git add dashboard/server/operations/heartbeat.ts dashboard/server/operations/heartbeat.test.ts dashboard/server/operations/snapshot.ts dashboard/server/operations/snapshot.test.ts dashboard/server/operations/routes.ts dashboard/server/operations/routes.test.ts dashboard/server/control/activation.ts dashboard/server/control/activation.test.ts dashboard/server/index.ts dashboard/src/views/panels/Sentinel.tsx dashboard/src/views/panels/Sentinel.test.tsx dashboard/src/styles/views/panels.css; git commit -m "feat(operations): expose live runtime telemetry"`.
+- Snapshot and Sentinel show attempt heartbeat age, queue age, stable worker identity, active/queued/limit counts for every resource class, terminal outcomes, rolling failure rate, bridge state, execution-lock state, and outbox degradation reasons.
+- Unknown, stale, malformed, or unavailable inputs render explicit unknown/degraded values rather than healthy zeroes.
+- Tests pin time deterministically, prove auth coverage, prove no mutation calls, and prove the UI distinguishes idle, saturated, stale-heartbeat, degraded-outbox, and failed states.
 
 ### Task 24: Run a Linux production-path dispatch and restart canary
 
-Choice: the canary is an explicit, watched VM command using the real `report:self-lint` scanner worker and service. This task also implements the boot recovery supervisor (folded here rather than a new Task 24a): the bridge durably records the real card-to-run mapping and the dispatch's already-approved authority before execution; after a crash, a supervisor may claim and resume only that interrupted run, after fencing its old process identity. It cannot unlock execution, claim another card, or create fresh authority. The canary never runs in CI or arms execution and accepts its restart-surviving session capability only from an inherited file descriptor/stdin.
+**Why deferred**
 
-**Files**
+The current `executeApprovedLaunch` calls `void runAutomatic(...)` before returning `runRef`, while `queueBridge.ts` synthesizes definition id `bridge-${card.id}` and source turn id `bridge:${mapped.def.id}`. Therefore the bridge cannot durably record a correct card-to-run receipt before execution starts, and `sourceTurnId === card.id` is false. The durable linkage and recovery claim must use the merged launch/activation contract.
 
-- Create: `dashboard/server/acceptance/linuxDispatchCanary.ts`
-- Create: `dashboard/server/acceptance/linuxDispatchCanary.test.ts`
-- Create: `dashboard/server/control/recoverySupervisor.ts`
-- Create: `dashboard/server/control/recoverySupervisor.test.ts`
-- Modify after checkpoint re-read: `dashboard/server/control/synthetic-acceptance.ts:45-100`
-- Modify after checkpoint re-read: `dashboard/server/control/queueBridge.ts:420-470,620-680`
-- Modify after checkpoint re-read: `dashboard/server/control/queueBridge.test.ts:1-220`
-- Modify after checkpoint re-read: `dashboard/server/control/activation.ts:414-570`
-- Modify after checkpoint re-read: `dashboard/server/control/activation.test.ts:500-620`
-- Modify: `dashboard/server/http/surface.ts:120-205`
-- Modify: `dashboard/server/http/surface.test.ts:820-940`
-- Modify: `dashboard/server/auth/session.test.ts:1-180`
+**Files to re-read post-merge**
 
-**Interfaces**
+- `dashboard/server/control/launch.ts` and `dashboard/server/control/launch.test.ts`
+- `dashboard/server/control/queueBridge.ts` and `dashboard/server/control/queueBridge.test.ts`
+- `dashboard/server/control/activation.ts` and `dashboard/server/control/activation.test.ts`
+- `dashboard/server/control/claudeWorkerAdapter.ts` and its tests
+- `dashboard/server/control/store.ts`, `dashboard/server/control/execution.ts`, and their recovery tests
+- `dashboard/server/control/canonicalResultIntegrator.ts` and `dashboard/server/control/synthetic-acceptance.ts`
+- `dashboard/server/write/workflowRun.ts`, `dashboard/server/runtime/python.ts`, and their tests
+- `scripts/cards.py` and its tests
+- `deploy/systemd/kb-dashboard.service`, `deploy/validate_vm_runtime.py`, and their tests
 
-- Produces: `CardRunReceipt = { schema: 'kb.card-run-receipt/v1'; cardId: string; bridgeDefinitionId: string; runRef: string; attemptRef: string; authority: { kind: 'approved-interrupted-run'; grantDigest: string; approvedAt: string }; dispatchedAt: string; bootId: string }`
-- Produces: `RecoveryClaim = { schema: 'kb.recovery-claim/v1'; runRef: string; previousAttemptRef: string; successorAttemptRef: string; fromBootId: string; claimedByBootId: string; claimedAt: string }`
-- Produces: `LinuxCanaryReport = { version: 2; platformVersion: string; cardId: string; runReceiptSha256: string; runRef: string; recoveryClaimSha256: string; pythonCommand: 'python3'; states: string[]; restartObserved: boolean; recovered: boolean; integrationPath: string; ledgerSettled: boolean; passed: boolean }`
-- Produces: `writeCardRunReceipt(stateRoot: string, receipt: CardRunReceipt): void`
-- Produces: `recoverApprovedInterruptedRuns(deps: RecoveryDeps): Promise<RecoveryClaim[]>`
-- Produces: `CanaryDeps.systemctl(args: readonly string[]): Promise<void>`
-- Produces CLI: `node --experimental-strip-types server/acceptance/linuxDispatchCanary.ts --confirm-live --capability-fd 0 --output PATH`
-- Produces restore CLI: `node --experimental-strip-types server/acceptance/linuxDispatchCanary.ts --restore-drill --base-url URL --state-root PATH --capability-fd 0 --output PATH`
-- Consumes after checkpoint: bridge definition synthesis `bridge-${cardId}`, durable `CardRunReceipt`, run/attempt boot normalization, and worker finalize-on-result behavior
-- Consumes: Task 2 `resolvePython()`, Task 16 outbox mode, and systemd `Restart=on-failure` plus `KillMode=control-group`
-- Consumes: Task 12 root-owned persistent `/etc/kb-dashboard/session.env`; Task 20 `EvidencePayload`
+**Interface intent**
 
-- [ ] Add a failing state-machine decision test:
+- Produce a closed `CardRunReceiptV1` in the durable control-plane store that binds card id, synthesized bridge definition id, run ref, attempt ref, approved grant digest, dispatch time, and boot id.
+- Produce an exclusive durable `RecoveryClaimV1` that binds the interrupted attempt, successor attempt, old/new boot ids, and claim time.
+- Produce one closed `LinuxCanaryReportV2`; the deferred Gate-2 collector consumes exactly v2.
 
-  ```ts
-  it('passes only after card, bridge, integration, settlement, restart interruption, and recovery', () => {
-    const report = decideCanary({
-      platform: 'linux', platformVersion: 'a'.repeat(40), pythonCommand: 'python3', cardId: 'card-1', runRef: 'run-1',
-      runReceiptSha256: 'b'.repeat(64), recoveryClaimSha256: 'c'.repeat(64),
-      states: ['queued', 'starting', 'running', 'interrupted', 'recovering', 'succeeded'],
-      restartObserved: true, integrationPath: 'orgs/kb-ops/output/synthetic-acceptance.md',
-      integrationContent: 'SYNTHETIC-ACCEPTANCE-OK\n', triggerState: 'done', ledgerRows: 1,
-    });
-    expect(report).toMatchObject({ recovered: true, ledgerSettled: true, passed: true });
-    expect(decideCanary({
-      platform: 'linux', platformVersion: 'a'.repeat(40), pythonCommand: 'py', cardId: 'card-1', runRef: 'run-1',
-      runReceiptSha256: 'b'.repeat(64), recoveryClaimSha256: 'c'.repeat(64),
-      states: ['queued', 'running', 'interrupted', 'recovering', 'succeeded'],
-      restartObserved: true, integrationPath: 'orgs/kb-ops/output/synthetic-acceptance.md',
-      integrationContent: 'SYNTHETIC-ACCEPTANCE-OK\n', triggerState: 'done', ledgerRows: 1,
-    }).passed).toBe(false);
-  });
+**Acceptance criteria**
 
-  it('refuses off Linux, without confirmation, or while execution is locked', () => {
-    expect(() => assertLinuxCanaryGate('win32', ['--confirm-live'], { executionState: 'unlocked' })).toThrow(/Linux/);
-    expect(() => assertLinuxCanaryGate('linux', [], { executionState: 'unlocked' })).toThrow(/confirm-live/);
-    expect(() => assertLinuxCanaryGate('linux', ['--confirm-live'], { executionState: 'locked' })).toThrow(/locked/);
-  });
-
-  it('maps a card through the durable receipt even though the bridge definition id is synthesized', async () => {
-    const h = queueBridgeReceiptHarness({ cardId: 'card-1', definitionId: 'bridge-card-1', runRef: 'run-9', attemptRef: 'attempt-9' });
-    await h.tick();
-    expect(h.readReceipt('card-1')).toMatchObject({ cardId: 'card-1', bridgeDefinitionId: 'bridge-card-1', runRef: 'run-9', attemptRef: 'attempt-9' });
-    expect(await h.canary.waitForCardRun('card-1')).toBe('run-9');
-  });
-
-  it('recovers only an interrupted run with a durable approved receipt and one exclusive claim', async () => {
-    const h = recoveryHarness({ receipt: 'approved', runState: 'interrupted', oldProcess: 'gone' });
-    await expect(recoverApprovedInterruptedRuns(h.deps)).resolves.toHaveLength(1);
-    await expect(recoverApprovedInterruptedRuns(h.deps)).resolves.toHaveLength(0);
-    expect(h.startedFreshRuns).toBe(0); expect(h.successorAttempts).toBe(1);
-  });
-
-  it.each(['missing-receipt', 'grant-mismatch', 'running', 'terminal', 'old-process-unfenced'])('refuses recovery for %s', async (defect) => {
-    const h = recoveryHarness({ defect });
-    await expect(recoverApprovedInterruptedRuns(h.deps)).rejects.toThrow();
-    expect(h.successorAttempts).toBe(0);
-  });
-
-  it('keeps a session capability valid across process restart with the persistent secret file', async () => {
-    const secretFile = rootOwnedSessionFixture('d'.repeat(64));
-    const token = issueSessionFromFile(secretFile);
-    expect(validateSessionFromFile(secretFile, token, { processId: 1 })).toBe(true);
-    expect(validateSessionFromFile(secretFile, token, { processId: 2 })).toBe(true);
-  });
-  ```
-
-- [ ] Run `cd dashboard; npm test -- server/acceptance/linuxDispatchCanary.test.ts` and verify the module is absent.
-
-- [ ] Export the existing `SYNTHETIC` value and card-mint script from `synthetic-acceptance.ts` without changing their contents. Implement the canary around production modules and durable state:
-
-  ```ts
-  export function decideCanary(input: CanaryObservations): LinuxCanaryReport {
-    const recovered = input.states.includes('interrupted') && input.states.includes('recovering') && input.states.at(-1) === 'succeeded';
-    const integrationOk = input.integrationPath === 'orgs/kb-ops/output/synthetic-acceptance.md'
-      && input.integrationContent.replace(/\r\n/g, '\n') === 'SYNTHETIC-ACCEPTANCE-OK\n';
-    const ledgerSettled = input.ledgerRows === 1;
-    return { version: 1, platformVersion: input.platformVersion, cardId: input.cardId, runRef: input.runRef, pythonCommand: input.pythonCommand as 'python3', states: input.states, restartObserved: input.restartObserved, recovered, integrationPath: input.integrationPath, ledgerSettled, passed: /^[0-9a-f]{40}$/.test(input.platformVersion) && input.platform === 'linux' && input.pythonCommand === 'python3' && recovered && integrationOk && input.triggerState === 'done' && ledgerSettled };
-  }
-
-  export async function runLinuxCanary(deps: CanaryDeps = productionDeps()): Promise<LinuxCanaryReport> {
-    const readiness = await deps.readReadiness();
-    assertLinuxCanaryGate(process.platform, process.argv.slice(2), readiness);
-    const capabilities = await deps.readRuntimeCapabilities();
-    if (capabilities.python.command !== 'python3' || capabilities.python.prefixArgs.length !== 0) throw new Error('production Python resolver did not select python3');
-    const card = await deps.saveCanaryCardViaDashboard();
-    const runRef = await deps.waitForSourceTurn(card.id);
-    const states = await deps.waitForAttemptState(runRef, 'running');
-    const oldMainPid = await deps.mainPid('kb-dashboard.service');
-    await deps.systemctl(['kill', '--kill-who=main', '--signal=SIGKILL', 'kb-dashboard.service']);
-    await deps.waitForDifferentMainPid('kb-dashboard.service', oldMainPid);
-    states.push(...await deps.waitForTerminalAfterRestart(runRef));
-    const observations = deps.readCanonicalEvidence(card.id, runRef, states, capabilities.python.command, await deps.readPlatformVersion());
-    return decideCanary(observations);
-  }
-  ```
-
-  Render and submit the live card with this closed shape; `SYNTHETIC` is the unchanged exported body from `synthetic-acceptance.ts`:
-
-  ```ts
-  export function renderCanaryCard(id: string, createdAt: string): string {
-    return [
-      '---', 'schema-version: 1', `id: ${id}`, 'project: kb-ops',
-      'action: report:self-lint', 'target: orgs/kb-ops/output', 'profile: scanner',
-      'risk-tier: T1', 'state: inbox', 'owner: dashboard-engine',
-      'execution-controller: dashboard', `created: ${createdAt}`, '---', '', SYNTHETIC.trimEnd(), '',
-    ].join('\n');
-  }
-
-  const response = await fetch(new URL('/api/write/save', baseUrl), {
-    method: 'POST', headers: { authorization: `Bearer ${session}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ relpath: `queue/inbox/${id}.md`, content: renderCanaryCard(id, now().toISOString()), message: `test(runtime): enqueue Linux canary ${id}` }),
-  });
-  if (!response.ok) throw new Error(`canary card save failed: ${response.status}`);
-  ```
-
-  `productionDeps` must generate a filename-safe card id; obtain `session` only from the named environment key; read `/api/runtime/capabilities` and `/opt/kb-releases/current/VERSION`; find the post-merge run by exact `sourceTurnId === card.id`; poll the external state root across process death and automatic systemd restart; record `interrupted` from boot normalization, `recovering` from the existing run-level recovery state, and terminal success from the successor attempt; invoke `systemctl` as an argv array; verify the exact canonical integration path/content, trigger `queue/done` card result, and exactly one subscription ledger settlement row; and write the report atomically to the required output path without the session value. The SIGKILL is deliberate: it exercises durable interrupted-run recovery while `Restart=on-failure` restarts the service and `KillMode=control-group` contains the child; Task 21 separately proves graceful drain. The module must not import or call `dispatchClaimedCard` directly—the live queue bridge and its production `runPythonSync` claim/reconcile path must process the card.
-
-- [ ] Run `cd dashboard; npm test -- server/acceptance/linuxDispatchCanary.test.ts; npm run typecheck`. On the staging VM, after Gate 1 approval and a deliberate passkey unlock, run `canary_id=$(date -u +%Y%m%dT%H%M%SZ); sudo --preserve-env=KB_CANARY_SESSION node --experimental-strip-types /opt/kb-releases/current/dashboard/server/acceptance/linuxDispatchCanary.ts --confirm-live --session-env KB_CANARY_SESSION --output "/var/lib/kb/gates/phase1/canary-$canary_id.json"`; watch the real worker, verify systemd records a new main PID after the deliberate mid-run kill, and require a report whose `platformVersion` equals `/opt/kb-releases/current/VERSION`, `pythonCommand` is `python3`, full interruption/recovery sequence is present, exact integration output is present, `ledgerSettled` is true, and `passed` is true. Lock execution immediately after the canary and unset `KB_CANARY_SESSION`.
-
-- [ ] Commit with `git add dashboard/server/acceptance/linuxDispatchCanary.ts dashboard/server/acceptance/linuxDispatchCanary.test.ts dashboard/server/control/synthetic-acceptance.ts; git commit -m "test(runtime): add Linux restart dispatch canary"`.
-
-## G2. Gate-2 evidence assembly
+- The merged launch seam exposes the real `runRef` early enough to persist `CardRunReceiptV1` atomically before `runAutomatic` can begin, or provides an equivalent store transaction with that ordering. No receipt is reconstructed from `sourceTurnId` text.
+- On boot, existing crash normalization durably records `interrupted`; a supervisor scans only approved interrupted receipts, fences the old process identity, takes one exclusive recovery claim, creates one successor attempt, records `recovering`, and reaches the original terminal settlement exactly once. Missing receipt, grant mismatch, non-interrupted state, terminal state, duplicate claim, or unfenced old process refuses recovery.
+- The watched canary uses the human-passkey-armed session only for authenticated actions before restart. It carries no cookie, bearer, capability, or credential through `sudo`, the environment, stdin, a file, or any machine-auth path.
+- Restart invalidates every dashboard session and returns admission of new execution authority to locked until Daniel performs a fresh passkey re-arm; only the already-approved interrupted receipt may complete through the recovery supervisor. The canary performs no authenticated post-restart action; if one becomes necessary, it pauses for that fresh human ceremony.
+- A privileged filesystem observer records `interrupted -> recovering -> succeeded` from `${DASHBOARD_STATE_ROOT}/control/control-plane.json`, verifies the exact canonical integration record in `${DASHBOARD_STATE_ROOT}/control/canonical-integration.json`, reads `orgs/kb-ops/output/synthetic-acceptance.md` from the run's worktree under `${DASHBOARD_STATE_ROOT}/control/integration`, and verifies exactly one `billing:subscription` settlement row under `/var/lib/kb/ops/ledgers/cost`. HTTP polling is not used across restart.
+- `LinuxCanaryReportV2` binds the deployed commit/artifact digest, card/receipt/run/claim identities, old/new boot ids, observed state sequence, exact integration path/content digest, ledger-row digest/count, restart observation, and pass decision. Its producer and every consumer use version 2.
+- The restore-drill hook upgrades the producer to `BackupReportV2`: it contains every `BackupReportV1` field, sets `version` to exactly `2`, and adds `recoveryCanary: boolean` plus `recoveryCanaryReportSha256: string`. It runs the same filesystem-only recovery observation against the isolated restored root and makes `verified` require that canary. Gate 2 consumes exactly this v2 file.
 
 ### Task 25: Produce the Phase I execution-authority evidence package
 
-Choice: Gate 2 is a pure verifier/assembler. It cannot unlock the latch, change trust anchors, edit repository configuration, or promote a physical split.
+**Why deferred**
 
-**Files**
+Gate 2 depends on Task 21 drain wiring, Task 23 merged telemetry, Task 24 recovery/canary producers, and the restore-canary extension. Its inventory cannot be closed until those exact producer files and versions exist. Gate-1 evidence assembly already ships in Task 19.
 
-- Create: `scripts/gates/phase1_gate2.py`
-- Create: `tests/test_phase1_gate2.py`
+**Files to re-read post-merge**
 
-**Interfaces**
+- `scripts/gates/phase1_gate1.py` and `tests/test_phase1_gate1.py`
+- `dashboard/server/runtime/evidence.ts` and `dashboard/server/control/resourceLimits.ts`
+- `scripts/backup_tier0.py` and `tests/test_state_backup.py`
+- `scripts/promote_vm_outbox.py`, `deploy/apply_ops_reconciliation.py`, and their tests
+- The Task 21, 23, and 24 files listed above
+- `scripts/deploy_platform_release.py`, `deploy/validate_vm_runtime.py`, and their tests
+- `docs/superpowers/specs/2026-08-11-kb-structure-design.md`
 
-- Produces CLI: `python scripts/gates/phase1_gate2.py --repo ROOT --gate1 DIR --canary FILE --deploy DIR --backup DIR --outbox DIR --runtime FILE --output DIR`
-- Produces verification CLI: `python scripts/gates/phase1_gate2.py --verify-output DIR`
-- Produces: `gate2.json`, `gate2.md`, and SHA-256 inventory `evidence.sha256`
-- Consumes: Gate 1 approval, hardening test reports, canary report, quiescent deploy/rollback transcript, backup/restore report, outbox outage/replay report, credential validation report, runtime capability report
+**Interface intent**
 
-- [ ] Add a failing complete/incomplete package test:
+- Reuse Task 19 `EvidencePayload`, per-envelope SSH signatures, closed canonical inventory, full-set `verify_inventory`, signed Daniel approval, and signed final digest.
+- Accept every report through an explicit CLI file argument; do not scan lexicographically latest files or implicit `backup-reports`/`runtime.json` directories.
+- Consume `LinuxCanaryReportV2` and `BackupReportV2` exactly, plus closed Task 20/22 reports and the reviewed Task 21/23 producers.
 
-  ```py
-  def test_gate2_requires_every_cutover_proof_and_locked_posture():
-      evidence = {
-          "gate1Approved": True, "schemaStartupRefusal": True, "repositoryBinding": True,
-          "pythonProductionResolver": True, "workerDrain": True, "killModeControlGroup": True,
-          "allReadsAuthenticated": True, "resourceLimits": True, "linuxCanary": True,
-          "unsupportedVmSurfacesSafe": True, "quiescentRestart": True, "rollback": True,
-          "backupRpo": True, "restoreRto": True, "outboxOutageReplay": True,
-          "vmGitHubCredentialAbsent": True, "executionLocked": True,
-          "trustAnchorsUnchanged": True, "physicalSplitNotStarted": True,
-      }
-      assert decide(evidence) == {"passed": True, "failures": []}
-      evidence["executionLocked"] = False
-      assert decide(evidence)["failures"] == ["executionLocked"]
+**Acceptance criteria**
 
-
-  def test_inventory_detects_a_changed_evidence_file(tmp_path):
-      (tmp_path / "proof.json").write_text('{"passed":true}\n', encoding="utf-8")
-      (tmp_path / "evidence.sha256").write_text(inventory(tmp_path), encoding="utf-8")
-      assert verify_inventory(tmp_path) is True
-      (tmp_path / "proof.json").write_text('{"passed":false}\n', encoding="utf-8")
-      assert verify_inventory(tmp_path) is False
-  ```
-
-- [ ] Run `python -m pytest tests/test_phase1_gate2.py -q` and verify the module is absent.
-
-- [ ] Implement a closed required-key verifier and immutable inventory:
-
-  ```py
-  REQUIRED = (
-      "gate1Approved", "schemaStartupRefusal", "repositoryBinding", "pythonProductionResolver",
-      "workerDrain", "killModeControlGroup", "allReadsAuthenticated", "resourceLimits", "linuxCanary",
-      "unsupportedVmSurfacesSafe", "quiescentRestart", "rollback", "backupRpo", "restoreRto",
-      "outboxOutageReplay", "vmGitHubCredentialAbsent", "executionLocked",
-      "trustAnchorsUnchanged", "physicalSplitNotStarted",
-  )
-
-
-  def decide(evidence: dict) -> dict:
-      failures = [key for key in REQUIRED if evidence.get(key) is not True]
-      unknown = sorted(set(evidence).difference(REQUIRED))
-      if unknown: failures.extend(f"unknown:{key}" for key in unknown)
-      return {"passed": not failures, "failures": failures}
-
-
-  def inventory(root: Path) -> str:
-      rows = []
-      for path in sorted(item for item in root.rglob("*") if item.is_file() and item.name != "evidence.sha256"):
-          rows.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.relative_to(root).as_posix()}")
-      return "\n".join(rows) + "\n"
-
-
-  def verify_inventory(root: Path) -> bool:
-      rows = (root / "evidence.sha256").read_text(encoding="utf-8").splitlines()
-      for row in rows:
-          digest, relpath = row.split("  ", 1)
-          if Path(relpath).is_absolute() or ".." in Path(relpath).parts: return False
-          path = root / relpath
-          if not path.is_file() or not hmac.compare_digest(hashlib.sha256(path.read_bytes()).hexdigest(), digest):
-              return False
-      return True
-  ```
-
-  Parse each named input rather than trusting command-line booleans. Run Git assertions only against `--repo` on the credential-bearing desktop. Require: Gate 1 `APPROVED.txt`; current compatibility/startup-refusal test report; registry binding tests; Ubuntu resolver report; Vitest worker-drain/read-auth/resource-limit reports; systemd `KillMode=control-group`; canary `passed`; canary `platformVersion` is an ancestor of the final selected release, with a Git path diff from that report field to the current `VERSION` containing only `scripts/gates/phase1_gate2.py` and `tests/test_phase1_gate2.py`; capabilities showing Linux PTY, runner, and Vibe false; deploy transcript showing quiescent restart and rollback; restic RPO/RTO reports; outbox failure/pending/replay/receipt sequence plus VM/remote ops tree equality after the returned reconciliation bundle; VM validator pass; current `/readyz` execution locked; `git diff --quiet a2e6e2b -- governance/ agents/ orgs/*/contract.md`; every registry root still equal to `${DASHBOARD_REPO_ROOT}`; and every project resolve to the same monorepo top level.
-
-- [ ] Run `python -m pytest tests/test_phase1_gate2.py -q` and verify the collector tests pass.
-
-- [ ] Commit with `git add scripts/gates/phase1_gate2.py tests/test_phase1_gate2.py; git commit -m "test(gate): assemble phase one cutover evidence"`.
-
-- [ ] After Tasks 20-25 merge to `main`, leave execution locked and deploy that exact artifact from the desktop: `$releaseSha = git rev-parse origin/main; New-Item -ItemType Directory -Force "artifacts/$releaseSha" | Out-Null; gh run download --name "kb-platform-$releaseSha" --dir "artifacts/$releaseSha"; python scripts/deploy_platform_release.py "artifacts/$releaseSha/kb-platform-$releaseSha.tar.gz" "artifacts/$releaseSha/kb-platform-$releaseSha.tar.gz.sha256" --host $env:KB_VM_HOST`. Append the quiescence, restart, version, and rollback outputs to `/var/lib/kb/gates/phase1/deploy/`; verify the final selected `VERSION` is `$releaseSha` and `/readyz` is locked.
-
-- [ ] On the desktop assemble the package from copied VM evidence and the local Git trust boundary: `$gate2Id = Get-Date -AsUTC -Format 'yyyyMMddTHHmmssZ'; $gateRoot = Join-Path $env:TEMP "kb-phase1-gate2-$gate2Id"; New-Item -ItemType Directory -Force $gateRoot | Out-Null; scp -r "$env:KB_VM_HOST`:/var/lib/kb/gates/phase1" $gateRoot; scp -r "$env:KB_VM_HOST`:/var/lib/kb/backup-reports" $gateRoot; $gate1 = (Get-ChildItem "$gateRoot/phase1" -Directory -Filter 'gate1-*' | Sort-Object Name | Select-Object -Last 1).FullName; $canary = (Get-ChildItem "$gateRoot/phase1" -File -Filter 'canary-*.json' | Sort-Object Name | Select-Object -Last 1).FullName; python scripts/gates/phase1_gate2.py --repo . --gate1 $gate1 --canary $canary --deploy "$gateRoot/phase1/deploy" --backup "$gateRoot/backup-reports" --outbox "$gateRoot/phase1/outbox" --runtime "$gateRoot/phase1/runtime.json" --output "$gateRoot/package"; python scripts/gates/phase1_gate2.py --verify-output "$gateRoot/package"`. Verify both commands exit 0, inspect `gate2.md`, and confirm the copied readiness evidence is locked.
-
-- [ ] Present Gate 1 and Gate 2 packages to Daniel. Record Daniel's explicit Gate 2 approval outside the repository in the package directory. Only that separate approved operation may grant execution authority; this task itself leaves the daemon locked.
+- Every required Gate-2 assertion has one versioned producer, one explicit input path, a raw-output digest, a signed evidence envelope, and a producer/consumer version test. No boolean comes from a command-line claim or free-form transcript.
+- Verification rejects an absent, extra, duplicate, stale-release, cross-host, cross-boot, bad-signature, bad-raw-digest, unapproved, or differently versioned file and recomputes the complete inventory before verifying the desktop-signed final digest.
+- Deployment in the Gate-2 run uses Task 12's exact interface: `python scripts/deploy_platform_release.py ARCHIVE ATTESTATION --signing-key PATH --host HOST`. No checksum-only deploy call exists.
+- The package consumes the explicit Task 20/22 report paths, Task 23 telemetry report, Task 21 drain report, Task 24 `LinuxCanaryReportV2`, Task 13 `BackupReportV2`, Task 17 outage/replay/reconciliation report, Task 12 effective-config/rollback report, and the signed Task 19 Gate-1 package. Each named file has a producer in the post-merge plan before Gate-2 tests are written.
+- Daniel reviews and signs approval on the trusted desktop. No signing key, passkey material, bearer, service token, backup credential, deploy credential, or other credential is stored on the VM.
+- Gate 2 finishes with execution locked and sessions invalidated by a final daemon restart; any later authenticated action requires a new human passkey ceremony.
 
 ## Final self-review
 
 ### Spec coverage map
 
 - Immutable platform artifact, live-checkout transition, symlink selection, quiescent restart, and rollback: Tasks 10-12.
-- Tier-zero encrypted backup, 15-minute RPO, 60-minute RTO, and restore drill: Task 13.
+- Tier-zero encrypted backup, 15-minute RPO, 60-minute RTO, fsck/invariants, and locked isolated boot: ship-now Task 13; its recovery-canary extension is deferred with Task 24.
 - Desktop promotion, local durable outbox, bounded retry, outage replay, visible backlog, continued reads, and degraded admission: Tasks 16-18.
-- No GitHub credential on the VM, enforced structurally and by validation: Tasks 8, 12, 16, 17, and Gate 2 Task 25.
+- No persistent secret or external-authority credential of any kind on the VM, enforced structurally and by validation: Tasks 8, 12, 16, and 17; deferred Tasks 24-25 must preserve it.
 - Session authentication on every non-health read, root confinement, tailnet Serve/ACL/Funnel proof, and no authority transfer at Gate 1: Tasks 14, 15, and 19.
 - Production Python resolution and Linux behavior: Tasks 2 and 20.
-- Worker drain and `KillMode=control-group`: Tasks 12 and 21.
-- Per-resource-class control/Git/agent/render/PTY limits: Task 22.
-- Heartbeats, queue age, worker identity, saturation, outcomes, failure rate, and outbox alerting in the dashboard: Tasks 18 and 23.
-- Card-to-bridge-to-integration-to-ledger Linux canary with mid-run restart and recovery: Task 24.
+- `KillMode=control-group` and effective-unit validation: ship-now Task 12; merged worker/bridge drain: deferred Task 21.
+- Standalone resource limiter and reentrant Git integration: ship-now Task 22; worker/activation/PTY/readiness wiring: deferred Task 21.
+- Outbox alerting: ship-now Task 18; merged heartbeats, queue age, worker identity, saturation, outcomes, and failure rate: deferred Task 23.
+- Card-to-bridge-to-integration-to-ledger Linux canary with mid-run recovery and filesystem-only restart observation: deferred Task 24.
 - Versioned card/workflow schemas, v0 transition compatibility, explicit migration, and unsupported-data startup refusal: Tasks 3-7.
-- Server-owned repository mapping and immutable approved-proposal binding: Tasks 8-9.
-- Both evidence packages and Daniel approval boundaries: Tasks 19 and 25.
+- Server-owned repository mapping and honest recorded-only fields: ship-now Task 8; merged immutable approved-proposal binding: deferred Task 9.
+- Signed Gate-1 evidence, full inventory verification, and final digest signature: ship-now Task 19; Gate-2 assembly: deferred Task 25.
 - Immediate coordination classifier defect: Task 1.
 
 ### Deliberate gaps
@@ -3796,12 +4049,12 @@ Choice: Gate 2 is a pure verifier/assembler. It cannot unlock the latch, change 
 - Registry identity: SHA-256 of the symbolic checked-in record before host root expansion, so identity is stable across machines and changes with any registry contract field.
 - Outbox: ordered Git bundles plus atomic JSON manifests/receipts; degraded at 100 pending items or 15 minutes oldest age.
 - Health exemption: only `/healthz` and minimal `/readyz` are unauthenticated data responses; static assets and auth ceremonies are bootstrap paths, not repository reads.
-- Backup access: restic receives ambient service-manager access; repository code never stores, serializes, logs, or transports backup credentials.
+- Backup access: restic runs only on the trusted desktop through its existing credential manager; repository code never stores, serializes, logs, or transports backup credentials.
 
 ### Mechanical audit before handoff
 
 - [ ] Run `git diff --name-only` and verify the only planning-worktree change is `docs/superpowers/plans/2026-08-11-kb-structure-phase1.md`.
 - [ ] Run a case-sensitive scan for the four forbidden planning phrases by constructing each needle from fragments in the shell, and verify zero matches in this file.
-- [ ] Compare every later `Consumes` entry with the earlier `Produces` signature named in this plan; specifically verify schema compatibility, registry binding, readiness, outbox manifest, admission, resource snapshot, canary report, and both gate-package shapes match exactly.
-- [ ] Count headings matching `^### Task [0-9]+:` and verify exactly 25, with the workflow-platform checkpoint between Tasks 8 and 9.
-- [ ] Re-read every `Modify` target after the workflow-platform merge and update line ranges only through plan review; never infer post-merge edits to the two protected files.
+- [ ] Compare every ship-now `Consumes` entry with the earlier ship-now `Produces` signature named in this plan; specifically verify schema compatibility, readiness, outbox manifest, admission, resource snapshot, and Gate-1 package shapes match exactly. No ship-now task may require a deferred producer.
+- [ ] Count headings matching `^### Task [0-9]+:` and verify exactly 25. Verify the ship-now headings are Tasks 1-8, 10-20, and 22; verify the checkpoint immediately precedes the deferred section containing Tasks 9, 21, and 23-25.
+- [ ] After the workflow-platform merge, re-read every file listed under each deferred task at the merged tip `>= 804acec` before writing its failing tests; never infer merged edits to the dispatch path.
