@@ -2041,6 +2041,58 @@ def test_run_item_skips_an_existing_survivor_without_a_subprocess():
     assert forge._existing_staging_png(forge._staging_png(k, "L29")) is True
 
 
+def test_register_seed_is_appended_after_the_slate_and_labelled_style_only():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="tile-"))
+    tile = _png(tmp / "scene-style-tile.png")
+    item = _item_L29()
+    item2, seeds2, added = fc.with_register_seed(item, ["C:/k/a.png", "C:/k/b.png"], tile)
+    assert added is True
+    assert seeds2[-1] == os.path.realpath(tile) and len(seeds2) == 3
+    assert item2["seed_roles"][-1]["role"] == "style-anchor"
+    assert item is not item2 and len(item["seed_roles"]) == 2, "the original item is not mutated"
+    line = fc.input_images_line(item2["seed_roles"])
+    assert line.rstrip().endswith("Image 3: style reference only.")
+
+
+def test_register_seed_is_not_added_twice_when_the_slate_already_carries_it():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="tile-"))
+    tile = _png(tmp / "scene-style-tile.png")
+    item = _item_L26()
+    item["seed_roles"] = [{"path": tile, "role": "style-anchor", "character": None}]
+    item2, seeds2, added = fc.with_register_seed(item, [tile], tile)
+    assert added is False and seeds2 == [tile] and item2 is item
+
+
+def test_register_seed_raises_the_cap_to_five_only_for_the_added_tile():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="tile-"))
+    four = [_png(tmp / f"s{i}.png") for i in range(4)]
+    tile = _png(tmp / "scene-style-tile.png")
+    assert len(fc.prepare_seeds({"name": "L33"}, four + [tile],
+                                cap=fc.STUDY_SEED_CAP)) == 5
+    raised = None
+    try:
+        fc.prepare_seeds({"name": "L33"}, four + [tile])       # default cap is still 4
+    except fc.CodexContractError as e:
+        raised = str(e)
+    assert raised is not None and "CODEX_SEED_CAP" in raised
+
+
+def test_register_seed_is_recorded_in_the_log_row():
+    fc, k, tmp, staging, seed = _kit_for_run("ok")
+    tile = _png(tmp / "scene-style-tile.png")
+    status, row = fc.run_item(k, _item_L29(), [seed],
+                              fc.RunOptions(register_seed_tile=tile))
+    assert status == "OK"
+    assert row["added_by"] == "codex_register_policy"
+    assert len(row["seed_sha256"]) == 2
+    assert "added_by" in fc.LOG_KEYS
+    plain_status, plain_row = fc.run_item(k, _item_L26(), [seed], fc.RunOptions())
+    assert plain_status == "OK" and plain_row["added_by"] is None
+
+
 def test_run_item_force_overwrites_the_survivor():
     fc, k, tmp, staging, seed = _kit_for_run("ok")
     (staging / "L29.png").write_bytes(_png_bytes((900, 900)))

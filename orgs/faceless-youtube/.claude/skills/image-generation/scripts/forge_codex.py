@@ -48,6 +48,15 @@ ENGINE_ID = "codex-imagegen"
 CODEX_SEED_CAP = 4
 TRANSPORT_SEED_CEILING = 5
 
+# --- §4.7 option (a): STUDY-ONLY. The runner cannot ADD a seed the slate omitted without
+# --- re-deriving the slate, and re-deriving is forge.py's job. The ONE exception this spec
+# --- authorizes for the study is the §5 scene style tile: a fixed kit path needing no slate
+# --- knowledge, appended AFTER the slate's seeds and recorded as added_by. Promoting this to
+# --- production routes through Wave 2 (§10) — a seed added outside the displacement walk has not
+# --- competed under the never-droppable floor.
+STUDY_SEED_CAP = 5
+REGISTER_SEED_ADDED_BY = "codex_register_policy"
+
 # --- §4.6 normalization canvas. (16:9,1K) is VERIFIED MEASURED: all 23 baseline frames in
 # --- scratch-codex-image-engine/gemini-baseline/ are 1376×768 (SKILL.md L130's "~1344×768"
 # --- is an approximation). The (2:3,1K) and (9:16,1K) rows are UNVERIFIED and carried from
@@ -158,7 +167,20 @@ class CodexContractError(RuntimeError):
     """A deterministic contract violation detected before a subprocess is invoked (class 1)."""
 
 
-def prepare_seeds(item: dict, seeds: list[str]) -> list[str]:
+def with_register_seed(item: dict, seeds: list[str], tile_path: str | None) -> tuple[dict, list[str], bool]:
+    """(item, seeds, added). The item is copied, never mutated: the spec it came from is truth."""
+    if not tile_path:
+        return item, list(seeds), False
+    tile = os.path.realpath(str(tile_path))
+    if tile in [os.path.realpath(str(s)) for s in seeds]:
+        return item, list(seeds), False            # cast-free plates carry it by law already
+    copied = dict(item)
+    copied["seed_roles"] = list(item.get("seed_roles") or []) + \
+        [{"path": tile, "role": "style-anchor", "character": None}]
+    return copied, list(seeds) + [tile], True
+
+
+def prepare_seeds(item: dict, seeds: list[str], cap=CODEX_SEED_CAP) -> list[str]:
     """§4.5 + §4.7: canonicalize the spec's content seeds and enforce its doctrine cap."""
     name = item.get("name", "<unnamed>")
     out = []
@@ -169,9 +191,9 @@ def prepare_seeds(item: dict, seeds: list[str]) -> list[str]:
                 f"{name}: seed path is not absolute: {seed!r} — codex rejects relative paths outright "
                 "(AbsolutePathBuf deserialized without a base path)")
         out.append(os.path.realpath(supplied))
-    if len(out) > CODEX_SEED_CAP:
+    if len(out) > cap:
         raise CodexContractError(
-            f"{name}: slate carries {len(out)} seeds, over CODEX_SEED_CAP={CODEX_SEED_CAP} — "
+            f"{name}: slate carries {len(out)} seeds, over CODEX_SEED_CAP={cap} — "
             "refusing to truncate; re-derive the slate with forge.py batch instead")
     return out
 
@@ -496,7 +518,7 @@ LOG_KEYS = ("ts", "engine", "name", "thread_id", "turn_index", "session_mode", "
             "tokens_in", "tokens_cached", "tokens_out", "reasoning_out", "pre_call_tool_calls",
             "native", "canvas", "ratio_error", "reissues", "source_png", "source_sha256",
             "composed_prompt", "composed_prompt_sha256", "composed_chars", "fidelity_audit",
-            "seed_sha256", "residual_idiom", "failure_class")
+            "seed_sha256", "residual_idiom", "failure_class", "added_by")
 
 
 def engine_log_path(staging):
@@ -513,7 +535,8 @@ def _rel_to_kit(path, kit_root):
     return p
 
 
-def build_log_row(*, name, meta, composed_path, composed_text, seed_shas, residual, kit_root):
+def build_log_row(*, name, meta, composed_path, composed_text, seed_shas, residual, kit_root,
+                  added_by=None):
     usage = meta.get("usage") or {}
     return {
         "ts": datetime.datetime.now(datetime.timezone.utc)
@@ -535,6 +558,7 @@ def build_log_row(*, name, meta, composed_path, composed_text, seed_shas, residu
         "seed_sha256": dict(seed_shas or {}),
         "residual_idiom": list(residual or []),
         "failure_class": meta.get("failure_class"),
+        "added_by": added_by,
     }
 
 
@@ -994,6 +1018,7 @@ class RunOptions:
     session_mode: str = "isolated"
     session_span: int = 8
     keep_composed: bool = True
+    register_seed_tile: str | None = None
 
 
 def run_item(k, item, seeds, opts, session=None):
@@ -1006,13 +1031,15 @@ def run_item(k, item, seeds, opts, session=None):
     aspect = item.get("aspect") or "16:9"
     size = opts.image_size or item.get("image_size") or "1K"
     canvas = resolve_canvas(aspect, size)
-    composed = compose_prompt(item, reg=k.reg, canvas=canvas, aspect=aspect)
     try:
         _staging_png(k, name)
     except SystemExit as e:
         raise CodexContractError(str(e)) from None
     residual = residual_idiom(item.get("payload") or "")
-    prepared = prepare_seeds(item, seeds or [])
+    item, seeds, tile_added = with_register_seed(item, seeds or [], opts.register_seed_tile)
+    prepared = prepare_seeds(item, seeds,
+                             cap=STUDY_SEED_CAP if tile_added else CODEX_SEED_CAP)
+    composed = compose_prompt(item, reg=k.reg, canvas=canvas, aspect=aspect)
     composed_path = os.path.join(composed_prompt_dir(k.staging), f"{name}.txt")
 
     if opts.dry_run:
@@ -1041,14 +1068,16 @@ def run_item(k, item, seeds, opts, session=None):
             published = _publish_staging_png(k, name, out, data, opts.force)
             row = build_log_row(name=name, meta=meta, composed_path=composed_path,
                                 composed_text=composed, seed_shas=shas, residual=residual,
-                                kit_root=k.kit)
+                                kit_root=k.kit,
+                                added_by=REGISTER_SEED_ADDED_BY if tile_added else None)
             status = "OK" if published else "SKIP publish (concurrent survivor)"
         except CodexRunError as e:
             meta = {"session_mode": "session" if session else "isolated",
                     "reissues": getattr(e, "reissues", 0), "failure_class": e.failure_class}
             row = build_log_row(name=name, meta=meta, composed_path=composed_path,
                                 composed_text=composed, seed_shas=shas, residual=residual,
-                                kit_root=k.kit)
+                                kit_root=k.kit,
+                                added_by=REGISTER_SEED_ADDED_BY if tile_added else None)
             status = f"ERR {e.failure_class}: {e}"
         append_log_row(engine_log_path(k.staging), row)
         logged = True
@@ -1113,6 +1142,8 @@ def main(argv=None):
     ap.add_argument("--session-mode", choices=("isolated", "session"), default="isolated")
     ap.add_argument("--session-span", type=int, default=8)
     ap.add_argument("--keep-composed", dest="keep_composed", action="store_true", default=True)
+    ap.add_argument("--register-seed-tile", default=None,
+                    help="STUDY ONLY (§4.7a): append the §5 scene style tile as a register seed")
     a = ap.parse_args(argv)
 
     k = Kit(a.kit, dry=True)
@@ -1130,7 +1161,8 @@ def main(argv=None):
             prepare_seeds(item, seeds)
     opts = RunOptions(force=a.force, dry_run=a.dry_run, image_size=a.image_size,
                       session_mode=a.session_mode, session_span=a.session_span,
-                      keep_composed=a.keep_composed)
+                      keep_composed=a.keep_composed,
+                      register_seed_tile=a.register_seed_tile)
     session = None
     rows, failures = [], 0
     for item, seeds in plan:
