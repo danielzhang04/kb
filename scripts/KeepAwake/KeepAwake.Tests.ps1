@@ -547,6 +547,9 @@ Describe 'supervisor pass' {
     BeforeEach {
         $script:TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("ka-" + [guid]::NewGuid())
         $env:KB_KEEPAWAKE_ROOT = $script:TestRoot
+        # Per-lease failure counts are supervisor process memory, so they are
+        # shared across tests in this process (same hazard as finding 10).
+        Reset-LeaseFailureCounts
         $script:Now = [datetimeoffset]::Parse('2026-07-20T03:00:00+09:00')
         $script:FakeStore = @{
             '4f971e89-eebd-4455-a8de-9e59040e7347|5ca83367-6e45-459f-a27b-476b1d01c936' = 1
@@ -731,6 +734,75 @@ Describe 'supervisor pass' {
             $r.LiveCount | Should -Be 1
             $r.Armed     | Should -BeTrue
         } finally { $lock.Dispose() }
+    }
+
+    # Re-review 2.3: fail-live was unbounded. A lease with parseable JSON but an
+    # unparseable heartbeat throws inside Update-LeaseActivity on every pass, so
+    # it was counted LIVE forever and the prune branches were unreachable --
+    # one poisoned lease could hold the machine awake until the 16h cap. After
+    # N=3 consecutive failures the lease falls back to process-liveness-only
+    # semantics, which is the one judgement that needs no lease content.
+    It 'the degraded-lease decision falls back to process liveness after 3 consecutive failures' {
+        Resolve-DegradedLeaseAction -ProcessId $PID   -ConsecutiveFailures 1 | Should -Be 'fail-live'
+        Resolve-DegradedLeaseAction -ProcessId $PID   -ConsecutiveFailures 2 | Should -Be 'fail-live'
+        Resolve-DegradedLeaseAction -ProcessId $PID   -ConsecutiveFailures 3 | Should -Be 'degraded-keep'
+        Resolve-DegradedLeaseAction -ProcessId 999999 -ConsecutiveFailures 2 | Should -Be 'fail-live'
+        Resolve-DegradedLeaseAction -ProcessId 999999 -ConsecutiveFailures 3 | Should -Be 'degraded-prune'
+        Resolve-DegradedLeaseAction -ProcessId 999999 -ConsecutiveFailures 9 | Should -Be 'degraded-prune'
+        # A pid we cannot even read is not evidence of life.
+        Resolve-DegradedLeaseAction -ProcessId 0      -ConsecutiveFailures 3 | Should -Be 'degraded-prune'
+    }
+
+    It 'a poisoned lease is degraded (not counted live blindly) from the third pass on' {
+        # Valid JSON, unparseable heartbeat: throws in Update-LeaseActivity every
+        # pass. CpuThreshold is set impossibly high so the cpu-activity branch
+        # cannot refresh the heartbeat and hide the poison.
+        $path = Get-LeasePath -Label 'poisoned'
+        Write-JsonFileAtomic -Path $path -Data ([ordered]@{
+            pid = $PID; label = 'poisoned'; mode = 'idle-expiry'
+            acquired = $script:Now.ToString('yyyy-MM-ddTHH:mm:sszzz')
+            heartbeat = 'not-a-timestamp'; cpu_sample = 0.0
+        })
+        1..3 | ForEach-Object {
+            $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 999999
+            $r.LiveCount | Should -Be 1
+        }
+        $log = Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw
+        ([regex]::Matches($log, 'lease-pass-ERROR label=poisoned')).Count | Should -Be 3
+        # Owner is alive, so degraded semantics keep it -- but say so loudly.
+        $log | Should -Match 'lease-pass-DEGRADED label=poisoned consecutive=3 action=keep'
+        Test-Path $path | Should -BeTrue
+    }
+
+    It 'a poisoned lease can no longer hold the machine armed once its owner is gone' {
+        Set-PowerArmed | Out-Null
+        $path = Get-LeasePath -Label 'poisoned-dead'
+        Write-JsonFileAtomic -Path $path -Data ([ordered]@{
+            pid = 999999; label = 'poisoned-dead'; mode = 'idle-expiry'
+            acquired = $script:Now.AddHours(-1).ToString('yyyy-MM-ddTHH:mm:sszzz')
+            heartbeat = 'not-a-timestamp'; cpu_sample = 0.0
+        })
+        $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 999999
+        $r.LiveCount | Should -Be 0
+        $r.Pruned    | Should -Contain 'poisoned-dead'
+        $r.Armed     | Should -BeFalse
+        Test-Path $path | Should -BeFalse
+    }
+
+    It 'resets a lease failure counter after a successful pass for that lease' {
+        New-KeepAwakeLease -Label 'flaky' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        $path = Get-LeasePath -Label 'flaky'
+        $lock = New-Object System.IO.FileStream($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            1..2 | ForEach-Object { Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null }
+        } finally { $lock.Dispose() }
+        Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null   # succeeds -> counter cleared
+        $lock2 = New-Object System.IO.FileStream($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            1..2 | ForEach-Object { Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null }
+        } finally { $lock2.Dispose() }
+        # 4 failures total but never 3 in a row, so degradation must not trigger.
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Not -Match 'lease-pass-DEGRADED'
     }
 
     It 'writes the rewritten lease file atomically (no bare temp file left behind)' {
@@ -1575,6 +1647,24 @@ Describe 'Write-KeepAwakeLog is structurally non-throwing (review-1 finding 1a)'
         (Get-Item "$($script:LogPath).1").Length | Should -BeGreaterThan 1000000
         (Get-Item $script:LogPath).Length | Should -BeLessThan 1000000
         (Get-Content $script:LogPath -Raw) | Should -Match 'post-rotation-line'
+    }
+
+    # Re-review 2.4: the logger opened with FileShare.ReadWrite and no Delete,
+    # so while ANY keepawake writer held the log open the rename underlying
+    # rotation failed with a sharing violation (win32=32, measured) -- i.e.
+    # rotation only worked when the machine was idle, which is exactly when the
+    # log is not growing. The holder here is opened with the logger's own
+    # sharing mode, so this test is the invariant: our sharing must permit our
+    # own rotation.
+    It 'rotates even while another keepawake writer holds the log open (2.4)' {
+        [System.IO.File]::WriteAllBytes($script:LogPath, (New-Object byte[] (1200000)))
+        $holder = New-Object System.IO.FileStream($script:LogPath, [IO.FileMode]::Append, [IO.FileAccess]::Write, (Get-KeepAwakeLogFileShare))
+        try {
+            Write-KeepAwakeLog 'rotate-under-load'
+        } finally { $holder.Dispose() }
+        Test-Path "$($script:LogPath).1" | Should -BeTrue
+        (Get-Item "$($script:LogPath).1").Length | Should -BeGreaterThan 1000000
+        (Get-Content $script:LogPath -Raw) | Should -Match 'rotate-under-load'
     }
 
     It 'replaces an existing keepawake.log.1 rather than failing the rotation' {

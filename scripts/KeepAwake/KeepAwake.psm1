@@ -58,6 +58,12 @@ function Get-LeaseDir {
 # and the directory creation must not be able to throw out of here.
 $script:LogMaxBytes = 1MB
 $script:LogWriteAttempts = 3
+# Delete sharing is load-bearing, not decoration: without it the rename that
+# rotation performs fails with a sharing violation (win32=32, measured) for as
+# long as ANY keepawake writer holds the log open -- so the log could only ever
+# rotate while idle, which is precisely when it is not growing.
+$script:LogFileShare = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+function Get-KeepAwakeLogFileShare { return $script:LogFileShare }
 
 # Single-generation size cap: the respawn-storm finding measured ~5.5 MB/day of
 # log growth with nothing ever trimming the file. Best effort in every respect --
@@ -86,7 +92,7 @@ function Write-KeepAwakeLog {
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($line)
         for ($attempt = 1; $attempt -le $script:LogWriteAttempts; $attempt++) {
             try {
-                $fs = New-Object System.IO.FileStream($path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+                $fs = New-Object System.IO.FileStream($path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, $script:LogFileShare)
                 try { $fs.Write($bytes, 0, $bytes.Length) } finally { $fs.Dispose() }
                 return
             } catch {
@@ -763,6 +769,36 @@ function Clear-ExecutionStateHold {
     return ($r -ne 0)
 }
 
+# Consecutive per-lease failure counts, in supervisor process memory only --
+# deliberately not a file: this is scratch state for one supervisor's lifetime,
+# and another state file would be one more thing to fail to write.
+$script:LeaseFailureCounts = @{}
+$script:LeaseFailureDegradeThreshold = 3
+
+function Clear-LeaseFailureCount {
+    param([Parameter(Mandatory)][string]$Label)
+    if ($script:LeaseFailureCounts.ContainsKey($Label)) { $script:LeaseFailureCounts.Remove($Label) }
+}
+
+function Reset-LeaseFailureCounts { $script:LeaseFailureCounts = @{} }
+
+# Counting a throwing lease as LIVE is right for a transient failure and wrong
+# forever: a lease with parseable JSON but an unparseable heartbeat throws every
+# single pass, so it used to hold the machine awake until the 16h cap with its
+# prune branches unreachable. After $ConsecutiveFailures reaches the threshold,
+# decide on process liveness alone -- the one fact about a lease that does not
+# depend on the lease content being readable.
+function Resolve-DegradedLeaseAction {
+    param(
+        [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][int]$ConsecutiveFailures,
+        [int]$Threshold = $script:LeaseFailureDegradeThreshold
+    )
+    if ($ConsecutiveFailures -lt $Threshold) { return 'fail-live' }
+    if ($ProcessId -gt 0 -and (Test-ProcessAlive -ProcessId $ProcessId)) { return 'degraded-keep' }
+    return 'degraded-prune'
+}
+
 # One supervisor iteration, extracted so refcount transitions are testable
 # without a loop or a sleep.
 function Invoke-SupervisorPass {
@@ -783,7 +819,11 @@ function Invoke-SupervisorPass {
     $pruned = @()
     $immediatePruned = @()
     $live = 0
+    $seenLabels = @{}
     foreach ($lease in (Get-KeepAwakeLeases)) {
+      $currentLabel = '<unknown>'
+      try { $currentLabel = [string]$lease.label } catch { }
+      $seenLabels[$currentLabel] = $true
       # Per-lease isolation: one unwritable lease used to abort the entire pass
       # -- including the arm/disarm decision below -- so a persistently
       # unwritable lease meant 10 consecutive pass failures, exit 2, disarm,
@@ -793,6 +833,7 @@ function Invoke-SupervisorPass {
       # working.
       try {
         if (-not (Test-ProcessAlive -ProcessId $lease.pid)) {
+            Clear-LeaseFailureCount -Label $currentLabel
             Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
             # A corrupt/missing 'acquired' value must never crash the supervisor
             # (same defensive stance as Get-KeepAwakeLeases above) -- treat it as
@@ -813,6 +854,7 @@ function Invoke-SupervisorPass {
         $res = Update-LeaseActivity -Lease $lease -CpuNow $cpuNow -Now $Now `
                    -IdleTimeoutMinutes $IdleTimeoutMinutes -CpuThreshold $CpuThreshold
         if (-not $res.Active) {
+            Clear-LeaseFailureCount -Label $currentLabel
             Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
             Write-KeepAwakeLog ("lease-pruned label=$($lease.label) reason=$($res.Reason)")
             $pruned += $lease.label
@@ -826,15 +868,36 @@ function Invoke-SupervisorPass {
         $u = $res.Lease.Clone()
         $u.Remove('path')
         Write-JsonFileAtomic -Path $lease.path -Data $u
+        Clear-LeaseFailureCount -Label $currentLabel
         $live++
       } catch {
-        # $lease.label may itself be the thing that failed to read, so keep the
-        # label lookup inside its own guard.
-        $failedLabel = '<unknown>'
-        try { $failedLabel = [string]$lease.label } catch { }
-        Write-KeepAwakeLog ("lease-pass-ERROR label=$failedLabel -- counting it LIVE and continuing :: $_")
-        $live++
+        $failedPid = 0
+        try { $failedPid = [int]$lease.pid } catch { }
+        $n = 1
+        if ($script:LeaseFailureCounts.ContainsKey($currentLabel)) { $n = [int]$script:LeaseFailureCounts[$currentLabel] + 1 }
+        $script:LeaseFailureCounts[$currentLabel] = $n
+        Write-KeepAwakeLog ("lease-pass-ERROR label=$currentLabel consecutive=$n -- counting it LIVE and continuing :: $_")
+        # Fail-live is bounded: past the threshold a lease that keeps throwing
+        # falls back to the one judgement that needs no lease content at all.
+        switch (Resolve-DegradedLeaseAction -ProcessId $failedPid -ConsecutiveFailures $n) {
+            'degraded-prune' {
+                Write-KeepAwakeLog ("lease-pass-DEGRADED label=$currentLabel consecutive=$n action=prune -- lease content unusable for $n passes and its owner (pid=$failedPid) is gone; pruning on process liveness alone")
+                try { Remove-Item $lease.path -Force -ErrorAction SilentlyContinue } catch { }
+                $pruned += $currentLabel
+                $script:LeaseFailureCounts.Remove($currentLabel)
+            }
+            'degraded-keep' {
+                Write-KeepAwakeLog ("lease-pass-DEGRADED label=$currentLabel consecutive=$n action=keep -- lease content unusable for $n passes but its owner (pid=$failedPid) is alive; keeping on process liveness alone")
+                $live++
+            }
+            default { $live++ }
+        }
       }
+    }
+    # Drop counters for leases that are no longer on disk, so a label reused
+    # later starts clean and the table cannot grow across a 16-hour run.
+    foreach ($staleLabel in @($script:LeaseFailureCounts.Keys)) {
+        if (-not $seenLabels.ContainsKey($staleLabel)) { $script:LeaseFailureCounts.Remove($staleLabel) }
     }
 
     if ($live -gt 0 -and -not (Test-PowerArmed)) { Set-PowerArmed | Out-Null }
@@ -1236,7 +1299,8 @@ function Start-KeepAwakeSupervisor {
 }
 
 Export-ModuleMember -Function Get-KeepAwakeRoot, Get-KeepAwakeMutexName, Get-LeaseDir, Write-KeepAwakeLog,
-    Get-DefaultPowerProvider, Reset-SupervisorPassInvoker,
+    Get-DefaultPowerProvider, Reset-SupervisorPassInvoker, Get-KeepAwakeLogFileShare,
+    Resolve-DegradedLeaseAction, Reset-LeaseFailureCounts,
     Get-SafeLabel, Get-LeasePath, Write-JsonFileAtomic, New-KeepAwakeLease, Get-KeepAwakeLeases,
     Update-KeepAwakeLeaseHeartbeat, Remove-KeepAwakeLease,
     Test-ProcessAlive, Get-ProcessTreeCpu, Update-LeaseActivity,
