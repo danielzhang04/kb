@@ -38,6 +38,13 @@ All three were pre-API fast-fails, cost $0, and consumed no generations:
    stderr `Not inside a trusted directory`). `--skip-git-repo-check` was added, matching
    `run_probe`.
 
+**Evidence caveat:** each retry reused the `p4-probe3-turn2` label, so the failed attempts'
+raw/stderr outputs were OVERWRITTEN by the successful run — the committed
+`p4-probe3-turn2-raw.jsonl`/`-stderr.txt` are from the final successful attempt only. The rc-2
+usage error and rc-1 trust error quoted above are recorded here (and in the boss session
+transcript) but are not banked as files; the two fast-fails produced no usage block and no
+thread activity, which is the basis of the $0/no-generation claim.
+
 ## Measurements
 
 All three completed with return code 0 and `timed_out: false`. The raw JSONL streams contain the
