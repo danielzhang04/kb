@@ -72,6 +72,15 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    expression in words** — that figure's seed carries them, and naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
    human's pre-gen approval, and a veto comes back to you as a restage.
+   **COMPOSE the figure's sentence FROM that vocabulary.** The bodily act a sentence gives a figure IS the
+   primitive bound to it, written around the backticked name ("stands `action-powerstance`, `expr-smug`, at
+   the head of an assembly line"), never a second act the seed cannot hold. The card is minted holding the
+   act its sentence authors (`forge.py`), so prose that asks for a different one re-poses a stance card —
+   which redraws the hands, and with them the head that sits on the body. **Default: conform the sentence
+   to the CLOSEST existing primitive** — the library nearly always carries the beat, and bending the
+   sentence to it costs nothing. A beat that genuinely needs an act no primitive holds is an ASSET
+   decision, not a sentence: it was planned at 3a as a Pass-1 mint (asset base first, shot after), never
+   invented here.
    **A crowd-rig figure has no seeded pose or expression, so plain scene prose is its ONLY expression
    channel** — write the beat's simple expression ("grinning", "worried", "deadpan") and the group's
    whole-body attitude, exactly as any other scene fact. An unauthored crowd renders uniformly neutral,
@@ -113,7 +122,8 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    drops → 4. A shot still over cap once crowd, interaction, and prop are ALL legally exhausted is restaged
    — the true bind is figure count against the cap, never a dropped lettering exemplar or place plate.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
-   vehicle points where it travels), the action, what a gesture or highlight targets ("the northern half
+   vehicle points where it travels), the action (a seeded figure's own bodily act is not free scene prose —
+   it is the primitive its sentence names, rule 3), what a gesture or highlight targets ("the northern half
    of South America", not "the continent"), subject scale and stage position (stage-left / centre /
    stage-right), the committed scene palette, light/atmosphere, and layered depth (fore/mid/background by
    overlap and scale, filled edge-to-edge). Name concrete elements, not
@@ -161,6 +171,16 @@ at the first act's level.
   member where the story says it IS one, otherwise minted as a NEW named cast member through the standard
   cast-generation waves (same canonical + seeding rounds as any other cast), or the beat is restaged as
   mass action. There is no anonymous-foreground tier to fall back on (`visual-grammar.md §2`).
+- **The acts the beats need — matched to the primitive library HERE, once.** Walk the planned beats and
+  bind each figure's act to an existing pose/action primitive; where the closest one carries the beat, the
+  SENTENCE conforms to it at 2.3 (the default, and what almost every beat takes). A beat that genuinely
+  needs an act no primitive holds — a bodily action, or a way of holding an object, the library cannot
+  express — routes to the ASSET BASE FIRST: list it for `image-generation`'s Pass-1 gate as a REUSABLE
+  primitive (minted on the base rig, ruled on by the human, then seeded by the shot that needed it, and by
+  every later one). Both bounds: a video that mints NOTHING while a real act is missing has re-posed a
+  stance card in prose, which is the rig defect this exists to stop; a video that mints one per beat has an
+  infinitely expanding asset base. The ceiling is a HANDFUL of deliberate drops per video — never a
+  per-shot invention — and a vetoed one comes back as a restage against what exists.
 - **Places, stages + environments:** decide now which sets recur and carry held `stage` chains and which
   are one-frame standalones. A **`place`** is a recurring diegetic set identity (kebab-case, e.g.
   `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +

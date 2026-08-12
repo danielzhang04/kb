@@ -116,16 +116,19 @@ def test_l29_mints_two_pose_free_step1_cards_and_seeds_the_template_scene_level(
         {"id": "L29", "place": "miniscribe-plant", "stage": "ibm-deal", "stage_role": "base",
          "still_prompt": L29_PROMPT},
     ])
-    step1 = [n for n in reqs if n.startswith(FIGURE_PREFIX)]
-    assert sorted(step1) == ["fig-ibm-suit--expr-deadpan",
-                             "fig-terry-johnson--expr-delighted"], step1
+    step1 = sorted(n for n in reqs if n.startswith(FIGURE_PREFIX))
+    # Each card also carries its own derived-clause key (P8), so the assertion is on the RECIPE
+    # part of the name: a pose-free, handshake-free solo card per figure.
+    assert [n.rsplit("--", 1)[0] for n in step1] == ["fig-ibm-suit--expr-deadpan",
+                                                     "fig-terry-johnson--expr-delighted"], step1
     assert not any("handshake" in n for n in step1), step1
     for n in step1:
         assert [e["role"] for e in reqs[n]["seed_roles"]] == ["canonical", "expression"]
 
+    ibm, terry = step1
     roles = [(e["role"], _stem(e["path"]), e["character"]) for e in reqs["L29"]["seed_roles"]]
-    assert roles == [("figure", "fig-ibm-suit--expr-deadpan", "ibm-suit"),
-                     ("figure", "fig-terry-johnson--expr-delighted", "terry-johnson"),
+    assert roles == [("figure", ibm, "ibm-suit"),
+                     ("figure", terry, "terry-johnson"),
                      ("interaction", "handshake", None),
                      ("place", "L26", None)], roles
 

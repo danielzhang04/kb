@@ -490,12 +490,16 @@ def shot_cast(reg, text):
     return cast
 
 
-def costume_clause(prompt, character):
-    """The era dress a shot authors for ONE figure, read off the SENTENCE(S) that name it.
+def beat_clause(prompt, character):
+    """What THIS beat asks of ONE figure — its era dress AND the act it is given — read off the
+    SENTENCE(S) that name it. (Named `costume_clause` until P8 widened its consumer; one deriver,
+    not two: the figure's own sentence carries the garments and the act in the same breath, so
+    splitting them would need a second parse of the same string to no gain.)
 
-    There is no era or costume FIELD in `shots.json` and none is wanted: casting and dress are
-    PROSE (`shots-schema.md §2`), and a place plate takes its own era from exactly the same
-    source — the prose of the shot that mints it. This mirrors that source for the figure.
+    There is no era, costume or action FIELD in `shots.json` and none is wanted: casting, dress and
+    what a body does are PROSE (`shots-schema.md §2`), and a place plate takes its own era from
+    exactly the same source — the prose of the shot that mints it. This mirrors that source for the
+    figure.
 
     The sentence is the binding scope because it is the one the authoring side already binds
     figure facts to (`lint_shots.py`'s seat/support law: the support must be named "in the SAME
@@ -507,9 +511,9 @@ def costume_clause(prompt, character):
     any quoted literal — a reference sheet that draws lettering bleeds that lettering into every
     scene seeding it, and negative prose is the weaker guard against a drawn glyph.
 
-    RETAINED, currently unreferenced from production: the abolished seeded-performer tier
-    (2026-08-12) was its only consumer. P8 re-uses this derivation to widen a card's derived clause
-    from clothing to clothing + the beat's own act, so it is kept rather than deleted and re-added."""
+    Its consumer is `figure_card_payload`, for every NAMED cast card (the abolished seeded-performer
+    tier was the narrower 2026-08-06 consumer; P8 widened the derivation to the whole cast rather
+    than deleting it with the tier)."""
     sentences = re.split(r"(?<=[.!?])\s+", prompt or "")
     named = [s for s in sentences if "`" + character + "`" in s]
     if not named:
@@ -554,30 +558,32 @@ def strip_micro_pattern_texture(text):
     """Remove every `MICRO_PATTERN_TEXTURE_WORDS` adjective from text bound for a RIG-REGISTER card.
 
     Scope is the whole point: this is applied ONLY where shot prose is turned into a STEP-1 figure
-    card's dress clause (`figure_card_payload`'s `costume`). A named character's costume is pinned
+    card's derived clause (`figure_card_payload`'s `clause`). A named character's costume is pinned
     in its canonical and its registry text is never rewritten — `hq-banker`'s pinstripe suit is
     established, passing identity, and a re-mint must still say pinstripe. The derived clause is
-    likewise left intact at its source (`costume_clause`), so the string a caller keys a card on is
-    the prose as authored.
-
-    RETAINED, currently unreferenced from production: the abolished performer tier was this path's
-    only caller. P8 re-uses the same derivation to mint a card holding the beat's own ACT."""
+    likewise left intact at its source (`beat_clause`), so the string a caller keys a card on is
+    the prose as authored."""
     out = _MICRO_PATTERN_RE.sub("", text or "")
     out = re.sub(r"\s+([,.;:])", r"\1", out)      # a removed adjective strands its space
     return re.sub(r"\s{2,}", " ", out).strip()
 
 
-def figure_frame_name(character, pose=None, expression=None):
+def figure_frame_name(character, pose=None, expression=None, clause=""):
     """STEP 1's output name. The name IS the reuse key (reuse-before-regenerate) AND the law's
     evidence that the pose/expression the prompt names is the one the slate actually carries —
     which is what makes a silent seed swap (this run's L52) a hard error instead of a mystery.
 
-    Every card here is a NAMED character's, whose costume is pinned in its own canonical — so the
-    key is costume-free, exactly as it was before the abolished performer tier added a dress
-    dimension to it. NOTE for P8: if a card is ever minted holding a DERIVED clause again
-    (`figure_card_payload`'s `costume` path, retained), that derivation must re-enter this key, or
-    two differently-derived cards for one (character, pose, expression) collide on one name."""
-    return FIGURE_PREFIX + "--".join(p for p in (character, pose, expression) if p)
+    `clause` is the DERIVED clause the card is minted holding (`beat_clause` — this beat's dress and
+    act), and it re-enters the key here as a digest of the prose AS AUTHORED, honouring the warning
+    this function has carried since P2: a card whose pixels are derived from the shot cannot be
+    keyed on (character, pose, expression) alone, or two beats deriving different clauses for one
+    triple collide on one filename and the second silently seeds the first's card. A digest, not the
+    prose: the name is a filename and a board label. Reuse is preserved exactly where it is TRUE —
+    byte-identical prose derives a byte-identical clause and resolves to the same card. A caller
+    with no derived clause (a hand-authored spec, the law's expectation for one) keys byte-identical
+    to the pre-P8 shape."""
+    key = FIGURE_PREFIX + "--".join(p for p in (character, pose, expression) if p)
+    return key + ("--" + hashlib.sha256(clause.encode("utf-8")).hexdigest()[:8] if clause else "")
 
 
 def _split_primitives(reg, prims, omitted=()):
@@ -945,7 +951,11 @@ def seeding_law_violations(k, r, seeds):
             continue
         held = [s for s in seeds if _is_figure_frame(s, c)]
         if not held:
-            expected = figure_frame_name(c, *_split_primitives(k.reg, prims))
+            # The expected name is RE-DERIVED from this request's own prose, never carried in a
+            # field: the builder minted the card off `beat_clause` of the same text, so the law
+            # names the same file it would build rather than a costume/act-free ghost of it.
+            expected = figure_frame_name(c, *_split_primitives(k.reg, prims),
+                                         beat_clause(delta, c))
             bad.append(f"{name}: `{c}` is staged FRESH with no STEP-1 figure frame in the slate — "
                        f"expected {expected}. Build the slate with `forge.py batch`.")
             continue
@@ -1389,7 +1399,7 @@ def placement_delta(prompt, seed_roles):
     return "\n\n".join(p for p in (seed_roles_text(seed_roles), prompt) if p)
 
 
-def figure_card_payload(pose=None, costume=""):
+def figure_card_payload(pose=None, clause=""):
     """STEP 1's payload. The stance sentence follows the SEEDS: a card with a pose primitive is
     told to copy it, a POSE-LESS card is told to stand neutral rather than pointed at a reference
     image that is not in the request. That second shape is now the norm, not an edge case — an
@@ -1397,28 +1407,53 @@ def figure_card_payload(pose=None, costume=""):
     scene-level template (`_interaction_primitives`), so a card claiming "exactly as the pose
     reference shows" would be prose against nothing.
 
-    `costume` is a clause DERIVED from the shot's own prose (`costume_clause`), spliced into the
-    card so an attribute the figure's seed does not carry is drawn on the card's own pixels rather
-    than argued for in loose scene prose. Its only caller was the abolished seeded-performer tier,
-    so NOTHING passes it today: every card here is a named character's, whose costume its canonical
-    already pins. The path is RETAINED unreferenced because P8 re-uses it, widened from clothing to
-    clothing + the beat's own act. The clause sits BEFORE the backdrop sentence deliberately: the
-    scene fragment it quotes carries the shot's setting too, and "no scenery, no props, no
-    furniture" is the fence, stated last.
+    `clause` is DERIVED from the shot's own prose (`beat_clause`) and spliced in, so what the beat
+    asks of this figure is drawn on the card's own pixels rather than argued for in loose scene
+    prose downstream. P8 (2026-08-12) widened it from clothing to clothing + THE BEAT'S OWN ACT: a
+    card bound to `action-slump` for a slumping beat is minted slumping, and the scene no longer
+    re-poses a stance card — which is what redrew the hands, and with them the head that sits on
+    the body. The clause sits BEFORE the backdrop sentence deliberately: the scene fragment it
+    quotes carries the shot's setting too, and "no scenery, no props, no furniture" is the fence,
+    stated last.
+
+    THE DRESS HALF IS CONDITIONAL, IN PROSE. Most derived clauses author no garment at all (the
+    sentence naming a figure is usually setting and placement), and an unconditional "dress the
+    figure in what this reads" then CONTRADICTS the canonical seed's own role prose — "identity,
+    head tone, hair and the pinned costume come from this image only" — leaving the two strongest
+    instructions in one request disagreeing. So the clause dresses the figure only WHERE IT AUTHORS
+    CLOTHING, and otherwise defers to the costume the canonical pins. No garment detection in code:
+    the model reads its own quoted description, which is the one reader that can tell a shop coat
+    from a loading bay. A named character's card is costume-invariant again, exactly as P2 had it,
+    except where a beat deliberately authors a change — which is legal doctrine (Pass-1: "in its
+    registry-pinned costume unless the shot authored a change").
+
+    THE ACT RIDES ONLY WHERE A POSE REFERENCE DOES. A pose-less card told to perform an act would
+    free-draw the body, and with it the hands — the exact five-finger defect this proposal exists to
+    close ("exposed hands are seeded, never free-drawn", image-generation SKILL Pass-2 seed law). So
+    a pose-less card takes the clothing and keeps its neutral stance; a beat whose act no primitive
+    covers is fixed on the AUTHORING side — conform the sentence to the closest existing primitive,
+    or mint the missing one as a reusable primitive at the Pass-1 gate — never by this payload
+    guessing a body.
 
     This is also the ONE point where a derived clause becomes rig-register card text, so it is where
     `strip_micro_pattern_texture` applies: prose is free to dress a figure in quilted gloves, and a
     card drawn at rig register may not draw the quilting (`line-register`)."""
     stance = ("standing or seated exactly as the pose reference shows" if pose
               else "standing squarely at rest, arms relaxed at the sides, facing the viewer")
-    costume = strip_micro_pattern_texture(costume)
-    dress = (f"The scene this card is minted for reads: {costume} Take from that description "
-             "ONLY the CLOTHING it implies — garments, headwear, footwear — and dress the figure "
-             "in it for that era, work and setting, never the rig template's default hoodie; "
-             "draw none of its setting, props, lettering or other people. " if costume else "")
+    clause = strip_micro_pattern_texture(clause)
+    act = ("; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN "
+           "the stance the pose reference holds, empty-handed and alone, the object or person it "
+           "acts on left out" if pose else
+           ", and nothing else from it: with no pose reference seeded, its action is not this "
+           "card's to draw")
+    derived = (f"The scene this card is minted for reads: {clause} Where that description AUTHORS "
+               "clothing — garments, headwear, footwear — dress the figure in it for that era, "
+               "work and setting; where it authors none, the costume the canonical seed pins "
+               f"governs unchanged, and never the rig template's default hoodie{act}. Draw none "
+               "of its setting, props, lettering or other people. " if clause else "")
     return (f"The whole figure is in frame head to feet, {stance}, on a thin visible ground line "
             "with one soft contact shadow directly "
-            f"beneath it. {dress}Flat solid pale-grey studio backdrop, no scenery, no props, no "
+            f"beneath it. {derived}Flat solid pale-grey studio backdrop, no scenery, no props, no "
             "furniture. "
             "This is a reference sheet: the character alone, fully resolved, ready to be placed "
             "into a separate scene.")
@@ -1933,10 +1968,14 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                     prim_roles.append(_seed_role(vfile(primitive), role, c))
                 why.append(f"`{c}` delta -> parent + canonical"
                            + (f" + proved {', '.join(declared)}" if declared else "")); continue
-            # Every card here is a NAMED character's: its costume is pinned in its own canonical
-            # (registry `costume`), so the card is costume-invariant and its key carries no dress
-            # dimension. The abolished performer tier was the only shape that needed one.
-            fn = figure_frame_name(c, pose, expr)
+            # THE CARD IS MINTED HOLDING THIS BEAT'S OWN CLAUSE (P8): the dress the shot authors
+            # for this figure AND the act it gives it, derived from the same sentence by
+            # `beat_clause`. A card minted at a neutral stance is re-posed by scene prose
+            # downstream, which redraws the hands and the head that sits on the body. The
+            # derivation therefore re-enters the reuse key — same prose, same card; a different
+            # beat mints its own instead of silently seeding the first one's.
+            clause = beat_clause(prompt, c)
+            fn = figure_frame_name(c, pose, expr, clause)
             if not in_scope:
                 # Out of scope: resolve what its slate WOULD carry so the law can judge it, but mint
                 # nothing — an out-of-scope shot must not consume the reuse key an in-scope shot owns.
@@ -1961,7 +2000,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                     # the card it minted. Same predicate, same store — only the canonical is
                     # exempt, and only because the cast wave owns it.
                     refuse_unreviewed(seed_role_review_refusals(k, step1_roles, name))
-                    step1_payload = figure_card_payload(pose)
+                    step1_payload = figure_card_payload(pose, clause)
                     spec.append({"name": fn, "mode": "environment", "aspect": "2:3",
                                  "image_size": "1K", "stage_role": "base",
                                  "seed": [role["path"] for role in step1_roles],
@@ -2454,7 +2493,9 @@ def _retry_step1(entry, source, k, label):
     instruction = entry.get("instruction")
     if instruction is not None and (not isinstance(instruction, str) or not instruction.strip()):
         raise SystemExit(f"{label}: STEP-1 `instruction` must be a non-empty string when present.")
-    payload = figure_card_payload(pose)
+    # A re-mint inherits the card the batch would build, clause and all (P8) — same deriver, same
+    # source prose — so repairing a face never quietly drops the beat's act back to a neutral stance.
+    payload = figure_card_payload(pose, beat_clause(source.get("still_prompt") or "", character))
     if instruction:
         payload += "\n\n" + instruction.strip()
     delta = placement_delta(payload, seed_roles)

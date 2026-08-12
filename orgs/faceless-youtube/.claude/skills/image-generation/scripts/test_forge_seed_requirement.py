@@ -190,7 +190,8 @@ def test_shot_cast_excludes_the_rig_template_from_every_shots_cast():
     named = ("A brick-yard clerk in a 1980s back office, `hq-banker`, `expr-deadpan`, "
              "`action-armscrossed`, stage-left behind the counter.")
     assert shot_cast(REG, named) == [("hq-banker", ["expr-deadpan", "action-armscrossed"])]
-    # and the card key carries no costume dimension — the tier's fourth field is gone
+    # and the tier's `costume_key` is gone: the card's fourth dimension is now the clause the
+    # card is MINTED holding (P8), derived from the beat itself and absent when none derives
     assert figure_frame_name("hq-banker", "action-armscrossed", "expr-deadpan") == \
         "fig-hq-banker--action-armscrossed--expr-deadpan"
 
@@ -382,6 +383,14 @@ _SCOPE_SHOTS = {
 }
 
 
+def _t01_card():
+    """T01's STEP-1 card name. P8 keys a card on the clause derived from its OWN beat, so a fixture
+    that hard-coded the recipe-only name would assert a card the builder never mints."""
+    prompt = _SCOPE_SHOTS["long_form"]["shots"][0]["still_prompt"]
+    return figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug",
+                             forge_module.beat_clause(prompt, "miniscribe-rep"))
+
+
 def _scope_fixture():
     v = tempfile.mkdtemp()
     json.dump(_SCOPE_SHOTS, open(os.path.join(v, "shots.json"), "w", encoding="utf-8"))
@@ -415,7 +424,7 @@ def test_a_scoped_run_emits_only_its_shots_and_is_not_blocked_from_outside():
     names = [i["name"] for i in spec]
     assert "T03" not in names and "T01" in names and "T02" in names, names
     # the slate quality is unchanged by scoping: step-1 figure, root scene, delta off parent
-    fig = figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug")
+    fig = _t01_card()
     assert names[0] == fig, names
     t01 = [i for i in spec if i["name"] == "T01"][0]
     assert t01["plate"] is False and [Path(s).stem for s in t01["seed"]] == [fig], t01
@@ -448,8 +457,7 @@ def test_explicit_nonfigure_tags_route_without_duplicating_figure_or_crowd_seeds
     assert err is None, err
     scene = next(i for i in spec if i["name"] == "T01")
     assert [Path(s).stem for s in scene["seed"]] == [
-        figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug"),
-        "crowd-exemplar", "prop-beige-pc"], scene["seed"]
+        _t01_card(), "crowd-exemplar", "prop-beige-pc"], scene["seed"]
     # T01 carries figures, so it does NOT take the §5 style tile (its cast seeds draw the
     # register); T04 is CAST-FREE, so the tile is derived onto it beside its authored exemplar.
     assert [Path(s).stem for s in next(i for i in spec if i["name"] == "T04")["seed"]] == \
@@ -527,33 +535,78 @@ def test_a_base_casting_refuses_the_whole_batch_and_mints_nothing():
     assert "NEW named cast member" in err and "mass action" in err, err
 
 
-def test_a_named_characters_card_key_carries_no_costume_dimension():
-    """Named cast wear a canonical-pinned costume, so their card is costume-invariant and their
-    key is byte-identical to the pre-2026-08-06 shape — no re-mint of an existing library card.
-    P2 removed the dress dimension outright, so the emitted item carries no `costume_key` field
-    at all: the only shape that ever set it was the abolished performer tier."""
+def test_a_named_characters_card_is_minted_holding_the_beats_own_act():
+    """P8: the card is minted DOING what the beat asks. The clause `beat_clause` derives from the
+    shot's own prose (clothing + the act) reaches the card payload, and — because the card is now
+    beat-derived — that derivation re-enters the card's NAME. The key is the reuse key, so two
+    beats deriving different clauses for one (character, pose, expression) must not collide on one
+    filename. No new item FIELD carries it: the law re-derives the same clause from the same prose
+    (the abolished performer tier's `costume_key` stays gone)."""
     _, shots, out = _scope_fixture()
     spec, err = _batch(shots, out, ["T01"])
     assert err is None, err
-    assert spec[0]["name"] == "fig-miniscribe-rep--action-powerstance--expr-smug", spec[0]["name"]
-    assert "minted for reads" not in spec[0]["payload"], spec[0]["payload"]
+    prompt = _SCOPE_SHOTS["long_form"]["shots"][0]["still_prompt"]
+    clause = forge_module.beat_clause(prompt, "miniscribe-rep")
+    assert clause and "brickyard gate" in clause, clause
+    assert spec[0]["name"] == figure_frame_name(
+        "miniscribe-rep", "action-powerstance", "expr-smug", clause), spec[0]["name"]
+    assert spec[0]["name"].startswith("fig-miniscribe-rep--action-powerstance--expr-smug--"), \
+        spec[0]["name"]
+    assert "minted for reads" in spec[0]["payload"], spec[0]["payload"]
+    assert "bodily ACT" in spec[0]["payload"], spec[0]["payload"]
     assert "dressed for" not in spec[0]["why"], spec[0]["why"]
     assert "costume_key" not in next(i for i in spec if i["name"] == "T01"), spec
+    # the law names the SAME card the builder minted — re-derived from the prose, never a field
+    scene = next(i for i in spec if i["name"] == "T01")
+    bad = seeding_law_violations(_real_kit(), dict(scene, seed=[], seed_roles=[]), [])
+    assert any(spec[0]["name"] in b for b in bad), bad
 
 
-def test_the_costume_clause_is_the_era_opener_plus_the_figures_own_sentence():
+def test_one_beats_derived_clause_keys_the_card_and_an_identical_beat_still_reuses_it():
+    """Two-sided: a DIFFERENT derived clause mints its own card (no silent collision — the warning
+    `figure_frame_name` has carried since P2), while an IDENTICAL clause resolves to the same name,
+    so reuse-before-regenerate survives the new dimension."""
+    a = figure_frame_name("hq-banker", "action-slump", "expr-deadpan", "In a grey suit, slumping.")
+    b = figure_frame_name("hq-banker", "action-slump", "expr-deadpan", "In a grey suit, hauling.")
+    same = figure_frame_name("hq-banker", "action-slump", "expr-deadpan", "In a grey suit, slumping.")
+    assert a != b and a == same, (a, b)
+    # a clause-free call is byte-identical to the pre-P8 name: nothing hand-authored is re-keyed
+    assert figure_frame_name("hq-banker", "action-slump", "expr-deadpan") == \
+        "fig-hq-banker--action-slump--expr-deadpan"
+    # ...and the character is still the FIRST component, which is how the board reads it back
+    assert a.startswith("fig-hq-banker--action-slump--expr-deadpan--"), a
+
+
+def test_a_pose_less_card_takes_the_clothing_and_is_never_told_to_perform_the_act():
+    """The act rides ONLY where a pose reference is seeded. A pose-less card told to perform an act
+    would free-draw the body — and with it the hands, which is the five-finger defect P8 exists to
+    stop ("exposed hands are seeded, never free-drawn"). Its geometry lives scene-level (an
+    interaction template), or the missing act is an authoring-side Pass-1 gate item."""
+    clause = "A 1985 loading bay. In a brown shop coat, shoving the truck doors shut."
+    posed = forge_module.figure_card_payload("action-armscrossed", clause)
+    poseless = forge_module.figure_card_payload(None, clause)
+    assert "bodily ACT" in posed and "pose reference" in posed, posed
+    assert "bodily ACT" not in poseless, poseless
+    assert "brown shop coat" in poseless and "standing squarely at rest" in poseless, poseless
+    for p in (posed, poseless):
+        assert "none of its setting, props, lettering or other people" in p, p
+
+
+def test_the_beat_clause_is_the_era_opener_plus_the_figures_own_sentence():
     """The era source is PROSE — the same source a place plate takes its era from — bound to the
-    sentence that names the figure, plus the opener that dates the scene. Control tokens and
-    quoted literals never reach the card: the seeds already carry the vocabulary, and a card that
-    draws lettering bleeds it into every scene seeding it. A figure the prompt does not name
-    yields nothing, so the opener can never travel alone."""
+    sentence that names the figure, plus the opener that dates the scene. That ONE sentence also
+    carries the beat's ACT ("leans over a ledger"), which is why P8 reuses this deriver rather than
+    adding a second one. Control tokens and quoted literals never reach the card: the seeds already
+    carry the vocabulary, and a card that draws lettering bleeds it into every scene seeding it. A
+    figure the prompt does not name yields nothing, so the opener can never travel alone."""
     prompt = ("A 1974 sorting hall, rain on the skylights. `base`, `expr-worried`, in a brown "
               "shop coat and flat cap, leans over a ledger marked 'PAID'. Framing: waist-up.")
-    clause = forge_module.costume_clause(prompt, "base")
+    clause = forge_module.beat_clause(prompt, "base")
     assert clause == ("A 1974 sorting hall, rain on the skylights. in a brown shop coat and flat "
                       "cap, leans over a ledger marked."), clause
-    assert forge_module.costume_clause(prompt, "hq-banker") == ""
-    # a card with no era prose is exactly the pre-fix payload — no empty dress clause
+    assert "leans over a ledger" in clause, clause          # the ACT, from the same sentence
+    assert forge_module.beat_clause(prompt, "hq-banker") == ""
+    # a card with no derived prose is exactly the pre-fix payload — no empty clause
     assert "minted for reads" not in forge_module.figure_card_payload("action-slump")
     assert "minted for reads" in forge_module.figure_card_payload("action-slump", clause)
 
@@ -568,8 +621,8 @@ def test_a_micro_pattern_texture_adjective_never_reaches_a_derived_rig_card():
     two escalating "ONE FLAT UNIFORM colour fill / NO quilting, NO crosshatch, NO diamond lattice"
     instructions. So the derived clause LOSES the adjective at the card instead of arguing with it
     there. The clause itself is untouched at its source, so the string a caller keys a card on stays
-    the prose as authored. RETAINED path (P8 re-uses it); nothing in production passes it today."""
-    clause = forge_module.costume_clause(MICRO_PATTERN_PROSE, "base")
+    the prose as authored — which is what P8's card key hashes."""
+    clause = forge_module.beat_clause(MICRO_PATTERN_PROSE, "base")
     assert "quilted" in clause, clause                     # the KEY still hashes the prose as authored
     payload = forge_module.figure_card_payload("action-recoil", clause)
     assert "white lab coat and oven gloves" in payload, payload
@@ -598,8 +651,10 @@ def test_the_micro_pattern_strip_never_touches_a_cast_characters_pinned_costume(
     merged = merge_vocabulary({"characters": {}, "assets": []}, video)
     assert merged["characters"]["hq-banker"]["costume"] == pinned, merged["characters"]["hq-banker"]
 
-    # ...and the cast retry route derives no dress clause at all, so no shot prose — stripped or
-    # not — can reach a named character's card and overwrite what its canonical pins.
+    # ...and where a beat DOES author dress on a named character (P8 sends every cast card the
+    # derived clause), the micro-pattern adjective is what the card loses: the garment survives,
+    # `quilted` does not, and the seed-role prose still points identity and costume at the
+    # canonical image rather than at the prose.
     reg = {"characters": {"hq-banker": {"base": "refs/hq-banker.png", "costume": pinned}},
            "assets": [{"name": "expr-fear", "kind": "expression", "file": "refs/expr-fear.png"}]}
     out = forge_module._retry_step1(
@@ -607,8 +662,18 @@ def test_the_micro_pattern_strip_never_touches_a_cast_characters_pinned_costume(
          "name": "fig-hq-banker-remint", "defect": "expression"},
         {"still_prompt": "`hq-banker`, `expr-fear`, in his quilted overcoat at the gate."},
         SimpleNamespace(reg=reg), "retry entry 1")
-    assert "minted for reads" not in out["payload"], out["payload"]
+    assert "minted for reads" in out["payload"], out["payload"]
+    assert "overcoat" in out["payload"] and "quilted" not in out["payload"], out["payload"]
     assert "pinned costume come from this image only" in out["delta"], out["delta"]
+
+    # I1: the dress half is CONDITIONAL, so the two strongest instructions in one request never
+    # disagree. The common live shape is a clause with NO garment content at all (setting and
+    # placement only) — there the canonical's pinned costume governs, unchanged, and the card is
+    # costume-invariant exactly as P2 had it.
+    setting_only = forge_module.figure_card_payload(
+        "action-point", "A 1985 loading bay under strip light. At the far end of the bay.")
+    assert "Where that description AUTHORS clothing" in setting_only, setting_only
+    assert "the costume the canonical seed pins governs unchanged" in setting_only, setting_only
 
 
 def _stem_ok(seed, char):
@@ -655,7 +720,9 @@ def test_a_base_can_seed_its_videos_approved_place_after_two_step1_figures():
     scene = [i for i in spec if i["name"] == "L60"][0]
     assert scene["plate"] is False, scene
     assert len(scene["seed"]) == 4, scene["seed"]
-    assert [Path(s).stem for s in scene["seed"][:2]] == ["fig-miniscribe-rep", "fig-ibm-suit"], scene["seed"]
+    # each card also carries its own derived-clause key (P8): assert the recipe part of the name
+    assert [Path(s).stem.rsplit("--", 1)[0] for s in scene["seed"][:2]] == [
+        "fig-miniscribe-rep", "fig-ibm-suit"], scene["seed"]
     assert scene["seed"][2].replace("\\", "/").endswith("assets/scenes/L60.png"), scene["seed"]
     assert Path(scene["seed"][3]).stem == "crowd-exemplar", scene["seed"]
 

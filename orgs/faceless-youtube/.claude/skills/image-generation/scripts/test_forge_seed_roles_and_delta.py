@@ -55,6 +55,16 @@ def _batch(kit, shots_path, out_path, scope=None):
         return json.load(f)
 
 
+# L28's authored prose. P8 keys each STEP-1 card on the clause derived from its OWN beat, so the
+# fixture stages the cards under the names the builder computes from this text, never a hard-coded
+# recipe-only stem.
+L28_PROMPT = ("`terry-johnson` and `miniscribe-rep` stand beside the drive "
+              "assembly line, with `prop-drive` on the workbench.")
+L28_CARDS = {c: forge_module.figure_frame_name(c, None, None,
+                                           forge_module.beat_clause(L28_PROMPT, c))
+             for c in ("terry-johnson", "miniscribe-rep")}
+
+
 def _l28_retry_fixture():
     """The audited bad order: place, Terry, MiniScribe, then the drive prop."""
     video = tempfile.mkdtemp()
@@ -75,8 +85,7 @@ def _l28_retry_fixture():
             "id": "L28", "source": "ai-gen", "stage": "factory", "stage_role": "base",
             "place_anchor": "assets/scenes/L26.png",
             "assets": {"prop-drive": "channels/the-second-take/visual-kit/refs/env/prop-drive.png"},
-            "still_prompt": ("`terry-johnson` and `miniscribe-rep` stand beside the drive "
-                             "assembly line, with `prop-drive` on the workbench."),
+            "still_prompt": L28_PROMPT,
         }]},
     })
     overlay = os.path.join(video, "retry.json")
@@ -101,10 +110,10 @@ def _l28_retry_spec(entries=None):
     # A staged STEP-1 is reusable only with an all-pass review record pinned to its bytes (C-6),
     # so the fixture stages the frames the way an approved run leaves them: reviewed.
     reviewed = {}
-    for name in ("fig-terry-johnson.png", "fig-miniscribe-rep.png"):
-        with open(os.path.join(kit.staging, name), "wb") as f:
+    for stem in L28_CARDS.values():
+        with open(os.path.join(kit.staging, stem + ".png"), "wb") as f:
             f.write(PNG)
-        reviewed[os.path.splitext(name)[0]] = {
+        reviewed[stem] = {
             "canonical_sha256": hashlib.sha256(PNG).hexdigest(), "expression_sha256": None,
             "verdicts": {"rig": "pass"}, "reviewer": "fresh-eyes", "date": "2026-08-04"}
     _write_json(os.path.join(kit.staging, "review.json"), {"figures": reviewed})
@@ -125,7 +134,8 @@ def test_l28_final_seed_roles_and_ordinals_follow_the_final_retry_order():
     kit, spec = _l28_retry_spec()
     scene = _scene(spec, "L28-role-retry")
     stems = [Path(seed).stem for seed in scene["seed"]]
-    assert stems == ["L26", "fig-terry-johnson", "fig-miniscribe-rep", "prop-drive"], stems
+    assert stems == ["L26", L28_CARDS["terry-johnson"], L28_CARDS["miniscribe-rep"],
+                     "prop-drive"], stems
     assert scene["seed_roles"] == [
         {"path": scene["seed"][0], "role": "place", "character": None},
         {"path": scene["seed"][1], "role": "figure", "character": "terry-johnson"},

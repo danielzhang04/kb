@@ -53,6 +53,12 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
      pre-generated as portable canonicals (they are not; see the Pass-1/Pass-2 split above), but because their
      PIXELS seed other scenes, and nothing seeds a scene on a ruling nobody made. A **pose / expression /
      interaction primitive** the shots name is listed on the same terms.
+   - An **act no library primitive covers** earns a slot on those same terms — minted as a REUSABLE
+     pose/action primitive on the base rig, BEFORE the shot that needs it (the law is the §Seed law row
+     "Exposed hands are seeded, never free-drawn"; this is where it becomes a listed item). Rare by
+     construction: VPW conforms its figure sentences to the closest existing primitive by default, so what
+     reaches this row is the beat the library genuinely cannot hold — a deliberate drop into the asset
+     base, never a per-shot invention, and never a scene left to draw the act free-hand.
    - The **crowd exemplar is minted per VIDEO** (`assets/library/crowd-exemplar.png`), through that same
      slot and gate — carrying THIS video's era dress, its 2–3 flat head tones and its 2–3 hair/headwear
      silhouettes (bible §2d). It is an **ANCHOR, not a uniform**: it fixes rig discipline, the tone set and
@@ -253,11 +259,13 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
   ladder (gen A composes the scene, gen B re-composes identity onto it) is **RETIRED**: a step-2 gen never
   re-composes identity from words, so the ladder's reason to exist is gone. **STEP 1** runs the unchanged seeding
   recipe — canonical + pose frame + expression frame — **in isolation**, no scene content, into one portable
-  per-video figure frame (`fig-<character>--<pose>--<expression>`, the video's own asset, never channel `refs/`).
-  Every card is a named character's, and its costume is pinned in its own canonical, so the key carries no
-  dress dimension. (`forge.py::costume_clause` and `figure_card_payload`'s `costume` path — a clause derived
-  from the minting shot's own prose — are RETAINED unreferenced for P8, which re-uses them to mint a card
-  holding the beat's own act.)
+  per-video figure frame (`fig-<character>--<pose>--<expression>--<clause key>`, the video's own asset, never
+  channel `refs/`). **The card is minted holding THIS BEAT'S own dress and act**, derived from the minting
+  shot's own prose (`forge.py::beat_clause` → `figure_card_payload`), so the scene never re-poses a stance
+  card in words — the failure that redrew the hands, and the head sitting on the body with them. That
+  derivation keys the card too: same prose, same card; a different beat mints its own rather than silently
+  seeding the first one's. The ACT rides only where a pose primitive does — a pose-free card keeps its
+  neutral stance, because a body drawn from words draws its hands from words as well.
   **STEP 2**, the scene gen, seeds `[step-1 figure(s)] > [the video's plate]` and never the raw triple again.
   Splitting the recipe out of the scene gen is the fix: scene complexity competing with rig-hold inside one call is
   what throws a figure off rig. A **delta beat is single-step:** in-chain parent first, then each held figure's

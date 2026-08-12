@@ -116,7 +116,11 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   `image-generation` surfaces there for approval. **A pose, interaction, or expression name must
   ALREADY exist in `registry.json`:** unlike a cast name, a new pose or interaction template is a rare,
   separately gated build — it changes how every figure that uses it is drawn, and a fresh one breaks
-  more than it buys. Author from the inventory; if no pose fits, restage the beat.
+  more than it buys. Author from the inventory: where the closest primitive carries the beat, CONFORM the
+  sentence to it — a figure sentence is composed FROM the vocabulary, and the card is minted holding the
+  act that sentence authors. Where a beat genuinely needs an act NO primitive holds, it is a deliberate
+  Pass-1 mint — a reusable primitive built and ruled on BEFORE the shot seeds it — or the beat is
+  restaged. Never a per-shot invention: the asset base grows by a handful of deliberate drops per video.
   A named asset is the authoring act, and the prompt may not narrate what the seed already carries — no
   eyelid, brow, nose, ear, finger, palm, or proportion prose next to a named pose or expression. Prose
   competing with a seed is how one figure's attributes bleed onto another. **This is a rule about
@@ -222,7 +226,8 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   bodies and binds to neither alone. So `handshake` / `handoff` / `fistbump` / `action-tugofwar` are
   authored ONLY on a fresh two-cast **stage base**, where forge seeds the template scene-level
   alongside both figures' step-1 cards (row above). On a solo shot or a delta beat there is no legal
-  slate for one: stage the gesture in prose and drop the slug, or move the contact to the base. Bound
+  slate for one: stage the gesture in prose — within what each figure's seeded primitive can hold —
+  and drop the slug, or move the contact to the base. Bound
   to a single character it mints a solo reference card that says "the character alone" while carrying
   a two-person clasp — a hand extended into empty air, an amputated forearm, or a second body fused
   into the identity card. Lint and forge both refuse it.

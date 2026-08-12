@@ -30,6 +30,10 @@ PNG = b"\x89PNG\r\n\x1a\n"
 REFS = "channels/the-second-take/visual-kit/refs/"
 TILE = REFS + "env/scene-style-tile.png"    # §5 style anchor, derived onto every cast-free gen
 CAST = "`miniscribe-rep`, `expr-smug`, `action-powerstance`,"
+# The one records-room beat every card fixture below is minted for. P8 keys a STEP-1 card on
+# the clause derived from its OWN beat, so the prompt and the expected filename must agree — a
+# fixture that hard-codes the recipe-only name would be asserting a card the builder never mints.
+CARD_PROMPT = f"{CAST} alone at the records-room table."
 
 
 def _kit():
@@ -323,7 +327,8 @@ def test_never_droppable_seeds_refuse_naming_figure_count_not_a_locked_seed():
 
 # --- C-6: the staged-asset review record --------------------------------------------------------
 
-_FIG = figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug")
+_FIG = figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug",
+                         forge_module.beat_clause(CARD_PROMPT, "miniscribe-rep"))
 
 
 def _staged_figure(k, digest_bytes=PNG):
@@ -342,7 +347,7 @@ def _record(k, **overrides):
 
 def _reuse_run(kit):
     return _run(_doc({"id": "R1", "place": "records-room",
-                      "still_prompt": f"{CAST} alone at the records-room table."}), kit=kit)
+                      "still_prompt": CARD_PROMPT}), kit=kit)
 
 
 def test_an_all_pass_current_review_record_admits_a_staged_step1_for_reuse():
@@ -584,7 +589,7 @@ def test_a_pose_or_expression_primitive_is_refused_without_a_record():
     """P3's largest newly gated class: 30 body primitives + 18 expressions seeded on no ruling."""
     spec, err, _ = _unstamped(_doc(
         {"id": "M1", "place": "records-room",
-         "still_prompt": f"{CAST} alone at the records-room table."}))
+         "still_prompt": CARD_PROMPT}))
     assert spec is None, spec
     assert "expression `expr-smug`" in err, err
     assert "pose `action-powerstance`" in err, err
@@ -606,7 +611,7 @@ def test_a_named_cast_members_own_canonical_is_never_gated():
     _stamp_except(k, v, "miniscribe-rep")
     spec, err, _ = _run(_doc(
         {"id": "K1", "place": "records-room", "stage": "r", "stage_role": "base",
-         "still_prompt": f"{CAST} alone at the records-room table."}), kit=k, video=v, stamp=False)
+         "still_prompt": CARD_PROMPT}), kit=k, video=v, stamp=False)
     assert err is None, err
     assert [i["name"] for i in spec] == [_FIG, "K1"], spec
     assert any(r["role"] == "canonical" and r["path"].endswith("miniscribe-rep.png")
@@ -642,7 +647,7 @@ def test_a_card_minted_in_this_batch_may_not_seed_a_scene_until_it_is_ruled_on()
     k, v = _kit(), tempfile.mkdtemp()
     spec, err, _ = _run(_doc({"id": "K1", "place": "records-room", "stage": "r",
                               "stage_role": "base",
-                              "still_prompt": f"{CAST} alone at the records-room table."}),
+                              "still_prompt": CARD_PROMPT}),
                         kit=k, video=v)
     assert err is None, err
     held = _minted_card_run(k, spec, stamped=False)

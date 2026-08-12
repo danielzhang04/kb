@@ -179,7 +179,15 @@ def test_step1_retry_remains_the_permitted_expression_remint_route():
     assert out["mode"] == "environment" and out["aspect"] == "2:3"
     assert out["seed"] == ["refs/hq-banker.png", "refs/expr-fear.png", "refs/action-point.png"]
     assert "`expr-fear` expression reference" in out["delta"]
-    assert "factory gate" not in out["delta"]
+    # P8: a re-mint inherits the SAME card payload the batch minted — same deriver, same prose, so
+    # the repaired card still holds the beat's own act instead of reverting to a neutral stance.
+    clause = forge.beat_clause(source["still_prompt"], "hq-banker")
+    assert out["payload"] == forge.figure_card_payload("action-point", clause), out["payload"]
+    assert "bodily ACT" in out["payload"], out["payload"]
+    # the scene's setting reaches the card ONLY inside the quoted clause, under its own fence —
+    # never as an instruction to draw it (pre-P8 this asserted "no setting text at all")
+    assert "factory gate" in out["payload"], out["payload"]
+    assert "none of its setting, props, lettering or other people" in out["payload"], out["payload"]
 
 
 if __name__ == "__main__":
