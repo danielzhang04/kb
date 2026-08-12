@@ -491,20 +491,26 @@ def snapshot_thread_dir(thread_id, image_root=None):
     return set(os.listdir(d)) if thread_id and os.path.isdir(d) else set()
 
 
-def harvest_new_pngs(thread_id, before, *, image_root=None, polls=5, delay=1.0):
+def harvest_new_pngs(thread_id, before, *, image_root=None, polls=5, delay=1.0, settle_polls=2):
     """Every *.png that appeared in this thread's directory since `before`, as absolute paths.
     Bounded poll covers write/close lag after turn.completed. Counting happens here; RULING on the
     count (exactly one => success, zero => no_image, more than one => multi_emit, take none) is
     `classify_turn`'s job, so the §6 class ids live in exactly one place.
     Newest-by-mtime is explicitly rejected: 17 gens across both probe logs never produced a second
-    image, so there is no evidence about what a second one MEANS."""
-    root = image_root or IMAGE_ROOT
+    image, so there is no evidence about what a second one MEANS. Once the first file appears,
+    `settle_polls` additional polls capture a short staggered-write window."""
+    root = os.fspath(Path(image_root or IMAGE_ROOT).resolve())
     d = os.path.join(root, str(thread_id or ""))
     new = []
+    before = set(before)
     for attempt in range(max(1, polls)):
         now = snapshot_thread_dir(thread_id, image_root=root)
-        new = sorted(n for n in (now - set(before)) if n.lower().endswith(".png"))
+        new = sorted(n for n in (now - before) if n.lower().endswith(".png"))
         if new:
+            for _ in range(max(0, settle_polls)):
+                time.sleep(delay)
+                now = snapshot_thread_dir(thread_id, image_root=root)
+                new = sorted(n for n in (now - before) if n.lower().endswith(".png"))
             break
         if attempt + 1 < polls:
             time.sleep(delay)

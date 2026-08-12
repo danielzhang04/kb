@@ -7,6 +7,8 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -1073,6 +1075,44 @@ def test_harvest_returns_both_paths_when_two_images_landed():
                           timeout_s=120)
     got = fc.harvest_new_pngs(r["thread_id"], set(), polls=2, delay=0.05)
     assert len(got) == 2 and got == sorted(got)
+
+
+def test_harvest_settles_after_the_first_png_for_a_staggered_multi_emit():
+    tmp, _, _ = _scratch()
+    import forge_codex as fc
+
+    thread_id = "staggered-multi-emit"
+    output_dir = tmp / "generated_images" / thread_id
+    _png(output_dir / "one.png")
+
+    def staggered_writer():
+        time.sleep(0.03)
+        _png(output_dir / "two.png")
+
+    writer = threading.Thread(target=staggered_writer)
+    writer.start()
+    try:
+        got = fc.harvest_new_pngs(thread_id, set(), image_root=tmp / "generated_images",
+                                  polls=5, delay=0.02)
+    finally:
+        writer.join()
+
+    assert [os.path.basename(path) for path in got] == ["one.png", "two.png"]
+
+
+def test_harvest_normalizes_a_relative_image_root_to_absolute_paths():
+    tmp, _, _ = _scratch()
+    import forge_codex as fc
+
+    thread_id = "relative-root"
+    root = tmp / "generated_images"
+    _png(root / thread_id / "frame.png")
+    relative_root = os.path.relpath(root, os.getcwd())
+
+    got = fc.harvest_new_pngs(thread_id, set(), image_root=relative_root, polls=1, delay=0)
+
+    assert got == [str((root / thread_id / "frame.png").resolve())]
+    assert all(os.path.isabs(path) for path in got)
 
 
 def test_harvest_leaves_the_source_file_in_place():
