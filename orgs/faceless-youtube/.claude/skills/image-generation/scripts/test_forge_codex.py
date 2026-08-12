@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 HERE = Path(__file__).resolve().parent
 FAKE = HERE / "_fake_codex.py"
+REPO_ROOT = HERE.parents[5]
+P4_PROBE3_TURN1_RAW = REPO_ROOT / "scratch-codex-image-engine" / "p4-probe3-turn1-raw.jsonl"
 
 ENVELOPE_FMT = (
     "Read the file at {prompt_path} and pass its exact byte content as the `prompt` argument to "
@@ -30,9 +32,11 @@ def run_fake(mode, *, envelope, image_root, sessions_root, sandbox="workspace-wr
              resume_thread=None):
     tail = ["exec"]
     if resume_thread:
-        tail += ["resume", resume_thread]
-    tail += ["--json", "--skip-git-repo-check", "--sandbox", sandbox,
-             "--cd", str(cwd or image_root), envelope]
+        # P4 probe 3: `exec resume` restores the session's cwd/sandbox and rejects both flags.
+        tail += ["resume", resume_thread, "--json", "--skip-git-repo-check", envelope]
+    else:
+        tail += ["--json", "--skip-git-repo-check", "--sandbox", sandbox,
+                 "--cd", str(cwd or image_root), envelope]
     return subprocess.run(fake_prefix(mode, image_root, sessions_root) + tail,
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
 
@@ -57,6 +61,34 @@ def _scratch():
     return tmp, prompt, seed
 
 
+def _darkest_three_percent_rgb(path):
+    """The darkest-3% RGB metric used for the constructed fixture image."""
+    from PIL import Image
+
+    pixels = list(Image.open(path).convert("RGB").getdata())
+    count = max(1, round(len(pixels) * 0.03))
+    darkest = sorted(pixels, key=lambda rgb: sum(rgb))[:count]
+    return tuple(sum(rgb[channel] for rgb in darkest) / count for channel in range(3))
+
+
+def _p4_pre_image_call_count(rollout_path):
+    """Exact substring-matching algorithm from scratch-codex-image-engine/p4_probe.py."""
+    n = 0
+    for line in rollout_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if '"custom_tool_call"' not in line:
+            continue
+        if "image_gen__imagegen" in line:
+            return n
+        n += 1
+    return n
+
+
+def _real_usage_keys():
+    events = _events(P4_PROBE3_TURN1_RAW.read_text(encoding="utf-8", errors="replace"))
+    return set(next(event["usage"] for event in reversed(events)
+                    if event.get("type") == "turn.completed"))
+
+
 def test_fake_ok_mode_emits_real_event_shapes_png_and_rollout():
     tmp, prompt, seed = _scratch()
     env = ENVELOPE_FMT.format(prompt_path=prompt, seeds=str(seed))
@@ -70,13 +102,15 @@ def test_fake_ok_mode_emits_real_event_shapes_png_and_rollout():
     tid = evs[0]["thread_id"]
     assert tid and tid.startswith("019ff")
     usage = evs[-1]["usage"]
-    for key in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens"):
-        assert isinstance(usage[key], int), key
+    assert set(usage) == _real_usage_keys()
+    assert all(isinstance(value, int) for value in usage.values())
     assert any(e.get("item", {}).get("type") == "agent_message" for e in evs)
     pngs = sorted((tmp / "generated_images" / tid).glob("*.png"))
     assert len(pngs) == 1, pngs
     from PIL import Image
     assert Image.open(pngs[0]).size == (1672, 941)
+    ink = _darkest_three_percent_rgb(pngs[0])
+    assert ink[0] - ink[2] == 18.0
     rollouts = sorted((tmp / "sessions").glob(f"*/*/*/rollout-*-{tid}.jsonl"))
     assert len(rollouts) == 1, rollouts
     body = rollouts[0].read_text(encoding="utf-8")
@@ -87,6 +121,7 @@ def test_fake_ok_mode_emits_real_event_shapes_png_and_rollout():
         and json.loads(row["payload"]["output"])["prompt"] == prompt.read_text(encoding="utf-8")
         for row in rollout_rows
     )
+    assert _p4_pre_image_call_count(rollouts[0]) == 3
 
 
 def test_fake_rejects_relative_seed_with_the_real_error_string():
@@ -117,6 +152,35 @@ def test_fake_asserts_the_real_flag_contract():
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert r.returncode != 0
     assert "--json" in r.stderr
+
+
+def test_fake_rejects_untrusted_directory_without_skip_git_repo_check():
+    tmp, prompt, seed = _scratch()
+    env = ENVELOPE_FMT.format(prompt_path=prompt, seeds=str(seed))
+    r = subprocess.run(fake_prefix("ok", tmp / "generated_images", tmp / "sessions")
+                       + ["exec", "--json", "--sandbox", "workspace-write", "--cd", str(tmp), env],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert r.returncode == 1
+    assert r.stderr == "Not inside a trusted directory and `--skip-git-repo-check` was not specified.\n"
+
+
+def test_fake_resume_reemits_the_thread_and_writes_one_new_png():
+    tmp, prompt, seed = _scratch()
+    env = ENVELOPE_FMT.format(prompt_path=prompt, seeds=str(seed))
+    fresh = run_fake("ok", envelope=env, image_root=tmp / "generated_images",
+                     sessions_root=tmp / "sessions")
+    assert fresh.returncode == 0, fresh.stderr
+    thread_id = _events(fresh.stdout)[0]["thread_id"]
+    image_dir = tmp / "generated_images" / thread_id
+    before = set(image_dir.glob("*.png"))
+
+    resumed = run_fake("resume_ok", envelope=env, image_root=tmp / "generated_images",
+                       sessions_root=tmp / "sessions", resume_thread=thread_id)
+    assert resumed.returncode == 0, resumed.stderr
+    resumed_events = _events(resumed.stdout)
+    assert resumed_events[0] == {"type": "thread.started", "thread_id": thread_id}
+    after = set(image_dir.glob("*.png"))
+    assert len(after - before) == 1
 
 
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
