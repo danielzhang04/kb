@@ -1,10 +1,12 @@
-# kb-structure spec + Phase I plan handoff — 2026-08-12 (PR #118 open, ship-now review-clean)
+# kb-structure spec + Phase I plan handoff — 2026-08-12 (plan review-clean, execution not started)
 
 **Topic:** kb-structure arc. Design + 3 rulings LOCKED; spec + Phase I plan complete and reviewed.
-Two 2026-08-12 rulings applied. Ship-now set is review-clean and open as **PR #118 → main**
-(awaits Daniel merge). Execution-plane set DEFERRED behind the workflow-platform merge (PR #117).
-Branch `claude/boss-2026-08-11c` (pushed, tip 2d327e4).
-Gate artifact: https://claude.ai/code/artifact/e61e4e55-e65c-43b6-8438-7735bf04afb8
+Two 2026-08-12 rulings applied. Plan is review-clean on branch `claude/boss-2026-08-11c` (tip
+2d327e4). **PR #118 is DRAFT (deliberately not merging)** — Daniel's sequence: merge PR #117
+(workflow-platform) first, then an EXECUTION TERMINAL runs the plan end-to-end (does the deferred
+post-merge spec pass + surfaces defects execution finds), and the execution-validated plan lands
+on main via that work — NOT by merging this un-run plan doc. The plan on this branch is the pickup
+point. Gate artifact: https://claude.ai/code/artifact/e61e4e55-e65c-43b6-8438-7735bf04afb8
 
 ### Rulings (all binding)
 - Design (2026-08-11): (1) phased monorepo/state-first, platform/data split ABANDONED; (2) desktop
@@ -56,10 +58,13 @@ bridge `sourceTurnId` = synthesized def id, not card id; real lock is synchronou
 | branch `claude/boss-2026-08-11c` | PUSHED | worktree `kb-worktrees/boss-2026-08-11c` KEEP until #118 merges |
 
 ### Exact Next Step
-Daniel merges PR #118 (ship-now plan). Independently, when PR #117 merges, run the deferred
-specification pass (above). After #118 merges: the plan is the governing Phase I execution plan —
-Tasks 1–8 are dispatchable immediately in a fresh execution arc (subagent-driven-development, one
-reviewer per task); the rest follow the plan's own sequencing + the workflow-platform gate.
+1. Daniel merges PR #117 (workflow-platform). 2. An EXECUTION TERMINAL picks up this branch/plan:
+rebase on the merged main, do the deferred post-merge spec pass (Tasks 9,21,23,24,25 against real
+contracts — criteria already written), then run the plan end-to-end via
+superpowers:subagent-driven-development (Tasks 1–8 dispatchable first; one reviewer per task).
+3. The execution-validated plan + built code land on main via THAT work. PR #118 stays draft as
+the plan-of-record thread until then (ready it, or supersede it, when execution validates).
+Do NOT merge #118 as an un-run plan doc — nothing is built and the deferred half is provisional.
 
 ### Load list
 - this handoff
