@@ -69,6 +69,30 @@ L50:
 P07:
 - Nevermind here.
 
+## Session 2 — board 2 (P08–P12), verbatim
+
+P08:
+L07:
+- Staging for chosen is better. However, again with the crowd rig
+- Unchosen, crowd is off rig, proportions wise. And I like the slightly more detail in chosen
+
+L10:
+- Chosen is just better. Good staging and lighting, does well for the shot.
+- Unchosen, nothing going on there, I don't like the staging of the environment either, and crowd rig problems
+- Note that when I talk about detail, I'm talking more about the shots where it's environment based or a literal scene. For the prop-focus or non-human focus/non environment focus shots, that's not necessarily a problem
+
+L19:
+- Chosen, "raking it in" is good. Warmer. However, since the pose isn't seeded, the guy has four fingers which is a problem. Also, one center character foreground, can be character rig instead of crowd rig
+
+- Unchosen just. I don't know. I guess it's the cooler palette, staging is a little off, and characters all have noses
+
+L20:
+- The comparison here is off. But the chosen one is just good. However, crowd rig problems like before, but it's a good shot.
+
+
+P09-11:
+- Honestly, I think my earlier feedback covers all of the feedback I would give here across the board too.
+
 ## Boss qid mapping + flags (not Daniel's words)
 
 - P01 → Q1–Q4 (chain vs place-children, plate, crowd rig). P02 → Q5–Q8. P03 → Q9–Q14
@@ -89,3 +113,9 @@ P07:
   expression, skin tone, poses, rigging?" — and whether a pre-gen asset review gate already
   exists (C-6 stamp covers staged figures; coverage of plates/expressions/objects to be
   confirmed by the routing trace).
+- Session 2 flags: P09–P11 (and by extension P12/Q45/Q47 keep-questions) closed by blanket
+  "earlier feedback covers all of the feedback I would give here across the board too" —
+  keep-side qualities therefore derive from his positive statements, not per-panel answers.
+  L20 "the comparison here is off" = board pairing defect noted (does not invalidate his
+  verdict on the chosen frame). Detail preference SCOPED: applies to environment/scene
+  shots, explicitly NOT to prop-focus/non-human/non-environment shots.
