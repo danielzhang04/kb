@@ -62,12 +62,13 @@ def _scratch():
 
 
 def _darkest_three_percent_rgb(path):
-    """The darkest-3% RGB metric used for the constructed fixture image."""
+    """Canonical darkest-3%-BY-LUMA metric, mirroring scratch-codex-image-engine/measure.py:15-20
+    (luma = 0.299R + 0.587G + 0.114B; n = max(1, int(len * 0.03)))."""
     from PIL import Image
 
     pixels = list(Image.open(path).convert("RGB").getdata())
-    count = max(1, round(len(pixels) * 0.03))
-    darkest = sorted(pixels, key=lambda rgb: sum(rgb))[:count]
+    count = max(1, int(len(pixels) * 0.03))
+    darkest = sorted(pixels, key=lambda rgb: 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])[:count]
     return tuple(sum(rgb[channel] for rgb in darkest) / count for channel in range(3))
 
 
