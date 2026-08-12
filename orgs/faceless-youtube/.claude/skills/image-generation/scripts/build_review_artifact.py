@@ -331,8 +331,8 @@ def pending_figures(staging):
 
 def figure_character(fig_id):
     """The named character a STEP-1 frame belongs to — `figure_frame_name`'s own composition
-    (`fig-<character>--<pose>--<expression>`, and `--<costume>` on a seeded performer's card),
-    read back. The character is the FIRST component, so the trailing dimensions never matter."""
+    (`fig-<character>--<pose>--<expression>`), read back. The character is the FIRST component, so
+    any trailing dimension never matters."""
     return fig_id[len(forge.FIGURE_PREFIX):].split("--")[0]
 
 

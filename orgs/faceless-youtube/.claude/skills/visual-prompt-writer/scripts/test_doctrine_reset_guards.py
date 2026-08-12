@@ -970,25 +970,25 @@ def test_video_chars_merges_registry_and_local_manifest():
                                     {"name": "prop-crate", "kind": "prop", "file": "y.png"}]}),
             encoding="utf-8")
         chars = L.video_chars({"channel": "the-second-take"}, vdir)
-    # "base" is KEPT: it is how a SEEDED PERFORMER is declared (visual-grammar §2), so every
-    # figure-reading law must see it. A prop is still not a character.
-    assert chars == {"base", "miniscribe-rep", "qt-wiles"}
+    # "base" is DROPPED (P2, 2026-08-12): the rig template is not a character and is never cast,
+    # so no figure law may bind it. A prop is still not a character either.
+    assert chars == {"miniscribe-rep", "qt-wiles"}
 
 
-def test_a_seeded_performer_counts_as_a_figure_everywhere_but_semantic_cast():
-    """The performer tier, on the lint side. `base` + its cards IS the declaration
-    (shots-schema "Casting is PROSE"), so the plate law, the delta-entrance ban and the
-    interaction rule all count it - while `semantic_cast_check`, whose subject is casting a
-    NAMED identity on a generic beat, must stay silent: an anonymous story-bearing figure
-    there is the doctrine's own fix, not the defect."""
-    chars = CHARS | {"base"}
+def test_the_rig_template_binds_no_figure_law_because_it_is_never_cast():
+    """P2, on the lint side. The performer tier is abolished: `video_chars` drops `base`
+    (ea71f99's `chars.discard`), so a prompt naming it registers as NO seeded figure anywhere -
+    the plate law, the delta-entrance ban and the interaction rule all see an empty cast. The
+    refusal lives forge-side (`seeding_law_violations`), where the naming is decidable and loud;
+    lint carries no `base` law of its own, exactly as at ea71f99."""
+    chars = CHARS                       # note: `base` is NOT added — video_chars never yields it
     performer = "A 1980s clerk, `base`, `expr-deadpan`, `action-armscrossed`, behind the counter."
     plate = [{"id": "L60", "place": "brick-co-yard", "still_prompt": performer},
              {"id": "L61", "place": "miniscribe-boardroom", "still_prompt": "The table, empty."},
              {"id": "L62", "place": "brick-co-yard", "still_prompt": "The yard again."}]
     hard = []
     L.place_plate_check("lf", plate, chars, hard)
-    assert len(hard) == 1 and "`base`" in hard[0] and "L60" in hard[0], hard
+    assert hard == [], hard             # `base` is no figure, so the plate reads as figure-free
 
     entrance = [{"id": "L10", "place": "brick-co-yard", "stage": "counter",
                  "stage_role": "base", "still_prompt": "The counter at dusk, unattended."},
@@ -996,33 +996,27 @@ def test_a_seeded_performer_counts_as_a_figure_everywhere_but_semantic_cast():
                  "stage_role": "delta", "still_prompt": performer}]
     hard = []
     L.delta_entrance_check("lf", entrance, chars, hard)
-    assert len(hard) == 1 and "`base`" in hard[0], hard
+    assert hard == [], hard
 
+    # ...and `semantic_cast_check` needs no `base` exclusion any more: the name cannot reach it.
     hard = []
     L.semantic_cast_check("lf", [{"id": "L45", "still_prompt": performer}],
                           {"L45": "The clerks were all doing the same thing."}, chars, hard)
     assert hard == []
+    # NAMED cast is still counted by that check, unchanged — the exclusion's removal is not a hole
+    hard = []
+    L.semantic_cast_check(
+        "lf", [{"id": "L46", "still_prompt": "`qt-wiles` at the counter."}],
+        {"L46": "The clerks were all doing the same thing."}, CHARS | {"qt-wiles"}, hard)
+    assert len(hard) == 1 and "qt-wiles" in hard[0], hard
 
 
-def test_a_shot_may_name_base_at_most_once_two_castings_hard_refused():
-    """A-3 (2026-08-06): the boss narrowed the law to ONE seeded performer per shot. Before this
-    guard, `_named_chars` (mirroring forge.py's `backticked()`) silently collapsed a second
-    `base` casting into the same one cast entry - the second performer's primitives never
-    surfaced as a lint finding at all. Mirrors forge.py's `seeding_law_violations`, same guard,
-    same remedy text."""
-    two_performers = ("A courtroom. `base`, `expr-deadpan`, `action-armscrossed`, stage-left, "
-                      "arguing. `base`, `expr-deadpan`, stage-right, arguing back.")
-    objs = [("L70", {"still_prompt": two_performers})]
-    hard = []
-    L.seeded_performer_singleton_check("lf", objs, hard)
-    assert len(hard) == 1, hard
-    assert "named 2 times" in hard[0] and "one-seeded-performer law" in hard[0], hard
-    assert "two distinct performer castings" in hard[0] and "`base`" in hard[0], hard
-    # exactly one `base` mention is untouched - the single-performer shot stays silent
-    performer = "A 1980s clerk, `base`, `expr-deadpan`, `action-armscrossed`, behind the counter."
-    hard = []
-    L.seeded_performer_singleton_check("lf", [("L60", {"still_prompt": performer})], hard)
-    assert hard == []
+def test_the_one_performer_cap_check_is_gone_from_lint():
+    """A-3's `seeded_performer_singleton_check` was a law ABOUT the abolished tier: it capped a
+    shot at one `base` casting. With zero castings legal there is nothing to cap, so the check is
+    deleted rather than flattened — the forge-side refusal is the whole guard, and this leaves
+    less total function than a lint refusal mirroring it."""
+    assert not hasattr(L, "seeded_performer_singleton_check")
 
 
 def test_video_chars_missing_files_degrade_to_empty_set():

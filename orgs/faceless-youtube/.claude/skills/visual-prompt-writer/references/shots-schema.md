@@ -63,7 +63,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   shot is skipped, mirroring `forge.py cmd_batch`'s own skip of non-generated shots before it ever picks a
   plate; a place with no generated shot has no plate at all. **Conditional plate law (lint-enforced, HARD):**
   a place QUALIFIES when it RECURS, or its plate declares `place_owner`; a qualifying place's plate
-  must declare **zero SEEDED figures (named cast or performer) and no `stage_role: delta`**, because every
+  must declare **zero SEEDED figures (named cast) and no `stage_role: delta`**, because every
   other shot in the place seeds it and whatever it contains bleeds into all of them. **A place RECURS when the file REVISITS it after
   leaving** — its shots form two or more NON-CONTIGUOUS runs. An unbroken single visit, however many shots
   long, is a STAGE: its chain base already IS the frame every later shot of the run seeds, so declaring a
@@ -136,8 +136,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   registry slug (`handshake`, `handoff`, `fistbump`, `action-tugofwar`) is a TWO-FIGURE geometry
   reference — two blank mannequins carrying clasp geometry and eye-line — and seeds the SCENE alongside
   both figures' step-1 cards, never one figure's pose slot. Legal only on a shot naming exactly 2 SEEDED
-  figures (2 named cast, or 1 named cast plus the shot's one seeded performer — never 2 performers), and
-  never on a `stage_role: delta` (that slate is parent +
+  figures (2 named cast), and never on a `stage_role: delta` (that slate is parent +
   both canonicals + one proved primitive, with no slot left). Solo, or on a delta: stage the gesture in
   prose and drop the slug, or move the contact to the stage base. `visual-grammar.md §2` carries the
   figure-cap slate.
@@ -179,23 +178,12 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   Seeded figures are never declared here (they are inline registry names, next bullet).
 - **Casting is PROSE, by vocabulary name.** Every recurring figure, pose, expression, and already-built
   prop is named inline in the `still_prompt` by its exact `registry.json` name, backticked — there are no
-  structured cast/pose/expression arrays. **A SEEDED PERFORMER is declared the same way and in no other
-  way: the registry character `` `base` `` named inline, plus the `expr-`/`action-` slug(s) the beat needs**
-  — that recipe IS the declaration `forge.py`'s `shot_cast` reads and the STEP-1 card
-  (`fig-base--<pose>--<expr>--<place>-<dress digest>`) it mints, and `lint_shots.py` counts it as a seeded
-  figure wherever a
-  law counts them (plate, entrance, interaction, seat, two-figure presence). A `base` named with NO card is
-  refused by both engines — the template may not render as itself. **At most ONE seeded performer per
-  shot:** the registry character `` `base` `` is named inline at most ONCE — `backticked()` dedupes a
-  repeated name into one cast entry, so a shot naming `` `base` `` twice does not build two performers,
-  and both engines hard-refuse a second `` `base` `` casting. A beat wanting two anonymous performers is
-  restaged — promote one to named cast via the registry, or stage it as crowd. **The performer's ERA DRESS is authored the
-  same way — as prose, in the shot** (there is no costume field and none is coming): `forge.py` reads the
-  opening era sentence plus the sentence naming `` `base` `` into the card's own payload, and keys the card on
-  that dress, so the clothing lives in the card's pixels and one performer's dress never travels to another's.
-  Write the era clothing in the sentence that names the figure; clothing written anywhere else never reaches
-  the card, and the figure is then dressed from the opening era sentence alone — the generator's invention
-  rather than yours. A prop making its FIRST appearance has
+  structured cast/pose/expression arrays. **THE RIG TEMPLATE `` `base` `` IS NEVER CAST:** it is not a
+  character (`style-bible.md` §1: it never appears as ITSELF), `forge.py`'s `shot_cast` does not resolve
+  it as a figure, and `seeding_law_violations` refuses a shot that names it. An anonymous foreground
+  story-bearer is CAST — resolved to an existing cast member where the story says it IS one, otherwise
+  planned at VPW step 3a as a NEW named cast member and minted through the standard cast-generation waves
+  — or the beat is restaged as mass action (`figures.crowd`). A prop making its FIRST appearance has
   no entry to name and is described in prose instead (`visual-grammar.md` §2 owns that rule).
   `image-generation` resolves names → files and surfaces any name the registry lacks at its Pass-1 human
   gate, before a token is spent.
@@ -207,8 +195,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   plus a contact phrase. This is presence only; whether the FRAMING actually shows the support is a soft
   heads-up plus a forced review row, never lint-decidable.
 - **Two-figure presence law (lint-enforced, HARD = presence).** A shot naming 2 SEEDED figures (named
-  cast or a `base` performer) must
-  state a plane clause, an eye-line clause, and a relative-head-scale clause (`"dominant"` legally resolves
+  cast) must state a plane clause, an eye-line clause, and a relative-head-scale clause (`"dominant"` legally resolves
   a scale clause via posture/framing). Presence only — whether the stated clauses actually cohere into the
   right topology is the shot critic's judgment (`critics.md`), not lint's.
 - **Semantic-cast law (lint-enforced, HARD, narrow).** Fails ONLY the decidable case: a shot's VO span

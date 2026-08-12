@@ -370,8 +370,7 @@ class Kit:
 #
 # Per named figure a gen satisfies one of:
 #   (a) FRESH  — a stage-BASE / standalone gen carries that figure's STEP-1 frame (`fig-<char>--
-#       <pose>--<expression>`, plus `--<costume>` for a seeded performer): the unchanged
-#       canonical+pose+expression recipe, run isolated so
+#       <pose>--<expression>`): the unchanged canonical+pose+expression recipe, run isolated so
 #       scene complexity never competes with rig-hold in one call (probe 2026-07-30: 6/6 held);
 #   (b) INHERITED — a delta beat carries the figure's CANONICAL plus an in-chain parent frame or
 #       the video's own plate, in ONE gen, exactly as today.
@@ -379,16 +378,15 @@ class Kit:
 # primitives exist for its rig, so its canonical IS the whole inheritable base) and a crowd, whose
 # seed is the crowd exemplar.
 SEED_CAP = 4                    # the Pass-2 seed law: past four, dilution weakens every prior
-FIGURE_PREFIX = "fig-"          # STEP 1's output: one portable frame per (char, pose, expression
-                                # — and, for a seeded performer, the costume it is dressed in)
+FIGURE_PREFIX = "fig-"          # STEP 1's output: one portable frame per (char, pose, expression)
 # `characters.base` is the shared RIG, not an on-screen character (registry `role`: "BASE TEMPLATE /
-# rig anchor — not an on-screen character"; style-bible §1: "it never appears as ITSELF"). It is
-# nonetheless the SEED of the seeded-performer tier (visual-grammar §2), so it resolves as a figure and is
-# held to three template-specific laws stated where each belongs: it must author at least one
-# `expr-`/`action-` card (`seeding_law_violations`, so the bare template can never render as
-# itself), it may be named at most ONCE per shot (`seeding_law_violations`, the one-seeded-
-# performer law — narrowed 2026-08-06, A-3), and its seeds grant FORM only, never an identity or
-# a pinned costume (`seed_roles_text`).
+# rig anchor — not an on-screen character"; style-bible §1: "it never appears as ITSELF"), and it is
+# NEVER cast: every human in frame is NAMED CAST or CROWD (visual-grammar §2), so `shot_cast`
+# excludes it. The 2026-08-06 tier that cast it as an anonymous story-bearer is abolished
+# (2026-08-12): an anonymous foreground human does not exist. The one guard that tier bought is
+# kept — naming `` `base` `` in a prompt is REFUSED BY NAME in `seeding_law_violations` rather than
+# dropped in silence, because a silent drop is what let a `base` casting seed nothing, mint no card
+# and then measure `cast_free`.
 BASE_TEMPLATE = "base"
 _PRIMITIVE_KINDS = ("pose", "action", "interaction", "expression")
 _BACKTICK_RE = re.compile(r"`([A-Za-z0-9][A-Za-z0-9._-]*)`")
@@ -474,25 +472,18 @@ def shot_cast(reg, text):
     binds to the most recently named character, which is how a shot is written (```hq-banker` ...
     stands `expr-deadpan`, `action-armscrossed```).
 
-    `base` resolves like any other character, because the SEEDED PERFORMER — the anonymous but
-    story-bearing individual (visual-grammar §2) — is authored as `` `base` `` plus the
-    `expr-`/`action-` cards the beat needs, and its step-1 card is minted from exactly that recipe.
-    It was excluded here until 2026-08-06, when the performer tier was ratified: under the abolished
-    two-tier law `base` named in a prompt could only mean the bare rig template, and excluding it
-    kept `refs/base/base.png` from entering a scene as a cast identity. That intent is preserved,
-    but where it is decidable and LOUD rather than here, where the drop was silent — naming `base`
-    resolved to `[]`, so the performer minted no card, seeded nothing, raised nothing, and then
-    measured `cast_free`. A THIRD law (A-3, 2026-08-06) narrows the tier to at most ONE `base`
-    casting per shot: `backticked()`'s own dedupe means a second `` `base` `` mention here never
-    becomes a second cast entry — its primitives silently join this ONE entry's `prims` instead —
-    so that silent collapse is caught and refused by name in `seeding_law_violations`, not left to
-    surface as an unlabelled surplus footnote. See `BASE_TEMPLATE` for the three laws that now
-    carry the guard."""
+    `base` is EXCLUDED: it is the shared rig template, not a character (`BASE_TEMPLATE`), and under
+    the two-tier law every human in frame is NAMED CAST or CROWD. The exclusion was deleted at
+    27bc7e2 to ratify a seeded-performer tier; that tier is abolished (2026-08-12) and the
+    exclusion is restored. What is NOT restored is the exclusion's silence — a prompt naming
+    `` `base` `` used to resolve to `[]` here and travel on unremarked. `seeding_law_violations`
+    now refuses that casting by name, so an author who writes one is told to cast the figure or
+    restage the beat as mass action instead of being handed a frame that seeded nothing."""
     chars = reg.get("characters", {})
     assets = {a["name"]: a for a in reg.get("assets", [])}
     cast = []
     for n in backticked(text):
-        if n in chars:
+        if n in chars and n != BASE_TEMPLATE:
             cast.append((n, []))
         elif cast and assets.get(n, {}).get("kind") in _PRIMITIVE_KINDS:
             cast[-1][1].append(n)
@@ -514,7 +505,11 @@ def costume_clause(prompt, character):
     dresses them in the wrong one. Two things are stripped before the text reaches a card
     payload: backticked control tokens, which name seeds the card already carries as images, and
     any quoted literal — a reference sheet that draws lettering bleeds that lettering into every
-    scene seeding it, and negative prose is the weaker guard against a drawn glyph."""
+    scene seeding it, and negative prose is the weaker guard against a drawn glyph.
+
+    RETAINED, currently unreferenced from production: the abolished seeded-performer tier
+    (2026-08-12) was its only consumer. P8 re-uses this derivation to widen a card's derived clause
+    from clothing to clothing + the beat's own act, so it is kept rather than deleted and re-added."""
     sentences = re.split(r"(?<=[.!?])\s+", prompt or "")
     named = [s for s in sentences if "`" + character + "`" in s]
     if not named:
@@ -559,28 +554,30 @@ def strip_micro_pattern_texture(text):
     """Remove every `MICRO_PATTERN_TEXTURE_WORDS` adjective from text bound for a RIG-REGISTER card.
 
     Scope is the whole point: this is applied ONLY where shot prose is turned into a STEP-1 figure
-    card's dress clause (`figure_card_payload`'s `costume`, which only the seeded performer passes).
-    A named character's costume is pinned in its canonical and its registry text is never rewritten
-    — `hq-banker`'s pinstripe suit is established, passing identity, and a re-mint must still say
-    pinstripe. The derived clause is likewise left intact at its source (`costume_clause`), because
-    that same string is hashed into the performer's costume KEY; stripping there would rename, and
-    so silently re-mint, every performer card already on disk."""
+    card's dress clause (`figure_card_payload`'s `costume`). A named character's costume is pinned
+    in its canonical and its registry text is never rewritten — `hq-banker`'s pinstripe suit is
+    established, passing identity, and a re-mint must still say pinstripe. The derived clause is
+    likewise left intact at its source (`costume_clause`), so the string a caller keys a card on is
+    the prose as authored.
+
+    RETAINED, currently unreferenced from production: the abolished performer tier was this path's
+    only caller. P8 re-uses the same derivation to mint a card holding the beat's own ACT."""
     out = _MICRO_PATTERN_RE.sub("", text or "")
     out = re.sub(r"\s+([,.;:])", r"\1", out)      # a removed adjective strands its space
     return re.sub(r"\s{2,}", " ", out).strip()
 
 
-def figure_frame_name(character, pose=None, expression=None, costume=None):
+def figure_frame_name(character, pose=None, expression=None):
     """STEP 1's output name. The name IS the reuse key (reuse-before-regenerate) AND the law's
     evidence that the pose/expression the prompt names is the one the slate actually carries —
     which is what makes a silent seed swap (this run's L52) a hard error instead of a mystery.
 
-    `costume` is the SEEDED PERFORMER's fourth dimension and is passed for that tier only (see
-    `cmd_batch`, which composes it as the place plus a digest of the dress the shot authored). A
-    named character's costume is pinned in its own canonical, so its key is costume-free and
-    unchanged; `base` owns no costume, so its card wears the dress of the scene that minted it,
-    and two differently dressed performers may never collide on one card."""
-    return FIGURE_PREFIX + "--".join(p for p in (character, pose, expression, costume) if p)
+    Every card here is a NAMED character's, whose costume is pinned in its own canonical — so the
+    key is costume-free, exactly as it was before the abolished performer tier added a dress
+    dimension to it. NOTE for P8: if a card is ever minted holding a DERIVED clause again
+    (`figure_card_payload`'s `costume` path, retained), that derivation must re-enter this key, or
+    two differently-derived cards for one (character, pose, expression) collide on one name."""
+    return FIGURE_PREFIX + "--".join(p for p in (character, pose, expression) if p)
 
 
 def _split_primitives(reg, prims, omitted=()):
@@ -761,10 +758,24 @@ def seeding_law_violations(k, r, seeds):
     anon, crowd = _fig_declared(r.get("figures"))
     if anon:
         bad.append(f"{name}: `figures.anon_foreground` — the one tier the pipeline cannot seed "
-                   f"({'; '.join(anon)}). It is abolished: name the figure in the video's cast "
-                   f"(seeded), author a story-bearing anonymous one as a seeded performer "
-                   f"(`base` plus its `expr-`/`action-` cards), or stage the people at crowd "
-                   f"scale (crowd exemplar).")
+                   f"({'; '.join(anon)}). It is abolished: an anonymous foreground human does not "
+                   f"exist (visual-grammar §2). Cast the figure — an existing cast member where "
+                   f"the story says it IS one, otherwise a NEW named cast member minted through "
+                   f"the standard cast-generation waves at Step 3a — or stage the beat as mass "
+                   f"action (crowd exemplar).")
+    # THE SAME REFUSAL, RE-POINTED at the other way of authoring that tier. `shot_cast` excludes
+    # `base` again, so a prompt naming it resolves to no cast entry — and a bare exclusion is
+    # SILENT: the figure minted no card, seeded nothing, and the shot then measured `cast_free`,
+    # taking §5's style tile onto a figure-bearing frame. That is the one hole the abolished
+    # performer tier was built over, and it is closed here, at $0, naming the shot, instead of by
+    # keeping the tier. Read off the raw prose, not off `cast`, because `cast` can no longer hold it.
+    if BASE_TEMPLATE in backticked(delta):
+        bad.append(f"{name}: casts `{BASE_TEMPLATE}` — the shared RIG TEMPLATE, not a character "
+                   f"(style-bible §1: it never appears as ITSELF). An anonymous foreground "
+                   f"story-bearer is not a tier: cast the figure — an existing cast member where "
+                   f"the story says it IS one, otherwise a NEW named cast member minted through "
+                   f"the standard cast-generation waves at Step 3a — or stage the beat as mass "
+                   f"action (`figures.crowd`).")
     if (crowd and not any(_stem(s).startswith("crowd-exemplar") for s in seeds)
             and not any(str(o).startswith("crowd-exemplar") for o in omitted)):
         bad.append(f"{name}: `figures.crowd` is declared but the slate carries no crowd exemplar "
@@ -863,38 +874,6 @@ def seeding_law_violations(k, r, seeds):
                        f"{', '.join(undeclared)}. Use parent + canonical by default; declare only "
                        "a proved necessary primitive.")
     for c, prims in cast:
-        if c == BASE_TEMPLATE:
-            # THE ONE-SEEDED-PERFORMER LAW (visual-grammar §2, narrowed 2026-08-06, A-3). The
-            # engine has exactly one name for the whole performer tier — `` `base` `` — and
-            # `backticked()` dedupes a repeated mention into this ONE cast entry, so a shot
-            # naming `base` twice never builds two performers: the second casting's primitives
-            # land here as extra entries in `prims` and would otherwise surface only as a
-            # `why`-logged "surplus primitive(s) NOT seeded" footnote in `cmd_batch` — the
-            # second performer demoted to silent, unseeded prose (the abolished anonymous-
-            # foreground tier, arriving unnamed). Refused here instead, at $0, naming the shot.
-            base_mentions = sum(1 for m in _BACKTICK_RE.finditer(delta) if m.group(1) == BASE_TEMPLATE)
-            if base_mentions > 1:
-                bad.append(f"{name}: `{BASE_TEMPLATE}` named {base_mentions} times — two distinct "
-                           f"performer castings in one shot. The one-seeded-performer law "
-                           f"(visual-grammar §2) allows at most ONE seeded performer per shot; "
-                           f"`backticked()` collapses a second `{BASE_TEMPLATE}` mention into this "
-                           f"same cast entry, so the engine cannot build two performers here. "
-                           f"Promote the second to named cast via the registry, or stage it as "
-                           f"crowd.")
-                continue
-        if c == BASE_TEMPLATE and not any(_split_primitives(k.reg, prims, omitted)):
-            # THE TEMPLATE MAY NOT RENDER AS ITSELF. `base` is the shared rig, and the performer
-            # tier is "seeded off the shared `base` rig THROUGH the `expr-`/`action-` vocabulary
-            # the beat needs" (visual-grammar §2). With no card authored, the step-1 recipe
-            # collapses to the bare canonical — a bald cream figure in the template's default
-            # hoodie, dropped into the shot's own era — which is exactly what style-bible §1's
-            # "it never appears as ITSELF" forbids. Refused here, at $0, naming the shot: the
-            # exclusion this replaced enforced the same thing by dropping the name in silence.
-            bad.append(f"{name}: `{BASE_TEMPLATE}` is the shared RIG TEMPLATE, not a character — a "
-                       f"seeded performer authors it WITH the `expr-`/`action-` card(s) the beat "
-                       f"needs. With none named the frame renders the bare base template "
-                       f"(style-bible §1); name a card, or cast a named character.")
-            continue
         if chars.get(c, {}).get("no_hands"):     # personified object: canonical IS the whole rig
             if not any(_is_canonical(k.reg, s, c) for s in seeds):
                 bad.append(f"{name}: `{c}` (no_hands) carries no seed — seed its canonical.")
@@ -921,11 +900,7 @@ def seeding_law_violations(k, r, seeds):
             continue
         held = [s for s in seeds if _is_figure_frame(s, c)]
         if not held:
-            # `costume_key` is the builder's own record of the dress it minted this shot's
-            # performer under (`cmd_batch`); a hand-authored spec carries none, and the expected
-            # name then reads costume-free, which is the true recipe for every named character.
-            expected = figure_frame_name(c, *_split_primitives(k.reg, prims),
-                                         r.get("costume_key") if c == BASE_TEMPLATE else None)
+            expected = figure_frame_name(c, *_split_primitives(k.reg, prims))
             bad.append(f"{name}: `{c}` is staged FRESH with no STEP-1 figure frame in the slate — "
                        f"expected {expected}. Build the slate with `forge.py batch`.")
             continue
@@ -1277,31 +1252,9 @@ def seed_roles_text(seed_roles):
         character = entry.get("character") or _stem(path)
         if role == "place":
             detail = "the destination place — preserve its set, palette, outline weight and lighting"
-        elif role == "figure" and character == BASE_TEMPLATE:
-            # The SEEDED PERFORMER's card. Same rig authority as a cast figure, minus the one
-            # thing the base template does not own: an IDENTITY. Costume it does own, since
-            # 2026-08-06: the card is minted in the scene's era dress (`figure_card_payload`'s
-            # `costume`), so the attribute-routing law puts its clothing on the card's own
-            # pixels. Telling the scene to re-dress it here would put that attribute back into
-            # loose prose over a rig seed — the exact bleed the law names.
-            detail = ("the seeded PERFORMER's STEP-1 rig card — carry its head/face/hand form, "
-                      "proportion, pose, expression and the era costume it wears exactly. It is "
-                      "an ANONYMOUS figure, not a recurring identity: it claims no name and "
-                      "recurs nowhere, but everything it wears comes from this card, never from "
-                      "the rig template's default outfit")
         elif role == "figure":
             detail = (f"`{character}`'s complete STEP-1 figure — carry that figure's identity, "
                       "costume, pose, hands and expression exactly")
-        elif role == "canonical" and character == BASE_TEMPLATE:
-            # Reached on a delta beat staging a performer (canonical + chain parent) and on the
-            # step-1 card build itself. The clothing clause is written to be true in BOTH: the
-            # card's payload now authors the scene's era costume and wins here; a card with no
-            # era dress authored (or a delta whose prose authors none) leaves the template's
-            # plain default standing.
-            detail = ("the shared BASE RIG template — head/face/hand form, proportion and head "
-                      "tone come from this image. It is the channel's rig anchor, NOT an identity "
-                      "and not a costume: the figure wears what this prompt authors, and the "
-                      "template's plain default outfit only where the prompt authors none")
         elif role == "canonical":
             detail = (f"`{character}`'s character canonical — identity, head tone, hair and the "
                       "pinned costume come from this image only")
@@ -1363,17 +1316,18 @@ def figure_card_payload(pose=None, costume=""):
     scene-level template (`_interaction_primitives`), so a card claiming "exactly as the pose
     reference shows" would be prose against nothing.
 
-    `costume` is the SEEDED PERFORMER's era dress (`costume_clause`), and it is what makes the
-    card obey the attribute-routing law: an attribute not carried by the figure's OWN seed bleeds
-    a base trait, so the era clothing has to be IN the card, never loose prose over a bare `base`
-    in the scene. A named character passes none — its canonical already pins its costume. The
-    clause sits BEFORE the backdrop sentence deliberately: the scene fragment it quotes carries
-    the shot's setting too, and "no scenery, no props, no furniture" is the fence, stated last.
+    `costume` is a clause DERIVED from the shot's own prose (`costume_clause`), spliced into the
+    card so an attribute the figure's seed does not carry is drawn on the card's own pixels rather
+    than argued for in loose scene prose. Its only caller was the abolished seeded-performer tier,
+    so NOTHING passes it today: every card here is a named character's, whose costume its canonical
+    already pins. The path is RETAINED unreferenced because P8 re-uses it, widened from clothing to
+    clothing + the beat's own act. The clause sits BEFORE the backdrop sentence deliberately: the
+    scene fragment it quotes carries the shot's setting too, and "no scenery, no props, no
+    furniture" is the fence, stated last.
 
     This is also the ONE point where a derived clause becomes rig-register card text, so it is where
-    `strip_micro_pattern_texture` applies: prose is free to dress a performer in quilted gloves, and
-    a card drawn at rig register may not draw the quilting (`line-register`). Nothing else routes
-    through here — a named character passes no costume at all."""
+    `strip_micro_pattern_texture` applies: prose is free to dress a figure in quilted gloves, and a
+    card drawn at rig register may not draw the quilting (`line-register`)."""
     stance = ("standing or seated exactly as the pose reference shows" if pose
               else "standing squarely at rest, arms relaxed at the sides, facing the viewer")
     costume = strip_micro_pattern_texture(costume)
@@ -1658,18 +1612,6 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         omitted = shot.get("assets_omitted") or {}
         declared_place = shot.get("place") or None
         place = declared_place or shot.get("stage") or name     # the ONE seeding key
-        # ...and the SEEDED PERFORMER's costume key. A performer's card is reused for the SAME
-        # COSTUME (visual-grammar §2), and its costume is whatever THIS shot's prose authors — so
-        # the key is that dress: the place it reads as, which keeps the name a legible filename
-        # stem for a `place` that fell back to a shot id (`L07`), plus a digest of the authored
-        # dress clause. The place ALONE is not the costume: a labourer and a barrister in ONE
-        # courtroom share a pose and an expression, and on a place-only key the second silently
-        # wears the first's clothes while `seed_roles_text` tells the scene the card's costume is
-        # the authority. Same dress, same card; a different dress mints its own.
-        dress = costume_clause(prompt, BASE_TEMPLATE)
-        costume_key = re.sub(r"[^a-z0-9]+", "-", place.lower()).strip("-")
-        if dress:
-            costume_key += "-" + hashlib.sha256(dress.encode("utf-8")).hexdigest()[:8]
         anchor = shot.get("place_anchor")
         if in_scope and anchor is not None:
             if str(shot.get("stage_role", "")).lower() == "delta":
@@ -1748,13 +1690,10 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                     prim_roles.append(_seed_role(vfile(primitive), role, c))
                 why.append(f"`{c}` delta -> parent + canonical"
                            + (f" + proved {', '.join(declared)}" if declared else "")); continue
-            # The costume dimension is the PERFORMER's alone: a named character's costume is
-            # pinned in its own canonical (registry `costume`), so its card is costume-invariant
-            # and its key is unchanged. `base` owns no costume, so the era dress the shot authors
-            # is the card's own — and two performers dressed for different eras must not collide
-            # on one card.
-            performer = c == BASE_TEMPLATE
-            fn = figure_frame_name(c, pose, expr, costume_key if performer else None)
+            # Every card here is a NAMED character's: its costume is pinned in its own canonical
+            # (registry `costume`), so the card is costume-invariant and its key carries no dress
+            # dimension. The abolished performer tier was the only shape that needed one.
+            fn = figure_frame_name(c, pose, expr)
             if not in_scope:
                 # Out of scope: resolve what its slate WOULD carry so the law can judge it, but mint
                 # nothing — an out-of-scope shot must not consume the reuse key an in-scope shot owns.
@@ -1774,16 +1713,14 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                         raise SystemExit(refusal)
                     made[fn] = reused; why.append(f"`{c}` STEP-1 {fn} REUSED")
                 else:
-                    step1_payload = figure_card_payload(pose, dress if performer else "")
+                    step1_payload = figure_card_payload(pose)
                     spec.append({"name": fn, "mode": "environment", "aspect": "2:3",
                                  "image_size": "1K", "stage_role": "base",
                                  "seed": [role["path"] for role in step1_roles],
                                  "seed_roles": step1_roles, "payload": step1_payload,
                                  "delta": placement_delta(step1_payload, step1_roles),
                                  "why": f"STEP 1 for `{c}` ({pose or 'no pose'} / "
-                                        f"{expr or 'no expr'}"
-                                        + (f" / dressed for `{costume_key}`)" if performer
-                                           else ")")})
+                                        f"{expr or 'no expr'})"})
                     made[fn] = "_staging/" + fn + ".png"
                     why.append(f"`{c}` STEP-1 {fn} GENERATE")
             else:
@@ -1928,12 +1865,6 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                 "payload": prompt, "prompt_suffix": prompt_suffix or None,
                 "seed": seeds, "seed_roles": seed_roles,
                 "figures": shot.get("figures"), "stage_role": shot.get("stage_role"),
-                # The key this shot's performer card was dressed under — carried so the seeding law
-                # names the SAME card the builder minted, and absent where no performer is cast.
-                # It is a KEY, not a costume: the registry's own `costume` is a named character's
-                # pinned outfit, and a performer has none.
-                "costume_key": (costume_key if any(c == BASE_TEMPLATE for c, _ in cast_recipe)
-                                else None),
                 "assets_omitted": sorted(set(omitted) | set(displaced)) or None, "plate": plate,
                 "delta_primitives": declared_delta_primitives or None,
                 "expression_change": expression_change or None,
@@ -2245,9 +2176,7 @@ def _retry_step1(entry, source, k, label):
     instruction = entry.get("instruction")
     if instruction is not None and (not isinstance(instruction, str) or not instruction.strip()):
         raise SystemExit(f"{label}: STEP-1 `instruction` must be a non-empty string when present.")
-    payload = figure_card_payload(
-        pose, costume_clause(source.get("still_prompt") or "", character)
-        if character == BASE_TEMPLATE else "")
+    payload = figure_card_payload(pose)
     if instruction:
         payload += "\n\n" + instruction.strip()
     delta = placement_delta(payload, seed_roles)

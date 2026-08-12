@@ -97,7 +97,8 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    shot casts a named character for a beat the VO describes generically, ask: does THIS beat, in THIS
 >    script, actually belong to that named character, or is this a leftover of blanket generic→named
 >    substitution rather than a scene-by-scene casting decision? The fix direction for the latter is a
->    seeded performer — an anonymous story-bearing individual — never a demotion of the beat to crowd.
+>    cast member the beat genuinely belongs to (an existing one, or a new one planned at step 3a) or a
+>    restage as mass action — never a demotion of the beat to rear-zone crowd.
 >    (Mechanism: vpw-log.md Phase B3, the bulk
 >    `anon_foreground`→named-cast conversion pass; audit-drift §E7 — L100/L101 cast two specific named leads
 >    for a beat the script only ever calls "the managers.")

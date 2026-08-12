@@ -147,17 +147,14 @@ policy] + [the shot's authored identity → scene → payload]**. The payload or
 provider text; no Forge clause follows it. This is an **amplifier fix pending controlled validation**, not an
 established Class-A cure. **Anonymous-figure rig clauses are never written into a prompt.** The shot
 DECLARES crowd presence in `figures` — `{"crowd": true}` — and forge expands the bible's §2d blockquote at gen
-time when it is set. **Figures are SEEDED (named cast · seeded performer) or CROWD; there is no unseedable
-foreground tier.** Named cast seeds from its Pass-1 canonical; a seeded performer — the anonymous but
-story-bearing individual — mints its own STEP-1 card off the `base` rig in the shot's era costume and the
-beat's `expr-`/`action-` cards, and the scene seeds that card; crowd gets the §2d clause. **At most ONE
-seeded performer per shot** — the engine has exactly one name for the whole tier (`` `base` ``), so a
-shot cannot address two distinct performers; `seeding_law_violations` hard-refuses a second `` `base` ``
-casting, naming the one-seeded-performer law. A beat wanting two anonymous performers is restaged —
-promote one to named cast via the registry, or stage it as crowd.
-`figures.anon_foreground` is a known-but-abolished key: the seeding law refuses it by name — name the figure
-in the video's cast (seeded), author a story-bearing anonymous one as a seeded performer, or stage the people
-at crowd scale (crowd exemplar). A declared `figures` field also forces the §2c append; without it Forge adds no
+time when it is set. **Figures are NAMED CAST or CROWD; there is no third tier and no unseedable
+foreground tier.** Named cast seeds from its Pass-1 canonical; crowd gets the §2d clause. An anonymous
+foreground human does not exist: `shot_cast` never resolves the bare `` `base` `` rig as a figure, and
+`seeding_law_violations` refuses a shot that casts it, by name.
+`figures.anon_foreground` is a known-but-abolished key, refused by the same law with the same remedy —
+cast the figure (an existing cast member where the story says it IS one, otherwise a NEW named cast member
+minted through the standard cast-generation waves at VPW step 3a), or stage the beat as mass action
+(crowd exemplar). A declared `figures` field also forces the §2c append; without it Forge adds no
 anonymous-figure clause. The authored delta
 changes only the variables it names while the style policy remains binding. **Pre-flight a batch with `forge.py
 gen --dry-run`**: it prints every assembled prompt and resolves every seed with zero API calls — read the prompts
@@ -237,14 +234,10 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
   re-composes identity from words, so the ladder's reason to exist is gone. **STEP 1** runs the unchanged seeding
   recipe — canonical + pose frame + expression frame — **in isolation**, no scene content, into one portable
   per-video figure frame (`fig-<character>--<pose>--<expression>`, the video's own asset, never channel `refs/`).
-  A **seeded performer's** card carries a fourth dimension, its era dress:
-  `fig-base--<pose>--<expr>--<place>-<dress digest>` — the place it reads as, plus a digest of the dress its own
-  prose authored, so a card is shared only where that dress is identical. A named character's costume is pinned
-  in its canonical while `base` owns none, so without the dimension two differently dressed performers on one
-  pose/expression recipe collide on a single card. Its payload authors that
-  costume from the minting shot's own prose (`forge.py::costume_clause` — the opening era sentence plus the
-  sentence naming the figure, control tokens and quoted literals stripped), which is the same source a place
-  plate takes its era from.
+  Every card is a named character's, and its costume is pinned in its own canonical, so the key carries no
+  dress dimension. (`forge.py::costume_clause` and `figure_card_payload`'s `costume` path — a clause derived
+  from the minting shot's own prose — are RETAINED unreferenced for P8, which re-uses them to mint a card
+  holding the beat's own act.)
   **STEP 2**, the scene gen, seeds `[step-1 figure(s)] > [the video's plate]` and never the raw triple again.
   Splitting the recipe out of the scene gen is the fix: scene complexity competing with rig-hold inside one call is
   what throws a figure off rig. A **delta beat is single-step:** in-chain parent first, then each held figure's
@@ -343,7 +336,7 @@ slice N+1 **only** because that slice's review recorded a verdict for it. The lo
    <figure-verdicts.json> <kit>/_staging`. Same single-writer law as the scene path — `stamp_review.py` is the ONLY
    writer of a verdict anywhere in this pipeline; the board writes only the skeleton, and forge only ever reads.
 
-The record shape the store keeps, per `fig-<character>--<pose>--<expression>` (`--<costume>` too on a performer's card):
+The record shape the store keeps, per `fig-<character>--<pose>--<expression>`:
 `{canonical_sha256, expression_sha256, verdicts: {"<invariant-slug>": "pass"|"fail", …}, reviewer, date}`. A
 re-review of the same id REPLACES the record wholesale; ids absent from an input are untouched (additive merge).
 **A staged figure with no record, with no per-invariant verdicts, with any `fail`, or whose `canonical_sha256` no
@@ -357,9 +350,7 @@ The pass rules three axes together, per shot, at **ordinary viewing scale**:
 
 1. **Identity/rig** — a **FORCED PASS/FAIL verdict on each §3 invariant**, never a silent pass, for **every seeded
    figure**, judged against the tier §3 assigns it (named cast → FULL rig, against that character's approved
-   canonical, not an idealized rig; seeded performer → FULL rig, against its own STEP-1 card and the `base`
-   canonical behind it — never against the template's default outfit, which its era costume replaces;
-   crowd → CROWD rig). A chain-delta frame adds a **held-set** line (set + identities
+   canonical, not an idealized rig; crowd → CROWD rig). A chain-delta frame adds a **held-set** line (set + identities
    consistent with this stage's `base`?).
    On any FAIL name the shot id and quote the offending pixel; a hand PASS is never worded as certified, because the
    human board is the final finger authority. **This FRESH-EYES review is the rig authority — a GENERATING agent's

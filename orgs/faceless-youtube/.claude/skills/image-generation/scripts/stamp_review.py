@@ -50,7 +50,7 @@ every STEP-1 the last one minted. Shape (a bare `{fig_id: record, ...}` mapping 
 no `"figures"` wrapper required):
 
     {"figures": {
-      "fig-<char>--<pose>--<expr>": {          # ...--<costume> on a seeded performer's card
+      "fig-<char>--<pose>--<expr>": {
         "canonical_sha256": "<sha256 of the reviewed canonical PNG>",
         "expression_sha256": "<sha256 of the expression seed, or null>",
         "verdicts": {"<invariant-slug>": "pass|fail", ...},

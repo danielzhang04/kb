@@ -293,11 +293,14 @@ def test_g7_anon_foreground_gets_forges_named_refusal_not_a_generic_unknown_key(
     assert len(hard) == 1, hard
     assert "unknown key" not in hard[0], hard
     assert "abolished" in hard[0] and "crowd exemplar" in hard[0], hard
-    # THREE remedies, not two: the seeded-performer route (visual-grammar §2) became executable
-    # 2026-08-06 when forge's `shot_cast` stopped excluding `base`. forge.py states the same
-    # three in the same order — a refusal that hides a legal route sends the author to the
-    # wrong tier, which is the demotion-to-crowd defect the performer exists to end.
-    assert "seeded performer" in hard[0] and "`base`" in hard[0], hard
+    # TWO remedies (P2, 2026-08-12): the seeded-performer route is abolished with the tier, and
+    # its slot in the refusal is taken by the disposition Daniel ruled — cast it (existing cast
+    # member, else a NEW one through the standard cast-generation waves) or stage mass action.
+    # forge.py states the same two in the same order: a refusal that names a dead tier sends the
+    # author back into the failure the rollback exists to end.
+    assert "seeded performer" not in hard[0] and "`base` plus" not in hard[0], hard
+    assert "NEW named cast member" in hard[0] and "standard cast-generation waves" in hard[0], hard
+    assert "mass action" in hard[0], hard
 
 
 def test_g7_crowd_false_is_soft_not_hard():

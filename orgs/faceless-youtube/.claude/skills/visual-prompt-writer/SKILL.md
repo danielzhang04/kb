@@ -82,17 +82,12 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** A crowd needs a positive rear
    zone in the PRIMARY scene clause — the far side of a table/shelving, behind glass or a divider, through a
    doorway — never a co-planar gathering later called "background-scale". **Crowd is for genuine MASSES.**
-   An anonymous individual who BEARS the beat — performs the gag, reacts, decides — is staged as a **seeded
-   performer** (the `base` rig named with the `expr-`/`action-` slugs the beat needs, in the shot's own era
-   clothing, minted as its own STEP-1 card before the scene seeds it), not demoted to the rear zone; a
-   person with a locked identity is CAST; only people with no story-bearing part are staged at crowd scale.
-   **A shot casts at most ONE seeded performer** — `` `base` `` is named inline at most once; a beat
-   wanting a second anonymous performer is restaged — promote one to named cast via the registry, or
-   stage it as crowd (both engines hard-refuse a second `` `base` `` casting).
-   **Write that era clothing in the SAME SENTENCE that names `` `base` ``** — `forge.py` reads that sentence
-   (plus the prompt's opening era sentence) into the card's own payload, and keys the card on that dress —
-   clothing written anywhere else never reaches the card, and the figure is then dressed from the opening era
-   sentence alone, the generator's invention rather than yours. Tier law: `visual-grammar.md §2`.
+   An anonymous individual who BEARS the beat — performs the gag, reacts, decides — is **CAST**, never
+   demoted to the rear zone and never staged as the bare `` `base` `` rig (both engines refuse that
+   casting by name). It was planned into the cast list at step 3a: resolved to an existing cast member
+   where the story says it IS one, otherwise a NEW named cast member minted through the standard
+   cast-generation waves. Only people with no story-bearing part are staged at crowd scale, and a beat
+   that is genuinely a mass is staged as mass action. Tier law: `visual-grammar.md §2`.
    The style-bible §2d rig-clause TEXT never appears in a prompt — you declare, and `forge.py` expands it at
    gen time (lint HARD-fails the clause fingerprint). Stay inside the grammar's figure cap and flag its
    high-risk case in `notes`. Field spec: `shots-schema.md §2`.
@@ -162,6 +157,10 @@ at the first act's level.
 - **The video's named cast** — complete, planned before authoring, and derived from the script: include every recurring or
   story-bearing person or institution whose identity matters. Do not add or remove cast to chase population;
   if a later identity is genuinely needed, revise the plan before continuing, never invent a slug mid-pass.
+  **An ANONYMOUS story-bearer is planned INTO this list here, at 3a time** — resolved to an existing cast
+  member where the story says it IS one, otherwise minted as a NEW named cast member through the standard
+  cast-generation waves (same canonical + seeding rounds as any other cast), or the beat is restaged as
+  mass action. There is no anonymous-foreground tier to fall back on (`visual-grammar.md §2`).
 - **Places, stages + environments:** decide now which sets recur and carry held `stage` chains and which
   are one-frame standalones. A **`place`** is a recurring diegetic set identity (kebab-case, e.g.
   `miniscribe-boardroom`) — distinct from `stage`, a continuity chain *within* one place (capped 1 base +
@@ -173,7 +172,7 @@ at the first act's level.
   (`source: ai-gen | hybrid`, absent defaults to `ai-gen`; a stock/chart/screencap/archival shot is
   skipped, mirroring forge's own skip); for a QUALIFYING
   place (it recurs, or its plate declares `place_owner`) the plate must carry zero SEEDED figures (named
-  cast or performer) and no `stage_role: delta` — a single-visit, unbranded place is its own place-first frame and stays
+  cast) and no `stage_role: delta` — a single-visit, unbranded place is its own place-first frame and stays
   seedless (a dedicated plate for it is pure waste). Every declared `place` must map to a span in
   `script.md` (`script_vocab`) — an invented place fails lint like invented lettering. Every plate makes
   the **owner forced choice**: declare exactly one of `place_owner: '<LITERAL>'` (the quoted cue must

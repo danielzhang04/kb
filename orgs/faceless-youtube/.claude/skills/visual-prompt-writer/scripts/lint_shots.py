@@ -1253,9 +1253,9 @@ def figures_check(label, objs, hard, soft):
             hard.append(
                 f"[{label}] {pid}: `figures.anon_foreground` is abolished — forge.py hard-rejects "
                 f"it by name (SystemExit, `seeding_law_violations`): name the figure in the video's cast "
-                f"(seeded), author a story-bearing anonymous one as a seeded performer (`base` "
-                f"plus its `expr-`/`action-` cards), or stage the people at crowd scale (crowd "
-                f"exemplar).")
+                f"(seeded) - an existing cast member where the story says it IS one, otherwise "
+                f"a NEW named cast member minted through the standard cast-generation waves at "
+                f"Step 3a - or stage the beat as mass action (crowd exemplar).")
             unknown = [k for k in unknown if k != "anon_foreground"]
         if unknown:
             hard.append(f"[{label}] {pid}: `figures` has unknown key(s) {unknown!r}. The field is "
@@ -1626,7 +1626,7 @@ def place_groups(shots):
 
 def place_plate_check(label, shots, chars, hard):
     """C-4 HARD. A QUALIFYING place's plate (see `place_groups`) declares zero SEEDED
-    figures - named cast or a `base` performer - and is not a stage `delta`.
+    figures - named cast - and is not a stage `delta`.
 
     Why those two: the plate is the frame every other shot in the place seeds from, so
     whatever it contains bleeds into all of them. A seeded figure on the plate means every
@@ -1651,7 +1651,7 @@ def place_plate_check(label, shots, chars, hard):
                 f"law - the file revisits it, or its plate declares place_owner "
                 f"({'declared' if 'place_owner' in plate else 'absent'}), {len(grp)} shot(s)) "
                 f"names {', '.join('`' + c + '`' for c in named)}. A plate declares ZERO SEEDED "
-                f"figures - named cast or a `base` performer (C-4): every other shot in the place "
+                f"figures (C-4): every other shot in the place "
                 f"seeds it, so a figure on the plate bleeds into all of them. Author a figure-free "
                 f"establishing frame first, or move this shot after one.")
         if str(plate.get("stage_role") or "").lower() == "delta":
@@ -1775,7 +1775,7 @@ def delta_parent_of(shots):
 
 def delta_entrance_check(label, shots, chars, hard):
     """HARD. A seeded figure's FIRST appearance on a set is never a `stage_role: delta` -
-    named cast and a `base` performer alike, since both inherit through the same seeds.
+    every seeded figure is named cast, and all of them inherit through the same seeds.
 
     The mechanism, from the 2026-08-04 fresh fifth's L41 (which refused the whole batch at
     forge's pre-flight): the delta seeding path supplies [in-chain parent + canonical] and
@@ -1986,7 +1986,7 @@ def interaction_cast_check(label, objs, chars, interactions, hard):
 
     TWO refusals, one per way of breaking it:
       * fewer than 2 seeded figures - a solo shot has no second body for the clasp geometry
-        (named cast and a `base` performer count alike, exactly as the figure cap counts them);
+        (named cast, counted exactly as the figure cap counts them);
       * on a `stage_role: delta` - a two-figure delta seeds [parent + canonical A + canonical
         B + one proved primitive] and has no slot left, and the grammar's own figure-cap table
         says a fresh two-figure shot is the BASE of a stage and every later two-figure beat in
@@ -2167,14 +2167,15 @@ def prop_nouns(vo_text):
     return out
 
 
-# The shared rig template, and the registry name a SEEDED PERFORMER is authored under
-# (visual-grammar §2). Mirrors forge.py's `BASE_TEMPLATE` - the same string on both engines.
+# The shared rig template - NOT a character, and never cast (visual-grammar §2). Mirrors forge.py's
+# `BASE_TEMPLATE`, the same string on both engines, and used here for the one thing it is: the name
+# `video_chars` drops out of the figure vocabulary.
 BASE_TEMPLATE = "base"
 
 
 def _named_chars(prompt, chars):
-    """Seeded figures backticked in `prompt`, in first-appearance order - named cast and
-    `base` (a seeded performer) alike, since every figure law counts them the same."""
+    """Seeded figures backticked in `prompt`, in first-appearance order - every one of them
+    NAMED CAST, since `video_chars` drops the rig template and crowd carries no slug."""
     out = []
     for m in _BACKTICK.finditer(prompt or ""):
         n = m.group(1)
@@ -2193,15 +2194,11 @@ def video_chars(data, vdir):
     missing/unreadable degrades that half silently, never a hard failure - this is a
     figure-BINDING aid, not the name-resolution gate the critic already owns (question 3).
 
-    `base` is KEPT, because it is how a SEEDED PERFORMER is declared: the anonymous but
-    story-bearing individual is authored as `` `base` `` plus the `expr-`/`action-` cards
-    the beat needs (visual-grammar §2, shots-schema "Casting is PROSE"), and forge's
-    `shot_cast` resolves it as a figure. Dropping it here made every figure-reading law -
-    the plate's zero-seeded-figures rule, the delta entrance ban, the interaction
-    two-figure rule, seat/support, two-figure presence - blind to one whole tier while
-    forge enforced them on it. The ONE law that must NOT see it is `semantic_cast_check`,
-    whose whole subject is casting a NAMED identity on a generic beat; it excludes
-    `BASE_TEMPLATE` by name, since a performer there is the correct answer, not the defect."""
+    `base` is DROPPED: it is the shared rig template, not a character, and it is never cast
+    (visual-grammar §2 - every human in frame is NAMED CAST or CROWD). It was kept here from
+    2026-08-06 to 2026-08-12 so the figure laws could see the seeded-performer tier; that tier
+    is abolished, `shot_cast` excludes `base` again, and forge refuses a `base` casting by name
+    (`seeding_law_violations`) - so a name no law may bind must not enter this vocabulary."""
     chars = set()
     channel = data.get("channel")
     if channel:
@@ -2211,6 +2208,7 @@ def video_chars(data, vdir):
             chars |= set(reg.get("characters", {}).keys())
         except (OSError, ValueError):
             pass
+    chars.discard(BASE_TEMPLATE)
     mani_path = vdir / "assets" / "library" / "manifest.json"
     try:
         mani = json.loads(mani_path.read_text(encoding="utf-8"))
@@ -2273,8 +2271,7 @@ def seat_support_check(label, objs, chars, soft, hard):
 
 
 def two_cast_presence_check(label, objs, chars, hard):
-    """C-8 HARD = presence only. A shot naming >=2 SEEDED figures (named cast or a
-    `base` performer) must state a
+    """C-8 HARD = presence only. A shot naming >=2 SEEDED figures (named cast) must state a
     plane clause, an eye-line clause, and a relative-head-scale clause ("dominant"
     legally resolves scale via posture/framing, per the design). Whether the stated
     clauses describe the right TOPOLOGY - the audit's own L66 finding, where the
@@ -2299,28 +2296,6 @@ def two_cast_presence_check(label, objs, chars, hard):
                 f"[{label}] {pid}: 2+-seeded-figure shot ({', '.join('`' + c + '`' for c in named)}) "
                 f"states no {', '.join(missing)} clause - presence only (C-8); whether the stated "
                 f"clauses cohere into the right topology is the critic's call.")
-
-
-def seeded_performer_singleton_check(label, objs, hard):
-    """HARD. The one-seeded-performer law (visual-grammar §2, narrowed 2026-08-06, A-3): a shot
-    may name `` `base` `` - the seeded performer - AT MOST ONCE. `_named_chars` (and forge.py's
-    `backticked()`) dedupe a repeated name into ONE cast entry, so a shot naming `base` twice
-    never builds two performers: the second mention's primitives silently join the one entry's
-    recipe and would otherwise surface only as forge.py's `why`-logged "surplus primitive(s) NOT
-    seeded" footnote - the second performer demoted to unseeded prose, the abolished anonymous-
-    foreground tier arriving unnamed. Mirrors forge.py's `seeding_law_violations`, same guard,
-    same remedy."""
-    for pid, sh in objs:
-        prompt = sh.get("still_prompt") or ""
-        base_mentions = sum(1 for m in _BACKTICK.finditer(prompt) if m.group(1) == BASE_TEMPLATE)
-        if base_mentions > 1:
-            hard.append(
-                f"[{label}] {pid}: `{BASE_TEMPLATE}` named {base_mentions} times — two distinct "
-                f"performer castings in one shot. The one-seeded-performer law (visual-grammar "
-                f"§2) allows at most ONE seeded performer per shot; `backticked()` collapses a "
-                f"second `{BASE_TEMPLATE}` mention into this same cast entry, so the engine "
-                f"cannot build two performers here. Promote the second to named cast via the "
-                f"registry, or stage it as crowd.")
 
 
 def action_chain_check(label, shots, id2text, hard):
@@ -2402,10 +2377,7 @@ def semantic_cast_check(label, shots, id2text, chars, hard):
         if not plural:
             continue
         prompt = sh.get("still_prompt") or ""
-        # A seeded PERFORMER (`base`) is excluded: this check is about casting a NAMED
-        # identity on a beat the narration keeps generic, and staging an anonymous
-        # story-bearing figure there is the doctrine's own fix, never the defect.
-        named = [c for c in _named_chars(prompt, chars) if c != BASE_TEMPLATE]
+        named = _named_chars(prompt, chars)
         if not named:
             continue
         window_ids = [ordered[k] for k in (i - 1, i, i + 1) if 0 <= k < len(ordered)]
@@ -2514,7 +2486,6 @@ def main(argv):
     payload_last_check("long-form", lf_shots, suffix, hard)
     lettering_route_check("long-form", lf_objs, suffix, hard)
     interaction_cast_check("long-form", lf_objs, chars, interactions, hard)
-    seeded_performer_singleton_check("long-form", lf_objs, hard)
     bool_field_check("long-form", lf_objs, "hard_cut", hard)
     bool_field_check("long-form", lf_objs, "owner_ambiguity", hard)
     action_chain_check("long-form", lf_shots, lf_text, hard)
@@ -2594,7 +2565,6 @@ def main(argv):
         lettering_route_check(slabel, sshot_objs + ([("first_frame", ff_obj)] if ff_obj else []),
                               suffix, hard)
         interaction_cast_check(slabel, sshot_objs, chars, interactions, hard)
-        seeded_performer_singleton_check(slabel, sshot_objs, hard)
         place_context_exempt_check(slabel, [("first_frame", ff_obj)] if ff_obj else [], hard)
         bool_field_check(slabel, sshot_objs, "hard_cut", hard)
         bool_field_check(slabel, sshot_objs, "owner_ambiguity", hard)
