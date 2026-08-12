@@ -861,23 +861,35 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     },
 
     async resolveBase(input) {
+      // A stage with no dependencies verifies nothing, touches no coordination checkout and reads no
+      // journal, so it stays OUTSIDE the transaction/queue entirely — this is the only path here that
+      // never reaches `opsGit`.
       if (input.dependencyStageIds.length === 0) return null;
-      const state = readState(statePath);
-      const exact = input.dependencyResultOperationKeys === undefined ? null : new Map(input.dependencyResultOperationKeys.map((item) => [item.stageId, item.operationKey]));
-      if (exact && (exact.size !== input.dependencyStageIds.length || input.dependencyStageIds.some((stageId) => !exact.has(stageId)))) {
-        throw new CanonicalResultIntegrationError('dependency result identities do not match the dependency graph');
-      }
-      for (const dependency of input.dependencyStageIds) {
-        const record = state.records.find((item) => item.subject === input.subject && item.runRef === input.runRef
-          && item.stageId === dependency && item.state === 'canonical-committed'
-          && (exact === null || item.operationKey === exact.get(dependency)));
-        if (!record) throw new CanonicalResultIntegrationError(`dependency '${dependency}' lacks a committed canonical result`);
-        await verifyCanonical(record);
-      }
-      const lineage = await ensureLineage(input.runRef);
-      const commit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'lineage base resolution');
-      if (!SHA.test(commit)) throw new CanonicalResultIntegrationError('lineage base is not immutable');
-      return commit;
+      // Everything below MUST be serialized exactly like `lookup`/`integrate`: `verifyCanonical` runs
+      // coordination git through `opsGit`, and the production runner (`defaultGitRunner`,
+      // `createAsyncGitRunner({ requireTransaction: true })`) REJECTS outside `withOpsTransaction`.
+      // Without this wrapper every dependent stage crashed at dispatch with "ops git 'fetch' invoked
+      // outside withOpsTransaction" — stage 1 always worked because this method only runs when a stage
+      // has dependencies. The journal read joins the span too, so it is ordered against concurrent
+      // integrations rather than racing a half-written record.
+      return serialize(async () => {
+        const state = readState(statePath);
+        const exact = input.dependencyResultOperationKeys === undefined ? null : new Map(input.dependencyResultOperationKeys.map((item) => [item.stageId, item.operationKey]));
+        if (exact && (exact.size !== input.dependencyStageIds.length || input.dependencyStageIds.some((stageId) => !exact.has(stageId)))) {
+          throw new CanonicalResultIntegrationError('dependency result identities do not match the dependency graph');
+        }
+        for (const dependency of input.dependencyStageIds) {
+          const record = state.records.find((item) => item.subject === input.subject && item.runRef === input.runRef
+            && item.stageId === dependency && item.state === 'canonical-committed'
+            && (exact === null || item.operationKey === exact.get(dependency)));
+          if (!record) throw new CanonicalResultIntegrationError(`dependency '${dependency}' lacks a committed canonical result`);
+          await verifyCanonical(record);
+        }
+        const lineage = await ensureLineage(input.runRef);
+        const commit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'lineage base resolution');
+        if (!SHA.test(commit)) throw new CanonicalResultIntegrationError('lineage base is not immutable');
+        return commit;
+      });
     },
 
     async integrate(input) {
