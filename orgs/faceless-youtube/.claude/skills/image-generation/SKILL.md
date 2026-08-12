@@ -53,6 +53,13 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
      pre-generated as portable canonicals (they are not; see the Pass-1/Pass-2 split above), but because their
      PIXELS seed other scenes, and nothing seeds a scene on a ruling nobody made. A **pose / expression /
      interaction primitive** the shots name is listed on the same terms.
+   - The **crowd exemplar is minted per VIDEO** (`assets/library/crowd-exemplar.png`), through that same
+     slot and gate — carrying THIS video's era dress, its 2–3 flat head tones and its 2–3 hair/headwear
+     silhouettes (bible §2d). It is an **ANCHOR, not a uniform**: it fixes rig discipline, the tone set and
+     the era, and it must NOT homogenize the video. Each scene's crowd still dresses for **its own**
+     setting and era (§2d's "THIS shot's own scene era and setting", never the exemplar's period dress),
+     and hair still varies inside the 2–3-silhouette bound per group. A video that has not minted one
+     falls back to the channel's standing `refs/base/crowd-exemplar.png`.
    - The ONE exemption: a **named cast member minted through the standard cast-generation wave from the asset base**
      needs no per-item human slot of its own — its own canonical is trusted (G2 ruling, 2026-08-12); everything it is
      seeded WITH (pose, expression, plate, prop) is still listed here.
@@ -123,7 +130,7 @@ every seeded composite, including a direct spec, must carry ordered `{path, role
 | **A rig FIX never seeds the defective frame** | Regen FRESH from canonicals off a re-authored prompt — the defect lives in the strongest seed and rides it back about half the time. The only defective-seed exceptions are an authored delta-chain parent and a human-ordered framing hold, and BOTH are re-ruled by the next fresh-eyes pass at ordinary viewing scale, like every other frame. **`crop_battery.py` is RETIRED** — no review procedure calls it and no verdict depends on it (2026-08-03 ruling: "I don't need a super crazy review process… it just burns time"). The file stays on disk as a historical tool only. |
 | **Match-prop** | A prop in more than one shot seeds its **first approved frame** as the prop canonical; later shots seed that exact frame and never re-describe the design in words. |
 | **Maps are cropped, not regenerated** | A new region of an established map is a deterministic PIL crop; a regen invents a new coastline, palette and lettering hand. Regen only if the map canonical genuinely lacks the region, and then seed the map canonical + the parchment-map anchor. Borders and routes drawn onto the crop are motion layers. |
-| **Crowd with one seeded lead** | The crowd starves the lead's costume: restate its pinned costume explicitly even though it is seeded, and give the crowd a contrasting uniform/palette. Every crowd-bearing gen also seeds the **crowd exemplar** (`refs/base/crowd-exemplar.png`), which is what pins crowd proportion and face. |
+| **Crowd with one seeded lead** | The crowd starves the lead's costume: restate its pinned costume explicitly even though it is seeded, and give the crowd a contrasting uniform/palette. Every crowd-bearing gen also seeds the **crowd exemplar** — this video's own `assets/library/crowd-exemplar.png` when it has minted one, otherwise the channel's `refs/base/crowd-exemplar.png` — which is what pins crowd proportion, face and the video's head-tone set. |
 
 `place_anchor` is legal on any non-delta shot whose `place` is already established — not restricted to a
 regenerated `base`. Author the human-approved video-local `assets/scenes/<frame>.png` frame; Forge resolves

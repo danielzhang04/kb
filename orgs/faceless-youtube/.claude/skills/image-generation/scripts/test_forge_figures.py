@@ -78,8 +78,8 @@ def test_delta_shot_keeps_the_crowd_clause():
 
 # P1 PIN — the CROWD FACE TIER (style-bible §2d): dot eyes / one simple mouth / NO nose / NO ears /
 # NO teeth / the squat proportion, applied to EVERY crowd figure. Protects "don't slip back into
-# prior rig problems". Deliberately excludes the "round cream-family heads" head-tone phrase, which
-# is the ONE span P4 is approved to rewrite.
+# prior rig problems". Deliberately excludes the head-tone phrase, which is the ONE span P4 was
+# approved to rewrite — it did, 2026-08-12, and the rule that replaced it is pinned separately below.
 def test_p1_pin_crowd_face_tier_clauses_reach_the_crowd_payload():
     text = _assemble(SHOT_BASE)
     for span in (
@@ -91,6 +91,38 @@ def test_p1_pin_crowd_face_tier_clauses_reach_the_crowd_payload():
     ):
         assert span in CROWD_RIG, span
         assert span in text, span
+
+
+# P4 (2026-08-12) — the CROWD HEAD-TONE rule, the ONE span of §2d this wave rewrites. It is
+# asserted where it REACHES the payload for the same reason the P1 pins are: the clause is what
+# forge expands, so a tone rule that never enters a prompt is a rule the renderer never sees.
+# Two-sided by construction, matched to the bound-shape of the hair rule beside it: a BOUNDED SET
+# (2-3 tones from the channel's own cast tones), never one uniform cream and never a per-figure tone.
+def test_p4_crowd_head_tones_are_a_bounded_set_and_reach_the_crowd_payload():
+    text = _assemble(SHOT_BASE)
+    for span in (
+        "round heads in at most 2–3 repeating FLAT tones",
+        "never one uniform cream",
+        "never a tone invented per individual figure",
+    ):
+        assert span in CROWD_RIG, span
+        assert span in text, span
+    # drawn from the channel's OWN cast tones (registry `head_tone` values), not invented
+    for hexcode in ("#f5ead6", "#e2b78c", "#7a4f33"):
+        assert hexcode in CROWD_RIG, hexcode
+    # the phrase it replaces is gone from the clause forge expands
+    assert "cream-family" not in CROWD_RIG, CROWD_RIG[:200]
+
+
+def test_p4_leaves_the_hair_and_era_dress_clauses_exactly_where_they_were():
+    """P4 rewrites the TONE phrase only. Hair and era dress are already law (aa576b9) and P4
+    delivers them by enforcement, not by re-legislating them — so their text must not move."""
+    for span in ("dress every crowd figure for THIS shot's own scene era and setting, not the "
+                 "seed's period dress",
+                 "vary hair/headwear across at most 2–3 repeating silhouettes for the whole "
+                 "group",
+                 "never a distinct hairstyle or headwear invented per individual figure"):
+        assert span in CROWD_RIG, span
 
 
 # P1 PIN — the FOUR-DIGIT HAND LAW (style-bible §2c RIG-HOLD, auto-appended to every

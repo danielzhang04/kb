@@ -181,7 +181,11 @@ at the first act's level.
   call whenever the script establishes no visible branding, and reaching for `place_owner` to look
   decisive invents signage, which is fabrication. The literal is per-video data sourced from the
   script — **never a skill constant**. A set invented twice mid-pass gets described twice
-  differently and renders twice.
+  differently and renders twice. Every plate is authored at **working occupancy** with its signage
+  ink stated, and a place carrying a long run declares its **plate variants** — the law, with both
+  bounds of each target, is `visual-grammar.md` §2 (the plate bullet); do not restate it here.
+  Decide the variant split at THIS step, alongside the recurrence decision, so it is planned once
+  per place rather than improvised shot by shot.
 - **The plate / reveal seam — decide it once, per branded place.** A qualifying place's plate is
   cast-free; a character reveal lands on the line that NAMES them; on a branded set those two laws want
   the same beat. Resolution: **the plate is the place's first CAST-FREE frame and the reveal is its

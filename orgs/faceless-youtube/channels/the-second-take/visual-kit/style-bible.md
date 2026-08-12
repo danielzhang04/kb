@@ -70,7 +70,9 @@ character-bearing seed (non-identity mode). The wording exempts crowds, so both 
 
 ## 2d. CROWD-RIG clause (verbatim template — `forge.py` expands it at gen time)
 
-> The background / crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES, one simple
+> The background / crowd figures are on the CROWD RIG: round heads in at most 2–3 repeating FLAT
+> tones drawn from the channel's cast head-tone set (e.g. #f5ead6 / #e2b78c / #7a4f33) for the whole
+> group — never one uniform cream, never a tone invented per individual figure — DOT EYES, one simple
 > consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the **EXACT same
 > squat head-to-body proportion as the base rig** — a large round head on a short compact body, NOT
 > taller/lanky — hands, where visible, are the same four-digit cartoon hand. The seed reference
@@ -84,7 +86,10 @@ character-bearing seed (non-identity mode). The wording exempts crowds, so both 
 The crowd rig differs from the full rig **ONLY in the FACE** — proportion is IDENTICAL to the base rig, and
 taller/lankier figures are the standing drift and a review axis (§3). **No prompt ever carries this
 text:** the shot declares `figures.crowd: true` (`visual-grammar.md §2`) and `forge.py` appends the
-clause at gen time. `refs/base/crowd-exemplar.png` seeds every crowd-bearing gen — the seed already
+clause at gen time. Every crowd-bearing gen seeds the crowd exemplar — **this video's own
+`assets/library/crowd-exemplar.png` when it has minted one, and the channel's
+`refs/base/crowd-exemplar.png` as the fallback** (the exemplar is minted per video, so it carries
+that video's era dress, head-tone set and hair silhouettes). The seed already
 carries the look, so re-describing it in the prompt buys nothing and bleeds crowd wording onto the
 foreground figures.
 
@@ -115,6 +120,11 @@ Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never 
 - **Proportion — judged EXPLICITLY, every figure:** the **squat base proportion** (large round head, short
   compact body); too tall / lanky / long-bodied FAILS. **Rig by tier** — named/seeded cast judge against the
   **FULL** rig; crowd figures against the **CROWD** rig (§2d); detailed faces or noses on a crowd figure FAIL.
+  Crowd also judges §2d's BOUNDED variety axes, so they are decided on the pixels and not merely
+  written: **era-appropriate dress** (every crowd figure dressed for THIS shot's own scene era and
+  setting, never the seed exemplar's period dress) and **at most 2–3 repeating hair/headwear
+  silhouettes** for the group. Both fail in either direction — a uniform group and a per-figure
+  invention are the same defect, one axis apart.
 - **Expression register-fit** — judged against the BEAT: a calm/ordinary/sincere/grim beat wants a restrained
   face, an **over-the-top expression for its beat is a defect**; big faces need a comedic peak.
 - **In-image text is diegetic, baked, and verbatim** — only the text the shot authored, in the §5 marker hand,
@@ -123,7 +133,9 @@ Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never 
   stay text-free; a **seeded PROP with its own designed lettering** (a deed, a titled banknote) is whitelisted,
   still transcribed for spelling.
 - **Never checked — these vary:** pose, camera framing, hair/facial hair, outfit, head-tone choice, body build,
-  age linework, action squash/stretch.
+  age linework, action squash/stretch. **Scoped to the NAMED-CAST comparison against its canonical** —
+  these are the axes an identity check must never fail a frame on. It licenses nothing about a crowd
+  GROUP, which carries §2d's own bounded dress, hair-silhouette and head-tone axes, judged above.
 
 ## 4. Palette
 

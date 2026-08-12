@@ -1149,8 +1149,8 @@ def shot_class_check(label, shots, hard, soft, strict=True):
 #
 # THE DELIBERATE DISAGREEMENT WITH control_leak_check
 # ---------------------------------------------------
-# test_lettering_fidelity asserts that "on the CROWD RIG: round cream-family heads,
-# DOT EYES ..." is CLEAN, and it still is *for that guard*: it never leaked into a
+# test_lettering_fidelity asserts that "on the CROWD RIG: round heads in 2-3 flat
+# tones, DOT EYES ..." is CLEAN, and it still is *for that guard*: it never leaked into a
 # render as lettering, which is the only question control_leak_check asks. This
 # guard asks a different one — does this prompt still carry text forge now owns —
 # and the same span answers yes. Both are right; they are not the same check.
@@ -1622,6 +1622,86 @@ def place_groups(shots):
         qualifying = runs[place] >= 2 or "place_owner" in plate
         out.append((place, plate, grp, qualifying))
     return out
+
+
+# P6 (2026-08-12). A place above this run length declares 2-3 plate VARIANTS
+# (`visual-grammar.md` §2, the plate bullet). Measured on the 6c2 judged set: liked frames sat at
+# mean plate_reuse 1.89, disliked at 7.44 - the sharpest single split in the measurement track, and
+# the same pixels Daniel LIKED standing alone (L28) read wrong as a repeated anonymous backdrop.
+VARIANT_PLACE_FLOOR = 5
+
+
+def place_variants(grp, plate):
+    """The VARIANT half of `place_groups`' one plate definition: `{backdrop frame -> [shot ids]}`
+    for one place's group, keyed on the frame each shot actually seeds.
+
+    Deliberately a sibling function rather than a fifth tuple member on `place_groups`: that tuple
+    is unpacked at five call sites and pinned by the C-4 tests, and widening it to carry a value
+    only one check reads would make every other reader pay for this one. The DEFINITION is still
+    single - the plate comes in as `place_groups` computed it, and the same `_plate_eligible` skip
+    applies, so lint, forge and the author never disagree about which frame is which.
+
+    Three routes, matching what forge actually seeds:
+      * an explicit `place_anchor` - the author picked this variant (the field already exists);
+      * a stage `delta` - it seeds its CHAIN PARENT, not a plate, so it rides its own base's
+        backdrop and can never invent a variant of its own (`place_anchor` is refused on a delta);
+      * everything else - the place's derived plate.
+    A non-generated shot (stock/chart/screencap/archival) seeds no backdrop and is skipped, exactly
+    as it is skipped when the plate itself is picked."""
+    plate_id = plate.get("id")
+    counts, held = {}, {}
+    for sh in grp:
+        if not _plate_eligible(sh):
+            continue
+        stage = sh.get("stage")
+        anchor = sh.get("place_anchor")
+        if str(sh.get("stage_role") or "").lower() == "delta":
+            key = held.get(stage, plate_id)
+        elif isinstance(anchor, str) and anchor.strip():
+            key = Path(anchor).stem
+        else:
+            key = plate_id
+        if stage:
+            held[stage] = key
+        counts.setdefault(key, []).append(sh.get("id"))
+    return counts
+
+
+def place_variant_check(label, shots, soft):
+    """HEADS-UP. One backdrop image carrying a long place's whole run.
+
+    A HEADS-UP and never HARD, for the reason `real_cadence_check` is one: the defect is a
+    QUANTITY the author trades against the beat, and WHICH vantage a beat wants is taste. Lint can
+    say "17 shots are sitting on one image"; it cannot say which six should move.
+
+    THE BAND, and why it is not the doctrine's own number. The two-sided target is 2-3 variants so
+    that no single image anchors more than roughly a THIRD of a place's run. Two variants is legal
+    authoring and cannot reach a third, so a check firing at the third would report sanctioned work
+    as a defect - the false-positive failure these guards are calibrated against. So the heads-up
+    fires above what the LOOSE end of the approved range can reach (more than half the run) and the
+    MESSAGE states the one-third target. Both bounds travel with it: the fix is 2-3 variants of the
+    same set, never one bespoke environment per shot.
+
+    Place-exempt shots are untouched by construction: a shot declaring no `place` is in no group
+    here, so nothing in this check can push a plate onto a symbolic/abstract/object-insert shot."""
+    for place, plate, grp, _qualifying in place_groups(shots):
+        variants = place_variants(grp, plate)
+        run = sum(len(ids) for ids in variants.values())
+        if run <= VARIANT_PLACE_FLOOR or not variants:
+            continue
+        frame, ids = max(variants.items(), key=lambda kv: (len(kv[1]), str(kv[0])))
+        if len(ids) <= -(-run // 2):
+            continue
+        soft.append(
+            f"[{label}] place {place!r}: one backdrop frame {frame!r} anchors {len(ids)} of the "
+            f"place's {run} generated shots ({', '.join(str(i) for i in ids[:6])}"
+            f"{', ...' if len(ids) > 6 else ''}). A place carrying more than {VARIANT_PLACE_FLOOR} "
+            f"shots declares 2-3 plate VARIANTS - a different vantage or zone of the SAME set, one "
+            f"place id, each seeded from the first plate, `place_anchor` picking which one a shot "
+            f"seeds - so no single image anchors more than roughly a third of the run (visual-"
+            f"grammar.md §2). NOT one bespoke environment per shot: that deletes set continuity and "
+            f"is the seedless-root failure under another name. Heads-up only - which vantage each "
+            f"beat wants is yours.")
 
 
 def place_plate_check(label, shots, chars, hard):
@@ -2480,6 +2560,7 @@ def main(argv):
     place_shot_class_exempt_check("long-form", lf_shots, hard)
     place_inventory_check("long-form", lf_objs, lf_vocab, hard)
     place_plate_check("long-form", lf_shots, chars, hard)
+    place_variant_check("long-form", lf_shots, soft)
     place_owner_check("long-form", lf_shots, suffix, hard)
     place_anchor_same_place_check("long-form", lf_shots, hard)
     delta_entrance_check("long-form", lf_shots, chars, hard)
@@ -2558,6 +2639,7 @@ def main(argv):
         place_shot_class_exempt_check(slabel, sshots, hard)
         place_inventory_check(slabel, sshot_objs, svocab, hard)
         place_plate_check(slabel, sshots, chars, hard)
+        place_variant_check(slabel, sshots, soft)
         place_owner_check(slabel, sshots, suffix, hard)
         place_anchor_same_place_check(slabel, sshots, hard)
         delta_entrance_check(slabel, sshots, chars, hard)

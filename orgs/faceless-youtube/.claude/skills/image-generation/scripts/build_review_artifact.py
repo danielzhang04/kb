@@ -208,8 +208,14 @@ INVARIANTS = {
     "line-register": "Every line reads at the rig outline weight or heavier — nothing finer, no "
                      "hairline/micro-pattern field (slats, lattice, grille, fine grain); skin one "
                      "flat fill (bible §3)",
-    "insertability": "Cast-free plate offers a flat open floor plane in fore/midground at figure "
-                     "scale — a rig figure could be stood on it (bible §3/§5)",
+    # BOTH halves of the plate law, in ONE row (P5, 2026-08-12). The row used to ask only whether
+    # a figure could be stood on the frame, which an empty hangar answers YES to — the exact defect
+    # P5 exists to catch would have passed Gate 2 clean on its own review row.
+    "insertability": "Cast-free plate reads as the set MID-WORK at the scale the script implies "
+                     "(stock/machines/materials, depth filled edge-to-edge, any signage in the §5 "
+                     "ink) — not an empty hangar, not a prop-shop — AND still offers a flat open "
+                     "floor plane in fore/midground at figure scale a rig figure could be stood on "
+                     "(visual-grammar §2 plate law; bible §3/§5)",
 }
 # `place-owner` is not in this static table: its question embeds the place's own
 # declared literal (`owner cue '<LITERAL>' legible in frame per L-1?`), built per shot
@@ -247,7 +253,8 @@ def applicable_invariants(shot, sid, named, seated, owner_of=None):
                            thinner than its own cast, which is exactly the 2026-08 drift that had
                            no row to fail on.
       * insertability   -> a generated CAST-FREE frame (no named figure, no declared crowd) — i.e.
-                           the plate tier, whose only job is to be stood on. Read from the same
+                           the plate tier, which must carry its place at working occupancy AND be
+                           stood on (both halves in the one row). Read from the same
                            `named`/`figures.crowd` facts the rows above use rather than from
                            forge's derived `plate` flag, which this board never sees.
     Returns an ordered list of `(slug, question)` pairs, `INVARIANTS`-order, empty when none apply.

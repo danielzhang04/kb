@@ -146,6 +146,26 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   the place's first CAST-BEARING frame, and disclosure order decides which comes first. Both can land
   on the naming beat if it is authored as two cuts — plate, then reveal — rather than one long hold.
   Worked example: SKILL step 3a.
+- **A plate is the set MID-WORK, and a place that carries a long run declares VARIANTS of it.**
+  Cast-free means zero SEEDED FIGURES — the property that makes a plate reusable — and never zero
+  content: the plate is the frame every other shot in the place inherits, so an empty one makes the
+  whole place empty. Author it as the set doing its job — stock on the shelving, machines and
+  materials through the mid and background, depth filled edge-to-edge — **at the scale the script
+  implies** (a factory floor reads as a floor, not one small room). Two-sided: **NOT a cavernous
+  empty hangar and NOT a cluttered prop-shop** — the same "layered depth, filled edge-to-edge, name
+  concrete elements, not categories" bar `visual-prompt-writer` SKILL step 2.4 already sets for
+  scenes, applied to the plate. Diegetic lettering on a plate states its INK when it is authored
+  (§5's `#241a12` marker hand): an unstated ink is picked by the renderer, and the sign a whole
+  place seeds is the worst frame to leave to it. **A place carrying more than ~5 shots declares 2-3
+  plate VARIANTS** — a different vantage or zone of the SAME set, one `place` id, each variant
+  seeded from the first plate so the set stays one place, with `place_anchor` selecting which
+  variant a shot seeds. Two-sided again: no single backdrop image anchors more than **roughly a
+  third** of a place's run, and **NOT one bespoke environment per shot** — that deletes set
+  continuity, multiplies plate cost, and is the seedless-root failure under another name. Variants
+  are ordinary gated frames: each carries its own review ruling before its pixels seed anything
+  (`image-generation` Pass 1). None of this reaches a shot that declares no `place` —
+  symbolic/abstract/standalone object-insert classes, a short's `first_frame` and the thumbnail
+  stay place-exempt, and many shots should not be using plates at all.
 - **A recurring identifiable GROUP is cast, not a crowd** — one name, reused every appearance. A group
   member acting alone is staged as an individual.
 - **Every human in frame is either NAMED CAST or CROWD — no third tier, no promotion path.** NAMED CAST

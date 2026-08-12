@@ -184,7 +184,7 @@ def test_rig_vocabulary_attached_to_figures_is_clean():
     """'on the CROWD RIG' and 'base-rig figures' never leaked and must stay legal —
     they are properties of a depicted body, not noun phrases naming a production
     rule. Banning the word `rig` outright would flag most of the file."""
-    p = ("The background figures are on the CROWD RIG: round cream-family heads, DOT EYES, "
+    p = ("The background figures are on the CROWD RIG: round heads in 2-3 flat tones, DOT EYES, "
          "one simple mouth, NO noses, NO ears. A base-rig anonymous teller in a teal uniform. "
          + SUFFIX)
     assert _hard(control_leak_check, [("x", "still_prompt", p)], SUFFIX) == []

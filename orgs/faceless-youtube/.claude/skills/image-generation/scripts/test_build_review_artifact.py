@@ -267,9 +267,20 @@ def test_line_register_fires_wherever_flat_cel_hazard_does_and_nowhere_else():
         assert not any(s == "line-register" for s, _ in rows), reused
 
 
+def test_the_plate_review_row_asks_for_OCCUPANCY_not_only_for_a_place_to_stand():
+    """P5 (2026-08-12). The row asked one question — could a figure be stood here — and a cavernous
+    empty hangar answers it YES. The defect Daniel named ("a small room with nothing on the
+    shelves") would have passed Gate 2 on its own review row. Both halves now ride the ONE row."""
+    q = bra.INVARIANTS["insertability"]
+    assert "MID-WORK" in q and "scale the script implies" in q, q
+    assert "empty hangar" in q and "prop-shop" in q, q          # both bounds
+    assert "stood on" in q, q                                    # the original half survives
+    assert "ink" in q, q                                         # §5 signage ink, authored
+
+
 def test_insertability_fires_only_on_a_generated_cast_free_plate():
-    """A plate's one job is to be STOOD ON, so the axis is scoped to the tier that has no cast:
-    a figure-bearing or crowd-bearing frame already answers the question in pixels."""
+    """The axis is scoped to the tier that has no cast: a figure-bearing or crowd-bearing frame
+    already answers the standing-room half in pixels."""
     plate = bra.applicable_invariants({"source": "ai-gen"}, "Q01", [], set())
     assert any(s == "insertability" for s, _ in plate), plate
     cast = bra.applicable_invariants({"source": "ai-gen"}, "Q01", ["zeta-clerk"], set())

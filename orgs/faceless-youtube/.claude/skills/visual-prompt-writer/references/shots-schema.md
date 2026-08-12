@@ -64,7 +64,10 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   plate; a place with no generated shot has no plate at all. **Conditional plate law (lint-enforced, HARD):**
   a place QUALIFIES when it RECURS, or its plate declares `place_owner`; a qualifying place's plate
   must declare **zero SEEDED figures (named cast) and no `stage_role: delta`**, because every
-  other shot in the place seeds it and whatever it contains bleeds into all of them. **A place RECURS when the file REVISITS it after
+  other shot in the place seeds it and whatever it contains bleeds into all of them. Cast-free is a
+  rule about seeded FIGURES and never about content: a plate is authored at working occupancy, and a
+  place carrying a long run declares 2-3 plate VARIANTS that `place_anchor` selects between — both
+  stated once, with their bounds, in `visual-grammar.md` §2's plate bullet. **A place RECURS when the file REVISITS it after
   leaving** — its shots form two or more NON-CONTIGUOUS runs. An unbroken single visit, however many shots
   long, is a STAGE: its chain base already IS the frame every later shot of the run seeds, so declaring a
   place there buys nothing and demanding a dedicated cast-free plate for a set the video never returns to is

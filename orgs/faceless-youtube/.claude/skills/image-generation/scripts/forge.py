@@ -823,7 +823,8 @@ def seeding_law_violations(k, r, seeds):
     if (crowd and not any(_stem(s).startswith("crowd-exemplar") for s in seeds)
             and not any(str(o).startswith("crowd-exemplar") for o in omitted)):
         bad.append(f"{name}: `figures.crowd` is declared but the slate carries no crowd exemplar "
-                   f"(refs/base/crowd-exemplar.png) — the crowd's only seed.")
+                   f"(this video's `assets/library/crowd-exemplar.png`, else the channel's "
+                   f"refs/base/crowd-exemplar.png) — the crowd's only seed.")
     if len(seeds) > SEED_CAP:
         # `cmd_batch`'s walk already ran the priority-order drop (crowd exemplar, then interaction
         # template, then a tagged prop) before this ever reaches preflight, so a role-bearing spec
@@ -1797,7 +1798,6 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
     lib, scenes = os.path.join(video, "assets", "library"), os.path.join(video, "assets", "scenes")
     reg_assets = {a["name"]: a for a in k.reg.get("assets", [])}
     chars = k.reg.get("characters", {})
-    crowd_ex = (reg_assets.get("crowd-exemplar") or {}).get("file")
     spec, made, emitted, place_first, place_last, notes = [], {}, {}, {}, {}, []
     provenance = {}             # emitted name -> its `parent_depth`/`lineage` record (C-11)
     # Shots whose slate derived `plate: true` — the place's own establishing frame. Recorded for
@@ -1830,6 +1830,18 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
             if c and os.path.exists(c):
                 return os.path.relpath(c, k.root).replace("\\", "/")
         return None
+
+    # P4 (2026-08-12): the crowd exemplar is minted PER VIDEO — this video's era dress, its 2-3
+    # flat head tones, its 2-3 hair silhouettes — so the video's own frame outranks the channel's
+    # standing one, and the channel's remains the fallback for a video that has not minted one.
+    # Same precedence shape `vfile` uses one line up (the nearest, most specific file wins); it has
+    # to be stated HERE rather than left to the merged vocabulary because `merge_vocabulary`
+    # deliberately lets the CHANNEL entry win a name collision (a promoted canonical is the stronger
+    # lock), which would otherwise make a video's own exemplar unreachable by name. Nothing else
+    # changes: the frame still enters as the `crowd` seed role, still keys the P3 review store on
+    # the stem `crowd-exemplar`, and is still the crowd's only seed.
+    crowd_ex = (on_disk(os.path.join(lib, "crowd-exemplar.png"))
+                or (reg_assets.get("crowd-exemplar") or {}).get("file"))
 
     for name, shot, aspect in walk:
         seen.add(name)

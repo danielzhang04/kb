@@ -660,6 +660,41 @@ def test_a_base_can_seed_its_videos_approved_place_after_two_step1_figures():
     assert Path(scene["seed"][3]).stem == "crowd-exemplar", scene["seed"]
 
 
+def _crowd_only_video(with_video_exemplar):
+    """One crowd-declaring shot, in a video that may or may not have minted its OWN exemplar."""
+    v = tempfile.mkdtemp()
+    if with_video_exemplar:
+        lib = os.path.join(v, "assets", "library")
+        os.makedirs(lib)
+        open(os.path.join(lib, "crowd-exemplar.png"), "wb").write(b"\x89PNG\r\n\x1a\nthis video")
+    doc = {"schema": "shots/1", "video_slug": "t", "long_form": {"aspect_ratio": "16:9", "shots": [{
+        "id": "L60", "source": "ai-gen", "stage_role": "base", "figures": {"crowd": True},
+        "still_prompt": "A waiting crowd fills the brickyard gate in the flat noon light."}]}}
+    shots, out = os.path.join(v, "shots.json"), os.path.join(v, "spec.json")
+    json.dump(doc, open(shots, "w", encoding="utf-8"))
+    spec, err = _batch(shots, out, ["L60"])
+    assert err is None, err
+    return [str(s).replace("\\", "/") for s in [i for i in spec if i["name"] == "L60"][0]["seed"]]
+
+
+def test_p4_the_crowd_seed_prefers_THIS_VIDEOS_own_minted_exemplar():
+    """P4 (2026-08-12): the crowd exemplar is minted PER VIDEO — its era dress, its head-tone set,
+    its hair silhouettes — so the video's own frame outranks the channel's standing one. Same
+    precedence shape `vfile` already uses (the nearest, most specific file wins), and it has to be
+    stated because `merge_vocabulary` deliberately lets the CHANNEL entry win a name collision,
+    which would otherwise make a video's own exemplar unreachable."""
+    seeds = _crowd_only_video(True)
+    assert any(s.endswith("assets/library/crowd-exemplar.png") for s in seeds), seeds
+    assert not any(s.endswith("refs/base/crowd-exemplar.png") for s in seeds), seeds
+
+
+def test_p4_without_a_video_exemplar_the_channels_standing_frame_still_seeds():
+    """The fallback is the whole point of a preference: a video that has not minted its own
+    exemplar yet keeps seeding the channel's, unchanged."""
+    seeds = _crowd_only_video(False)
+    assert any(s.endswith("refs/base/crowd-exemplar.png") for s in seeds), seeds
+
+
 def test_a_missing_or_cross_video_place_anchor_hard_errors_before_emission():
     v, shots, out = _scope_fixture()
     doc = json.load(open(shots, encoding="utf-8"))

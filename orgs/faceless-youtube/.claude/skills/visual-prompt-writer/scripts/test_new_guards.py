@@ -240,7 +240,7 @@ def test_g6_plant_base_rig_clause():
 
 def test_g6_plant_crowd_rig_clause():
     hits = _run(L.rig_clause_check, "A dense crowd presses against the window. The background / "
-                "crowd figures are on the CROWD RIG: round cream-family heads, DOT EYES.")
+                "crowd figures are on the CROWD RIG: round heads in 2-3 flat tones, DOT EYES.")
     assert len(hits) == 1 and "CROWD RIG:" in hits[0], hits
 
 

@@ -411,6 +411,139 @@ def test_c4_no_cast_vocabulary_degrades_the_cast_half_silently():
     assert hard == []
 
 
+# --- P6 plate VARIANTS: the backdrop-repetition bound (2026-08-12) ------------
+# A place above the variant threshold declares 2-3 plate VARIANTS — different vantage/zone of the
+# SAME set, one place id, `place_anchor` selecting which one a shot seeds. The lint half is a
+# HEADS-UP only: which vantage a beat wants is taste, and the measured defect (liked mean plate
+# reuse 1.89 vs disliked 7.44) is a QUANTITY, not an authoring-shape error lint can rule on.
+def test_p6_variants_group_a_place_by_the_backdrop_each_shot_actually_seeds():
+    """`place_variants` is the variant half of `place_groups`' one plate definition: the plate
+    carries every shot that names no anchor, and each `place_anchor` carries its own."""
+    grp = [
+        {"id": "L28", "place": "miniscribe-floor"},
+        {"id": "L29", "place": "miniscribe-floor"},
+        {"id": "L44", "place": "miniscribe-floor", "place_anchor": "assets/scenes/L33.png"},
+        {"id": "L46", "place": "miniscribe-floor", "place_anchor": "assets/scenes/L33.png"},
+    ]
+    assert L.place_variants(grp, grp[0]) == {"L28": ["L28", "L29"], "L33": ["L44", "L46"]}
+
+
+def test_p6_a_delta_rides_its_own_bases_backdrop_never_a_second_one():
+    """A delta seeds its CHAIN PARENT, not a plate — it is the same backdrop as its base, so it
+    counts against that base's variant and never invents a third one."""
+    grp = [
+        {"id": "L28", "place": "f"},
+        {"id": "L44", "place": "f", "stage": "bench", "stage_role": "base",
+         "place_anchor": "assets/scenes/L33.png"},
+        {"id": "L45", "place": "f", "stage": "bench", "stage_role": "Delta"},
+    ]
+    assert L.place_variants(grp, grp[0]) == {"L28": ["L28"], "L33": ["L44", "L45"]}
+
+
+def test_p6_a_non_generated_shot_seeds_no_backdrop_at_all():
+    """Same skip as `place_groups`/forge: a stock/chart/archival shot has no generated frame."""
+    grp = [{"id": "L28", "place": "f"},
+           {"id": "L29", "place": "f", "source": "stock"}]
+    assert L.place_variants(grp, grp[0]) == {"L28": ["L28"]}
+
+
+def _variant_soft(shots):
+    soft = []
+    L.place_variant_check("lf", shots, soft)
+    return soft
+
+
+def test_p6_is_wired_as_a_HEADS_UP_and_has_no_hard_sink_at_all():
+    """Structural, not incidental: the check takes ONE sink and `main` hands it the soft list, so
+    a place above the band can never fail a live file the way L69/L133 do."""
+    src = Path(L.__file__).read_text(encoding="utf-8")
+    assert "def place_variant_check(label, shots, soft):" in src, "one sink only"
+    assert 'place_variant_check("long-form", lf_shots, soft)' in src, "wired into main's soft sink"
+
+
+def _run_of(place, n, start=1, **extra):
+    return [dict({"id": f"L{start + i:02d}", "place": place}, **extra) for i in range(n)]
+
+
+def test_p6_plant_one_backdrop_carrying_a_whole_long_place_run():
+    """The miniscribe-floor shape: 17 shots, one image. Above the band, so it draws the heads-up,
+    and the message carries BOTH bounds (2-3 variants; never one bespoke environment per shot)."""
+    soft = _variant_soft(_run_of("miniscribe-floor", 17))
+    assert len(soft) == 1, soft
+    m = soft[0]
+    assert "miniscribe-floor" in m and "17" in m and "L01" in m, m
+    assert "2-3" in m and "third" in m, m
+    assert "bespoke" in m, m
+
+
+def test_p6_a_place_split_across_variants_is_silent():
+    """Sanctioned authoring: 9 shots over three vantages of the one set. No heads-up."""
+    shots = (_run_of("rented-warehouse", 3, 1)
+             + _run_of("rented-warehouse", 3, 4, place_anchor="assets/scenes/L20.png")
+             + _run_of("rented-warehouse", 3, 7, place_anchor="assets/scenes/L21.png"))
+    assert _variant_soft(shots) == []
+
+
+def test_p6_two_variants_the_LOW_end_of_the_sanctioned_range_never_trips_the_band():
+    """The band is set at the LOOSER end of the approved 2-3 range deliberately: a two-variant
+    split is legal authoring, so it must not be reported as a defect. The message states the
+    one-third TARGET; the heads-up fires only above what 2 variants can reach."""
+    shots = (_run_of("audit-room", 4, 1)
+             + _run_of("audit-room", 4, 5, place_anchor="assets/scenes/L20.png"))
+    assert _variant_soft(shots) == []
+
+
+def test_p6_a_short_place_run_is_exempt_no_variant_plan_is_owed():
+    """`>~5 shots` is the threshold: a five-shot place on one plate is not the measured defect,
+    and demanding variants for it is the cost half of the two-sided target."""
+    assert _variant_soft(_run_of("wiles-office", 5)) == []
+
+
+def test_p6_place_exempt_shot_classes_are_untouched():
+    """P1's pin, restated at this check: a shot declaring NO place is not a place's run and can
+    never be pushed onto a plate by the variant rule."""
+    shots = [{"id": f"L{i:02d}", "shot_class": "symbolic"} for i in range(1, 12)]
+    assert _variant_soft(shots) == []
+
+
+# --- P5 + P6 doctrine: ONE plate law, both bounds on every target -------------
+KIT = Path(__file__).resolve().parents[4] / "channels" / "the-second-take" / "visual-kit"
+VPW_SKILL = Path(__file__).resolve().parents[1] / "SKILL.md"
+
+
+def _flat(path):
+    """A doc's prose with its markdown line-wrapping collapsed: where a sentence happens to break
+    across lines is formatting, never doctrine, so a fingerprint must not be able to fail on a
+    re-wrap alone. Same normalization `blockquote_after` applies on forge's side."""
+    return " ".join(Path(path).read_text(encoding="utf-8").split())
+
+
+def test_p5_p6_the_plate_law_states_occupancy_scale_ink_and_variants_as_one_law():
+    """The law's home is `visual-grammar.md`. P5's occupancy half and P6's variant half are ONE
+    paragraph, not two bolted ones, and each two-sided target carries BOTH of its bounds."""
+    g = _flat(KIT / "visual-grammar.md")
+    # P5 — occupancy + scale, both bounds
+    assert "zero SEEDED FIGURES" in g and "never zero content" in g, "cast-free's positive half"
+    assert "cavernous empty hangar" in g and "cluttered prop-shop" in g, "P5's two bounds"
+    assert "at the scale the script implies" in g
+    # P5 — signage ink, authored not left to the renderer
+    assert "#241a12" in g and "ink" in g
+    # P6 — variants, both bounds
+    assert "2-3 plate VARIANTS" in g or "2–3 plate VARIANTS" in g
+    assert "roughly a third" in g and "bespoke environment per shot" in g, "P6's two bounds"
+    assert "place_anchor" in g and "seeded from the first plate" in g
+
+
+def test_p5_p6_vpw_step_3a_POINTS_AT_the_law_instead_of_restating_it():
+    """No bloat: the law lives in visual-grammar; the authoring step references it and adds only
+    WHEN the decision is made (with the recurrence plan, once, not improvised per shot)."""
+    s = _flat(VPW_SKILL)
+    assert "working occupancy" in s and "visual-grammar" in s
+    # the restatement test: VPW must NOT carry the law's own bounded phrases
+    for span in ("cavernous empty hangar", "cluttered prop-shop", "roughly a third"):
+        assert span not in s, f"VPW restates the plate law instead of pointing at it: {span!r}"
+
+
 # --- place-owner: the forced choice (Daniel's failure #6) ---------------------
 def test_c3_plant_a_place_recording_no_ownership_decision_at_all():
     """The case the OLD inferential check suppressed: nobody quoted anything, so nothing
