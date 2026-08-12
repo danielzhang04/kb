@@ -9,6 +9,7 @@ import {
   createClaudeWorkerAdapter,
   ToolPolicyRefusal,
   RESULT_EOF_GRACE_MS,
+  STEERING_GRACE_MS,
   type ClaudeProcess,
   type ClaudeSpawnRequest,
   type ClaudeToolPolicy,
@@ -886,6 +887,131 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(result.state).toBe('succeeded');
     expect(result.summary).toBe('steering applied');
     expect(adapter.postMessage('run-1', 'fyt-worker', 'Too late.')).toBe(false);
+  });
+
+  // N2 (2026-08-11): one-result-per-frame is the expected normal path, but a CLI that folds a mid-turn
+  // operator frame into the already-running turn answers N frames with N-1 results. Pre-fix the turn then
+  // never read terminal, idled the full 30-minute kill-timeout, and `parseWorkerStream` short-circuited on
+  // `timedOut` BEFORE consulting `resultObserved` — recording the attempt FAILED with a complete
+  // successful result event sitting in stdout. Using the steering channel is what triggered it.
+  it('finalizes off the work-order result when a steering frame is never answered, instead of hanging to the 30-minute timeout', async () => {
+    vi.useFakeTimers();
+    const fake = fakeProcess({ exitsOnStdinEnd: true });
+    const killTree = vi.fn();
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc, killTree });
+    let resolved: unknown = null;
+    const promise = adapter.execute(executeInput()).then((value) => { resolved = value; return value; });
+
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'Prefer the smaller diff.')).toBe(true);
+    // The work order IS answered; the steering frame's own result never arrives.
+    fake.emitStdout(successLine('work order complete'));
+
+    await vi.advanceTimersByTimeAsync(STEERING_GRACE_MS - 1);
+    expect(resolved).toBeNull(); // still waiting: the quiet window has not elapsed
+    expect(fake.proc.endStdin).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2);
+    const result = await promise;
+    // Succeeded, off the observed work-order result — and after ~60s, not the 30-minute default timeout
+    // (which this test never advances anywhere near).
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('work order complete');
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
+    expect(killTree).not.toHaveBeenCalled(); // a clean EOF exit, not a timeout kill
+  });
+
+  it('re-arms the steering quiet window on new stdout, so a CLI still working on the steer is never cut short', async () => {
+    vi.useFakeTimers();
+    const fake = fakeProcess({ exitsOnStdinEnd: true });
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc });
+    let resolved: unknown = null;
+    const promise = adapter.execute(executeInput()).then((value) => { resolved = value; return value; });
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'Keep going.')).toBe(true);
+    fake.emitStdout(successLine('work order complete'));
+
+    await vi.advanceTimersByTimeAsync(STEERING_GRACE_MS - 1);
+    fake.emitStdout('{"type":"assistant","note":"still working the steer"}\n'); // activity resets the window
+    await vi.advanceTimersByTimeAsync(STEERING_GRACE_MS - 1);
+    expect(resolved).toBeNull();
+
+    fake.emitStdout(successLine('steering applied'));
+    const result = await promise;
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('steering applied'); // the real steering result still wins when it lands
+  });
+
+  it('still fails closed as timed-out when the work order itself never answers, steering frame or not', async () => {
+    vi.useFakeTimers();
+    const fake = fakeProcess();
+    const killTree = vi.fn();
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc, killTree, timeoutMs: 5_000,
+    });
+    const promise = adapter.execute(executeInput());
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'Any progress?')).toBe(true);
+    // No result line of ANY kind — there is nothing observed to finalize from, so the fail-closed
+    // timeout is still the only correct outcome.
+    await vi.advanceTimersByTimeAsync(5_001);
+    const result = await promise;
+    expect(result.state).toBe('failed');
+    expect(result.summary).toContain('timed out after 5000ms');
+    expect(killTree).toHaveBeenCalledWith(FAKE_PID);
+  });
+
+  it('does not fail a kill-timeout whose work order was already answered — the observed result outranks the clock', async () => {
+    vi.useFakeTimers();
+    const fake = fakeProcess();
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc, timeoutMs: 5_000,
+    });
+    const promise = adapter.execute(executeInput());
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'One more thing.')).toBe(true);
+    fake.emitStdout(successLine('work order complete'));
+    // timeoutMs here is SHORTER than STEERING_GRACE_MS, so the kill-timeout wins the race — and must not
+    // discard the successful result already in stdout.
+    await vi.advanceTimersByTimeAsync(5_001);
+    const result = await promise;
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('work order complete');
+  });
+
+  // The B1 guard on the N2 relaxation: "the work order was answered" is measured against EVERY opening
+  // frame, so a binding acknowledgement alone can never unlock finalize-from-observed-results.
+  it('never treats a binding acknowledgement alone as the work order being answered (B1 stays fixed)', async () => {
+    vi.useFakeTimers();
+    const fake = fakeProcess();
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY, resolveSession: () => null, spawn: () => fake.proc, timeoutMs: 5_000,
+    });
+    const promise = adapter.execute(executeInput({ assignment: ASSIGNMENT, instructionMarkdown: '# Bound worker' }));
+    expect(fake.frames()).toHaveLength(2); // binding + work order
+    fake.emitStdout(successLine('declaration acknowledged')); // 1 of 2 opening results
+
+    await vi.advanceTimersByTimeAsync(5_001);
+    const result = await promise;
+    expect(result.state).toBe('failed');
+    expect(result.summary).toContain('timed out after 5000ms');
+  });
+
+  // N5 (2026-08-11): correlation is ORDINAL — the CLI puts no correlation id on a result line, so a
+  // spurious EXTRA result (one arriving with no outstanding frame) is indistinguishable from the answer to
+  // the last frame and latches the turn terminal one frame early, off the wrong result. Pinned here as the
+  // DELIBERATE trade: the opposite reading (`===`, or ignoring unmatched results) would wedge the turn open
+  // forever on this same input, and a hung turn is strictly worse than an early one.
+  it('closes the turn early off a spurious extra result — the known limit of ordinal correlation', async () => {
+    const fake = fakeProcess({ exitsOnStdinEnd: true });
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY, resolveSession: () => null, spawn: () => fake.proc,
+    });
+    const promise = adapter.execute(executeInput({ assignment: ASSIGNMENT, instructionMarkdown: '# Bound worker' }));
+    expect(fake.frames()).toHaveLength(2); // binding + work order
+
+    fake.emitStdout(successLine('declaration acknowledged'));
+    fake.emitStdout(successLine('spurious extra result')); // NOT the work order's own answer
+    const result = await promise;
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('spurious extra result'); // finalized off the wrong line: known limitation
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
   });
 
   it('refuses an operator frame once the terminal result is observed, writing nothing into the closing stdin', async () => {

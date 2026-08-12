@@ -39,6 +39,19 @@ const DEFAULT_TIMEOUT_MS = 30 * 60_000;
  * exits in `--input-format stream-json` mode while stdin stays open) wedges instead of exiting on EOF.
  */
 export const RESULT_EOF_GRACE_MS = 20_000;
+/**
+ * N2 fix (2026-08-11): the quiet window after the WORK ORDER's own result has been observed but a later
+ * user frame (an operator `postMessage`) is still unanswered. The one-result-per-frame contract is the
+ * expected normal path, but a CLI that folds a mid-turn operator frame into the already-running turn
+ * answers N frames with N-1 results — and the pre-fix adapter then waited out the full
+ * {@link DEFAULT_TIMEOUT_MS} (30 minutes) and finalized FAILED with a complete successful result event
+ * sitting in stdout. Every stdout chunk re-arms this timer, so it only ever fires after real quiet: if
+ * the steering result is genuinely still coming, the CLI's assistant/tool lines keep pushing it out.
+ * Deliberately much shorter than the 30-minute work-order timeout and longer than
+ * {@link RESULT_EOF_GRACE_MS} — this one waits on a model that may still be thinking, that one waits on
+ * a process that has already been told to exit.
+ */
+export const STEERING_GRACE_MS = 60_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_STDERR_TAIL_CHARS = 4_000;
 const DEFAULT_SUMMARY_MAX_CHARS = 60_000;
@@ -740,13 +753,25 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         // the turn: a spawner that answers a frame synchronously (inside `writeStdin`) would otherwise
         // look terminal after the binding acknowledgement alone, before the work order is even written.
         let openingFramesWritten = false;
-        // Set in the SAME synchronous step that counts the terminal result — before any further work
-        // (transcript taps, `endStdin`) — so an operator frame can never be written into a closing pipe.
+        // How many of `framesWritten` are OPENING frames (binding + queued digest + work order), frozen
+        // when `openingFramesWritten` flips. Tracked separately from `framesWritten` so the adapter can
+        // tell "the work order has not been answered yet" (fail-closed on timeout) apart from "the work
+        // order HAS been answered and only a steering result is outstanding" (N2: finalize off what was
+        // observed rather than idling to the 30-minute timeout and then failing).
+        let openingFrameCount = 0;
+        // Set SYNCHRONOUSLY inside the same parse step that counts the terminal result. That is what makes
+        // `postMessage`'s refusal race-free, and the mechanism is step ordering, not ordering against the
+        // tap/`endStdin` work that follows (the stdout loop does tap the rest of its chunk, and
+        // `closeAfterResult` runs after the whole chunk): `postMessage` is only ever reached from a
+        // SEPARATE task — an HTTP handler, a test statement — and JS never interleaves one with this
+        // handler. So any postMessage that could still observe `false` provably ran entirely before the
+        // terminal line was parsed, i.e. while the pipe was legitimately open.
         let terminalResultSeen = false;
         // Guards `closeAfterResult` to at most one call; `terminalResultSeen` alone is not enough because
         // it stays true across every subsequent `onStdout` invocation, not just the one that flipped it.
         let resultHandled = false;
         let backstopTimer: ReturnType<typeof setTimeout> | null = null;
+        let steeringGraceTimer: ReturnType<typeof setTimeout> | null = null;
 
         // Reap the whole process tree, not just the direct child. `killTree` is invoked at most once.
         const terminate = (): void => {
@@ -763,6 +788,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           if (liveWorkers.get(key) === liveWorker) liveWorkers.delete(key);
           clearTimeout(timer);
           if (backstopTimer) { clearTimeout(backstopTimer); backstopTimer = null; }
+          if (steeringGraceTimer) { clearTimeout(steeringGraceTimer); steeringGraceTimer = null; }
           options.deregisterCancellation?.(input.operationKey);
           if (lineBuffer.length > 0) {
             tap('out', lineBuffer);
@@ -811,8 +837,14 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           });
         };
 
+        // The work-order kill-timeout. N2: it fails the attempt ONLY when the work order itself was never
+        // answered. If its result is already in stdout and the only thing outstanding is a steering frame,
+        // timing out here would throw away a complete successful result — so the turn is closed off the
+        // observed result instead (`resultObserved` semantics), exactly as the EOF backstop does. Reachable
+        // ahead of the steering grace only when `timeoutMs` is shorter than {@link STEERING_GRACE_MS}.
         const timer = setTimeout(() => {
-          timedOut = true;
+          if (workOrderAnswered()) terminalResultSeen = true;
+          else timedOut = true;
           terminate();
           finalize(null);
         }, timeoutMs);
@@ -843,6 +875,9 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
               return false;
             }
             tap('in', text);
+            // A newly injected frame restarts the steering quiet window (no-op until the work order is
+            // answered) — the CLI has just been given fresh work to answer.
+            armSteeringGrace();
             return true;
           },
         };
@@ -859,10 +894,48 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         });
 
         /**
-         * True exactly when the result for the LAST frame written has arrived. `>=` rather than `===` so a
-         * CLI that ever emitted a spurious extra result cannot wedge the turn open forever.
+         * True exactly when the result for the LAST frame written has arrived.
+         *
+         * KNOWN LIMITATION (deliberate, N5): correlation here is purely ORDINAL — the CLI emits no
+         * correlation id on a `type:"result"` line, so nothing can bind a result to the frame it answers
+         * beyond counting. `>=` rather than `===` means a spurious EXTRA result (one arriving with no
+         * outstanding frame) is counted like any other and can latch the turn terminal one frame early,
+         * closing it off the wrong result. That is the chosen trade: the opposite reading (`===`, or
+         * ignoring unmatched results) would wedge the turn open forever on the same input, and a hung turn
+         * is strictly worse than an early one. Pinned by a test so the behavior is a decision, not a drift.
          */
         const turnIsTerminal = (): boolean => openingFramesWritten && resultsObserved >= framesWritten;
+
+        /**
+         * True once the WORK ORDER's own result exists — i.e. every OPENING frame (binding declaration,
+         * queued-operator digest, work order) has been answered. Any frame outstanding beyond that point is
+         * an operator steering message, so from here the attempt has a real outcome to finalize from and
+         * must never be failed for waiting. Strictly weaker than {@link turnIsTerminal}: this is what makes
+         * the timeout fail-closed ONLY for a work order that genuinely never answered, without reopening B1
+         * (a binding acknowledgement alone can never satisfy it — `openingFrameCount` counts every opening
+         * frame, and it is frozen before `openingFramesWritten` flips).
+         */
+        const workOrderAnswered = (): boolean => openingFramesWritten && resultsObserved >= openingFrameCount;
+
+        /**
+         * Arm (or re-arm) the steering backstop — the N2 fix. Only ever armed when the work order HAS been
+         * answered and a later frame is still unanswered; every stdout chunk re-arms it, so it fires only
+         * after {@link STEERING_GRACE_MS} of genuine quiet. On firing it declares the turn terminal and
+         * runs the ordinary result+EOF close, so the attempt finalizes off the last observed result rather
+         * than idling to the 30-minute timeout and being recorded FAILED.
+         */
+        const armSteeringGrace = (): void => {
+          if (settled || terminalResultSeen) return;
+          if (!workOrderAnswered() || framesWritten <= resultsObserved) return;
+          if (steeringGraceTimer) clearTimeout(steeringGraceTimer);
+          steeringGraceTimer = setTimeout(() => {
+            steeringGraceTimer = null;
+            if (settled || terminalResultSeen) return;
+            terminalResultSeen = true;
+            closeAfterResult();
+          }, STEERING_GRACE_MS);
+          if (typeof steeringGraceTimer.unref === 'function') steeringGraceTimer.unref();
+        };
 
         // Bug A: the CLI emits a `type:"result"` line per user frame and then, in
         // `--input-format stream-json` mode, never exits on its own while stdin stays open — the pre-fix
@@ -875,6 +948,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         const closeAfterResult = (): void => {
           if (resultHandled) return;
           resultHandled = true;
+          if (steeringGraceTimer) { clearTimeout(steeringGraceTimer); steeringGraceTimer = null; }
           const key = workerKey(input.runRef, agentId);
           if (liveWorkers.get(key) === liveWorker) liveWorkers.delete(key);
           try { proc.endStdin(); } catch { /* a dead pipe here still lets the backstop reap the tree */ }
@@ -906,9 +980,15 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
                   const parsedLine = JSON.parse(trimmedLine) as Record<string, unknown>;
                   if (parsedLine && typeof parsedLine === 'object' && parsedLine.type === 'result') {
                     resultsObserved += 1;
-                    // Close the input channel in the same step that counts the terminal result — before
-                    // the remaining lines in this chunk are tapped, and before `closeAfterResult` runs.
+                    // Latch the turn closed to new operator input in the SAME synchronous step that counts
+                    // the terminal result. The rest of this chunk is still tapped afterwards and
+                    // `closeAfterResult` still runs after the loop — the guarantee is not ordering against
+                    // that work, it is that no `postMessage` task can interleave with this handler, so none
+                    // can observe a stale `false` once this line has been parsed.
                     if (turnIsTerminal()) terminalResultSeen = true;
+                    // N2: work order answered but a steering frame still outstanding — start the quiet-window
+                    // backstop instead of leaving the turn to idle out the 30-minute work-order timeout.
+                    else armSteeringGrace();
                   }
                 } catch { /* a single malformed line is never a result event */ }
               }
@@ -923,6 +1003,9 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           }
           stdoutChunks.push(chunk);
           if (terminalResultSeen) closeAfterResult();
+          // Any output at all is evidence the CLI is still working, so it RE-ARMS the steering quiet
+          // window (a no-op unless the work order is answered and a steering frame is outstanding).
+          else armSteeringGrace();
         });
         proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-stderrTailChars); });
         proc.onExit((code) => finalize(code));
@@ -939,11 +1022,16 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           if (bindingPrompt !== null) writeFrame(bindingPrompt);
           if (queuedPrompt !== null) writeFrame(queuedPrompt);
           writeFrame(prompt);
+          // Freeze the opening-frame count BEFORE the flag that makes either predicate answerable, so
+          // neither can ever read a half-built opening sequence.
+          openingFrameCount = framesWritten;
           openingFramesWritten = true;
           // A spawner that answered every opening frame synchronously (inside `writeStdin`) has already
           // delivered the terminal result; `onStdout` could not act on it while frames were still being
-          // written, so the terminal condition is re-evaluated once here.
+          // written, so the terminal condition is re-evaluated once here (and, failing that, the steering
+          // quiet window is armed for the same reason).
           if (turnIsTerminal()) terminalResultSeen = true;
+          else armSteeringGrace();
           // Stream-json accepts additional user frames while a turn is live — so stdin stays open here and
           // the operator channel stays registered for the WHOLE turn (Bug M3). Both are closed later, in
           // `closeAfterResult`, once the terminal `type:"result"` line is observed. M11: an already-closed

@@ -3636,6 +3636,36 @@ describe('Human Request auto-close', () => {
     expect(request.requestRef).toBeTruthy();
   });
 
+  it('at the run event cap the request still closes and only the timeline event is dropped', () => {
+    // Pins `autoCloseOpenHumanRequestsForRun`'s `if (eventCount >= maxEvents) continue;` branch. The
+    // direction matters: the close is the record of truth and the timeline event is the audit copy, so at
+    // the budget it is the EVENT that gives way — never the close, and never the transition itself.
+    const store = createInMemoryControlPlaneStore({ ...deterministicOptions(), maxEventsPerRun: 1 });
+    const { run } = createRun(store);
+    const running = store.transitionRun('alice', run.runRef, run.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const request = requestOnRun(store, run.runRef);
+    // Spend the run's ENTIRE event budget before the terminal transition.
+    const filler = store.appendEvent('alice', run.runRef, { kind: 'lifecycle', source: 'system', summary: 'budget filler' });
+    if (!filler.ok) throw new Error(filler.detail);
+
+    const failed = store.transitionRun('alice', run.runRef, running.value.version, 'failed');
+    expect(failed).toMatchObject({ ok: true }); // the cap never fails the transition
+
+    const detail = store.getRun('alice', run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.humanRequests[0]).toMatchObject({
+      requestRef: request.requestRef,
+      state: 'resolved',
+      response: expect.objectContaining({ decision: 'auto-closed' }),
+    });
+
+    const events = store.listEvents('alice', run.runRef);
+    if (!events.ok) throw new Error(events.detail);
+    expect(events.value).toHaveLength(1); // still just the filler: the governance copy was dropped
+    expect(events.value.filter((event) => event.summary?.includes('auto-closed'))).toEqual([]);
+  });
+
   it('sweep: also closes an orphan whose run was already terminal before this shipped (file-store, pre-fix shape)', () => {
     const root = mkdtempSync(join(tmpdir(), 'control-orphan-sweep-'));
     roots.push(root);

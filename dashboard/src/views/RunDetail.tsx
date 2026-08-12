@@ -301,6 +301,19 @@ const RESOLVED_HEADLINE: Record<HumanRequestDto['kind'], (runName: string) => st
   'governance-refusal': (runName) => `${runName} was refused on governance grounds and asked what to do next.`,
 };
 
+/**
+ * {@link RESOLVED_HEADLINE} with a runtime floor. The map stays total over the kind union at COMPILE
+ * time — a new kind still fails to build until it is given real words above — but the DTOs reaching this
+ * view are unvalidated `as` casts off the wire, so a kind this build has never heard of (an older SPA
+ * against a newer server) arrives typed but unmapped. Indexing then yields `undefined`, and calling it
+ * throws a TypeError that unmounts the WHOLE run page over one settled record in a secondary section.
+ * The fallback says the only thing certainly true of every resolved request, in the same past tense.
+ */
+function resolvedHeadline(request: HumanRequestDto): string {
+  const headline = RESOLVED_HEADLINE[request.kind] as ((runName: string) => string) | undefined;
+  return headline ? headline(request.displayName) : `${request.displayName} asked for a person, and this was answered.`;
+}
+
 /* ============================================================================
  * Section bodies.
  * ========================================================================= */
@@ -1223,8 +1236,8 @@ export function RunDetail({
                 <article key={request.requestRef} className="control-request" data-testid={`resolved-request-${request.requestRef}`}>
                   {/* spec §3b, same law as the open card above: plain words, never the machine's raw
                     * `automatic:policy:...` title — but in the PAST tense, because this one is settled
-                    * (see resolvedRequestHeadline). */}
-                  <h4>{RESOLVED_HEADLINE[request.kind](request.displayName)}</h4>
+                    * (see resolvedHeadline, which also floors an unrecognized kind rather than throwing). */}
+                  <h4>{resolvedHeadline(request)}</h4>
                   {request.response ? (
                     <p className="control-help">
                       <span className="mc-mono">{request.response.decision}</span>

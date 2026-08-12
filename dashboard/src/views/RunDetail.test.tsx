@@ -371,6 +371,32 @@ describe('the run surface', () => {
     expect(resolved.textContent).toContain('terminal state');
   });
 
+  it('falls back to a safe headline for a request kind this build does not know, instead of blanking the page', () => {
+    // The DTOs reaching this view are unvalidated `as` casts off the wire. An older SPA against a newer
+    // server can therefore be handed a kind that is not in RESOLVED_HEADLINE — and the pre-fix
+    // `RESOLVED_HEADLINE[kind](...)` threw a TypeError on `undefined`, unmounting the WHOLE run page over
+    // one settled record in a secondary section.
+    const detail = makeDetail({
+      humanRequests: [{
+        requestRef: 'req-unknown', runRef: 'run-1', stageRef: 'ref-idea', kind: 'a-kind-from-the-future',
+        revision: 1, state: 'resolved', title: 'automatic:policy:whatever', prompt: 'whatever',
+        ask: 'whatever', technicalDetail: 'automatic:policy:whatever',
+        displayName: 'headless run', shortRef: 1,
+        response: {
+          requestRevision: 1, decision: 'approved', response: 'fine', respondedAt: '2026-08-11T00:00:00.000Z',
+        },
+        createdAt: '2026-07-21T00:00:00.000Z', updatedAt: '2026-08-11T00:00:00.000Z',
+      }] as unknown as RunDetailDto['humanRequests'],
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
+
+    const resolved = screen.getByTestId('resolved-request-req-unknown');
+    expect(resolved.querySelector('h4')?.textContent).toBe('headless run asked for a person, and this was answered.');
+    // Still past tense, still no raw machine title, and the decision line is intact.
+    expect(resolved.textContent).not.toContain('automatic:policy:whatever');
+    expect(resolved.textContent).toContain('approved');
+  });
+
   it('links back to the workflow that produced it, off the server grouping key', () => {
     const onNavigate = vi.fn();
     render(unlocked(<RunDetail runRef="run-1" detail={makeDetail()} events={[]} dag={{ nodes: [], edges: [] }} onNavigate={onNavigate} />));

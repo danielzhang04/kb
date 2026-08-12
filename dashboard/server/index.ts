@@ -240,12 +240,16 @@ export function buildApp(): FastifyInstance {
   // stale 2026-07 requests were found still open on 2026-08-11: nothing had ever re-checked them) and
   // then on the interval. Terminal run state is its ONLY predicate. Every failure just leaves requests
   // open — the pre-fix status quo — so there is no unsafe direction for this to fail toward. Each close
-  // writes an audit-ledger row under the repo root and one line to the daemon log saying what and why.
+  // writes one line to the daemon log saying what and why, plus one audit-ledger row COMMITTED to `ops`
+  // through `appendAudit` — deliberately not the bare local appender the merge-gate reconciler and
+  // stranded archiver use above (each of those stages the ledger inside its own card-mutation commit;
+  // this sweep has no card commit to ride on, and an uncommitted local row would leave the shared
+  // checkout dirty and abort every later coordination write). See humanRequestSweep.ts's header.
   const stopHumanRequestSweeper = startHumanRequestSweeper(
     {
       store: surfaceCtx.controlStore,
       repoRoot: surfaceCtx.repoRoot,
-      appendAuditLocal: surfaceCtx.appendAuditLocal,
+      appendAudit: surfaceCtx.appendAudit,
       now: surfaceCtx.now,
       onSweep: (result) => {
         const line = humanRequestSweepLogLine(result);
