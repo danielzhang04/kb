@@ -1,0 +1,11 @@
+Reading additional input from stdin...
+2026-08-12T01:32:00.487309Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Client(HttpRequest(HttpRequest("http/request failed: error sending request for url (https://developers.openai.com/mcp?source=codex)")))
+2026-08-12T01:32:00.845099Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Client(HttpRequest(HttpRequest("http/request failed: error sending request for url (https://developers.openai.com/mcp?source=codex)")))
+2026-08-12T01:32:02.036312Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Client(HttpRequest(HttpRequest("http/request failed: error sending request for url (https://developers.openai.com/mcp?source=codex)")))
+2026-08-12T01:32:02.212319Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses
+2026-08-12T01:32:02.391128Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses
+2026-08-12T01:32:02.660594Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses
+2026-08-12T01:32:03.079026Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses
+2026-08-12T01:32:04.014131Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses
+2026-08-12T01:32:05.565841Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses
+2026-08-12T01:32:08.717948Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: invalid peer certificate: UnknownIssuer, url: wss://api.openai.com/v1/responses
