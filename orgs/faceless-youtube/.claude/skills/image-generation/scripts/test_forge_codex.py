@@ -2221,6 +2221,44 @@ def test_session_reuses_one_thread_and_harvests_turn_two():
     assert all(r["session_mode"] == "session" for r in rows)
 
 
+def _poisoned_session(fc, tmp):
+    """A PNG landing after record() belongs to neither adjacent turn's harvest."""
+    thread_id = "prior-thread"
+    image_dir = tmp / "generated_images" / thread_id
+    image_dir.mkdir()
+    (image_dir / "turn1.png").write_bytes(_png_bytes((1672, 941)))
+    session = fc.Session()
+    session.record(thread_id)
+    late = image_dir / "late-from-turn1.png"
+    late.write_bytes(_png_bytes((1672, 941)))
+    return session, late
+
+
+def test_session_resume_ignores_png_landing_after_prior_record_when_turn_emits_nothing():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("no_image", tmp)
+    session, late = _poisoned_session(fc, tmp)
+    raised = None
+    try:
+        fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768), name="L29",
+                    session=session, poll_delay=0.05)
+    except fc.CodexRunError as e:
+        raised = e
+    assert raised is not None and raised.failure_class == "no_image"
+    assert late.is_file(), "the late prior-turn PNG must never be published as this turn"
+
+
+def test_session_resume_harvests_only_its_png_after_late_prior_turn_file():
+    tmp, prompt, seed = _scratch()
+    fc = _fc_with_roots("resume_ok", tmp)
+    session, late = _poisoned_session(fc, tmp)
+    _, meta = fc.generate(prompt_path=str(prompt), seeds=[str(seed)], canvas=(1376, 768), name="L29",
+                          session=session, poll_delay=0.05)
+    emitted = sorted(p.name for p in late.parent.glob("exec-*.png"))
+    assert [Path(meta["source_png"]).name] == emitted
+    assert meta["turn_index"] == 2 and meta["thread_id"] == "prior-thread"
+
+
 def test_session_span_starts_a_fresh_thread_after_n_turns():
     fc, k, tmp, staging, seed = _kit_for_run("resume_ok")
     spec = _spec_file(tmp, [_runnable_item(f"A{i}", seed) for i in range(3)])

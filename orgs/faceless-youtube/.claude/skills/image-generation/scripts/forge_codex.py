@@ -939,12 +939,12 @@ def generate(*, prompt_path, seeds, canvas, name, session=None, poll_delay=1.0):
         resume = session.thread_id if (session and session.thread_id and reissues == 0) else None
         cwd = tempfile.mkdtemp(prefix="forge-codex-")
         try:
+            before = snapshot_thread_dir(resume) if resume else set()
             result = run_codex_exec(envelope=envelope, cwd=cwd, timeout_s=TIMEOUT_S,
                                     resume_thread=resume)
         finally:
             shutil.rmtree(cwd, ignore_errors=True)
         tid = result["thread_id"] or resume
-        before = session.snapshot if (session and resume) else set()
         new = harvest_new_pngs(tid, before, polls=5, delay=poll_delay) if tid else []
         cls = classify_turn(result, new)
         if cls is None:
