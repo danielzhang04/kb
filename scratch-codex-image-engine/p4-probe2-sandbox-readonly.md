@@ -39,8 +39,12 @@ and `--timeout 240`.
 | false | 114.1 | 0 | 31,909 | 1 | 6 | 174,751 | 145,408 | 2,977 | 1,665 |
 
 Thread id: `019ff39e-c703-7dd2-96d8-47485dc332e4`. The raw stream is
-`p4-probe2-readonly-raw.jsonl`; stderr is `p4-probe2-readonly-stderr.txt`. The call succeeded
-cleanly on codex 0.146.1 and consumed 1 generation, bringing the Phase A running total to 3 of 8.
+`p4-probe2-readonly-raw.jsonl`; stderr is `p4-probe2-readonly-stderr.txt`. The call finished
+rc 0, no timeout, 1 image on codex 0.146.1 — but not friction-free: the read-only sandbox
+forced approval requests for two shell commands (a PowerShell base64 read of the prompt file),
+and exec mode cannot serve approvals, so both were declined (`approval request failed`,
+exit -1; five ERROR lines in stderr). The agent recovered via other read paths and completed
+the turn. Consumed 1 generation, bringing the Phase A running total to 3 of 8.
 
 ## Process-tree checks
 
@@ -51,7 +55,7 @@ cleanly on codex 0.146.1 and consumed 1 generation, bringing the Phase A running
 
 ## Verdict
 
-**VERDICT:** neither of the plan's two anticipated outcomes occurred — the hang did not reproduce AND the call succeeded outright on codex 0.146.1. P2b's observed ~7-min hang is therefore not a stable property of `--sandbox read-only` (version drift or circumstance). One success is not sufficient to re-sanction read-only: production remains `workspace-write` on an empty temp dir per spec §4.4; anyone proposing read-only needs their own confirmation runs.
+**VERDICT:** neither of the plan's two anticipated outcomes occurred — the hang did not reproduce AND the call completed (rc 0, no timeout, 1 image) on codex 0.146.1, though with two sandbox-declined command approvals along the way. P2b's observed ~7-min hang is therefore not a stable property of `--sandbox read-only` (version drift or circumstance). One qualified success is not sufficient to re-sanction read-only: production remains `workspace-write` on an empty temp dir per spec §4.4; anyone proposing read-only needs their own confirmation runs.
 
 ## Nested-sandbox consequence
 
