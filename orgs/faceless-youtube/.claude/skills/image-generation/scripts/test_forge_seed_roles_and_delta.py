@@ -20,6 +20,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from forge import (Kit, RETRY_OVERLAY_SCHEMA, SEED_CAP, cmd_batch, cmd_retry_batch,
                    placement_delta, preflight_batch)
+from conftest import stamp_kit
+import forge as forge_module
 
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
@@ -45,6 +47,8 @@ def _write_json(path, value):
 
 
 def _batch(kit, shots_path, out_path, scope=None):
+    # P3: the channel's standing library and this video's approved frames are REVIEWED assets.
+    stamp_kit(kit, os.path.dirname(shots_path))
     with contextlib.redirect_stdout(io.StringIO()):
         cmd_batch(kit, shots_path, out_path, shots=scope)
     with open(out_path, encoding="utf-8") as f:
@@ -88,8 +92,11 @@ def _l28_retry_fixture():
     return video, shots, overlay, os.path.join(video, "spec.json")
 
 
-def _l28_retry_spec():
+def _l28_retry_spec(entries=None):
     video, shots, overlay, out = _l28_retry_fixture()
+    if entries is not None:      # same fixture, a different surgical authority under test
+        _write_json(overlay, {"schema": RETRY_OVERLAY_SCHEMA,
+                              "video_slug": "l28-role-regression", "entries": entries})
     kit = _kit()
     # A staged STEP-1 is reusable only with an all-pass review record pinned to its bytes (C-6),
     # so the fixture stages the frames the way an approved run leaves them: reviewed.
@@ -101,6 +108,9 @@ def _l28_retry_spec():
             "canonical_sha256": hashlib.sha256(PNG).hexdigest(), "expression_sha256": None,
             "verdicts": {"rig": "pass"}, "reviewer": "fresh-eyes", "date": "2026-08-04"}
     _write_json(os.path.join(kit.staging, "review.json"), {"figures": reviewed})
+    # P3: the plate and the prop this slate seeds are reviewed assets too — same store, same
+    # key shape, merged on top of the STEP-1 records the fixture just pinned.
+    stamp_kit(kit, video)
     with contextlib.redirect_stdout(io.StringIO()):
         cmd_retry_batch(kit, shots, out, overlay)
     with open(out, encoding="utf-8") as f:
@@ -268,9 +278,11 @@ def test_expression_defect_scene_retry_routes_to_step1_remint_not_contradictory_
             "instruction": "Replace the smug face with a worried expression.",
         }],
     })
+    kit = _kit()
+    stamp_kit(kit, video)       # P3: the primitives this retry resolves are reviewed assets
     try:
         with contextlib.redirect_stdout(io.StringIO()):
-            cmd_retry_batch(_kit(), shots, os.path.join(video, "spec.json"), overlay)
+            cmd_retry_batch(kit, shots, os.path.join(video, "spec.json"), overlay)
     except SystemExit as exc:
         message = str(exc).lower()
         assert "expression" in message and "step-1" in message, str(exc)
@@ -301,6 +313,121 @@ def test_expression_defect_cannot_hide_inside_an_exact_scene_replacement():
         assert "expression" in message and "step-1" in message, str(exc)
     else:
         assert False, "an expression-tag replacement must route to STEP-1"
+
+
+def _added_seed_retry(added_seed):
+    """(kit, spec) for a retry that ADDS one kit asset to a scene, in the retry law's legal shape.
+
+    The native place frame is re-prepended — the reorder that supplies the surgical authority a
+    seed/mechanism retry must carry — and `added_seed` rides alongside it as the genuine addition,
+    which is the one path `added_role` has to classify on its own."""
+    video = tempfile.mkdtemp()
+    scenes = os.path.join(video, "assets", "scenes")
+    os.makedirs(scenes)
+    with open(os.path.join(scenes, "L26.png"), "wb") as f:
+        f.write(PNG)
+    shots = os.path.join(video, "shots.json")
+    _write_json(shots, {
+        "schema": "shots/1", "video_slug": "retry-reference-hole",
+        "long_form": {"aspect_ratio": "16:9", "shots": [
+            {"id": "L26", "source": "ai-gen", "place": "records-room", "stage_role": "base",
+             "still_prompt": "A warm records room with a bare central table."},
+            {"id": "R1", "source": "ai-gen", "place": "records-room", "stage_role": "base",
+             "place_anchor": "assets/scenes/L26.png",
+             "still_prompt": "The records room, its long table bare under the strip light."},
+        ]},
+    })
+    overlay = os.path.join(video, "retry.json")
+    _write_json(overlay, {
+        "schema": RETRY_OVERLAY_SCHEMA, "video_slug": "retry-reference-hole",
+        "entries": [{
+            "kind": "scene", "shot": "R1", "name": "R1-added-seed", "defect": "mechanism",
+            "prepend_seeds": ["assets/scenes/L26.png", added_seed],
+        }],
+    })
+    kit = _kit()
+    stamp_kit(kit, video)
+    out = os.path.join(video, "spec.json")
+    with contextlib.redirect_stdout(io.StringIO()):
+        cmd_retry_batch(kit, shots, out, overlay)
+    return kit, json.load(open(out, encoding="utf-8"))
+
+
+def test_a_retry_added_kit_asset_carries_its_real_kind_and_passes_the_review_gate():
+    """I-1. `added_role`'s fallback stamped `reference` on every retry-added seed, and `reference`
+    was gate-exempt for the cast-mint path — so a retry overlay naming any kit prop, environment
+    or primitive seeded a scene with no review record. The role must state what the seed IS.
+
+    The overlay is the legal shape: a reorder of the native place seed (the surgical authority the
+    retry law demands) carrying one genuinely ADDED kit prop alongside it."""
+    kit, spec = _added_seed_retry("refs/env/prop-drive.png")
+    scene = _scene(spec, "R1-added-seed")
+    added = next(r for r in scene["seed_roles"] if r["path"].endswith("prop-drive.png"))
+    assert added["role"] == "prop", scene["seed_roles"]
+    assert added["role"] != "reference", scene["seed_roles"]
+    # ... and with its ruling withdrawn the gate refuses it, exactly as any other prop
+    store_path = os.path.join(kit.staging, "review.json")
+    store = json.load(open(store_path, encoding="utf-8"))
+    store["figures"].pop("prop-drive", None)
+    _write_json(store_path, store)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        forge_module.cmd_gen(kit, spec, force=True, dry=True)
+    assert "R1-added-seed: skip (seed awaits review)" in buf.getvalue(), buf.getvalue()
+    assert "prop-drive" in buf.getvalue(), buf.getvalue()
+
+
+# --- fix round 2: a registry KIND is not automatically a legal seed ROLE -------------------------
+
+_SCHEMA_REJECT = "must contain valid path/role/character fields"
+
+
+def test_a_retry_added_crowd_exemplar_gets_a_legal_role_and_is_gated():
+    """The registry calls the exemplar `crowd-anchor`; the provider vocabulary calls that seed
+    `crowd`. Passing the KIND through as a ROLE made it schema-illegal, so the batch died naming
+    neither the asset nor the reason — the one asset class this most needed to gate."""
+    kit, spec = _added_seed_retry("refs/base/crowd-exemplar.png")
+    scene = _scene(spec, "R1-added-seed")
+    added = next(r for r in scene["seed_roles"] if r["path"].endswith("crowd-exemplar.png"))
+    assert added["role"] == "crowd", scene["seed_roles"]
+    store_path = os.path.join(kit.staging, "review.json")
+    store = json.load(open(store_path, encoding="utf-8"))
+    store["figures"].pop("crowd-exemplar", None)
+    _write_json(store_path, store)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        forge_module.cmd_gen(kit, spec, force=True, dry=True)
+    assert "R1-added-seed: skip (seed awaits review)" in buf.getvalue(), buf.getvalue()
+    assert "crowd-exemplar" in buf.getvalue(), buf.getvalue()
+
+
+def test_a_retry_added_action_primitive_refuses_by_doctrine_not_by_schema():
+    """`action` is how the registry spells 13 of its pose primitives; `cmd_batch` routes them as
+    `pose`. The role must be the legal one — and then the character-binding law refuses it in
+    words that name the asset, instead of a schema error naming nothing."""
+    try:
+        _added_seed_retry("refs/base/action-powerstance.png")
+    except SystemExit as exc:
+        message = str(exc)
+        assert _SCHEMA_REJECT not in message, message
+        assert "action-powerstance" in message, message
+        assert "`pose` is not truthful" in message, message
+    else:
+        assert False, "a character-less pose primitive may not be hand-added by a retry"
+
+
+def test_a_retry_added_identity_or_base_frame_routes_back_to_the_builder():
+    """An identity/base frame's only truthful role is `canonical`, which names the character it
+    draws — a binding only the builder can make. The refusal says so and names the frame."""
+    for seed, stem in (("refs/bolivar/bolivar.png", "bolivar"), ("refs/base/base.png", "base")):
+        try:
+            _added_seed_retry(seed)
+        except SystemExit as exc:
+            message = str(exc)
+            assert _SCHEMA_REJECT not in message, message
+            assert stem in message and "BUILDER" in message, message
+        else:
+            assert False, f"a retry may not hand-add the {stem} identity/base frame"
 
 
 if __name__ == "__main__":

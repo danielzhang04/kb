@@ -374,7 +374,7 @@ def test_figures_cli_summary_line_via_real_subprocess():
              "--figures", str(input_path), str(staging)],
             capture_output=True, text=True)
         assert proc.returncode == 0, proc.stderr
-        assert "figure-review: 2 merged into" in proc.stdout, proc.stdout
+        assert "asset-review: 2 merged into" in proc.stdout, proc.stdout
 
 
 def test_scene_stamping_cli_unaffected_by_the_figures_dispatch():

@@ -484,7 +484,7 @@ def _staged_figure(staging, fig_id):
         return path, hashlib.sha256(f.read()).hexdigest()
 
 
-def test_pending_figures_is_forges_own_reuse_gate_never_a_second_predicate():
+def test_pending_assets_is_forges_own_gate_never_a_second_predicate():
     """A figure carrying an all-pass, digest-current record is REUSABLE and must not cost the
     reviewer an eye; every other staged figure is exactly what the next batch would hard-stop on."""
     with tempfile.TemporaryDirectory() as td:
@@ -501,16 +501,16 @@ def test_pending_figures_is_forges_own_reuse_gate_never_a_second_predicate():
                     "canonical_sha256": failed_sha, "expression_sha256": None,
                     "verdicts": {"rig": "fail"}, "reviewer": "fresh-eyes", "date": "2026-08-04"},
             }}, f)
-        pending = {fig for fig, _p, _w in bra.pending_figures(staging)}
+        pending = {fig for fig, _p, _w in bra.pending_assets(staging)}
         assert pending == {"fig-zeta-clerk--sit--expr-deadpan",
                            "fig-ghost--stand--expr-smug"}, pending
 
 
-def test_the_figure_skeleton_is_stamp_reviews_input_shape_with_empty_verdicts():
+def test_the_asset_skeleton_is_stamp_reviews_input_shape_with_empty_verdicts():
     with tempfile.TemporaryDirectory() as td:
         staging = os.path.join(td, "_staging")
         path, sha = _staged_figure(staging, "fig-zeta-clerk--sit--expr-deadpan")
-        skeleton = bra.figure_verdict_skeleton(bra.pending_figures(staging))
+        skeleton = bra.asset_verdict_skeleton(bra.pending_assets(staging))
         rec = skeleton["figures"]["fig-zeta-clerk--sit--expr-deadpan"]
         assert rec["canonical_sha256"] == sha, rec
         assert set(rec) == {"canonical_sha256", "expression_sha256", "verdicts", "reviewer", "date"}
@@ -524,10 +524,10 @@ def test_the_figure_skeleton_is_stamp_reviews_input_shape_with_empty_verdicts():
         # ... which is exactly what clears forge's gate for the next slice
         with io.open(os.path.join(staging, "review.json"), "w", encoding="utf-8") as f:
             json.dump(store, f)
-        assert bra.pending_figures(staging) == []
+        assert bra.pending_assets(staging) == []
 
 
-def test_pending_figures_become_review_cards_carrying_the_figure_invariants():
+def test_pending_assets_become_review_cards_carrying_their_class_invariants():
     with tempfile.TemporaryDirectory() as td:
         video = Path(td) / "video"
         video.mkdir(parents=True)
@@ -552,6 +552,56 @@ def test_pending_figures_become_review_cards_carrying_the_figure_invariants():
         assert fig["canon"] == [("zeta-clerk", str(canon))], fig["canon"]
         # the scene cards are untouched and still come first, in shots.json order
         assert [c["sid"] for c in cards[:-1]] == ["Q01"], cards
+
+
+def test_a_non_figure_seeding_asset_is_boarded_and_skeletoned_through_the_same_gate():
+    """P3: a plate/prop/primitive lives OUTSIDE staging, so it arrives as an explicit path — and
+    it is asked only what a non-figure frame can answer (no rig row on a plate)."""
+    with tempfile.TemporaryDirectory() as td:
+        video = Path(td) / "video"
+        video.mkdir(parents=True)
+        (video / "shots.json").write_text(json.dumps({"long_form": {"shots": [
+            {"id": "Q01", "source": "ai-gen", "still_prompt": "an empty records room"}]}}),
+            encoding="utf-8")
+        _png(str(video / "assets" / "scenes" / "Q01.png"))
+        staging = os.path.join(td, "_staging")
+        os.makedirs(staging)
+        plate = str(video / "assets" / "scenes" / "L28.png")
+        _png(plate)
+        pending = bra.pending_assets(staging, [plate])
+        assert [a for a, _p, _w in pending] == ["L28"], pending
+        assert "no review record" in pending[0][2], pending
+        card = bra.collect(str(video), None, staging, [plate])[-1]
+        assert card["sid"] == "L28" and card["label"] == "seeding asset", card
+        assert [s for s, _q in card["invariants"]] == list(bra.ASSET_INVARIANTS), card["invariants"]
+        assert "rig" not in dict(card["invariants"]), card["invariants"]
+        assert card["canon"] == [], card         # no canonical to compare a plate against
+        # ... and the skeleton it writes is the same `stamp_review.py --figures` input shape
+        skeleton = bra.asset_verdict_skeleton(pending)
+        rec = skeleton["figures"]["L28"]
+        assert set(rec["verdicts"]) == set(bra.ASSET_INVARIANTS), rec
+        rec["verdicts"] = {k: "pass" for k in rec["verdicts"]}
+        store = {}
+        assert stamp_review.merge_figure_records(store, skeleton) == 1
+        with io.open(os.path.join(staging, "review.json"), "w", encoding="utf-8") as f:
+            json.dump(store, f)
+        assert bra.pending_assets(staging, [plate]) == []
+
+
+def test_an_unresolvable_assets_path_is_a_hard_error_never_a_silent_all_clear():
+    """I-4. Dropping a path that does not resolve turned a typo into "none pending — every one
+    carries an all-pass record": the board telling the human there is nothing to review precisely
+    when it could not find what it was asked to review."""
+    with tempfile.TemporaryDirectory() as td:
+        staging = os.path.join(td, "_staging")
+        os.makedirs(staging)
+        try:
+            bra.pending_assets(staging, [os.path.join(td, "typo-plate.png")])
+        except SystemExit as e:
+            assert "typo-plate.png" in str(e), str(e)
+            assert "--assets" in str(e), str(e)
+        else:
+            assert False, "an --assets path that resolves to no file must never be skipped"
 
 
 def test_figure_character_reads_forges_own_frame_name_composition():

@@ -9,7 +9,7 @@ Reads (per channel visual-kit):
   <kit>/style-bible.md          §2 identity + §2b style-only descriptors, §2c rig-hold and §2d
                                 crowd-rig clauses (all read as blockquotes, never retyped)
   <kit>/registry/registry.json  characters + assets (seed frames, reuse index)
-  <kit>/_staging/review.json    the per-figure review record a staged STEP-1 must carry to be reused
+  <kit>/_staging/review.json    the per-ASSET review record every seeding frame must carry (P3)
   <kit>/refs/<character>/...     canonical reference frames to seed from
 
 Subcommands:
@@ -644,6 +644,50 @@ def _is_canonical(reg, path, character):
 _SEED_ROLES = {"place", "figure", "canonical", "parent", "pose", "expression", "crowd",
                "interaction", "prop", "environment", "reference", STYLE_ANCHOR_ROLE}
 
+# A registry KIND is the librarian's word for an asset; a seed ROLE is the provider's word for the
+# job that asset does in one slate. They overlap, which is why passing one off as the other went
+# unnoticed — but they are not the same vocabulary: on the-second-take, 22 of 66 assets carry a
+# kind (`action` 13, `identity` 7, `base` 1, `crowd-anchor` 1) that is not a legal role at all.
+# `cmd_batch` never needed the translation because it consults `kind` for exactly one question —
+# is this tagged asset a prop or an environment — and those two words happen to be spelled the
+# same on both sides. The retry path is the first caller that must name a role for an ARBITRARY
+# registry asset, so the mapping lives here, once, rather than as an expression at that call site.
+KIND_TO_SEED_ROLE = {
+    "pose": "pose", "action": "pose",       # `_split_primitives` routes both as this figure's pose
+    "expression": "expression",
+    "interaction": "interaction",
+    "prop": "prop",
+    "environment": "environment",
+    "crowd-anchor": "crowd",                # the exemplar `cmd_batch` seeds as role `crowd`
+}
+# The kinds whose only truthful role is `canonical` — which NAMES the character the frame draws.
+CHARACTER_BOUND_KINDS = ("identity", "base")
+
+
+def seed_role_for_kind(kind, name, label):
+    """The legal seed ROLE for a registry KIND, or a refusal that names the asset and the way out.
+
+    An identity/base frame is refused rather than demoted: its only truthful role is `canonical`,
+    and `canonical` is truthful only when it names its character (`seed_role_violations`) — a
+    binding the builder makes from the shot's own cast and a retry cannot invent. Calling such a
+    frame a `reference` instead would ship role prose that lies about what the seed is, which is
+    the B4 failure truthful roles exist to remove, and would leave the review record as the only
+    thing between an unbound canonical and the scene. Refusing reads the way this file's other
+    refusals read: name the frame, name the law, name the route back.
+
+    Anything the registry does not name at all still falls through to `reference` — untyped, but
+    gated like everything else since P3."""
+    role = KIND_TO_SEED_ROLE.get(kind)
+    if role:
+        return role
+    if kind in CHARACTER_BOUND_KINDS:
+        raise SystemExit(
+            f"{label}: `{name}` is a registry `{kind}` frame — an identity/base seed's only "
+            "truthful role is `canonical`, which must name the character it draws, and only the "
+            "BUILDER can make that binding from the shot's own cast. Restage the shot and re-run "
+            "`batch` rather than hand-adding this frame to a retry overlay.")
+    return "reference"
+
 
 def seed_role_violations(k, r):
     """Validate role metadata against both final paths and emitted ordinal prose."""
@@ -1139,7 +1183,7 @@ def preflight_batch(k, reqs, force, dry):
     return plan
 
 
-def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
+def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False, gate=True):
     # Results are reported AS THEY LAND, not buffered to the end of the batch. A 20-scene batch
     # is otherwise ~15 minutes of total silence, which (a) trips agent stream watchdogs and
     # (b) hides a systematic per-gen failure until every call has already been paid for — a
@@ -1149,6 +1193,11 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
     # the batch pre-flight for "confirm the step is correctly configured before a batch run". It
     # still resolves seeds (so a missing seed is caught for free) and ignores skip-if-exists, since
     # the point is to read every prompt, not to see which files already landed.
+    #
+    # `gate=False` is the ONE exemption from P3's review gate, and it is a CALL-SITE exemption, not
+    # a role one: the ad-hoc `gen --seed` CLI — the cast-generation wave and the single-asset loop
+    # — mints from the asset base under the G2 ruling and acquires no human-verdict requirement.
+    # `main()` passes it only on that branch; every builder-produced slate (`gen --batch`) is gated.
     os.makedirs(k.staging, exist_ok=True)
     plan = preflight_batch(k, reqs, force, dry)   # the seeding law, at $0, before any API call
     results = []
@@ -1162,6 +1211,28 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
         name = r["name"]; mode = r.get("mode", "identity")
         if seeds is None:
             report(name, "skip (exists in staging)"); continue
+        # P3's gate over this request's WHOLE slate — every non-exempt seed role, not only the
+        # STEP-1 card. It runs here as well as in `cmd_batch` because this is the only point where
+        # a frame MINTED BY THIS RUN has bytes: a card or plate the batch itself produces has no
+        # file when the slate is built, so a batch-time refusal on it would permanently block the
+        # only path that mints one. Everything else re-checked here is a no-op that already passed
+        # at batch time, and a defence for a hand-written spec fed straight to `gen --batch`.
+        #
+        # Operational consequence, stated plainly: a run whose batch mints its own seeds needs
+        # board+stamp rounds roughly equal to its CHAIN DEPTH — pass 1 mints the cards and plates
+        # and holds the scenes that would seed from them, the review rules on what landed, and the
+        # next `gen` over the SAME spec releases the next layer. That is the 6c2 card-before-scene
+        # split as a forge law instead of an operator convention.
+        #
+        # A held request is SKIPPED, never fatal: the seeds this run minted must still land so the
+        # board can rule on them, and killing the batch would take them with it.
+        if gate:
+            held = seed_role_review_refusals(k, r.get("seed_roles") or [], name,
+                                             plate_seed_overrides(reqs))
+            if held:
+                report(name, "skip (seed awaits review) — " + "; ".join(
+                    line.split("\n")[0] for line in held))
+                continue
         figures = r.get("figures")
         hold = should_hold(mode, seeds, r["delta"], figures)
         # `prompt_suffix` rides the request exactly as `delta`/`payload` do — it is the video's
@@ -1215,7 +1286,16 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False):
         return
     ok = sum(1 for _, s in results if s.startswith("OK"))
     err = sum(1 for _, s in results if s.startswith("ERR"))
-    print(f"  == {ok} generated, {err} failed, {len(results) - ok - err} skipped ==", flush=True)
+    # HELD is its own count, never folded into `skipped` (I-3): "already in staging" means done and
+    # needs nothing, while "awaits review" means a human owes a verdict before this frame can ever
+    # be generated. An orchestrator reading one number could not tell "finished" from "blocked".
+    # The EXIT CODE is unchanged — 0 — matching how `failed` has always been signalled here: this
+    # function reports per-request outcomes in its summary and reserves a non-zero exit for
+    # conditions that invalidate the whole batch (seed-integrity abort, the seeding law).
+    held = sum(1 for _, s in results if s.startswith("skip (seed awaits review)"))
+    skipped = len(results) - ok - err - held
+    print(f"  == {ok} generated, {err} failed, {skipped} skipped, {held} held for review ==",
+          flush=True)
 
 # --- `batch`: the policied seed slate ------------------------------------------------------
 # Every silent drop on the 2026-07-28 run happened in the gap BETWEEN a per-run scratch script and
@@ -1432,11 +1512,14 @@ def place_anchor_for(video, anchor, root, name):
     return _video_scene_frame(video, os.path.join(video, anchor), root, name, "`place_anchor`")
 
 
-FIGURE_REVIEW = "review.json"      # C-6: the per-figure review store, one file inside <kit>/_staging
+ASSET_REVIEW = "review.json"       # C-6/P3: the per-ASSET review store, one file inside <kit>/_staging
 
 
 def figure_review_record(staging_dir, fn):
-    """One staged figure's review record, or None when the store holds no entry for it.
+    """One asset's review record, or None when the store holds no entry for it.
+
+    Keyed by the frame's FILE STEM — `fig-<char>--<pose>--<expr>` for a STEP-1 card, `prop-drive`
+    for a prop, `L28` for a place plate. One store, one key shape, every seeding asset class.
 
     Takes the STAGING DIR rather than a `Kit` so the review side of the loop
     (`build_review_artifact.py`, which has a video and a staging path but no key-bearing Kit) reads
@@ -1444,27 +1527,57 @@ def figure_review_record(staging_dir, fn):
     untouched: `stamp_review.py` is the only writer of a verdict anywhere in this pipeline; every
     other caller, forge included, only ever reads."""
     try:
-        doc = json.load(open(os.path.join(staging_dir, FIGURE_REVIEW), encoding="utf-8"))
+        doc = json.load(open(os.path.join(staging_dir, ASSET_REVIEW), encoding="utf-8"))
     except (OSError, ValueError):
         return None
     entry = (doc.get("figures") or {}).get(fn) if isinstance(doc, dict) else None
     return entry if isinstance(entry, dict) else None
 
 
+_DIGEST_CACHE = {}
+
+
+def frame_digest(path):
+    """One frame's sha256, memoized per (path, size, mtime) for the life of this process.
+
+    P3 asks the gate's question once per SHOT, so a standing asset is re-read on every scene that
+    seeds it — the §5 style tile on all 246 of them, against a ~100MB refs tree. The key carries
+    size and mtime, so a frame RE-MINTED mid-run is re-hashed: the staleness the store checks for
+    is exactly what a cache keyed on the path alone would hide."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (os.path.abspath(path), st.st_size, st.st_mtime_ns)
+    if key not in _DIGEST_CACHE:
+        with open(path, "rb") as f:
+            _DIGEST_CACHE[key] = hashlib.sha256(f.read()).hexdigest()
+    return _DIGEST_CACHE[key]
+
+
 def figure_reuse_blocker(staging_dir, fn, frame, store_label=None):
-    """The ONE reason a staged STEP-1 may not seed a scene slate, or None when it is clear.
+    """The ONE reason ANY asset's pixels may not seed a scene slate, or None when it is clear.
 
     `cmd_batch` reuses a staged frame BY NAME before it regenerates anything, so the name alone
     decided whether a pre-reset, drifted figure rode into a fresh run — the 2026-08-04 audit's
-    mechanism 2, which supplied 8 of the 10 defect scenes. Reuse now requires an all-pass review
+    mechanism 2, which supplied 8 of the 10 defect scenes. Seeding now requires an all-pass review
     record whose `canonical_sha256` still matches the bytes on disk. A frame nobody ruled on, a
     frame that failed an invariant, and a frame re-minted since it was ruled on all get the same
     answer — re-mint it and review it. Nothing is grandfathered.
 
+    P3 (2026-08-12) stops carving classes out of that answer. The predicate was written asset-
+    agnostic and was called on figures alone, so a plate, a prop, an environment reference, a
+    crowd exemplar and a pose/expression primitive each seeded scenes on pixels no human ever
+    ruled on. `asset_seed_refusal` is the one route every class now takes into this same function
+    — there is no second predicate and no per-class variant. The ONE exemption is a named cast
+    member's own canonical, minted through the standard cast-generation wave from the asset base
+    (G2 ruling: "P2 seeds don't need their own human gates... as long as it seeds with our actual
+    logic and from asset base").
+
     This predicate is the WHOLE gate, and it is deliberately callable without a `Kit`: the review
-    board asks it which staged figures still need a fresh-eyes ruling, so the board's pending list
+    board asks it which staged assets still need a fresh-eyes ruling, so the board's pending list
     and forge's refusal can never disagree about what "reusable" means."""
-    store = store_label or os.path.join(staging_dir, FIGURE_REVIEW).replace("\\", "/")
+    store = store_label or os.path.join(staging_dir, ASSET_REVIEW).replace("\\", "/")
     record = figure_review_record(staging_dir, fn)
     verdicts = (record or {}).get("verdicts")
     scored = isinstance(verdicts, dict) and bool(verdicts)
@@ -1475,7 +1588,7 @@ def figure_reuse_blocker(staging_dir, fn, frame, store_label=None):
         return f"its {store} record carries no per-invariant verdicts"
     if failed:
         return f"its {store} record FAILS {', '.join(failed)}"
-    if record.get("canonical_sha256") != hashlib.sha256(open(frame, "rb").read()).hexdigest():
+    if record.get("canonical_sha256") != frame_digest(frame):
         return (f"its {store} record is stale — `canonical_sha256` no longer matches the frame on "
                 "disk, so the pixels that were reviewed are not the pixels this slate would seed")
     return None
@@ -1507,9 +1620,123 @@ def figure_remint_instruction(k, fn, frame, shots_path, out_path, shot_name):
             f"       py -3 {rel(stamp)} --figures <figure-verdicts.json> {rel(k.staging)}")
 
 
+def asset_seed_refusal(k, path, klass, shot_name):
+    """The P3 pre-gen refusal for one NON-figure seeding asset, or None when it may seed.
+
+    Every asset class whose pixels seed a scene — plate, environment, prop, crowd exemplar,
+    pose/expression/interaction primitive — routes THROUGH HERE into `figure_reuse_blocker`. One
+    predicate, one store, one key shape (the frame's file stem): a per-class variant would be a
+    second definition of "reviewed", which is precisely the drift C-6 was built to remove.
+
+    A path that resolves to nothing on disk returns None rather than a review refusal: seed
+    EXISTENCE is `preflight_batch`'s to report, and answering "no review record" for a missing
+    file would send the author to the review board for a file that was never minted."""
+    if not path:
+        return None
+    if "_staging/" in str(path).replace("\\", "/"):
+        # `resolve_request_seeds`' own convention for a staged frame, byte-identical: the slate
+        # writes `_staging/<name>.png` and the staging DIR is the kit's, wherever it lives.
+        frame = os.path.join(k.staging, _stem(path) + ".png")
+    else:
+        try:
+            frame = k.resolve_seed(path)
+        except SystemExit:
+            return None
+    if not os.path.isfile(frame):
+        return None
+    store = os.path.relpath(os.path.join(k.staging, ASSET_REVIEW), k.root).replace("\\", "/")
+    name = _stem(path)
+    reason = figure_reuse_blocker(k.staging, name, frame, store)
+    if reason is None:
+        return None
+    stamp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stamp_review.py")
+    board = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build_review_artifact.py")
+
+    def rel(p):
+        return os.path.relpath(p, k.root).replace("\\", "/")
+    return (f"{shot_name}: {klass} `{name}` refused as a seed — {reason}. Every asset whose pixels "
+            "seed a scene carries a human ruling (P3); render it onto the review board and record "
+            "the verdicts (the ONLY writer):\n"
+            f"    1. py -3 {rel(board)} --video <video-dir> --out <board.html> "
+            f"--staging {rel(k.staging)} --assets {rel(frame)} --figures-out <verdicts.json>\n"
+            f"    2. py -3 {rel(stamp)} --figures <verdicts.json> {rel(k.staging)}")
+
+
+# The two seed roles P3's gate does NOT cover, each for a stated reason:
+#   `canonical` — a named cast member's own canonical. The G2 ruling exempts it BY NAME ("P2 seeds
+#     don't need their own human gates. I trust those will be fine. As long as it seeds with our
+#     actual logic and from asset base"), so the cast wave is untouched by this change.
+#   `parent`    — an ORDINARY scene-to-scene chain parent, owned by the scenes-manifest gate
+#     (`_scene_provenance`). A generated scene's verdict lives in that manifest, not in the asset
+#     store; asking for a second record would be a second definition of "reviewed" for one frame.
+#     The exemption is NARROW, and `gated` below is why: `place_role` wears `parent` on a delta and
+#     `place` on a base while naming the SAME place plate, so exempting the label once exempted the
+#     plate itself — a plate refused on the `place` path rode free on the `parent` path (C-1). A
+#     plate is a seeding asset like any other; only a scene-to-scene parent is exempt, and the
+#     manifest's own refusal fires on `parked` alone, so it never covered an UNREVIEWED plate.
+#
+# `reference` is deliberately NOT here. It is the only role the ad-hoc `gen --seed` CLI builds
+# (`main()`) — the cast-generation wave and the single-asset loop — and that path IS exempt, but
+# by CALL SITE (`cmd_gen(gate=False)`), not by role. Exempting the role exempted every OTHER
+# producer of it too: `_retry_scene`'s `added_role` fell back to `reference` for any retry-added
+# seed, so a retry overlay naming a kit plate, prop or primitive seeded a scene on no ruling (I-1).
+GATE_EXEMPT_ROLES = ("canonical", "parent")
+
+
+def seed_role_review_refusals(k, roles, shot_name, gated=None):
+    """Every P3 refusal carried by one slate's seed roles — the ONE gate sweep.
+
+    Called on the scene slate and on the STEP-1 card's own roles, so a pose or expression primitive
+    is ruled on whether its pixels reach the scene directly or through the card it mints. Roles are
+    the classifier because the role is what the slate already records about a seed; a name-pattern
+    or directory test would be a second, weaker taxonomy sitting beside this one.
+
+    `gated` is a `{path: class label}` override for the one case where the role LABEL is not the
+    whole truth: a place plate carried as a delta's `parent`. Only the caller can know which frames
+    those are — `cmd_batch` from the walk that saw which shot minted the place, `cmd_gen` by
+    reading back the `plate_parent` that walk recorded on the item — so naming the path keeps that
+    knowledge out of this predicate."""
+    gated = gated or {}
+    out = []
+    for role in roles:
+        if not role:
+            continue
+        path = role.get("path")
+        klass = gated.get(path)
+        if klass is None and role.get("role") in GATE_EXEMPT_ROLES:
+            continue
+        refusal = asset_seed_refusal(k, path, klass or role.get("role"), shot_name)
+        if refusal:
+            out.append(refusal)
+    return out
+
+
+def plate_seed_overrides(reqs):
+    """`{path: "place plate"}` for every delta in this batch that inherits a PLATE — C-1's
+    gen-time half.
+
+    A plate minted by this batch has no bytes when the slate is built, so the batch-time gate
+    cannot read it; by gen time it exists, but it reaches its delta wearing the exempt `parent`
+    label. `cmd_batch` is the only code that can tell a plate parent from an ordinary
+    scene-to-scene parent — it walked the whole file and knows which shot minted its place — so it
+    records the answer on the delta as `plate_parent` and this reads it back. Deriving it from the
+    batch's `plate: true` items instead would go wrong the moment a spec is run in slices: gen a
+    delta whose plate item is not in the same slice and the override would silently vanish."""
+    return {r["plate_parent"]: "place plate"
+            for r in reqs if isinstance(r, dict) and r.get("plate_parent")}
+
+
+def refuse_unreviewed(refusals):
+    """Stop the batch at $0 on the P3 gate — one refusal list, one exit, both call sites."""
+    if refusals:
+        raise SystemExit("PRE-GEN REVIEW GATE — %d seeding asset(s) carry no human ruling; "
+                         "nothing generated, nothing charged:\n%s"
+                         % (len(refusals), "\n".join(refusals)))
+
+
 def figure_reuse_refusal(k, fn, frame, shots_path, out_path, shot_name):
     """The C-6 reuse refusal: the ONE blocking reason, plus the builder path that clears it."""
-    store = os.path.relpath(os.path.join(k.staging, FIGURE_REVIEW), k.root).replace("\\", "/")
+    store = os.path.relpath(os.path.join(k.staging, ASSET_REVIEW), k.root).replace("\\", "/")
     reason = figure_reuse_blocker(k.staging, fn, frame, store)
     if reason is None:
         return None
@@ -1573,6 +1800,10 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
     crowd_ex = (reg_assets.get("crowd-exemplar") or {}).get("file")
     spec, made, emitted, place_first, place_last, notes = [], {}, {}, {}, {}, []
     provenance = {}             # emitted name -> its `parent_depth`/`lineage` record (C-11)
+    # Shots whose slate derived `plate: true` — the place's own establishing frame. Recorded for
+    # EVERY walked shot, in scope or not, because a scoped delta's parent is routinely a plate the
+    # scope excluded, and that plate still has to carry a ruling before its pixels seed the child.
+    plate_shots = set()
     # `--shots` is a FILTER on this one walk, never a second path. The walk still visits every shot,
     # because stage chains and place-first plates are only correct when the whole file is read; scope
     # decides what gets EMITTED and what BLOCKS. Full runs stay the default the engine is built for.
@@ -1713,6 +1944,11 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                         raise SystemExit(refusal)
                     made[fn] = reused; why.append(f"`{c}` STEP-1 {fn} REUSED")
                 else:
+                    # The card is MINTED here, so its own primitives are gated on the way in: a
+                    # pose or expression nobody ruled on must not reach a scene by riding inside
+                    # the card it minted. Same predicate, same store — only the canonical is
+                    # exempt, and only because the cast wave owns it.
+                    refuse_unreviewed(seed_role_review_refusals(k, step1_roles, name))
                     step1_payload = figure_card_payload(pose)
                     spec.append({"name": fn, "mode": "environment", "aspect": "2:3",
                                  "image_size": "1K", "stage_role": "base",
@@ -1784,6 +2020,13 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         interaction_roles = [_seed_role(vfile(n), "interaction")
                              for n in _interaction_primitives(k.reg, cast_recipe, omitted)]
         place_role = _seed_role(place_frame, "parent" if delta_beat else "place") if place_frame else None
+        # C-1: the same frame is a `place` seed on a base and a `parent` seed on a delta. Only this
+        # walk knows which shot minted the place, so when a delta's parent IS that plate the fact is
+        # recorded here — gating it by path where the role label alone would exempt it, and riding
+        # on the item so `cmd_gen` can gate it again once the plate has bytes.
+        plate_parent = (place_role["path"]
+                        if delta_beat and place_role and parent in plate_shots else None)
+        plate_parent_gate = {plate_parent: "place plate"} if plate_parent else None
         crowd_role = _seed_role(crowd_ex, "crowd") if crowd else None
         if delta_beat:
             seed_roles = _dedupe_seed_roles([place_role] + canon_roles + prim_roles
@@ -1841,6 +2084,12 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                 why.append(f"CAP DISPLACEMENT — tagged prop `{stem}` dropped; the prompt "
                            "already names it, and forge's seed is a reinforcement, not its only "
                            "carrier")
+        if in_scope:
+            # P3's gate, on the FINAL slate: an asset the cap already displaced never seeds this
+            # scene, so refusing on it would send the author to review a frame the slate dropped.
+            # C-1: a delta's `parent` is the exempt label, but when that parent frame is the
+            # place's own PLATE it is a seeding asset like any other and is gated by path.
+            refuse_unreviewed(seed_role_review_refusals(k, seed_roles, name, plate_parent_gate))
         seeds = [role["path"] for role in seed_roles]
         # C-4: the PLATE marker is DERIVED, never authored. A scene carrying no CONTENT seed is
         # the frame that establishes its own place — a place-first shot with no cast, a single-use
@@ -1850,6 +2099,8 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         # no place, so a plate that takes it is still the frame that mints its own place. Counting
         # it would silently un-mark every plate in the channel the day the tile was registered.
         plate = not [role for role in seed_roles if role["role"] != STYLE_ANCHOR_ROLE]
+        if plate:
+            plate_shots.add(name)       # C-1: what a later delta inherits, and must be ruled on
         text = placement_delta(prompt, seed_roles)
         if place_anchor:
             why.append(f"PLACE-ANCHOR = {shot['place_anchor']}")
@@ -1867,6 +2118,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                 "figures": shot.get("figures"), "stage_role": shot.get("stage_role"),
                 "assets_omitted": sorted(set(omitted) | set(displaced)) or None, "plate": plate,
                 "delta_primitives": declared_delta_primitives or None,
+                "plate_parent": plate_parent,
                 "expression_change": expression_change or None,
                 "parent_depth": depth, "lineage": lineage,
                 "why": why_text}
@@ -2099,8 +2351,22 @@ def _retry_scene(item, source, entry, k, video, label):
             repaired[path] = matches
     replaced = {parent for matches in repaired.values() for parent in matches}
     reordered = {path for path, _ in added_first + added_last if path in native}
-    native_roles = item.get("seed_roles") or [
-        _seed_role(path, "parent" if _is_scene_seed(path) else "reference") for path in native]
+    # I-1: a retry-added seed states WHAT IT IS. The old fallback stamped `reference` on every one
+    # of them, which was untruthful role prose (the B4 root cause `seed_roles` exists to remove)
+    # and — while `reference` was gate-exempt — a way for a kit plate, prop, environment or
+    # primitive to seed a scene with no review record. The registry already knows each asset's
+    # kind, so the role is read from there — THROUGH `seed_role_for_kind`, because a kind is not
+    # automatically a legal role: handing the raw kind over made an added `action-*` or the crowd
+    # exemplar schema-illegal, and the batch then died naming neither the asset nor the reason.
+    kind_by_stem = {_stem(a.get("file") or ""): a.get("kind")
+                    for a in (getattr(k, "reg", None) or {}).get("assets", []) if a.get("file")}
+
+    def _seed_kind(path):
+        if _is_scene_seed(path):
+            return "parent"
+        return seed_role_for_kind(kind_by_stem.get(_stem(path)), _stem(path), label)
+
+    native_roles = item.get("seed_roles") or [_seed_role(path, _seed_kind(path)) for path in native]
     native_role_by_path = {role["path"]: role for role in native_roles}
 
     def added_role(path):
@@ -2110,7 +2376,7 @@ def _retry_scene(item, source, entry, k, video, label):
         if matches:
             inherited = native_role_by_path.get(matches[0], _seed_role(matches[0], "parent"))
             return dict(inherited, path=path)
-        return _seed_role(path, "reference")
+        return _seed_role(path, _seed_kind(path))
 
     seed_roles = _dedupe_seed_roles(
         [added_role(path) for path, _ in added_first]
@@ -2502,7 +2768,10 @@ def main():
         vid = a.video or video_dir_of(reqs, k.root)
         if vid and os.path.isdir(vid):
             k.use_video(vid)
-        cmd_gen(k, reqs, a.force, a.image_size, dry)
+        # P3's gate applies to builder-produced slates (`--batch`). The ad-hoc `--seed` form above
+        # IS the cast-generation wave / single-asset loop, exempt by the G2 ruling — exempted here,
+        # at its one call site, rather than by exempting a seed role every other producer can wear.
+        cmd_gen(k, reqs, a.force, a.image_size, dry, gate=bool(a.batch))
     elif a.cmd == "batch":
         if not a.batch or not a.out:
             raise SystemExit("batch needs --batch <videos/slug/shots.json> and --out <spec.json>")

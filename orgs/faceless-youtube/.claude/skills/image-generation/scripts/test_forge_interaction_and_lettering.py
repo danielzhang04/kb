@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from forge import (FIGURE_PREFIX, Kit, _interaction_primitives, _split_primitives, _stem,
                    cmd_batch, figure_card_payload, interaction_violations, shot_cast,
                    text_bearing)
+from conftest import stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
@@ -70,6 +71,7 @@ def _batch(shots, scope=None):
     with open(shots_path, "w", encoding="utf-8") as f:
         json.dump({"schema": "faceless-youtube/shots@2", "channel": "the-second-take",
                    "long_form": {"aspect_ratio": "16:9", "shots": shots}}, f)
+    stamp_kit(kit, d)           # P3: the channel's standing library is a REVIEWED library
     with contextlib.redirect_stdout(io.StringIO()):
         cmd_batch(kit, shots_path, out_path, video_dir=d, shots=scope)
     with open(out_path, encoding="utf-8") as f:

@@ -20,19 +20,23 @@ hardcoded anywhere below. Comparisons are never cropped/zoomed: `crop_battery.py
 review procedure calls it, and it is kept on disk only as a historical tool (2026-08-03 ratified:
 "I don't need a super crazy review process... it just burns time").
 
-C-6 closing step (`--staging <kit>/_staging`): the board also carries a card per STEP-1 figure that
-forge would REFUSE to reuse, and writes a figure-verdicts SKELETON keyed by `fig-*` id +
-`canonical_sha256`. The same fresh-eyes pass that rules on the scenes rules on those figures; the
+C-6 closing step, widened by P3 (2026-08-12) to every SEEDING ASSET: with `--staging
+<kit>/_staging` the board carries a card per STEP-1 figure forge would REFUSE to seed from, and
+with `--assets <frame.png> ...` it carries one per plate, environment reference, prop, crowd
+exemplar or pose/expression primitive forge refused — those live outside staging, so forge's own
+refusal prints the path to pass here. It writes an asset-verdicts SKELETON keyed by asset id +
+`canonical_sha256`. The same fresh-eyes pass that rules on the scenes rules on those assets; the
 orchestrator fills the skeleton's verdicts and runs `stamp_review.py --figures <skeleton>
-<staging>`, which is what makes a figure minted in slice N reusable in slice N+1. The
+<staging>`, which is what makes an asset minted in slice N seedable in slice N+1. The
 single-writer law is untouched — this script writes only the INPUT; `stamp_review.py` remains the
 only writer of `<staging>/review.json`, and the pending list is `forge.figure_reuse_blocker`
-itself, so the board and forge's refusal can never disagree about what "reusable" means.
+itself, so the board and forge's refusal can never disagree about what "seedable" means.
 
 Usage:
   py -3 build_review_artifact.py --video <video-dir> --out <out.html> [--title T]
                                  [--shots L01 L02 ...] [--max-width 1600] [--quality 82]
-                                 [--staging <kit>/_staging] [--figures-out <skeleton.json>]
+                                 [--staging <kit>/_staging] [--assets <frame.png> ...]
+                                 [--figures-out <skeleton.json>]
 
 Requires Pillow. Reads shots.json + shots.motion.json + assets/scenes/manifest.json +
 assets/library/manifest.json (optional — absence only narrows which rows fire, never crashes).
@@ -296,37 +300,67 @@ def describe_animation(m):
     return " · ".join(bits) if bits else "—"
 
 
-# ---------- C-6: the STEP-1 figure half of the same review pass ----------
-# The invariants a STEP-1 reference frame is ruled on. `stamp_review.py` stores whatever slugs the
-# review names and forge's reuse gate requires every one of them to read "pass", so this set is the
-# review's own vocabulary, not a schema: widen it here and every later figure is ruled on the wider
-# set. `flat-cel-hazard` is the SAME question the scene rows ask, asked once per figure.
+# ---------- C-6/P3: the SEEDING-ASSET half of the same review pass ----------
+# The invariants a seeding asset is ruled on. `stamp_review.py` stores whatever slugs the review
+# names and forge's gate requires every one of them to read "pass", so these sets are the review's
+# own vocabulary, not a schema: widen one here and every later asset of that class is ruled on the
+# wider set. `flat-cel-hazard` is the SAME question the scene rows ask, asked once per asset.
 FIGURE_INVARIANTS = {
     "rig": "Rig holds against this character's approved canonical (bible §3, FULL rig)",
     "expression-register": "Expression sits at the authored register, not flattened (§3 per beat)",
     "flat-cel-hazard": INVARIANTS["flat-cel-hazard"],
 }
+# P3's other classes — plate, environment, prop, crowd exemplar, pose/expression primitive. A rig
+# row would be a meaningless question on a plate, so the non-figure set asks only what a non-figure
+# frame can answer, and it reuses the SCENE vocabulary above rather than inventing a second one.
+ASSET_INVARIANTS = {
+    "flat-cel-hazard": INVARIANTS["flat-cel-hazard"],
+    "line-register": INVARIANTS["line-register"],
+}
 
 
-def pending_figures(staging):
-    """Every staged `fig-*` frame forge would REFUSE to reuse, as `[(fig_id, path, why)]`.
+def invariants_for(asset_id):
+    """The rows this asset's card carries — figure invariants for a STEP-1 card, else P3's set."""
+    return FIGURE_INVARIANTS if asset_id.startswith(forge.FIGURE_PREFIX) else ASSET_INVARIANTS
 
-    The predicate is `forge.figure_reuse_blocker` itself — the reuse gate, called rather than
-    re-implemented — so the figures this board asks the human to rule on are exactly the figures
-    the next batch would otherwise hard-stop on. A figure already carrying an all-pass,
-    digest-current record is silently absent: it is reusable, and re-ruling it is eye cost for
-    nothing."""
-    out = []
-    if not staging or not os.path.isdir(staging):
-        return out
-    for fn in sorted(os.listdir(staging)):
-        if not (fn.startswith(forge.FIGURE_PREFIX) and fn.endswith(".png")):
+
+def pending_assets(staging, extra=()):
+    """Every asset forge would REFUSE to seed from, as `[(asset_id, path, why)]`.
+
+    The predicate is `forge.figure_reuse_blocker` itself — the gate, called rather than
+    re-implemented — so the assets this board asks the human to rule on are exactly the assets the
+    next batch would otherwise hard-stop on. One already carrying an all-pass, digest-current
+    record is silently absent: it is seedable, and re-ruling it is eye cost for nothing.
+
+    Staged STEP-1 cards are found by walking `<kit>/_staging`; every OTHER P3 class lives outside
+    staging (a plate under the video's `assets/scenes/`, a prop or primitive under the kit's
+    `refs/`), so those arrive as explicit `extra` paths — which is exactly what forge's own
+    refusal prints when it names the frame that stopped the batch. Enumerating them by scanning
+    instead would board every scene the run has ever generated, since a scene frame's verdict
+    lives in the scenes manifest, not in this store."""
+    candidates = []
+    if staging and os.path.isdir(staging):
+        candidates = [os.path.join(staging, fn) for fn in sorted(os.listdir(staging))
+                      if fn.startswith(forge.FIGURE_PREFIX) and fn.endswith(".png")]
+    for path in extra or ():
+        # I-4: an `--assets` path that resolves to nothing is a HARD ERROR, never a silent drop.
+        # Dropping it ended in "none pending — every one carries an all-pass record": the board
+        # reporting a clean bill precisely when it could not find what it was asked to rule on.
+        # A mistyped path must never read as an approval.
+        if not path or not os.path.isfile(path):
+            sys.exit("--assets: no PNG at %s — pass the frame forge named in its refusal "
+                     "(relative to where you run this, or absolute)" % (path or "<empty path>"))
+        candidates.append(path)
+    pending, seen = [], set()
+    for path in candidates:
+        asset_id = os.path.splitext(os.path.basename(path))[0]
+        if asset_id in seen:
             continue
-        path = os.path.join(staging, fn)
-        why = forge.figure_reuse_blocker(staging, fn[:-4], path)
+        seen.add(asset_id)
+        why = forge.figure_reuse_blocker(staging, asset_id, path)
         if why:
-            out.append((fn[:-4], path, why))
-    return out
+            pending.append((asset_id, path, why))
+    return pending
 
 
 def figure_character(fig_id):
@@ -336,28 +370,29 @@ def figure_character(fig_id):
     return fig_id[len(forge.FIGURE_PREFIX):].split("--")[0]
 
 
-def figure_verdict_skeleton(figures, reviewer="fresh-eyes", date=None):
+def asset_verdict_skeleton(assets, reviewer="fresh-eyes", date=None):
     """`stamp_review.py --figures`' INPUT, pre-keyed so the human only fills verdicts.
 
-    Emits the C-6 pinned record shape per figure with every applicable invariant present and EMPTY
+    Emits the C-6 pinned record shape per ASSET with every applicable invariant present and EMPTY
     (`""`), and `canonical_sha256` computed from the bytes on disk right now — the same bytes the
-    board just rendered, which is what the store's staleness check compares against. This script
-    never writes `<staging>/review.json`: `stamp_review.py` remains its only writer."""
+    board just rendered, which is what the store's staleness check compares against. Which
+    invariants apply is the asset's CLASS question, answered once by `invariants_for`, so a plate
+    is never asked to hold a rig. This script never writes `<staging>/review.json`:
+    `stamp_review.py` remains its only writer, and the store's `figures` wrapper key is kept
+    verbatim — renaming it would strand every verdict already on disk."""
     import time
     stamp = date or time.strftime("%Y-%m-%d")
     out = {}
-    for fig_id, path, _why in figures:
-        with open(path, "rb") as f:
-            digest = hashlib.sha256(f.read()).hexdigest()
-        out[fig_id] = {"canonical_sha256": digest, "expression_sha256": None,
-                       "verdicts": {slug: "" for slug in FIGURE_INVARIANTS},
-                       "reviewer": reviewer, "date": stamp}
+    for asset_id, path, _why in assets:
+        out[asset_id] = {"canonical_sha256": forge.frame_digest(path), "expression_sha256": None,
+                         "verdicts": {slug: "" for slug in invariants_for(asset_id)},
+                         "reviewer": reviewer, "date": stamp}
     return {"figures": out}
 
 
-def collect(video, only, staging=None):
+def collect(video, only, staging=None, assets=()):
     """One card per generated FILE (a shot may have a plate + several cutouts), then one card per
-    STEP-1 figure still pending a C-6 ruling."""
+    SEEDING ASSET still pending a ruling — a STEP-1 card, or any P3 class named in `assets`."""
     S, M, MAN = shot_index(video), motion_index(video), manifest_index(video)
     LIB = library_assets(video)
     named_by_shot = named_figures_by_shot(LIB)
@@ -404,16 +439,20 @@ def collect(video, only, staging=None):
             ))
     order = list(S)
     cards.sort(key=lambda c: (order.index(c["sid"]), c["label"]))
-    for fig_id, path, why in pending_figures(staging):
-        char = figure_character(fig_id)
-        canon = canon_file.get(char)
+    for asset_id, path, why in pending_assets(staging, assets):
+        is_figure = asset_id.startswith(forge.FIGURE_PREFIX)
+        char = figure_character(asset_id) if is_figure else None
+        canon = canon_file.get(char) if char else None
+        label = "step-1 figure" if is_figure else "seeding asset"
         cards.append(dict(
-            sid=fig_id, label="step-1 figure", path=path,
-            cls="step-1 figure", vo="",
+            sid=asset_id, label=label, path=path,
+            cls=label, vo="",
             anim="reference frame — no animation",
             flagged=True, reason=why,
             review_status="unreviewed",
-            invariants=list(FIGURE_INVARIANTS.items()),
+            invariants=list(invariants_for(asset_id).items()),
+            # A comparison strip needs an approved canonical to compare AGAINST; only a figure
+            # card has one, so a plate or prop card shows the frame alone rather than a false pair.
             canon=[(char, canon)] if canon and os.path.exists(canon) else [],
         ))
     return cards
@@ -585,14 +624,19 @@ def main():
     ap.add_argument("--max-width", type=int, default=1600)
     ap.add_argument("--quality", type=int, default=82)
     ap.add_argument("--staging", help="the channel's <kit>/_staging: adds a card per STEP-1 figure "
-                                      "forge would refuse to reuse, and writes the C-6 "
-                                      "figure-verdicts skeleton the same pass fills in")
+                                      "forge would refuse to seed from, and writes the "
+                                      "asset-verdicts skeleton the same pass fills in")
+    ap.add_argument("--assets", nargs="*", default=[],
+                    help="PNG paths for P3's other seeding classes — a place plate, environment "
+                         "reference, prop, crowd exemplar, pose/expression primitive. They live "
+                         "OUTSIDE staging, so forge's refusal prints the frame and you pass it "
+                         "here; each is boarded and skeletoned through the same gate predicate")
     ap.add_argument("--figures-out", dest="figures_out",
                     help="where to write that skeleton (default <video>/assets/_review/"
                          "figure-verdicts.json); the input to `stamp_review.py --figures`")
     a = ap.parse_args()
 
-    cards = collect(a.video, set(a.shots) if a.shots else None, a.staging)
+    cards = collect(a.video, set(a.shots) if a.shots else None, a.staging, a.assets)
     if not cards:
         sys.exit("no generated files found for the requested shots")
     sub = a.subtitle or ("%d image(s) · %d shot(s)"
@@ -607,20 +651,20 @@ def main():
     if unstamped:
         print("note: %d image(s) are not `verified` in assets/scenes/manifest.json yet "
               "(unreviewed or parked)" % len(unstamped))
-    if a.staging:
-        pending = pending_figures(a.staging)
+    if a.staging or a.assets:
+        pending = pending_assets(a.staging, a.assets)
         out = a.figures_out or os.path.join(a.video, "assets", "_review",
                                             "figure-verdicts.json")
         if pending:
             os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
             with io.open(out, "w", encoding="utf-8") as f:
-                json.dump(figure_verdict_skeleton(pending), f, ensure_ascii=False, indent=1)
+                json.dump(asset_verdict_skeleton(pending), f, ensure_ascii=False, indent=1)
                 f.write("\n")
-            print("%s  (%d STEP-1 figure(s) pending a C-6 ruling — fill each verdict, then: "
+            print("%s  (%d seeding asset(s) pending a ruling — fill each verdict, then: "
                   "py -3 stamp_review.py --figures %s %s)"
                   % (out, len(pending), out, a.staging))
         else:
-            print("figures: none pending — every staged STEP-1 carries an all-pass, "
+            print("seeding assets: none pending — every one carries an all-pass, "
                   "digest-current record")
 
 

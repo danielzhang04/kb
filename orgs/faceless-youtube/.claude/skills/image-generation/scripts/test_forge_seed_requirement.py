@@ -13,6 +13,7 @@ from forge import (BASE_TEMPLATE, Kit, cmd_batch, cmd_gen, figure_frame_name, me
                    preflight_batch, resolve_request_seeds, seed_roles_text, seeding_law_violations,
                    shot_cast, place_anchor_for, video_root_for,
                    cmd_retry_batch, RETRY_OVERLAY_SCHEMA)
+from conftest import stamp_all_pass, stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
@@ -99,6 +100,9 @@ def test_a_derived_place_plate_may_run_unseeded_but_delta_and_anchor_may_not():
 def test_cmd_gen_passes_each_requests_own_style_suffix_and_never_invents_one():
     root = tempfile.mkdtemp(); staging = os.path.join(root, "staging"); os.makedirs(staging)
     seed = os.path.join(root, "seed.png"); open(seed, "wb").write(b"seed")
+    # `reference` is no longer gate-exempt BY ROLE (I-1) — only the ad-hoc `gen --seed` CALL SITE
+    # is — so this batch-executor fixture supplies the ruling its seed would really carry.
+    stamp_all_pass(staging, seed)
     seen = []
     def prompt_for(mode, delta, **kwargs):
         seen.append((delta, kwargs.get("suffix")))
@@ -387,6 +391,7 @@ def _scope_fixture():
 def _batch(shots_path, out, scope):
     """Run cmd_batch quietly; return (spec or None, SystemExit text or None)."""
     k = _real_kit()
+    stamp_kit(k, os.path.dirname(shots_path))   # P3: a reviewed standing library
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             cmd_batch(k, shots_path, out, None, scope)
@@ -494,7 +499,11 @@ def test_character_free_place_plate_carries_only_the_style_tile_and_stays_a_plat
                      "seed": [TILE], "seed_roles": roles,
                      "figures": None, "stage_role": None,
                      "assets_omitted": None,
-                     "plate": True, "delta_primitives": None, "expression_change": None,
+                     "plate": True, "delta_primitives": None,
+                     # C-1: names the plate this shot inherits when its chain parent IS the place's
+                     # own plate, so `cmd_gen` can gate that frame once it has bytes. A
+                     # plate-minting root inherits nothing, so it carries None.
+                     "plate_parent": None, "expression_change": None,
                      "parent_depth": 0, "lineage": 0,
                      "why": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived "
                             "(line register + palette only); PLATE — place-first frame, bible "
@@ -702,6 +711,7 @@ def _retry(shots_path, out, overlay, staged=None):
         open(os.path.join(k.staging, name), "wb").write(data)
     overlay_path = os.path.join(os.path.dirname(shots_path), "retry-overlay.json")
     json.dump(overlay, open(overlay_path, "w", encoding="utf-8"))
+    stamp_kit(k, os.path.dirname(shots_path))   # P3: a reviewed standing library
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             cmd_retry_batch(k, shots_path, out, overlay_path)

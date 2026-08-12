@@ -26,8 +26,10 @@ expression/pose/prop/cast member, "iterate on this frame", library building) →
 
 **The Pass-1 / Pass-2 split — load-bearing.** Pass 1 locks the video's **recurring identifiable people and objects**
 (named CHARACTERS, GROUPS, PROPS): each is a portable identity, so an isolated clean canonical is the right anchor to
-seed from. **Environments, plates, one-off props and *anonymous* crowds are never pre-generated** — not portable,
-different faces each time, both fighting a pre-baked frame. They compose inside their own scene's gen in Pass 2:
+seed from. **Environments, plates, one-off props and *anonymous* crowds are never pre-generated as portable
+canonicals** — not portable, different faces each time, both fighting a pre-baked frame. That is a statement about
+WHERE they are drawn, never about whether they are ruled on: each is still listed at the Pass-1 gate and each still
+carries a review record before its pixels seed anything (step 1, step 3). They compose inside their own scene's gen in Pass 2:
 **within a stage**, a held set carries by seeding its delta's in-chain parent frame; **across a place**,
 continuity carries by seeding the place's derived plate (§Seed law, below) — never a freshly re-authored
 plate.
@@ -46,13 +48,24 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
      locking member count, costume, look and rig, no pose/expression; a member who ever acts alone is promoted to
      its own slot. A **recurring identifiable prop** — an object across shots whose look must MATCH — gets ONE
      canonical (`assets/library/prop-<name>.png`, prefix required) seeding every appearance, no pose/expression.
-   - Environments, plates, one-off props and anonymous crowds get NO slot.
+   - A **place plate** (the frame that establishes a place and seeds every later shot in it), an **environment
+     reference**, the video's **crowd exemplar** and a **one-off prop** each earn a slot too — not because they are
+     pre-generated as portable canonicals (they are not; see the Pass-1/Pass-2 split above), but because their
+     PIXELS seed other scenes, and nothing seeds a scene on a ruling nobody made. A **pose / expression /
+     interaction primitive** the shots name is listed on the same terms.
+   - The ONE exemption: a **named cast member minted through the standard cast-generation wave from the asset base**
+     needs no per-item human slot of its own — its own canonical is trusted (G2 ruling, 2026-08-12); everything it is
+     seeded WITH (pose, expression, plate, prop) is still listed here.
 2. **HUMAN PRE-GEN APPROVAL — the gate. STOP.** List every asset the registry and library LACK, each with the shots
    needing it and one line of what it would draw. **Generate nothing until the human rules.** Approved → build it.
    **Vetoed → never re-request it and never improvise it inside a scene: flag the beat back to
    `visual-prompt-writer` to restage against what exists.**
 3. **Reuse before regenerate.** `forge.py lookup --kit <kit> --character <c> --tag <tag>` (or read `registry.json`);
-   a hit is recorded `reused`, no generation.
+   a hit is recorded `reused`, no generation. **A hit still needs a PASSING review record for the bytes on disk** —
+   an all-pass, digest-current entry in `<kit>/_staging/review.json` — whatever the asset's class is: card, plate,
+   environment, prop, crowd exemplar or primitive. A frame nobody ruled on, one that failed an invariant, and one
+   re-minted since it was ruled on are the same answer: `forge.py batch` refuses it, `build_review_artifact.py`
+   boards it, `stamp_review.py --figures` records the ruling, and only then does it seed.
 4. **Build the missing — base-then-fan-out.** The canonical `base` is generated, approved and verified FIRST; only
    then fan out, each frame seeded off it (an unverified base multiplies its drift across every child).
    - **New cast member:** `--mode new_character` seeded off the template base for line, render and proportion only,
@@ -318,30 +331,35 @@ generated those pixels) — so cost moves from typing the row set to eyeing it, 
 an aggregate "rig holds" sentence stays structurally impossible. **Canonical-vs-candidate comparison images render
 only on named-figure shots**, at **ordinary viewing scale** — the zoomed crop battery is retired (§Seed law).
 
-**The same pass also rules the batch's STEP-1 figures — this is what closes the reuse loop, and a run that skips it
-hard-stops on the next batch.** `batch` refuses to seed any staged `fig-*` that lacks an **all-pass, digest-current
-review record** in the channel-wide store `<kit>/_staging/review.json`; a figure minted in slice N is reusable in
-slice N+1 **only** because that slice's review recorded a verdict for it. The loop, in order:
+**The same pass also rules the batch's SEEDING ASSETS — this is what closes the reuse loop, and a run that skips it
+hard-stops on the next batch.** `batch` refuses to seed from ANY asset that lacks an **all-pass, digest-current
+review record** in the channel-wide store `<kit>/_staging/review.json` — STEP-1 card, place plate, environment
+reference, prop, crowd exemplar, pose/expression primitive alike; an asset minted in slice N is seedable in
+slice N+1 **only** because that slice's review recorded a verdict for it. (The one exemption stays the named cast
+member's own canonical — Pass 1, step 1.) The loop, in order:
 
 1. **Build the board with the staging dir**: `py -3 .../build_review_artifact.py --video <video-dir> --out
-   <board.html> --staging <kit>/_staging`. Alongside the scene cards it renders one card per STEP-1 figure forge
-   would refuse (its refusal reason is the card's badge, and the pending list IS forge's own reuse gate, so the two
-   can never disagree), and writes a **figure-verdicts skeleton** to `<video>/assets/_review/figure-verdicts.json`
-   (override with `--figures-out`) — pre-keyed by `fig-*` id with `canonical_sha256` already computed from the bytes
-   on disk, and every verdict left EMPTY.
+   <board.html> --staging <kit>/_staging [--assets <frame.png> ...]`. Alongside the scene cards it renders one card
+   per STEP-1 figure forge would refuse (its refusal reason is the card's badge, and the pending list IS forge's own
+   gate, so the two can never disagree). The other classes live outside staging, so forge's refusal prints each
+   frame's path and you pass them to `--assets`; each is boarded through that same predicate and asked only the
+   invariants its class can answer (no rig row on a plate). It writes an **asset-verdicts skeleton** to
+   `<video>/assets/_review/figure-verdicts.json` (override with `--figures-out`) — pre-keyed by asset id with
+   `canonical_sha256` already computed from the bytes on disk, and every verdict left EMPTY.
 2. **The fresh-eyes pass rules those cards too**, on the same three axes, at the same ordinary viewing scale. Its
-   scene rulings merge into `assets/_review/merged.json` as always; its FIGURE rulings fill in the skeleton's
-   verdicts (`"pass"` / `"fail"` per invariant — a figure needs every one to read `pass`).
+   scene rulings merge into `assets/_review/merged.json` as always; its ASSET rulings fill in the skeleton's
+   verdicts (`"pass"` / `"fail"` per invariant — an asset needs every one to read `pass`).
 3. **The ORCHESTRATOR records them, before the next batch generates**: `py -3 .../stamp_review.py --figures
    <figure-verdicts.json> <kit>/_staging`. Same single-writer law as the scene path — `stamp_review.py` is the ONLY
    writer of a verdict anywhere in this pipeline; the board writes only the skeleton, and forge only ever reads.
 
-The record shape the store keeps, per `fig-<character>--<pose>--<expression>`:
+The record shape the store keeps, per asset id — the frame's FILE STEM
+(`fig-<character>--<pose>--<expression>`, `prop-drive`, `L28`):
 `{canonical_sha256, expression_sha256, verdicts: {"<invariant-slug>": "pass"|"fail", …}, reviewer, date}`. A
 re-review of the same id REPLACES the record wholesale; ids absent from an input are untouched (additive merge).
-**A staged figure with no record, with no per-invariant verdicts, with any `fail`, or whose `canonical_sha256` no
-longer matches the bytes on disk is refused as a seed** — the refusal names which of the four it is and prints the
-builder invocation that re-mints it (delete the frame, re-run this same `batch --shots <id>`, `gen --batch` the
+**An asset with no record, with no per-invariant verdicts, with any `fail`, or whose `canonical_sha256` no
+longer matches the bytes on disk is refused as a seed** — the refusal names which of the four it is; for a STEP-1
+card it prints the builder invocation that re-mints it (delete the frame, re-run this same `batch --shots <id>`, `gen --batch` the
 spec, review, stamp). **Never hand-mint a STEP-1 with `gen --seed a,b,c`:** the `gen` CLI can only build
 `reference` seed roles, so the figure would be generated with role prose that lies about what each seed is for —
 the exact root cause the truthful roles exist to remove. One minter, one truth.

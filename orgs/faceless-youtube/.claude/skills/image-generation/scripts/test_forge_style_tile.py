@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import forge as forge_module
 from forge import (Kit, cmd_batch, seed_role_violations, seed_roles_text, seeding_law_violations,
                    SEED_CAP, STYLE_TILE, STYLE_ANCHOR_ROLE)
+from conftest import stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
@@ -75,9 +76,11 @@ def _run(doc, scope=None, video=None):
     v = video or tempfile.mkdtemp()
     shots, out = os.path.join(v, "shots.json"), os.path.join(v, "spec.json")
     json.dump(doc, open(shots, "w", encoding="utf-8"))
+    k = _kit()
+    stamp_kit(k, v)             # P3: the channel's standing library is a REVIEWED library
     try:
         with contextlib.redirect_stdout(io.StringIO()):
-            cmd_batch(_kit(), shots, out, None, scope)
+            cmd_batch(k, shots, out, None, scope)
     except SystemExit as e:
         return None, str(e)
     return json.load(open(out, encoding="utf-8")), None

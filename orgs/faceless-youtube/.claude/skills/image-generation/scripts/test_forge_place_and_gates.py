@@ -10,7 +10,10 @@ Covers, in the order the doctrine states them:
   C-9  over the cap, the place plate displaces the crowd exemplar (it already holds the rear mass);
   C-6  a staged STEP-1 is reusable only with an all-pass, digest-current review record;
   C-10 a delta that authors an expression must carry that expression's pixels;
-  C-11 every emitted scene records `parent_depth`/`lineage`, and a PARKED parent is never inherited.
+  C-11 every emitted scene records `parent_depth`/`lineage`, and a PARKED parent is never inherited;
+  P3   EVERY asset class that seeds a scene passes that same review gate — plate, environment,
+       prop, crowd exemplar, pose/expression primitive, and the in-batch STEP-1 card — while a
+       named cast member's own canonical stays exempt (the G2 cast-mint ruling).
 """
 import contextlib, hashlib, inspect, io, json, os, sys, tempfile
 from pathlib import Path
@@ -18,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import forge as forge_module
 from forge import Kit, cmd_batch, figure_frame_name, resolve_request_seeds, seeding_law_violations
+from conftest import stamp_all_pass, stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
@@ -60,14 +64,19 @@ def _manifest(video, shots):
               open(os.path.join(scenes, "manifest.json"), "w", encoding="utf-8"))
 
 
-def _run(doc, scope=None, video=None, kit=None):
-    """(spec | None, SystemExit text | None, video dir) — cmd_batch, quietly."""
+def _run(doc, scope=None, video=None, kit=None, stamp=True):
+    """(spec | None, SystemExit text | None, video dir) — cmd_batch, quietly.
+
+    `stamp=False` runs against an UNREVIEWED library: the state P3's gate exists to refuse."""
     v = video or tempfile.mkdtemp()
     shots, out = os.path.join(v, "shots.json"), os.path.join(v, "spec.json")
     json.dump(doc, open(shots, "w", encoding="utf-8"))
+    k = kit or _kit()
+    if stamp:
+        stamp_kit(k, v)         # P3: the channel's standing library is a REVIEWED library
     try:
         with contextlib.redirect_stdout(io.StringIO()):
-            cmd_batch(kit or _kit(), shots, out, None, scope)
+            cmd_batch(k, shots, out, None, scope)
     except SystemExit as e:
         return None, str(e), v
     return json.load(open(out, encoding="utf-8")), None, v
@@ -312,7 +321,7 @@ def test_never_droppable_seeds_refuse_naming_figure_count_not_a_locked_seed():
     assert "lettering-marker-italic" not in err, err
 
 
-# --- C-6: the staged-figure review record --------------------------------------------------------
+# --- C-6: the staged-asset review record --------------------------------------------------------
 
 _FIG = figure_frame_name("miniscribe-rep", "action-powerstance", "expr-smug")
 
@@ -522,6 +531,200 @@ def test_one_derived_frame_binding_serves_both_the_place_law_and_the_retry_path(
     assert not forge_module._derived_from("L280", "L28")
     src = inspect.getsource(forge_module)
     assert src.count('r"[-.].+"') == 1, "the binding regex must live in exactly one place"
+
+
+# --- P3: every seeding asset class passes the SAME gate ------------------------------------------
+
+_PLATE_PROMPT = "A warm records room with a bare central table."
+
+
+def _unstamped(doc, scope=None, video=None):
+    """A batch over an unreviewed library — what P3 refuses."""
+    return _run(doc, scope, video=video, stamp=False)
+
+
+def _stamp_except(k, video, *stems):
+    """The reviewed library MINUS the named assets — the one-asset-missing probe."""
+    stamp_kit(k, video)
+    store_path = os.path.join(k.staging, "review.json")
+    store = json.load(open(store_path, encoding="utf-8"))
+    for stem in stems:
+        store["figures"].pop(stem, None)
+    json.dump(store, open(store_path, "w", encoding="utf-8"))
+
+
+def test_a_place_plate_may_not_seed_a_scene_without_a_passing_review_record():
+    """The L28 hole: a plate that seeded 17 shots was reviewed by an OPERATOR, not the pipeline."""
+    v = _video("P1")
+    doc = _doc({"id": "P1", "place": "records-room", "still_prompt": _PLATE_PROMPT},
+               {"id": "P9", "place": "records-room", "place_anchor": "assets/scenes/P1.png",
+                "still_prompt": "The same records room, the table now stacked with ledgers."})
+    spec, err, _ = _unstamped(doc, ["P9"], video=v)
+    assert spec is None, spec
+    assert "PRE-GEN REVIEW GATE" in err and "place `P1`" in err, err
+    assert "no review record" in err and "P9" in err, err
+    # ... and the same slate passes the moment the plate carries a ruling
+    spec, err, _ = _run(doc, ["P9"], video=v)
+    assert err is None, err
+    assert any(str(s).replace("\\", "/").endswith("assets/scenes/P1.png")
+               for s in _by_name(spec, "P9")["seed"]), spec
+
+
+def test_a_tagged_prop_or_environment_asset_is_refused_without_a_record():
+    doc = _doc({"id": "T1", "place": "records-room",
+                "still_prompt": "A records-room desk with `prop-drive` set square on the blotter."})
+    spec, err, _ = _unstamped(doc)
+    assert spec is None, spec
+    assert "prop `prop-drive`" in err, err
+    # the derived §5 style tile is an environment asset like any other — it is gated, not special
+    assert "scene-style-tile" in err, err
+
+
+def test_a_pose_or_expression_primitive_is_refused_without_a_record():
+    """P3's largest newly gated class: 30 body primitives + 18 expressions seeded on no ruling."""
+    spec, err, _ = _unstamped(_doc(
+        {"id": "M1", "place": "records-room",
+         "still_prompt": f"{CAST} alone at the records-room table."}))
+    assert spec is None, spec
+    assert "expression `expr-smug`" in err, err
+    assert "pose `action-powerstance`" in err, err
+
+
+def test_the_crowd_exemplar_is_refused_without_a_record():
+    spec, err, _ = _unstamped(_doc(
+        {"id": "C9", "place": "records-room", "figures": {"crowd": True},
+         "still_prompt": "The records room seen from the door, clerks working along the back."}))
+    assert spec is None, spec
+    assert "crowd `crowd-exemplar`" in err, err
+
+
+def test_a_named_cast_members_own_canonical_is_never_gated():
+    """The G2 modification, in code: "P2 seeds don't need their own human gates." A canonical with
+    NO record still seeds, while its co-seeded primitives are gated — so the exemption is a role
+    exemption, not a hole in the store."""
+    k, v = _kit(), tempfile.mkdtemp()
+    _stamp_except(k, v, "miniscribe-rep")
+    spec, err, _ = _run(_doc(
+        {"id": "K1", "place": "records-room", "stage": "r", "stage_role": "base",
+         "still_prompt": f"{CAST} alone at the records-room table."}), kit=k, video=v, stamp=False)
+    assert err is None, err
+    assert [i["name"] for i in spec] == [_FIG, "K1"], spec
+    assert any(r["role"] == "canonical" and r["path"].endswith("miniscribe-rep.png")
+               for r in _by_name(spec, _FIG)["seed_roles"]), spec
+
+
+def test_the_review_store_constant_is_asset_scoped_and_the_figure_only_name_is_gone():
+    assert forge_module.ASSET_REVIEW == "review.json"
+    assert not hasattr(forge_module, "FIGURE_REVIEW")
+    src = Path(forge_module.__file__).read_text(encoding="utf-8")
+    assert "FIGURE_REVIEW" not in src
+
+
+# --- P3: the in-batch card is gated exactly like a reused one -------------------------------------
+
+def _minted_card_run(k, spec, stamped):
+    """`gen` over a slate whose STEP-1 card was minted BY this batch, as staging really looks."""
+    card = os.path.join(k.staging, _FIG + ".png")
+    open(card, "wb").write(PNG + b"\0" * 2048)   # a real staged frame passes `validate_png`
+    if stamped:
+        stamp_all_pass(k.staging, card)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        forge_module.cmd_gen(k, spec, force=True, dry=True)
+    return buf.getvalue()
+
+
+def test_a_card_minted_in_this_batch_may_not_seed_a_scene_until_it_is_ruled_on():
+    """The 6c2 card-before-scene split was an operator convention in a genlog, never a forge law.
+    `cmd_batch` cannot ask this — the card has no bytes when the slate is built, and refusing there
+    would block the only path that mints one — so the same predicate asks it in `cmd_gen`, where
+    the card exists. The scene is HELD, never fatal: the cards must still land for the board."""
+    k, v = _kit(), tempfile.mkdtemp()
+    spec, err, _ = _run(_doc({"id": "K1", "place": "records-room", "stage": "r",
+                              "stage_role": "base",
+                              "still_prompt": f"{CAST} alone at the records-room table."}),
+                        kit=k, video=v)
+    assert err is None, err
+    held = _minted_card_run(k, spec, stamped=False)
+    assert "K1: skip (seed awaits review)" in held, held
+    assert _FIG in held and "no review record" in held, held
+    assert f"{_FIG}: DRY" in held, held           # the CARD itself still generates
+    # after the ruling, the same spec generates the scene it was holding
+    passed = _minted_card_run(k, spec, stamped=True)
+    assert "K1: DRY" in passed, passed
+    assert "awaits review" not in passed, passed
+
+
+# --- P3 fix round 1: a PLATE is gated even when it wears the `parent` label ----------------------
+
+def _plate_chain_doc():
+    """A place whose first frame is a cast-free PLATE, and an in-chain delta that inherits it."""
+    return _doc(
+        {"id": "P1", "place": "records-room", "stage": "r", "stage_role": "base",
+         "still_prompt": _PLATE_PROMPT},
+        {"id": "P2", "place": "records-room", "stage": "r", "stage_role": "delta",
+         "still_prompt": "The same records room, the table now stacked with ledgers."})
+
+
+def test_a_delta_may_not_inherit_an_unreviewed_plate_through_the_parent_role():
+    """C-1. `place_role` wears `parent` on a delta and `place` on a base — the SAME plate frame.
+    Exempting the label exempted the frame, so a plate refused on one path rode free on the other.
+    The exemption belongs to an ordinary scene-to-scene chain parent, never to the place's plate."""
+    v = _video("P1")
+    k = _kit()
+    _stamp_except(k, v, "P1")           # the whole library reviewed EXCEPT the plate
+    spec, err, _ = _run(_plate_chain_doc(), ["P2"], video=v, kit=k, stamp=False)
+    assert spec is None, spec
+    assert "PRE-GEN REVIEW GATE" in err and "P2" in err, err
+    assert "place plate `P1`" in err and "no review record" in err, err
+    # ... and the ordinary chain parent keeps its exemption: stamp the plate and the delta runs
+    spec, err, _ = _run(_plate_chain_doc(), ["P2"], video=v)
+    assert err is None, err
+    assert any(r["role"] == "parent" for r in _by_name(spec, "P2")["seed_roles"]), spec
+
+
+def test_a_plate_minted_in_this_batch_is_gated_before_its_delta_inherits_it():
+    """C-1, the in-batch half: at batch time the plate has no bytes, so the gate meets it at gen
+    time — where `parent` is exempt by label. The batch's own `plate: true` items say which
+    frames those are, so the exemption cannot swallow them."""
+    k, v = _kit(), tempfile.mkdtemp()
+    spec, err, _ = _run(_plate_chain_doc(), kit=k, video=v)
+    assert err is None, err
+    assert _by_name(spec, "P1")["plate"] is True, spec
+    plate = os.path.join(k.staging, "P1.png")
+    open(plate, "wb").write(PNG + b"\0" * 2048)          # P1 mints, as it would mid-run
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        forge_module.cmd_gen(k, spec, force=True, dry=True)
+    held = buf.getvalue()
+    assert "P2: skip (seed awaits review)" in held, held
+    assert "P1: DRY" in held, held                        # the plate itself still generates
+    stamp_all_pass(k.staging, plate)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        forge_module.cmd_gen(k, spec, force=True, dry=True)
+    assert "P2: DRY" in buf.getvalue(), buf.getvalue()
+
+
+def test_held_scenes_are_counted_separately_from_frames_that_already_exist():
+    """I-3. An orchestrator reading `N skipped` cannot tell "already done" from "waiting on a
+    human". The two states need different actions, so they get different counts."""
+    k, v = _kit(), tempfile.mkdtemp()
+    spec, err, _ = _run(_plate_chain_doc(), kit=k, video=v)
+    assert err is None, err
+    open(os.path.join(k.staging, "P1.png"), "wb").write(PNG + b"\0" * 2048)
+    scene_only = [i for i in spec if i["name"] == "P2"]
+    old_nano = forge_module.nano
+    forge_module.nano = lambda *a: (_ for _ in ()).throw(
+        AssertionError("a held scene must never reach the provider"))
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            forge_module.cmd_gen(k, scene_only, force=True)
+    finally:
+        forge_module.nano = old_nano
+    out = buf.getvalue()
+    assert "0 generated, 0 failed, 0 skipped, 1 held for review" in out, out
 
 
 if __name__ == "__main__":
