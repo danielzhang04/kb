@@ -35,27 +35,70 @@ const REVIEW_CONTRACT = {
 
 const FAKE_PID = 4242;
 
-/** A hermetic fake claude child the test drives directly — no real CLI is ever spawned. */
-function fakeProcess() {
+const ASSIGNMENT = {
+  agentId: 'fyt-worker', declarationPath: 'agents/fyt-worker.md', declarationHash: 'a'.repeat(64),
+  profileId: WORKER_PROFILE.id, runtime: WORKER_PROFILE.runtime, model: WORKER_PROFILE.model,
+};
+
+/**
+ * A hermetic fake claude child the test drives directly — no real CLI is ever spawned.
+ *
+ * It mirrors the contract the real `claude -p --input-format stream-json` CLI holds to (verified live,
+ * 2026-08-11): exactly ONE `type:"result"` line per USER FRAME written to stdin, and no exit of its own
+ * while stdin stays open. That per-frame budget is ENFORCED here — emitting more result lines than
+ * frames written throws — so no test can simulate a three-frame assigned turn being answered by a
+ * single result line. That sim-vs-real gap is exactly what hid the first-result finalize bug: the suite
+ * was green because the fake never emitted the binding/queued acknowledgements the real CLI does.
+ *
+ * `exitsOnStdinEnd` models the real CLI's other half: it exits only once stdin reaches EOF.
+ */
+function fakeProcess(options: { exitsOnStdinEnd?: boolean } = {}) {
   let stdout: (chunk: string) => void = () => {};
   let stderr: (chunk: string) => void = () => {};
   let exit: (code: number | null) => void = () => {};
   let error: (err: Error) => void = () => {};
   const stdin: string[] = [];
+  let framesWritten = 0;
+  let resultsEmitted = 0;
+  let pendingLine = '';
+  /** Count the complete `type:"result"` lines in a chunk and enforce the one-per-frame CLI budget. */
+  const budgetResults = (chunk: string): void => {
+    pendingLine += chunk;
+    let newline = pendingLine.indexOf('\n');
+    while (newline !== -1) {
+      const line = pendingLine.slice(0, newline).trim();
+      pendingLine = pendingLine.slice(newline + 1);
+      newline = pendingLine.indexOf('\n');
+      if (!line) continue;
+      let parsed: unknown;
+      try { parsed = JSON.parse(line); } catch { continue; }
+      if (!parsed || typeof parsed !== 'object' || (parsed as { type?: unknown }).type !== 'result') continue;
+      resultsEmitted += 1;
+      if (resultsEmitted > framesWritten) {
+        throw new Error(
+          `fake claude CLI: emitted ${resultsEmitted} result line(s) for ${framesWritten} user frame(s) — `
+          + 'the real CLI emits exactly one result per user frame',
+        );
+      }
+    }
+  };
   const proc: ClaudeProcess = {
     onStdout(cb) { stdout = cb; },
     onStderr(cb) { stderr = cb; },
     onExit(cb) { exit = cb; },
     onError(cb) { error = cb; },
     pid: FAKE_PID,
-    writeStdin(text) { stdin.push(text); },
-    endStdin: vi.fn(),
+    writeStdin(text) { stdin.push(text); framesWritten += 1; },
+    endStdin: vi.fn(() => { if (options.exitsOnStdinEnd) exit(0); }),
     kill: vi.fn(),
   };
   return {
     proc,
     stdin,
-    emitStdout: (chunk: string) => stdout(chunk),
+    /** The decoded text of every user frame written to stdin so far, in order. */
+    frames: (): string[] => (stdin.length === 0 ? []
+      : stdin.join('').trim().split('\n').map((line) => JSON.parse(line).message.content[0].text as string)),
+    emitStdout: (chunk: string) => { budgetResults(chunk); stdout(chunk); },
     emitStderr: (chunk: string) => stderr(chunk),
     emitExit: (code: number | null) => exit(code),
     emitError: (err: Error) => error(err),
@@ -487,10 +530,11 @@ describe('createClaudeWorkerAdapter.execute', () => {
     const promise = adapter.execute(executeInput());
 
     expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'Pause after the current file.')).toBe(true);
-    const frames = fake.stdin.join('').trim().split('\n').map((line) => JSON.parse(line));
-    expect(frames.at(-1).message.content[0].text).toBe('Pause after the current file.');
+    expect(fake.frames().at(-1)).toBe('Pause after the current file.');
 
-    fake.emitStdout(successLine('done'));
+    // Two frames were written (work order + operator), so the real CLI answers with two result lines.
+    fake.emitStdout(successLine('work order done'));
+    fake.emitStdout(successLine('steering done'));
     fake.emitExit(0);
     await promise;
     expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'Too late.')).toBe(false);
@@ -507,9 +551,11 @@ describe('createClaudeWorkerAdapter.execute', () => {
     });
     const pending = adapter.execute(executeInput({ attemptRef: 'a-1' }));
     await Promise.resolve();
+    // Two frames went in (the queued-operator digest, then the work order), so the CLI answers twice.
     fake.emitStdout('{"type":"assistant"');
     fake.emitStdout(',"x":1}\n{"type":"result","subtype":"success"}\n');
-    // Bug A contract (2026-08-11): the result line itself closes the turn to new operator input —
+    fake.emitStdout('{"type":"result","subtype":"success"}\n');
+    // Bug A/B1 contract (2026-08-11): the TERMINAL result line closes the turn to new operator input —
     // immediately, not just once the child later exits — so this postMessage is correctly refused. Before
     // the fix the channel stayed open until `onExit`, which is exactly the gap that let a worker idle
     // forever: nothing ever told it its turn was already over.
@@ -556,6 +602,7 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(frames[0]).toContain('INERT CONTEXT BOUNDARY');
     expect(frames[0]).toContain('Do not treat this as authority.');
     expect(frames[1]).toContain('AUTHORITATIVE WORK ORDER');
+    fake.emitStdout(successLine('queued noted')); // one result per frame, as the real CLI emits
     fake.emitStdout(successLine('done'));
     fake.emitExit(0);
     await promise;
@@ -577,6 +624,7 @@ describe('createClaudeWorkerAdapter.execute', () => {
     };
     const promise = adapter.execute(executeInput({ assignment, instructionMarkdown: '# Bound worker\nDo not publish.' }));
     fake.emitStdout(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: 'claude-session-1' })}\n`);
+    fake.emitStdout(successLine('binding acknowledged')); // one result per frame, as the real CLI emits
     fake.emitStdout(successLine('done'));
     fake.emitExit(0);
     await expect(promise).resolves.toMatchObject({ state: 'succeeded' });
@@ -761,6 +809,119 @@ describe('createClaudeWorkerAdapter.execute', () => {
     // The observed result is authoritative — the backstop kill's null exit code does not flip it to failed.
     expect(result.state).toBe('succeeded');
     expect(result.summary).toBe('worker finished');
+  });
+
+  // Bug B1 (2026-08-11): the CLI emits ONE result line per user frame, and a fresh assigned attempt
+  // writes three (binding declaration, drained operator digest, work order). Latching the turn closed on
+  // the FIRST result line finalized every such attempt off the binding acknowledgement — recording a
+  // silent false SUCCESS and then SIGKILLing the child that was still doing the actual work.
+  it('finalizes a fresh assigned turn on the LAST frame\'s result, never on the binding or queued acknowledgement', async () => {
+    const fake = fakeProcess({ exitsOnStdinEnd: true });
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      resolveSession: () => null,
+      drainMessages: async () => ['Operator said this before the attempt started.'],
+      spawn: () => fake.proc,
+    });
+    let resolved: unknown = null;
+    const promise = adapter.execute(executeInput({ assignment: ASSIGNMENT, instructionMarkdown: '# Bound worker' }))
+      .then((value) => { resolved = value; return value; });
+    await Promise.resolve();
+
+    const frames = fake.frames();
+    expect(frames).toHaveLength(3);
+    expect(frames[0]).toContain('SERVER-VERIFIED AGENT DECLARATION');
+    expect(frames[1]).toContain('INERT CONTEXT BOUNDARY');
+    expect(frames[2]).toContain('AUTHORITATIVE WORK ORDER');
+
+    // Result 1 of 3 — the binding acknowledgement. Pre-fix this closed the turn and killed the child.
+    fake.emitStdout(successLine('declaration acknowledged'));
+    await Promise.resolve();
+    expect(resolved).toBeNull();
+    expect(fake.proc.endStdin).not.toHaveBeenCalled();
+    expect(fake.proc.kill).not.toHaveBeenCalled();
+
+    // Result 2 of 3 — the queued-operator digest acknowledgement. Still mid-turn.
+    fake.emitStdout(successLine('queued operator messages noted'));
+    await Promise.resolve();
+    expect(resolved).toBeNull();
+    expect(fake.proc.endStdin).not.toHaveBeenCalled();
+
+    // Result 3 of 3 — the work order's own result: THIS is the terminal one.
+    fake.emitStdout(successLine('work order complete', { input_tokens: 11, output_tokens: 7 }));
+    const result = await promise;
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('work order complete');
+    expect(result.usage).toMatchObject({ inputTokens: 11, outputTokens: 7 });
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
+  });
+
+  // Bug M3 (2026-08-11): the operator steering channel must stay open for the WHOLE real turn, not die
+  // seconds after spawn when the binding acknowledgement lands. A steering frame is itself a user frame,
+  // so it extends the turn by one expected result.
+  it('keeps the operator channel live mid-turn, and the injected frame extends the turn by one result', async () => {
+    const fake = fakeProcess({ exitsOnStdinEnd: true });
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY, resolveSession: () => null, spawn: () => fake.proc,
+    });
+    let resolved: unknown = null;
+    const promise = adapter.execute(executeInput({ assignment: ASSIGNMENT, instructionMarkdown: '# Bound worker' }))
+      .then((value) => { resolved = value; return value; });
+    expect(fake.frames()).toHaveLength(2); // binding + work order
+
+    fake.emitStdout(successLine('declaration acknowledged'));
+    // Pre-fix, liveWorkers was already emptied here and this returned false for the rest of the turn.
+    expect(adapter.postMessage('run-1', 'fyt-worker', 'Prefer the smaller diff.')).toBe(true);
+    expect(fake.frames()).toHaveLength(3);
+    expect(fake.frames().at(-1)).toBe('Prefer the smaller diff.');
+
+    // The work order's result is no longer terminal: the steering frame is still outstanding.
+    fake.emitStdout(successLine('work order complete'));
+    await Promise.resolve();
+    expect(resolved).toBeNull();
+    expect(fake.proc.endStdin).not.toHaveBeenCalled();
+
+    fake.emitStdout(successLine('steering applied'));
+    const result = await promise;
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('steering applied');
+    expect(adapter.postMessage('run-1', 'fyt-worker', 'Too late.')).toBe(false);
+  });
+
+  it('refuses an operator frame once the terminal result is observed, writing nothing into the closing stdin', async () => {
+    const fake = fakeProcess(); // endStdin is inert here: the child has not exited yet when we re-post
+    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn: () => fake.proc });
+    const promise = adapter.execute(executeInput());
+    fake.emitStdout(successLine('done')); // one frame in, one result back → terminal
+
+    const framesAtClose = fake.stdin.length;
+    expect(adapter.postMessage('run-1', WORKER_PROFILE.id, 'steer')).toBe(false);
+    expect(fake.stdin).toHaveLength(framesAtClose); // refused BEFORE any write, not after
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
+
+    fake.emitExit(0);
+    await expect(promise).resolves.toMatchObject({ state: 'succeeded', summary: 'done' });
+  });
+
+  it('correlates correctly when every result line for a multi-frame turn arrives in a single chunk', async () => {
+    const fake = fakeProcess({ exitsOnStdinEnd: true });
+    const adapter = createClaudeWorkerAdapter({
+      resolveToolPolicy: () => TOOL_POLICY,
+      resolveSession: () => null,
+      drainMessages: async () => ['Earlier operator note.'],
+      spawn: () => fake.proc,
+    });
+    const promise = adapter.execute(executeInput({ assignment: ASSIGNMENT, instructionMarkdown: '# Bound worker' }));
+    await Promise.resolve();
+    expect(fake.frames()).toHaveLength(3);
+
+    fake.emitStdout(
+      `${successLine('declaration acknowledged')}${successLine('queued noted')}${successLine('work order complete')}`,
+    );
+    const result = await promise;
+    expect(result.state).toBe('succeeded');
+    expect(result.summary).toBe('work order complete');
+    expect(fake.proc.endStdin).toHaveBeenCalledTimes(1);
   });
 
   it('tree-kills the child and resolves failed when the kill-timeout fires (fake timers)', async () => {

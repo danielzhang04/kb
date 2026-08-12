@@ -449,7 +449,11 @@ export function buildQueuedOperatorMessagePrompt(messages: readonly string[]): s
 }
 
 export interface ClaudeWorkerAdapter extends WorkerAdapter {
-  /** Inject a stream-json user frame only while this exact assigned worker child remains live. */
+  /**
+   * Inject a stream-json user frame only while this exact assigned worker child remains live — that is,
+   * for the whole turn, from spawn until the terminal `type:"result"` line is observed. Returns false
+   * (never writing to a closed or closing stdin) once the turn is over or the child has settled.
+   */
   postMessage(runRef: string, agentId: string, text: string): boolean;
 }
 
@@ -515,7 +519,8 @@ export interface StreamParseOptions {
   exceeded?: boolean;
   cancelled?: boolean;
   /**
-   * True when a `type:"result"` stream-json event was observed in stdout before the process settled — see
+   * True when the TERMINAL `type:"result"` stream-json event — the one answering the last user frame
+   * written to stdin, not merely the first result line — was observed before the process settled; see
    * `createClaudeWorkerAdapter`'s result+EOF+backstop path. A backstop kill terminates the child once it
    * is known the turn is already over, which leaves a null/nonzero exit code; that code must NOT flip an
    * already-observed success into `failed`. Does not weaken any other fail-closed check: WAITING-HUMAN,
@@ -722,11 +727,24 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         let timedOut = false;
         let exceeded = false;
         let cancelled = false;
-        // Bug A: true once a `type:"result"` stream-json line has been observed — the turn is over even
-        // though the real CLI (verified live) will not exit on its own while stdin stays open.
-        let resultSeen = false;
-        // Guards `closeAfterResult` to at most one call; `resultSeen` alone is not enough because it stays
-        // true across every subsequent `onStdout` invocation, not just the one that first flipped it.
+        // Bug A/B1 — the terminal-result correlation, and the whole reason this adapter counts anything:
+        // the real CLI (verified live) emits exactly ONE `type:"result"` line per USER FRAME written to
+        // stdin, and never exits on its own while stdin stays open. A turn is therefore over only when the
+        // result for the LAST frame written has arrived — NOT on the first result line, which for a fresh
+        // assigned attempt is merely the acknowledgement of the agent-declaration frame.
+        // `framesWritten` counts every user frame: bindingPrompt, the queued-operator digest, the work
+        // order, and every mid-turn operator `postMessage`. `resultsObserved` counts result lines.
+        let framesWritten = 0;
+        let resultsObserved = 0;
+        // Until every opening frame is on the wire, `resultsObserved >= framesWritten` says nothing about
+        // the turn: a spawner that answers a frame synchronously (inside `writeStdin`) would otherwise
+        // look terminal after the binding acknowledgement alone, before the work order is even written.
+        let openingFramesWritten = false;
+        // Set in the SAME synchronous step that counts the terminal result — before any further work
+        // (transcript taps, `endStdin`) — so an operator frame can never be written into a closing pipe.
+        let terminalResultSeen = false;
+        // Guards `closeAfterResult` to at most one call; `terminalResultSeen` alone is not enough because
+        // it stays true across every subsequent `onStdout` invocation, not just the one that flipped it.
         let resultHandled = false;
         let backstopTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -772,7 +790,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
               timedOut,
               exceeded,
               cancelled,
-              resultObserved: resultSeen,
+              resultObserved: terminalResultSeen,
               timeoutMs,
               maxOutputBytes,
               stderrTailChars,
@@ -811,14 +829,21 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
 
         const liveWorker: RunningClaudeWorker = {
           postMessage(text) {
-            if (settled) return false;
+            // Refused once the turn is over: `terminalResultSeen` is set synchronously as the terminal
+            // result line is counted, strictly before `closeAfterResult` ends stdin, so there is no window
+            // in which a frame could be written into a pipe that is already closing.
+            if (settled || terminalResultSeen) return false;
+            // Counted BEFORE the write, and rolled back on failure: a spawner that answers a frame
+            // synchronously inside `writeStdin` must see the expectation its own result will satisfy.
+            framesWritten += 1;
             try {
               proc.writeStdin(encodeStreamJsonUserMessage(text));
-              tap('in', text);
-              return true;
             } catch {
+              framesWritten -= 1;
               return false;
             }
+            tap('in', text);
+            return true;
           },
         };
 
@@ -833,15 +858,22 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           resolvePromise(failedResult(`claude worker process error: ${error instanceof Error ? error.message : String(error)}`, ZERO_USAGE, summaryMaxChars));
         });
 
-        // Bug A: the CLI emits its turn-terminal `type:"result"` line and then, in
+        /**
+         * True exactly when the result for the LAST frame written has arrived. `>=` rather than `===` so a
+         * CLI that ever emitted a spurious extra result cannot wedge the turn open forever.
+         */
+        const turnIsTerminal = (): boolean => openingFramesWritten && resultsObserved >= framesWritten;
+
+        // Bug A: the CLI emits a `type:"result"` line per user frame and then, in
         // `--input-format stream-json` mode, never exits on its own while stdin stays open — the pre-fix
         // adapter only ever finalized from `onExit`, so every successful attempt idled until the (30-min)
-        // kill-timeout and was then wrongly finalized as failed. Once a complete result line is observed:
-        // close the turn to further operator input immediately (remove the liveWorkers entry, so
-        // `postMessage` returns false from this point on — not just once the child later exits) and end
-        // stdin so the real CLI can exit on its own. A short backstop timer reaps a wedged child that still
-        // hasn't exited after EOF, without waiting for the much longer general kill-timeout.
+        // kill-timeout and was then wrongly finalized as failed. Once the TERMINAL result is observed (Bug
+        // B1: the last frame's, not the first line's): drop the liveWorkers entry and end stdin so the real
+        // CLI can exit on its own. `postMessage` is already refused by `terminalResultSeen` at this point.
+        // A short backstop timer reaps a wedged child that still hasn't exited after EOF, without waiting
+        // for the much longer general kill-timeout.
         const closeAfterResult = (): void => {
+          if (resultHandled) return;
           resultHandled = true;
           const key = workerKey(input.runRef, agentId);
           if (liveWorkers.get(key) === liveWorker) liveWorkers.delete(key);
@@ -865,13 +897,20 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
             tap('out', line);
             lineBuffer = lineBuffer.slice(newline + 1);
             newline = lineBuffer.indexOf('\n');
-            if (!resultSeen) {
+            // Every complete result line is counted, including several in one chunk. Counting stops at the
+            // terminal one: from there the turn is closed and later lines are transcript only.
+            if (!terminalResultSeen) {
               const trimmedLine = line.trim();
               if (trimmedLine) {
                 try {
                   const parsedLine = JSON.parse(trimmedLine) as Record<string, unknown>;
-                  if (parsedLine && typeof parsedLine === 'object' && parsedLine.type === 'result') resultSeen = true;
-                } catch { /* a single malformed line is never the terminal result event */ }
+                  if (parsedLine && typeof parsedLine === 'object' && parsedLine.type === 'result') {
+                    resultsObserved += 1;
+                    // Close the input channel in the same step that counts the terminal result — before
+                    // the remaining lines in this chunk are tapped, and before `closeAfterResult` runs.
+                    if (turnIsTerminal()) terminalResultSeen = true;
+                  }
+                } catch { /* a single malformed line is never a result event */ }
               }
             }
           }
@@ -883,22 +922,36 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
             return;
           }
           stdoutChunks.push(chunk);
-          if (resultSeen && !resultHandled) closeAfterResult();
+          if (terminalResultSeen) closeAfterResult();
         });
         proc.onStderr((chunk) => { stderrTail = (stderrTail + chunk).slice(-stderrTailChars); });
         proc.onExit((code) => finalize(code));
 
         try {
           const writeFrame = (promptText: string): void => {
+            // Counted before the write for the same reason as `postMessage`: a synchronously answering
+            // spawner must not see a result arrive against an unrecorded frame. A throw here lands in the
+            // catch below, which terminates the turn outright, so no rollback is needed.
+            framesWritten += 1;
             proc.writeStdin(encodeStreamJsonUserMessage(promptText));
             tap('in', promptText);
           };
           if (bindingPrompt !== null) writeFrame(bindingPrompt);
           if (queuedPrompt !== null) writeFrame(queuedPrompt);
           writeFrame(prompt);
-          // Stream-json accepts additional user frames while a turn is live — so stdin stays open here.
-          // It is closed later, in `closeAfterResult`, once the terminal `type:"result"` line is observed.
-          if (!settled) liveWorkers.set(workerKey(input.runRef, agentId), liveWorker);
+          openingFramesWritten = true;
+          // A spawner that answered every opening frame synchronously (inside `writeStdin`) has already
+          // delivered the terminal result; `onStdout` could not act on it while frames were still being
+          // written, so the terminal condition is re-evaluated once here.
+          if (turnIsTerminal()) terminalResultSeen = true;
+          // Stream-json accepts additional user frames while a turn is live — so stdin stays open here and
+          // the operator channel stays registered for the WHOLE turn (Bug M3). Both are closed later, in
+          // `closeAfterResult`, once the terminal `type:"result"` line is observed. M11: an already-closed
+          // turn must never be resurrected by this registration.
+          if (!settled && !terminalResultSeen && !resultHandled) {
+            liveWorkers.set(workerKey(input.runRef, agentId), liveWorker);
+          }
+          if (terminalResultSeen) closeAfterResult();
         } catch {
           terminate();
           finalize(null);
