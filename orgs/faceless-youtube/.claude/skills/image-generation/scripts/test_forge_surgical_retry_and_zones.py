@@ -190,6 +190,46 @@ def test_step1_retry_remains_the_permitted_expression_remint_route():
     assert "none of its setting, props, lettering or other people" in out["payload"], out["payload"]
 
 
+# P10 (taste-forensics G2) — a card that came back in the WRONG POSTURE is re-minted through the
+# sanctioned route, not argued with in scene prose (the 6c2 wave parked two scenes on exactly this).
+def test_step1_retry_accepts_a_pose_defect_and_re_poses_through_the_beat_clause():
+    reg = {
+        "characters": {"hq-banker": {"base": "refs/hq-banker.png"}},
+        "assets": [
+            {"name": "expr-fear", "kind": "expression", "file": "refs/expr-fear.png"},
+            {"name": "action-point", "kind": "action", "file": "refs/action-point.png"},
+        ],
+    }
+    source = {"still_prompt": "`hq-banker`, `expr-fear`, `action-point`, at the factory gate.",
+              "assets": {}}
+    out = forge._retry_step1(
+        {"kind": "step1", "shot": "T01", "character": "hq-banker",
+         "name": "fig-hq-banker-repose", "defect": "pose"},
+        source, SimpleNamespace(reg=reg), "retry entry 1")
+    assert out["retry_authority"]["defect"] == "pose", out["retry_authority"]
+    # the re-mint re-poses because the pose primitive is re-seeded AND the P8 clause (clothing +
+    # act) is re-derived from the source beat — the same deriver the batch mint uses.
+    assert out["seed"] == ["refs/hq-banker.png", "refs/expr-fear.png", "refs/action-point.png"]
+    assert "`action-point` pose reference" in out["delta"], out["delta"]
+    clause = forge.beat_clause(source["still_prompt"], "hq-banker")
+    assert out["payload"] == forge.figure_card_payload("action-point", clause), out["payload"]
+    assert "bodily ACT" in out["payload"], out["payload"]
+
+
+def test_step1_retry_still_refuses_a_defect_outside_the_enum():
+    reg = {"characters": {"hq-banker": {"base": "refs/hq-banker.png"}}, "assets": []}
+    source = {"still_prompt": "`hq-banker` at the factory gate.", "assets": {}}
+    try:
+        forge._retry_step1(
+            {"kind": "step1", "shot": "T01", "character": "hq-banker",
+             "name": "fig-hq-banker-remint", "defect": "palette"},
+            source, SimpleNamespace(reg=reg), "retry entry 1")
+    except SystemExit as error:
+        assert "defect" in str(error), str(error)
+    else:
+        assert False, "a STEP-1 retry must refuse a defect outside {expression, rig, pose}"
+
+
 if __name__ == "__main__":
     failures = []
     for name, fn in sorted(globals().items()):
@@ -200,5 +240,5 @@ if __name__ == "__main__":
             except BaseException as error:  # SystemExit is a useful red-TDD failure too.
                 failures.append((name, error))
                 print(f"FAIL {name}: {type(error).__name__}: {error}")
-    print(f"{9 - len(failures)}/9 passed")
+    print(f"{11 - len(failures)}/11 passed")
     sys.exit(bool(failures))

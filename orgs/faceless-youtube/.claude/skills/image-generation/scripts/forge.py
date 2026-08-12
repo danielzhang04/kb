@@ -1344,19 +1344,46 @@ def seed_roles_text(seed_roles):
         if role == "place":
             detail = "the destination place — preserve its set, palette, outline weight and lighting"
         elif role == "figure":
+            # ...and NOT its ground: a STEP-1 card is a figure on blank card stock, so the set
+            # stays with the place/parent image. Left unsaid, the card's own emptiness competes
+            # with the place seed for the background.
             detail = (f"`{character}`'s complete STEP-1 figure — carry that figure's identity, "
-                      "costume, pose, hands and expression exactly")
+                      "costume, pose, hands and expression exactly, and take nothing else from "
+                      "the card: its blank ground is not this frame's set")
         elif role == "canonical":
+            # P9 (2026-08-12): the canonical's face grant is stated as a REGISTER grant, not a
+            # blanket one. It always owns HOW eyes/brows/mouth are drawn (bead eyes, tone, line);
+            # it owns WHICH shape they take only when nothing else in the slate holds that shape —
+            # i.e. on a fresh STEP-1 card with no expression reference. Unqualified, this role was
+            # the strongest face image on every delta slate and the model re-synthesised the face
+            # from it: the r2 verifier's parked L34 "CANONICAL EXPRESSION LEAK".
             detail = (f"`{character}`'s character canonical — identity, head tone, hair and the "
-                      "pinned costume come from this image only")
+                      "pinned costume come from this image only, and so does the RENDER REGISTER "
+                      "of the face: how its eyes, brows and mouth are drawn. It fixes the "
+                      "expression's SHAPE only when neither an expression reference nor a parent "
+                      "scene is present, and it never fixes the pose")
         elif role == "parent":
-            detail = "the in-chain parent scene — preserve its held set and existing composition"
+            # P9: the delta recipe is parent + canonical and buys no third seed for the face, so
+            # the parent's own pixels are told to carry the held expression and stance — the
+            # common delta (one restating the expression its chain already holds) has no other
+            # owner, and the expression gate deliberately does not fire on it.
+            detail = ("the in-chain parent scene — preserve its held set and existing "
+                      "composition, and take each held figure's STANCE and EXPRESSION "
+                      "(eye/brow/mouth) from its pixels unless this request also seeds a pose or "
+                      "expression reference for that figure; a held face is inherited here, never "
+                      "re-invented and never re-read off the canonical")
         elif role == "pose":
             detail = (f"the `{_stem(path)}` pose reference for `{character}` — copy only body pose, "
                       "hands and limb placement; ignore identity and costume")
         elif role == "expression":
+            # P9 fix round 1: the release is SCOPED to the character this role already carries. An
+            # at-cap two-figure delta (parent + canonical A + canonical B + one proved expression)
+            # is legal, and "replaces any expression held in a parent scene" reads as licence to
+            # put THIS shape on the other figure's held face — the L34 leak one level down.
             detail = (f"the `{_stem(path)}` expression reference for `{character}` — copy only "
-                      "eye/brow/mouth shape; ignore identity, head tone and hairline")
+                      "eye/brow/mouth shape; ignore identity, head tone and hairline; this shape "
+                      f"replaces the expression `{character}` holds in the parent scene, and no "
+                      "other figure's")
         elif role == "crowd":
             detail = "the crowd exemplar — use only its anonymous crowd proportion and face tier"
         elif role == "interaction":
@@ -2350,7 +2377,7 @@ def _retry_scene(item, source, entry, k, video, label):
                          "retry may not contradict an expression seed with prose.")
     if defect not in ("content", "seed", "mechanism"):
         raise SystemExit(f"{label}: scene retry `defect` must be `content`, `seed`, or `mechanism`; "
-                         "expression defects route to a `step1` (STEP-1) re-mint.")
+                         "expression AND pose defects route to a `step1` (STEP-1) re-mint.")
     instruction = entry.get("instruction")
     if instruction is not None:
         if isinstance(instruction, str) and _EXPRESSION_RETRY.search(instruction):
@@ -2472,8 +2499,12 @@ def _retry_step1(entry, source, k, label):
     unknown = set(entry) - allowed
     if unknown:
         raise SystemExit(f"{label}: STEP-1 retry has unknown key(s) {sorted(unknown)!r}.")
-    if entry.get("defect") not in ("expression", "rig"):
-        raise SystemExit(f"{label}: STEP-1 retry `defect` must be `expression` or `rig`.")
+    # P10 (2026-08-12): `pose` joins the enum. A card that came back in the wrong posture had no
+    # sanctioned repair — scene prose was the only lever, and prose that re-poses a figure redraws
+    # the head sitting on that body. The re-mint path below already rebuilds the card from its own
+    # recipe (pose primitive re-seeded, P8 clause re-derived), so nothing else changes.
+    if entry.get("defect") not in ("expression", "rig", "pose"):
+        raise SystemExit(f"{label}: STEP-1 retry `defect` must be `expression`, `rig` or `pose`.")
     character = entry.get("character")
     if not isinstance(character, str) or not character.strip():
         raise SystemExit(f"{label}: STEP-1 `character` must be a non-empty string.")

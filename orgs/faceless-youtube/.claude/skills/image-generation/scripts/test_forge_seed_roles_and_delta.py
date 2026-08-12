@@ -250,6 +250,115 @@ def test_delta_allows_only_explicitly_proven_necessary_primitives_and_labels_the
     assert "expr-smug" not in "\n".join(map(str, delta["seed"])), delta["seed"]
 
 
+# P9 (taste-forensics G2) — FACE OWNERSHIP ON A DELTA. The recipe above is pinned (parent +
+# canonical, no STEP-1 card), so the authority the r2 verifier's parked L34 "CANONICAL EXPRESSION
+# LEAK" found missing is bought with PROSE, never a fifth seed: the parent's pixels own the held
+# eye/brow/mouth and stance, and the canonical owns the register they are drawn in.
+def test_delta_prose_gives_the_held_face_to_the_parent_and_the_register_to_the_canonical():
+    shots, out = _delta_fixture()
+    spec = _batch(_kit(), shots, out)
+    delta = _scene(spec, "D02")
+    text = delta["delta"]
+    assert "STANCE and EXPRESSION" in text and "(eye/brow/mouth) from its pixels" in text, text
+    assert "unless this request also seeds a pose or expression reference" in text, text
+    assert "never re-read off the canonical" in text, text
+    assert "RENDER REGISTER" in text, text
+    # face authority costs no seed — the P1 delta-recipe pin, restated at the point of change.
+    assert len(delta["seed"]) == 2, delta["seed"]
+
+
+def _two_figure_delta_fixture(delta_primitives=None):
+    """The AT-CAP legal delta: parent + canonical A + canonical B + one proved primitive == 4."""
+    video = tempfile.mkdtemp()
+    shots = os.path.join(video, "shots.json")
+    delta = {
+        "id": "D02", "source": "ai-gen", "stage": "boardroom", "stage_role": "delta",
+        "still_prompt": ("The same boardroom, `miniscribe-rep` now `expr-smug` while "
+                         "`terry-johnson` holds still, as the contract changes hands."),
+    }
+    if delta_primitives is not None:
+        delta["delta_primitives"] = delta_primitives
+    _write_json(shots, {
+        "schema": "shots/1", "video_slug": "two-figure-delta-regression",
+        "long_form": {"aspect_ratio": "16:9", "shots": [
+            {"id": "D01", "source": "ai-gen", "stage": "boardroom", "stage_role": "base",
+             "still_prompt": "`miniscribe-rep` and `terry-johnson` stand at the boardroom table."},
+            delta,
+        ]},
+    })
+    return shots, os.path.join(video, "spec.json")
+
+
+# P9 FIX ROUND 1 (I-1) — the expression release is per-CHARACTER. A two-figure delta may seed one
+# proved expression and still sit at the cap, so an unscoped "replaces any expression held in a
+# parent scene" would license putting THIS figure's mouth on the OTHER figure's held face: the same
+# leak the parked L34 defect exhibits, one level down.
+def test_a_proved_expression_on_a_two_figure_delta_releases_only_its_own_character():
+    shots, out = _two_figure_delta_fixture({"miniscribe-rep": ["expr-smug"]})
+    spec = _batch(_kit(), shots, out)
+    delta = _scene(spec, "D02")
+    assert [Path(seed).stem for seed in delta["seed"]] == [
+        "D01", "miniscribe-rep", "terry-johnson", "expr-smug"], delta["seed"]
+    assert len(delta["seed"]) == SEED_CAP, delta["seed"]      # the shape is legal AT the cap
+    text = delta["delta"]
+    assert ("replaces the expression `miniscribe-rep` holds in the parent scene, and no other "
+            "figure's") in text, text
+    # the unscoped wording must not survive anywhere in the request
+    assert "replaces any expression held in a parent scene" not in text, text
+    # and the untouched figure keeps its held face from the parent's pixels
+    assert "take each held figure's STANCE and EXPRESSION" in text, text
+
+
+def _prose(*roles):
+    return forge_module.seed_roles_text(
+        [forge_module._seed_role(f"refs/{name}.png", role, character)
+         for role, name, character in roles])
+
+
+# P9 — the COMPLETENESS WALK: every recipe shape `seed_roles_text` can emit leaves zero attribute
+# (identity, face shape, face render register, pose, costume, set) unowned.
+def test_every_recipe_shape_states_complete_attribute_ownership():
+    card = _prose(("canonical", "miniscribe-rep", "miniscribe-rep"),
+                  ("expression", "expr-smug", "miniscribe-rep"),
+                  ("pose", "action-powerstance", "miniscribe-rep"))
+    for owned in ("identity, head tone, hair and the pinned costume come from this image only",
+                  "RENDER REGISTER", "copy only eye/brow/mouth shape",
+                  "copy only body pose, hands and limb placement"):
+        assert owned in card, card
+
+    scene = _prose(("figure", "fig-miniscribe-rep", "miniscribe-rep"),
+                   ("place", "L26", None), ("prop", "prop-drive", "prop-drive"))
+    # the STEP-1 card owns the whole figure; the place owns the set, so the card's own ground is
+    # explicitly refused rather than left for the model to guess at.
+    assert "identity, costume, pose, hands and expression exactly" in scene, scene
+    assert "its blank ground is not this frame's set" in scene, scene
+    assert "the destination place — preserve its set" in scene, scene
+
+    delta = _prose(("parent", "D01", None), ("canonical", "miniscribe-rep", "miniscribe-rep"))
+    assert "preserve its held set and existing composition" in delta, delta
+    assert "STANCE and EXPRESSION" in delta, delta
+    assert "RENDER REGISTER" in delta, delta
+    assert "never fixes the pose" in delta, delta
+
+    # a delta that DOES author a change: the seeded reference takes the attribute back off the
+    # parent, stated on the reference itself as well as on the parent — and scoped to ITS OWN
+    # character, never to whatever face the parent frame happens to hold (fix round 1).
+    changed = _prose(("parent", "D01", None), ("canonical", "miniscribe-rep", "miniscribe-rep"),
+                     ("expression", "expr-smug", "miniscribe-rep"))
+    assert ("replaces the expression `miniscribe-rep` holds in the parent scene, and no other "
+            "figure's") in changed, changed
+
+    crowd = _prose(("place", "L26", None), ("crowd", "crowd-exemplar", None))
+    assert "anonymous crowd proportion and face tier" in crowd, crowd
+    assert "preserve its set, palette, outline weight and lighting" in crowd, crowd
+
+    plate = _prose(("place", "L26", None))
+    assert "preserve its set, palette, outline weight and lighting" in plate, plate
+
+    tile = _prose((forge_module.STYLE_ANCHOR_ROLE, "style-tile", None))
+    assert "Take NOTHING else" in tile and "PALETTE SATURATION" in tile, tile
+
+
 def test_manual_delta_declaration_must_bind_primitive_to_the_authored_character():
     shots, out = _delta_fixture()
     kit = _kit()

@@ -129,7 +129,7 @@ every seeded composite, including a direct spec, must carry ordered `{path, role
 | Seed law | The rule, and why it is not negotiable |
 | --- | --- |
 | **Cap: ≤4 seeds per gen** | canonical + ONE pose primitive + ONE expression frame + one anchor/exemplar. Past four, dilution weakens every prior; a `base.png` added as an Nth "rig anchor" pins nothing. A figure that needs the base rig spends one of the four on it. |
-| **Attribute routing** | Base-derived seeds are bald, cream, neutral-faced and hoodied, so **any attribute not sourced from the CHARACTER seed bleeds a base trait**. CHARACTER seed → identity, head/skin tone, hair + facial hair, costume, face. POSE / interaction-template seed (geometry only) → body pose, hands, clasp geometry, placement, eye-line. EXPRESSION seed (shape only) → eye/brow/mouth shape, never tone, hairline or identity. Every skin patch, **including both hands**, renders in the CHARACTER's head tone. Expression is the SOFTEST seed and can land weak — the review checks register per beat. |
+| **Attribute routing** | Base-derived seeds are bald, cream, neutral-faced and hoodied, so **any attribute not sourced from the CHARACTER seed bleeds a base trait**. CHARACTER seed → identity, head/skin tone, hair + facial hair, costume, face. POSE / interaction-template seed (geometry only) → body pose, hands, clasp geometry, placement, eye-line. EXPRESSION seed (shape only) → eye/brow/mouth shape, never tone, hairline or identity. **On a DELTA** (parent + canonical, no STEP-1 card) the PARENT seed owns each held figure's stance and eye/brow/mouth in pixels, and the CHARACTER seed's face grant narrows to the RENDER REGISTER — how the face is drawn, not which shape it takes — so a held expression is inherited, not re-synthesised — unless a pose/expression primitive proved through `delta_primitives` takes that attribute back off the parent, for the ONE character it is declared under and no other. Every skin patch, **including both hands**, renders in the CHARACTER's head tone. Expression is the SOFTEST seed and can land weak — the review checks register per beat. |
 | **Exposed hands are seeded, never free-drawn** | A salute, wave, open palm or point is the five-finger drift point: seed the matching pose frame AND state the digit fact in the delta. No library pose covers it → that was a Pass-1 gate item, not an ad-hoc scene invention. |
 | **Place/plate seed law; image seeds are continuity only** | Forge states the LOOK in exactly TWO voices per scene request — the bible's §2b descriptor at the HEAD and the file's `global_prompt_suffix` at the TAIL — and generates no third. Zero-seed is legal ONLY for a derived place plate (the first-in-file generated shot of a qualifying place with no seeded figures — forge skips any shot whose `source` is outside `ai-gen`\|`hybrid` before picking it, same as lint's `place_groups`) or a no-place root — symbolic/abstract/standalone-object-insert shot classes, a short's `first_frame`, and the thumbnail never declare `place`. Every OTHER in-place shot seeds its own place's first approved frame; delta/chain/anchored scenes keep their continuity seeds and digest pins, and identity seeds remain mandatory. **Cross-place image seeding is a hard refusal**, never an authoring option: a `place_anchor` (or derived place seed) whose source shot's `place` differs from the consuming shot's is the probe-refuted style-anchor failure under another name (2026-08-04, probes F/G). The §5 scene style tile is the ONE registered image style anchor (a content-thin register exemplar, derived by forge onto cast-free gens); no other exists, and a narrative scene from another place is the probe-refuted failure. **"Plate" here is the PLACE plate — a whole shot, the place's first approved frame. The layered-shot plate (`plates/<id>.png`, §Layered shots) is a different object: a subtraction from one scene, not a place's establishing frame.** |
 | **Never seed off a downstream derivative** | Trace back to the exact frame the human approved; an "improved" copy can carry silent drift that then propagates as the lock. Exceptions: a delta-chain frame seeding its in-chain parent, and a re-base in the SAME location seeding the prior stage's base frame. |
@@ -213,7 +213,7 @@ overlay applies. The envelope is `{schema, video_slug, entries}`; unknown keys a
 
 - A `scene` entry has `{kind: "scene", shot, name, defect, replace?, prepend_seeds?, extra_seeds?}` and exactly ONE authority:
   an exact `{from, to}` replacement occurring once in the canonical authored payload, or a seed/mechanism swap with
-  no content append. `defect` is `content`, `seed`, or `mechanism`; `expression` is rejected here and routes to
+  no content append. `defect` is `content`, `seed`, or `mechanism`; `expression` and `pose` are rejected here and route to
   STEP-1. A seed/mechanism swap must reorder an existing provider part or name-replace its in-chain parent; an
   unrelated addition is not a swap. `instruction` is forbidden for scene retries; Forge preserves every byte outside
   the replaced span, then rebuilds and preflights roles from the final merge/dedup. Each seed is a relative string or the narrow
@@ -223,8 +223,10 @@ overlay applies. The envelope is `{schema, video_slug, entries}`; unknown keys a
   Seeds are resolved existing files contained in this video or its kit,
   prepended/appended in that order, then re-run through the normal cap and seeding law. A retry is fresh: its name
   cannot equal its shot or collide with staging/library/scenes, and it cannot seed an old scene output.
-- A `step1` entry has `{kind: "step1", shot, character, name, defect, instruction?}`, where `defect` is `expression`
-  or `rig`. Forge derives that named cast
+- A `step1` entry has `{kind: "step1", shot, character, name, defect, instruction?}`, where `defect` is `expression`,
+  `rig` or `pose` (a card that came back in the wrong posture is RE-MINTED from its own recipe — its pose primitive
+  and the beat's own act clause — never argued with in scene prose, which re-poses the body and redraws the head
+  sitting on it). Forge derives that named cast
   member's canonical + pose + expression recipe from the specified canonical shot and emits only that distinct STEP-1
   request; it never emits the source scene or another cast member. The optional instruction is appended to the
   reference-sheet delta.
@@ -270,7 +272,10 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
   Splitting the recipe out of the scene gen is the fix: scene complexity competing with rig-hold inside one call is
   what throws a figure off rig. A **delta beat is single-step:** in-chain parent first, then each held figure's
   canonical. Omit raw primitives unless `delta_primitives` names the proved mechanism for that same figure's one
-  change; an expression defect re-mints STEP-1 instead of opposing its seed with scene prose.
+  change; an expression or pose defect re-mints STEP-1 instead of opposing its seed with scene prose. On that
+  single-step slate the PARENT frame is the owner of each held figure's stance and eye/brow/mouth — the seed-role
+  prose says so — so a delta that restates the expression its chain already holds inherits it rather than
+  re-synthesising it off the canonical.
 - **De-nose / de-ear fix — a targeted identity pass budgeted for TWO gens.** Seed `[current frame + base-rig
   exemplar]`, change ONLY the faces; the engine re-draws a sticky ear or residual nose about half the time, so the
   reliable shape is a **SECOND targeted pass seeded off the already-fixed frame**. A fix TECHNIQUE, not a loosening
