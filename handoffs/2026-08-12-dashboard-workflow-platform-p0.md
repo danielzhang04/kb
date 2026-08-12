@@ -1,4 +1,4 @@
-# 2026-08-12 — Workflow-platform P0: COMPLETE. Acceptance PASSED; launch-race fluency fix added; PR #117 @ b8fd772 merge-ready (Daniel's click)
+# 2026-08-12 — Workflow-platform P0: MERGED to main (PR #117). Remaining: P1 kickoff + run-archive cleanup
 
 ## Load list
 - `memory/claude-boss.md` (ops) — lessons through this arc
@@ -27,11 +27,9 @@ same-session (all invisible to 900+ green tests):
    held control-plane.json → bounded transient retry at all 8 rename sites via shared
    server/atomicRename.ts.
 
-## NEXT (in order)
-1. **Daniel merges PR #117** (`gh pr merge 117 --merge` — classifier blocks the boss doing it).
-2. After merge: boss session sweeps — delete claude/workflow-platform local+remote (verify
-   rev-list==0 first), remove kb-worktrees/workflow-platform, `git worktree prune`.
-3. Start P1: iteration-loops research per the arc prompt on origin/claude/boss-2026-08-11.
+## NEXT
+1. Start P1: iteration-loops research per the arc prompt on origin/claude/boss-2026-08-11.
+   (PR #117 MERGED 2026-08-12; branch+worktree swept same session; prod pin c1fc83d = merged tip, live.)
 
 ## Cleanup still owed (task #15)
 - Archive dead runs via operator UI: run-73e28f66 ("…no-spend chain + gate smoke test", 2026-08-11,
