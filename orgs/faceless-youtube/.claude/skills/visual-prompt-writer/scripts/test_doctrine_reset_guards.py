@@ -201,13 +201,26 @@ def test_c3_ordinary_shot_class_with_place_is_silent():
     assert hard == []
 
 
+# P1 PIN (taste-forensics G2) — the symbolic/abstract/object-insert classes STAY place-exempt, so
+# P5/P6 plate pressure can never force a plate onto a standalone concept shot. Daniel liked exactly
+# these (L32 "fun and unique", L35, L48) and ruled "there should be various standalone shots
+# throughout. Many shots shouldn't be using plates anyways."
 def test_c3_all_five_placeless_classes_are_exempt_and_enforced():
+    # The membership half of the pin: without it the loop below passes VACUOUSLY if a later
+    # proposal quietly drops a class out of the exempt set to widen plate coverage.
+    assert L._PLACELESS_SHOT_CLASSES >= {
+        "symbolic-stand-in-object", "number-glued-to-object", "map-plan-view",
+        "physicalized-imbalance", "register-shift-infographic"}, L._PLACELESS_SHOT_CLASSES
+    assert L._PLACELESS_SHOT_CLASSES <= L.SHOT_CLASSES, L._PLACELESS_SHOT_CLASSES
     for sc in L._PLACELESS_SHOT_CLASSES:
         hard = []
         L.place_shot_class_exempt_check("lf", [{"id": "X", "shot_class": sc, "place": "x-y"}], hard)
         assert len(hard) == 1, (sc, hard)
 
 
+# P1 PIN (taste-forensics G2) — the thumbnail/first_frame context exemption is the other half of the
+# standalone-shot protection: these run seedless under the bible descriptor and no plate law may
+# start anchoring them to a place.
 def test_c3_plant_thumbnail_declares_place():
     hard = []
     L.place_context_exempt_check("thumbnail", [("thumbnail.primary", {"place": "miniscribe-boardroom"})], hard)

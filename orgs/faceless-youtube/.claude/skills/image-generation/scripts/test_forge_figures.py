@@ -70,6 +70,42 @@ def test_delta_shot_keeps_the_crowd_clause():
     assert fig == CROWD_RIG, fig[:160]
 
 
+# --- P1 PINS: the rig-discipline floor law, asserted where it REACHES the payload ---------------
+# Daniel, G2: "Four digit hand should be baked in. No nose as well. identity rig laws as well."
+# These are channel-level floor law, not per-video preference. They are pinned as the spans that
+# actually enter a generated prompt, not as free-floating doctrine strings, so a clause silently
+# dropped from the bible or from forge's assembly fails here rather than in a render.
+
+# P1 PIN — the CROWD FACE TIER (style-bible §2d): dot eyes / one simple mouth / NO nose / NO ears /
+# NO teeth / the squat proportion, applied to EVERY crowd figure. Protects "don't slip back into
+# prior rig problems". Deliberately excludes the "round cream-family heads" head-tone phrase, which
+# is the ONE span P4 is approved to rewrite.
+def test_p1_pin_crowd_face_tier_clauses_reach_the_crowd_payload():
+    text = _assemble(SHOT_BASE)
+    for span in (
+        "DOT EYES, one simple consistent mouth (neutral / smile / downturn only), "
+        "NO noses, NO ears, NO teeth",
+        "**EXACT same squat head-to-body proportion as the base rig**",
+        "to EVERY crowd figure individually and without exception in a multi-figure group",
+        "a single detailed or individuated face anywhere in the group is a rig FAIL",
+    ):
+        assert span in CROWD_RIG, span
+        assert span in text, span
+
+
+# P1 PIN — the FOUR-DIGIT HAND LAW (style-bible §2c RIG-HOLD, auto-appended to every
+# character-bearing gen, and §2d for crowd hands). Protects "without fucking up rigging".
+def test_p1_pin_four_digit_hand_law_reaches_every_figure_bearing_payload():
+    text = _assemble(SHOT_BASE)
+    for span in ("NO nose, NO ears",
+                 "exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons "
+                 "style, NEVER four fingers, NEVER five digits)"):
+        assert span in DESC_RIGHOLD, span
+        assert span in text, span
+    # crowd hands are the SAME hand: the face tier is the only thing the crowd rig simplifies
+    assert "hands, where visible, are the same four-digit cartoon hand" in text
+
+
 # --- (c) legacy shot: byte-identical to pre-`figures` assembly ----------------------------------
 def test_shot_without_figures_keeps_payload_final_under_the_new_zone_order():
     """REGRESSION GUARD. The pre-`figures` assembly was `descriptor + "\\n\\n" + delta` plus
@@ -127,9 +163,16 @@ def test_a_scene_prompt_is_bible_head_then_authored_text_then_the_file_suffix_ta
     assert text.count(authored) == 1, text
     assert text.startswith(k.desc_style) and text.endswith(suffix), text
     # era §2b survivors the head voice must still carry (archaeology D1)
+    # P1 PIN — the last two spans are the §2b SATURATION clause in its ea71f99 wording (verified
+    # byte-identical to HEAD). median_sat is the one measured axis that separates Daniel's liked
+    # frames from his disliked ones, so this clause is floor law: P11's warm re-lean is channel-level
+    # and must never be delivered by weakening or re-rolling it.
     for phrase in ("Draw in the SAME art style as the reference image", "FLAT cel-shaded CARTOON",
                    "an even\nMEDIUM-THICK".replace("\n", " "), "#241a12",
-                   "gentle soft cel shading", "No text, no words, no labels"):
+                   "gentle soft cel shading", "No text, no words, no labels",
+                   "flat colours laid down at FULL cel strength",
+                   "every fill a real colour, and any grey or neutral clearly TINTED warm or cool, "
+                   "so a cold scene reads COLD-COLOURED and never drains to greyscale"):
         assert phrase in text, (phrase, text)
     # a request with no suffix (an ad-hoc gen, a STEP-1 identity card) assembles exactly as before
     step1 = k.prompt_for("environment", "A neutral reference figure.")

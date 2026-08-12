@@ -18,8 +18,8 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from forge import (Kit, RETRY_OVERLAY_SCHEMA, cmd_batch, cmd_retry_batch, placement_delta,
-                   preflight_batch)
+from forge import (Kit, RETRY_OVERLAY_SCHEMA, SEED_CAP, cmd_batch, cmd_retry_batch,
+                   placement_delta, preflight_batch)
 
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
@@ -194,6 +194,9 @@ def _delta_fixture(delta_primitives=None):
     return shots, os.path.join(video, "spec.json")
 
 
+# P1 PIN (taste-forensics G2) — the DELTA RECIPE: parent + canonical, within SEED_CAP. This is the
+# recipe behind the one liked money-delta chain, so no later proposal may buy an attribute (P9's face
+# authority above all) with an extra delta SEED; role prose is the only channel that may widen.
 def test_whole_scene_delta_uses_only_parent_and_canonical_identity_by_default():
     shots, out = _delta_fixture()
     spec = _batch(_kit(), shots, out)
@@ -203,14 +206,22 @@ def test_whole_scene_delta_uses_only_parent_and_canonical_identity_by_default():
         {"path": delta["seed"][0], "role": "parent", "character": None},
         {"path": delta["seed"][1], "role": "canonical", "character": "miniscribe-rep"},
     ], delta.get("seed_roles")
+    # The budget half of the recipe, pinned where the recipe lives: four is the ceiling, and the
+    # default delta spends only two of it. A role that starts costing a seed shows up here first.
+    assert SEED_CAP == 4, SEED_CAP
+    assert len(delta["seed"]) == 2 <= SEED_CAP, delta["seed"]
 
 
+# P1 PIN (taste-forensics G2) — the other half of the delta recipe: a primitive enters a delta ONLY
+# on an explicit per-character declaration, and parent + canonical still lead. Protects the liked
+# chain against any later proposal that widens the delta seed set implicitly.
 def test_delta_allows_only_explicitly_proven_necessary_primitives_and_labels_them_in_order():
     shots, out = _delta_fixture({"miniscribe-rep": ["action-powerstance"]})
     spec = _batch(_kit(), shots, out)
     delta = _scene(spec, "D02")
     assert [Path(seed).stem for seed in delta["seed"]] == [
         "D01", "miniscribe-rep", "action-powerstance"], delta["seed"]
+    assert len(delta["seed"]) <= SEED_CAP, delta["seed"]
     assert delta["seed_roles"] == [
         {"path": delta["seed"][0], "role": "parent", "character": None},
         {"path": delta["seed"][1], "role": "canonical", "character": "miniscribe-rep"},

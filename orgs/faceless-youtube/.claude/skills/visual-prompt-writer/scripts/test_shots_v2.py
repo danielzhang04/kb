@@ -48,6 +48,11 @@ def _shot(i, **extra):
         "duration_s": 5,
         # The canonical enum value (shots-schema.md §1). It read "symbolic-stand-in"
         # until shot_class_check started validating the closed list and caught it.
+        # P1 PIN (taste-forensics G2), end-to-end half: every shot in this fixture is a
+        # place-FREE standalone concept shot, so `test_a_clean_v2_file_lints_green_...`
+        # below is the whole-file proof that plate/place pressure never becomes a HARD
+        # requirement on the standalone shots Daniel liked. The unit half (a placeless
+        # class that DOES declare `place` is refused) lives in test_doctrine_reset_guards.
         "shot_class": "symbolic-stand-in-object",
         "source": "ai-gen",
         "still_prompt": "a plain cartoon scene with no lettering at all",
