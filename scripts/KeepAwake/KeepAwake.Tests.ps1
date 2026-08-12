@@ -112,12 +112,34 @@ Describe 'Write-JsonFileAtomic concurrency (F1: MoveFileExW ends the delete-then
             Import-Module $ModPath -Force
             for ($i = 0; $i -lt 300; $i++) { Write-JsonFileAtomic -Path $Target -Data @{ tag = 'w'; i = $i } }
         } -ArgumentList $modPath, $target
+        $successfulReads = 0
         for ($r = 0; $r -lt 300; $r++) {
             $raw = $null
             try { $raw = [System.IO.File]::ReadAllText($target) } catch { continue } # reader may race the replace instant; only content matters
-            if ($raw) { { $raw | ConvertFrom-Json | Out-Null } | Should -Not -Throw }
+            if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+            { $raw | ConvertFrom-Json | Out-Null } | Should -Not -Throw
+            ($raw | ConvertFrom-Json).tag | Should -BeIn @('seed', 'w')
+            $successfulReads++
         }
         Receive-Job -Job $writerJob -Wait -AutoRemoveJob -ErrorAction Stop
+        # Review finding 12: without this the loop is vacuous -- every read
+        # could have failed and hit `continue`, asserting nothing at all.
+        $successfulReads | Should -BeGreaterThan 0
+    }
+
+    It 'retries the replace 5 times before throwing, and still leaves no temp file (finding 9)' {
+        # A FileShare.Read handle permits readers but denies the delete access
+        # MoveFileEx needs to replace the destination, so this is a
+        # deterministic stand-in for the sharing violation measured at a
+        # residual 0.27% under a 5-writer hammer. Widening 3 -> 5 attempts with
+        # a longer jitter is what collapses that residue.
+        $target = Join-Path $script:root 'locked.lease'
+        Write-JsonFileAtomic -Path $target -Data @{ tag = 'seed' }
+        $lock = New-Object System.IO.FileStream($target, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            { Write-JsonFileAtomic -Path $target -Data @{ tag = 'blocked' } } | Should -Throw '*after 5 attempts*'
+        } finally { $lock.Dispose() }
+        @(Get-ChildItem $script:root -Filter '*.tmp').Count | Should -Be 0
     }
 }
 
@@ -678,6 +700,39 @@ Describe 'supervisor pass' {
         $onDisk.PSObject.Properties['path'] | Should -BeNullOrEmpty
     }
 
+    # Review finding 5: there was no per-lease try/catch, so ONE unwritable
+    # lease aborted the whole pass -- including the arm/disarm decision. A
+    # persistently unwritable lease therefore meant 10 consecutive pass
+    # failures -> exit 2 -> disarm -> respawn -> repeat, i.e. a machine
+    # unarmed most of the night while real work was running.
+    It 'isolates a lease whose rewrite fails: counts it live, keeps the others, still runs the arm decision (finding 5)' {
+        New-KeepAwakeLease -Label 'good' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        New-KeepAwakeLease -Label 'locked' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        $lockedPath = Get-LeasePath -Label 'locked'
+        # FileShare.Read: Get-KeepAwakeLeases can still read it, but the atomic
+        # replace cannot take the destination -- exactly an unwritable lease.
+        $lock = New-Object System.IO.FileStream($lockedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0
+            $r.LiveCount | Should -Be 2
+            $r.Armed     | Should -BeTrue
+            $script:FakeStore['238c9fa8-0aad-41ed-83f4-97be242c8f20|29f6c1db-86da-48c5-9fdb-f2b67b1f44da'] | Should -Be 0
+        } finally { $lock.Dispose() }
+        (Get-Content (Join-Path $script:TestRoot 'keepawake.log') -Raw) | Should -Match 'lease-pass-ERROR label=locked'
+        Test-Path $lockedPath | Should -BeTrue
+    }
+
+    It 'a single unwritable lease still counts as live and arms the machine (fail safe toward armed)' {
+        New-KeepAwakeLease -Label 'only' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
+        $path = Get-LeasePath -Label 'only'
+        $lock = New-Object System.IO.FileStream($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            $r = Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0
+            $r.LiveCount | Should -Be 1
+            $r.Armed     | Should -BeTrue
+        } finally { $lock.Dispose() }
+    }
+
     It 'writes the rewritten lease file atomically (no bare temp file left behind)' {
         New-KeepAwakeLease -Label 'a' -Mode 'pid-only' -ProcessId $PID -CpuSample 0 | Out-Null
         Invoke-SupervisorPass -Now $script:Now -IdleTimeoutMinutes 15 -CpuThreshold 2.0 | Out-Null
@@ -1081,6 +1136,10 @@ Describe 'Start-KeepAwakeSupervisor pass-failure resilience (F2: one bad pass mu
         }
     }
     AfterEach {
+        # Review finding 10: the injected invoker is process-wide state. Without
+        # this reset every later block silently runs against this block's stub.
+        Reset-SupervisorPassInvoker
+        Set-PowerProvider -Provider (Get-DefaultPowerProvider)
         Remove-Item $env:KB_KEEPAWAKE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item Env:\KB_KEEPAWAKE_ROOT -ErrorAction SilentlyContinue
     }

@@ -41,15 +41,21 @@ same NTFS volume; the temp file is already written next to the destination).
 The module already P/Invokes (`SetThreadExecutionState`) — same pattern, added to
 the existing `KbPower.Native` member definition or a sibling type.
 
-Belt-and-braces: retry up to 3 attempts with 15–40 ms jittered sleep on ANY
-failure of the replace step; on final failure **throw** (callers decide — see F2;
-the Heartbeat CLI already catches and exits 0). MoveFileEx returns FALSE on
-failure — check the return value and throw a descriptive error; do not let a
-silent FALSE fake success.
+Belt-and-braces: retry up to 5 attempts with a growing jittered sleep
+(15–55 ms, 30–70 ms, …) on ANY failure of the replace step; on final failure
+**throw** (callers decide — see F2; the Heartbeat CLI already catches and exits
+0). MoveFileEx returns FALSE on failure — check the return value and throw a
+descriptive error; do not let a silent FALSE fake success.
 
-Expected side effect: the 358/log `cli-error mode=Heartbeat` lines disappear, and
-heartbeats stop being silently lost (lost heartbeats can contribute to premature
-idle-timeout prunes).
+Expected side effect: a **~99.7% reduction** in the 358/log `cli-error
+mode=Heartbeat` lines, so heartbeats stop being routinely lost (lost heartbeats
+can contribute to premature idle-timeout prunes). This is a reduction, not an
+elimination: adversarial review measured a residual 0.27% throw rate under a
+5-writer hammer (win32=5, sharing violation), and **residual throws remain
+possible under reader contention**. The 3→5 attempt widening (review-1 finding
+9) shrinks that residue further but cannot remove it — which is exactly why F2's
+loop hardening and the per-lease isolation inside `Invoke-SupervisorPass` treat a
+failed write as an ordinary event rather than a fatal one.
 
 ### F2. Exception-proof supervisor loop
 

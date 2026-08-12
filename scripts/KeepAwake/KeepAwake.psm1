@@ -130,21 +130,31 @@ function Get-LeasePath {
 # violation case (another process has the destination open), then throws --
 # callers decide (F2 catches it in the supervisor loop; the Heartbeat CLI
 # already catches and exits 0).
+$script:AtomicWriteAttempts = 5
+
 function Write-JsonFileAtomic {
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)]$Data
     )
+    # Set-Content resolves a relative path against the PowerShell location while
+    # MoveFileExW resolves it against the process working directory -- the two
+    # can differ, so normalize once here and let both see the same file.
+    $Path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     $tmp = "$Path.$PID.$([guid]::NewGuid().ToString('N')).tmp"
     try {
         $Data | ConvertTo-Json -Compress -Depth 5 | Set-Content -Path $tmp -Encoding utf8
         $lastWin32 = 0
-        for ($attempt = 1; $attempt -le 3; $attempt++) {
+        # 5 attempts with a growing jittered backoff, not 3 with a flat one: the
+        # review measured a residual 0.27% throw rate under a 5-writer hammer
+        # even after the MoveFileExW change, and the suite's own concurrency
+        # test flaked on it.
+        for ($attempt = 1; $attempt -le $script:AtomicWriteAttempts; $attempt++) {
             if ([KbPower.FileNative]::MoveFileExW($tmp, $Path, $script:MOVEFILE_REPLACE_EXISTING)) { return }
             $lastWin32 = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-            Start-Sleep -Milliseconds (15 + (Get-Random -Maximum 26))
+            Start-Sleep -Milliseconds ((15 * $attempt) + (Get-Random -Maximum 41))
         }
-        throw "Write-JsonFileAtomic: MoveFileExW failed for '$Path' after 3 attempts (win32=$lastWin32)"
+        throw "Write-JsonFileAtomic: MoveFileExW failed for '$Path' after $($script:AtomicWriteAttempts) attempts (win32=$lastWin32)"
     } finally {
         Remove-Item -Path $tmp -Force -ErrorAction SilentlyContinue
     }
@@ -774,6 +784,14 @@ function Invoke-SupervisorPass {
     $immediatePruned = @()
     $live = 0
     foreach ($lease in (Get-KeepAwakeLeases)) {
+      # Per-lease isolation: one unwritable lease used to abort the entire pass
+      # -- including the arm/disarm decision below -- so a persistently
+      # unwritable lease meant 10 consecutive pass failures, exit 2, disarm,
+      # respawn, repeat, with the machine unarmed most of the time. A lease
+      # that cannot be rewritten is counted LIVE (fail safe toward armed):
+      # being unable to update a lease is not evidence its owner stopped
+      # working.
+      try {
         if (-not (Test-ProcessAlive -ProcessId $lease.pid)) {
             Remove-Item $lease.path -Force -ErrorAction SilentlyContinue
             # A corrupt/missing 'acquired' value must never crash the supervisor
@@ -809,6 +827,14 @@ function Invoke-SupervisorPass {
         $u.Remove('path')
         Write-JsonFileAtomic -Path $lease.path -Data $u
         $live++
+      } catch {
+        # $lease.label may itself be the thing that failed to read, so keep the
+        # label lookup inside its own guard.
+        $failedLabel = '<unknown>'
+        try { $failedLabel = [string]$lease.label } catch { }
+        Write-KeepAwakeLog ("lease-pass-ERROR label=$failedLabel -- counting it LIVE and continuing :: $_")
+        $live++
+      }
     }
 
     if ($live -gt 0 -and -not (Test-PowerArmed)) { Set-PowerArmed | Out-Null }
