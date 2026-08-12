@@ -1065,6 +1065,47 @@ def build_panels(ctx, reg, qb, S):
     p07_panel["lede"] = p07_panel["lede"].replace(old_count_sentence2, new_count_sentence2)
     for qid in p07_qids:
         qb.get(qid)["images"].append(probe_idx)
+
+    # The rest of the L28 place-plate probe family (Daniel: one probe frame wasn't enough - he
+    # wants the entire family on the board so he can point at the right one). Every distinct L28
+    # render in the same staging directory as the r1probe above, not already shown on P07.
+    # L28-retry1.png and L28.png in that directory are sha-identical to frames already on P07
+    # (assets/_archive-pre-regen-2026-08-06/L28.png and scratchpad/L28-remint-attempt1.png
+    # respectively) and are skipped rather than duplicated. L28-b5V.png is sha-identical to a
+    # frame already registered elsewhere on the board (panel P03, reached there via the ordinary
+    # board-anchor+pixel-match-upgrade route for a different beat) under the exact same pool key
+    # constructed here - reg.add()'s existing exact-key-match dedup returns that index untouched
+    # rather than re-reading/re-encoding it. Same sourcing route as r1probe: direct pool original,
+    # die-loud if missing, no board embed to anchor against (so no ambiguity check applies).
+    # Registered last, after r1probe, in a stable alphabetical-by-filename order.
+    probe_family_dir = "_pre-6c2-archive-2026-08-06"
+    probe_family_files = sorted([
+        "L28-b4R-r1.png", "L28-b4R.png", "L28-b5V.png",
+        "L28-composite-probe-distance.png", "L28-composite-probe-empty.png",
+        "L28-composite-probe-foreground-props.png", "L28-group-probe-distance.png",
+        "L28-plate-probe-empty.png", "L28-pre-anchor.png", "L28-round1-retry.png",
+        "L28-tranche-b-repair.png",
+    ])
+    for fn in probe_family_files:
+        rel = "visual-kit/_staging/%s/%s" % (probe_family_dir, fn)
+        abspath = resolve("%s/%s" % (probe_family_dir, fn), KIT_STAGING_ROOTS)
+        if abspath is None:
+            die("pixel source missing for L28 probe-family file: %s" % rel)
+        stem = fn[:-4]
+        idx = reg.add(
+            key=rel, loader=lambda p=abspath: open(p, "rb").read(),
+            caption="gen-C era - staging archive - probe (%s)" % stem,
+            gen_tag=probe_tag, date=file_date(abspath), badges=[], beat="L28",
+            provenance="%s (never boarded; recovered directly from the pre-6c2 staging archive)"
+                       % rel)
+        p07_group["cells"].append(cell_img(ctx, reg, idx, "L28", show_beat=False))
+        for qid in p07_qids:
+            qb.get(qid)["images"].append(idx)
+    old_count_sentence3 = "These are the %d frames that exist for it." % (len(order) + 2)
+    new_count_sentence3 = ("These are the %d frames that exist for it."
+                            % (len(order) + 2 + len(probe_family_files)))
+    assert old_count_sentence3 in p07_panel["lede"], "P07 lede count sentence not found verbatim"
+    p07_panel["lede"] = p07_panel["lede"].replace(old_count_sentence3, new_count_sentence3)
     return panels
 
 
