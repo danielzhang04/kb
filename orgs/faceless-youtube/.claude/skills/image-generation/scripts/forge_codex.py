@@ -9,10 +9,17 @@ log. ``git diff forge.py`` must stay empty.
 Subscription-billed: $0 API spend. No key is ever loaded — every Kit is built dry.
 """
 import hashlib
+import json
 import os
+import signal
 import shutil
+import subprocess
 import sys
+import time
 import warnings
+if os.name == "nt":
+    import ctypes
+    from ctypes import wintypes
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -341,3 +348,137 @@ def resolve_codex_binary() -> str:
         raise SystemExit(f"codex CLI not found on PATH ({CODEX_ARGV_PREFIX[0]!r}) — install it, or "
                          "patch forge_codex.CODEX_ARGV_PREFIX in tests")
     return exe
+
+
+# --- §4.4 invocation. The envelope is deliberately a pointer to a persisted, UTF-8 prompt file:
+# --- the model receives a mechanical pass-through instruction rather than an invitation to rewrite it.
+SANDBOX_MODE = "workspace-write"
+
+ENVELOPE_TEMPLATE = (
+    "Read the file at {prompt_path} and pass its exact byte content as the `prompt` argument to "
+    "`image_gen__imagegen`. Do not compose, paraphrase, normalize, or reformat this text -- read "
+    "and pass through only. Call the tool exactly once, with referenced_image_paths = [{seeds}]. "
+    "Do not read any file outside this directory. Report only the saved image path."
+)
+
+
+def build_envelope(prompt_path: str, seed_paths: list[str]) -> str:
+    """Build the probe-verified file-reference instruction for one image-generation turn."""
+    return ENVELOPE_TEMPLATE.format(prompt_path=prompt_path,
+                                    seeds=", ".join(str(path) for path in seed_paths))
+
+
+def composed_prompt_dir(staging: str) -> str:
+    return os.path.join(str(staging), "_codex", "prompts")
+
+
+def write_prompt_file(staging: str, name: str, text: str) -> str:
+    """Persist the exact composed UTF-8 prompt as the invocation and audit artifact."""
+    directory = composed_prompt_dir(staging)
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, f"{name}.txt")
+    with open(path, "w", encoding="utf-8", newline="") as output:
+        output.write(text)
+    return path
+
+
+def _windows_kernel32():
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.argtypes = (ctypes.c_void_p, wintypes.LPCWSTR)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.TerminateJobObject.argtypes = (wintypes.HANDLE, wintypes.UINT)
+    kernel32.TerminateJobObject.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    return kernel32
+
+
+def _attach_windows_job(proc) -> None:
+    """Bind a just-created Windows process and later descendants to one killable Job Object."""
+    kernel32 = _windows_kernel32()
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job or not kernel32.AssignProcessToJobObject(job, proc._handle):
+        if job:
+            kernel32.CloseHandle(job)
+        proc._codex_job = None
+        return
+    proc._codex_job = job
+
+
+def kill_process_tree(proc) -> None:
+    """Terminate a timed-out Codex process and every descendant it launched."""
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        job = getattr(proc, "_codex_job", None)
+        if job:
+            _windows_kernel32().TerminateJobObject(job, 1)
+        else:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    try:
+        proc.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+def run_codex_exec(*, envelope: str, cwd: str, timeout_s: float | None = None,
+                   resume_thread: str | None = None) -> dict:
+    """Run one Codex turn and return parsed stream events plus transport facts.
+
+    Fresh and resume calls have distinct, independently measured CLI shapes. stdin remains closed
+    because Codex otherwise tries to read an additional interactive prompt from it.
+    """
+    exe = resolve_codex_binary()
+    if resume_thread:
+        tail = ["exec", "resume", str(resume_thread), "--json", "--skip-git-repo-check", envelope]
+    else:
+        tail = ["exec", "--json", "--skip-git-repo-check", "--sandbox", SANDBOX_MODE,
+                "--cd", str(cwd), envelope]
+    argv = [exe] + list(CODEX_ARGV_PREFIX[1:]) + tail
+    process_kwargs = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+                      if os.name == "nt" else {"start_new_session": True})
+    started = time.time()
+    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, cwd=str(cwd), **process_kwargs)
+    if os.name == "nt":
+        # A Job Object is the reliable process-tree boundary on Windows; unlike CTRL_BREAK_EVENT
+        # it does not signal this runner's shared console. The handle stays on proc until cleanup.
+        _attach_windows_job(proc)
+    timed_out = False
+    try:
+        raw, err = proc.communicate(timeout=TIMEOUT_S if timeout_s is None else timeout_s)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        kill_process_tree(proc)
+        raw, err = proc.communicate()
+    stdout = (raw or b"").decode("utf-8", errors="replace")
+    stderr = (err or b"").decode("utf-8", errors="replace")
+    events, thread_id, usage = [], None, {}
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        events.append(event)
+        if event.get("type") == "thread.started":
+            thread_id = event.get("thread_id")
+        elif event.get("type") == "turn.completed":
+            usage = event.get("usage", {}) or {}
+    result = {"events": events, "thread_id": thread_id, "usage": usage,
+              "returncode": proc.returncode, "timed_out": timed_out,
+              "stderr_tail": stderr.strip()[-160:], "wall_s": round(time.time() - started, 1)}
+    job = getattr(proc, "_codex_job", None)
+    if job:
+        _windows_kernel32().CloseHandle(job)
+    return result

@@ -157,6 +157,15 @@ def main():
     mode = args.mode
 
     if mode == "stall":
+        # This grandchild makes the timeout test prove TREE termination, not only PID termination.
+        import subprocess as _sp
+        heartbeat = Path(args.image_root).parent / "heartbeat.txt"
+        _sp.Popen([sys.executable, "-c",
+                   "import sys,time\n"
+                   "while True:\n"
+                   "    open(sys.argv[1], 'a').write('x')\n"
+                   "    time.sleep(0.2)\n", str(heartbeat)],
+                  stdin=_sp.DEVNULL, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
         time.sleep(600)
         return 0
     if mode == "bad_json":

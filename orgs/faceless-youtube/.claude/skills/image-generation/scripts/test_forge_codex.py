@@ -271,10 +271,13 @@ def _line_raises_json_decode_error(line):
 def test_fake_stall_mode_does_not_return_within_two_seconds():
     tmp, prompt, seed = _scratch()
     env = ENVELOPE_FMT.format(prompt_path=prompt, seeds=str(seed))
+    import forge_codex as fc
     proc = subprocess.Popen(fake_prefix("stall", tmp / "generated_images", tmp / "sessions")
                             + ["exec", "--json", "--skip-git-repo-check", "--sandbox",
                                "workspace-write", "--cd", str(tmp), env],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if os.name == "nt":
+        fc._attach_windows_job(proc)
     try:
         timed_out = False
         try:
@@ -283,8 +286,7 @@ def test_fake_stall_mode_does_not_return_within_two_seconds():
             timed_out = True
         assert timed_out is True
     finally:
-        proc.kill()
-        proc.wait(timeout=10)
+        fc.kill_process_tree(proc)
 
 
 def test_fake_rollout_variants_paraphrase_and_none():
@@ -936,6 +938,93 @@ def test_seed_digests_reverify_raises_seed_integrity_error_on_mutation():
     except SeedIntegrityError as e:
         raised = str(e)
     assert raised is not None and "L29" in raised
+
+
+ARC_ENVELOPE = REPO_ROOT / "scratch-codex-image-engine" / "p4-envelope.txt"
+
+
+def test_build_envelope_matches_the_banked_probe_contract():
+    import forge_codex as fc
+    got = fc.build_envelope("<PROMPT_PATH>", ["<SEED_1>"])
+    assert ARC_ENVELOPE.is_file(), f"missing banked envelope: {ARC_ENVELOPE}"
+    assert got == ARC_ENVELOPE.read_text(encoding="utf-8")
+    two = fc.build_envelope("C:/p.txt", ["C:/a.png", "C:/b.png"])
+    assert "referenced_image_paths = [C:/a.png, C:/b.png]" in two
+    assert "exactly once" in two and "Do not read any file outside this directory" in two
+
+
+def test_write_prompt_file_is_utf8_and_lands_in_the_codex_prompt_archive():
+    import forge_codex as fc
+    tmp = Path(tempfile.mkdtemp(prefix="prompts-"))
+    p = fc.write_prompt_file(str(tmp), "L29", "Avoid: photorealism\u2014none\n")
+    assert Path(p) == tmp / "_codex" / "prompts" / "L29.txt"
+    assert Path(p).read_text(encoding="utf-8") == "Avoid: photorealism\u2014none\n"
+    assert Path(p).read_bytes() == "Avoid: photorealism\u2014none\n".encode("utf-8")
+
+
+def test_run_codex_exec_sends_the_real_flag_tail_and_parses_the_stream():
+    import forge_codex as fc
+    tmp, prompt, seed = _scratch()
+    saved = fc.CODEX_ARGV_PREFIX
+    fc.CODEX_ARGV_PREFIX = fake_prefix("ok", tmp / "generated_images", tmp / "sessions")
+    try:
+        env = fc.build_envelope(str(prompt), [str(seed)])
+        r = fc.run_codex_exec(envelope=env, cwd=str(tmp), timeout_s=120)
+    finally:
+        fc.CODEX_ARGV_PREFIX = saved
+    assert r["returncode"] == 0 and r["timed_out"] is False
+    assert r["thread_id"] and r["thread_id"].startswith("019ff")
+    assert r["usage"]["input_tokens"] == 75742
+    assert r["events"] and r["events"][0]["type"] == "thread.started"
+    assert r["wall_s"] >= 0
+
+
+def test_run_codex_exec_resume_uses_the_measured_distinct_argv():
+    import forge_codex as fc
+    tmp, prompt, seed = _scratch()
+    saved = fc.CODEX_ARGV_PREFIX
+    fc.CODEX_ARGV_PREFIX = fake_prefix("resume_ok", tmp / "generated_images", tmp / "sessions")
+    try:
+        env = fc.build_envelope(str(prompt), [str(seed)])
+        r = fc.run_codex_exec(envelope=env, cwd=str(tmp), timeout_s=120,
+                              resume_thread="019ff123-4567-7890-abcd-0123456789ab")
+    finally:
+        fc.CODEX_ARGV_PREFIX = saved
+    assert r["returncode"] == 0 and r["timed_out"] is False
+    assert r["thread_id"] == "019ff123-4567-7890-abcd-0123456789ab"
+
+
+def test_run_codex_exec_kills_the_whole_process_tree_on_timeout():
+    import forge_codex as fc
+    tmp, prompt, seed = _scratch()
+    hb = tmp / "heartbeat.txt"
+    saved = fc.CODEX_ARGV_PREFIX
+    fc.CODEX_ARGV_PREFIX = fake_prefix("stall", tmp / "generated_images", tmp / "sessions")
+    try:
+        env = fc.build_envelope(str(prompt), [str(seed)])
+        r = fc.run_codex_exec(envelope=env, cwd=str(tmp), timeout_s=2)
+    finally:
+        fc.CODEX_ARGV_PREFIX = saved
+    assert r["timed_out"] is True
+    assert hb.is_file(), "grandchild never started -- the tree-kill assertion would be vacuous"
+    import time as _t
+    size_a = hb.stat().st_size
+    _t.sleep(1.5)
+    assert hb.stat().st_size == size_a, "grandchild survived: the kill was single-PID, not a TREE"
+
+
+def test_run_codex_exec_reports_stderr_tail_bounded_to_160_chars():
+    import forge_codex as fc
+    tmp, prompt, seed = _scratch()
+    saved = fc.CODEX_ARGV_PREFIX
+    fc.CODEX_ARGV_PREFIX = fake_prefix("nonzero_exit", tmp / "generated_images", tmp / "sessions")
+    try:
+        r = fc.run_codex_exec(envelope=fc.build_envelope(str(prompt), [str(seed)]), cwd=str(tmp),
+                              timeout_s=120)
+    finally:
+        fc.CODEX_ARGV_PREFIX = saved
+    assert r["returncode"] == 1
+    assert "failed to connect" in r["stderr_tail"] and len(r["stderr_tail"]) <= 160
 
 
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
