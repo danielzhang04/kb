@@ -160,12 +160,14 @@ def main():
         # This grandchild makes the timeout test prove TREE termination, not only PID termination.
         import subprocess as _sp
         heartbeat = Path(args.image_root).parent / "heartbeat.txt"
-        _sp.Popen([sys.executable, "-c",
-                   "import sys,time\n"
-                   "while True:\n"
-                   "    open(sys.argv[1], 'a').write('x')\n"
-                   "    time.sleep(0.2)\n", str(heartbeat)],
-                  stdin=_sp.DEVNULL, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        child = _sp.Popen([sys.executable, "-c",
+                           "import sys,time\n"
+                           "while True:\n"
+                           "    open(sys.argv[1], 'a').write('x')\n"
+                           "    time.sleep(0.2)\n", str(heartbeat)],
+                          stdin=_sp.DEVNULL, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        # Pid banked so the test's failure path can reap a surviving grandchild.
+        heartbeat.with_suffix(".pid").write_text(str(child.pid), encoding="utf-8")
         time.sleep(600)
         return 0
     if mode == "bad_json":

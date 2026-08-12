@@ -1001,16 +1001,23 @@ def test_run_codex_exec_kills_the_whole_process_tree_on_timeout():
     saved = fc.CODEX_ARGV_PREFIX
     fc.CODEX_ARGV_PREFIX = fake_prefix("stall", tmp / "generated_images", tmp / "sessions")
     try:
-        env = fc.build_envelope(str(prompt), [str(seed)])
-        r = fc.run_codex_exec(envelope=env, cwd=str(tmp), timeout_s=2)
+        try:
+            env = fc.build_envelope(str(prompt), [str(seed)])
+            r = fc.run_codex_exec(envelope=env, cwd=str(tmp), timeout_s=2)
+        finally:
+            fc.CODEX_ARGV_PREFIX = saved
+        assert r["timed_out"] is True
+        assert hb.is_file(), "grandchild never started -- the tree-kill assertion would be vacuous"
+        import time as _t
+        size_a = hb.stat().st_size
+        _t.sleep(1.5)
+        assert hb.stat().st_size == size_a, "grandchild survived: the kill was single-PID, not a TREE"
     finally:
-        fc.CODEX_ARGV_PREFIX = saved
-    assert r["timed_out"] is True
-    assert hb.is_file(), "grandchild never started -- the tree-kill assertion would be vacuous"
-    import time as _t
-    size_a = hb.stat().st_size
-    _t.sleep(1.5)
-    assert hb.stat().st_size == size_a, "grandchild survived: the kill was single-PID, not a TREE"
+        # Failure-path reap: a surviving grandchild must not outlive the test run.
+        pid_file = hb.with_suffix(".pid")
+        if pid_file.is_file():
+            subprocess.run(["taskkill", "/PID", pid_file.read_text(encoding="utf-8").strip(),
+                            "/T", "/F"], capture_output=True)
 
 
 def test_run_codex_exec_reports_stderr_tail_bounded_to_160_chars():
