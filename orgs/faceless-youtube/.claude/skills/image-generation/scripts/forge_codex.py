@@ -11,6 +11,7 @@ Subscription-billed: $0 API spend. No key is ever loaded — every Kit is built 
 import os
 import shutil
 import sys
+import warnings
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -276,7 +277,12 @@ def compose_prompt(item, *, reg, canvas, aspect):
         lines.append(f"Text (verbatim): {joined} — render exactly this text and nothing else.")
     lines.append(f"Constraints: {constraints_text(item)}")
     lines.append(f"Avoid: {avoid_text(bool(quotes))}")
-    return "\n".join(lines) + "\n"
+    composed = "\n".join(lines) + "\n"
+    residual = residual_idiom(composed)
+    if residual:
+        warnings.warn(f"residual staging idiom in composed prompt: {residual}",
+                      RuntimeWarning, stacklevel=2)
+    return composed
 
 
 def resolve_codex_binary() -> str:

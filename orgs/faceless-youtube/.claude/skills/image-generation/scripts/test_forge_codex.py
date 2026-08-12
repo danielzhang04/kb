@@ -738,6 +738,54 @@ def test_composer_reproduces_the_L29_golden_byte_for_byte():
     assert got == L29_GOLDEN, "\n--- got ---\n" + got + "\n--- want ---\n" + L29_GOLDEN
 
 
+def test_composer_warns_for_a_residual_from_a_poisoned_registry_item():
+    import warnings
+    import forge_codex as fc
+
+    poisoned = dict(REGISTRY)
+    poisoned["assets"] = list(REGISTRY["assets"]) + [
+        {"name": "poisoned-prop", "kind": "prop", "tag": "wings left"}]
+    item = dict(_item_L26(), payload="`poisoned-prop` beside the doorway")
+    scanned = []
+    original = fc.residual_idiom
+
+    def spy(text):
+        scanned.append(text)
+        return original(text)
+
+    fc.residual_idiom = spy
+    try:
+        with warnings.catch_warnings(record=True) as reported:
+            warnings.simplefilter("always")
+            composed = fc.compose_prompt(item, reg=poisoned, canvas=(1376, 768), aspect="16:9")
+    finally:
+        fc.residual_idiom = original
+
+    assert "Primary request: wings left beside the doorway" in composed
+    assert scanned == [composed]
+    assert reported and "residual staging idiom" in str(reported[0].message)
+    assert "wings left" in str(reported[0].message)
+
+
+def test_composer_pins_zero_one_and_five_seed_boundaries():
+    import forge_codex as fc
+
+    for count in (0, 1, 5):
+        item = dict(_item_L26(), seed_roles=[
+            {"path": f"C:/k/seed-{n}.png", "role": "prop", "character": None}
+            for n in range(1, count + 1)
+        ])
+        composed = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
+        lines = [line for line in composed.splitlines() if line.startswith("Input images: ")]
+        if count == 0:
+            assert lines == []
+        else:
+            assert len(lines) == 1
+            assert lines[0].count("Image ") == count
+            for n in range(1, count + 1):
+                assert f"Image {n}: prop reference" in lines[0]
+
+
 def test_composer_is_deterministic():
     import forge_codex as fc
     a = fc.compose_prompt(_item_L29(), reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
