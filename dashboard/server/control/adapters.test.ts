@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { DEFAULT_ATTEMPT_BUDGET, DEFAULT_BUDGET } from './activation.ts';
 import type { ExecutionProfile } from './policy.ts';
 import { canonicalStageResultHash } from './execution.ts';
 import {
@@ -458,6 +459,56 @@ describe('file accounting adapter', () => {
       usage: { inputTokens: 50, outputTokens: 50, costUsdMicros: 500 },
     });
     expect(await reserve('reserve:3', 'attempt-3', 60)).toEqual({ ok: false, reason: 'global token or cost budget exhausted' });
+  });
+
+  it('admits a multi-stage chain under the production window/attempt budget split, and still closes at the ceiling', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    const adapter = createFileAccountingAdapter({
+      stateRoot,
+      windowId: 'window-chain',
+      maxConcurrency: 1,
+      globalBudget: DEFAULT_BUDGET,
+      newId: () => `id-${++ids}`,
+    });
+    const reserveAttempt = (attempt: number) => adapter.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    const settleAttempt = async (attempt: number, reservationRef: string, inputTokens: number) => {
+      await adapter.settle({
+        operationKey: `settle:attempt-${attempt}`, reservationRef,
+        usage: { inputTokens, outputTokens: 1_024, costUsdMicros: 250_000 },
+      });
+    };
+    // Measured acceptance baseline: the draft stage settles at ~180k input tokens / ~$0.25.
+    const draft = await reserveAttempt(1);
+    expect(draft).toEqual({ ok: true, value: { reservationRef: 'reservation-id-1', replayed: false } });
+    if (!draft.ok) throw new Error(draft.reason);
+    await settleAttempt(1, draft.value.reservationRef, 180_177);
+
+    // The regression: a second stage in the same window must still be admissible after that settlement.
+    const revise = await reserveAttempt(2);
+    expect(revise).toEqual({ ok: true, value: { reservationRef: 'reservation-id-2', replayed: false } });
+    if (!revise.ok) throw new Error(revise.reason);
+    await settleAttempt(2, revise.value.reservationRef, 180_177);
+
+    // And a third (a three-stage chain), plus a fourth (one retry) — the sizing claim in activation.ts.
+    const finalStage = await reserveAttempt(3);
+    expect(finalStage.ok).toBe(true);
+    if (!finalStage.ok) throw new Error(finalStage.reason);
+    await settleAttempt(3, finalStage.value.reservationRef, 180_177);
+    const retry = await reserveAttempt(4);
+    expect(retry.ok).toBe(true);
+    if (!retry.ok) throw new Error(retry.reason);
+
+    // The window ceiling is NOT loosened: settle the retry at the full attempt limit and the next
+    // reservation is refused, because 540,531 + 1,000,000 settled + 1,000,000 held > 2,000,000.
+    await adapter.settle({
+      operationKey: 'settle:attempt-4', reservationRef: retry.value.reservationRef,
+      usage: { inputTokens: DEFAULT_ATTEMPT_BUDGET.maxInputTokens, outputTokens: 1_024, costUsdMicros: 250_000 },
+    });
+    expect(await reserveAttempt(5)).toEqual({ ok: false, reason: 'global token or cost budget exhausted' });
   });
 
   it('serializes concurrent reservations through the durable global CAS', async () => {
