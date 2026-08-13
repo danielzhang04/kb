@@ -295,6 +295,7 @@ interface IterationOutcome {
   inputGenerationRefs: string[];
   criteria: CriterionResult[];
   findings: IterationFinding[];
+  resolvedFindingRefs?: string[];
   positions: IterationPosition[];
   recordedDissent: IterationDissent[];
   summary: string;
@@ -310,6 +311,11 @@ interface IterationReceipt extends Omit<IterationOutcome, 'schema'> {
   createdAt: string;
 }
 ```
+
+`resolvedFindingRefs` is a bounded, deduplicated, canonically sorted list of request-provided
+unresolved finding refs that the worker reports as resolved. It is allowed only on the terminal
+verdicts `complete` and `consensus`, and on both every open ref must be listed there or restated as an
+advisory finding representing accepted residue — open findings never vanish silently at termination.
 
 Verdict legality is declaration-driven rather than inferred from role labels. A participant's terminal
 verdicts are exactly its `terminalAuthorities`; its nonterminal vocabulary is the verdicts naming it in

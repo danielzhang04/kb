@@ -12,7 +12,7 @@ import type {
   ProposalReviewCriterion,
   ResolvedAgentAssignment,
 } from './proposal.ts';
-import type { ReviewOutcome, ReviewOutcomeCriterion } from './reviewOutcome.ts';
+import type { IterationOutcome, ReviewOutcome } from './reviewOutcome.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -245,20 +245,9 @@ export interface IterationRequest {
   instructions: string;
 }
 
-export interface IterationReceipt {
+export interface IterationReceipt extends Omit<IterationOutcome, 'schema'> {
   schema: 'kb.iteration-receipt/v1';
   receiptRef: string;
-  requestRef: string;
-  iterationLoopRef: string;
-  participantId: string;
-  cycle: number;
-  verdict: IterationVerdict;
-  inputGenerationRefs: string[];
-  criteria: ReviewOutcomeCriterion[];
-  findings: IterationFinding[];
-  positions: IterationPosition[];
-  recordedDissent: IterationDissent[];
-  summary: string;
   outcomeHash: string;
   outputGenerationRefs: string[];
   baseCommit: string;
