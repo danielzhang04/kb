@@ -1,0 +1,17 @@
+{
+  "crowd-exemplar-reroll-r2-candidate": {
+    "axes": {
+      "era_dress": "pass",
+      "head_tones": "pass",
+      "hair_silhouettes": "pass",
+      "anchor_not_uniform": "pass"
+    },
+    "evidence": {
+      "era_dress": "All 6 figures wear plain, muted-colour everyday workplace clothing: (1) blue-grey vest over blue collared shirt + dark brown trousers + brown shoes; (2) grey ribbed sweater + blue skirt + black flats; (3) dark green button shirt, sleeves rolled + dark grey trousers + brown boots; (4) coral/orange polo shirt + tan trousers + white sneakers; (5) red cardigan over white blouse + navy skirt + black flats; (6) light-blue button shirt + dark brown trousers + black loafers. No hats, no lettering, no logos/brand marks anywhere (including the white sneakers on figure 4, which are plain/unmarked). Nothing reads as costuming from another decade -- all six are generic office/workplace basics consistent with an ordinary 1980s American workplace.",
+      "head_tones": "Pixel-sampled the head/cheek region of each figure via a throwaway script (deleted after use, per instructions). Clean 2-2-2 split across exactly 3 tones: figures 1 and 4 sample (249,233,207), dist ~8 from #f5ead6; figures 2 and 5 sample ~(223,174,127), dist ~16-18 from #e2b78c; figures 3 and 6 sample ~(131,87,55), dist ~12-14 from #7a4f33. All six figures land tightly on one of the three canonical tones with no fourth tone and no uniform single tone across the group.",
+      "hair_silhouettes": "Cropped and visually inspected each head. Confirmed clean 2-2-2 pairing across exactly 3 silhouettes named in the brief: figures 1 and 4 both have short, side-parted hair with a swept fringe (brown vs blond colour only); figures 2 and 5 both have a short curly cap silhouette (rounded, cloud-like curls close to the head); figures 3 and 6 both have hair pulled up into a top bun/knot with loose texture at the sides. No fourth shape invented, and unlike the original exemplar there is no bald carve-out needed -- every figure has hair and the three styles repeat literally (2x each).",
+      "anchor_not_uniform": "3 distinct head tones (2-2-2), 3 distinct hair silhouettes (2-2-2), and 6 different garment combinations/colours (vest+shirt, sweater+skirt, rolled-sleeve shirt, polo, cardigan+blouse+skirt, button shirt; spanning tan/blue/grey/green/orange/brown/red/navy/light-blue) layered on the shared crowd-rig body and simple dot-eye/flat-mouth face. Reads clearly as a varied anonymous crowd, not clones."
+    },
+    "notes": "No borderline calls this round. head_tones distances (~8, ~16-18, ~12-14) are comfortably within the tolerance the exemplar round already accepted (which passed a dist ~20 outlier), so this is a clean pass with tighter margins than the schema exemplar. hair_silhouettes is a clean pass on the strict reading of 'repeating' (each of the 3 named styles appears on exactly 2 figures) -- stronger than the exemplar's borderline case, which needed the looser 'cap on catalog size' interpretation because two styles appeared only once each. era_dress: the white sneakers on figure 4 are the only element that could theoretically be flagged as slightly modern-reading footwear, but they carry no logo/branding/stripe marks and the instruction's hard constraints are era-plausible muted dress with no lettering/logos/badges/brand marks -- unmarked white sneakers don't trip that, so this stays pass, non-blocking."
+  }
+}

@@ -130,3 +130,4 @@ is restored, `py -3 t15_gen.py 1 --live` resumes at round 1 with nothing to redo
 | 3 | hr-officer-r2-flat-fill-candidate | R2 | 1 | $0.039 | $0.117 | OK -> _staging/hr-officer-r2-flat-fill-candidate.png; local ear ban retained, long tweed skirt flat-fill clause |
 | 4 | crowd-exemplar-reroll-candidate | R2 | 1 | $0.039 | $0.156 | OK -> _staging/crowd-exemplar-reroll-candidate.png; 6-figure crowd re-roll with 3-3.5-head squat proportion law |
 | 5 | crowd-exemplar-reroll-r2-candidate | R2 | 1 | $0.039 | $0.195 | OK -> _staging/crowd-exemplar-reroll-r2-candidate.png; retained t16 crowd prompt with exact-uniform 3-3.5-head build, compact bodies, and short stubby legs under one head-width |
+| 6 | crowd-exemplar-reroll-r3-candidate | R3 | 1 | $0.039 | $0.234 | OK -> _staging/crowd-exemplar-reroll-r3-candidate.png; channel crowd frame seed pinned; restyled only era dress, distributed flat head tones, and repeating hair silhouettes |
