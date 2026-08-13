@@ -1078,6 +1078,13 @@ function commitTask4Seed(store: ControlPlaneStore, runRef: string, prefix = 'dra
     baseCommit: 'b'.repeat(40), canonicalCommit: createHash('sha1').update(prefix).digest('hex'),
   });
   if (!generation.ok) throw new Error(generation.detail);
+  const afterGeneration = store.getRun('alice', runRef);
+  if (!afterGeneration.ok) throw new Error(afterGeneration.detail);
+  const committedStage = afterGeneration.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)!;
+  const runningStage = store.transitionStage('alice', committedStage.stageRef, committedStage.version, 'running');
+  if (!runningStage.ok) throw new Error(runningStage.detail);
+  const completed = store.transitionStage('alice', runningStage.value.stageRef, runningStage.value.version, 'succeeded');
+  if (!completed.ok) throw new Error(completed.detail);
   return generation.value;
 }
 
@@ -1131,7 +1138,197 @@ function task4Receipt(store: ControlPlaneStore, runRef: string, prefix = 'draft'
   });
 }
 
+function queueTask4ProducerTurn(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const failed = task4Receipt(store, runRef, prefix, 'fail');
+  if (!failed.ok) throw new Error(failed.detail);
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops.find((candidate) => candidate.iterationGroupId === `${prefix}-loop`)!;
+  const advanced = store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version,
+    expectedReceiptRef: failed.value.receiptRef,
+    expectedActiveGenerationRefs: [...loop.activeGenerationRefs],
+    nextStepId: `${prefix}-rework`,
+    operationKey: `iteration-advance:${runRef}:${prefix}:producer`,
+  });
+  if (!advanced.ok) throw new Error(advanced.detail);
+  return { failed: failed.value, loop: advanced.value };
+}
+
+function requestTask4ProducerTurn(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const queued = queueTask4ProducerTurn(store, runRef, prefix);
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const predecessor = detail.value.stageGenerations.find((generation) => generation.state === 'committed')!;
+  const requested = store.recordIterationRequest('alice', queued.loop.iterationLoopRef, {
+    expectedLoopVersion: queued.loop.version,
+    routeId: `${prefix}-to-author`,
+    kind: 'rework',
+    inputGenerationRefs: [...queued.loop.activeGenerationRefs],
+    baseCommit: predecessor.canonicalCommit!,
+    artifactHashes: { [`${prefix}-artifact`]: predecessor.resultHash! },
+    unresolvedFindingRefs: [`${prefix}-finding`],
+    preservedInvariants: [`${prefix}-criterion`],
+    nextAcceptanceCheck: `Resolve ${prefix}-finding.`,
+    instructions: `Rework ${prefix}.`,
+    operationKey: `iteration-request:${runRef}:${prefix}:producer`,
+  });
+  if (!requested.ok) throw new Error(requested.detail);
+  return { ...queued, request: requested.value };
+}
+
+function commitTask4ProducerTurn(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const requested = requestTask4ProducerTurn(store, runRef, prefix);
+  let detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const stage = detail.value.stages.find((candidate) => candidate.stageId === `${prefix}-build`)!;
+  const generation = detail.value.stageGenerations.find((candidate) =>
+    candidate.generationRef === requested.loop.activeGenerationRefs[0])!;
+  let attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === generation.attemptRef)!;
+  if (stage.state !== 'running') {
+    const runningStage = store.transitionStage('alice', stage.stageRef, stage.version, 'running');
+    if (!runningStage.ok) throw new Error(runningStage.detail);
+  }
+  for (const state of ['starting', 'running', 'succeeded'] as const) {
+    detail = store.getRun('alice', runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === attempt.attemptRef)!;
+    const transitioned = store.transitionAttempt('alice', attempt.attemptRef, attempt.version, state);
+    if (!transitioned.ok) throw new Error(transitioned.detail);
+  }
+  detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const currentStage = detail.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)!;
+  attempt = detail.value.attempts.find((candidate) => candidate.attemptRef === attempt.attemptRef)!;
+  const committed = store.recordStageGeneration('alice', stage.stageRef, {
+    expectedStageVersion: currentStage.version,
+    expectedAttemptVersion: attempt.version,
+    expectedGeneration: generation.generation,
+    operationKey: `iteration-result:${runRef}:${stage.stageId}:${requested.request.requestRef}`,
+    resultHash: 'e'.repeat(64),
+    resultCardRef: null,
+    baseCommit: generation.generation === 1 ? 'b'.repeat(40) : detail.value.stageGenerations.find((candidate) =>
+      candidate.generationRef === generation.predecessorGenerationRef)!.canonicalCommit!,
+    canonicalCommit: 'e'.repeat(40),
+  });
+  if (!committed.ok) throw new Error(committed.detail);
+  return { ...requested, generation: committed.value, attempt };
+}
+
 describe('Task 4 generic iteration state machine', () => {
+  it('records a producer iteration request while a rework successor is queued', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const requested = requestTask4ProducerTurn(store, created.run.runRef);
+    expect(requested.loop).toMatchObject({
+      state: 'rework-queued', currentStepId: 'draft-rework', turnOwnerParticipantId: 'draft-author', cyclesUsed: 1,
+    });
+    expect(requested.request).toMatchObject({ kind: 'rework', cycle: 1, inputGenerationRefs: requested.loop.activeGenerationRefs });
+    const detail = store.getRun('alice', created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'running-turn', cyclesUsed: 1 })],
+      stageGenerations: expect.arrayContaining([expect.objectContaining({ generation: 2, state: 'queued' })]),
+    } });
+  });
+
+  it('mints a durable fulfilled receipt with output lineage after canonical integration', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const turn = commitTask4ProducerTurn(store, created.run.runRef);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const receipt = store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version,
+      requestRef: turn.request.requestRef,
+      outcome: {
+        schema: 'kb.iteration-outcome/v1', requestRef: turn.request.requestRef,
+        iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-author', cycle: turn.request.cycle,
+        verdict: 'fulfilled', inputGenerationRefs: [...turn.request.inputGenerationRefs], criteria: [], findings: [],
+        positions: [], recordedDissent: [], summary: 'Draft successor committed.',
+      },
+      outputGenerationRefs: [turn.generation.generationRef],
+      baseCommit: turn.generation.baseCommit!, canonicalCommit: turn.generation.canonicalCommit!,
+      participantAttemptRef: turn.attempt.attemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:draft:producer`,
+    });
+    expect(receipt).toMatchObject({ ok: true, value: {
+      verdict: 'fulfilled', inputGenerationRefs: turn.request.inputGenerationRefs,
+      outputGenerationRefs: [turn.generation.generationRef], baseCommit: turn.generation.baseCommit,
+      canonicalCommit: turn.generation.canonicalCommit,
+    } });
+    expect(store.getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'failed', lastReceiptRef: receipt.ok && receipt.value.receiptRef })],
+    } });
+  });
+
+  it('rejects output generation refs on every non-fulfilled iteration receipt', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    const activated = activateTask4Loop(store, created.run.runRef);
+    const request = task4Request(store, created.run.runRef);
+    if (!request.ok) throw new Error(request.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const generation = detail.value.stageGenerations.find((candidate) =>
+      candidate.generationRef === request.value.inputGenerationRefs[0])!;
+    const findingId = 'non-fulfilled-output-finding';
+    expect(store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version,
+      requestRef: request.value.requestRef,
+      outcome: {
+        schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef,
+        iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-judge', cycle: request.value.cycle,
+        verdict: 'fail', inputGenerationRefs: [...request.value.inputGenerationRefs],
+        criteria: [{ criterionId: 'draft-criterion', verdict: 'fail', findingIds: [findingId] }],
+        findings: [{ findingId, criterionId: 'draft-criterion', severity: 'blocking', summary: 'Draft failed.', evidencePaths: [] }],
+        positions: [], recordedDissent: [], summary: 'Draft failed.',
+      },
+      outputGenerationRefs: [activated.generation.generationRef],
+      baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!,
+      participantAttemptRef: generation.attemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:draft:invalid-output`,
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('rejects a fulfilled receipt whose output lineage does not match the committed successor', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task6-fulfilled-lineage-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const turn = commitTask4ProducerTurn(store, created.run.runRef);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const input = {
+      expectedLoopVersion: loop.version, requestRef: turn.request.requestRef,
+      outcome: {
+        schema: 'kb.iteration-outcome/v1' as const, requestRef: turn.request.requestRef,
+        iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-author', cycle: turn.request.cycle,
+        verdict: 'fulfilled' as const, inputGenerationRefs: [...turn.request.inputGenerationRefs], criteria: [], findings: [],
+        positions: [], recordedDissent: [], summary: 'Draft successor committed.',
+      },
+      outputGenerationRefs: [turn.generation.generationRef], baseCommit: turn.generation.baseCommit!,
+      canonicalCommit: 'f'.repeat(40), participantAttemptRef: turn.attempt.attemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:draft:producer`,
+    };
+    expect(store.recordIterationReceipt('alice', loop.iterationLoopRef, input)).toMatchObject({ ok: false, reason: 'conflict' });
+
+    const accepted = store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      ...input, canonicalCommit: turn.generation.canonicalCommit!, operationKey: `${input.operationKey}:valid`,
+    });
+    if (!accepted.ok) throw new Error(accepted.detail);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as PersistedReviewDocument;
+    document.iterationReceipts[0]!.canonicalCommit = 'f'.repeat(40);
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow(/invalid control-plane iteration receipt/);
+  });
+
   it('records one iteration request and receipt idempotently by operation key', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const created = createTask4IterationRun(store);
@@ -1233,7 +1430,7 @@ describe('Task 4 generic iteration state machine', () => {
     expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
       expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
       expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework', operationKey: 'advance-declared-route',
-    })).toMatchObject({ ok: true, value: { state: 'awaiting-turn', currentStepId: 'draft-rework', turnOwnerParticipantId: 'draft-author', cyclesUsed: 1 } });
+    })).toMatchObject({ ok: true, value: { state: 'rework-queued', currentStepId: 'draft-rework', turnOwnerParticipantId: 'draft-author', cyclesUsed: 1 } });
   });
 
   it('replays a queued generic supersession only for the matching operation key and fingerprint', () => {
@@ -1304,9 +1501,10 @@ describe('Task 4 generic iteration state machine', () => {
     detail = store.getRun('alice', created.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
     const generation = detail.value.stageGenerations[0]!;
+    const advancedLoop = detail.value.iterationLoops[0]!;
     expect(store.recordIterationRequest('alice', loop.iterationLoopRef, {
       expectedLoopVersion: advanced.ok ? advanced.value.version : -1, routeId: 'draft-to-author', kind: 'rework',
-      inputGenerationRefs: [...loop.activeGenerationRefs], baseCommit: generation.canonicalCommit!,
+      inputGenerationRefs: [...advancedLoop.activeGenerationRefs], baseCommit: generation.canonicalCommit!,
       artifactHashes: { 'draft-artifact': generation.resultHash! }, unresolvedFindingRefs: ['draft-finding'], preservedInvariants: [],
       nextAcceptanceCheck: 'Resolve the finding.', instructions: 'Rework the draft.', operationKey: 'reused-route-cycle-two-request',
     })).toMatchObject({ ok: true, value: { stepId: 'draft-rework-b', cycle: 2 } });

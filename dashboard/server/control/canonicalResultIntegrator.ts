@@ -8,10 +8,17 @@ import { resolveCheckedOutBranch, withOpsTransaction } from '../write/asyncGit.t
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import type { CanonicalStageResult, CanonicalStageResultPayload, ResultIntegrator, WorkerArtifactResult } from './execution.ts';
-import { canonicalResultOperationKey, canonicalStageResultHash, planAttemptWorktreePath } from './execution.ts';
+import { canonicalResultOperationKey, canonicalStageResultHash, iterationResultOperationKey, planAttemptWorktreePath } from './execution.ts';
 import { createLocalGitCommandRunner, type GitCommandRunner } from './adapters.ts';
 import { isSafeRepoRelativePath } from './proposal.ts';
-import { parseReviewOutcome, type ReviewContract, type ReviewOutcome } from './reviewOutcome.ts';
+import {
+  parseIterationOutcome,
+  parseReviewOutcome,
+  type IterationOutcome,
+  type IterationOutcomeContract,
+  type ReviewContract,
+  type ReviewOutcome,
+} from './reviewOutcome.ts';
 
 const SHA = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -34,6 +41,8 @@ interface IntegrationRecord {
   cardRef: string | null;
   /** Absent only on legacy non-review v1 records written before review contracts were journaled. */
   reviewContract?: ReviewContract | null;
+  /** Present only on generic iteration operations written after the Task-6 cutover. */
+  iterationContract?: IterationOutcomeContract;
   integrationBranch: string;
   attemptBaseCommit: string;
   attemptCommit: string | null;
@@ -290,6 +299,16 @@ function hash(value: unknown): string {
 function expectedCardRef(operationKey: string, runRef: string, stageId: string): string | null {
   const firstGeneration = canonicalResultOperationKey(runRef, stageId);
   if (operationKey === firstGeneration) return workflowCardId(runRef, stageId);
+  const iterationPrefix = `iteration-result:${runRef}:${stageId}:`;
+  if (operationKey.startsWith(iterationPrefix)) {
+    const requestRef = operationKey.slice(iterationPrefix.length);
+    try {
+      if (iterationResultOperationKey(runRef, stageId, requestRef) === operationKey) return null;
+    } catch {
+      // Fall through to the common invalid-identity error below.
+    }
+    throw new CanonicalResultIntegrationError('canonical result operation identity is invalid');
+  }
   const suffix = operationKey.slice(firstGeneration.length);
   const match = /^:g([1-9]\d*)$/.exec(suffix);
   if (!match || Number(match[1]) < 2) throw new CanonicalResultIntegrationError('canonical result operation identity is invalid');
@@ -298,12 +317,32 @@ function expectedCardRef(operationKey: string, runRef: string, stageId: string):
 
 function publicResult(record: IntegrationRecord): CanonicalStageResult {
   if (!record.integrationCommit) throw new CanonicalResultIntegrationError('canonical integration commit is unavailable');
+  const raw = record.result;
+  const result = raw.reviewOutcome && record.reviewContract
+    ? (() => {
+        const { reviewOutcome, ...plain } = raw;
+        return { ...plain, iterationOutcome: legacyReviewIterationOutcome(reviewOutcome) };
+      })()
+    : raw;
   return structuredClone({
-    ...record.result,
+    ...result,
     durability: 'canonical',
     attemptBaseCommit: record.attemptBaseCommit,
     integrationCommit: record.integrationCommit,
   });
+}
+
+function legacyReviewIterationOutcome(outcome: ReviewOutcome): IterationOutcome {
+  return {
+    schema: 'kb.iteration-outcome/v1', requestRef: 'legacy-review-request', iterationLoopRef: 'legacy-review-loop',
+    participantId: 'legacy-reviewer', cycle: 1, verdict: outcome.decision,
+    inputGenerationRefs: ['legacy-generation'], criteria: structuredClone(outcome.criteria),
+    findings: outcome.findings.map((finding) => ({
+      findingId: finding.id, criterionId: finding.criterionId, severity: finding.severity,
+      summary: finding.summary, evidencePaths: [...finding.evidencePaths],
+    })),
+    positions: [], recordedDissent: [], summary: outcome.summary,
+  };
 }
 
 function canonicalWire(record: IntegrationRecord): CanonicalStageResultPayload & {
@@ -343,6 +382,24 @@ function validatedReviewOutcome(value: unknown, contract: unknown): ReviewOutcom
   }
 }
 
+function validatedIterationOutcome(value: unknown, contract: unknown): IterationOutcome | undefined {
+  if (value === undefined) {
+    if (contract !== undefined && contract !== null) throw new CanonicalResultIntegrationError('canonical result has an iteration contract without an outcome');
+    return undefined;
+  }
+  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) {
+    throw new CanonicalResultIntegrationError('canonical iteration outcome lacks an immutable iteration contract');
+  }
+  try {
+    const parsed = parseIterationOutcome(JSON.stringify(value), contract as IterationOutcomeContract);
+    if (!parsed.ok) throw new CanonicalResultIntegrationError(parsed.detail);
+    return parsed.value;
+  } catch (error) {
+    if (error instanceof CanonicalResultIntegrationError) throw error;
+    throw new CanonicalResultIntegrationError('canonical iteration outcome is invalid');
+  }
+}
+
 function normalizeArtifacts(items: readonly WorkerArtifactResult[]): WorkerArtifactResult[] {
   const paths = new Set<string>();
   return [...items].map((item) => {
@@ -377,6 +434,13 @@ function readState(path: string): IntegrationState {
   const operations = new Set<string>();
   for (const record of value.records) {
     const hasReviewContract = Object.prototype.hasOwnProperty.call(record, 'reviewContract');
+    const hasIterationContract = Object.prototype.hasOwnProperty.call(record, 'iterationContract');
+    const hasIterationOutcome = Object.prototype.hasOwnProperty.call(record.result ?? {}, 'iterationOutcome');
+    if ((hasIterationContract && (!record.iterationContract || !hasIterationOutcome || hasReviewContract
+      || Object.prototype.hasOwnProperty.call(record.result ?? {}, 'reviewOutcome')))
+      || (!hasIterationContract && hasIterationOutcome)) {
+      throw new CanonicalResultIntegrationError('canonical integration mixes generic and legacy iteration fields');
+    }
     // reviewContract was added to the v1 journal after non-review results were already durable.
     // Preserve that legacy wire shape because its omission is part of the immutable fingerprint.
     if (!hasReviewContract && record.result && typeof record.result === 'object'
@@ -399,12 +463,13 @@ function readState(path: string): IntegrationState {
       || !/^[a-f0-9]{64}$/.test(record.result.resultHash)
       || canonicalStageResultHash(
         record.result,
-        hasReviewContract ? 'current' : 'legacy-non-review',
+        hasIterationContract || hasReviewContract ? 'current' : 'legacy-non-review',
       ) !== record.result.resultHash
       || operations.has(record.operationKey)) {
       throw new CanonicalResultIntegrationError('canonical integration state is invalid');
     }
-    validatedReviewOutcome(record.result.reviewOutcome, hasReviewContract ? record.reviewContract : undefined);
+    if (hasIterationContract) validatedIterationOutcome(record.result.iterationOutcome, record.iterationContract);
+    else validatedReviewOutcome(record.result.reviewOutcome, hasReviewContract ? record.reviewContract : undefined);
     normalizeArtifacts(record.result.artifacts);
     normalizeArtifacts(record.result.changed);
     normalizeCheckpoints(record.result.checkpoints);
@@ -903,12 +968,18 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           || !SAFE_REF.test(input.stageId) || input.canonicalCardRef !== expectedCardRef(input.operationKey, input.runRef, input.stageId)) {
           throw new CanonicalResultIntegrationError('canonical result input is invalid');
         }
+        if ((input.iterationOutcome !== undefined || input.iterationContract !== undefined)
+          && (input.reviewOutcome !== undefined || input.reviewContract !== undefined)) {
+          throw new CanonicalResultIntegrationError('canonical result mixes generic and legacy iteration fields');
+        }
+        const iterationOutcome = validatedIterationOutcome(input.iterationOutcome, input.iterationContract);
         const reviewOutcome = validatedReviewOutcome(input.reviewOutcome, input.reviewContract);
         const result: CanonicalStageResultPayload & { resultHash: string } = {
           summary: input.summary,
           artifacts: normalizeArtifacts(input.artifacts),
           changed: normalizeArtifacts(input.changed),
           checkpoints: normalizeCheckpoints(input.checkpoints),
+          ...(iterationOutcome ? { iterationOutcome } : {}),
           ...(reviewOutcome ? { reviewOutcome } : {}),
           resultHash: input.resultHash,
         };
@@ -917,7 +988,9 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           operationKey: input.operationKey, subject: input.subject, runRef: input.runRef,
           stageRef: input.stageRef, stageId: input.stageId, attemptRef: input.attemptRef,
           canonicalCardRef: input.canonicalCardRef,
-          reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null,
+          ...(iterationOutcome
+            ? { iterationContract: structuredClone(input.iterationContract as IterationOutcomeContract) }
+            : { reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null }),
           result,
         };
         const fingerprint = hash(fingerprintInput);
@@ -925,8 +998,10 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         let record = state.records.find((item) => item.operationKey === input.operationKey);
         if (record) {
           let expectedFingerprint = fingerprint;
-          if (!Object.prototype.hasOwnProperty.call(record, 'reviewContract')) {
-            const { reviewContract: _reviewContract, ...legacyFingerprintInput } = fingerprintInput;
+          if (!Object.prototype.hasOwnProperty.call(record, 'reviewContract')
+            && !Object.prototype.hasOwnProperty.call(record, 'iterationContract')) {
+            const legacyFingerprintInput: Record<string, unknown> = { ...fingerprintInput };
+            delete legacyFingerprintInput.reviewContract;
             expectedFingerprint = hash({
               ...legacyFingerprintInput,
               result: {
@@ -974,7 +1049,9 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           record = {
             operationKey: input.operationKey, fingerprint, subject: input.subject, runRef: input.runRef,
             stageId: input.stageId, attemptRef: input.attemptRef, cardRef: input.canonicalCardRef, integrationBranch: lineage.branch,
-            reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null,
+            ...(iterationOutcome
+              ? { iterationContract: structuredClone(input.iterationContract as IterationOutcomeContract) }
+              : { reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null }),
             attemptBaseCommit, attemptCommit: null, integrationBaseCommit, integrationCommit: null, result, state: 'intent',
           };
           state.records.push(record);

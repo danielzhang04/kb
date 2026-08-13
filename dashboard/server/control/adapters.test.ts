@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_ATTEMPT_BUDGET, DEFAULT_BUDGET } from './activation.ts';
 import type { ExecutionProfile } from './policy.ts';
-import { canonicalStageResultHash } from './execution.ts';
+import { canonicalStageResultHash, iterationResultOperationKey } from './execution.ts';
 import {
   ExecutionAdapterError,
   createCuratedSkillResolver,
@@ -599,7 +599,74 @@ function nonReviewCanonicalInput() {
   return { ...input, resultHash: canonicalStageResultHash(canonical) };
 }
 
+function iterationCanonicalInput() {
+  const legacy = canonicalInput();
+  const request = {
+    schema: 'kb.iteration-request/v1' as const, requestRef: 'request-1', iterationLoopRef: 'loop-1',
+    stepId: 'review', routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge',
+    kind: 'review' as const, cycle: 1, inputGenerationRefs: ['generation-1'], baseCommit: 'b'.repeat(40),
+    artifactHashes: { draft: 'd'.repeat(64) }, criteria: [{ id: 'criterion-1', description: 'must pass' }],
+    unresolvedFindingRefs: [], preservedInvariants: [], nextAcceptanceCheck: 'Apply criterion-1.', instructions: 'Review the draft.',
+  };
+  const iterationContract = {
+    request,
+    iterationGroup: {
+      iterationGroupId: 'draft-loop', participants: [
+        { participantId: 'producer', stageRef: 'subject', role: 'contributor' as const, perspective: 'Create.', mandate: 'Create.' },
+        { participantId: 'judge', stageRef: 'stage-1', role: 'judge' as const, perspective: 'Judge.', mandate: 'Judge.' },
+      ],
+      routes: [{ routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review' as const], baseResolutionStageIds: ['subject'] }],
+      activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+      schedule: [{ stepId: 'review', routeId: 'to-judge', cycle: 'current' as const }], artifacts: ['draft'],
+      criteria: request.criteria, maxCycles: 2, cycleUnit: 'One verdict.', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' as const }],
+    },
+  };
+  const iterationOutcome = {
+    schema: 'kb.iteration-outcome/v1' as const, requestRef: request.requestRef, iterationLoopRef: request.iterationLoopRef,
+    participantId: 'judge', cycle: 1, verdict: 'pass' as const, inputGenerationRefs: [...request.inputGenerationRefs],
+    criteria: [{ criterionId: 'criterion-1', verdict: 'pass' as const, findingIds: [] }], findings: [],
+    positions: [], recordedDissent: [], summary: 'checker passed',
+  };
+  const { reviewOutcome: _reviewOutcome, reviewContract: _reviewContract, resultHash: _resultHash, ...base } = legacy;
+  const canonical = {
+    summary: base.summary, artifacts: base.artifacts, changed: base.changed, checkpoints: base.checkpoints, iterationOutcome,
+  };
+  return {
+    ...base,
+    operationKey: iterationResultOperationKey(base.runRef, base.stageId, request.requestRef),
+    canonicalCardRef: null,
+    iterationContract,
+    iterationOutcome,
+    resultHash: canonicalStageResultHash(canonical),
+  };
+}
+
 describe('file result integrator', () => {
+  it('validates a legacy review result in place and writes only generic fields for new results', async () => {
+    const legacyRoot = temporaryRoot();
+    const legacyIntegrator = createFileResultIntegrator({ stateRoot: legacyRoot });
+    const legacy = canonicalInput();
+    await legacyIntegrator.integrate(legacy);
+    const legacyPath = join(legacyRoot, 'control', 'execution-results.json');
+    const before = readFileSync(legacyPath);
+    const replay = await legacyIntegrator.lookup(legacy);
+    expect(replay).toMatchObject({ iterationOutcome: expect.objectContaining({ verdict: 'pass' }) });
+    expect(replay).not.toHaveProperty('reviewOutcome');
+    expect(readFileSync(legacyPath)).toEqual(before);
+
+    const genericRoot = temporaryRoot();
+    const genericIntegrator = createFileResultIntegrator({ stateRoot: genericRoot });
+    const generic = iterationCanonicalInput();
+    await expect(genericIntegrator.integrate(generic)).resolves.toMatchObject({ status: 'integrated' });
+    const document = JSON.parse(readFileSync(join(genericRoot, 'control', 'execution-results.json'), 'utf8')) as {
+      results: Array<Record<string, unknown> & { result: Record<string, unknown> }>;
+    };
+    expect(document.results[0]).toHaveProperty('iterationContract');
+    expect(document.results[0]).not.toHaveProperty('reviewContract');
+    expect(document.results[0].result).toHaveProperty('iterationOutcome');
+    expect(document.results[0].result).not.toHaveProperty('reviewOutcome');
+  });
+
   it('commits, durably looks up, and exactly replays a canonical result', async () => {
     const stateRoot = temporaryRoot();
     const first = createFileResultIntegrator({ stateRoot, now: () => new Date('2026-07-18T12:00:00.000Z') });
@@ -614,7 +681,7 @@ describe('file result integrator', () => {
       artifacts: input.artifacts,
       changed: input.changed,
       checkpoints: input.checkpoints,
-      reviewOutcome: input.reviewOutcome,
+      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: input.reviewOutcome.decision }),
       durability: 'inactive',
       attemptBaseCommit: null,
       integrationCommit: null,
@@ -752,7 +819,9 @@ describe('file result integrator', () => {
     });
     expect(await integrator.integrate(first)).toMatchObject({ status: 'integrated' });
     expect(await integrator.integrate(second)).toMatchObject({ status: 'integrated', resultHash: second.resultHash });
-    expect(await integrator.lookup(second)).toMatchObject({ reviewOutcome: second.reviewOutcome });
+    expect(await integrator.lookup(second)).toMatchObject({
+      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: second.reviewOutcome.decision }),
+    });
   });
 });
 

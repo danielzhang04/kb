@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFileControlPlaneStore, createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
+import { createFileResultIntegrator } from './adapters.ts';
 import type { JsonObject } from './types.ts';
-import type { PlanProposal, ProposalStage } from './proposal.ts';
+import type { PlanProposal, ProposalIterationGroup, ProposalStage } from './proposal.ts';
 import { proposalContentHash } from './proposal.ts';
 import type { PolicyEnvironment } from './policy.ts';
 import {
@@ -108,6 +109,7 @@ function createApprovedRun(store: ControlPlaneStore, plan: PlanProposal): { runR
     managerModel: plan.manager.model,
     managerAssignment: plan.manager.assignment,
     idempotencyKey: `launch-${createdProposal.value.proposalRef}`,
+    iterationGroups: plan.iterationGroups,
     stages: plan.stages.map((item) => ({
       stageId: item.id,
       title: item.title,
@@ -377,6 +379,270 @@ function reviewFixture(input: {
   return { store, plan, run, fake, results, integrations, bases, engine: new AutomaticExecutionEngine(options) };
 }
 
+function genericIterationGroup(maxCycles = 2): ProposalIterationGroup {
+  return {
+    iterationGroupId: 'draft-loop', goal: 'Produce an accepted draft.',
+    participants: [
+      { participantId: 'producer', stageRef: 'producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce and revise the draft.' },
+      { participantId: 'judge', stageRef: 'judge', role: 'judge', perspective: 'Apply quality.', mandate: 'Pass only a complete draft.' },
+    ],
+    routes: [
+      { routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer'] },
+      { routeId: 'to-producer', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['judge'] },
+    ],
+    activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+    schedule: [
+      { stepId: 'review', routeId: 'to-judge', after: { stepId: 'rework', participantId: 'producer', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'rework', routeId: 'to-producer', after: { stepId: 'review', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles, cycleUnit: 'One producer generation followed by one judge verdict.',
+    terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+  };
+}
+
+function genericIterationPlan(maxCycles = 2): PlanProposal {
+  const producer = stage('producer');
+  producer.artifacts = [{ id: 'draft', path: 'dashboard/server/producer.txt', description: 'Draft.' }];
+  const judge = stage('judge', ['producer']);
+  judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
+  const release = stage('release', ['producer']);
+  return { ...proposal([producer, judge, release]), iterationGroups: [genericIterationGroup(maxCycles)] };
+}
+
+function fanInIterationPlan(): PlanProposal {
+  const producer = stage('producer');
+  producer.artifacts = [{ id: 'draft', path: 'dashboard/server/producer.txt', description: 'Draft.' }];
+  const peer = stage('peer', ['producer']); peer.artifacts = []; peer.checkpoints = [];
+  const judge = stage('judge', ['producer']); judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
+  const release = stage('release', ['producer']);
+  const group: ProposalIterationGroup = {
+    iterationGroupId: 'fan-in-loop', goal: 'Accept the current producer and peer generations.',
+    participants: [
+      { participantId: 'producer', stageRef: 'producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce the draft.' },
+      { participantId: 'peer', stageRef: 'peer', role: 'contributor', perspective: 'Challenge the draft.', mandate: 'Produce a current peer position.' },
+      { participantId: 'judge', stageRef: 'judge', role: 'judge', perspective: 'Apply quality.', mandate: 'Judge every current peer.' },
+    ],
+    routes: [
+      { routeId: 'to-peer', senderParticipantId: 'producer', recipientParticipantId: 'peer', requestKinds: ['delegate'], baseResolutionStageIds: ['producer'] },
+      { routeId: 'peer-to-judge', senderParticipantId: 'peer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer', 'peer'] },
+      { routeId: 'to-producer', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['judge'] },
+      { routeId: 'producer-to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer', 'peer'] },
+    ],
+    activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'peer-turn',
+    schedule: [
+      { stepId: 'peer-turn', routeId: 'to-peer', cycle: 'current' },
+      { stepId: 'judge-a', routeId: 'peer-to-judge', after: { stepId: 'peer-turn', participantId: 'peer', verdict: 'fulfilled' }, cycle: 'current' },
+      { stepId: 'producer-rework-a', routeId: 'to-producer', after: { stepId: 'judge-a', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+      { stepId: 'judge-b', routeId: 'producer-to-judge', after: { stepId: 'producer-rework-a', participantId: 'producer', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'producer-rework-b', routeId: 'to-producer', after: { stepId: 'judge-b', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'quality', description: 'Every current contribution is complete.' }],
+    maxCycles: 3, cycleUnit: 'One producer revision after peer review.', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+  };
+  return { ...proposal([producer, peer, judge, release]), iterationGroups: [group] };
+}
+
+function coordinatorCrewIterationPlan(): PlanProposal {
+  const coordinator = stage('coordinator');
+  coordinator.artifacts = [{ id: 'draft', path: 'dashboard/server/coordinator.txt', description: 'Crew draft.' }];
+  const specialist = stage('specialist', ['coordinator']);
+  const release = stage('release', ['coordinator']);
+  const group: ProposalIterationGroup = {
+    iterationGroupId: 'crew-loop', goal: 'Complete the bounded specialist assignment.',
+    participants: [
+      { participantId: 'coordinator', stageRef: 'coordinator', role: 'coordinator', perspective: 'Own the goal.', mandate: 'Route and assess specialist work.' },
+      { participantId: 'specialist', stageRef: 'specialist', role: 'contributor', perspective: 'Execute the bounded task.', mandate: 'Respond to delegate rework and check requests.' },
+    ],
+    routes: [
+      { routeId: 'delegate-specialist', senderParticipantId: 'coordinator', recipientParticipantId: 'specialist', requestKinds: ['delegate'], baseResolutionStageIds: ['coordinator'] },
+      { routeId: 'review-coordinator', senderParticipantId: 'specialist', recipientParticipantId: 'coordinator', requestKinds: ['review'], baseResolutionStageIds: ['specialist'] },
+      { routeId: 'rework-specialist', senderParticipantId: 'coordinator', recipientParticipantId: 'specialist', requestKinds: ['rework'], baseResolutionStageIds: ['coordinator'] },
+      { routeId: 'check-specialist', senderParticipantId: 'coordinator', recipientParticipantId: 'specialist', requestKinds: ['check'], baseResolutionStageIds: ['coordinator'] },
+    ],
+    activation: { seedParticipantId: 'coordinator', seedArtifactIds: ['draft'] }, initialStepId: 'delegate',
+    schedule: [
+      { stepId: 'delegate', routeId: 'delegate-specialist', cycle: 'current' },
+      { stepId: 'coordinate', routeId: 'review-coordinator', after: { stepId: 'delegate', participantId: 'specialist', verdict: 'fulfilled' }, cycle: 'current' },
+      { stepId: 'rework', routeId: 'rework-specialist', after: { stepId: 'coordinate', participantId: 'coordinator', verdict: 'fail' }, cycle: 'current' },
+      { stepId: 'check', routeId: 'check-specialist', after: { stepId: 'rework', participantId: 'specialist', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'complete', routeId: 'review-coordinator', after: { stepId: 'check', participantId: 'specialist', verdict: 'fail' }, cycle: 'current' },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'quality', description: 'The crew result is complete.' }],
+    maxCycles: 2, cycleUnit: 'One delegate rework and check traversal.',
+    terminalAuthorities: [{ participantId: 'coordinator', verdict: 'complete' }],
+  };
+  return { ...proposal([coordinator, specialist, release]), iterationGroups: [group] };
+}
+
+function mixedKindIterationPlan(): PlanProposal {
+  const producer = stage('producer');
+  producer.artifacts = [{ id: 'draft', path: 'dashboard/server/producer.txt', description: 'Draft.' }];
+  const judge = stage('judge', ['producer']);
+  judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
+  const release = stage('release', ['producer']);
+  const group: ProposalIterationGroup = {
+    iterationGroupId: 'mixed-kind-loop', goal: 'Rework and then check the same participant.',
+    participants: [
+      { participantId: 'producer', stageRef: 'producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Rework and check the draft.' },
+      { participantId: 'judge', stageRef: 'judge', role: 'judge', perspective: 'Apply quality.', mandate: 'Request the required rework.' },
+    ],
+    routes: [
+      { routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['producer'] },
+      { routeId: 'rework', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['judge'] },
+      { routeId: 'check', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['check'], baseResolutionStageIds: ['judge'] },
+    ],
+    activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+    schedule: [
+      { stepId: 'review', routeId: 'review', cycle: 'current' },
+      { stepId: 'rework', routeId: 'rework', after: { stepId: 'review', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+      { stepId: 'check', routeId: 'check', after: { stepId: 'rework', participantId: 'producer', verdict: 'fulfilled' }, cycle: 'next' },
+    ],
+    artifacts: ['draft'], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles: 2, cycleUnit: 'One rework followed by one check.',
+    terminalAuthorities: [{ participantId: 'producer', verdict: 'pass' }],
+  };
+  return { ...proposal([producer, judge, release]), iterationGroups: [group] };
+}
+
+function genericOutcome(
+  contract: NonNullable<Parameters<WorkerAdapter['execute']>[0]['iterationContract']>,
+  verdict: 'fail' | 'pass' | 'fulfilled' | 'complete',
+) {
+  const findingId = `finding-${contract.request.cycle}`;
+  return {
+    schema: 'kb.iteration-outcome/v1' as const,
+    requestRef: contract.request.requestRef,
+    iterationLoopRef: contract.request.iterationLoopRef,
+    participantId: contract.request.recipientParticipantId,
+    cycle: contract.request.cycle,
+    verdict,
+    inputGenerationRefs: [...contract.request.inputGenerationRefs],
+    criteria: verdict === 'fulfilled' ? [] : [{
+      criterionId: 'quality', verdict: verdict === 'pass' || verdict === 'complete' ? 'pass' as const : 'fail' as const,
+      findingIds: verdict === 'fail' ? [findingId] : [],
+    }],
+    findings: verdict === 'fail' ? [{
+      findingId, criterionId: 'quality', severity: 'blocking' as const,
+      summary: 'The draft needs another revision.', evidencePaths: [],
+    }] : [],
+    ...(verdict === 'complete' ? { resolvedFindingRefs: [...contract.request.unresolvedFindingRefs] } : {}),
+    positions: [], recordedDissent: [],
+    summary: verdict === 'fulfilled' ? 'The successor draft is committed.'
+      : verdict === 'complete' ? 'The crew result is complete.' : `The draft ${verdict === 'pass' ? 'passes' : 'fails'}.`,
+  };
+}
+
+function genericIterationFixture(input: {
+  judgeVerdicts?: Array<'fail' | 'pass'>;
+  maxCycles?: number;
+  stopBeforeJudgeTurn?: number;
+  crashAfterIntegrationStage?: string;
+  plan?: PlanProposal;
+  turnVerdicts?: Record<string, 'fail' | 'pass' | 'fulfilled' | 'complete'>;
+} = {}) {
+  const store = createStore();
+  const plan = input.plan ?? genericIterationPlan(input.maxCycles ?? 2);
+  const run = createApprovedRun(store, plan);
+  const fake = fakes();
+  const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
+  const workerInputs: Parameters<WorkerAdapter['execute']>[0][] = [];
+  const integrations: Parameters<ResultIntegrator['integrate']>[0][] = [];
+  const baseResolutions: Parameters<NonNullable<ResultIntegrator['resolveBase']>>[0][] = [];
+  const ensuredBases: Array<{ path: string; baseCommit?: string }> = [];
+  const verdicts = [...(input.judgeVerdicts ?? ['pass'])];
+  let judgeTurns = 0;
+  let crashed = false;
+  let canonicalHead: string | null = null;
+  fake.worktrees.ensure = async (value) => { ensuredBases.push({ path: value.path, baseCommit: value.baseCommit }); };
+  fake.worktrees.inspect = async (value) => {
+    const attemptRef = value.path.split(/[\\/]/).at(-1);
+    const worker = [...workerInputs].reverse().find((candidate) => candidate.attemptRef === attemptRef);
+    const proposalStage = worker?.proposalStage ?? plan.stages.find((candidate) => candidate.id === worker?.stageRef);
+    const producingTurn = !worker?.iterationContract
+      || worker.iterationContract.request.kind === 'rework' || worker.iterationContract.request.kind === 'delegate';
+    return { changed: producingTurn
+      ? (proposalStage?.artifacts ?? []).map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) }))
+      : [] };
+  };
+  fake.workers = {
+    async execute(value) {
+      workerInputs.push(value);
+      fake.executionOrder.push(value.proposalStage?.id ?? value.action.split(':')[1]);
+      if (!value.iterationContract) {
+        return {
+          state: 'succeeded', summary: `${value.proposalStage?.id ?? 'stage'} seed committed`,
+          usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? [],
+          checkpoints: value.checkpoints.length > 0 ? [...value.checkpoints] : [],
+        };
+      }
+      const stepId = value.iterationContract.request.stepId;
+      const declaredVerdict = stepId === undefined ? undefined : input.turnVerdicts?.[stepId];
+      if (declaredVerdict) {
+        const iterationOutcome = genericOutcome(value.iterationContract, declaredVerdict);
+        return {
+          state: 'succeeded', summary: iterationOutcome.summary,
+          usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+          artifacts: declaredVerdict === 'fulfilled'
+            ? value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? []
+            : [],
+          checkpoints: declaredVerdict === 'fulfilled' && value.checkpoints.length > 0 ? [...value.checkpoints] : [],
+          iterationOutcome,
+        };
+      }
+      if (value.iterationContract.request.recipientParticipantId === 'judge') {
+        judgeTurns += 1;
+        if (input.stopBeforeJudgeTurn === judgeTurns) {
+          return { state: 'waiting-human', summary: 'Judge paused.', usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 }, artifacts: [], checkpoints: [] };
+        }
+        const verdict = verdicts.shift();
+        if (!verdict) throw new Error('unexpected judge turn');
+        const iterationOutcome = genericOutcome(value.iterationContract, verdict);
+        return { state: 'succeeded', summary: iterationOutcome.summary, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 }, artifacts: [], checkpoints: [], iterationOutcome };
+      }
+      const iterationOutcome = genericOutcome(value.iterationContract, 'fulfilled');
+      return {
+        state: 'succeeded', summary: iterationOutcome.summary, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
+        artifacts: value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? [],
+        checkpoints: value.checkpoints.length > 0 ? [...value.checkpoints] : [], iterationOutcome,
+      };
+    },
+  };
+  fake.results = {
+    async lookup(value) { return results.get(value.operationKey) ?? null; },
+    async resolveBase(value) {
+      baseResolutions.push(value);
+      if (value.dependencyStageIds.length === 0 || !value.dependencyResultOperationKeys
+        || value.dependencyResultOperationKeys.length !== value.dependencyStageIds.length) return null;
+      const records = value.dependencyResultOperationKeys.map((dependency) => results.get(dependency.operationKey));
+      if (records.some((record) => record?.durability !== 'canonical')) return null;
+      return canonicalHead;
+    },
+    async integrate(value) {
+      integrations.push(value);
+      const ensured = ensuredBases.find((candidate) => candidate.path === value.worktreePath);
+      const attemptBaseCommit = ensured?.baseCommit ?? 'a'.repeat(40);
+      const integrationCommit = value.changed.length > 0
+        ? integrations.length.toString(16).padStart(40, '0') : attemptBaseCommit;
+      if (value.changed.length > 0) canonicalHead = integrationCommit;
+      const stored = {
+        summary: value.summary, artifacts: [...value.artifacts], changed: [...value.changed], checkpoints: [...value.checkpoints],
+        ...(value.iterationOutcome ? { iterationOutcome: value.iterationOutcome } : {}),
+        resultHash: value.resultHash, durability: 'canonical' as const, attemptBaseCommit, integrationCommit,
+      };
+      results.set(value.operationKey, stored);
+      if (!crashed && input.crashAfterIntegrationStage === value.stageId) {
+        crashed = true;
+        throw new Error('simulated crash after generic canonical integration');
+      }
+      return { status: 'integrated' as const, resultHash: value.resultHash, durability: 'canonical' as const, attemptBaseCommit, integrationCommit };
+    },
+  };
+  const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+  return { store, plan, run, fake, engine, results, workerInputs, integrations, baseResolutions, ensuredBases };
+}
+
 function fytPolicy(curatedSkills: string[]): PolicyEnvironment {
   return {
     ...policy,
@@ -413,6 +679,230 @@ afterEach(() => {
 });
 
 describe('AutomaticExecutionEngine', () => {
+  it('selects the next participant only from the declared route and deterministic schedule', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    expect(item.fake.executionOrder).toEqual(['producer', 'judge', 'producer', 'judge', 'release']);
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationRequests.map((request) => [request.stepId, request.routeId, request.recipientParticipantId]))
+      .toEqual([['review', 'to-judge', 'judge'], ['rework', 'to-producer', 'producer'], ['review', 'to-judge', 'judge']]);
+  });
+
+  it('activates initialStepId only after the declared seed generation commits', async () => {
+    const item = genericIterationFixture();
+    const events: string[] = [];
+    const record = item.store.recordStageGeneration.bind(item.store);
+    const activate = item.store.activateIterationLoop.bind(item.store);
+    item.store.recordStageGeneration = ((...args: Parameters<ControlPlaneStore['recordStageGeneration']>) => {
+      const result = record(...args);
+      if (result.ok) events.push(`committed:${result.value.generationRef}`);
+      return result;
+    }) as ControlPlaneStore['recordStageGeneration'];
+    item.store.activateIterationLoop = ((...args: Parameters<ControlPlaneStore['activateIterationLoop']>) => {
+      const detail = item.store.getRun('operator', item.run.runRef);
+      expect(detail.ok && detail.value.stageGenerations.some((generation) =>
+        generation.state === 'committed' && args[2].seedGenerationRefs.includes(generation.generationRef))).toBe(true);
+      expect(Object.keys(args[2].artifactGenerationRefs)).toEqual(['draft']);
+      events.push(`activated:${args[2].seedGenerationRefs[0]}`);
+      return activate(...args);
+    }) as ControlPlaneStore['activateIterationLoop'];
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(events[0]?.startsWith('committed:')).toBe(true);
+    expect(events[1]).toBe(`activated:${events[0]?.slice('committed:'.length)}`);
+  });
+
+  it('never schedules one participant stage through the DAG and iteration loop at the same time', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    const before = item.store.getRun('operator', item.run.runRef);
+    expect(before.ok && before.value.stages.find((candidate) => candidate.stageId === 'judge')?.state).toBe('blocked');
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(item.workerInputs.filter((input) => input.proposalStage?.id === 'producer' && input.iterationContract === undefined)).toHaveLength(1);
+    expect(item.workerInputs.filter((input) => ['producer', 'judge'].includes(input.proposalStage?.id ?? '')
+      && input.iterationContract !== undefined)).toHaveLength(3);
+    expect(item.workerInputs.filter((input) => input.proposalStage?.id === 'judge' && input.iterationContract === undefined)).toHaveLength(0);
+  });
+
+  it('opens cycle one at activation while an awaiting seed remains at cycle zero', async () => {
+    const item = genericIterationFixture();
+    const before = item.store.getRun('operator', item.run.runRef);
+    expect(before).toMatchObject({ ok: true, value: { iterationLoops: [{ state: 'awaiting-seed', cyclesUsed: 0 }] } });
+    const opened: Array<{ state: string; cyclesUsed: number; currentStepId?: string }> = [];
+    const activate = item.store.activateIterationLoop.bind(item.store);
+    item.store.activateIterationLoop = ((...args: Parameters<ControlPlaneStore['activateIterationLoop']>) => {
+      const result = activate(...args);
+      if (result.ok) opened.push(result.value);
+      return result;
+    }) as ControlPlaneStore['activateIterationLoop'];
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(opened).toEqual([expect.objectContaining({ state: 'awaiting-turn', cyclesUsed: 1, currentStepId: 'review' })]);
+  });
+
+  it('opens the next cycle only at a declared schedule step boundary', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationRequests.map((request) => [request.stepId, request.cycle]))
+      .toEqual([['review', 1], ['rework', 1], ['review', 2]]);
+    expect(detail.ok && detail.value.iterationReceipts.map((receipt) => [receipt.verdict, receipt.cycle]))
+      .toEqual([['fail', 1], ['fulfilled', 1], ['pass', 2]]);
+  });
+
+  it('runs a declared maxCycles above the legacy cap until semantic acceptance', async () => {
+    const failures = Array.from({ length: 40 }, () => 'fail' as const);
+    const item = genericIterationFixture({ judgeVerdicts: [...failures, 'pass'], maxCycles: 41 });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationLoops[0]).toMatchObject({ state: 'passed', cyclesUsed: 41 });
+    expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'judge')).toHaveLength(41);
+  }, 120_000);
+
+  it('pins every turn to the server-selected generation refs base commit and artifact hashes', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const iterationWorkers = item.workerInputs.filter((candidate) => candidate.iterationContract !== undefined);
+    expect(iterationWorkers).toHaveLength(3);
+    for (const worker of iterationWorkers) {
+      const request = worker.iterationContract!.request;
+      const durable = detail.value.iterationRequests.find((candidate) => candidate.requestRef === request.requestRef);
+      expect(request).toEqual(durable);
+      expect(request.inputGenerationRefs).toEqual(expect.arrayContaining(request.inputGenerationRefs));
+      expect(request.baseCommit).toMatch(/^[a-f0-9]{40}$/);
+      expect(request.artifactHashes).toEqual({ draft: 'b'.repeat(64) });
+    }
+  });
+
+  it('resolves a verified canonical base for every fenced participant turn instead of the null unverified path', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const participantTurns = item.baseResolutions.filter((call) => call.stageId === 'producer' || call.stageId === 'judge');
+    expect(participantTurns).toHaveLength(3);
+    expect(participantTurns.every((call) => call.dependencyStageIds.length > 0
+      && call.dependencyResultOperationKeys?.length === call.dependencyStageIds.length)).toBe(true);
+    const iterationAttempts = item.workerInputs.filter((worker) => worker.iterationContract !== undefined);
+    for (const worker of iterationAttempts) {
+      const base = item.ensuredBases.find((candidate) => candidate.path.endsWith(worker.attemptRef))?.baseCommit;
+      expect(base).toBe(worker.iterationContract!.request.baseCommit);
+    }
+  });
+
+  it('pins a fan-in turn to the current generation of every peer and never generation one fallback', async () => {
+    const item = genericIterationFixture({ plan: fanInIterationPlan(), judgeVerdicts: ['fail', 'pass'] });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    const judgeBases = item.baseResolutions.filter((call) => call.stageId === 'judge');
+    expect(judgeBases).toHaveLength(2);
+    expect(judgeBases[0].dependencyResultOperationKeys).toEqual([
+      { stageId: 'producer', operationKey: `result:${item.run.runRef}:producer` },
+      { stageId: 'peer', operationKey: expect.stringMatching(`^iteration-result:${item.run.runRef}:peer:`) },
+    ]);
+    expect(judgeBases[1].dependencyResultOperationKeys).toEqual([
+      { stageId: 'producer', operationKey: expect.stringMatching(`^iteration-result:${item.run.runRef}:producer:`) },
+      { stageId: 'peer', operationKey: expect.stringMatching(`^iteration-result:${item.run.runRef}:peer:`) },
+    ]);
+    expect(judgeBases[1].dependencyResultOperationKeys).not.toContainEqual({
+      stageId: 'producer', operationKey: `result:${item.run.runRef}:producer`,
+    });
+  });
+
+  it('creates one successor generation and one supersession for an artifact-producing turn', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.stageGenerations.map((generation) => [generation.logicalStageId, generation.generation, generation.state]))
+      .toEqual([['producer', 1, 'committed'], ['producer', 2, 'committed']]);
+    expect(detail.ok && detail.value.generationSupersessions).toEqual([expect.objectContaining({
+      predecessorGenerationRef: detail.ok && detail.value.stageGenerations[0].generationRef,
+      successorGenerationRef: detail.ok && detail.value.stageGenerations[1].generationRef,
+    })]);
+  });
+
+  it('records fulfilled between rework and the next reviewing verdict', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationReceipts.map((receipt) => receipt.verdict)).toEqual(['fail', 'fulfilled', 'pass']);
+    const fulfilled = detail.ok && detail.value.iterationReceipts[1];
+    expect(fulfilled).toMatchObject({ verdict: 'fulfilled', outputGenerationRefs: [expect.any(String)] });
+    expect(detail.ok && detail.value.iterationReceipts[2].inputGenerationRefs).toEqual(fulfilled && fulfilled.outputGenerationRefs);
+  });
+
+  it('replays an already integrated turn by operation key without a second worker call', async () => {
+    const item = genericIterationFixture({ crashAfterIntegrationStage: 'judge' });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    expect(item.workerInputs.filter((worker) => worker.proposalStage?.id === 'judge')).toHaveLength(1);
+    expect(item.integrations.filter((record) => record.stageId === 'judge')).toHaveLength(1);
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationReceipts).toHaveLength(1);
+    const workersBeforeRestart = item.workerInputs.length;
+    const integrationsBeforeRestart = item.integrations.length;
+    const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake)) as unknown as {
+      reconcileReviewRuntime(input: { subject: string; runRef: string; proposal: PlanProposal }): Promise<string[]>;
+    };
+    await expect(restarted.reconcileReviewRuntime({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toEqual([]);
+    expect(item.workerInputs).toHaveLength(workersBeforeRestart);
+    expect(item.integrations).toHaveLength(integrationsBeforeRestart);
+  });
+
+  it('keeps canonical operation keys collision-free across cycles for the same stage', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const judgeRequests = detail.value.iterationRequests.filter((request) => request.recipientParticipantId === 'judge');
+    expect(item.integrations.filter((record) => record.stageId === 'judge').map((record) => record.operationKey))
+      .toEqual(judgeRequests.map((request) => `iteration-result:${item.run.runRef}:judge:${request.requestRef}`));
+    expect(new Set(item.integrations.map((record) => record.operationKey)).size).toBe(item.integrations.length);
+  });
+
+  it('runs a coordinator crew delegate rework and check route at its declared cycle boundary', async () => {
+    const item = genericIterationFixture({
+      plan: coordinatorCrewIterationPlan(),
+      turnVerdicts: { delegate: 'fulfilled', coordinate: 'fail', rework: 'fulfilled', check: 'fail', complete: 'complete' },
+    });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationRequests.map((request) => [request.stepId, request.kind, request.cycle]))
+      .toEqual([['delegate', 'delegate', 1], ['coordinate', 'review', 1], ['rework', 'rework', 1], ['check', 'check', 2], ['complete', 'review', 2]]);
+    expect(detail.ok && detail.value.iterationLoops[0]).toMatchObject({ state: 'passed', cyclesUsed: 2 });
+    const specialistKeys = item.integrations.filter((record) => record.stageId === 'specialist').map((record) => record.operationKey);
+    expect(new Set(specialistKeys).size).toBe(3);
+  });
+
+  it('keys a producing turn and the next mixed-kind turn by distinct durable request refs', async () => {
+    const item = genericIterationFixture({
+      plan: mixedKindIterationPlan(),
+      turnVerdicts: { review: 'fail', rework: 'fulfilled', check: 'pass' },
+    });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const producerRequests = detail.value.iterationRequests.filter((request) => request.recipientParticipantId === 'producer');
+    const producerKeys = item.integrations.filter((record) => record.stageId === 'producer' && record.iterationContract)
+      .map((record) => record.operationKey);
+    expect(producerKeys).toEqual(producerRequests.map((request) =>
+      `iteration-result:${item.run.runRef}:producer:${request.requestRef}`));
+    expect(new Set(producerKeys).size).toBe(2);
+    expect(item.workerInputs.filter((worker) => worker.proposalStage?.id === 'producer' && worker.iterationContract)).toHaveLength(2);
+  });
+
+  it('never releases a downstream DAG stage from a nonterminal iteration verdict', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'], stopBeforeJudgeTurn: 2 });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('waiting-human');
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationReceipts.map((receipt) => receipt.verdict)).toEqual(['fail', 'fulfilled']);
+    expect(detail.ok && detail.value.stages.find((candidate) => candidate.stageId === 'release')?.state).toBe('blocked');
+    expect(item.fake.executionOrder).not.toContain('release');
+  });
+
   it('acknowledges Manager startup only after durable Manager session and run state are running', async () => {
     const store = createStore();
     const plan = proposal([stage('manager-start-ack')]);
@@ -1297,6 +1787,59 @@ describe('AutomaticExecutionEngine', () => {
     expect(final.ok && final.value.reviewReceipts).toHaveLength(1);
     expect(final.ok && final.value.reviewLoops[0].state).toBe('passed');
     expect(final.ok && final.value.humanRequests).toHaveLength(0);
+  });
+
+  it('reconciles a restarted legacy ReviewLoop through the production file result seam without reintegration', async () => {
+    const item = reviewFixture({ outcomes: [passOutcome()] });
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-legacy-review-result-seam-'));
+    tempDirs.push(stateRoot);
+    let integrationCalls = 0;
+    const lineage = (stageId: string) => stageId === 'subject'
+      ? { attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'b'.repeat(40) }
+      : stageId === 'checker'
+        ? { attemptBaseCommit: 'b'.repeat(40), integrationCommit: 'c'.repeat(40) }
+        : { attemptBaseCommit: 'c'.repeat(40), integrationCommit: 'd'.repeat(40) };
+    const canonicalFileResults = (hideCheckerLookup: boolean): ResultIntegrator => {
+      const file = createFileResultIntegrator({ stateRoot });
+      return {
+        async lookup(input) {
+          if (hideCheckerLookup && input.stageId === 'checker') return null;
+          const stored = await file.lookup(input);
+          return stored && { ...stored, durability: 'canonical' as const, ...lineage(input.stageId) };
+        },
+        async resolveBase(input) {
+          return input.stageId === 'checker' ? 'b'.repeat(40) : 'c'.repeat(40);
+        },
+        async integrate(input) {
+          integrationCalls += 1;
+          const receipt = await file.integrate(input);
+          return { ...receipt, durability: 'canonical' as const, ...lineage(input.stageId) };
+        },
+      };
+    };
+    const restartedEngine = () => {
+      const options = engineOptions(item.store, item.fake);
+      options.assignedAgents = { resolve: (resolved) => ({ assignment: resolved.assignment, instructionMarkdown: 'checker instructions' }) };
+      return new AutomaticExecutionEngine(options);
+    };
+    item.fake.results = canonicalFileResults(true);
+    const firstEngine = restartedEngine();
+    await expect(firstEngine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const journalPath = join(stateRoot, 'control', 'execution-results.json');
+    const beforeRestart = readFileSync(journalPath);
+    const callsBeforeRestart = integrationCalls;
+    const workersBeforeRestart = [...item.fake.executionOrder];
+
+    item.fake.results = canonicalFileResults(false);
+    const reconciliation = restartedEngine() as unknown as {
+      reconcileReviewRuntime(input: { subject: string; runRef: string; proposal: PlanProposal }): Promise<string[]>;
+    };
+    await expect(reconciliation.reconcileReviewRuntime({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toEqual([]);
+    expect(integrationCalls).toBe(callsBeforeRestart);
+    expect(item.fake.executionOrder).toEqual(workersBeforeRestart);
+    expect(readFileSync(journalPath)).toEqual(beforeRestart);
   });
 
   it('rejects a checker canonical result whose attempt base differs from its bound subject generation', async () => {

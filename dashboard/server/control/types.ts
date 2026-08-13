@@ -288,6 +288,9 @@ export interface ActivateIterationLoopInput {
   seedGenerationRefs: string[];
   artifactGenerationRefs: Record<string, string>;
   operationKey: string;
+  /** Server-selected routing used only when the initial schedule step is artifact-producing. */
+  successorRuntime?: string;
+  successorModel?: string;
 }
 
 export interface RecordIterationRequestInput {
@@ -322,6 +325,9 @@ export interface AdvanceIterationTurnInput {
   nextStepId: string;
   operationKey: string;
   successorGenerationRef?: string;
+  /** Server-selected routing used only when the generic transition must mint a producer successor. */
+  successorRuntime?: string;
+  successorModel?: string;
 }
 
 export interface ParkIterationLoopInput {

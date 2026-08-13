@@ -13,7 +13,7 @@ import {
   CANONICAL_RESULT_VERIFY_SCRIPT,
   createCanonicalGitResultIntegrator,
 } from './canonicalResultIntegrator.ts';
-import { canonicalStageResultHash, planAttemptWorktreePath, type ResultIntegrator } from './execution.ts';
+import { canonicalStageResultHash, iterationResultOperationKey, planAttemptWorktreePath, type ResultIntegrator } from './execution.ts';
 
 const roots: string[] = [];
 
@@ -316,13 +316,15 @@ function fixture(options: {
   // say so here, and the refusal test can assert `coordinationCalls` stayed empty.
   const branchResolutions: string[] = [];
   const coordinationBranch = options.coordinationBranch === undefined ? 'ops' : options.coordinationBranch;
-  const integrator = createCanonicalGitResultIntegrator({
+  const integratorOptions = {
     repoRoot, coordinationRoot, integrationRoot, worktreeRoot, stateRoot, baseCommit: 'a'.repeat(40),
     gitRunner, coordinationGit, runPy,
-    resolveCoordinationBranch: async (path) => { branchResolutions.push(path); return coordinationBranch; },
-  });
+    resolveCoordinationBranch: async (path: string) => { branchResolutions.push(path); return coordinationBranch; },
+  };
+  const integrator = createCanonicalGitResultIntegrator(integratorOptions);
   return {
     input, integrator, gitCalls, coordinationCalls, stateRoot, coordinationRoot, doneRel, branchResolutions,
+    restartIntegrator: () => createCanonicalGitResultIntegrator(integratorOptions),
     setPushFails(value: boolean) { pushFails = value; },
     setCardFails(value: boolean) { cardFails = value; },
     setLineagePushFails(value: boolean) { lineagePushFails = value; },
@@ -343,7 +345,7 @@ describe('canonical Git result integrator', () => {
     expect(await item.integrator.lookup(item.input)).toMatchObject({
       resultHash: item.input.resultHash,
       summary: 'stage complete',
-      reviewOutcome: item.input.reviewOutcome,
+      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: item.input.reviewOutcome!.decision }),
       attemptBaseCommit: 'a'.repeat(40),
       integrationCommit: 'd'.repeat(40),
     });
@@ -370,6 +372,51 @@ describe('canonical Git result integrator', () => {
     expect(canonicalCommit).toBeGreaterThan(-1);
     expect(push).toBeGreaterThan(canonicalCommit);
     expect(reread).toBeGreaterThan(push);
+  });
+
+  it('replays a request-keyed generic iteration result through a restarted canonical integrator', async () => {
+    const item = fixture();
+    const request = {
+      schema: 'kb.iteration-request/v1' as const, requestRef: 'request-1', iterationLoopRef: 'loop-1',
+      stepId: 'review', routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge',
+      kind: 'review' as const, cycle: 1, inputGenerationRefs: ['generation-1'], baseCommit: 'a'.repeat(40),
+      artifactHashes: { draft: 'd'.repeat(64) }, criteria: [{ id: 'criterion-1', description: 'must pass' }],
+      unresolvedFindingRefs: [], preservedInvariants: [], nextAcceptanceCheck: 'Apply criterion-1.', instructions: 'Review the draft.',
+    };
+    const iterationContract = {
+      request,
+      iterationGroup: {
+        iterationGroupId: 'draft-loop', goal: 'Accept the draft.', participants: [
+          { participantId: 'producer', stageRef: 'subject', role: 'contributor' as const, perspective: 'Create.', mandate: 'Create.' },
+          { participantId: 'judge', stageRef: item.input.stageId, role: 'judge' as const, perspective: 'Judge.', mandate: 'Judge.' },
+        ],
+        routes: [{ routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review' as const], baseResolutionStageIds: ['subject'] }],
+        activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+        schedule: [{ stepId: 'review', routeId: 'to-judge', cycle: 'current' as const }], artifacts: ['draft'],
+        criteria: request.criteria, maxCycles: 2, cycleUnit: 'One verdict.',
+        terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' as const }],
+      },
+    };
+    const iterationOutcome = {
+      schema: 'kb.iteration-outcome/v1' as const, requestRef: request.requestRef, iterationLoopRef: request.iterationLoopRef,
+      participantId: 'judge', cycle: 1, verdict: 'pass' as const, inputGenerationRefs: [...request.inputGenerationRefs],
+      criteria: [{ criterionId: 'criterion-1', verdict: 'pass' as const, findingIds: [] }], findings: [],
+      positions: [], recordedDissent: [], summary: 'checker passed',
+    };
+    const { reviewOutcome: _reviewOutcome, reviewContract: _reviewContract, resultHash: _resultHash, ...base } = item.input;
+    const canonical = {
+      summary: base.summary, artifacts: base.artifacts, changed: base.changed, checkpoints: base.checkpoints, iterationOutcome,
+    };
+    const input = {
+      ...base, operationKey: iterationResultOperationKey(base.runRef, base.stageId, request.requestRef),
+      canonicalCardRef: null, iterationContract, iterationOutcome, resultHash: canonicalStageResultHash(canonical),
+    };
+    await expect(item.integrator.integrate(input)).resolves.toMatchObject({ status: 'integrated' });
+    await expect(item.restartIntegrator().lookup(input)).resolves.toMatchObject({
+      iterationOutcome: expect.objectContaining({ requestRef: request.requestRef, verdict: 'pass' }),
+      resultHash: input.resultHash,
+    });
+    expect(item.cardMutations()).toBe(0);
   });
 
   it('refuses changed-content digest drift before creating a lineage', async () => {
@@ -465,7 +512,7 @@ describe('canonical Git result integrator', () => {
    * revise dispatch. Mutation check: delete the `serialize(...)` wrapper in `resolveBase` and this test
    * fails with "ops git '...' invoked outside withOpsTransaction".
    */
-  it('resolves a dependency base inside the ops transaction its coordination verification requires', async () => {
+  it('resolves every iteration lookup base and integration inside the ops transaction span', async () => {
     const item = fixture();
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({ status: 'integrated' });
     // The caller is NOT in a span — exactly as `executeAttemptUnsafe` calls it — so only the integrator's
@@ -484,6 +531,25 @@ describe('canonical Git result integrator', () => {
     // PROOF the guarded runner was actually exercised: `verifyCanonical` refetched ops during resolveBase.
     expect(item.coordinationCalls.slice(before).some((args) =>
       args[0] === 'fetch' && args.includes('refs/heads/ops:refs/remotes/origin/ops'))).toBe(true);
+    const beforeLookup = item.coordinationCalls.length;
+    await expect(item.integrator.lookup(item.input)).resolves.toMatchObject({ resultHash: item.input.resultHash });
+    expect(item.coordinationCalls.slice(beforeLookup).some((args) =>
+      args[0] === 'fetch' && args.includes('refs/heads/ops:refs/remotes/origin/ops'))).toBe(true);
+  });
+
+  it('verifies the compiler-derived dependency base for a fenced iteration participant', async () => {
+    const item = fixture();
+    await item.integrator.integrate(item.input);
+    await expect(item.integrator.resolveBase?.({
+      operationKey: 'result-base:run-1:judge', subject: 'operator', runRef: 'run-1', stageId: 'judge',
+      dependencyStageIds: ['stage-1'],
+      dependencyResultOperationKeys: [{ stageId: 'stage-1', operationKey: 'result:run-1:stage-1:g1-stale' }],
+    })).rejects.toThrow("dependency 'stage-1' lacks a committed canonical result");
+    await expect(item.integrator.resolveBase?.({
+      operationKey: 'result-base:run-1:judge', subject: 'operator', runRef: 'run-1', stageId: 'judge',
+      dependencyStageIds: ['stage-1'],
+      dependencyResultOperationKeys: [{ stageId: 'stage-1', operationKey: item.input.operationKey }],
+    })).resolves.toBe('d'.repeat(40));
   });
 
   it('needs no ops transaction to answer a stage that has no dependencies', async () => {
@@ -719,6 +785,22 @@ describe('canonical Git result integrator', () => {
     await expect(item.integrator.lookup(item.input)).rejects.toThrow('canonical integration review contract is absent');
   });
 
+  it('reads a byte-stable legacy review journal and exposes only a generic outcome to callers', async () => {
+    const item = fixture();
+    await item.integrator.integrate(item.input);
+    const journalPath = join(item.stateRoot, 'control/canonical-integration.json');
+    const donePath = join(item.coordinationRoot, ...item.doneRel.split('/'));
+    const beforeJournal = readFileSync(journalPath);
+    const beforeCard = readFileSync(donePath);
+    const replay = await item.integrator.lookup(item.input);
+    expect(replay).toMatchObject({
+      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: 'pass' }),
+    });
+    expect(replay).not.toHaveProperty('reviewOutcome');
+    expect(readFileSync(journalPath)).toEqual(beforeJournal);
+    expect(readFileSync(donePath)).toEqual(beforeCard);
+  });
+
   it('keeps a later generation distinct from g1 without rewriting the immutable stage card', async () => {
     const item = fixture();
     const input = {
@@ -731,7 +813,9 @@ describe('canonical Git result integrator', () => {
       status: 'integrated', resultHash: input.resultHash,
       attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'd'.repeat(40),
     });
-    expect(await item.integrator.lookup(input)).toMatchObject({ reviewOutcome: input.reviewOutcome });
+    expect(await item.integrator.lookup(input)).toMatchObject({
+      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: input.reviewOutcome!.decision }),
+    });
     expect(item.cardMutations()).toBe(0);
     expect(item.gitCalls.some((call) => call.args[0] === 'fetch')).toBe(true);
   });
