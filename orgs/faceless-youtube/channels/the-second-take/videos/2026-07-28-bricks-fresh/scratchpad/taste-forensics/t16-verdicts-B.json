@@ -1,0 +1,76 @@
+{
+  "return-customer": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Head reads as a round near-circle under the beanie, only slightly taller than wide, consistent with base.png.",
+      "no_nose_no_ears": "Fixed from round 1: the beanie now runs fully down to the beard/jawline on both sides with smooth bare skin between, no ear shape, outline or inner-ear line visible anywhere. No nose is drawn -- the area between the eyes and the mustache/beard is flat skin with no nose bump, bridge or nostril line, matching or below base.png's own minimal treatment.",
+      "four_digit_hands": "Both resting hands at the sides show the simplified mitt with finger-separation lines reading as three fingers plus thumb, consistent with the base rig hand, no five-digit hand.",
+      "proportion": "Large round head on a short, compact puffer-jacket body -- squat proportion matches the base template.",
+      "flat_cel_render": "Fixed from the r1 diamond-lattice failure: the puffer jacket is now a flat navy fill with only a few sparse, clean horizontal seam lines dividing it into panels (line-art construction detail, comparable to the base rig's own rib-cuff lines) plus simple two-tone cel shading (one light, one shadow band) -- no quilted diamond weave, no mottled/noisy texture anywhere. Trousers and boots are likewise flat dark navy/near-black with clean cel shading and a few sparse lace-line strokes on the boots, not texture.",
+      "outline_consistency": "Even medium-thick dark outline runs continuously around beanie, beard, jacket and boots with no thin or missing segments."
+    }
+  },
+  "brick-co-seller": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "The sun hat covers the crown but the visible face is round enough, only slightly taller than wide, in line with base.png.",
+      "no_nose_no_ears": "Fixed from round 1's double failure: no ear is visible on either side -- the face runs to smooth bare skin under the hat brim down to the jaw on both sides. No nose shape is drawn -- only eyebrows, eyes and the mustache; no nostril line, no bridge, no shading where a nose would be, at or below base.png's own minimal nose treatment.",
+      "four_digit_hands": "Both hands at the sides show the simplified mitt shape with finger lines reading as three to four fingers plus thumb, consistent with the rig, no extra/fused digits.",
+      "proportion": "Large round head on a short, stocky apron-clad body -- squat proportion held, not tall or lanky.",
+      "flat_cel_render": "Fixed from the r1 mottled-canvas failure: the apron is a single flat khaki fill with only one clean fold-crease line near the hem (line-art detail) and simple two-tone cel shading -- no blended/mottled canvas-stain texture. The shirt sleeves carry a couple of small flat, solid-colour dirt-stain dots/ovals, stylized the same way the round-0 apron stains were described (flat blobs, not gradient). BORDERLINE NOTE: the straw hat crown and brim carry a handful of sparse hash-mark ('#') and short tick-stroke accents suggesting straw weave -- these are few, bold, and iconographic rather than a dense pixel-level weave/noise texture, so they read as sparse construction line-art (comparable to how other kit garments draw plaid/rib-knit as bold flat lines) and are ruled a PASS, not the textured-fill failure mode from r1.",
+      "outline_consistency": "Even medium-thick dark warm-brown-black outline is continuous around hat, face, apron and boots."
+    }
+  },
+  "hr-officer": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Head reads as a round near-circle, only slightly taller than wide, consistent with base.png.",
+      "no_nose_no_ears": "Fixed from round 1: the hair now falls fully over both sides of the head down to the jawline with no ear shape or inner-ear line visible on either side; the bun sits high on the crown, well clear of the ear/jaw zone this time. No nose is drawn -- only eyes, brows and a mouth line.",
+      "four_digit_hands": "Both resting hands show the simplified mitt shape with finger-separation lines reading as three to four fingers plus thumb, consistent with the rig.",
+      "proportion": "Large round head over a short compact cardigan-and-skirt body -- squat proportion held, not elongated.",
+      "flat_cel_render": "Fixed from the r1 herringbone/tweed failure: the skirt is now a single flat solid olive/khaki fill with only simple two-tone cel shading (one lighter panel, one shadow panel) -- no weave pattern, no zigzag texture, no mottling anywhere on it. The cardigan is likewise a flat rust-red fill with clean, sparse rib-knit cuff/hem lines (line-art detail, not texture) and the blouse is flat cream.",
+      "outline_consistency": "Even medium-thick dark warm-brown-black outline is continuous around hair, face, cardigan and skirt."
+    }
+  },
+  "crowd-exemplar": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "fail",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass",
+      "crowd_face_simplification": "pass"
+    },
+    "evidence": {
+      "head_shape": "All six figures' visible faces read as round near-circles under their hair volume, consistent with base.png; hair bulk (afro, bun) makes the overall silhouette look taller but the face/head shape itself is round in every case.",
+      "no_nose_no_ears": "Verified on close crops of all six faces individually: every figure shows only two plain dot eyes and a single mouth line. No nose bump/bridge/nostril on any figure, and no ear shape on any figure -- hair (or, for the bald figure, the smooth scalp/side-hair patch) fully covers the ear position in every case.",
+      "four_digit_hands": "Checked both visible hand crops (figures 1 and 4-6 have hands clear of clothing): all show the simplified stylized mitt with finger-separation lines reading as three to four fingers plus thumb, consistent with the rig hand family; no five-digit realistic hand on any figure.",
+      "proportion": "QUANTITATIVE MEASUREMENT (figure pixel height / head pixel width, via a throwaway PIL script measuring bounding boxes from top-of-head to bottom-of-feet against non-background mask, cross-checked visually with overlay boxes and crops): figure 1 (leftmost, light side-part) = 3.30, figure 2 (light-brown hair, skirt) = 3.91, figure 3 (dark curly hair) = 3.26, figure 4 (bald) = 3.37, figure 5 (light hair, white shirt) = 3.75, figure 6 (rightmost, bun) = 3.40. Demanded band is 3.0-3.5 squat with a hard ceiling of 3.9. 4 of 6 figures (1, 3, 4, 6) land cleanly inside the demanded band. Figure 5 sits above the demanded band at 3.75 (under the hard ceiling but visibly leaner-legged than the other four on direct crop inspection). Figure 2 measures 3.91, AT/marginally over the 3.9 hard ceiling -- this held stable (3.90-3.92) across five different background-distance thresholds (10/18/30/50/90), so it is not a measurement artifact; a direct crop of figure 2 shows visibly longer, thinner legs than figures 1/3/4/6. Ruling FAIL: the retry's stated goal was uniform squat proportion across all six figures, and this frame instead shows a real, verifiable spread from 3.26 to 3.91, with one figure breaching the hard ceiling.",
+      "flat_cel_render": "Flat colour fills across all six figures' skin tones and clothing (shirts, sweaters, skirts, trousers) with only simple two-tone cel shading; no gradient/airbrush blending, no weave or mottled texture on any garment.",
+      "outline_consistency": "Even outline weight is held across all six figures at their smaller on-canvas scale, with no figure missing outline on any part.",
+      "crowd_face_simplification": "Verified via individual close-up crops of all six faces: every one carries the identical simplified crowd face -- two plain dot eyes and one simple neutral mouth line, no nose, no ears, no eyebrows, no teeth on any of them. No figure stands out as more detailed or individuated than the rest."
+    }
+  }
+}

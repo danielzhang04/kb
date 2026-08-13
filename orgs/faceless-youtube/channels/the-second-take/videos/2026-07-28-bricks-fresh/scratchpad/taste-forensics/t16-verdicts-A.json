@@ -1,0 +1,50 @@
+{
+  "return-customer": {
+    "axes": {
+      "resting_face": "pass",
+      "registry_identity": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered upper eyelids, small dark pupils centered and set high, thin level brows, small closed mouth reading as a flat near-neutral line under the beard with no visible grin/frown; eyes level, forward at viewer, and symmetric -- matches base.png template.",
+      "registry_identity": "Navy quilted delivery coat present and correctly rendered (visible quilting seams, zip front, two angled hand pockets), dark trousers, heavy dark boots, a knitted navy beanie, thick dark beard, broad/stocky build -- matches the registry row's canonical costume phrase (navy quilted delivery coat). No lettering/logo visible."
+    },
+    "notes": "Borderline, non-blocking: the beanie sits snug rather than visibly 'pushed back off the forehead,' and I could not confirm the registry's plain rectangular breast patch as a distinct element (the coat instead shows a zip front + two angled pockets) -- neither of these is the canonical costume phrase the task calls load-bearing (navy quilted delivery coat, which is present and correct), so this does not move the verdict off pass."
+  },
+  "brick-co-seller": {
+    "axes": {
+      "resting_face": "pass",
+      "registry_identity": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered eyelids, small pupils set high and centered, mouth a small closed near-neutral line under the moustache with no grin/frown, eyes level and forward, face symmetric -- matches base.png template.",
+      "registry_identity": "Heavy canvas apron and wide-brimmed straw hat (worn level/square, not tilted) both clearly present -- the registry's two canonical costume items for this character. Also correct: dusty tan work shirt with sleeves rolled, dark work trousers, dark boots, weathered face, greying moustache. No lettering/logo visible."
+    },
+    "notes": "Borderline, ruled pass: the grey eyebrows are drawn as thicker shapes angled slightly down toward the nose bridge, which reads close to a furrow/concern at first glance. I judged this as this character's established aged/weathered eyebrow rendering (grey, thick, matching the moustache) rather than an added emotion -- brow line stays level overall and eyes/mouth carry no other emotion signal, and pupils are straight and centered, not sideways."
+  },
+  "hr-officer": {
+    "axes": {
+      "resting_face": "pass",
+      "registry_identity": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered eyelids, small pupils centered and set high, thin level brows, small closed mouth with only the faintest neutral line, eyes level and forward, face symmetric -- matches base.png template.",
+      "registry_identity": "Rust-red knitted cardigan worn open over a cream blouse with visible collar, long skirt, and reading spectacles clearly hanging on a chain resting on the chest -- all three of the registry's canonical costume items present and correct. Also correct: dark hair pinned up in a bun, flat brown shoes, slight build, cast's only female figure. No lettering/logo visible."
+    },
+    "notes": ""
+  },
+  "crowd-exemplar": {
+    "axes": {
+      "era_dress": "pass",
+      "head_tones": "pass",
+      "hair_silhouettes": "pass",
+      "anchor_not_uniform": "pass"
+    },
+    "evidence": {
+      "era_dress": "All 6 figures wear plain muted-colour shirts, sweaters/cardigans, skirts or trousers, and flat shoes/loafers -- cream, tan, brown, olive, grey. No hats, no lettering, no logos or brand marks, and no costuming that reads as a decade other than an ordinary 1980s American workplace.",
+      "head_tones": "Pixel-sampled the head region of each figure (script under scratch dir, deleted after use). Result is a clean 2-2-2 split across exactly 3 tones: figures 1 and 4 sample ~(249,233,207), a close match to #f5ead6 (Euclidean dist ~8); figures 2 and 5 sample ~(223,177,128), a close match to #e2b78c (dist ~14); figures 3 and 6 sample ~(134,91,59), a somewhat lighter rendering of #7a4f33 (dist ~20) but clearly a third distinct darker tier shared by exactly those two figures, not a per-figure invented tone. No fourth tone present.",
+      "hair_silhouettes": "Figures 1, 2, and 5 share one short side-parted silhouette; figure 3 has a curly/textured silhouette; figure 6 has a top-bun/updo; figure 4 is bald with side hair only. Treating the bald head as the instructed judgment-call carve-out (no hair, not a 'style'), that leaves 3 distinct hairstyle silhouettes among the 5 haired figures (side-part / curly / bun), at the cap.",
+      "anchor_not_uniform": "The 6 figures read as a varied anonymous crowd: 3 distinct head tones, 3+1 distinct hair treatments, and different garment colours/types (button shirts, sweaters, cardigan, skirts, trousers) across the set despite sharing the crowd-rig's squat body proportion and dot-eye/simple-mouth face by design. Does not read as clones."
+    },
+    "notes": "Borderline on hair_silhouettes: the curly and bun silhouettes each currently appear on only one figure (not literally 'repeating' within this group of 6), while the side-part style repeats 3x. I ruled pass because the instruction's 'at most three' is a cap on the catalog of distinct shapes (which holds, ≤3 among haired figures) rather than a literal ≥2-occurrences-each requirement, and a 6-person set needs some texture/gender variety that a strict 2x-per-style minimum can't accommodate. Also borderline on head_tones: the dark-brown pair renders a bit lighter (dist ~20) than the pale/tan pairs' near-exact matches (dist ~8-14), but it is consistently reproduced across both dark figures, not an invented one-off, so it still reads as the third canonical tier."
+  }
+}

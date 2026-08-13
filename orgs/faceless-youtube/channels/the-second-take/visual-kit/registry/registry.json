@@ -137,7 +137,7 @@
     "trial-judge": {
       "role": "The trial JUDGE — throws the $550M verdict out days after the jury returned it, the video's biggest reversal. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L207, L208.",
       "head_tone": "#e8c9a8",
-      "costume": "PINNED canonical outfit: black judicial robe over a white wing collar, half-moon reading spectacles low on the nose; close-cropped white hair, jowly build. Renders in this unless a shot authors a change.",
+      "costume": "PINNED canonical outfit: black judicial robe over a white wing collar, full-rim reading spectacles low on the nose; close-cropped white hair, jowly build. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/trial-judge/trial-judge.png"
     },
     "hr-officer": {
