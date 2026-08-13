@@ -28,7 +28,14 @@ import { buildChildEnv, DEFAULT_ENV_ALLOWLIST } from '../pty/host.ts';
 import type { AttemptIoSink } from './attemptIo.ts';
 import { FORBIDDEN_WORKFLOW_TOOLS, loadWorkflowProfiles } from './environment.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';
-import { parseReviewOutcome, type ReviewContract } from './reviewOutcome.ts';
+import type { ProposalIterationGroup, ProposalIterationVerdict, ProposalStage } from './proposal.ts';
+import {
+  isLegalIterationVerdict,
+  parseIterationOutcome,
+  parseReviewOutcome,
+  type IterationOutcomeContract,
+  type ReviewContract,
+} from './reviewOutcome.ts';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 /**
@@ -266,13 +273,65 @@ export interface WorkerPromptInput {
   feedback?: string;
   /** Exact server-verified declaration Markdown. Omitted for legacy runs, preserving their prompt byte-for-byte. */
   agentDeclarationMarkdown?: string;
-  /** Immutable server-owned checker contract. Omitted for normal stages, preserving their prompt byte-for-byte. */
+  /** Immutable generic contract containing the exact server-created request and approved group snapshot. */
+  iterationContract?: IterationOutcomeContract;
+  /** Approved recipient stage, used only for its compiler-owned artifact paths. */
+  proposalStage?: ProposalStage;
+  /** @deprecated Temporary Task-13 compatibility input for uncut review callers. */
   reviewContract?: ReviewContract;
 }
 
 function scopeLines(label: string, paths: readonly string[]): string {
   if (paths.length === 0) return `${label}\n- (none)`;
   return [label, ...paths.map((p) => `- ${p}`)].join('\n');
+}
+
+const ITERATION_VERDICT_ORDER: readonly ProposalIterationVerdict[] = [
+  'fulfilled', 'accept', 'rework', 'pass', 'fail', 'consensus', 'continue', 'complete', 'parked',
+];
+
+function allowedIterationVerdicts(contract: IterationOutcomeContract): ProposalIterationVerdict[] {
+  const participantId = contract.request.recipientParticipantId;
+  return ITERATION_VERDICT_ORDER.filter((verdict) => isLegalIterationVerdict(contract, participantId, verdict));
+}
+
+function validateIterationRecipient(
+  contract: IterationOutcomeContract,
+  proposalStage: ProposalStage | undefined,
+  execution?: { workflowProfile: string | null },
+): { participant: ProposalIterationGroup['participants'][number]; proposalStage: ProposalStage } {
+  const participant = contract.iterationGroup.participants.find(
+    (candidate) => candidate.participantId === contract.request.recipientParticipantId,
+  );
+  if (!participant || !proposalStage || proposalStage.id !== participant.stageRef) {
+    throw new Error('claude iteration recipient stage must match the approved definition');
+  }
+  if (execution && (proposalStage.workflowProfile ?? null) !== execution.workflowProfile) {
+    throw new ToolPolicyRefusal('refusing to spawn an iteration participant with a profile outside its approved stage');
+  }
+  return { participant, proposalStage };
+}
+
+function iterationContractLines(contract: IterationOutcomeContract, inputStage: ProposalStage | undefined): string[] {
+  const { participant, proposalStage } = validateIterationRecipient(contract, inputStage);
+  const requiredOutputPaths = proposalStage.artifacts
+    .filter((artifact) => contract.iterationGroup.artifacts.includes(artifact.id))
+    .map((artifact) => artifact.path);
+  return [
+    'SERVER-OWNED ITERATION CONTRACT (binding authority):',
+    'Return ONLY one UTF-8 JSON object in your final result. No markdown, prose, WAITING-HUMAN marker, array, or extra object.',
+    'Its exact shape is {schema:"kb.iteration-outcome/v1",requestRef,iterationLoopRef,participantId,cycle,verdict,inputGenerationRefs,criteria:[{criterionId,verdict:"pass"|"fail"|"unverified",findingIds:string[]}],findings:[{findingId,criterionId,severity:"blocking"|"advisory",summary,evidencePaths:string[]}],resolvedFindingRefs?:string[],positions:[{positionId,participantId,summary,generationRefs:string[]}],recordedDissent:[{dissentId,participantId,positionId,summary}],summary}.',
+    `RECIPIENT PARTICIPANT (immutable): ${participant.participantId}`,
+    `RECIPIENT MANDATE (immutable): ${participant.mandate}`,
+    `RECIPIENT PERSPECTIVE (immutable): ${participant.perspective}`,
+    `ALLOWED VERDICTS (immutable): ${JSON.stringify(allowedIterationVerdicts(contract))}`,
+    `CRITERIA IDS (immutable): ${JSON.stringify(contract.iterationGroup.criteria.map((criterion) => criterion.id))}`,
+    `INPUT GENERATION REFS (immutable): ${JSON.stringify(contract.request.inputGenerationRefs)}`,
+    `ARTIFACT REFS (immutable): ${JSON.stringify(Object.keys(contract.request.artifactHashes))}`,
+    `REQUIRED OUTPUT PATHS (immutable): ${JSON.stringify(requiredOutputPaths)}`,
+    'Identity, route, cycle, criteria, artifact lineage, mandate, perspective, and tool access are server-owned.',
+    'END SERVER-OWNED ITERATION CONTRACT',
+  ];
 }
 
 /**
@@ -282,6 +341,9 @@ function scopeLines(label: string, paths: readonly string[]): string {
  * when such data exists. Card Evidence is not a parameter, so it can never enter the prompt.
  */
 export function buildWorkerPrompt(input: WorkerPromptInput): string {
+  if (input.iterationContract && input.reviewContract) {
+    throw new Error('worker prompt accepts one iteration contract, not parallel generic and review contracts');
+  }
   const declaration = input.agentDeclarationMarkdown;
   if (declaration !== undefined && (declaration.length > MAX_AGENT_INSTRUCTION_CHARS || declaration.includes('\0'))) {
     throw new Error('server-verified agent declaration instructions are unsafe');
@@ -309,6 +371,13 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
         + deps.map((dep) => `### ${dep.from.trim()}\n${dep.summary.trim()}`).join('\n\n'),
     );
   }
+  if (input.iterationContract) {
+    const { request, currentPositions = [] } = input.iterationContract;
+    inert.push(
+      `STRUCTURED ITERATION REQUEST:\n${JSON.stringify(request)}`,
+      `CURRENT POSITIONS:\n${JSON.stringify(currentPositions)}`,
+    );
+  }
   const feedback = input.feedback?.trim();
   if (feedback) inert.push(`OPERATOR FEEDBACK:\n${feedback}`);
   if (inert.length > 0) {
@@ -329,6 +398,9 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
       `AUTHORED REVIEW CRITERIA (immutable): ${JSON.stringify(input.reviewContract.review.criteria)}`,
       'END SERVER-OWNED CHECKER REVIEW CONTRACT',
     );
+  }
+  if (input.iterationContract) {
+    parts.push('', ...iterationContractLines(input.iterationContract, input.proposalStage));
   }
   return parts.join('\n').trim();
 }
@@ -544,6 +616,8 @@ export interface StreamParseOptions {
   maxOutputBytes?: number;
   stderrTailChars?: number;
   summaryMaxChars?: number;
+  iterationContract?: IterationOutcomeContract;
+  /** @deprecated Temporary Task-13 compatibility input for uncut review callers. */
   reviewContract?: ReviewContract;
 }
 
@@ -613,12 +687,24 @@ export function parseWorkerStream(
     return failedResult(`${resultText || 'claude worker reported an error result'} ${tail}`.trim(), usage, maxChars);
   }
   if (resultText.startsWith(WAITING_HUMAN_MARKER)) {
+    if (options.iterationContract) {
+      return failedResult('invalid iteration outcome: WAITING-HUMAN is not an iteration outcome', usage, maxChars);
+    }
     if (options.reviewContract) {
       return failedResult('invalid review outcome: WAITING-HUMAN is not a review outcome', usage, maxChars);
     }
     return { state: 'waiting-human', summary: boundSummary(resultText, maxChars), usage, artifacts: [], checkpoints: [] };
   }
+  if (options.iterationContract) {
+    const outcome = parseIterationOutcome(resultText, options.iterationContract);
+    if (!outcome.ok) return failedResult(outcome.detail, usage, maxChars);
+    return {
+      state: 'succeeded', summary: boundSummary(outcome.value.summary, maxChars), usage,
+      artifacts: [], checkpoints: [], iterationOutcome: outcome.value,
+    };
+  }
   if (options.reviewContract) {
+    // Pre-Task-13 compatibility adapter; parseReviewOutcome translates through parseIterationOutcome.
     const outcome = parseReviewOutcome(resultText, options.reviewContract);
     if (!outcome.ok) return failedResult(outcome.detail, usage, maxChars);
     return { state: 'succeeded', summary: boundSummary(outcome.value.summary, maxChars), usage, artifacts: [], checkpoints: [], reviewOutcome: outcome.value };
@@ -687,6 +773,12 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
           throw new Error('claude worker requires verified assignment provenance and safe declaration instructions');
         }
       }
+      if (input.iterationContract && input.reviewContract) {
+        throw new Error('claude worker accepts one iteration contract, not parallel generic and review contracts');
+      }
+      if (input.iterationContract) {
+        validateIterationRecipient(input.iterationContract, input.proposalStage, { workflowProfile: input.workflowProfile });
+      }
       if (input.reviewContract) {
         if (input.workflowProfile !== 'checker-readonly') {
           throw new Error("claude checker requires workflowProfile 'checker-readonly'");
@@ -720,6 +812,10 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
         workOrder: input.workOrder,
         readScope: input.readScope,
         writeScope: input.writeScope,
+        ...(input.iterationContract ? {
+          iterationContract: input.iterationContract,
+          proposalStage: input.proposalStage,
+        } : {}),
         ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
       });
       const bindingPrompt = !resumeSessionId && input.instructionMarkdown !== undefined
@@ -821,6 +917,7 @@ export function createClaudeWorkerAdapter(options: ClaudeWorkerAdapterOptions): 
               maxOutputBytes,
               stderrTailChars,
               summaryMaxChars,
+              ...(input.iterationContract ? { iterationContract: input.iterationContract } : {}),
               ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
             });
             const disposition = timedOut ? 'timeout' : exceeded ? 'output-cap' : cancelled ? 'cancelled'

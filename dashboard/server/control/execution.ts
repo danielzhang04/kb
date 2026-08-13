@@ -13,7 +13,13 @@ import {
 } from './policy.ts';
 import { isSafeRepoRelativePath, proposalContentHash, type PlanProposal, type ProposalStage, type ResolvedAgentAssignment } from './proposal.ts';
 import type { AssignedAgentResolver, ResolvedAssignedAgent } from './agentAssignmentResolver.ts';
-import { parseReviewOutcome, type ReviewContract, type ReviewOutcome } from './reviewOutcome.ts';
+import {
+  parseReviewOutcome,
+  type IterationOutcome,
+  type IterationOutcomeContract,
+  type ReviewContract,
+  type ReviewOutcome,
+} from './reviewOutcome.ts';
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -114,7 +120,9 @@ export interface WorkerExecutionResult {
   usage: ExecutionUsage;
   artifacts: WorkerArtifactResult[];
   checkpoints: string[];
-  /** Present only when a directly invoked checker satisfied its server-owned review contract. */
+  /** Present only when a verdict-producing participant satisfied its server-owned iteration contract. */
+  iterationOutcome?: IterationOutcome;
+  /** @deprecated Temporary Task-13 compatibility projection for uncut review callers. */
   reviewOutcome?: ReviewOutcome;
 }
 
@@ -142,7 +150,9 @@ export interface WorkerAdapter {
     readScope: readonly string[];
     writeScope: readonly string[];
     checkpoints: readonly string[];
-    /** Optional immutable checker contract. Execution does not supply one until durable loop state exists. */
+    /** Optional immutable generic contract, including the exact server-created iteration request. */
+    iterationContract?: IterationOutcomeContract;
+    /** @deprecated Temporary Task-13 compatibility input translated at the adapter boundary. */
     reviewContract?: ReviewContract;
     /** Present only after a server-owned assignment resolver verifies the current declaration. */
     assignment?: ResolvedAgentAssignment;
@@ -202,9 +212,13 @@ export interface ResultIntegrator {
     artifacts: readonly WorkerArtifactResult[];
     changed: readonly WorkerArtifactResult[];
     checkpoints: readonly string[];
-    /** A checker outcome that was already validated against its server-owned review contract. */
+    /** A participant outcome already validated against its server-owned iteration contract. */
+    iterationOutcome?: IterationOutcome;
+    /** Required with iterationOutcome; supplied only from the immutable approved definition and request. */
+    iterationContract?: IterationOutcomeContract;
+    /** @deprecated Temporary Task-13 compatibility projection for uncut review integrator callers. */
     reviewOutcome?: ReviewOutcome;
-    /** Required with reviewOutcome; supplied only from the immutable approved proposal stage. */
+    /** @deprecated Temporary Task-13 compatibility input for uncut review integrator callers. */
     reviewContract?: ReviewContract;
     resultHash: string;
     worktreePath: string;
@@ -216,7 +230,9 @@ export interface CanonicalStageResultPayload {
   artifacts: readonly WorkerArtifactResult[];
   changed: readonly WorkerArtifactResult[];
   checkpoints: readonly string[];
-  /** Validated checker output, when this canonical result belongs to a checker. */
+  /** Validated generic participant output, when this result belongs to an iteration turn. */
+  iterationOutcome?: IterationOutcome;
+  /** @deprecated Temporary Task-13 compatibility projection for uncut review callers. */
   reviewOutcome?: ReviewOutcome;
 }
 

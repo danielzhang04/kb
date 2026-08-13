@@ -275,7 +275,11 @@ function sameStrings(left: readonly string[], right: readonly string[]): boolean
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function legalVerdict(contract: IterationOutcomeContract, participantId: string, verdict: ProposalIterationVerdict): boolean {
+export function isLegalIterationVerdict(
+  contract: IterationOutcomeContract,
+  participantId: string,
+  verdict: ProposalIterationVerdict,
+): boolean {
   if (verdict === 'parked') return true;
   if (verdict === 'fulfilled') return contract.request.kind === 'rework' || contract.request.kind === 'delegate';
   if (TERMINAL_VERDICTS.has(verdict)) {
@@ -352,7 +356,7 @@ export function parseIterationOutcome(text: string, contract: IterationOutcomeCo
     return invalidIteration('verdict is invalid');
   }
   const verdict = raw.verdict as ProposalIterationVerdict;
-  if (!legalVerdict(contract, participant.participantId, verdict)) {
+  if (!isLegalIterationVerdict(contract, participant.participantId, verdict)) {
     return invalidIteration(`participant '${participant.participantId}' is not authorized to issue verdict '${verdict}'`);
   }
   const hasResolvedFindingRefs = Object.prototype.hasOwnProperty.call(raw, 'resolvedFindingRefs');
