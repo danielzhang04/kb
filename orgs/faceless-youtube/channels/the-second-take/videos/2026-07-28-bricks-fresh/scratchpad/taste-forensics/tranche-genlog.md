@@ -56,3 +56,65 @@ by the L01-L27 tranche. Full diagnoses in `.superpowers/sdd/.../task-14-report.m
 
 Tranche readiness proof (post-stamp, $0): 27 scenes + 7 STEP-1 gens, 0 not generated,
 0 review holds (was 17), 0 in-scope seeding violations, exit 0.
+
+---
+
+# Task 15 — act-1 tranche (L01–L27) generation — GEN LOG
+
+Spend law: $0.039/gen. **HARD STOP $2.75** (cumulative session guard for this task).
+Worktree `boss-taste-forensics` @ 1a94fa5. Never commit/push.
+
+Tranche = act 1, **L01–L27**: 27 scenes + 7 STEP-1 cards = **34 requests**.
+
+Route: `forge.py gen --batch <spec>` — the GATED builder slate (forge.py:3136,
+`gate=bool(a.batch)`). Task 14's ad-hoc `--seed` exemption deliberately NOT taken: these are
+builder-routed slates, so P3 applies to the whole slate.
+
+Rounds by dependency (promote-before-seed + forge chain-depth, forge.py:1268-1272):
+  R1 = 7 STEP-1 cards · R2 = 23 non-delta scenes · R3 = 4 deltas (L12←L11, L17←L16,
+  L21←L20, L25←L24). One-item batch files, so each gen carries its own 4-min stall ceiling.
+
+## Ledger
+
+| # | frame | round | gens | cost | running total | note |
+|---|-------|-------|------|------|---------------|------|
+| — | act-1 spec rebuild (`t15-act1.spec.json`) | — | 0 | $0.000 | $0.000 | 34 requests, 0 not generated, exit 0 |
+| — | dry gen, full spec | — | 0 | $0.000 | $0.000 | 34 prompts assembled, 0 API calls |
+| — | dry run, round 1 | R1 | 0 | $0.000 | $0.000 | 7 prompts assembled, 0 API calls |
+| 1-7 | 7 STEP-1 cards | R1 | 0 | $0.000 | $0.000 | **ALL 7 HTTP 429 — provider quota exhausted. 0 images returned, 0 billable.** |
+| — | quota probe ×6 over ~6 min | — | 0 | $0.000 | $0.000 | 6/6 HTTP 429; not transient |
+
+## BLOCKED — provider quota, free tier, limit 0
+
+Every request returned `429 RESOURCE_EXHAUSTED`. forge's own `nano()` already retries 429 five
+times at 12s (forge.py:80-83), so each of the 7 gens burned all five attempts (~55-63s each)
+and still failed. The full body names the binding violation:
+
+```
+Quota exceeded for metric:
+  generativelanguage.googleapis.com/generate_content_free_tier_requests
+  limit: 0, model: gemini-3-pro-image
+quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+status: RESOURCE_EXHAUSTED
+```
+
+**`limit: 0` on the FREE tier is the diagnosis.** The project is being metered as free tier, and
+the free-tier allowance for `gemini-3-pro-image` is zero — so this is not "we spent our paid
+quota", it is "the project is no longer on the paid plan". Task 14 generated 13 images through
+this exact key/kit/worktree a few hours earlier, so the tier changed between the two tasks.
+
+The body advertises `retryDelay: 56s`, which is a red herring — that belongs to the per-MINUTE
+violation listed alongside it. The **per-DAY** violation carries limit 0, which no wait clears.
+Probed 6 times across ~6 minutes to confirm rather than assume: 6/6 identical 429.
+
+**Spend: $0.000.** No image was returned, so nothing was billable. Staging verified clean —
+0 new PNGs, 0 orphaned `.lock` or `.tmp` files (forge releases its reservation on a failed call).
+
+Not self-fixable within the agent ceiling: `Kit` takes its key from exactly one source
+(`load_env(root)["GEMINI_API_KEY"]`, forge.py:332), so there is no stale-vs-fresh key to switch
+between, and restoring billing on the API project is a credential/billing action this agent must
+never take.
+
+**Tranche state: READY and unchanged.** Task 14's readiness proof still holds — the spec builds
+34 requests at $0 with 0 review holds and 0 in-scope seeding violations. The moment paid quota
+is restored, `py -3 t15_gen.py 1 --live` resumes at round 1 with nothing to redo.
