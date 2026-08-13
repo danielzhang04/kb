@@ -375,3 +375,30 @@
   — review generated prompt TEXT, not just code, before running paid/real cells.
 - Residual knob for any P8: money-green saturation runs dark when the class anchor has dark
   bills — anchor choice steers fill value more than the palette hex list does.
+
+## 2026-08-13 overnight - Bricks: canonicals + full VPW rerun + tranche (parked on billing)
+- SHIPPED overnight per Daniel's away-directive: G4 follow-up fix wave (digest-identity review
+  store, complete-list gate, plate-scope refusal); resting-face law (canonicals rest as base
+  rests, 3 doctrine placements) + P9 canonical-grant reduction; 13/14 canonicals re-minted to
+  the standard ($0.546); FULL 246-shot VPW re-author at 0 HARD with all 116 abolished-tier
+  castings resolved (opus author + adversarial opus review, 1 fix round, SHIP); act-1 tranche
+  minted ready ($0.507, 0 holds). Generation itself returned ZERO pixels: provider dropped to
+  free tier (limit 0, billing lapsed) mid-run - parked at $0 with a one-command resume. Boards:
+  overnight https://claude.ai/code/artifact/9ce629db-4a2c-4d6f-ad55-a53d29d1b5e9
+- LEARNED (registry rows are load-bearing plan artifacts): authoring 7 new cast without
+  characters{} rows made forge silently reclassify 27 shots as cast-free tiles/plates — worse
+  than the loud failure it replaced; "0 violations" was true and unreassuring. When a plan
+  introduces named entities, the REGISTRY row is part of the plan, not the mint.
+- LEARNED (adjacent-law collisions hide as authoring choices): lint's generic-plural guard
+  forced a singular story-bearer into an anonymous knot and the worker's note laundered the
+  tool limitation as story judgment. When two laws collide, escalate the collision; never
+  paper it.
+- LEARNED (don't switch a shared worktree's branch under live readers): the ops-temp-branch
+  dance transiently wiped tracked files a board builder was reading. Sequence ops writes after
+  workers finish, or use a separate throwaway worktree.
+- LEARNED (mid-run provider tier drops are real): free-tier limit-0 429s mean BILLING, not
+  quota — probe a few times to distinguish, park at $0, never work around a credential/billing
+  ceiling.
+- REMAINS: Daniel restores billing -> t15_gen.py 1 --live (act 1, 34 requests); 4 canonicals
+  parked on texture-fill (flat-fill retry, good prior); acts 2-10 in tranches; taste flags on
+  the board. Handoff: handoffs/2026-08-13-fyt-bricks-overnight-parked.md.
