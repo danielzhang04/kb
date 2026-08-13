@@ -577,8 +577,10 @@ function genericIterationFixture(input: {
   resolveBaseMissStage?: string;
   reservationRefusalAt?: number;
   maxConcurrency?: number;
+  crashAfterIterationRequest?: boolean;
+  store?: ControlPlaneStore;
 } = {}) {
-  const store = createStore();
+  const store = input.store ?? createStore();
   const plan = input.plan ?? genericIterationPlan(input.maxCycles ?? 2);
   const run = createApprovedRun(store, plan);
   const fake = fakes();
@@ -607,6 +609,16 @@ function genericIterationFixture(input: {
   let judgeTurns = 0;
   let crashed = false;
   let canonicalHead: string | null = null;
+  let requestCrashArmed = input.crashAfterIterationRequest ?? false;
+  const recordIterationRequest = store.recordIterationRequest.bind(store);
+  store.recordIterationRequest = ((...args: Parameters<ControlPlaneStore['recordIterationRequest']>) => {
+    const recorded = recordIterationRequest(...args);
+    if (recorded.ok && requestCrashArmed) {
+      requestCrashArmed = false;
+      throw new Error('simulated crash after generic iteration request persistence');
+    }
+    return recorded;
+  }) as ControlPlaneStore['recordIterationRequest'];
   const worktreeRoot = mkdtempSync(join(tmpdir(), 'kb-task7-iteration-'));
   tempDirs.push(worktreeRoot);
   fake.worktrees.ensure = async (value) => {
@@ -1059,6 +1071,196 @@ describe('AutomaticExecutionEngine', () => {
     expect(detail.ok && detail.value.iterationReceipts[2].inputGenerationRefs).toEqual(fulfilled && fulfilled.outputGenerationRefs);
   });
 
+  it('resumes a persisted request with no canonical result once using the same logical turn and operation identity', async () => {
+    const item = genericIterationFixture({ crashAfterIterationRequest: true });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).rejects.toThrow('simulated crash after generic iteration request persistence');
+    const crashed = item.store.getRun('operator', item.run.runRef);
+    if (!crashed.ok) throw new Error(crashed.detail);
+    const request = crashed.value.iterationRequests[0]!;
+    expect(crashed.value.iterationReceipts).toEqual([]);
+    expect(item.results.get(`iteration-result:${item.run.runRef}:judge:${request.requestRef}`)).toBeUndefined();
+
+    const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake));
+    await expect(restarted.runToBoundary(input)).resolves.toMatchObject({ state: 'succeeded' });
+    const judgeTurns = item.workerInputs.filter((worker) => worker.proposalStage?.id === 'judge');
+    expect(judgeTurns).toHaveLength(1);
+    expect(judgeTurns[0]).toMatchObject({
+      operationKey: `iteration-turn:${request.requestRef}`,
+      iterationContract: { request },
+    });
+    expect(item.integrations.filter((record) => record.stageId === 'judge')).toEqual([
+      expect.objectContaining({ operationKey: `iteration-result:${item.run.runRef}:judge:${request.requestRef}` }),
+    ]);
+  });
+
+  it('allows recovery to create the normal successor attempt and session lineage', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-task8-iteration-recovery-'));
+    tempDirs.push(stateRoot);
+    let ids = 0;
+    const store = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const item = genericIterationFixture({ crashAfterIterationRequest: true, store });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).rejects.toThrow('simulated crash after generic iteration request persistence');
+    let detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const stage = detail.value.stages.find((candidate) => candidate.stageId === 'judge')!;
+    const proposalStage = item.plan.stages.find((candidate) => candidate.id === 'judge')!;
+    const prepared = (item.engine as any).prepareAttempt(input, stage, proposalStage, policy, null);
+    expect(prepared).not.toBeNull();
+    const oldAttemptRef = prepared.attempt.attemptRef;
+    const oldSessionRef = prepared.session.sessionRef;
+    const restartedStore = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const interrupted = restartedStore.getRun('operator', item.run.runRef);
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+    const oldAttempt = interrupted.value.attempts.find((candidate) => candidate.attemptRef === oldAttemptRef)!;
+    expect(oldAttempt).toMatchObject({ state: 'interrupted' });
+    expect(interrupted.value.sessions.find((candidate) => candidate.sessionRef === oldSessionRef)).toMatchObject({ state: 'interrupted' });
+    expect(interrupted.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)).toMatchObject({ state: 'interrupted' });
+
+    const restarted = new AutomaticExecutionEngine(engineOptions(restartedStore, item.fake));
+    await expect(restarted.runToBoundary(input)).resolves.toMatchObject({ state: 'succeeded' });
+    const recovered = restartedStore.getRun('operator', item.run.runRef);
+    if (!recovered.ok) throw new Error(recovered.detail);
+    const successor = recovered.value.attempts.find((candidate) => candidate.predecessorAttemptRef === oldAttempt.attemptRef)!;
+    expect(recovered.value.attempts.find((candidate) => candidate.attemptRef === oldAttempt.attemptRef)).toMatchObject({ state: 'interrupted' });
+    expect(successor).toMatchObject({ state: 'succeeded', logicalGeneration: oldAttempt.logicalGeneration });
+    expect(recovered.value.sessions.filter((session) =>
+      session.attemptRef === oldAttempt.attemptRef || session.attemptRef === successor.attemptRef)).toEqual([
+      expect.objectContaining({ attemptRef: oldAttempt.attemptRef, state: 'interrupted' }),
+      expect.objectContaining({ attemptRef: successor.attemptRef, state: 'completed' }),
+    ]);
+  });
+
+  it('replays a canonical receipt and successor exactly once after restart', async () => {
+    const item = genericIterationFixture({ crashAfterIterationRequest: true, judgeVerdicts: ['fail'] });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).rejects.toThrow('simulated crash after generic iteration request persistence');
+    const beforeTurn = item.store.getRun('operator', item.run.runRef);
+    if (!beforeTurn.ok) throw new Error(beforeTurn.detail);
+    const stage = beforeTurn.value.stages.find((candidate) => candidate.stageId === 'judge')!;
+    const proposalStage = item.plan.stages.find((candidate) => candidate.id === 'judge')!;
+    const runtime = item.engine as any;
+    const prepared = runtime.prepareAttempt(input, stage, proposalStage, policy, null);
+    expect(prepared).not.toBeNull();
+    const advanceIterationTurn = item.store.advanceIterationTurn.bind(item.store);
+    let advanceCrashArmed = true;
+    item.store.advanceIterationTurn = ((...args: Parameters<ControlPlaneStore['advanceIterationTurn']>) => {
+      if (advanceCrashArmed) {
+        advanceCrashArmed = false;
+        throw new Error('simulated crash after canonical iteration receipt persistence');
+      }
+      return advanceIterationTurn(...args);
+    }) as ControlPlaneStore['advanceIterationTurn'];
+    await expect(runtime.executeAttemptUnsafe(input, prepared, policy))
+      .rejects.toThrow('simulated crash after canonical iteration receipt persistence');
+
+    const crashed = item.store.getRun('operator', item.run.runRef);
+    if (!crashed.ok) throw new Error(crashed.detail);
+    expect(crashed.value.run.state).toBe('running');
+    expect(crashed.value.iterationLoops[0]).toMatchObject({ state: 'failed', lastReceiptRef: crashed.value.iterationReceipts[0]?.receiptRef });
+    expect(crashed.value.iterationReceipts).toEqual([expect.objectContaining({
+      verdict: 'fail', baseCommit: 'a'.repeat(40), canonicalCommit: '1'.padStart(40, '0'),
+    })]);
+    const workerCalls = item.workerInputs.length;
+    const integrationCalls = item.integrations.length;
+
+    const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake)) as any;
+    await expect(restarted.reconcileIterationRuntime(input)).resolves.toEqual([]);
+    const once = item.store.getRun('operator', item.run.runRef);
+    if (!once.ok) throw new Error(once.detail);
+    const onceEvents = item.store.listEvents('operator', item.run.runRef);
+    if (!onceEvents.ok) throw new Error(onceEvents.detail);
+    const onceSnapshot = JSON.stringify({ detail: once.value, events: onceEvents.value });
+    await expect(restarted.reconcileIterationRuntime(input)).resolves.toEqual([]);
+    const twice = item.store.getRun('operator', item.run.runRef);
+    if (!twice.ok) throw new Error(twice.detail);
+    const twiceEvents = item.store.listEvents('operator', item.run.runRef);
+    if (!twiceEvents.ok) throw new Error(twiceEvents.detail);
+    expect(JSON.stringify({ detail: twice.value, events: twiceEvents.value })).toBe(onceSnapshot);
+    expect(item.workerInputs).toHaveLength(workerCalls);
+    expect(item.integrations).toHaveLength(integrationCalls);
+    expect(twice.value.iterationReceipts).toHaveLength(1);
+    expect(twice.value.iterationLoops[0]).toMatchObject({ state: 'rework-queued', currentStepId: 'rework' });
+    expect(twice.value.attempts.filter((attempt) => attempt.logicalGeneration === 2)).toEqual([
+      expect.objectContaining({ state: 'queued', predecessorAttemptRef: expect.any(String) }),
+    ]);
+    expect(twice.value.stageGenerations).toHaveLength(1);
+    expect(twice.value.generationSupersessions).toEqual([]);
+  });
+
+  it('does not re-advance an iteration receipt whose declared successor is already queued', async () => {
+    const item = genericIterationFixture({ crashAfterIterationRequest: true, judgeVerdicts: ['fail'] });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).rejects.toThrow('simulated crash after generic iteration request persistence');
+    const beforeTurn = item.store.getRun('operator', item.run.runRef);
+    if (!beforeTurn.ok) throw new Error(beforeTurn.detail);
+    const stage = beforeTurn.value.stages.find((candidate) => candidate.stageId === 'judge')!;
+    const proposalStage = item.plan.stages.find((candidate) => candidate.id === 'judge')!;
+    const runtime = item.engine as any;
+    const prepared = runtime.prepareAttempt(input, stage, proposalStage, policy, null);
+    expect(prepared).not.toBeNull();
+    const advanceIterationTurn = item.store.advanceIterationTurn.bind(item.store);
+    let advanceCrashArmed = true;
+    item.store.advanceIterationTurn = ((...args: Parameters<ControlPlaneStore['advanceIterationTurn']>) => {
+      if (advanceCrashArmed) {
+        advanceCrashArmed = false;
+        throw new Error('simulated crash after canonical iteration receipt persistence');
+      }
+      return advanceIterationTurn(...args);
+    }) as ControlPlaneStore['advanceIterationTurn'];
+    await expect(runtime.executeAttemptUnsafe(input, prepared, policy))
+      .rejects.toThrow('simulated crash after canonical iteration receipt persistence');
+
+    const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake)) as any;
+    await expect(restarted.reconcileIterationRuntime(input)).resolves.toEqual([]);
+    const advanced = item.store.getRun('operator', item.run.runRef);
+    if (!advanced.ok) throw new Error(advanced.detail);
+    const receipt = advanced.value.iterationReceipts[0]!;
+    const loop = advanced.value.iterationLoops[0]!;
+    const events = item.store.listEvents('operator', item.run.runRef);
+    if (!events.ok) throw new Error(events.detail);
+
+    expect(restarted.routeIterationReceipt(input, receipt)).toBe('succeeded');
+    const reentered = item.store.getRun('operator', item.run.runRef);
+    const reenteredEvents = item.store.listEvents('operator', item.run.runRef);
+    expect(reentered).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'rework-queued', version: loop.version })],
+      iterationReceipts: [expect.objectContaining({ receiptRef: receipt.receiptRef })],
+    } });
+    expect(reentered.ok && reentered.value.iterationReceipts).toHaveLength(1);
+    expect(reentered.ok && reentered.value.attempts.filter((attempt) => attempt.logicalGeneration === 2)).toHaveLength(1);
+    expect(reenteredEvents).toEqual(events);
+  });
+
+  it('keeps an iteration park gate open across a file-store restart without replaying it', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'kb-task8-iteration-gate-'));
+    tempDirs.push(stateRoot);
+    let ids = 0;
+    const store = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], maxCycles: 1, store });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+    await expect(item.engine.runToBoundary(input)).resolves.toMatchObject({ state: 'waiting-human' });
+    const parked = store.getRun('operator', item.run.runRef);
+    if (!parked.ok) throw new Error(parked.detail);
+    const loop = parked.value.iterationLoops[0]!;
+    const workerCalls = item.workerInputs.length;
+    const receiptCount = parked.value.iterationReceipts.length;
+    const supersessions = parked.value.generationSupersessions.length;
+
+    const restartedStore = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
+    const restarted = new AutomaticExecutionEngine(engineOptions(restartedStore, item.fake));
+    await expect(restarted.runToBoundary(input)).resolves.toMatchObject({ state: 'waiting-human' });
+    const recovered = restartedStore.getRun('operator', item.run.runRef);
+    if (!recovered.ok) throw new Error(recovered.detail);
+    expect(recovered.value.run.state).toBe('waiting-human');
+    expect(recovered.value.iterationLoops[0]).toMatchObject({ state: 'awaiting-park-gate', version: loop.version });
+    expect(recovered.value.humanRequests.filter((request) => request.gateKind === 'iteration-park' && request.state === 'open')).toHaveLength(1);
+    expect(recovered.value.iterationReceipts).toHaveLength(receiptCount);
+    expect(recovered.value.generationSupersessions).toHaveLength(supersessions);
+    expect(item.workerInputs).toHaveLength(workerCalls);
+  });
+
   it('replays an already integrated turn by operation key without a second worker call', async () => {
     const item = genericIterationFixture({ crashAfterIntegrationStage: 'judge' });
     const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
@@ -1070,9 +1272,9 @@ describe('AutomaticExecutionEngine', () => {
     const workersBeforeRestart = item.workerInputs.length;
     const integrationsBeforeRestart = item.integrations.length;
     const restarted = new AutomaticExecutionEngine(engineOptions(item.store, item.fake)) as unknown as {
-      reconcileReviewRuntime(input: { subject: string; runRef: string; proposal: PlanProposal }): Promise<string[]>;
+      reconcileIterationRuntime(input: { subject: string; runRef: string; proposal: PlanProposal }): Promise<string[]>;
     };
-    await expect(restarted.reconcileReviewRuntime({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+    await expect(restarted.reconcileIterationRuntime({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
       .resolves.toEqual([]);
     expect(item.workerInputs).toHaveLength(workersBeforeRestart);
     expect(item.integrations).toHaveLength(integrationsBeforeRestart);
@@ -2062,9 +2264,9 @@ describe('AutomaticExecutionEngine', () => {
 
     item.fake.results = canonicalFileResults(false);
     const reconciliation = restartedEngine() as unknown as {
-      reconcileReviewRuntime(input: { subject: string; runRef: string; proposal: PlanProposal }): Promise<string[]>;
+      reconcileIterationRuntime(input: { subject: string; runRef: string; proposal: PlanProposal }): Promise<string[]>;
     };
-    await expect(reconciliation.reconcileReviewRuntime({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+    await expect(reconciliation.reconcileIterationRuntime({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
       .resolves.toEqual([]);
     expect(integrationCalls).toBe(callsBeforeRestart);
     expect(item.fake.executionOrder).toEqual(workersBeforeRestart);

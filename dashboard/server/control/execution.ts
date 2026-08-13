@@ -906,7 +906,7 @@ export class AutomaticExecutionEngine {
       // exact approved graph attached to this run.
       const policy = this.resolveProjectPolicy(input.proposal.project);
       const resolvedAgents = this.resolveRunAssignments(input, policy);
-      const initialReviewWait = await this.reconcileReviewRuntime(input);
+      const initialReviewWait = await this.reconcileIterationRuntime(input);
       if (initialReviewWait.length > 0) {
         return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds: initialReviewWait };
       }
@@ -933,7 +933,7 @@ export class AutomaticExecutionEngine {
         if (detail.run.state === 'interrupted' && detail.humanRequests.some((request) => request.state === 'open')) {
           return { state: detail.run.state, startedStageIds, completedStageIds, waitingStageIds };
         }
-        const reviewWait = await this.reconcileReviewRuntime(input);
+        const reviewWait = await this.reconcileIterationRuntime(input);
         if (reviewWait.length > 0) {
           for (const stageId of reviewWait) if (!waitingStageIds.includes(stageId)) waitingStageIds.push(stageId);
           return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
@@ -1670,43 +1670,7 @@ export class AutomaticExecutionEngine {
         operationKey: `iteration-receipt:${request.requestRef}`,
       });
       if (!saved.ok) throw new AutomaticExecutionError(saved.detail);
-      detail = this.detail(input);
-      const routedLoop = detail.iterationLoops.find((loop) => loop.iterationLoopRef === currentLoop.iterationLoopRef)!;
-      if (routedLoop.state === 'passed') return 'succeeded';
-      if (routedLoop.state === 'awaiting-completion-gate' || routedLoop.state === 'awaiting-park-gate'
-        || routedLoop.state === 'parked' || routedLoop.state === 'exhausted') {
-        this.transitionRun(input, 'waiting-human');
-        return 'waiting-human';
-      }
-      const nextStep = routedLoop.schedule.find((candidate) => candidate.after !== undefined
-        && candidate.after.stepId === request.stepId
-        && candidate.after.participantId === saved.value.participantId && candidate.after.verdict === saved.value.verdict);
-      const nextRoute = nextStep && routedLoop.routes.find((candidate) => candidate.routeId === nextStep.routeId);
-      const nextParticipant = nextRoute && routedLoop.participants.find((candidate) => candidate.participantId === nextRoute.recipientParticipantId);
-      const nextStage = nextParticipant && input.proposal.stages.find((candidate) => candidate.id === nextParticipant.stageRef);
-      if (!nextStep || !nextRoute || !nextStage) throw new AutomaticExecutionError('iteration receipt has no declared successor');
-      const nextCycle = nextStep.cycle === 'next' ? saved.value.cycle + 1 : saved.value.cycle;
-      if (nextCycle > routedLoop.maxCycles) {
-        const parked = this.options.store.parkIterationLoop(input.subject, routedLoop.iterationLoopRef, {
-          expectedLoopVersion: routedLoop.version,
-          expectedReceiptRef: saved.value.receiptRef,
-          expectedActiveGenerationRefs: [...routedLoop.activeGenerationRefs],
-          reason: 'exhausted',
-          nextRouteId: nextRoute.routeId,
-          operationKey: `iteration-park:${saved.value.receiptRef}:exhausted`,
-        });
-        if (!parked.ok) throw new AutomaticExecutionError(parked.detail);
-        this.transitionRun(input, 'waiting-human');
-        return 'waiting-human';
-      }
-      const advanced = this.options.store.advanceIterationTurn(input.subject, routedLoop.iterationLoopRef, {
-        expectedLoopVersion: routedLoop.version, expectedReceiptRef: saved.value.receiptRef,
-        expectedActiveGenerationRefs: [...routedLoop.activeGenerationRefs], nextStepId: nextStep.stepId,
-        operationKey: `iteration-advance:${saved.value.receiptRef}:${nextStep.stepId}`,
-        successorRuntime: nextStage.worker.runtime, successorModel: nextStage.worker.model,
-      });
-      if (!advanced.ok) throw new AutomaticExecutionError(advanced.detail);
-      return 'succeeded';
+      return this.routeIterationReceipt(input, saved.value);
     }
     if (!checkerLoop) return 'succeeded';
 
@@ -1744,6 +1708,61 @@ export class AutomaticExecutionEngine {
     });
     if (!receipt.ok) throw new AutomaticExecutionError(receipt.detail);
     return this.routeReviewReceipt(input, stage.stageId, receipt.value);
+  }
+
+  /** Finish the post-receipt half of a generic turn without replaying its worker or canonical integration. */
+  private routeIterationReceipt(
+    input: ExecuteRunInput,
+    receipt: RunDetail['iterationReceipts'][number],
+  ): 'succeeded' | 'waiting-human' {
+    const detail = this.detail(input);
+    const routedLoop = detail.iterationLoops.find((loop) => loop.iterationLoopRef === receipt.iterationLoopRef);
+    const request = detail.iterationRequests.find((candidate) => candidate.requestRef === receipt.requestRef);
+    if (!routedLoop || !request || request.iterationLoopRef !== routedLoop.iterationLoopRef
+      || routedLoop.lastReceiptRef !== receipt.receiptRef) {
+      throw new AutomaticExecutionError('iteration receipt reconciliation lineage is incomplete');
+    }
+    if (routedLoop.state === 'passed') return 'succeeded';
+    if (routedLoop.state === 'awaiting-completion-gate' || routedLoop.state === 'awaiting-park-gate'
+      || routedLoop.state === 'parked' || routedLoop.state === 'exhausted') {
+      this.transitionRun(input, 'waiting-human');
+      return 'waiting-human';
+    }
+    // A prior reconciliation already committed the declared successor. Do not submit the same
+    // transition with a new expected version: its store fingerprint intentionally includes that CAS.
+    if (routedLoop.state === 'awaiting-turn' || routedLoop.state === 'rework-queued') return 'succeeded';
+    if (routedLoop.state !== 'failed') {
+      throw new AutomaticExecutionError('iteration receipt is not in a reconcilable transient state');
+    }
+    const nextStep = routedLoop.schedule.find((candidate) => candidate.after !== undefined
+      && candidate.after.stepId === request.stepId
+      && candidate.after.participantId === receipt.participantId && candidate.after.verdict === receipt.verdict);
+    const nextRoute = nextStep && routedLoop.routes.find((candidate) => candidate.routeId === nextStep.routeId);
+    const nextParticipant = nextRoute && routedLoop.participants.find((candidate) => candidate.participantId === nextRoute.recipientParticipantId);
+    const nextStage = nextParticipant && input.proposal.stages.find((candidate) => candidate.id === nextParticipant.stageRef);
+    if (!nextStep || !nextRoute || !nextStage) throw new AutomaticExecutionError('iteration receipt has no declared successor');
+    const nextCycle = nextStep.cycle === 'next' ? receipt.cycle + 1 : receipt.cycle;
+    if (nextCycle > routedLoop.maxCycles) {
+      const parked = this.options.store.parkIterationLoop(input.subject, routedLoop.iterationLoopRef, {
+        expectedLoopVersion: routedLoop.version,
+        expectedReceiptRef: receipt.receiptRef,
+        expectedActiveGenerationRefs: [...routedLoop.activeGenerationRefs],
+        reason: 'exhausted',
+        nextRouteId: nextRoute.routeId,
+        operationKey: `iteration-park:${receipt.receiptRef}:exhausted`,
+      });
+      if (!parked.ok) throw new AutomaticExecutionError(parked.detail);
+      this.transitionRun(input, 'waiting-human');
+      return 'waiting-human';
+    }
+    const advanced = this.options.store.advanceIterationTurn(input.subject, routedLoop.iterationLoopRef, {
+      expectedLoopVersion: routedLoop.version, expectedReceiptRef: receipt.receiptRef,
+      expectedActiveGenerationRefs: [...routedLoop.activeGenerationRefs], nextStepId: nextStep.stepId,
+      operationKey: `iteration-advance:${receipt.receiptRef}:${nextStep.stepId}`,
+      successorRuntime: nextStage.worker.runtime, successorModel: nextStage.worker.model,
+    });
+    if (!advanced.ok) throw new AutomaticExecutionError(advanced.detail);
+    return 'succeeded';
   }
 
   /** Apply the store-owned receipt outcome transitions; no reserved review request is created here. */
@@ -1819,10 +1838,22 @@ export class AutomaticExecutionEngine {
     return 'waiting-human';
   }
 
-  /** Replay integration-to-store seams before considering runnable stages after a restart. */
-  private async reconcileReviewRuntime(input: ExecuteRunInput): Promise<string[]> {
+  /** Replay generic receipt and integration seams before considering runnable stages after a restart. */
+  private async reconcileIterationRuntime(input: ExecuteRunInput): Promise<string[]> {
     const waiting: string[] = [];
-    const detail = this.detail(input);
+    let detail = this.detail(input);
+    for (const loop of detail.iterationLoops) {
+      if (loop.state !== 'failed' || loop.lastReceiptRef === undefined
+        || detail.reviewLoops.some((legacy) => legacy.reviewLoopRef === loop.iterationLoopRef)) continue;
+      const receipt = detail.iterationReceipts.find((candidate) => candidate.receiptRef === loop.lastReceiptRef);
+      if (!receipt) throw new AutomaticExecutionError('transient failed iteration loop lacks its canonical receipt');
+      const outcome = this.routeIterationReceipt(input, receipt);
+      if (outcome === 'waiting-human') {
+        const participant = loop.participants.find((candidate) => candidate.participantId === receipt.participantId);
+        if (participant && !waiting.includes(participant.stageRef)) waiting.push(participant.stageRef);
+      }
+    }
+    detail = this.detail(input);
     for (const stage of detail.stages) {
       if (!this.isReviewOwned(detail, stage)) continue;
       const attempt = getCurrentAttempt(detail, stage);
@@ -1840,7 +1871,7 @@ export class AutomaticExecutionEngine {
         ...(result.iterationOutcome ? { iterationOutcome: result.iterationOutcome } : {}),
         ...(result.reviewOutcome ? { reviewOutcome: result.reviewOutcome } : {}),
       }, { changed: result.changed }, iterationContract)) {
-        throw new AutomaticExecutionError('persisted canonical review result failed reconciliation');
+        throw new AutomaticExecutionError('persisted canonical iteration result failed reconciliation');
       }
       const outcome = await this.finalizeCanonicalSuccess(input, proposalStage, stage.stageRef, attempt.attemptRef, attempt.managedSessionRef, result);
       await this.cleanupAttemptWorktree(
