@@ -669,7 +669,10 @@ describe('iteration group compilation', () => {
       ...authored,
       stages: [
         ...authored.stages,
-        { ...authored.stages[0], id: 'peer', title: 'Peer', workOrder: 'Contribute another current generation.', artifacts: [] },
+        {
+          ...authored.stages[0], id: 'peer', title: 'Peer', workOrder: 'Contribute another current generation.',
+          artifacts: [{ id: 'peer-draft', path: 'orgs/kb-ops/output/peer-draft.md', description: 'Peer draft.' }],
+        },
       ],
       iterationGroups: [{
         ...group,
@@ -706,6 +709,23 @@ describe('iteration group compilation', () => {
       expect.objectContaining({ routeId: 'peer-to-judge', baseResolutionStageIds: ['create', 'peer'] }),
     ]);
     expect(validateServerCompiledPlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: true });
+  });
+
+  it('fails compilation when an artifact-producing route targets a recipient stage with no artifacts', () => {
+    const authored = authoredIterationDef();
+    const group = authored.iterationGroups![0];
+    const forged: WorkflowDef = {
+      ...authored,
+      iterationGroups: [{
+        ...group,
+        routes: [{ ...group.routes[0], requestKinds: ['delegate'] }],
+      }],
+    };
+    expect(compileWorkflowDef(forged, { registry: REGISTRY })).toMatchObject({
+      ok: false,
+      reason: 'iteration-route-artifacts-required',
+      detail: expect.stringMatching(/route 'to-judge'.*recipient 'judge'.*stage 'check'.*at least one artifact/),
+    });
   });
 
   it('compiles a legacy review block into the judge configuration with maxCycles equal to maxCreatorReworks plus one', () => {

@@ -825,6 +825,15 @@ function validateProposalIterationGroups(
         || entry.requestKinds.some((kind) => typeof kind !== 'string' || !PROPOSAL_ITERATION_REQUEST_KINDS.has(kind as ProposalIterationRequestKind))) {
         return { ok: false, detail: `${itemLabel}.requestKinds must contain unique declared kinds` };
       }
+      if (entry.requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
+        const recipientStage = stageById.get(recipient.stageRef) as ProposalStage;
+        if (recipientStage.artifacts.length === 0) {
+          return {
+            ok: false,
+            detail: `${itemLabel} artifact-producing route '${routeId.value}' targets recipient '${recipient.participantId}' stage '${recipient.stageRef}', which must declare at least one artifact`,
+          };
+        }
+      }
       if (!Array.isArray(entry.baseResolutionStageIds) || entry.baseResolutionStageIds.length === 0
         || new Set(entry.baseResolutionStageIds).size !== entry.baseResolutionStageIds.length
         || entry.baseResolutionStageIds.some((stageId) => typeof stageId !== 'string' || !stageById.has(stageId))) {

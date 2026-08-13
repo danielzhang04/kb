@@ -495,6 +495,16 @@ function validateIterationGroups(
         requestKindSet.add(rawKind);
         requestKinds.push(rawKind as WorkflowIterationRequestKind);
       }
+      if (requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
+        const recipient = participantsById.get(recipientParticipantId) as WorkflowIterationParticipantDef;
+        const recipientStage = stageById.get(recipient.stageRef) as WorkflowStageDef;
+        if (!recipientStage.artifacts || recipientStage.artifacts.length === 0) {
+          return {
+            ok: false,
+            detail: `${itemLabel} artifact-producing route '${routeId}' targets recipient '${recipientParticipantId}' stage '${recipient.stageRef}', which must declare at least one artifact`,
+          };
+        }
+      }
       const route = { routeId, senderParticipantId, recipientParticipantId, requestKinds };
       routes.push(route);
       routesById.set(routeId, route);

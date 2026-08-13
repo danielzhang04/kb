@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { lstat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { ControlPlaneStore } from './store.ts';
-import type { Attempt, ManagedSession, RunDetail, Stage } from './types.ts';
+import type { Attempt, IterationArtifactSnapshot, ManagedSession, RunDetail, Stage } from './types.ts';
 import {
   classifyActionRisk,
   evaluateExecutionPolicy,
@@ -405,6 +407,76 @@ export function canonicalResultOperationKey(runRef: string, stageId: string, gen
   if (!Number.isSafeInteger(generation) || generation < 1) throw new AutomaticExecutionError('canonical result generation is invalid');
   const base = `result:${runRef}:${stageId}`;
   return generation === 1 ? base : `${base}:g${generation}`;
+}
+
+interface ArtifactFileState {
+  regularFile: boolean;
+  size: number | null;
+  sha256: string | null;
+}
+
+async function streamedSha256(path: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+  return hash.digest('hex');
+}
+
+async function artifactFileState(path: string): Promise<ArtifactFileState> {
+  try {
+    const status = await lstat(path);
+    if (!status.isFile()) return { regularFile: false, size: null, sha256: null };
+    return { regularFile: true, size: status.size, sha256: await streamedSha256(path) };
+  } catch {
+    return { regularFile: false, size: null, sha256: null };
+  }
+}
+
+function artifactPath(worktreePath: string, declaredPath: string): string {
+  if (!isSafeRepoRelativePath(declaredPath)) throw new AutomaticExecutionError('declared artifact path is unsafe');
+  const root = resolve(worktreePath);
+  const planned = resolve(root, declaredPath);
+  const child = relative(root, planned);
+  if (!child || child === '..' || child.startsWith(`..${sep}`) || isAbsolute(child)) {
+    throw new AutomaticExecutionError('declared artifact escapes its attempt worktree');
+  }
+  return planned;
+}
+
+async function snapshotDeclaredArtifacts(worktreePath: string, stage: ProposalStage): Promise<Array<{
+  path: string;
+  before: ArtifactFileState;
+}>> {
+  return Promise.all(stage.artifacts.map(async (artifact) => ({
+    path: artifact.path,
+    before: await artifactFileState(artifactPath(worktreePath, artifact.path)),
+  })));
+}
+
+async function inspectDeclaredArtifacts(
+  worktreePath: string,
+  before: readonly { path: string; before: ArtifactFileState }[],
+): Promise<{ snapshots: IterationArtifactSnapshot[]; failureReason: string | null }> {
+  const snapshots = await Promise.all(before.map(async (snapshot): Promise<IterationArtifactSnapshot> => {
+    const after = await artifactFileState(artifactPath(worktreePath, snapshot.path));
+    return {
+      path: snapshot.path,
+      regularFile: snapshot.before.regularFile,
+      size: snapshot.before.size,
+      sha256: snapshot.before.sha256,
+      afterRegularFile: after.regularFile,
+      afterSize: after.size,
+      afterSha256: after.sha256,
+      byteIdentical: snapshot.before.regularFile && after.regularFile
+        && snapshot.before.size === after.size && snapshot.before.sha256 === after.sha256,
+    };
+  }));
+  const irregular = snapshots.find((snapshot) => !snapshot.afterRegularFile);
+  if (irregular) return { snapshots, failureReason: `required artifact '${irregular.path}' is missing or irregular` };
+  const empty = snapshots.find((snapshot) => snapshot.afterSize === 0);
+  if (empty) return { snapshots, failureReason: `required artifact '${empty.path}' is empty` };
+  const identical = snapshots.find((snapshot) => snapshot.byteIdentical);
+  if (identical) return { snapshots, failureReason: `required artifact '${identical.path}' is byte-identical to its pinned input` };
+  return { snapshots, failureReason: null };
 }
 
 /** Generic iteration results are identified by the immutable logical request, never a stage counter. */
@@ -1272,7 +1344,33 @@ export class AutomaticExecutionEngine {
         stageId: loop.participants.find((participant) => participant.participantId === route.recipientParticipantId)!.stageRef,
         dependencyStageIds: [...route.baseResolutionStageIds], dependencyResultOperationKeys,
       });
-      if (!baseCommit) throw new AutomaticExecutionError('committed iteration dependency lineage is unavailable');
+      if (!baseCommit) {
+        detail = this.detail(input);
+        const current = detail.iterationLoops.find((candidate) => candidate.iterationLoopRef === loop.iterationLoopRef);
+        const participant = current?.participants.find((candidate) => candidate.participantId === route.recipientParticipantId);
+        const stage = participant && detail.stages.find((candidate) => candidate.stageId === participant.stageRef);
+        if (!current || !stage || current.currentStepId !== step.stepId) {
+          throw new AutomaticExecutionError('iteration turn changed during base resolution');
+        }
+        this.createBoundary(
+          input,
+          stage,
+          'intervention',
+          stableHumanTitle('execution', stage.stageId, 'iteration-base-resolution'),
+          'committed iteration dependency lineage is unavailable',
+        );
+        const contained = this.detail(input);
+        const currentStage = contained.stages.find((candidate) => candidate.stageRef === stage.stageRef) as Stage;
+        const attempt = getCurrentAttempt(contained, currentStage);
+        const session = getSession(contained, attempt?.managedSessionRef ?? null);
+        if (attempt && ['queued', 'starting', 'running'].includes(attempt.state)) {
+          this.transitionAttempt(input, attempt.attemptRef, 'interrupted');
+        }
+        if (session && ['pending', 'starting', 'running'].includes(session.state)) {
+          this.transitionSession(input, session.sessionRef, 'interrupted');
+        }
+        continue;
+      }
       detail = this.detail(input);
       const currentLoop = detail.iterationLoops.find((candidate) => candidate.iterationLoopRef === loop.iterationLoopRef);
       if (!currentLoop || (currentLoop.state !== 'awaiting-turn' && currentLoop.state !== 'rework-queued')
@@ -1486,7 +1584,9 @@ export class AutomaticExecutionEngine {
 
     if (creatorLoop || (iterationLoop && (iterationLoop.state === 'awaiting-seed' || integrated.iterationOutcome?.verdict === 'fulfilled'))) {
       if (integrated.durability !== 'canonical') throw new AutomaticExecutionError('creator canonical result lacks immutable lineage');
-      const generation = this.reviewGeneration(this.detail(input), stage, attempt);
+      const generation = iterationLoop && integrated.iterationOutcome?.verdict === 'fulfilled'
+        ? attempt.logicalGeneration : this.reviewGeneration(this.detail(input), stage, attempt);
+      if (generation === null) throw new AutomaticExecutionError('iteration producer attempt lacks a logical generation');
       const operationKey = this.resultOperationKey(this.detail(input), stage, attempt);
       const recorded = this.detail(input).stageGenerations.find((item) => item.canonicalResultOperationKey === operationKey);
       if (recorded) {
@@ -1585,6 +1685,20 @@ export class AutomaticExecutionEngine {
       const nextParticipant = nextRoute && routedLoop.participants.find((candidate) => candidate.participantId === nextRoute.recipientParticipantId);
       const nextStage = nextParticipant && input.proposal.stages.find((candidate) => candidate.id === nextParticipant.stageRef);
       if (!nextStep || !nextRoute || !nextStage) throw new AutomaticExecutionError('iteration receipt has no declared successor');
+      const nextCycle = nextStep.cycle === 'next' ? saved.value.cycle + 1 : saved.value.cycle;
+      if (nextCycle > routedLoop.maxCycles) {
+        const parked = this.options.store.parkIterationLoop(input.subject, routedLoop.iterationLoopRef, {
+          expectedLoopVersion: routedLoop.version,
+          expectedReceiptRef: saved.value.receiptRef,
+          expectedActiveGenerationRefs: [...routedLoop.activeGenerationRefs],
+          reason: 'exhausted',
+          nextRouteId: nextRoute.routeId,
+          operationKey: `iteration-park:${saved.value.receiptRef}:exhausted`,
+        });
+        if (!parked.ok) throw new AutomaticExecutionError(parked.detail);
+        this.transitionRun(input, 'waiting-human');
+        return 'waiting-human';
+      }
       const advanced = this.options.store.advanceIterationTurn(input.subject, routedLoop.iterationLoopRef, {
         expectedLoopVersion: routedLoop.version, expectedReceiptRef: saved.value.receiptRef,
         expectedActiveGenerationRefs: [...routedLoop.activeGenerationRefs], nextStepId: nextStep.stepId,
@@ -2169,6 +2283,9 @@ export class AutomaticExecutionEngine {
     const resultOperationKey = this.resultOperationKey(this.detail(input), stage, attempt, iterationContract);
     const worktreePath = planAttemptWorktreePath(this.options.worktreeRoot, input.runRef, attempt.attemptRef);
     const reviewedGeneration = this.isReviewOwned(this.detail(input), stage);
+    const artifactProducingTurn = iterationContract !== undefined && proposalStage.artifacts.length > 0
+      && (iterationContract.request.kind === 'rework' || iterationContract.request.kind === 'delegate');
+    let artifactSnapshotBefore: Awaited<ReturnType<typeof snapshotDeclaredArtifacts>> = [];
     let integrated: CanonicalStageResult | null;
     try {
       integrated = await this.lookupCanonicalResult(input, proposalStage, stage, attempt, iterationContract);
@@ -2257,6 +2374,9 @@ export class AutomaticExecutionEngine {
       this.transitionSession(input, session.sessionRef, 'interrupted');
       return { state: 'waiting-human', stageId: stage.stageId };
     }
+    if (artifactProducingTurn) {
+      artifactSnapshotBefore = await snapshotDeclaredArtifacts(worktreePath, proposalStage);
+    }
     // FYT paid-action wiring (Unit D3): mint this stage's spend grant and write its opaque token into the
     // prepared attempt worktree BEFORE the worker spawns, so a headless worker can spend through the daemon
     // without ever holding a provider key. No-op unless the hook is supplied (only behind the activation
@@ -2338,6 +2458,42 @@ export class AutomaticExecutionEngine {
       throw error;
     }
     if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
+    if (result.state === 'succeeded' && iterationContract && result.iterationOutcome) {
+      const validated = validatedIterationOutcome(iterationContract, result.iterationOutcome);
+      if (!validated) {
+        result = { ...result, state: 'failed', summary: 'iteration outcome failed its durable turn contract', artifacts: [], checkpoints: [] };
+      } else {
+        result = { ...result, iterationOutcome: validated };
+      }
+    }
+    if (result.state === 'succeeded' && artifactProducingTurn && result.iterationOutcome) {
+      const evidence = await inspectDeclaredArtifacts(worktreePath, artifactSnapshotBefore);
+      if (evidence.failureReason !== null) {
+        this.options.store.appendEvent(input.subject, input.runRef, {
+          kind: 'lifecycle', source: 'worker', stageRef: stage.stageRef, attemptRef: attempt.attemptRef,
+          sessionRef: session.sessionRef, status: 'waiting', summary: evidence.failureReason,
+        });
+        const detail = this.detail(input);
+        const loop = detail.iterationLoops.find((candidate) =>
+          candidate.iterationLoopRef === iterationContract.request.iterationLoopRef);
+        if (!loop) throw new AutomaticExecutionError('iteration loop disappeared before no-progress park');
+        const parked = this.options.store.parkIterationLoop(input.subject, loop.iterationLoopRef, {
+          expectedLoopVersion: loop.version,
+          expectedActiveGenerationRefs: [...loop.activeGenerationRefs],
+          reason: 'no-progress',
+          nextRouteId: iterationContract.request.routeId,
+          attemptedRequestRef: iterationContract.request.requestRef,
+          attemptedOutcome: result.iterationOutcome,
+          artifactSnapshots: evidence.snapshots,
+          failureReason: evidence.failureReason,
+          operationKey: `iteration-park:${iterationContract.request.requestRef}:no-progress`,
+        });
+        if (!parked.ok) throw new AutomaticExecutionError(parked.detail);
+        this.transitionRun(input, 'waiting-human');
+        await this.cleanupAttemptWorktree(input, stage, attempt, worktreePath);
+        return { state: 'waiting-human', stageId: stage.stageId };
+      }
+    }
     const inspection = result.state === 'succeeded'
       ? await this.options.worktrees.inspect({ operationKey: `inspect:${attempt.attemptRef}`, runRef: input.runRef, path: worktreePath })
       : { changed: [] };
@@ -2354,14 +2510,6 @@ export class AutomaticExecutionEngine {
         result = { ...result, state: 'failed', summary: 'checker review outcome failed validation', artifacts: [], checkpoints: [] };
       } else {
         result = { ...result, reviewOutcome: validated };
-      }
-    }
-    if (result.state === 'succeeded' && iterationContract && result.iterationOutcome) {
-      const validated = validatedIterationOutcome(iterationContract, result.iterationOutcome);
-      if (!validated) {
-        result = { ...result, state: 'failed', summary: 'iteration outcome failed its durable turn contract', artifacts: [], checkpoints: [] };
-      } else {
-        result = { ...result, iterationOutcome: validated };
       }
     }
     this.options.store.appendEvent(input.subject, input.runRef, {
@@ -2472,7 +2620,8 @@ export class AutomaticExecutionEngine {
   private async settleRunState(input: ExecuteRunInput): Promise<RunDetail['run']> {
     const detail = this.detail(input);
     if (detail.run.state === 'stopping' || detail.run.state === 'stopped') return detail.run;
-    if (detail.stages.every((stage) => stage.state === 'succeeded') && detail.reviewLoops.every((loop) => loop.state === 'passed')) {
+    if (detail.stages.every((stage) => stage.state === 'succeeded')
+      && detail.iterationLoops.every((loop) => loop.state === 'passed')) {
       const manager = detail.sessions.find((session) => session.sessionRef === detail.run.managerSessionRef);
       if (!manager) throw new AutomaticExecutionError('manager session disappeared before run completion');
       if (!['completed', 'failed', 'stopped', 'interrupted'].includes(manager.state)) {
@@ -2505,6 +2654,7 @@ export class AutomaticExecutionEngine {
       }
       return this.transitionRun(input, 'succeeded');
     }
+    if (detail.iterationLoops.some((loop) => loop.state === 'declined')) return this.transitionRun(input, 'failed');
     if (detail.stages.some((stage) => stage.state === 'failed' || stage.state === 'stopped')) return this.transitionRun(input, 'failed');
     if (detail.stages.some((stage) => stage.state === 'waiting-human')) return this.transitionRun(input, 'waiting-human');
     return detail.run;

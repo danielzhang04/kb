@@ -212,6 +212,19 @@ export interface IterationDissent {
   summary: string;
 }
 
+export interface IterationArtifactSnapshot {
+  path: string;
+  /** Pre-launch lstat/hash evidence. Null size/hash means the path was absent or irregular. */
+  regularFile: boolean;
+  size: number | null;
+  sha256: string | null;
+  /** Pre-integration lstat/hash evidence for the worker result. */
+  afterRegularFile: boolean;
+  afterSize: number | null;
+  afterSha256: string | null;
+  byteIdentical: boolean;
+}
+
 export interface IterationResidue {
   unresolvedFindings: IterationFinding[];
   positions: IterationPosition[];
@@ -224,6 +237,12 @@ export interface IterationResidue {
   cycleUnit: string;
   cyclesUsed: number;
   maxCycles: number;
+  /** Present only when an artifact-producing turn parks before canonical integration. */
+  attemptedRequestRef?: string;
+  /** The parser-bounded worker outcome retained without minting a receipt. */
+  attemptedOutcome?: IterationOutcome;
+  artifactSnapshots?: IterationArtifactSnapshot[];
+  failureReason?: string;
 }
 
 export interface IterationRequest {
@@ -324,7 +343,6 @@ export interface AdvanceIterationTurnInput {
   expectedActiveGenerationRefs: string[];
   nextStepId: string;
   operationKey: string;
-  successorGenerationRef?: string;
   /** Server-selected routing used only when the generic transition must mint a producer successor. */
   successorRuntime?: string;
   successorModel?: string;
@@ -332,24 +350,29 @@ export interface AdvanceIterationTurnInput {
 
 export interface ParkIterationLoopInput {
   expectedLoopVersion: number;
-  expectedReceiptRef: string;
+  /** Required for receipt-driven exhausted/explicit parks; absent for a pre-integration no-progress park. */
+  expectedReceiptRef?: string;
   expectedActiveGenerationRefs: string[];
   reason: IterationParkReason;
   nextRouteId: string;
+  attemptedRequestRef?: string;
+  attemptedOutcome?: IterationOutcome;
+  artifactSnapshots?: IterationArtifactSnapshot[];
+  failureReason?: string;
   operationKey: string;
 }
 
 export interface IterationParkResult {
   loop: IterationLoop;
-  receipt: IterationReceipt;
-  receiptVersion: number;
+  receipt: IterationReceipt | null;
+  receiptVersion: number | null;
   gate: HumanRequest;
 }
 
 export interface ResolveIterationGateInput {
   expectedRequestRevision: number;
   expectedLoopVersion: number;
-  expectedReceiptVersion: number;
+  expectedReceiptVersion: number | null;
   decision: 'approved' | 'declined' | 'rejected' | 'changes-requested';
   operationKey: string;
   response?: string | null;

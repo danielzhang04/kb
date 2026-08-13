@@ -132,6 +132,16 @@ function compileIterationGroups(def: WorkflowDef): IterationCompilation {
       if (!sender || !recipient) {
         return { ok: false, reason: 'iteration-route-reference-invalid', detail: `iteration route '${route.routeId}' names an unknown participant` };
       }
+      if (route.requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
+        const recipientStage = stageById.get(recipient.stageRef);
+        if (!recipientStage?.artifacts || recipientStage.artifacts.length === 0) {
+          return {
+            ok: false,
+            reason: 'iteration-route-artifacts-required',
+            detail: `artifact-producing iteration route '${route.routeId}' targets recipient '${recipient.participantId}' stage '${recipient.stageRef}', which must declare at least one artifact`,
+          };
+        }
+      }
       const baseResolutionStageIds = group.routes
         .filter((candidate) => candidate.recipientParticipantId === recipient.participantId)
         .map((candidate) => group.participants.find((participant) => participant.participantId === candidate.senderParticipantId)?.stageRef)

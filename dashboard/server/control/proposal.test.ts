@@ -541,3 +541,29 @@ it('rejects browser-supplied iteration fields that differ from the compiler-owne
     detail: expect.stringMatching(/duplicate human gate id 'shared-completion'/),
   });
 });
+
+it('rejects artifact-producing routes whose recipient stage declares no artifacts before launch', () => {
+  const compiled: PlanProposal = {
+    ...proposal,
+    stages: [proposal.stages[0], { ...proposal.stages[1], dependsOn: ['compile'] }],
+    iterationGroups: [{
+      iterationGroupId: 'artifactless-recipient', goal: 'Reject an unverifiable producing route.',
+      participants: [
+        { participantId: 'producer', stageRef: 'compile', role: 'manager', perspective: 'Own the compiler.', mandate: 'Produce the compiler.' },
+        { participantId: 'judge', stageRef: 'review', role: 'judge', perspective: 'Review the compiler.', mandate: 'Review without artifacts.' },
+      ],
+      routes: [{
+        routeId: 'delegate-to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge',
+        requestKinds: ['delegate'], baseResolutionStageIds: ['compile'],
+      }],
+      activation: { seedParticipantId: 'producer', seedArtifactIds: ['compiler'] },
+      initialStepId: 'delegate', schedule: [{ stepId: 'delegate', routeId: 'delegate-to-judge', cycle: 'current' }],
+      artifacts: ['compiler'], criteria: [{ id: 'quality', description: 'Compiler is complete.' }],
+      maxCycles: 1, cycleUnit: 'One delegated turn.', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+    }],
+  };
+  expect(validateServerCompiledPlanProposal(compiled, REGISTRY)).toMatchObject({
+    ok: false,
+    detail: expect.stringMatching(/artifact-producing route 'delegate-to-judge'.*recipient 'judge'.*stage 'review'.*at least one artifact/),
+  });
+});

@@ -1,5 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFileControlPlaneStore, createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
@@ -142,6 +142,7 @@ interface Fakes {
   worktreePaths: string[];
   removedPaths: string[];
   reservations: string[];
+  settlements: string[];
   reservationLimits: ExecutionBudget[];
 }
 
@@ -151,6 +152,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
   const worktreePaths: string[] = [];
   const removedPaths: string[] = [];
   const reservations: string[] = [];
+  const settlements: string[] = [];
   const reservationLimits: ExecutionBudget[] = [];
   const settled = new Set<string>();
   const worktrees: WorktreeAdapter = {
@@ -168,7 +170,7 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
       reservationLimits.push(input.limits);
       return { ok: true, value: { reservationRef: `reservation:${input.attemptRef}`, replayed: false } };
     },
-    async settle(input) { settled.add(input.operationKey); },
+    async settle(input) { settled.add(input.operationKey); settlements.push(input.operationKey); },
   };
   const workers: WorkerAdapter = overrides.worker ?? {
     async execute(input) {
@@ -194,7 +196,8 @@ function fakes(overrides: { worker?: WorkerAdapter; accounting?: AccountingAdapt
     async cancelManager() {},
     async cancelWorker() {},
   };
-  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder, worktreePaths, removedPaths, reservations, reservationLimits };
+  return { worktrees, managers, accounting, workers, results, cancellation, executionOrder, integrationOrder,
+    worktreePaths, removedPaths, reservations, settlements, reservationLimits };
 }
 
 interface LedgerRecord {
@@ -413,7 +416,9 @@ function genericIterationPlan(maxCycles = 2): PlanProposal {
 function fanInIterationPlan(): PlanProposal {
   const producer = stage('producer');
   producer.artifacts = [{ id: 'draft', path: 'dashboard/server/producer.txt', description: 'Draft.' }];
-  const peer = stage('peer', ['producer']); peer.artifacts = []; peer.checkpoints = [];
+  const peer = stage('peer', ['producer']);
+  peer.artifacts = [{ id: 'peer-draft', path: 'dashboard/server/peer.txt', description: 'Peer contribution.' }];
+  peer.checkpoints = [];
   const judge = stage('judge', ['producer']); judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
   const release = stage('release', ['producer']);
   const group: ProposalIterationGroup = {
@@ -441,6 +446,34 @@ function fanInIterationPlan(): PlanProposal {
     maxCycles: 3, cycleUnit: 'One producer revision after peer review.', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
   };
   return { ...proposal([producer, peer, judge, release]), iterationGroups: [group] };
+}
+
+function siblingIterationPlan(): PlanProposal {
+  const iterationGroup = (prefix: 'a' | 'b'): ProposalIterationGroup => ({
+    iterationGroupId: `${prefix}-loop`, goal: `Accept ${prefix} draft.`,
+    participants: [
+      { participantId: `${prefix}-producer`, stageRef: `${prefix}-producer`, role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce the draft.' },
+      { participantId: `${prefix}-judge`, stageRef: `${prefix}-judge`, role: 'judge', perspective: 'Apply quality.', mandate: 'Judge the draft.' },
+    ],
+    routes: [{
+      routeId: `${prefix}-to-judge`, senderParticipantId: `${prefix}-producer`, recipientParticipantId: `${prefix}-judge`,
+      requestKinds: ['review'], baseResolutionStageIds: [`${prefix}-producer`],
+    }],
+    activation: { seedParticipantId: `${prefix}-producer`, seedArtifactIds: [`${prefix}-draft`] },
+    initialStepId: `${prefix}-review`,
+    schedule: [{ stepId: `${prefix}-review`, routeId: `${prefix}-to-judge`, cycle: 'current' }],
+    artifacts: [`${prefix}-draft`], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles: 1, cycleUnit: 'One producer generation and judge verdict.',
+    terminalAuthorities: [{ participantId: `${prefix}-judge`, verdict: 'pass' }],
+  });
+  const aProducer = stage('a-producer');
+  aProducer.artifacts = [{ id: 'a-draft', path: 'dashboard/server/a-producer.txt', description: 'A draft.' }];
+  const aJudge = stage('a-judge', ['a-producer']); aJudge.artifacts = []; aJudge.checkpoints = [];
+  const bProducer = stage('b-producer');
+  bProducer.artifacts = [{ id: 'b-draft', path: 'dashboard/server/b-producer.txt', description: 'B draft.' }];
+  const bJudge = stage('b-judge', ['b-producer']); bJudge.artifacts = []; bJudge.checkpoints = [];
+  const release = stage('release', ['a-producer', 'b-producer']);
+  return { ...proposal([aProducer, aJudge, bProducer, bJudge, release]), iterationGroups: [iterationGroup('a'), iterationGroup('b')] };
 }
 
 function coordinatorCrewIterationPlan(): PlanProposal {
@@ -540,11 +573,31 @@ function genericIterationFixture(input: {
   crashAfterIntegrationStage?: string;
   plan?: PlanProposal;
   turnVerdicts?: Record<string, 'fail' | 'pass' | 'fulfilled' | 'complete'>;
+  artifactFailure?: 'missing' | 'empty' | 'irregular' | 'byte-identical';
+  resolveBaseMissStage?: string;
+  reservationRefusalAt?: number;
+  maxConcurrency?: number;
 } = {}) {
   const store = createStore();
   const plan = input.plan ?? genericIterationPlan(input.maxCycles ?? 2);
   const run = createApprovedRun(store, plan);
   const fake = fakes();
+  if (input.reservationRefusalAt !== undefined) {
+    const admitted = fake.accounting;
+    let reserveCalls = 0;
+    fake.accounting = {
+      async reserve(value) {
+        reserveCalls += 1;
+        if (reserveCalls === input.reservationRefusalAt) {
+          fake.reservations.push(value.operationKey);
+          fake.reservationLimits.push(value.limits);
+          return { ok: false, reason: 'iteration participant budget unavailable' };
+        }
+        return admitted.reserve(value);
+      },
+      async settle(value) { return admitted.settle(value); },
+    };
+  }
   const results = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
   const workerInputs: Parameters<WorkerAdapter['execute']>[0][] = [];
   const integrations: Parameters<ResultIntegrator['integrate']>[0][] = [];
@@ -554,7 +607,19 @@ function genericIterationFixture(input: {
   let judgeTurns = 0;
   let crashed = false;
   let canonicalHead: string | null = null;
-  fake.worktrees.ensure = async (value) => { ensuredBases.push({ path: value.path, baseCommit: value.baseCommit }); };
+  const worktreeRoot = mkdtempSync(join(tmpdir(), 'kb-task7-iteration-'));
+  tempDirs.push(worktreeRoot);
+  fake.worktrees.ensure = async (value) => {
+    ensuredBases.push({ path: value.path, baseCommit: value.baseCommit });
+    mkdirSync(value.path, { recursive: true });
+    if (value.baseCommit) {
+      for (const artifact of plan.stages.flatMap((candidate) => candidate.artifacts)) {
+        const path = join(value.path, artifact.path);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, `pinned:${artifact.path}`, 'utf8');
+      }
+    }
+  };
   fake.worktrees.inspect = async (value) => {
     const attemptRef = value.path.split(/[\\/]/).at(-1);
     const worker = [...workerInputs].reverse().find((candidate) => candidate.attemptRef === attemptRef);
@@ -569,6 +634,22 @@ function genericIterationFixture(input: {
     async execute(value) {
       workerInputs.push(value);
       fake.executionOrder.push(value.proposalStage?.id ?? value.action.split(':')[1]);
+      const producingTurn = value.iterationContract !== undefined
+        && (value.iterationContract.request.kind === 'rework' || value.iterationContract.request.kind === 'delegate');
+      for (const artifact of value.proposalStage?.artifacts ?? []) {
+        const path = join(value.worktreePath, artifact.path);
+        mkdirSync(dirname(path), { recursive: true });
+        if (!producingTurn || input.artifactFailure === undefined) {
+          writeFileSync(path, `changed:${value.iterationContract?.request.requestRef ?? value.attemptRef}`, 'utf8');
+        } else if (input.artifactFailure === 'missing') {
+          rmSync(path, { force: true, recursive: true });
+        } else if (input.artifactFailure === 'empty') {
+          writeFileSync(path, '', 'utf8');
+        } else if (input.artifactFailure === 'irregular') {
+          rmSync(path, { force: true, recursive: true });
+          mkdirSync(path, { recursive: true });
+        }
+      }
       if (!value.iterationContract) {
         return {
           state: 'succeeded', summary: `${value.proposalStage?.id ?? 'stage'} seed committed`,
@@ -613,6 +694,7 @@ function genericIterationFixture(input: {
     async lookup(value) { return results.get(value.operationKey) ?? null; },
     async resolveBase(value) {
       baseResolutions.push(value);
+      if (value.stageId === input.resolveBaseMissStage) return null;
       if (value.dependencyStageIds.length === 0 || !value.dependencyResultOperationKeys
         || value.dependencyResultOperationKeys.length !== value.dependencyStageIds.length) return null;
       const records = value.dependencyResultOperationKeys.map((dependency) => results.get(dependency.operationKey));
@@ -639,7 +721,9 @@ function genericIterationFixture(input: {
       return { status: 'integrated' as const, resultHash: value.resultHash, durability: 'canonical' as const, attemptBaseCommit, integrationCommit };
     },
   };
-  const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+  const options = engineOptions(store, fake, worktreeRoot);
+  options.maxConcurrency = input.maxConcurrency ?? options.maxConcurrency;
+  const engine = new AutomaticExecutionEngine(options);
   return { store, plan, run, fake, engine, results, workerInputs, integrations, baseResolutions, ensuredBases };
 }
 
@@ -757,6 +841,151 @@ describe('AutomaticExecutionEngine', () => {
     expect(detail.ok && detail.value.iterationLoops[0]).toMatchObject({ state: 'passed', cyclesUsed: 41 });
     expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'judge')).toHaveLength(41);
   }, 120_000);
+
+  it('accepts an authorized terminal verdict at the declared bound without parking', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['pass'], maxCycles: 1 });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'passed', cyclesUsed: 1 })],
+      humanRequests: [],
+    } });
+  });
+
+  it('parks before launching maxCycles plus one and preserves the complete unresolved residue', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], maxCycles: 1 });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(loop).toMatchObject({
+      state: 'awaiting-park-gate', parkReason: 'exhausted', cyclesUsed: 1,
+      unresolvedResidue: {
+        unresolvedFindings: [expect.objectContaining({ findingId: 'finding-1', severity: 'blocking' })],
+        requestRefs: detail.value.iterationRequests.map((request) => request.requestRef),
+        receiptRefs: detail.value.iterationReceipts.map((receipt) => receipt.receiptRef),
+        activeGenerationRefs: loop.activeGenerationRefs,
+        nextRouteId: 'to-judge', cyclesUsed: 1, maxCycles: 1,
+      },
+    });
+    expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'judge')).toHaveLength(1);
+    expect(detail.value.humanRequests.filter((request) => request.gateKind === 'iteration-park')).toHaveLength(1);
+  });
+
+  it('parks before integration when any required rework artifact is missing empty irregular or byte-identical', async () => {
+    for (const artifactFailure of ['missing', 'empty', 'irregular', 'byte-identical'] as const) {
+      const item = genericIterationFixture({ judgeVerdicts: ['fail'], artifactFailure });
+      await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+        .resolves.toMatchObject({ state: 'waiting-human' });
+      const detail = item.store.getRun('operator', item.run.runRef);
+      expect(detail).toMatchObject({ ok: true, value: {
+        iterationLoops: [expect.objectContaining({ state: 'awaiting-park-gate', parkReason: 'no-progress' })],
+      } });
+      expect(item.integrations.filter((record) => record.stageId === 'producer' && record.iterationContract)).toHaveLength(0);
+    }
+  });
+
+  it('records no successor or supersession and makes zero integration calls on no progress', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], artifactFailure: 'byte-identical' });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.stageGenerations.map((generation) => [generation.logicalStageId, generation.generation, generation.state]))
+      .toEqual([['producer', 1, 'committed']]);
+    expect(detail.value.generationSupersessions).toEqual([]);
+    expect(item.integrations.filter((record) => record.stageId === 'producer' && record.iterationContract)).toEqual([]);
+    expect(detail.value.iterationLoops[0]!.activeGenerationRefs).toEqual([detail.value.stageGenerations[0]!.generationRef]);
+    expect(detail.value.attempts.find((attempt) => attempt.logicalGeneration === 2)).toMatchObject({ state: 'interrupted' });
+  });
+
+  it('mints one iteration-park gate with reason no-progress and full exhaustion-equivalent residue', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], artifactFailure: 'byte-identical' });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const attempted = detail.value.iterationRequests.at(-1)!;
+    expect(detail.value.humanRequests.filter((request) => request.gateKind === 'iteration-park'))
+      .toEqual([expect.objectContaining({ kind: 'approval', state: 'open' })]);
+    expect(loop.unresolvedResidue).toMatchObject({
+      unresolvedFindings: [expect.objectContaining({ findingId: 'finding-1' })],
+      requestRefs: detail.value.iterationRequests.map((request) => request.requestRef),
+      receiptRefs: detail.value.iterationReceipts.map((receipt) => receipt.receiptRef),
+      activeGenerationRefs: loop.activeGenerationRefs,
+      attemptedRequestRef: attempted.requestRef,
+      attemptedOutcome: expect.objectContaining({ requestRef: attempted.requestRef, verdict: 'fulfilled' }),
+      artifactSnapshots: [expect.objectContaining({
+        path: 'dashboard/server/producer.txt', size: expect.any(Number), sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        byteIdentical: true,
+      })],
+      failureReason: expect.stringContaining('byte-identical'),
+    });
+  });
+
+  it('reserves and settles the run token and cost windows for every participant turn', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });
+    await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const participants = item.workerInputs.filter((worker) => worker.iterationContract !== undefined);
+    expect(participants.map((worker) => `reserve:${worker.attemptRef}`)
+      .every((operationKey) => item.fake.reservations.includes(operationKey))).toBe(true);
+    expect(participants.map((worker) => `settle:${worker.attemptRef}`)
+      .every((operationKey) => item.fake.settlements.includes(operationKey))).toBe(true);
+  });
+
+  it('opens the existing fail-closed intervention and preserves loop state when budget reservation fails', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], reservationRefusalAt: 3 });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.iterationLoops[0]).toMatchObject({ state: 'running-turn', currentStepId: 'rework' });
+    expect(detail.value.iterationLoops[0]).not.toHaveProperty('parkReason');
+    expect(detail.value.humanRequests).toContainEqual(expect.objectContaining({
+      kind: 'intervention', prompt: 'iteration participant budget unavailable',
+    }));
+    const attempt = detail.value.attempts.find((candidate) => candidate.logicalGeneration === 2)!;
+    expect(attempt.state).toBe('interrupted');
+    expect(detail.value.sessions.find((session) => session.attemptRef === attempt.attemptRef)).toMatchObject({ state: 'interrupted' });
+    expect(detail.value.generationSupersessions).toEqual([]);
+  });
+
+  it('routes a transient fenced base-resolution miss to fail-closed intervention without failing the run', async () => {
+    const item = genericIterationFixture({ judgeVerdicts: ['fail'], resolveBaseMissStage: 'producer' });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.run.state).toBe('waiting-human');
+    expect(detail.value.iterationLoops[0]).toMatchObject({ state: 'rework-queued', currentStepId: 'rework' });
+    expect(detail.value.iterationLoops[0]).not.toHaveProperty('parkReason');
+    expect(detail.value.attempts.find((attempt) => attempt.logicalGeneration === 2)).toMatchObject({ state: 'interrupted' });
+    expect(detail.value.humanRequests).toContainEqual(expect.objectContaining({
+      kind: 'intervention', prompt: expect.stringContaining('committed iteration dependency lineage is unavailable'),
+    }));
+    expect(detail.value.humanRequests.some((request) => request.gateKind === 'iteration-park')).toBe(false);
+  });
+
+  it('continues scheduling sibling groups when one group has a transient base-resolution miss', async () => {
+    const item = genericIterationFixture({
+      plan: siblingIterationPlan(), resolveBaseMissStage: 'a-judge', maxConcurrency: 2,
+      turnVerdicts: { 'b-review': 'pass' },
+    });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'a-loop'))
+      .toMatchObject({ state: 'awaiting-turn', currentStepId: 'a-review' });
+    expect(detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'b-loop'))
+      .toMatchObject({ state: 'passed', cyclesUsed: 1 });
+    expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'b-judge')).toHaveLength(1);
+    expect(item.workerInputs.some((turn) => turn.iterationContract?.request.recipientParticipantId === 'a-judge')).toBe(false);
+    expect(detail.value.humanRequests).toContainEqual(expect.objectContaining({
+      kind: 'intervention', prompt: expect.stringContaining('committed iteration dependency lineage is unavailable'),
+    }));
+  });
 
   it('pins every turn to the server-selected generation refs base commit and artifact hashes', async () => {
     const item = genericIterationFixture({ judgeVerdicts: ['fail', 'pass'] });

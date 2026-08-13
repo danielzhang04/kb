@@ -812,6 +812,14 @@ describe('iteration group definitions', () => {
     }] } });
   });
 
+  it('rejects artifact-producing routes whose recipient stage declares no artifacts before launch', () => {
+    const artifactlessRecipient = iterationWorkflow().replace('        requestKinds: [review]', '        requestKinds: [delegate]');
+    expect(parseWorkflowDef(artifactlessRecipient, { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/artifact-producing route 'revision-to-judge'.*recipient 'judge'.*stage 'check'.*at least one artifact/),
+    });
+  });
+
   it('rejects missing or nonpositive bounds duplicate participants unknown routes and undeclared terminal authorities', () => {
     const valid = iterationWorkflow();
     const cases: Array<[string, RegExp]> = [
