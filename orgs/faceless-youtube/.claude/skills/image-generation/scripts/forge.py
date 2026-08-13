@@ -1633,25 +1633,121 @@ def place_anchor_for(video, anchor, root, name):
 ASSET_REVIEW = "review.json"       # C-6/P3: the per-ASSET review store, one file inside <kit>/_staging
 
 
-def figure_review_record(staging_dir, fn):
-    """One asset's review record, or None when the store holds no entry for it.
+def store_key(path, kit):
+    """The review store's key for ONE frame: its path relative to the KIT that owns the store.
 
-    Keyed by the frame's FILE STEM, whatever that stem is — `fig-<char>--<pose>--<expr>--<digest>`
-    for a STEP-1 card (P8's derived-clause digest rides in the stem, so it rides in the key for
-    free), `prop-drive` for a prop, `L28` for a place plate. One store, one key shape, every
-    seeding asset class.
+    Anchored on the kit, not on the repo root, because the store lives at `<kit>/_staging` and must
+    read the same in every checkout: a root-anchored key is a different string in a worktree with
+    no `.env` marker than in the primary checkout, so the board would write keys the gate could not
+    find — a review loop that cannot see its own writes. The kit is the one anchor every producer
+    and consumer of this store already holds. A frame outside the kit (a video's own
+    `assets/scenes/` frame) keys through the `../videos/<slug>/…` that separates them, which is
+    just as stable, because the kit and the videos move together.
 
-    Takes the STAGING DIR rather than a `Kit` so the review side of the loop
-    (`build_review_artifact.py`, which has a video and a staging path but no key-bearing Kit) reads
-    the store through this same function instead of re-implementing it. The single-writer law is
-    untouched: `stamp_review.py` is the only writer of a verdict anywhere in this pipeline; every
-    other caller, forge included, only ever reads."""
+    It used to be the frame's file STEM, and a stem is not an identity: a video's
+    `assets/library/crowd-exemplar.png` and the channel's `refs/base/crowd-exemplar.png` were ONE
+    record, so a ruling on either let the other seed unruled — and P4's per-video exemplar mint
+    makes that collision certain rather than latent."""
+    return os.path.relpath(os.path.realpath(path), os.path.realpath(kit)).replace("\\", "/")
+
+
+def _candidate_frames(staging_dir, kit):
+    """The frames a legacy key can be re-keyed ONTO — staging (STEP-1 cards) and the kit's own
+    `refs/` tree. Deliberately kit-local: a frame anywhere else (a video's promoted scene frame) is
+    reached by `figure_review_record`'s digest fallback, so no caller has to know a video exists to
+    read this store correctly."""
+    return [os.path.join(base, fn)
+            for r in (staging_dir, os.path.join(kit, "refs")) if r
+            for base, _dirs, files in os.walk(r)
+            for fn in files if fn.lower().endswith(".png")]
+
+
+def _is_current_key(key, kit):
+    """True when `key` already names a frame under this kit the way `store_key` writes it.
+
+    Cheap and deliberately not a `store_key` round-trip: an ABSOLUTE key (the repo-root-anchored
+    shape this replaces, and any accidental absolute) resolves through `os.path.join` and would
+    round-trip as current while being exactly the key the gate cannot reproduce."""
+    return not os.path.isabs(key) and os.path.isfile(os.path.join(kit, key))
+
+
+def migrate_review_store(figures, staging_dir, kit):
+    """The ONE-TIME key migration, over an ALREADY-LOADED `{key: record}` map. One law, every
+    legacy shape: a bare file STEM, a repo-root-anchored path, an absolute path.
+
+    A record is re-keyed by DIGEST, not by name — `canonical_sha256` is the store's own notion of
+    WHICH pixels were ruled on, so it identifies the frame without a second naming convention. ONE
+    key per record: the twin problem (the same reviewed pixels living in `_staging` and again in a
+    video's `assets/scenes/` after promotion) is not this function's to solve, because a migration
+    can only ever describe the frames present when it ran. `figure_review_record`'s digest fallback
+    answers for every twin, at read time, forever — so this stays a tidy-up of key SHAPE and
+    nothing depends on it having been exhaustive.
+
+    A record no candidate matches keeps its key: its verdicts survive intact and the fallback still
+    reaches it if its pixels turn up. Nothing about a record's CONTENT is ever touched."""
+    if not isinstance(figures, dict) or not kit:
+        return figures if isinstance(figures, dict) else {}
+    if all(_is_current_key(key, kit) for key in figures):
+        return figures
+    by_digest = {}
+    for path in _candidate_frames(staging_dir, kit):
+        by_digest.setdefault(frame_digest(path), path)
+    out = {}
+    for key, record in figures.items():
+        match = by_digest.get(record.get("canonical_sha256")) if isinstance(record, dict) else None
+        out[store_key(match, kit) if match else key] = record
+    return out
+
+
+def review_store(staging_dir, kit=None):
+    """The store's `{key: record}` map, read fresh, with any legacy key migrated IN MEMORY.
+
+    The migrated form is what `stamp_review.py` writes back on the next sanctioned write, so the
+    search stops happening once the store has been through the writer once."""
     try:
-        doc = json.load(open(os.path.join(staging_dir, ASSET_REVIEW), encoding="utf-8"))
+        doc = json.load(open(os.path.join(staging_dir or "", ASSET_REVIEW), encoding="utf-8"))
     except (OSError, ValueError):
+        return {}
+    figures = (doc.get("figures") if isinstance(doc, dict) else None) or {}
+    return migrate_review_store(figures, staging_dir, kit)
+
+
+def figure_review_record(staging_dir, frame, kit=None):
+    """The STRICTEST review record applying to one FRAME, or None when the store holds no ruling on
+    its pixels.
+
+    One store, one key shape (`store_key`), every seeding asset class — a STEP-1 card
+    (`fig-<char>--<pose>--<expr>--<digest>.png`, P8's derived-clause digest riding in the name), a
+    prop, a place plate.
+
+    THE KEY IS A LOOKUP, NOT THE IDENTITY. When no key hits, a record whose `canonical_sha256` IS
+    this frame's digest applies to it: the store already records which PIXELS were ruled on, and
+    that answer does not depend on where a copy of them sits. This is what carries a ruling across
+    PROMOTION — a verified frame moves from `_staging` into a video's `assets/scenes/` and the two
+    copies are the same reviewed pixels — without the store, the writer or the migration having to
+    know that videos exist. Keying the twins eagerly instead only worked until the next ordinary
+    stamp rewrote the store from a writer that could not see the video, which silently collapsed
+    the binding and re-refused an already-approved plate.
+
+    It can only ever ADMIT what a human already passed on identical bytes: a frame whose pixels
+    match no record still returns None, and a record whose digest no longer matches its own frame
+    is stale by the same comparison. Takes the STAGING DIR and KIT rather than a `Kit` so the
+    review side of the loop (`build_review_artifact.py`, which has a staging path but no
+    key-bearing Kit) reads the store through this same function instead of re-implementing it. The
+    single-writer law is untouched: `stamp_review.py` is the only writer of a verdict anywhere in
+    this pipeline; every other caller, forge included, only ever reads."""
+    if not kit:
         return None
-    entry = (doc.get("figures") or {}).get(fn) if isinstance(doc, dict) else None
-    return entry if isinstance(entry, dict) else None
+    store, digest = review_store(staging_dir, kit), frame_digest(frame)
+    keyed = store.get(store_key(frame, kit))
+    applicable = ([keyed] if isinstance(keyed, dict) else []) + [
+        r for r in store.values() if isinstance(r, dict) and r is not keyed
+        and digest and r.get("canonical_sha256") == digest]
+    # STRICTEST WINS, the store's own merge doctrine (any fail = fail). Both twins can hold their
+    # own key — re-board one copy and it gets a record of its own — and answering with whichever
+    # one was found first left a freshly VETOED frame seedable under its other name.
+    return next((r for r in applicable if record_blocker(r, frame, "")),
+                applicable[0] if applicable else None)
 
 
 _DIGEST_CACHE = {}
@@ -1675,7 +1771,7 @@ def frame_digest(path):
     return _DIGEST_CACHE[key]
 
 
-def figure_reuse_blocker(staging_dir, fn, frame, store_label=None):
+def figure_reuse_blocker(staging_dir, frame, store_label=None, kit=None):
     """The ONE reason ANY asset's pixels may not seed a scene slate, or None when it is clear.
 
     `cmd_batch` reuses a staged frame BY NAME before it regenerates anything, so the name alone
@@ -1698,7 +1794,13 @@ def figure_reuse_blocker(staging_dir, fn, frame, store_label=None):
     board asks it which staged assets still need a fresh-eyes ruling, so the board's pending list
     and forge's refusal can never disagree about what "reusable" means."""
     store = store_label or os.path.join(staging_dir, ASSET_REVIEW).replace("\\", "/")
-    record = figure_review_record(staging_dir, fn)
+    return record_blocker(figure_review_record(staging_dir, frame, kit), frame, store)
+
+
+def record_blocker(record, frame, store):
+    """The ladder itself: why ONE record does not admit this frame, or None. Split out only so
+    `figure_review_record` can rank applicable records by it — one definition of "reviewed", asked
+    in one place, never a second ordering written beside this one."""
     verdicts = (record or {}).get("verdicts")
     scored = isinstance(verdicts, dict) and bool(verdicts)
     failed = sorted(s for s, v in verdicts.items() if v != "pass") if scored else []
@@ -1745,7 +1847,7 @@ def asset_seed_refusal(k, path, klass, shot_name):
 
     Every asset class whose pixels seed a scene — plate, environment, prop, crowd exemplar,
     pose/expression/interaction primitive — routes THROUGH HERE into `figure_reuse_blocker`. One
-    predicate, one store, one key shape (the frame's file stem): a per-class variant would be a
+    predicate, one store, one key shape (the frame's kit-relative path): a per-class variant would be a
     second definition of "reviewed", which is precisely the drift C-6 was built to remove.
 
     A path that resolves to nothing on disk returns None rather than a review refusal: seed
@@ -1766,7 +1868,7 @@ def asset_seed_refusal(k, path, klass, shot_name):
         return None
     store = os.path.relpath(os.path.join(k.staging, ASSET_REVIEW), k.root).replace("\\", "/")
     name = _stem(path)
-    reason = figure_reuse_blocker(k.staging, name, frame, store)
+    reason = figure_reuse_blocker(k.staging, frame, store, k.kit)
     if reason is None:
         return None
     stamp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stamp_review.py")
@@ -1846,10 +1948,14 @@ def plate_seed_overrides(reqs):
             for r in reqs if isinstance(r, dict) and r.get("plate_parent")}
 
 
-def refuse_unreviewed(refusals):
-    """Stop the batch at $0 on the P3 gate — one refusal list, one exit, both call sites."""
+def refuse_batch(refusals):
+    """Stop the batch at $0 on the pre-gen gates — one list, one exit, the COMPLETE report.
+
+    Carries both refusal kinds the walk collects — an asset carrying no human ruling (P3) and a
+    scope that would drop a declared place's plate — because a refusal costs nothing and an
+    operator fixing one wants to see the other in the same pass, not on the next run."""
     if refusals:
-        raise SystemExit("PRE-GEN REVIEW GATE — %d seeding asset(s) carry no human ruling; "
+        raise SystemExit("PRE-GEN REVIEW GATE — %d refusal(s); "
                          "nothing generated, nothing charged:\n%s"
                          % (len(refusals), "\n".join(refusals)))
 
@@ -1857,7 +1963,7 @@ def refuse_unreviewed(refusals):
 def figure_reuse_refusal(k, fn, frame, shots_path, out_path, shot_name):
     """The C-6 reuse refusal: the ONE blocking reason, plus the builder path that clears it."""
     store = os.path.relpath(os.path.join(k.staging, ASSET_REVIEW), k.root).replace("\\", "/")
-    reason = figure_reuse_blocker(k.staging, fn, frame, store)
+    reason = figure_reuse_blocker(k.staging, frame, store, k.kit)
     if reason is None:
         return None
     return (f"{fn}: staged STEP-1 refused as a seed — {reason}. Re-mint it through the BUILDER "
@@ -1920,6 +2026,12 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
     reg_assets = {a["name"]: a for a in k.reg.get("assets", [])}
     chars = k.reg.get("characters", {})
     spec, made, emitted, place_first, place_last, notes = [], {}, {}, {}, {}, []
+    # Pre-gen refusals COLLECTED across the whole walk, raised once after it. The seeding law's
+    # own standard, stated at the top of this file: a violation costs $0, so the report is the
+    # COMPLETE list. Refusing at the first one made a 246-shot file a 246-run discovery of the
+    # assets the board has to rule on anyway, and each of the three refusal points below hid the
+    # other two's.
+    blocked = []
     provenance = {}             # emitted name -> its `parent_depth`/`lineage` record (C-11)
     # Shots whose slate derived `plate: true` — the place's own establishing frame. Recorded for
     # EVERY walked shot, in scope or not, because a scoped delta's parent is routinely a plate the
@@ -2104,7 +2216,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                     # pose or expression nobody ruled on must not reach a scene by riding inside
                     # the card it minted. Same predicate, same store — only the canonical is
                     # exempt, and only because the cast wave owns it.
-                    refuse_unreviewed(seed_role_review_refusals(k, step1_roles, name))
+                    blocked.extend(seed_role_review_refusals(k, step1_roles, name))
                     step1_payload = figure_card_payload(pose, clause)
                     spec.append({"name": fn, "mode": "environment", "aspect": "2:3",
                                  "image_size": "1K", "stage_role": "base",
@@ -2126,6 +2238,19 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         place_frame = place_anchor or ((emitted.get(parent) or
                                         on_disk(os.path.join(scenes, (parent or "") + ".png")))
                                        if parent else None)
+        if in_scope and declared_place and place_frame is None and scope and parent and parent not in scope:
+            # A scoped repair walks the whole file but EMITS only its scope, so a declared place
+            # whose frame is minted OUTSIDE that scope and is not on disk yet resolves to nothing —
+            # and the slate then builds place-less, silently, on the exact per-shot path operators
+            # repair with (9c: `--shots L46` dropped `miniscribe-floor` and nothing said so). The
+            # plate ON DISK stays ordinary reuse; only a place with no frame anywhere refuses.
+            # COLLECTED like every other pre-gen refusal: a scope that dropped two places reports
+            # both, and never masks the review refusals the same walk found.
+            blocked.append(
+                f"{name}: place `{declared_place}` would seed NOTHING — its frame is minted by "
+                f"`{parent}`, which this `--shots` scope excludes, and no frame for it exists on "
+                f"disk yet. Building here silently breaks the set's continuity: include the "
+                f"minting shot (`--shots {parent},{name}`), or mint the plate first.")
         anon_declared, crowd = _fig_declared(shot.get("figures"))
         # Non-figure seeds are DERIVED from what the frame contains, then unioned with Pass 1's
         # explicit tags — the same content-first move as `depicts_figures`, and for the same
@@ -2245,7 +2370,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
             # scene, so refusing on it would send the author to review a frame the slate dropped.
             # C-1: a delta's `parent` is the exempt label, but when that parent frame is the
             # place's own PLATE it is a seeding asset like any other and is gated by path.
-            refuse_unreviewed(seed_role_review_refusals(k, seed_roles, name, plate_parent_gate))
+            blocked.extend(seed_role_review_refusals(k, seed_roles, name, plate_parent_gate))
         seeds = [role["path"] for role in seed_roles]
         # C-4: the PLATE marker is DERIVED, never authored. A scene carrying no CONTENT seed is
         # the frame that establishes its own place — a place-first shot with no cast, a single-use
@@ -2295,6 +2420,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
     if scope and scope - seen:
         raise SystemExit(f"batch --shots names {len(scope - seen)} id(s) that are not in "
                          f"{os.path.basename(shots_path)}: {', '.join(sorted(scope - seen))}")
+    refuse_batch(blocked)                # one exit, the whole batch's list
     if doc.get("thumbnail", {}).get("primary") and scope is None:
         notes.append("thumbnail: out of scope — it carries its own authored seeds + gen_prompt")
     for n in notes:
@@ -2771,6 +2897,38 @@ def batch_provenance(spec_path):
     return out
 
 
+def scene_row_integrity(entry, video):
+    """Make ONE scenes row's `verified` claim true against the disk it points at, or withdraw it.
+    Returns a one-line description of what changed, or None.
+
+    `verified` is the render gate's whole input, and two ways of lying to it were live in
+    bricks-fresh. A row KEEPS its `verified` after the PNG leaves the checkout — 17 rows read
+    verified against 6c2-era frames that are not here, which is fyt-run-001's hand-written
+    `verified: true` in slow motion. And `stamp_review.py` writes the verdict but has no path to
+    write, so a ruling on a shot with no entry creates one carrying `file: null` — L169, a verified
+    frame nothing pointed at, which a render pass would silently skip.
+
+    One law closes both: a row may read `verified` only against a frame that EXISTS. A null `file`
+    resolves to the frame this shot's id names when that frame is on disk; a `verified` row whose
+    file is missing is downgraded to `unreviewed` carrying a `note` that says why. Nothing is
+    deleted — the row, its `file` and its `parked_reasons` all stay, so the history is intact and
+    only the claim the pixels no longer support is withdrawn. An honestly un-verified row with no
+    frame is the truth and is left alone."""
+    sid, declared = entry.get("shot_id"), entry.get("file")
+    rel = declared or "assets/scenes/%s.png" % sid
+    if os.path.isfile(os.path.join(video, rel)):
+        entry.pop("note", None)
+        if declared:
+            return None
+        entry["file"] = rel
+        return f"{sid}: file -> {rel} (a verified frame nothing pointed at)"
+    if entry.get("review_status") != "verified":
+        return None
+    entry["review_status"] = "unreviewed"
+    entry["note"] = f"`verified` withdrawn on emit: no frame at {rel} in this checkout"
+    return f"{sid}: verified -> unreviewed (no frame at {rel})"
+
+
 def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes, from_batch=None):
     """Q7: emit the manifest render-builder depends on from a small spec, instead of free-typing it
     (a drifted/forgotten manifest key silently degrades render). --kind scenes -> shots[]; library ->
@@ -2783,11 +2941,19 @@ def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes, from_batch=None):
     walk that knows the chain and copied here, never re-derived by eye. An entry stating its own
     counters keeps them. They stay optional so a manifest written before this wave still emits, but a
     present counter must be a real one: a mistyped provenance field would make a drifting chain read
-    as a grounded one."""
+    as a grounded one.
+
+    Every scenes row is additionally made honest against disk on the way out
+    (`scene_row_integrity`), which is why `file` is no longer a REQUIRED key on a scenes row: a row
+    that is not `verified` may truthfully carry no frame, and a row that is verified is guaranteed
+    one here or downgraded — the check it replaces asked a weaker question about the same field.
+    RECONCILING an existing manifest is therefore this same command with the manifest as its own
+    spec (`--kind scenes --batch <manifest.json> --out <manifest.json>`): the write path is the one
+    definition of an honest row, so there is no second one to drift from."""
     if kind not in ("scenes", "library"):
         raise SystemExit("manifest needs --kind scenes|library")
     key = "shots" if kind == "scenes" else "assets"
-    req = ("shot_id", "file") if kind == "scenes" else ("name", "file")
+    req = ("shot_id",) if kind == "scenes" else ("name", "file")
     spec = json.load(open(spec_path, encoding="utf-8"))
     if isinstance(spec, list):
         entries, env = spec, {}
@@ -2799,10 +2965,25 @@ def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes, from_batch=None):
     if from_batch and kind != "scenes":
         raise SystemExit("manifest --from-batch carries C-11 provenance, which only scenes entries hold.")
     derived = batch_provenance(from_batch) if from_batch else {}
+    if out:
+        out_path = out if os.path.isabs(out) else os.path.join(k.root, out)
+    else:
+        base = to_dir if os.path.isabs(to_dir) else os.path.join(k.root, to_dir or "")
+        out_path = os.path.join(base, "manifest.json")
+    # A scenes row's `file` is video-relative, and a scenes manifest is written to
+    # `<video>/assets/scenes/manifest.json` — so the video the rows resolve against is its own
+    # destination, two levels up. Derived from the output rather than passed, because the emitter
+    # must judge the rows against the tree it is about to write them into.
+    video = os.path.dirname(os.path.dirname(os.path.dirname(out_path)))
+    reconciled = []
     for i, e in enumerate(entries):
         miss = [f for f in req if not e.get(f)]
         if miss:
             raise SystemExit(f"{kind} entry #{i} missing required key(s): {', '.join(miss)}")
+        if kind == "scenes":
+            change = scene_row_integrity(e, video)
+            if change:
+                reconciled.append(change)
         for counter in PROVENANCE_COUNTERS if kind == "scenes" else ():
             if counter not in e and e["shot_id"] in derived:
                 e[counter] = derived[e["shot_id"]][counter]
@@ -2815,14 +2996,12 @@ def cmd_manifest(k, kind, spec_path, out, to_dir, slug, notes, from_batch=None):
         "notes": notes or env.get("notes") or "",
         key: entries,
     }
-    if out:
-        out_path = out if os.path.isabs(out) else os.path.join(k.root, out)
-    else:
-        base = to_dir if os.path.isabs(to_dir) else os.path.join(k.root, to_dir or "")
-        out_path = os.path.join(base, "manifest.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     json.dump(manifest, open(out_path, "w", encoding="utf-8"), indent=2)
-    print(f"manifest ({kind}): {len(entries)} entries -> {out_path}", flush=True)
+    for change in reconciled:
+        print(f"  reconciled {change}", flush=True)
+    print(f"manifest ({kind}): {len(entries)} entries -> {out_path}"
+          + (f", {len(reconciled)} row(s) reconciled" if reconciled else ""), flush=True)
 
 def harden_alpha(rgba, lo=100, hi=175):
     """Push a soft rembg matte to a crisp edge: alpha < lo -> 0, > hi -> 255, linear between."""

@@ -490,7 +490,9 @@ def test_cards_carry_the_three_state_review_status_not_the_deleted_verified_bool
 def _staged_figure(staging, fig_id):
     os.makedirs(staging, exist_ok=True)
     path = os.path.join(staging, fig_id + ".png")
-    _png(path)
+    # DISTINCT pixels per figure: a record is migrated onto frames by DIGEST, so two fixtures
+    # sharing bytes would (correctly) share one ruling — and this fixture means three assets.
+    _png(path, color=(int(hashlib.sha256(fig_id.encode()).hexdigest()[:2], 16), 140, 160))
     with open(path, "rb") as f:
         return path, hashlib.sha256(f.read()).hexdigest()
 
@@ -512,17 +514,24 @@ def test_pending_assets_is_forges_own_gate_never_a_second_predicate():
                     "canonical_sha256": failed_sha, "expression_sha256": None,
                     "verdicts": {"rig": "fail"}, "reviewer": "fresh-eyes", "date": "2026-08-04"},
             }}, f)
-        pending = {fig for fig, _p, _w in bra.pending_assets(staging)}
-        assert pending == {"fig-zeta-clerk--sit--expr-deadpan",
-                           "fig-ghost--stand--expr-smug"}, pending
+        # The store is written here in the LEGACY stem-keyed form, so this also exercises the
+        # one-time migration: each stem resolves against the frames on disk and is re-keyed by
+        # path, and the board reads the store through exactly the gate that will refuse from it.
+        pending = bra.pending_assets(staging)
+        assert {bra.asset_stem(key) for key, _p, _w in pending} == {
+            "fig-zeta-clerk--sit--expr-deadpan", "fig-ghost--stand--expr-smug"}, pending
+        assert all("/" in key for key, _p, _w in pending), pending
 
 
 def test_the_asset_skeleton_is_stamp_reviews_input_shape_with_empty_verdicts():
     with tempfile.TemporaryDirectory() as td:
         staging = os.path.join(td, "_staging")
         path, sha = _staged_figure(staging, "fig-zeta-clerk--sit--expr-deadpan")
-        skeleton = bra.asset_verdict_skeleton(bra.pending_assets(staging))
-        rec = skeleton["figures"]["fig-zeta-clerk--sit--expr-deadpan"]
+        pending = bra.pending_assets(staging)
+        key = pending[0][0]                      # the gate's own key, never re-derived here
+        skeleton = bra.asset_verdict_skeleton(pending)
+        rec = skeleton["figures"][key]
+        assert bra.asset_stem(key) == "fig-zeta-clerk--sit--expr-deadpan", key
         assert rec["canonical_sha256"] == sha, rec
         assert set(rec) == {"canonical_sha256", "expression_sha256", "verdicts", "reviewer", "date"}
         assert set(rec["verdicts"]) == set(bra.FIGURE_INVARIANTS), rec["verdicts"]
@@ -531,7 +540,7 @@ def test_the_asset_skeleton_is_stamp_reviews_input_shape_with_empty_verdicts():
         rec["verdicts"] = {k: "pass" for k in rec["verdicts"]}
         store = {}
         assert stamp_review.merge_figure_records(store, skeleton) == 1
-        assert store["figures"]["fig-zeta-clerk--sit--expr-deadpan"]["canonical_sha256"] == sha
+        assert store["figures"][key]["canonical_sha256"] == sha
         # ... which is exactly what clears forge's gate for the next slice
         with io.open(os.path.join(staging, "review.json"), "w", encoding="utf-8") as f:
             json.dump(store, f)
@@ -580,7 +589,7 @@ def test_a_non_figure_seeding_asset_is_boarded_and_skeletoned_through_the_same_g
         plate = str(video / "assets" / "scenes" / "L28.png")
         _png(plate)
         pending = bra.pending_assets(staging, [plate])
-        assert [a for a, _p, _w in pending] == ["L28"], pending
+        assert [bra.asset_stem(a) for a, _p, _w in pending] == ["L28"], pending
         assert "no review record" in pending[0][2], pending
         card = bra.collect(str(video), None, staging, [plate])[-1]
         assert card["sid"] == "L28" and card["label"] == "seeding asset", card
@@ -589,7 +598,7 @@ def test_a_non_figure_seeding_asset_is_boarded_and_skeletoned_through_the_same_g
         assert card["canon"] == [], card         # no canonical to compare a plate against
         # ... and the skeleton it writes is the same `stamp_review.py --figures` input shape
         skeleton = bra.asset_verdict_skeleton(pending)
-        rec = skeleton["figures"]["L28"]
+        rec = skeleton["figures"][pending[0][0]]
         assert set(rec["verdicts"]) == set(bra.ASSET_INVARIANTS), rec
         rec["verdicts"] = {k: "pass" for k in rec["verdicts"]}
         store = {}

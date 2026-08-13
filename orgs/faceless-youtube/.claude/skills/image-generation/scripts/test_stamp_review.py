@@ -14,6 +14,7 @@ Fixtures mirror the REAL schemas pinned from the wells-fargo run:
     entry is keyed by `shot_id`. Task-2 (df0c18e) added `review_status`
     ("unreviewed"|"verified"|"parked") + `parked_reasons: [str]`, which render.py's gate reads.
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -347,6 +348,39 @@ def test_figures_cli_merges_additively_into_existing_review_json():
         stamp_review.main(["--figures", str(input_path), str(staging)])
         out = _read(staging / "review.json")
         assert set(out["figures"]) == {"fig-old--stand--smug", "fig-new--sit--deadpan"}, out
+
+
+def test_figures_cli_migrates_a_legacy_stem_keyed_store_onto_paths_as_it_writes():
+    """The one-time key migration, persisted. A curated row — the P12 human veto, a grandfathered
+    standing asset — must cross byte-equivalent in CONTENT; only its key moves onto the frame it
+    names. A stem naming a frame that is no longer on disk keeps its stem rather than being
+    dropped, and is migrated by whichever read can resolve it."""
+    with tempfile.TemporaryDirectory() as td:
+        kit = Path(td) / "visual-kit"
+        staging, refs = kit / "_staging", kit / "refs" / "base"
+        staging.mkdir(parents=True)
+        refs.mkdir(parents=True)
+        pixels = b"\x89PNG\r\n\x1a\n"
+        (refs / "expr-pleading.png").write_bytes(pixels)
+        # The record's OWN digest is what binds it to a frame — the store's existing notion of
+        # which pixels were ruled on, never a second naming convention laid beside it.
+        veto = {"canonical_sha256": hashlib.sha256(pixels).hexdigest(), "expression_sha256": None,
+                "verdicts": {"rig": "pass", "flat-cel-hazard": "pass", "human-veto": "fail"},
+                "reviewer": "Daniel veto, G2 2026-08-12, P12", "date": "2026-08-12"}
+        unresolvable = _figrec(canonical="b" * 64)
+        (staging / "review.json").write_text(
+            json.dumps({"figures": {"expr-pleading": veto, "L28": unresolvable}}),
+            encoding="utf-8")
+        input_path = Path(td) / "verdicts.json"
+        input_path.write_text(json.dumps({"figures": {"refs/base/new.png": _figrec()}}),
+                              encoding="utf-8")
+        assert stamp_review.main(["--figures", str(input_path), str(staging)]) == 0
+        out = _read(staging / "review.json")["figures"]
+        # Kit-relative, so the key reads identically in every checkout (`forge.store_key`).
+        key = "refs/base/expr-pleading.png"
+        assert set(out) == {key, "L28", "refs/base/new.png"}, out
+        assert out[key] == veto, out[key]              # content byte-equivalent, key only moved
+        assert out["L28"] == unresolvable, out["L28"]
 
 
 def test_figures_cli_missing_input_file_errors_without_writing():

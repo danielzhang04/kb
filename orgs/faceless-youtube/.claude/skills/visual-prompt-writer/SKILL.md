@@ -78,8 +78,11 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    primitive bound to it, written around the backticked name ("stands `action-powerstance`, `expr-smug`, at
    the head of an assembly line"), never a second act the seed cannot hold. The card is minted holding the
    act its sentence authors (`forge.py`), so prose that asks for a different one re-poses a stance card —
-   which redraws the hands, and with them the head that sits on the body. **Default: conform the sentence
-   to the CLOSEST existing primitive** — the library nearly always carries the beat, and bending the
+   which redraws the hands, and with them the head that sits on the body. **Naming the primitive never
+   REPLACES the act:** the sentence still says what the body is DOING, phrased inside that primitive's own
+   vocabulary ("`hold-both-hands`, carrying a cardboard box of desk things") — a clause that names the pose
+   and describes no act mints the card against the pose REFERENCE alone, and the pose does not land.
+   **Default: conform the sentence to the CLOSEST existing primitive** — the library nearly always carries the beat, and bending the
    sentence to it costs nothing. A beat that genuinely needs an act no primitive holds is an ASSET
    decision, not a sentence: it was planned at 3a as a Pass-1 mint (asset base first, shot after), never
    invented here.

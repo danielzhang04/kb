@@ -107,10 +107,12 @@ def _pngs(target):
     return out
 
 
-def stamp_all_pass(staging_dir, *targets, reviewer="fixture", date="2026-08-12", verdict="pass"):
+def stamp_all_pass(staging_dir, kit, *targets, reviewer="fixture", date="2026-08-12",
+                   verdict="pass"):
     """Record an all-pass review verdict for every PNG under `targets` (files or dirs).
 
-    Keyed by FILE STEM — the one key shape the store uses for every asset class — with
+    Keyed by `forge.store_key` against the KIT that owns the store — the gate's own key and its own
+    anchor, so a fixture can never disagree with it about WHICH frame a record is for — with
     `canonical_sha256` read off the bytes on disk, so the record is current by construction.
     Merges additively into any existing store, exactly as the real writer does. Returns the store.
     """
@@ -128,7 +130,7 @@ def stamp_all_pass(staging_dir, *targets, reviewer="fixture", date="2026-08-12",
         if not target or not os.path.exists(target):
             continue
         for frame in _pngs(target):
-            figures[os.path.splitext(os.path.basename(frame))[0]] = {
+            figures[forge.store_key(frame, kit)] = {
                 "canonical_sha256": forge.frame_digest(frame),
                 "expression_sha256": None,
                 "verdicts": {"rig": verdict, "flat-cel-hazard": verdict},
@@ -142,5 +144,9 @@ def stamp_all_pass(staging_dir, *targets, reviewer="fixture", date="2026-08-12",
 
 
 def stamp_kit(k, *extra):
-    """The reviewed-channel baseline: every ref the kit ships, plus any per-test frames."""
-    return stamp_all_pass(k.staging, os.path.join(k.kit, "refs"), *extra)
+    """The reviewed-channel baseline: every ref the kit ships, plus any per-test frames.
+
+    Keys against the Kit's own `kit` dir — the anchor the gate uses — never one this helper picks,
+    which is how a fixture would stamp records the gate cannot find. No repo root is involved, so
+    a markerless worktree keys identically to the primary checkout."""
+    return stamp_all_pass(k.staging, k.kit, os.path.join(k.kit, "refs"), *extra)

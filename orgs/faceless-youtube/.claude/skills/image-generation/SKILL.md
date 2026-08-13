@@ -375,8 +375,19 @@ member's own canonical — Pass 1, step 1.) The loop, in order:
    <figure-verdicts.json> <kit>/_staging`. Same single-writer law as the scene path — `stamp_review.py` is the ONLY
    writer of a verdict anywhere in this pipeline; the board writes only the skeleton, and forge only ever reads.
 
-The record shape the store keeps, per asset id — the frame's FILE STEM, whatever that stem is
-(`fig-<character>--<pose>--<expression>--<clause digest>`, `prop-drive`, `L28`):
+The record shape the store keeps, per asset id — the frame's path relative to the KIT that owns the store
+(`_staging/fig-<character>--<pose>--<expression>--<clause digest>.png`, `refs/env/prop-drive.png`,
+`../videos/<slug>/assets/scenes/L28.png`). The kit is the anchor, not the repo root, so the key reads the same in
+every checkout: a root-anchored key is a different string in a worktree carrying no repo marker, and the board would
+then write keys the gate cannot find. It was the bare file STEM until 2026-08-13, and a stem is not an identity — a
+video's `assets/library/crowd-exemplar.png` and the channel's `refs/base/crowd-exemplar.png` were ONE record, so a
+ruling on either let the other seed unruled. **The key is a FAST PATH, not the identity:** `canonical_sha256` is what
+records which PIXELS were ruled on, so a lookup that misses every key falls back to any record whose digest is this
+frame's own bytes — which is what carries a ruling across PROMOTION, when a verified frame moves out of `_staging`
+into a video's `assets/scenes/` and the same reviewed pixels exist under two names. Where more than one record applies
+to a frame the **STRICTEST** answers (any `fail` is a fail — the store's own merge doctrine), so a fresh veto on one
+copy refuses the other too. Any legacy key shape is tidied onto a frame path on the next read, and that form reaches
+disk with the next `stamp_review.py --figures` write:
 `{canonical_sha256, expression_sha256, verdicts: {"<invariant-slug>": "pass"|"fail", …}, reviewer, date}`. A
 re-review of the same id REPLACES the record wholesale; ids absent from an input are untouched (additive merge).
 **An asset with no record, with no per-invariant verdicts, with any `fail`, or whose `canonical_sha256` no

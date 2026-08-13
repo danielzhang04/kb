@@ -45,6 +45,13 @@ def _write_json(path, value):
         json.dump(value, f)
 
 
+def _drop_record(store, stem):
+    """Withdraw one named asset's ruling. Records are keyed by kit-relative PATH, so the frame
+    a key ends in is what identifies it — a bare stem names no record at all."""
+    for key in [k for k in store["figures"] if k.endswith("/" + stem + ".png")]:
+        store["figures"].pop(key)
+
+
 def _batch(kit, shots_path, out_path, scope=None):
     # P3: the channel's standing library and this video's approved frames are REVIEWED assets.
     stamp_kit(kit, os.path.dirname(shots_path))
@@ -110,10 +117,15 @@ def _l28_retry_spec(entries=None):
     # so the fixture stages the frames the way an approved run leaves them: reviewed.
     reviewed = {}
     for stem in L28_CARDS.values():
-        with open(os.path.join(kit.staging, stem + ".png"), "wb") as f:
-            f.write(PNG)
-        reviewed[stem] = {
-            "canonical_sha256": hashlib.sha256(PNG).hexdigest(), "expression_sha256": None,
+        frame = os.path.join(kit.staging, stem + ".png")
+        # DISTINCT pixels per card, keyed against the KIT the gate reads through: a ruling follows
+        # the pixels, so three cards sharing one PNG constant would (correctly) be one asset, and a
+        # root-keyed record is one the gate cannot look up at all.
+        pixels = PNG + hashlib.sha256(stem.encode()).digest()
+        with open(frame, "wb") as f:
+            f.write(pixels)
+        reviewed[forge_module.store_key(frame, kit.kit)] = {
+            "canonical_sha256": hashlib.sha256(pixels).hexdigest(), "expression_sha256": None,
             "verdicts": {"rig": "pass"}, "reviewer": "fresh-eyes", "date": "2026-08-04"}
     _write_json(os.path.join(kit.staging, "review.json"), {"figures": reviewed})
     # P3: the plate and the prop this slate seeds are reviewed assets too — same store, same
@@ -546,7 +558,7 @@ def test_a_retry_added_kit_asset_carries_its_real_kind_and_passes_the_review_gat
     # ... and with its ruling withdrawn the gate refuses it, exactly as any other prop
     store_path = os.path.join(kit.staging, "review.json")
     store = json.load(open(store_path, encoding="utf-8"))
-    store["figures"].pop("prop-drive", None)
+    _drop_record(store, "prop-drive")
     _write_json(store_path, store)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -570,7 +582,7 @@ def test_a_retry_added_crowd_exemplar_gets_a_legal_role_and_is_gated():
     assert added["role"] == "crowd", scene["seed_roles"]
     store_path = os.path.join(kit.staging, "review.json")
     store = json.load(open(store_path, encoding="utf-8"))
-    store["figures"].pop("crowd-exemplar", None)
+    _drop_record(store, "crowd-exemplar")
     _write_json(store_path, store)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):

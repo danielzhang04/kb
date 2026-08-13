@@ -326,13 +326,20 @@ ASSET_INVARIANTS = {
 }
 
 
-def invariants_for(asset_id):
+def asset_stem(asset_key):
+    """The file stem inside a store key — the key is a kit-relative PATH (`forge.store_key`), and
+    the class questions below are still asked of the frame's own name."""
+    return os.path.splitext(os.path.basename(asset_key))[0]
+
+
+def invariants_for(asset_key):
     """The rows this asset's card carries — figure invariants for a STEP-1 card, else P3's set."""
-    return FIGURE_INVARIANTS if asset_id.startswith(forge.FIGURE_PREFIX) else ASSET_INVARIANTS
+    return (FIGURE_INVARIANTS if asset_stem(asset_key).startswith(forge.FIGURE_PREFIX)
+            else ASSET_INVARIANTS)
 
 
 def pending_assets(staging, extra=()):
-    """Every asset forge would REFUSE to seed from, as `[(asset_id, path, why)]`.
+    """Every asset forge would REFUSE to seed from, as `[(store key, path, why)]`.
 
     The predicate is `forge.figure_reuse_blocker` itself — the gate, called rather than
     re-implemented — so the assets this board asks the human to rule on are exactly the assets the
@@ -358,15 +365,19 @@ def pending_assets(staging, extra=()):
             sys.exit("--assets: no PNG at %s — pass the frame forge named in its refusal "
                      "(relative to where you run this, or absolute)" % (path or "<empty path>"))
         candidates.append(path)
+    # The kit that OWNS this store — `Kit.staging` is `<kit>/_staging`, so the kit is staging's own
+    # parent. Keys are kit-relative (`forge.store_key`), so the board writes exactly the keys the
+    # gate reads, in any checkout, with no repo marker in the answer.
+    kit = os.path.dirname(os.path.abspath(staging or "."))
     pending, seen = [], set()
     for path in candidates:
-        asset_id = os.path.splitext(os.path.basename(path))[0]
-        if asset_id in seen:
+        asset_key = forge.store_key(path, kit)
+        if asset_key in seen:
             continue
-        seen.add(asset_id)
-        why = forge.figure_reuse_blocker(staging, asset_id, path)
+        seen.add(asset_key)
+        why = forge.figure_reuse_blocker(staging, path, None, kit)
         if why:
-            pending.append((asset_id, path, why))
+            pending.append((asset_key, path, why))
     return pending
 
 
@@ -384,16 +395,18 @@ def asset_verdict_skeleton(assets, reviewer="fresh-eyes", date=None):
     (`""`), and `canonical_sha256` computed from the bytes on disk right now — the same bytes the
     board just rendered, which is what the store's staleness check compares against. Which
     invariants apply is the asset's CLASS question, answered once by `invariants_for`, so a plate
-    is never asked to hold a rig. This script never writes `<staging>/review.json`:
-    `stamp_review.py` remains its only writer, and the store's `figures` wrapper key is kept
-    verbatim — renaming it would strand every verdict already on disk."""
+    is never asked to hold a rig. Records are keyed by the store key `pending_assets` already
+    resolved, never re-derived here — a second derivation is how a verdict lands under a key the
+    gate does not read. This script never writes `<staging>/review.json`: `stamp_review.py` remains
+    its only writer, and the store's `figures` wrapper key is kept verbatim — renaming it would
+    strand every verdict already on disk."""
     import time
     stamp = date or time.strftime("%Y-%m-%d")
     out = {}
-    for asset_id, path, _why in assets:
-        out[asset_id] = {"canonical_sha256": forge.frame_digest(path), "expression_sha256": None,
-                         "verdicts": {slug: "" for slug in invariants_for(asset_id)},
-                         "reviewer": reviewer, "date": stamp}
+    for asset_key, path, _why in assets:
+        out[asset_key] = {"canonical_sha256": forge.frame_digest(path), "expression_sha256": None,
+                          "verdicts": {slug: "" for slug in invariants_for(asset_key)},
+                          "reviewer": reviewer, "date": stamp}
     return {"figures": out}
 
 
@@ -446,18 +459,19 @@ def collect(video, only, staging=None, assets=()):
             ))
     order = list(S)
     cards.sort(key=lambda c: (order.index(c["sid"]), c["label"]))
-    for asset_id, path, why in pending_assets(staging, assets):
-        is_figure = asset_id.startswith(forge.FIGURE_PREFIX)
-        char = figure_character(asset_id) if is_figure else None
+    for asset_key, path, why in pending_assets(staging, assets):
+        stem = asset_stem(asset_key)
+        is_figure = stem.startswith(forge.FIGURE_PREFIX)
+        char = figure_character(stem) if is_figure else None
         canon = canon_file.get(char) if char else None
         label = "step-1 figure" if is_figure else "seeding asset"
         cards.append(dict(
-            sid=asset_id, label=label, path=path,
+            sid=stem, label=label, path=path,
             cls=label, vo="",
             anim="reference frame — no animation",
             flagged=True, reason=why,
             review_status="unreviewed",
-            invariants=list(invariants_for(asset_id).items()),
+            invariants=list(invariants_for(asset_key).items()),
             # A comparison strip needs an approved canonical to compare AGAINST; only a figure
             # card has one, so a plate or prop card shows the frame alone rather than a false pair.
             canon=[(char, canon)] if canon and os.path.exists(canon) else [],

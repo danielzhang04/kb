@@ -102,13 +102,13 @@ def test_cmd_gen_passes_each_requests_own_style_suffix_and_never_invents_one():
     seed = os.path.join(root, "seed.png"); open(seed, "wb").write(b"seed")
     # `reference` is no longer gate-exempt BY ROLE (I-1) — only the ad-hoc `gen --seed` CALL SITE
     # is — so this batch-executor fixture supplies the ruling its seed would really carry.
-    stamp_all_pass(staging, seed)
+    stamp_all_pass(staging, root, seed)
     seen = []
     def prompt_for(mode, delta, **kwargs):
         seen.append((delta, kwargs.get("suffix")))
         return delta
-    k = SimpleNamespace(staging=staging, root=root, reg=REG, resolve_seed=lambda value: value,
-                        prompt_for=prompt_for)
+    k = SimpleNamespace(staging=staging, root=root, kit=root, reg=REG,
+                        resolve_seed=lambda value: value, prompt_for=prompt_for)
     def composite(name, mode, payload, **extra):
         roles = [{"path": seed, "role": "reference", "character": None}]
         return {"name": name, "mode": mode, "payload": payload,

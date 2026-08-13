@@ -38,11 +38,17 @@ never touches it.
 
 P3 (2026-08-12) widened WHICH assets that store answers for: every class whose pixels seed a scene
 — staged STEP-1 cards, place plates, environment references, props, the crowd exemplar, and
-pose/expression primitives. Nothing about this merge changes for them. The record shape and the
-key are the same; the key is simply the asset's FILE STEM, which for a card is still its `fig-*`
-name. The `"figures"` wrapper key is kept verbatim on disk — renaming it would strand every
-verdict already recorded. The one class outside the store is a named cast member's own canonical,
-exempted by the G2 cast-mint ruling.
+pose/expression primitives. Nothing about this merge changes for them. The record shape is the
+same and the key is the asset frame's KIT-RELATIVE PATH (`forge.store_key`), which
+`build_review_artifact.py` resolves once and this merge takes verbatim from its input. The kit is
+the anchor because the store lives at `<kit>/_staging`: a repo-root-anchored key reads differently
+in a worktree with no `.env` marker than in the primary checkout, so the board would write keys the
+gate could not find. A file STEM was the key until 2026-08-13 and is not an identity — a video's
+`assets/library/crowd-exemplar.png` and the channel's `refs/base/crowd-exemplar.png` were one
+record. Any legacy key shape is migrated by DIGEST on the read below, and the migrated form lands
+on disk with this write. The `"figures"` wrapper key is kept verbatim — renaming it would strand
+every verdict already recorded. The one class outside the store is a named cast member's own
+canonical, exempted by the G2 cast-mint ruling.
 
 Usage:
     py -3 stamp_review.py --figures <input.json> <staging_dir>
@@ -57,7 +63,7 @@ batch refuses every asset the last one minted. Shape (a bare `{asset_id: record,
 also accepted, no `"figures"` wrapper required):
 
     {"figures": {
-      "<asset id — a file stem, whatever it is: fig-<char>--<pose>--<expr>--<digest>, prop-drive, L28>": {
+      "<asset id — the frame's KIT-relative path: refs/env/prop-drive.png, _staging/fig-….png>": {
         "canonical_sha256": "<sha256 of the reviewed canonical PNG>",
         "expression_sha256": "<sha256 of the expression seed, or null>",
         "verdicts": {"<invariant-slug>": "pass|fail", ...},
@@ -83,6 +89,9 @@ import json
 import os
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import forge          # same skill, same dir: the gate's own store reader, never a second one
 
 # Ruling axes: manifest/review shorthand -> human label used in parked_reasons.
 _AXES = (("f", "fidelity"), ("s", "style"), ("r", "rig"))
@@ -272,6 +281,14 @@ def _main_figures(argv) -> int:
     store = json.loads(review_path.read_text(encoding="utf-8")) if review_path.exists() else {}
     if not isinstance(store, dict):
         store = {}
+    # The one-time key migration, persisted — over the dict ALREADY LOADED one line above, never a
+    # second read of the same file. `forge.review_store` answers `{}` for a store it cannot read,
+    # so re-reading here would replace 35 curated rows with nothing if that read failed at that
+    # instant. One reader, one read, then the migration on what it returned. Only keys move:
+    # verdicts, reviewer, date and `canonical_sha256` all cross byte-for-byte, and a record no
+    # candidate frame matches keeps its key rather than being dropped.
+    store["figures"] = forge.migrate_review_store(
+        store.get("figures"), str(staging_dir), str(staging_dir.parent))
     n = merge_figure_records(store, input_data)
     _atomic_write_json(review_path, store)
     print(f"asset-review: {n} merged into {review_path}")

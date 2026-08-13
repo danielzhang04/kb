@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import forge as forge_module
+import stamp_review
 from forge import Kit, cmd_batch, figure_frame_name, resolve_request_seeds, seeding_law_violations
 from conftest import isolate_staging, stamp_all_pass, stamp_kit
 
@@ -336,11 +337,13 @@ def _staged_figure(k, digest_bytes=PNG):
 
 
 def _record(k, **overrides):
+    """The store as the WRITER leaves it: keyed by the frame's kit-relative path."""
     entry = {"canonical_sha256": overrides.pop("canonical_sha256", None),
              "expression_sha256": None,
              "verdicts": overrides.pop("verdicts", {"rig": "pass", "flat-cel": "pass"}),
              "reviewer": "fresh-eyes", "date": "2026-08-04"}
-    json.dump({"figures": {_FIG: entry}},
+    key = forge_module.store_key(os.path.join(k.staging, _FIG + ".png"), k.kit)
+    json.dump({"figures": {key: entry}},
               open(os.path.join(k.staging, "review.json"), "w", encoding="utf-8"))
 
 
@@ -525,6 +528,61 @@ def test_the_scenes_manifest_inherits_the_provenance_the_batch_derived():
         assert False, "--from-batch on a library manifest must be refused"
 
 
+def _integrity_manifest(video, entries):
+    """Emit `entries` as this video's scenes manifest through the sanctioned writer."""
+    scenes = os.path.join(video, "assets", "scenes")
+    os.makedirs(scenes, exist_ok=True)
+    spec = os.path.join(video, "entries.json")
+    json.dump(entries, open(spec, "w", encoding="utf-8"))
+    out = os.path.join(scenes, "manifest.json")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        forge_module.cmd_manifest(_kit(), "scenes", spec, out, None, "t", "")
+    return {r["shot_id"]: r for r in json.load(open(out, encoding="utf-8"))["shots"]}, buf.getvalue()
+
+
+def test_a_scenes_row_may_not_read_verified_against_a_frame_that_is_not_there():
+    """Two defects, one law. (a) 17 bricks-fresh rows read `verified` against 6c2-era PNGs that had
+    left the checkout — `verified` asserted over nothing, fyt-run-001's defect in slow motion.
+    (b) L169 carried `file: null` while its verified PNG sat on disk, so a render pass would have
+    SKIPPED a verified frame. The writer closes both, and never by deleting a row."""
+    video = tempfile.mkdtemp()
+    os.makedirs(os.path.join(video, "assets", "scenes"))
+    open(os.path.join(video, "assets", "scenes", "P2.png"), "wb").write(PNG)
+    rows, out = _integrity_manifest(video, [
+        {"shot_id": "P1", "file": "assets/scenes/P1.png", "review_status": "verified",
+         "notes": "the 6c2 frame"},
+        {"shot_id": "P2", "file": None, "review_status": "verified"},
+        {"shot_id": "P3", "file": None, "review_status": "parked",
+         "parked_reasons": ["never generated"]}])
+    assert rows["P1"]["review_status"] == "unreviewed", rows["P1"]
+    assert "assets/scenes/P1.png" in rows["P1"]["note"], rows["P1"]
+    assert rows["P1"]["file"] == "assets/scenes/P1.png", rows["P1"]     # no history loss
+    assert rows["P1"]["notes"] == "the 6c2 frame", rows["P1"]
+    assert rows["P2"]["file"] == "assets/scenes/P2.png", rows["P2"]     # the frame nothing named
+    assert rows["P2"]["review_status"] == "verified" and "note" not in rows["P2"], rows["P2"]
+    # an honestly un-verified row with no frame is the TRUTH, and is left exactly as it stands
+    assert rows["P3"] == {"shot_id": "P3", "file": None, "review_status": "parked",
+                          "parked_reasons": ["never generated"]}, rows["P3"]
+    assert "P1: verified -> unreviewed" in out and "P2: file -> " in out, out
+
+
+def test_re_emitting_a_manifest_through_the_writer_is_the_reconcile_and_settles():
+    """The reconcile entry point is the write path itself — `--kind scenes --batch <the manifest>
+    --out <the same manifest>` — so there is no second definition of an honest row."""
+    video = tempfile.mkdtemp()
+    os.makedirs(os.path.join(video, "assets", "scenes"))
+    rows, _ = _integrity_manifest(video, [
+        {"shot_id": "P1", "file": "assets/scenes/P1.png", "review_status": "verified"}])
+    manifest = os.path.join(video, "assets", "scenes", "manifest.json")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        forge_module.cmd_manifest(_kit(), "scenes", manifest, manifest, None, "t", "")
+    again = json.load(open(manifest, encoding="utf-8"))["shots"]
+    assert again == [rows["P1"]], again
+    assert "reconciled" not in buf.getvalue(), buf.getvalue()
+
+
 def test_one_derived_frame_binding_serves_both_the_place_law_and_the_retry_path():
     """M12. `<id>-fix` / `<id>.v2` naming is ONE binding. Written twice, a second naming form
     taught to only the retry path leaves the same-place law resolving a repaired frame to
@@ -548,12 +606,16 @@ def _unstamped(doc, scope=None, video=None):
 
 
 def _stamp_except(k, video, *stems):
-    """The reviewed library MINUS the named assets — the one-asset-missing probe."""
+    """The reviewed library MINUS the named assets — the one-asset-missing probe.
+
+    Records are keyed by kit-relative PATH, so a named asset is dropped by the frame its key
+    ends in, never by a bare stem the store no longer holds."""
     stamp_kit(k, video)
     store_path = os.path.join(k.staging, "review.json")
     store = json.load(open(store_path, encoding="utf-8"))
     for stem in stems:
-        store["figures"].pop(stem, None)
+        for key in [x for x in store["figures"] if x.endswith("/" + stem + ".png")]:
+            store["figures"].pop(key)
     json.dump(store, open(store_path, "w", encoding="utf-8"))
 
 
@@ -572,6 +634,24 @@ def test_a_place_plate_may_not_seed_a_scene_without_a_passing_review_record():
     assert err is None, err
     assert any(str(s).replace("\\", "/").endswith("assets/scenes/P1.png")
                for s in _by_name(spec, "P9")["seed"]), spec
+
+
+def test_the_gate_reports_every_refusal_in_the_batch_not_only_the_first():
+    """forge's own doctrine (`THE SEEDING LAW`): a violation costs $0 and the report is the
+    COMPLETE list. Raising on the first unreviewed asset made a 246-shot file a 246-run discovery
+    of what the board has to rule on anyway — and the two call sites (a minted card's own
+    primitives, the finished slate) each hid the other's."""
+    k, v = _kit(), tempfile.mkdtemp()
+    _stamp_except(k, v, "prop-drive", "expr-smug")
+    spec, err, _ = _run(_doc(
+        {"id": "T1", "place": "records-room",
+         "still_prompt": "A records-room desk with `prop-drive` set square on the blotter."},
+        {"id": "T2", "place": "map-room", "stage": "m", "stage_role": "base",
+         "still_prompt": CARD_PROMPT}), kit=k, video=v, stamp=False)
+    assert spec is None, spec
+    assert "2 refusal(s)" in err, err
+    assert "T1: prop `prop-drive`" in err, err          # the finished slate's gate
+    assert "T2: expression `expr-smug`" in err, err     # the minted card's own primitives
 
 
 def test_a_tagged_prop_or_environment_asset_is_refused_without_a_record():
@@ -617,6 +697,155 @@ def test_a_named_cast_members_own_canonical_is_never_gated():
                for r in _by_name(spec, _FIG)["seed_roles"]), spec
 
 
+def test_two_frames_sharing_a_stem_are_two_records_never_one():
+    """The store keyed on the file STEM, and a stem is not an identity: this video's
+    `assets/library/crowd-exemplar.png` and the channel's `refs/base/crowd-exemplar.png` were ONE
+    record, so a ruling on either let the other seed unruled. P4 mints the per-video exemplar,
+    which turns that collision from latent into certain."""
+    k, v = _kit(), tempfile.mkdtemp()
+    lib = os.path.join(v, "assets", "library")
+    os.makedirs(lib)
+    open(os.path.join(lib, "crowd-exemplar.png"), "wb").write(PNG + b"\0" * 512)
+    doc = _doc({"id": "C9", "place": "records-room", "figures": {"crowd": True},
+                "still_prompt": "The records room seen from the door, clerks along the back."})
+    stamp_kit(k)                     # the CHANNEL's exemplar is ruled on; the video's own is not
+    spec, err, _ = _run(doc, video=v, kit=k, stamp=False)
+    assert spec is None, spec
+    assert "crowd `crowd-exemplar`" in err and "no review record" in err, err
+    spec, err, _ = _run(doc, video=v, kit=k)          # rule on the video's frame and it seeds
+    assert err is None, err
+    assert any(str(s).replace("\\", "/").endswith("assets/library/crowd-exemplar.png")
+               for s in _by_name(spec, "C9")["seed"]), spec
+
+
+def test_a_promoted_twin_survives_the_next_ordinary_stamp_of_an_unrelated_asset():
+    """C1, end to end. A verified frame is PROMOTED out of `_staging` into the video's
+    `assets/scenes/`, so the same reviewed pixels exist twice under two names.
+
+    Keying both twins during the migration looked like it worked and did not survive one step: the
+    migration can only describe the frames present when it ran, `stamp_review.py` binds no video at
+    all, and once the re-written keys read as current the migration never ran again — so the first
+    ordinary stamp of an UNRELATED asset collapsed the binding and `--shots P2` hard-refused a
+    plate the full batch had just approved. The ruling follows the PIXELS instead, at read time."""
+    k, v = _kit(), tempfile.mkdtemp()
+    scenes = os.path.join(v, "assets", "scenes")
+    os.makedirs(scenes)
+    pixels = PNG + b"\0" * 1024
+    for path in (os.path.join(k.staging, "P1.png"), os.path.join(scenes, "P1.png")):
+        open(path, "wb").write(pixels)            # the twins: staged, and promoted
+    stamp_kit(k)                                  # the standing library, keyed as the writer keys
+    store_path = os.path.join(k.staging, "review.json")
+    store = json.load(open(store_path, encoding="utf-8"))
+    store["figures"]["P1"] = {                    # the LEGACY row: one stem-keyed plate ruling
+        "canonical_sha256": hashlib.sha256(pixels).hexdigest(), "expression_sha256": None,
+        "verdicts": {"flat-cel-hazard": "pass", "line-register": "pass"},
+        "reviewer": "g4-round1", "date": "2026-08-13"}
+    json.dump(store, open(store_path, "w", encoding="utf-8"))
+
+    def seeds_the_promoted_plate():
+        """The scoped repair operators run: the plate's minting shot is OUT of scope."""
+        spec, err, _ = _run(_scoped_place_doc(), ["P2"], video=v, kit=k, stamp=False)
+        assert err is None, err
+        return any(str(s).replace("\\", "/").endswith("assets/scenes/P1.png")
+                   for s in _by_name(spec, "P2")["seed"])
+
+    assert seeds_the_promoted_plate(), "the legacy store must admit the promoted twin"
+    # ... and now the step that broke it: an ORDINARY stamp of an UNRELATED asset, which rewrites
+    # the whole store through a writer that never sees the video.
+    verdicts = os.path.join(v, "verdicts.json")
+    json.dump({"figures": {"refs/base/unrelated.png": {
+        "canonical_sha256": "f" * 64, "expression_sha256": None, "verdicts": {"rig": "pass"},
+        "reviewer": "fresh-eyes", "date": "2026-08-13"}}},
+        open(verdicts, "w", encoding="utf-8"))
+    assert stamp_review.main(["--figures", verdicts, k.staging]) == 0
+    written = json.load(open(store_path, encoding="utf-8"))["figures"]
+    assert "P1" not in written, "the stem should have migrated onto a frame path"
+    # The store on disk holds NO key for the promoted frame and never will — which is what makes
+    # the next line a real assertion: it can only pass through the digest fallback.
+    assert forge_module.store_key(os.path.join(scenes, "P1.png"), k.kit) not in written, written
+    assert seeds_the_promoted_plate(), "the promoted twin must still pass after an ordinary stamp"
+
+
+def test_the_digest_fallback_admits_a_twin_and_never_invents_a_ruling():
+    """Hit and miss at the predicate itself. Pixels a human passed are admitted wherever a copy of
+    them sits; pixels nobody ruled on are refused, with the same message as before."""
+    k = _kit()
+    pixels = PNG + b"\0" * 512
+    ruled = os.path.join(k.staging, "ruled.png")
+    open(ruled, "wb").write(pixels)
+    stamp_all_pass(k.staging, k.kit, ruled)
+    twin = os.path.join(tempfile.mkdtemp(), "promoted-under-another-name.png")
+    open(twin, "wb").write(pixels)                # same bytes, different place AND different name
+    assert forge_module.figure_review_record(k.staging, twin, k.kit), "identical pixels, one ruling"
+    assert forge_module.figure_reuse_blocker(k.staging, twin, None, k.kit) is None
+    stranger = os.path.join(tempfile.mkdtemp(), "never-reviewed.png")
+    open(stranger, "wb").write(PNG + b"\1" * 512)
+    assert forge_module.figure_review_record(k.staging, stranger, k.kit) is None
+    assert "no review record" in forge_module.figure_reuse_blocker(k.staging, stranger, None, k.kit)
+
+
+def test_a_veto_on_one_twin_refuses_the_other_because_the_strictest_record_answers():
+    """R1, the fail-OPEN edge the digest fallback opened. Both byte-identical copies can hold their
+    OWN key — re-board one copy and it gets a record of its own — and answering with whichever was
+    found first left a freshly VETOED frame seedable under its other name. The store's merge
+    doctrine is any fail = fail, so the strictest applicable record answers for the pixels."""
+    k = _kit()
+    pixels = PNG + b"\0" * 256
+    twin_a, twin_b = os.path.join(k.staging, "twin-a.png"), os.path.join(k.staging, "twin-b.png")
+    for path in (twin_a, twin_b):
+        open(path, "wb").write(pixels)
+    stamp_all_pass(k.staging, k.kit, twin_a, twin_b)     # both ruled clean, each under its own key
+    assert forge_module.figure_reuse_blocker(k.staging, twin_b, None, k.kit) is None
+    store_path = os.path.join(k.staging, "review.json")
+    store = json.load(open(store_path, encoding="utf-8"))
+    store["figures"][forge_module.store_key(twin_a, k.kit)]["verdicts"]["human-veto"] = "fail"
+    json.dump(store, open(store_path, "w", encoding="utf-8"))
+    assert "FAILS human-veto" in forge_module.figure_reuse_blocker(k.staging, twin_a, None, k.kit)
+    assert "FAILS human-veto" in forge_module.figure_reuse_blocker(k.staging, twin_b, None, k.kit), (
+        "a veto on one copy must not leave the same pixels seedable under the other name")
+
+
+def test_a_record_whose_pixels_are_nowhere_on_disk_still_refuses():
+    """The fallback's miss case through the batch: a record whose reviewed pixels exist nowhere
+    matches no frame by key or by digest, so the frame that took its name reads as unruled. It
+    refuses and routes to the board, which is the safe direction."""
+    k = _kit()
+    _staged_figure(k)
+    json.dump({"figures": {_FIG: {"canonical_sha256": "0" * 64, "expression_sha256": None,
+                                  "verdicts": {"rig": "pass"}, "reviewer": "fresh-eyes",
+                                  "date": "2026-08-04"}}},
+              open(os.path.join(k.staging, "review.json"), "w", encoding="utf-8"))
+    spec, err, _ = _reuse_run(k)
+    assert spec is None and "no review record" in err, err
+    assert _FIG in err and "through the BUILDER" in err, err
+
+
+def test_a_legacy_stem_keyed_store_migrates_onto_frame_paths_with_its_content_intact():
+    """The one-time migration, on the READ side. Curated rows — a human FAIL veto, a grandfathered
+    standing asset — cross byte-equivalent in CONTENT; only the key moves. A record no candidate
+    frame matches keeps its key: it survives with its verdicts, no path lookup reaches it, and the
+    gate refuses until the board rules on whatever replaced it — the safe direction."""
+    kit = tempfile.mkdtemp()
+    staging, refs = os.path.join(kit, "_staging"), os.path.join(kit, "refs", "base")
+    os.makedirs(staging), os.makedirs(refs)
+    frame = os.path.join(refs, "expr-pleading.png")
+    open(frame, "wb").write(PNG)
+    veto = {"canonical_sha256": forge_module.frame_digest(frame), "expression_sha256": None,
+            "verdicts": {"rig": "pass", "flat-cel-hazard": "pass", "human-veto": "fail"},
+            "reviewer": "Daniel veto, G2 2026-08-12, P12", "date": "2026-08-12"}
+    gone = {"canonical_sha256": "0" * 64, "expression_sha256": None,
+            "verdicts": {"flat-cel-hazard": "pass"}, "reviewer": "fresh-eyes", "date": "2026-08-13"}
+    json.dump({"figures": {"expr-pleading": veto, "L28": gone}},
+              open(os.path.join(staging, "review.json"), "w", encoding="utf-8"))
+    store = forge_module.review_store(staging, kit)
+    assert store == {"refs/base/expr-pleading.png": veto, "L28": gone}, store
+    # the migrated verdict still fails the gate exactly as it did under its old key
+    assert "FAILS human-veto" in forge_module.figure_reuse_blocker(staging, frame, None, kit)
+    # a store already keyed by paths is returned as it stands — the migration is one-time
+    json.dump({"figures": store}, open(os.path.join(staging, "review.json"), "w", encoding="utf-8"))
+    assert forge_module.review_store(staging, kit) == store
+
+
 def test_the_review_store_constant_is_asset_scoped_and_the_figure_only_name_is_gone():
     assert forge_module.ASSET_REVIEW == "review.json"
     assert not hasattr(forge_module, "FIGURE_REVIEW")
@@ -631,7 +860,7 @@ def _minted_card_run(k, spec, stamped):
     card = os.path.join(k.staging, _FIG + ".png")
     open(card, "wb").write(PNG + b"\0" * 2048)   # a real staged frame passes `validate_png`
     if stamped:
-        stamp_all_pass(k.staging, card)
+        stamp_all_pass(k.staging, k.kit, card)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         forge_module.cmd_gen(k, spec, force=True, dry=True)
@@ -703,11 +932,40 @@ def test_a_plate_minted_in_this_batch_is_gated_before_its_delta_inherits_it():
     held = buf.getvalue()
     assert "P2: skip (seed awaits review)" in held, held
     assert "P1: DRY" in held, held                        # the plate itself still generates
-    stamp_all_pass(k.staging, plate)
+    stamp_all_pass(k.staging, k.kit, plate)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         forge_module.cmd_gen(k, spec, force=True, dry=True)
     assert "P2: DRY" in buf.getvalue(), buf.getvalue()
+
+
+# --- a scoped batch may not silently drop the place plate ----------------------------------------
+
+def _scoped_place_doc():
+    return _doc({"id": "P1", "place": "records-room", "still_prompt": _PLATE_PROMPT},
+                {"id": "P2", "place": "records-room", "stage": "r", "stage_role": "base",
+                 "still_prompt": "The same records room, a clerk's coat over the chair back."})
+
+
+def test_a_scope_that_excludes_an_unminted_plate_refuses_instead_of_dropping_the_place():
+    """Found live in 9c: `--shots L46` built L46 with `place = None` although shots.json declares
+    `place: miniscribe-floor`, because the plate's minting shot L28 sat outside the scope. Silent
+    wrong output on the exact per-shot repair path operators use."""
+    spec, err, _ = _run(_scoped_place_doc(), ["P2"])
+    assert spec is None, spec
+    assert "place `records-room`" in err and "`P1`" in err, err
+    assert "--shots P1,P2" in err, err
+
+
+def test_a_plate_already_on_disk_is_ordinary_reuse_and_a_scope_holding_both_shots_builds():
+    """The other branch: the refusal is about a place with NO frame anywhere, never about scoping."""
+    spec, err, _ = _run(_scoped_place_doc(), ["P2"], video=_video("P1"))
+    assert err is None, err
+    assert any(str(s).replace("\\", "/").endswith("assets/scenes/P1.png")
+               for s in _by_name(spec, "P2")["seed"]), spec
+    spec, err, _ = _run(_scoped_place_doc(), ["P1", "P2"])
+    assert err is None, err
+    assert _by_name(spec, "P2")["seed"] == ["_staging/P1.png", TILE], spec
 
 
 def test_held_scenes_are_counted_separately_from_frames_that_already_exist():
