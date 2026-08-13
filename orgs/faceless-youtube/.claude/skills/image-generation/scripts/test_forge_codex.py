@@ -2463,6 +2463,26 @@ def test_isolated_mode_uses_a_fresh_thread_per_frame():
     assert all(r["session_mode"] == "isolated" and r["turn_index"] == 1 for r in rows)
 
 
+def test_runoptions_study_composer_and_five_reference_cap_are_opt_in_only():
+    fc, k, _tmp, staging, seed = _kit_for_run("ok")
+    item = _runnable_item("P6-override", seed)
+    custom = "P6 custom composer bytes\n"
+    status, row = fc.run_item(
+        k, item, [seed] * 5,
+        fc.RunOptions(dry_run=True, compose_fn=lambda *_args: custom,
+                      seed_cap_override=fc.TRANSPORT_SEED_CEILING))
+    assert status == "DRY" and row is None
+    assert (staging / "_codex" / "prompts" / "P6-override.txt").read_text(encoding="utf-8") == custom
+    assert fc.RunOptions().compose_fn is None and fc.RunOptions().seed_cap_override is None
+    raised = None
+    try:
+        fc.run_item(k, _runnable_item("P6-invalid-cap", seed), [seed],
+                    fc.RunOptions(dry_run=True, seed_cap_override=fc.TRANSPORT_SEED_CEILING + 1))
+    except fc.CodexContractError as exc:
+        raised = str(exc)
+    assert raised is not None and "seed_cap_override" in raised
+
+
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 if __name__ == "__main__":

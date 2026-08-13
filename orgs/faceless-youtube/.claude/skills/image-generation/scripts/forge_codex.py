@@ -1054,6 +1054,10 @@ class RunOptions:
     session_span: int = 8
     keep_composed: bool = True
     register_seed_tile: str | None = None
+    # Study-only injection point.  When unset, the production composer is used unchanged.
+    compose_fn: Callable[[dict, dict, tuple[int, int], str], str] | None = None
+    # Study-only: a dedicated style reference can use the already-enforced transport ceiling.
+    seed_cap_override: int | None = None
 
 
 def run_item(k, item, seeds, opts, session=None):
@@ -1072,9 +1076,15 @@ def run_item(k, item, seeds, opts, session=None):
         raise CodexContractError(str(e)) from None
     residual = residual_idiom(item.get("payload") or "")
     item, seeds, tile_added = with_register_seed(item, seeds or [], opts.register_seed_tile)
-    prepared = prepare_seeds(item, seeds,
-                             cap=STUDY_SEED_CAP if tile_added else CODEX_SEED_CAP)
-    composed = compose_prompt(item, reg=k.reg, canvas=canvas, aspect=aspect, fmt=opts.fmt)
+    seed_cap = opts.seed_cap_override
+    if seed_cap is not None and (seed_cap < 0 or seed_cap > TRANSPORT_SEED_CEILING):
+        raise CodexContractError(f"{name}: seed_cap_override must be between 0 and "
+                                 f"{TRANSPORT_SEED_CEILING}")
+    prepared = prepare_seeds(item, seeds, cap=seed_cap if seed_cap is not None
+                             else (STUDY_SEED_CAP if tile_added else CODEX_SEED_CAP))
+    composed = (opts.compose_fn(item, k.reg, canvas, aspect)
+                if opts.compose_fn is not None
+                else compose_prompt(item, reg=k.reg, canvas=canvas, aspect=aspect, fmt=opts.fmt))
     composed_path = os.path.join(composed_prompt_dir(k.staging), f"{name}.txt")
 
     if opts.dry_run:

@@ -1,0 +1,203 @@
+{
+  "schema": "faceless-youtube/codex-image-engine-p6-registers@1",
+  "shots": {
+    "L26": {
+      "ink_hex": "#1d2116",
+      "palette": [
+        {
+          "coverage": 0.332609,
+          "hex": "#94c0b5"
+        },
+        {
+          "coverage": 0.201357,
+          "hex": "#859c91"
+        },
+        {
+          "coverage": 0.190958,
+          "hex": "#faf3d7"
+        },
+        {
+          "coverage": 0.034208,
+          "hex": "#a3cabe"
+        }
+      ],
+      "red_accent_present": true
+    },
+    "L28": {
+      "ink_hex": "#0f0f0c",
+      "palette": [
+        {
+          "coverage": 0.308479,
+          "hex": "#9aa9a5"
+        },
+        {
+          "coverage": 0.235494,
+          "hex": "#68848b"
+        },
+        {
+          "coverage": 0.173451,
+          "hex": "#d4d7c7"
+        },
+        {
+          "coverage": 0.160368,
+          "hex": "#7f8e8e"
+        }
+      ],
+      "red_accent_present": true
+    },
+    "L29": {
+      "ink_hex": "#070907",
+      "palette": [
+        {
+          "coverage": 0.380186,
+          "hex": "#748688"
+        },
+        {
+          "coverage": 0.16887,
+          "hex": "#b6bfb8"
+        },
+        {
+          "coverage": 0.163478,
+          "hex": "#f0ecd2"
+        },
+        {
+          "coverage": 0.139264,
+          "hex": "#96a39d"
+        }
+      ],
+      "red_accent_present": true
+    },
+    "L33": {
+      "ink_hex": "#080907",
+      "palette": [
+        {
+          "coverage": 0.344345,
+          "hex": "#718182"
+        },
+        {
+          "coverage": 0.190099,
+          "hex": "#8d9c99"
+        },
+        {
+          "coverage": 0.15089,
+          "hex": "#b6beb8"
+        },
+        {
+          "coverage": 0.150033,
+          "hex": "#f0ecd3"
+        }
+      ],
+      "red_accent_present": true
+    },
+    "L36": {
+      "ink_hex": "#1f1102",
+      "palette": [
+        {
+          "coverage": 0.410034,
+          "hex": "#f4e5c8"
+        },
+        {
+          "coverage": 0.186871,
+          "hex": "#cdc49b"
+        },
+        {
+          "coverage": 0.09864,
+          "hex": "#f3e3c6"
+        },
+        {
+          "coverage": 0.056914,
+          "hex": "#f6eacd"
+        }
+      ],
+      "red_accent_present": false
+    },
+    "L40": {
+      "ink_hex": "#1c1405",
+      "palette": [
+        {
+          "coverage": 0.383338,
+          "hex": "#f6e7c0"
+        },
+        {
+          "coverage": 0.118707,
+          "hex": "#f5e7c0"
+        },
+        {
+          "coverage": 0.114624,
+          "hex": "#aaa588"
+        },
+        {
+          "coverage": 0.098529,
+          "hex": "#f7e9c2"
+        }
+      ],
+      "red_accent_present": false
+    },
+    "L44": {
+      "ink_hex": "#0e100e",
+      "palette": [
+        {
+          "coverage": 0.254532,
+          "hex": "#657576"
+        },
+        {
+          "coverage": 0.252311,
+          "hex": "#849897"
+        },
+        {
+          "coverage": 0.160689,
+          "hex": "#abb6b2"
+        },
+        {
+          "coverage": 0.119657,
+          "hex": "#e9e6cf"
+        }
+      ],
+      "red_accent_present": true
+    },
+    "L46": {
+      "ink_hex": "#0d0e0b",
+      "palette": [
+        {
+          "coverage": 0.390992,
+          "hex": "#708487"
+        },
+        {
+          "coverage": 0.239438,
+          "hex": "#b0bab6"
+        },
+        {
+          "coverage": 0.142403,
+          "hex": "#919e9b"
+        },
+        {
+          "coverage": 0.06604,
+          "hex": "#d0d5c7"
+        }
+      ],
+      "red_accent_present": true
+    },
+    "L47": {
+      "ink_hex": "#1c1913",
+      "palette": [
+        {
+          "coverage": 0.268394,
+          "hex": "#b2b7af"
+        },
+        {
+          "coverage": 0.221849,
+          "hex": "#e3e0ca"
+        },
+        {
+          "coverage": 0.209528,
+          "hex": "#7b9795"
+        },
+        {
+          "coverage": 0.160316,
+          "hex": "#9b9f94"
+        }
+      ],
+      "red_accent_present": false
+    }
+  }
+}
