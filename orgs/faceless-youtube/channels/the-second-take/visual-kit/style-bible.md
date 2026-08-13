@@ -15,6 +15,12 @@ every reference frame was generated against it, so `image-generation` proposes c
   seeds off for form, and **it never appears as ITSELF** (tier bullet below). **Default aspect
   ratios:** `2:3` character
   portraits/turnarounds · `1:1` props · `16:9` scenes.
+- **A character CANONICAL RESTS.** Every cast canonical inherits the base template's RESTING expression and
+  RESTING stance unchanged; the VARIES axes below (hair, facial hair, head tone, outfit, build, age/reaction
+  linework) are the only things a canonical may differ in. Two-sided by construction — a baked emotion and a re-invented neutral are
+  the SAME defect, because this resting face is the shape every later delta re-reads as "unchanged", so one
+  cast member resting differently from another is drift in the channel's most-seeded frame. A machine-tier or
+  non-humanoid canonical holds the law in SPIRIT: symmetric, static, neutral, nothing held.
 - **The shared RIG — LOCKED, identical on every character**, which is what lets ONE reaction map onto ANY
   character: the round near-circle head (never an egg or oval), the head-to-body proportion, the facial layout
   (**NO nose**, **NO ears**, fixed feature MAP so reactions are portable), and the flat-cel **four-digit hand**
@@ -63,7 +69,8 @@ For a **new character** the delta supplies only identity-VARYING traits (hair / 
 > crowd figures instead follow the §2d CROWD-RIG clause when
 > the prompt states it (simplified: dot eyes, one simple mouth) — do NOT force this full rig onto them.
 > Hold ONLY this form — costume, pose, expression, head tone, build, and framing are set by the
-> generation delta, not here.
+> generation delta, not here, except when THIS generation is itself a new-character canonical mint,
+> where the resting expression and resting stance are invariants inherited from the base (§1).
 
 It holds **form, not identity**, so it is safe on any seeded gen; `forge.py` auto-appends it on every
 character-bearing seed (non-identity mode). The wording exempts crowds, so both rigs coexist in one frame.

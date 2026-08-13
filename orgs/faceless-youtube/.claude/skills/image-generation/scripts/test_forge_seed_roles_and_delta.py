@@ -261,11 +261,13 @@ def test_delta_allows_only_explicitly_proven_necessary_primitives_and_labels_the
     assert "expr-smug" not in "\n".join(map(str, delta["seed"])), delta["seed"]
 
 
-# P9 (taste-forensics G2) — FACE OWNERSHIP ON A DELTA. The recipe above is pinned (parent +
-# canonical, no STEP-1 card), so the authority the r2 verifier's parked L34 "CANONICAL EXPRESSION
-# LEAK" found missing is bought with PROSE, never a fifth seed: the parent's pixels own the held
-# eye/brow/mouth and stance, and the canonical owns the register they are drawn in.
-def test_delta_prose_gives_the_held_face_to_the_parent_and_the_register_to_the_canonical():
+# P9 (taste-forensics G2, COMPLETED 10b) — FACE OWNERSHIP ON A DELTA. The recipe above is pinned
+# (parent + canonical, no STEP-1 card), so the authority the r2 verifier's parked L34 "CANONICAL
+# EXPRESSION LEAK" found missing is bought with PROSE, never a fifth seed. G2 gave the parent the
+# held shape but left the canonical a REGISTER grant; the L34 identification proved that partial
+# grant is itself the leak licence, because it keeps the slate's strongest face image nameable as a
+# face authority. On a delta the grant is WITHDRAWN and the parent owns the face outright.
+def test_delta_prose_gives_the_held_face_to_the_parent_and_withdraws_it_from_the_canonical():
     shots, out = _delta_fixture()
     spec = _batch(_kit(), shots, out)
     delta = _scene(spec, "D02")
@@ -273,7 +275,10 @@ def test_delta_prose_gives_the_held_face_to_the_parent_and_the_register_to_the_c
     assert "STANCE and EXPRESSION" in text and "(eye/brow/mouth) from its pixels" in text, text
     assert "unless this request also seeds a pose or expression reference" in text, text
     assert "never re-read off the canonical" in text, text
-    assert "RENDER REGISTER" in text, text
+    # the REDUCTION: no register grant survives on a canonical sharing its slate with a parent.
+    assert "RENDER REGISTER" not in text, text
+    assert "never the face" in text, text
+    assert "identity, head tone, hair, the pinned costume" in text, text
     # face authority costs no seed — the P1 delta-recipe pin, restated at the point of change.
     assert len(delta["seed"]) == 2, delta["seed"]
 
@@ -349,6 +354,32 @@ def test_the_canonical_role_states_a_conditional_costume_and_no_this_image_only_
     assert "Never the pose" in card, card
 
 
+# 10b — the reduction is CONDITIONAL on a PARENT sharing the slate. A fresh (no-parent) recipe's
+# canonical is the only face authority such a slate has, so its register grant stands unchanged;
+# withdrawing it there would leave the face unowned, which is the opposite defect.
+def test_the_register_grant_is_withdrawn_only_when_a_parent_shares_the_slate():
+    fresh = _prose(("canonical", "miniscribe-rep", "miniscribe-rep"),
+                   ("pose", "action-powerstance", "miniscribe-rep"))
+    assert "RENDER REGISTER" in fresh, fresh
+    assert "never the face" not in fresh, fresh
+
+    delta = _prose(("parent", "D01", None), ("canonical", "miniscribe-rep", "miniscribe-rep"))
+    assert "RENDER REGISTER" not in delta, delta
+    assert "never the face" in delta, delta
+    # the surviving grants, and the pose refusal, are unchanged by the reduction
+    for kept in ("identity, head tone, hair, the pinned costume", "unless this beat authors a "
+                 "change", "Never the pose"):
+        assert kept in delta, delta
+
+    # a SECOND canonical on the same delta slate is reduced too — the leak is per-slate, not
+    # per-figure, and an unreduced second canonical is the at-cap two-figure leak one level down.
+    two_cast = _prose(("parent", "D01", None),
+                      ("canonical", "miniscribe-rep", "miniscribe-rep"),
+                      ("canonical", "terry-johnson", "terry-johnson"))
+    assert "RENDER REGISTER" not in two_cast, two_cast
+    assert two_cast.count("never the face") == 2, two_cast
+
+
 def test_the_two_cast_delta_slate_prose_stays_inside_the_adherence_band():
     """The canonical role repeats ONCE PER CAST MEMBER, so its length is multiplied by every slate
     that seeds two. The two-cast delta (parent + canonical A + canonical B) is the shape I-5
@@ -394,7 +425,9 @@ def test_every_recipe_shape_states_complete_attribute_ownership():
     delta = _prose(("parent", "D01", None), ("canonical", "miniscribe-rep", "miniscribe-rep"))
     assert "preserve its held set and existing composition" in delta, delta
     assert "STANCE and EXPRESSION" in delta, delta
-    assert "RENDER REGISTER" in delta, delta
+    # face SHAPE *and* face register are both the parent's here, so the walk is still complete
+    # without a canonical register grant — the parent's ownership is stated outright, not implied.
+    assert "shape and register both" in delta, delta
     assert "Never the pose" in delta, delta
 
     # a delta that DOES author a change: the seeded reference takes the attribute back off the

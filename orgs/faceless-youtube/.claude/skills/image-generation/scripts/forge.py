@@ -1372,6 +1372,11 @@ def _dedupe_seed_roles(entries):
 def seed_roles_text(seed_roles):
     """Provider-visible ordinal prose derived only from final ordered image parts."""
     lines = []
+    # Face ownership is a property of the SLATE, not of one part: a `parent` anywhere in the request
+    # means the held face already has an owner in pixels, so EVERY canonical on that slate is reduced
+    # (see the `canonical` branch). Computed once, before the walk, because a per-entry look-behind
+    # would work only by the accident that the parent is emitted first.
+    has_parent = any((e or {}).get("role") == "parent" for e in seed_roles or [])
     for index, entry in enumerate(seed_roles or []):
         ordinal = _ORDINALS[index] if index < len(_ORDINALS) else f"IMAGE {index + 1}"
         role = entry["role"]
@@ -1387,31 +1392,35 @@ def seed_roles_text(seed_roles):
                       "costume, pose, hands and expression exactly, and take nothing else from "
                       "the card: its blank ground is not this frame's set")
         elif role == "canonical":
-            # P9 (2026-08-12): the canonical's face grant is stated as a REGISTER grant, not a
-            # blanket one. It always owns HOW eyes/brows/mouth are drawn (bead eyes, tone, line);
-            # it owns WHICH shape they take only when nothing else in the slate holds that shape —
-            # i.e. on a fresh STEP-1 card with no expression reference. Unqualified, this role was
-            # the strongest face image on every delta slate and the model re-synthesised the face
-            # from it: the r2 verifier's parked L34 "CANONICAL EXPRESSION LEAK".
-            # Final fix round (I-4+I-5, 2026-08-12): "come from this image only" contradicted the
-            # card payload's authored-clothing branch, and the per-cast-member conditional pushed
-            # a 2-cast delta slate past the ~600-1,100-char adherence band. The parent and
-            # expression roles now assert their own ownership positively, so the enumeration of
-            # what does NOT own the shape is dropped here rather than restated.
+            # The face grant depends on the SLATE. FRESH: this is the only face present, so it owns
+            # the RENDER REGISTER — how eyes/brows/mouth are DRAWN, never the shape another seed
+            # carries. DELTA (a parent shares the slate): the grant is WITHDRAWN and the parent owns
+            # the face entire. A narrowed register-only grant was tried on the delta first and is
+            # what the L34 leak rode: "how it is drawn, not which shape" is a distinction the
+            # provider does not hold, and it left the sharpest face on the slate nameable as a face
+            # authority. Costume stays conditional either way — the STEP-1 card payload may author
+            # clothing from the beat, and an unconditional claim here would contradict it.
             detail = (f"`{character}`'s character canonical — identity, head tone, hair, the "
-                      "pinned costume unless this beat authors a change, and the face's RENDER "
-                      "REGISTER: how eyes, brows and mouth are DRAWN, never which shape they "
-                      "take where another seed carries it. Never the pose")
+                      "pinned costume unless this beat authors a change")
+            detail += (". Never the pose, and never the face: the parent image owns it outright"
+                       if has_parent else
+                       ", and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, "
+                       "never which shape they take where another seed carries it. Never the pose")
         elif role == "parent":
             # P9: the delta recipe is parent + canonical and buys no third seed for the face, so
             # the parent's own pixels are told to carry the held expression and stance — the
             # common delta (one restating the expression its chain already holds) has no other
             # owner, and the expression gate deliberately does not fire on it.
+            # 10b: the ownership is stated as TOTAL — "shape and register both" — because the
+            # canonical's partial (register) grant is now withdrawn on this slate. The attribute
+            # must land on some part explicitly; leaving the register unclaimed by anyone is how
+            # the strongest face image reclaims it by default.
             detail = ("the in-chain parent scene — preserve its held set and existing "
                       "composition, and take each held figure's STANCE and EXPRESSION "
-                      "(eye/brow/mouth) from its pixels unless this request also seeds a pose or "
-                      "expression reference for that figure; a held face is inherited here, never "
-                      "re-invented and never re-read off the canonical")
+                      "(eye/brow/mouth) from its pixels — shape and register both — unless this "
+                      "request also seeds a pose or expression reference for that figure; a held "
+                      "face is inherited here, never re-invented and never re-read off the "
+                      "canonical")
         elif role == "pose":
             detail = (f"the `{_stem(path)}` pose reference for `{character}` — copy only body pose, "
                       "hands and limb placement; ignore identity and costume")

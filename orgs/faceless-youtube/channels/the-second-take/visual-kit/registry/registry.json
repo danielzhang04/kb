@@ -73,6 +73,36 @@
       "costume": "PINNED canonical form: beige boxy home-computer case with the cast's cartoon eyes and mouth set into the front panel, short stubby arms and legs. NOTE: a personified OBJECT — never seed a human torso POSE frame onto it (bleeds a human body); expression frames route to the face panel and stance is carried in words.",
       "base": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
       "no_hands": true
+    },
+    "auditor-rep": {
+      "role": "The outside AUDITOR personified — the accounting firm's man sent to verify MiniScribe's inventory; the figure the brick-filled cartons were staged for. Appears L141-L143, L145, L147, L166, L201, L202, L213, L242.",
+      "head_tone": "#bc8b62",
+      "costume": "PINNED canonical outfit: dark charcoal three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a plain charcoal tie, ONE pair of round spectacles pushed up onto the forehead (its single identity tag), dark shoes; short dark-brown hair, clean-shaven. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png"
+    },
+    "brick-foreman": {
+      "role": "The MiniScribe warehouse/division man — rank-and-file management: packs the bricks, takes the envelope, carries the fraud's human middle. Currently UNCAST: the 2026-08-06 shots.json re-author dropped his 30 shots (L60-L201 in the prior authoring); the canonical is retained for re-cast.",
+      "head_tone": "#d39566",
+      "costume": "PINNED canonical outfit: cream short-sleeve button shirt with a narrow dark charcoal clip-on tie and tie bar, mid-brown trousers, brown shoes; short mid-brown side-parted hair, clean-shaven, plain build. No jacket, no badge. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png"
+    },
+    "hq-banker": {
+      "role": "The lending BANK personified — the institution whose money the inflated numbers were raised against. Appears L49-L51, L205, L206, L213.",
+      "head_tone": "#ebc9a3",
+      "costume": "PINNED canonical outfit: brown chalk-stripe three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a brown tie, ONE gold watch chain swagged across the waistcoat (its single identity tag), brown shoes; swept silver-grey hair, clean-shaven, heavy build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png"
+    },
+    "line-worker": {
+      "role": "An anonymous MiniScribe assembly-line worker — the human cost of the fraud, not a lead. Minted 2026-08-12 in the G4 slice for L46's human-cost beat. Appears L46.",
+      "head_tone": "#c8936b",
+      "costume": "PINNED canonical outfit: knee-length grey cotton work coat worn open over an olive button shirt and dark charcoal trousers, sleeves pushed to the forearm, plain dark work shoes; short black side-parted hair, clean-shaven, plain build. No badge, no tie. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png"
+    },
+    "qt-wiles": {
+      "role": "Q.T. Wiles — MiniScribe's chairman, the pressure at the top of the fraud. A BUSINESSMAN, never a physician: 'Dr. Fix-It' is a nickname only (Daniel's ruling, 2026-07-30), so no stethoscope, white coat, scrubs or medical prop in any shot, ever. Appears in 29 shots, L54-L236.",
+      "head_tone": "#f4d5b9",
+      "costume": "PINNED canonical outfit: steel-grey three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a grey tie, ONE gold tie clip (its single identity tag), brown shoes; swept silver-grey hair, clean-shaven, lean build. No spectacles, no pocket square. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
     }
   },
   "assets": [
