@@ -56,16 +56,17 @@ TASKS = [
  ("fix-shrug",     "SHRUGGING — both arms bent with palms turned up, shoulders raised, brows raised, a small 'who knows' mouth."),
  ("fix-thinking",  "THINKING — one hand up touching the chin, eyes glancing upward, a small pursed pondering mouth, one brow raised."),
  # --- delta expressions (map onto all cast) ---
- ("shock",         "An EXTREME shocked BIG-TAKE — jaw dropped WIDE open, eyes huge and perfectly round, brows shot right up. "
-                   "The one big reaction. Arms slightly raised in alarm."),
+ # `shock` and `pleading` REMOVED 2026-08-12 (P12): Daniel vetoed those two specific expression
+ # frames and the ruling covers "anything that calls on them in gen logic" — a mint recipe can
+ # re-create the vetoed asset, so it goes with the registry row. The EMOTIONS stay legal: a calmer
+ # shock or plea may be minted later through the Pass-1 gate, authored fresh rather than restored
+ # from these prompts, which are the ones that produced the rejected frames.
  ("despair",       "Utterly CRUSHED and defeated — eyes half-lidded and downcast, brows sloping up in the middle, a deep sad "
                    "frown, shoulders sagging. Hollow, hopeless."),
  ("fear",          "FRIGHTENED / alarmed — eyes wide with small shrinking pupils, brows up and pinched together, an open "
                    "nervous grimace mouth, a single sweat bead, leaning back slightly."),
  ("greedy",        "GREEDY and scheming — narrowed gleeful eyes, arched brows, a sly wide closed grin, both hands rubbing "
                    "together in front. Delighted and untrustworthy."),
- ("pleading",      "Earnest and PLEADING — big soft hopeful eyes, brows raised together, a small vulnerable mouth, both "
-                   "hands clasped together at the chest."),
  # --- delta poses ---
  ("accuse",        "ACCUSING — leaning forward, one arm thrust out pointing a finger sharply at the viewer, an angry "
                    "open-mouth shout, hard glaring brows."),

@@ -349,7 +349,21 @@ def test_every_recipe_shape_states_complete_attribute_ownership():
             "figure's") in changed, changed
 
     crowd = _prose(("place", "L26", None), ("crowd", "crowd-exemplar", None))
-    assert "anonymous crowd proportion and face tier" in crowd, crowd
+    # 8h fix round 1. The grant now includes the bounded head-tone set the per-video exemplar is
+    # minted to carry; "ONLY … proportion and face tier" excluded it at the payload, so P4's
+    # mechanism never reached a frame. What this assertion guards is the ROLE PROSE — it is NOT a
+    # P1 pin and never was: the P1 crowd pins (face tier, squat proportion, four-digit hand) live
+    # in test_forge_figures.py and are untouched, so no P1 coverage passes through here to be
+    # weakened. Within its own scope the pin still comes out strictly stronger:
+    #   * the granted attributes stay named verbatim and adjacent (`anonymous crowd proportion`,
+    #     `face tier`), so nothing the single old assertion checked is now unchecked;
+    #   * the EXCLUDED half is pinned for the first time. No later edit can quietly widen the grant
+    #     into dress/period/setting and homogenize every crowd in the video off one anchor frame —
+    #     the exact failure Daniel's "anchor, not a uniform" amendment names, and one the old
+    #     assertion would have passed green.
+    assert "anonymous crowd proportion, face tier" in crowd, crowd
+    assert "bounded 2-3 flat head-tone set" in crowd, crowd
+    assert "take nothing of its dress, period or setting" in crowd, crowd
     assert "preserve its set, palette, outline weight and lighting" in crowd, crowd
 
     plate = _prose(("place", "L26", None))

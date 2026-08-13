@@ -48,7 +48,8 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
      locking member count, costume, look and rig, no pose/expression; a member who ever acts alone is promoted to
      its own slot. A **recurring identifiable prop** — an object across shots whose look must MATCH — gets ONE
      canonical (`assets/library/prop-<name>.png`, prefix required) seeding every appearance, no pose/expression.
-   - A **place plate** (the frame that establishes a place and seeds every later shot in it), an **environment
+   - A **place plate** (the frame that establishes a place, seeds the shots in it, and seeds that place's own
+     2-3 variants where it declares them), an **environment
      reference**, the video's **crowd exemplar** and a **one-off prop** each earn a slot too — not because they are
      pre-generated as portable canonicals (they are not; see the Pass-1/Pass-2 split above), but because their
      PIXELS seed other scenes, and nothing seeds a scene on a ruling nobody made. A **pose / expression /
@@ -246,7 +247,7 @@ Per shot, pick the **cheapest technique that holds the locked elements**:
 | --- | --- | --- |
 | **(a) Reuse / reframe** | an on-disk frame already IS this shot | copy it to `scenes/<shot-id>.png`; manifest notes source + intended framing. No gen. |
 | **(b) Seeded composition** (default with characters) | locked character(s) in a composed environment | ONE gen, `--mode environment`, multi-seeding the shot's tagged figure frames plus any true continuity/place input. Delta = the `still_prompt`'s scene/placement facts only; pose, expression, hands and tone route by seed |
-| **(c) Character-free scene** | a map, an empty plate, an object | ONE `--mode environment`/`style` gen; a root may be zero-seed under the bible descriptor + style suffix, while a chain/anchored request keeps its continuity seed |
+| **(c) Character-free scene** | a map, a cast-free plate, an object | ONE `--mode environment`/`style` gen; a root may be zero-seed under the bible descriptor + style suffix, while a chain/anchored request keeps its continuity seed |
 | **(d) One-shot single-character** | a simple shot, one prominent character | single gen `--mode identity` seeding that character's canonical (+ its expression/pose frames); full rig check still applies |
 | **(e) Seeded delta-chain** (a held STAGE) | consecutive shots sharing a `stage` id where the change is INTEGRATIVE | the `base` uses (b)/(c)/(d); each `delta` seeds the PREVIOUS in-stage frame and changes ONLY that shot's `changed_elements`; **≤2 deltas**, then re-base or hard-cut |
 
@@ -302,8 +303,8 @@ seeded cutout. Art style, proportions and period never switch mid-chain.
 materialized into the layout the engine reads (render-builder `references/shots-motion-schema.md`). The **plate**
 `plates/<id>.png` is the scene MINUS the moved element, still reading as a **complete** object, never a blank slot.
 **Two different objects share the word "plate": this LAYERED-SHOT plate is a subtraction from ONE shot's scene, while
-a PLACE plate (§Seed law) is a whole shot — the place's first approved frame, the thing every later shot in that
-place seeds.** Materializing "the plate" for a layered shot in an established place means the subtraction, never a
+a PLACE plate (§Seed law) is a whole shot — the place's first approved frame, and the frame later shots in that
+place seed, directly or via one of the variants minted off it.** Materializing "the plate" for a layered shot in an established place means the subtraction, never a
 re-minted place frame.
 **Cutout layers** `cutouts/<id>-<layer>.png` are **always seeded** — use the layer's own **`seed`** when the plan
 names one (a reference path or a registry vocabulary name, resolved like any Pass-1 tag); otherwise fall back to the
@@ -373,8 +374,8 @@ member's own canonical — Pass 1, step 1.) The loop, in order:
    <figure-verdicts.json> <kit>/_staging`. Same single-writer law as the scene path — `stamp_review.py` is the ONLY
    writer of a verdict anywhere in this pipeline; the board writes only the skeleton, and forge only ever reads.
 
-The record shape the store keeps, per asset id — the frame's FILE STEM
-(`fig-<character>--<pose>--<expression>`, `prop-drive`, `L28`):
+The record shape the store keeps, per asset id — the frame's FILE STEM, whatever that stem is
+(`fig-<character>--<pose>--<expression>--<clause digest>`, `prop-drive`, `L28`):
 `{canonical_sha256, expression_sha256, verdicts: {"<invariant-slug>": "pass"|"fail", …}, reviewer, date}`. A
 re-review of the same id REPLACES the record wholesale; ids absent from an input are untouched (additive merge).
 **An asset with no record, with no per-invariant verdicts, with any `fail`, or whose `canonical_sha256` no
@@ -440,9 +441,10 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
   shippable — its defect strings become
   `parked_reasons`, which the gate prints, and the entry hard-errors the render), **`unreviewed`** (no ruling covered
   the shot — hard-errors like a missing scene). Uncovered entries are untouched; it never writes a `verified: true`.
-  **The same orchestrator step also records the batch's FIGURE verdicts** (`stamp_review.py --figures
-  <figure-verdicts.json> <kit>/_staging`, the loop above) — run it before the next batch generates, or every STEP-1
-  the next batch would reuse is refused.
+  **The same orchestrator step also records the batch's SEEDING-ASSET verdicts** (`stamp_review.py --figures
+  <figure-verdicts.json> <kit>/_staging`, the loop above — the flag name is kept for compatibility; the store is
+  class-agnostic) — run it before the next batch generates, or every asset the next batch would seed from is
+  refused.
 
 ## Prove it by measurement, never by eye
 

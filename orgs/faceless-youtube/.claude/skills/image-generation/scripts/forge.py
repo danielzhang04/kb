@@ -27,9 +27,13 @@ Run with native `py -3` (msys python lacks a CA bundle). No pip deps except opti
 """
 import json, os, re, ssl, sys, base64, hashlib, urllib.request, urllib.error, time, argparse, shutil, tempfile
 
+# The file that MARKS the repo root. `Kit`'s walk searches for it and `load_env` reads it, so it is
+# named once: a walk that looks for one file while the loader opens another is a silent miss.
+ENV_MARKER = ".env"
+
 def load_env(root):
     env = {}
-    p = os.path.join(root, ".env")
+    p = os.path.join(root, ENV_MARKER)
     for line in open(p, encoding="utf-8"):
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
@@ -293,13 +297,21 @@ def assemble_prompt(descriptor, payload, figures_text="", righold="", suffix="")
 class Kit:
     def __init__(self, kit, dry=False):
         self.kit = os.path.abspath(kit)
-        # repo root = two levels above channels/<name>/visual-kit -> walk up to find .env
+        # repo root = two levels above channels/<name>/visual-kit -> walk up to find the marker
         d = self.kit
-        while d and not os.path.exists(os.path.join(d, ".env")):
+        while d and not os.path.exists(os.path.join(d, ENV_MARKER)):
             nd = os.path.dirname(d)
             if nd == d: break
             d = nd
-        self.root = d
+        # The walk is unchanged; what an EXHAUSTED walk MEANS is. It used to leave `root` at the
+        # filesystem root and say nothing, so every repo-relative path resolved under the drive
+        # root and the run reported "seed frame not found" once per seed — a seeding symptom for a
+        # checkout problem, which cost this wave a full misdiagnosis. `root` is now not a usable
+        # answer in that case and says so when READ (see the property). The failure is deferred to
+        # the read rather than raised here because a worktree legitimately carries no marker and
+        # this suite's own fixtures build a `Kit` in one and then pin `root` themselves.
+        self._root = d
+        self._root_walk_failed = not os.path.exists(os.path.join(d, ENV_MARKER))
         self.bible = os.path.join(self.kit, "style-bible.md")
         self.reg_path = os.path.join(self.kit, "registry", "registry.json")
         self.refs = os.path.join(self.kit, "refs")
@@ -320,6 +332,26 @@ class Kit:
             self.key = load_env(self.root)["GEMINI_API_KEY"]
             self.url = self.url_for()
             self.ctx = ctx()
+
+    @property
+    def root(self):
+        """The repo root every repo-relative path resolves against. Reading it after an EXHAUSTED
+        walk raises instead of handing back the filesystem root, which is the silent failure this
+        replaces — it named nothing, and the run mis-reported it once per seed."""
+        if self._root_walk_failed:
+            raise SystemExit(
+                f"no repo root found above the kit: the walk searched for `{ENV_MARKER}` in every "
+                f"directory from {self.kit} up to {self._root} and found none, so `root` would be "
+                f"the filesystem root and every repo-relative path (seeds, refs, review store) "
+                f"would resolve under it. Run from a checkout that carries `{ENV_MARKER}`, or set "
+                f"`kit.root` explicitly.")
+        return self._root
+
+    @root.setter
+    def root(self, value):
+        # Pinning the root IS the sanctioned repair for a rootless checkout (a worktree, this
+        # suite's fixtures): an explicit answer replaces the walk's, and clears its failure.
+        self._root, self._root_walk_failed = value, False
 
     def use_video(self, video_dir):
         """Point this Kit at ONE video, so its own cast resolves alongside the channel's. Call it
@@ -370,7 +402,8 @@ class Kit:
 #
 # Per named figure a gen satisfies one of:
 #   (a) FRESH  — a stage-BASE / standalone gen carries that figure's STEP-1 frame (`fig-<char>--
-#       <pose>--<expression>`): the unchanged canonical+pose+expression recipe, run isolated so
+#       <pose>--<expression>--<clause digest>`): the canonical+pose+expression recipe, minted
+#       holding this beat's own derived clause (P8), run isolated so
 #       scene complexity never competes with rig-hold in one call (probe 2026-07-30: 6/6 held);
 #   (b) INHERITED — a delta beat carries the figure's CANONICAL plus an in-chain parent frame or
 #       the video's own plate, in ONE gen, exactly as today.
@@ -378,7 +411,10 @@ class Kit:
 # primitives exist for its rig, so its canonical IS the whole inheritable base) and a crowd, whose
 # seed is the crowd exemplar.
 SEED_CAP = 4                    # the Pass-2 seed law: past four, dilution weakens every prior
-FIGURE_PREFIX = "fig-"          # STEP 1's output: one portable frame per (char, pose, expression)
+FIGURE_PREFIX = "fig-"          # STEP 1's output: one portable frame per
+                                # (char, pose, expression, derived-clause digest) — see
+                                # `figure_frame_name`; P8 added the clause, which is what lets two
+                                # beats deriving different acts for one triple keep separate cards
 # `characters.base` is the shared RIG, not an on-screen character (registry `role`: "BASE TEMPLATE /
 # rig anchor — not an on-screen character"; style-bible §1: "it never appears as ITSELF"), and it is
 # NEVER cast: every human in frame is NAMED CAST or CROWD (visual-grammar §2), so `shot_cast`
@@ -1385,7 +1421,18 @@ def seed_roles_text(seed_roles):
                       f"replaces the expression `{character}` holds in the parent scene, and no "
                       "other figure's")
         elif role == "crowd":
-            detail = "the crowd exemplar — use only its anonymous crowd proportion and face tier"
+            # P4 gave every video its OWN crowd exemplar and pointed the resolution order at it,
+            # and the bounded head-tone set is precisely what that frame is minted to carry. Role
+            # prose granting "ONLY proportion and face tier" excluded it at the payload, so the
+            # tone set never reached a single frame and the crowd kept rendering cream — P4's
+            # central mechanism defeated in the one string the provider actually reads.
+            # Dress, period and setting stay EXCLUDED on purpose, and that half is load-bearing:
+            # the exemplar is an ANCHOR, not a uniform (Daniel's G2 amendment). Each scene dresses
+            # its crowd for ITS OWN era and setting (style-bible §2d), so granting costume off one
+            # frame would homogenize every crowd in the video — the failure the amendment names.
+            detail = ("the crowd exemplar — use its anonymous crowd proportion, face tier and the "
+                      "bounded 2-3 flat head-tone set it repeats; take nothing of its dress, "
+                      "period or setting, which each scene authors for itself")
         elif role == "interaction":
             detail = (f"the `{_stem(path)}` interaction template — two blank mannequins holding "
                       "the contact geometry for BOTH figures; copy only the clasp/limb geometry, "
@@ -1561,7 +1608,9 @@ def _video_scene_frame(video, candidate, root, name, field):
 
 
 def place_anchor_for(video, anchor, root, name):
-    """Resolve one human-approved, video-local place frame for a regenerated base.
+    """Resolve one human-approved, video-local place frame a shot seeds instead of minting its own
+    plate — a re-base, a standalone shot, or (P6) the selector picking WHICH of a place's 2-3
+    approved plate variants this beat seeds.
 
     A place is deliberately not a channel `refs/env/` asset: it belongs to the video that
     minted it. Keep the authoring path video-relative so a copied shot cannot silently import
@@ -1581,8 +1630,10 @@ ASSET_REVIEW = "review.json"       # C-6/P3: the per-ASSET review store, one fil
 def figure_review_record(staging_dir, fn):
     """One asset's review record, or None when the store holds no entry for it.
 
-    Keyed by the frame's FILE STEM — `fig-<char>--<pose>--<expr>` for a STEP-1 card, `prop-drive`
-    for a prop, `L28` for a place plate. One store, one key shape, every seeding asset class.
+    Keyed by the frame's FILE STEM, whatever that stem is — `fig-<char>--<pose>--<expr>--<digest>`
+    for a STEP-1 card (P8's derived-clause digest rides in the stem, so it rides in the key for
+    free), `prop-drive` for a prop, `L28` for a place plate. One store, one key shape, every
+    seeding asset class.
 
     Takes the STAGING DIR rather than a `Kit` so the review side of the loop
     (`build_review_artifact.py`, which has a video and a staging path but no key-bearing Kit) reads
@@ -1849,7 +1900,9 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
     `stage` (a continuity chain WITHIN a place, capped at 1 base + 2 deltas) and finally its own id.
     Keying on `stage` alone is what let 74 of the audited 214 shots run as independent seedless
     roots inside sets the video had already established (L89-L91): the same room, re-invented per
-    chain. One map, one key, so a place's first frame is the plate every later shot inherits."""
+    chain. One map, one key, so a place's first frame is the plate later shots inherit by default —
+    and the frame a place above the ~5-shot band seeds its 2-3 variants from, `place_anchor`
+    picking which of those a given beat takes (P6)."""
     doc = json.load(open(shots_path, encoding="utf-8"))
     # The TAIL style voice (`assemble_prompt`): fixed channel data the file carries once, copied
     # onto every scene request so `cmd_gen` appends it after the authored payload. Read here, with
@@ -1950,6 +2003,25 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         fig_roles, canon_roles, prim_roles = [], [], []
         expression_change = {}
         cast_recipe = shot_cast(k.reg, prompt)
+        # A backticked slug the registry does not carry AT ALL resolves to NOTHING, silently.
+        # `shot_cast` binds a token to a figure only when the registry gives it a primitive kind,
+        # so an unregistered slug has kind None, never enters a figure's primitive list, and every
+        # report derived from that list — the surplus line below included — is structurally blind
+        # to it. The shot then ships a pose-less, free-drawn card whose only evidence is pixels.
+        # P12 made this live rather than theoretical: it removed `expr-shock`/`expr-pleading` while
+        # 13 shots of the current file still name them, and `brick-co-seller` is the other shape —
+        # a cast member authored before it was ever minted. Read off the raw prose, because by
+        # construction the cast recipe cannot hold it.
+        #
+        # A MESSAGE, never a refusal: a shot may legitimately be authored ahead of the Pass-1 mint
+        # that gives its slug pixels (P8's asset-base-gen-first path), and the no-lint P8 verdict
+        # forecloses a guard here. `assets_omitted` is deliberately NOT honoured — that key records
+        # a REGISTERED asset held back on purpose, and letting it silence a name the registry never
+        # had would re-open the exact silence this closes.
+        unregistered = [t for t in backticked(prompt) if t not in chars and t not in reg_assets]
+        if unregistered:
+            why.append("unregistered slug(s) NOT seeded — named in the prompt, absent from the "
+                       f"registry vocabulary: {', '.join(unregistered)}")
         # Routed SCENE-level below, so they are not this figure's to carry — and not surplus
         # either: reporting them as "not seeded" would name a drop that never happened.
         scene_level = set(_interaction_primitives(k.reg, cast_recipe, omitted))

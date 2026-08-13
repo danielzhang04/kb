@@ -57,7 +57,7 @@ batch refuses every asset the last one minted. Shape (a bare `{asset_id: record,
 also accepted, no `"figures"` wrapper required):
 
     {"figures": {
-      "<asset id — a file stem, e.g. fig-<char>--<pose>--<expr>, prop-drive, L28>": {
+      "<asset id — a file stem, whatever it is: fig-<char>--<pose>--<expr>--<digest>, prop-drive, L28>": {
         "canonical_sha256": "<sha256 of the reviewed canonical PNG>",
         "expression_sha256": "<sha256 of the expression seed, or null>",
         "verdicts": {"<invariant-slug>": "pass|fail", ...},

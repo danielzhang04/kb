@@ -182,8 +182,9 @@ the channel color family. Neutral-grey-only is not a palette.
 
 `registry/registry.json` is the live index of what exists: **`characters`** (canonical file + head tone + pinned
 costume) and **`assets`** (expressions, actions, props, plates — canonical file + seed frame). **No cross-video
-environment plate exists** — a video mints its own (a `plate: true` candidate batch, human-picked once per
-place); the standing **style-anchor register frames** locked in `refs/env/` are `assets` with `kind:
+environment plate exists** — a video mints its own (a `plate: true` candidate batch, human-picked per place,
+plus the 2-3 approved VARIANTS a place above the ~5-shot band declares — `visual-grammar.md §2`); the
+standing **style-anchor register frames** locked in `refs/env/` are `assets` with `kind:
 environment`, and hold only REGISTERS, never places: the lettering + stamp hands
 (`lettering-marker-italic`, `stamp-block-outlined`) and the scene line/palette register
 (`scene-style-tile`, §5 — a style anchor, not a reusable place).

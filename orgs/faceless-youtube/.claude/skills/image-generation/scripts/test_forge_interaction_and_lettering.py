@@ -207,6 +207,77 @@ def test_a_shot_with_no_interaction_slug_is_silent():
 
 
 # =============================================================================
+# The UNREGISTERED backticked slug — named by the author, resolved by nothing
+# =============================================================================
+# `shot_cast` binds a backticked token to a figure only when the registry gives it a primitive
+# KIND; a slug the registry does not carry at all has kind `None`, so it never reaches a figure's
+# primitive list. Everything downstream is derived FROM that list — including the surplus line —
+# so the slug used to vanish between the prose and the slate with no trace anywhere: the card came
+# back pose-less and free-drawn, and the only evidence was the pixels. P12 made this live, not
+# theoretical: it removed `expr-shock` and `expr-pleading` from the library while 13 shots of the
+# current file still name them.
+#
+# The signal is a MESSAGE, never a refusal: the no-lint P8 verdict forecloses a guard here, and a
+# shot may legitimately be authored ahead of the Pass-1 mint that gives its slug pixels. The batch
+# `why` line is the deliverable an operator reads, so that is where the drop is reported.
+def test_an_unregistered_slug_is_named_in_the_batch_why_line():
+    """`expr-shock` is the real P12 removal, on the real registry."""
+    reqs = _batch([
+        {"id": "L45", "still_prompt":
+            "`terry-johnson`, `expr-shock`, recoils from the ledger on the desk."},
+    ])
+    why = reqs["L45"]["why"]
+    assert "expr-shock" in why, why
+    assert "NOT seeded" in why, why
+
+
+def test_the_unregistered_report_is_a_message_and_never_a_refusal():
+    """It must not become a gate: the slate still builds and the shot still ships a request."""
+    reqs = _batch([
+        {"id": "L45", "still_prompt":
+            "`terry-johnson`, `expr-shock`, recoils from the ledger on the desk."},
+    ])
+    assert "L45" in reqs
+    assert reqs["L45"]["seed_roles"], "the shot still seeds its cast"
+
+
+def test_an_unregistered_character_shaped_slug_is_reported_too():
+    """The live L115/L239/L240 case: a cast member authored before it was ever minted. Nothing
+    else in the pipeline can see it — it is not a primitive, so no primitive law reaches it."""
+    reqs = _batch([
+        {"id": "L115", "still_prompt":
+            "`brick-co-seller` leans over the counter beside `terry-johnson`, `expr-delighted`."},
+    ])
+    assert "brick-co-seller" in reqs["L115"]["why"], reqs["L115"]["why"]
+
+
+def test_a_registered_non_primitive_slug_is_not_reported_as_unregistered():
+    """`prop-drive` is registry kind `prop`: dropped from the cast recipe for the same mechanical
+    reason, but it IS in the vocabulary and is routed as a scene prop. Reporting it would be a
+    false alarm on every text-bearing prop shot."""
+    reqs = _batch([{"id": "L10", "still_prompt": L10_PROMPT}])
+    assert "prop-drive" not in reqs["L10"]["why"], reqs["L10"]["why"]
+
+
+def test_a_fully_registered_shot_reports_no_unregistered_slug():
+    reqs = _batch([
+        {"id": "L26", "place": "miniscribe-plant", "place_owner": "MINISCRIBE",
+         "still_prompt": "A disk-drive assembly floor, cast-free, a board carrying 'MINISCRIBE'."},
+        {"id": "L29", "place": "miniscribe-plant", "stage": "ibm-deal", "stage_role": "base",
+         "still_prompt": L29_PROMPT},
+    ])
+    assert "unregistered" not in reqs["L29"]["why"].lower(), reqs["L29"]["why"]
+    assert "unregistered" not in reqs["L26"]["why"].lower(), reqs["L26"]["why"]
+
+
+def test_base_stays_owned_by_its_own_refusal_not_by_the_unregistered_report():
+    """`base` IS in the registry (it is the rig template), so the unregistered predicate cannot
+    reach it — a casting of it is refused by name in `seeding_law_violations` (P2). Reporting it
+    in both places would give one authoring error two different remedies."""
+    assert "base" in _reg().get("characters", {})
+
+
+# =============================================================================
 # B3 — the LOCKED lettering route is DERIVED, not remembered
 # =============================================================================
 def test_text_bearing_reads_a_supplied_quoted_literal_and_not_a_possessive():

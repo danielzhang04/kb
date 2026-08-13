@@ -68,7 +68,7 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    Full law + the >~10s self-audit flag: `visual-grammar.md §1`.
 3. **Reference figures, poses, and expressions by registry vocabulary NAME, backticked, inline** in the
    prompt prose ("MacGregor, `expr-smug`, `action-salute`, stage-left, facing right"). **On a
-   registry-backed (cast or seeded) figure, never describe body pose, finger mechanics, or facial
+   registry-backed (named cast) figure, never describe body pose, finger mechanics, or facial
    expression in words** — that figure's seed carries them, and naming the asset IS the authoring act. A
    name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
    human's pre-gen approval, and a veto comes back to you as a restage.
@@ -213,7 +213,9 @@ at the first act's level.
   brand cannot appear before the VO says it, and neither can a person. When the naming line carries
   both, author it as two cuts rather than one long hold; the cadence band wants that anyway.
   *Worked example — "The company was MiniScribe, a hard drive manufacturer."* The plate takes the naming
-  clause: the cast-free assembly floor with `'MINISCRIBE'` on the board over the entrance, ~2s. The very
+  clause: the cast-free assembly floor mid-work — drives moving along the benches, machines and stock
+  running back into the depth — with `'MINISCRIBE'` on the board over the entrance, its ink stated (§5),
+  ~2s. The very
   next cut, still inside the same sentence's tail, is the reveal: `miniscribe-rep` planted in that
   doorway, seeded off the plate. The brand and the personification both land on their own line, the
   plate stays clean for everything that seeds it, and the entrance does not slip two shots downstream.
