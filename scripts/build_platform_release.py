@@ -10,7 +10,7 @@ from pathlib import Path
 RELEASE_ROOTS = (
     "dashboard/dist", "dashboard/server", "dashboard/node_modules",
     "dashboard/package.json", "dashboard/package-lock.json",
-    "dashboard/config/repositories.json", "scripts", "schemas",
+    "dashboard/config/repositories.json", "scripts", "schemas", "deploy",
 )
 
 
@@ -20,7 +20,16 @@ def release_files(source: Path) -> list[Path]:
         path = source / rel
         if not path.exists():
             raise FileNotFoundError(rel)
-        files.extend(sorted(item for item in ([path] if path.is_file() else path.rglob("*")) if item.is_file()))
+        candidates = [path] if path.is_file() else path.rglob("*")
+        files.extend(
+            sorted(
+                item
+                for item in candidates
+                if item.is_file()
+                and "__pycache__" not in item.relative_to(source).parts
+                and item.suffix not in {".pyc", ".pyo"}
+            )
+        )
     return sorted(files, key=lambda item: item.relative_to(source).as_posix())
 
 
