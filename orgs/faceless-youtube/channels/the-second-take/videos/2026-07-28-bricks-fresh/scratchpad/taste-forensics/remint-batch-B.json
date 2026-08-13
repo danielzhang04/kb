@@ -1,0 +1,57 @@
+[
+ {
+  "name": "brick-foreman-resting",
+  "character": "brick-foreman",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/brick-foreman/brick-foreman.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, the MiniScribe warehouse foreman. IDENTITY (take from the SECOND reference image): short mid-brown side-parted hair, clean-shaven, plain build, flat head tone #d39566; costume is a cream short-sleeve button shirt with a narrow dark charcoal clip-on tie and a tie bar, mid-brown trousers, brown shoes. No jacket, no badge. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ },
+ {
+  "name": "macgregor-resting",
+  "character": "macgregor",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/macgregor/macgregor-base.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, Gregor MacGregor. IDENTITY (take from the SECOND reference image): swept dark-brown hair with full mutton-chop sideburns, flat head tone #d9ac82; costume is a deep crimson hussar coat with gold frogging, gold fringed epaulettes, ONE silver-ribboned gold order-star medal on the chest, dark trousers, dark boots. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ },
+ {
+  "name": "hastie-resting",
+  "character": "hastie",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/hastie/hastie.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, James Hastie. IDENTITY (take from the SECOND reference image): tousled greying-brown hair, clean-shaven, sturdy build, flat head tone #f5ead6; costume is a worn brown working-man coat over a tan waistcoat and a dark neckcloth, plain brown trousers and boots. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ },
+ {
+  "name": "hastie-wife-resting",
+  "character": "hastie-wife",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/hastie-wife/hastie-wife.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, the wife of James Hastie. IDENTITY (take from the SECOND reference image): greying hair gathered under a cream linen mob cap, flat head tone #f5ead6; costume is a long muted-earth wool dress with a dark shawl crossed over the shoulders, an apron, and worn boots. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ },
+ {
+  "name": "pc-boxy-resting",
+  "character": "pc-boxy",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/pc-boxy/pc-boxy.png"
+  ],
+  "delta": "A full-body reference sheet of ONE personified MACHINE character: a beige boxy 1980s home computer with a face. It is NOT a human and has NO human head, NO human torso, NO neck and NO hands. FORM (take from the SECOND reference image): a beige boxy home-computer case, its greenish screen recessed in the front panel carrying the cast's cartoon eyes and mouth, a horizontal floppy-drive slot below the screen, and four short stubby limbs (two stubby arms, two stubby legs) with rounded ends and NO hands and NO fingers. Flat head/case tone #e8dcc0. RENDER (copy EXACTLY from the FIRST reference image): a clean FLAT CEL cartoon render, flat colours at full cel strength with an even medium-thick dark warm brown-black #241a12 outline on every edge. It must NOT be painterly, NOT airbrushed, NOT soft-blended, NOT textured and NOT sketchy. RESTING FACE (copy the eye and mouth SHAPE EXACTLY from the FIRST reference image, into the screen panel): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows above them, and a small closed mouth with the faintest upturn at its corners. Both eyes look straight out at the viewer, level and symmetric. RESTING STANCE: the case faces the viewer perfectly square-on and symmetric, standing still and upright with both stubby arms hanging straight down at its sides and both stubby legs planted flat, side by side and evenly. It is NOT walking, NOT striding, NOT turning and NOT tilted; no leg is lifted or forward. It holds NOTHING. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ }
+]

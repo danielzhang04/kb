@@ -1,0 +1,82 @@
+{
+  "drive-maker": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered upper eyelids, small dark pupils set high, thin level brows, small closed mouth with only the faintest upturn, eyes level and forward; stands straight and frontal, both arms hang straight down at the sides with both hands open and empty, feet flat and evenly planted, nothing carried or touched.",
+      "identity_per_registry": "Brown knee-length warehouse coat worn open over a collared shirt visible in the open V (no visible logo/text), flat cap present with sandy hair showing at the sides, mid-brown trousers, brown work boots, wiry build; breast pocket on the coat is a plain unlabeled rectangle. Head tone reads as the registry's tan (#dba97d). No text/logo anywhere in frame."
+    }
+  },
+  "bond-investor": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lidded eyes looking straight out, small pupils, thin brows, mouth is a level closed line (flat, not an open grin or a frown) which sits within the 'at most faintest upturn' allowance; stands straight/frontal, arms straight down at sides, hands open and empty at the sides, feet flat and evenly planted.",
+      "identity_per_registry": "Fawn/tan knitted button cardigan over a visible open-collar cream shirt, brown corduroy-ribbed trousers, thin grey hair combed over, wire-rimmed spectacles. TARTAN SLIPPERS clearly visible on both feet (red/green plaid pattern) -- the load-bearing detail is present and unambiguous. No visible text or logo."
+    }
+  },
+  "return-customer": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Eyes heavy-lidded and forward-looking, brows level, mouth reads as a flat neutral line under the beard with no grin/frown/open mouth visible; stands straight and frontal, arms straight down at the sides, hands open and empty, feet flat and planted apart evenly.",
+      "identity_per_registry": "Navy quilted delivery coat with horizontal quilting texture, a rectangular breast patch on the chest that is plain and blank -- no lettering or logo on it -- dark trousers, heavy brown boots, a knitted navy beanie pushed back off the forehead, thick dark beard, broad/stocky build. No visible text anywhere in the frame."
+    }
+  },
+  "brick-co-seller": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered eyelids, small pupils set high, level brows, small closed mouth with only a faint upturn visible above the moustache, eyes level and forward; stands straight and frontal, arms straight down at the sides, hands open and empty (dirt/stain marks on the apron but nothing held), feet flat and planted.",
+      "identity_per_registry": "Dusty tan work shirt with sleeves rolled to the forearm and visible dirt smudging, heavy canvas apron (also dirt-stained, with a front pocket), wide-brimmed straw hat worn level/square on the head (not pushed back or tilted), dark work trousers and boots, weathered wrinkled face, greying moustache. No text or logo visible anywhere."
+    }
+  },
+  "tv-chef": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lidded eyes forward, thin level brows, small closed mouth with a faint upturn only, symmetric and level; stands straight and frontal, arms straight down at the sides, hands open and empty, feet flat and evenly planted.",
+      "identity_per_registry": "Double-breasted white chef's jacket with a full column of round buttons, sleeves shoved to the elbow, mid-blue apron tied at the waist with a visible bow, dark checked/plaid trousers, cropped fair hair, bare-headed (no toque or hat). The face is a generic rounded cartoon face with no distinguishing features that would read as a likeness of any specific real television chef. No text/logo visible."
+    }
+  },
+  "trial-judge": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "fail"
+    },
+    "evidence": {
+      "resting_face": "Eyes heavy-lidded and level, brows level (slightly close-set but not raised or angled), mouth is a flat closed line with no grin/frown; stands straight and frontal, arms straight down at the sides with hands open and empty visible at the sleeve cuffs, feet flat and planted under the robe.",
+      "identity_per_registry": "Black judicial robe over a white wing-collar/jabot, close-cropped white hair, jowly rounded face all match. However the spectacles are drawn as complete round/oval wire-frame lenses with a visible rim both above and below the pupils, not the flat-topped half-moon/crescent shape the registry specifies (where the top of the lens is open so the wearer looks over it) -- they read as ordinary glasses positioned low on the nose rather than true half-moon reading spectacles, so I am ruling this element unmet."
+    }
+  },
+  "hr-officer": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lidded eyes forward, thin level brows, small closed mouth with a faint upturn only, eyes symmetric and level; stands straight and frontal, arms straight down at the sides, hands open and empty, feet flat and evenly planted.",
+      "identity_per_registry": "Rust-red knitted button cardigan over a cream blouse with visible collar, long brown herringbone/tweed skirt, brown flat shoes, dark hair pinned up in a bun, and reading spectacles clearly hanging on a chain resting on the chest (the specifically called-out detail, unambiguously present). Cast's only female figure, correctly depicted. No text/logo visible."
+    }
+  },
+  "crowd-exemplar": {
+    "axes": {
+      "crowd_head_tones": "pass",
+      "crowd_era_dress": "pass"
+    },
+    "evidence": {
+      "crowd_head_tones": "Across the 6 figures I count roughly 3 distinct flat head tones: one pale/light figure (leftmost, close to #f5ead6), a medium-tan cluster (2nd, 3rd and 5th figures, close to #e2b78c), and two darker-brown figures (4th and 6th, close to #7a4f33). The set is not uniform and does not read as invented-per-individual -- it cycles a small repeating palette.",
+      "crowd_era_dress": "All 6 wear plain shirt-sleeved office clothing: crew-neck and V-neck knit sweaters/cardigans over collared shirts, plain straight skirts (navy, brown, blue-grey) or plain trousers (brown, navy, grey), and flat shoes/loafers/pumps. No hats, no period costuming from another decade, and no visible lettering, logos, badges or brand marks on any figure -- reads as ordinary 1980s American office/workplace dress."
+    }
+  }
+}

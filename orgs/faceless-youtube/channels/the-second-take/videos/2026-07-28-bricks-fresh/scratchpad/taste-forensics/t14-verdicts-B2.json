@@ -1,0 +1,92 @@
+{
+  "trial-judge-r1": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "fail",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "The bald/white-haired head reads as a round near-circle, only slightly taller than wide, matching the base rig proportion.",
+      "no_nose_no_ears": "A distinct ear is visible on the right side of the head at eye level beside the glasses temple: a skin-toned rounded protrusion with an inner curved line (tragus-like detail) separate from the hair silhouette — a clear ear outline. No nose shape is drawn (the flat area between the glasses and mustache-free mouth is bare), but the ear alone fails this axis.",
+      "four_digit_hands": "The one hand visible at the sleeve cuff (viewer-left) shows a small rounded shape with finger-crease lines consistent with the three-finger-plus-thumb rig; no five-finger spread is visible.",
+      "proportion": "Despite the long floor-length robe, the head-to-total-height ratio still reads close to the base's roughly-3.5-heads proportion, and shoulder/robe width is not stick-thin.",
+      "flat_cel_render": "The black robe is a flat fill with clean vertical cel-shading fold lines, the white jabot is flat white, and the face uses standard flat cel shading — no gradient, airbrush, or texture noted.",
+      "outline_consistency": "The outline around hair, face, glasses, robe silhouette and hem is even and medium-thick throughout with no thinning or missing segments."
+    }
+  },
+  "drive-maker-r1": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Head is a round near-circle, only slightly taller than wide, matching the base rig.",
+      "no_nose_no_ears": "Both sides of the head under and beside the flat cap show only smooth bare skin down to the jawline with blonde hair strands at the forehead — no ear outline on either side, and no nose/nostril line between the eyes and mouth.",
+      "four_digit_hands": "Both hands hanging at the sides show simple rounded shapes with finger-crease lines consistent with the three-finger-plus-thumb rig; no five-digit spread visible.",
+      "proportion": "Large round head over a short compact coated body matches the squat base proportion.",
+      "flat_cel_render": "Coat, cap, and trousers are flat brown color fills with clean soft cel-shading folds; no gradient, airbrush, or texture-field issues.",
+      "outline_consistency": "The dark outline is even and medium-thick across cap, face, coat, and shoes with no missing or thinning segments."
+    }
+  },
+  "return-customer-r1": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "fail",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "The face/skull shape under the beanie is a round near-circle, only slightly taller than wide.",
+      "no_nose_no_ears": "The beanie descends nearly to where the full beard begins on both sides, so no exposed ear-zone skin is shown and no ear outline appears; the area above the mustache/beard between the eyes is flat skin with no nose or nostril line.",
+      "four_digit_hands": "Both hands at the sides show simple rounded shapes with finger-crease lines consistent with the three-finger-plus-thumb rig; no five-digit spread visible.",
+      "proportion": "Large round head over a short compact jacketed body matches the squat base proportion.",
+      "flat_cel_render": "The quilted jacket is covered edge-to-edge with a repeated diamond-lattice stitch pattern drawn in lines clearly thinner than the figure's main outline, reading as a textured fabric fill rather than a flat colour panel — the kind of fine repeated micro-pattern the style bible calls out as a fail.",
+      "outline_consistency": "The figure's exterior silhouette outline (head, jacket edge, trousers, boots) is even and medium-thick; the defect is confined to the interior quilting texture, not the outline itself."
+    }
+  },
+  "brick-co-seller-r1": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "fail",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "The head is a round near-circle, only slightly taller than wide, consistent with the base rig.",
+      "no_nose_no_ears": "The straw hat brim covers the entire ear zone on both sides down to where hair/skin meets the brim shadow, showing no ear outline; between the eyes and the moustache the skin is flat with only crow's-feet wrinkle lines — no nose bridge, nostril line, or shading shaped like a nose.",
+      "four_digit_hands": "Both hands at the sides are simple rounded shapes with finger-crease lines consistent with the three-finger-plus-thumb rig; no five-digit spread visible.",
+      "proportion": "Large round head over a short compact aproned body matches the squat base proportion.",
+      "flat_cel_render": "The apron is covered in mottled, blotchy stain patches in varying brown/rust tones with soft blended edges — a grunge/gradient texture rather than a flat colour fill, which is a textured-render fail.",
+      "outline_consistency": "The main figure outline (hat brim, face, shirt, apron edge, trousers) is even and medium-thick; the stain texture does not affect the outline weight itself."
+    }
+  },
+  "hr-officer-r1": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "fail",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "The head is a round near-circle, only slightly taller than wide, consistent with the base rig.",
+      "no_nose_no_ears": "Hair swept back into the pinned-up bun fully covers both sides of the head at ear height with no ear outline exposed; between the eyes and mouth the skin is flat with no nose or nostril line.",
+      "four_digit_hands": "Both hands at the sides are simple rounded shapes with finger-crease lines consistent with the three-finger-plus-thumb rig; no five-digit spread visible.",
+      "proportion": "Large round head over a short compact cardigan-and-skirt body matches the squat base proportion.",
+      "flat_cel_render": "The skirt is rendered edge-to-edge with a dense herringbone/tweed weave pattern of fine diagonal lines, reading as a textured fabric fill rather than a flat colour panel — a repeated fine-line micro-pattern the style bible calls out as a fail.",
+      "outline_consistency": "The figure's exterior outline (hair, cardigan, skirt hem, shoes) is even and medium-thick; the defect is confined to the interior skirt texture, not the outline itself."
+    }
+  }
+}

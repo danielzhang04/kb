@@ -1,0 +1,28 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-slump--expr-worried--def769f5.png": {
+   "canonical_sha256": "466b11a812ab98e36992162687ddd021298c57749ec725c81edc9a937837025e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "fail",
+    "flat-cel-hazard": "fail",
+    "pose": "fail"
+   },
+   "reviewer": "parked on pose - P10 defect:pose retry did not move the body, fresh verifier pair confirmed the second fail (provenance: assets/scenes/manifest.json L48/L39 + assets/_review/merged.json). Row RECONSTRUCTED 2026-08-13 by task-14 after its grandfather skeleton blanked the verdicts; no axis set to pass, park stands.",
+   "date": "2026-08-13"
+  },
+  "_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27.png": {
+   "canonical_sha256": "dfd1816ca4593ed2719d69580b1df420aa2d66697aee0002f1061782ab09a805",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "fail",
+    "flat-cel-hazard": "fail",
+    "pose": "fail"
+   },
+   "reviewer": "parked on pose - P10 defect:pose retry did not move the body, fresh verifier pair confirmed the second fail (provenance: assets/scenes/manifest.json L48/L39 + assets/_review/merged.json). Row RECONSTRUCTED 2026-08-13 by task-14 after its grandfather skeleton blanked the verdicts; no axis set to pass, park stands.",
+   "date": "2026-08-13"
+  }
+ }
+}

@@ -1,0 +1,13 @@
+[
+ {
+  "name": "brick-foreman-resting",
+  "character": "brick-foreman",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/brick-foreman/brick-foreman.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, the MiniScribe warehouse foreman. IDENTITY (take from the SECOND reference image): short mid-brown side-parted hair, clean-shaven, plain build, flat head tone #d39566; costume is a cream short-sleeve button shirt with a narrow dark charcoal clip-on tie and a tie bar, mid-brown trousers, brown shoes. No jacket, no badge. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ }
+]

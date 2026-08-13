@@ -1,0 +1,57 @@
+[
+ {
+  "name": "qt-wiles-resting",
+  "character": "qt-wiles",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/qt-wiles/qt-wiles.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, Q.T. Wiles. IDENTITY (take from the SECOND reference image): swept silver-grey hair, clean-shaven, lean build, flat head tone #f4d5b9; costume is a steel-grey three-piece suit (jacket, matching waistcoat and trousers) over a white shirt with a grey tie, ONE small gold tie clip on the tie, brown shoes. No spectacles, no pocket square, no other accessory. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ },
+ {
+  "name": "ibm-suit-resting",
+  "character": "ibm-suit",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/ibm-suit/ibm-suit.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, the IBM man. IDENTITY (take from the SECOND reference image): close-cropped grey hair, clean-shaven, broad heavy mass on the squat rig proportion, flat head tone #7a4f33; costume is a crisp navy pinstripe three-piece suit (jacket, matching waistcoat and trousers) over a white shirt with a plain dark tie, ONE plain white pocket square folded at the breast pocket, polished dark shoes. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ },
+ {
+  "name": "terry-johnson-resting",
+  "character": "terry-johnson",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/terry-johnson/terry-johnson.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, Terry Johnson. IDENTITY (take from the SECOND reference image): thinning fair hair combed back with the side hair filling the ear gap, one small trimmed fair moustache, lean build, flat head tone #f5ead6; costume is a white business shirt in shirtsleeves with both cuffs turned back to the forearm, a thin dark tie, plain dark trousers and dark shoes, no jacket. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ },
+ {
+  "name": "auditor-rep-resting",
+  "character": "auditor-rep",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/auditor-rep/auditor-rep.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, the outside auditor. IDENTITY (take from the SECOND reference image): short dark-brown hair, clean-shaven, flat head tone #bc8b62; costume is a dark charcoal three-piece suit (jacket, matching waistcoat and trousers) over a white shirt with a plain charcoal tie, ONE pair of round spectacles pushed up onto the forehead and WORN there, dark shoes. He holds NO ledger, NO book, NO folder, NO briefcase and no object of any kind: both hands are empty. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ },
+ {
+  "name": "miniscribe-rep-resting",
+  "character": "miniscribe-rep",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/miniscribe-rep/miniscribe-rep.png"
+  ],
+  "delta": "A full-body standing character reference sheet of ONE cast member, the MiniScribe man. IDENTITY (take from the SECOND reference image): short dark-brown side-parted hair, clean-shaven, stocky build, flat head tone #e2b78c; costume is a boxy tan blazer worn open over a brown open-collar shirt, chest and lapels plain with no badge, pin or logo, plain dark trousers and dark shoes. RESTING FACE (copy EXACTLY from the FIRST reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the FIRST reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ }
+]

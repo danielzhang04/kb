@@ -1,0 +1,52 @@
+{
+  "trial-judge-r1": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "fail"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered lids, level thin brows, small closed mouth with only a faint upturn, eyes level and forward; standing straight and frontal, arms hanging down, both hands open and empty at the sides, feet flat and evenly planted, robe sleeves loose and nothing carried.",
+      "identity_per_registry": "Black robe with white court collar, close-cropped white hair, and jowly build all match, but the spectacles are drawn as thin oval/round wire-rim frames with a visible rim line above the eyes and a bridge across the nose bridge at pupil height — the eyes sit behind the lenses rather than looking over a flat top edge, so this is still a full-rim shape rather than the pinned half-moon/crescent low-on-the-nose reading spectacles; this is the exact defect the retry was meant to fix and it recurs."
+    }
+  },
+  "drive-maker-r1": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered lids, thin level brows, small closed mouth with only a faint upturn, eyes forward and level; standing straight and frontal, arms down, both hands open and empty at the sides, feet flat and evenly planted, nothing carried or touched.",
+      "identity_per_registry": "Brown knee-length warehouse coat worn open over a plain cream collarless shirt, flat cap over short sandy hair, mid-brown trousers, brown work boots, wiry build, breast pocket plain and unlettered, collar open — all pinned elements present and no visible text/logo anywhere."
+    }
+  },
+  "return-customer-r1": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered lids and level brows visible above the beard, no grin/frown/open mouth discernible, eyes level and forward; standing straight and frontal, arms down, both hands open and empty at the sides, feet flat and evenly planted, nothing carried.",
+      "identity_per_registry": "Navy quilted delivery coat with a plain unlettered rectangular breast patch, dark trousers, heavy brown lace-up boots, dark full beard, broad build, navy knitted beanie on the head — all pinned elements present and no visible text/logo; the beanie sits at a fairly standard height rather than clearly pushed back off the forehead, a minor deviation from 'pushed back' but not a costume-element mismatch."
+    }
+  },
+  "brick-co-seller-r1": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered lids, level brows, mouth neutral under the moustache with no visible grin/frown, eyes forward and level; standing straight and frontal, arms down, both hands open and empty at the sides, feet flat and evenly planted, nothing carried.",
+      "identity_per_registry": "Dusty tan work shirt with sleeves rolled to the elbow, heavy stained canvas apron, wide-brimmed straw hat worn square/level (not tilted), dark work trousers and boots, weathered face with a greying moustache — all pinned elements present and no visible text/logo."
+    }
+  },
+  "hr-officer-r1": {
+    "axes": {
+      "resting_face": "pass",
+      "identity_per_registry": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered lids, thin level brows, small closed mouth with only a faint upturn, eyes forward and level; standing straight and frontal, arms down, both hands open and empty at the sides, feet flat and evenly planted in flat shoes, nothing carried.",
+      "identity_per_registry": "Rust-red knitted cardigan open over a cream blouse, long brown tweed herringbone skirt reaching near the ankle, brown flat shoes, dark hair pinned up in a bun, slight build, round reading spectacles resting on the chest on a visible thin chain around the neck — all pinned elements present and no visible text/logo."
+    }
+  }
+}

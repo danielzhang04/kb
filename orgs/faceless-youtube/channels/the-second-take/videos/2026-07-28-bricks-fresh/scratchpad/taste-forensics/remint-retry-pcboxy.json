@@ -1,0 +1,13 @@
+[
+ {
+  "name": "pc-boxy-resting-r1",
+  "character": "pc-boxy",
+  "mode": "new_character",
+  "aspect": "2:3",
+  "seed": [
+   "refs/base/base.png",
+   "refs/pc-boxy/pc-boxy.png"
+  ],
+  "delta": "A full-body reference sheet of ONE personified MACHINE character: a beige boxy 1980s home computer with a face. It is NOT a human and has NO human head, NO human torso, NO neck and NO hands. FORM (take from the SECOND reference image): a beige boxy home-computer case, its greenish screen recessed in the front panel carrying the cast's cartoon eyes and mouth, a horizontal floppy-drive slot below the screen, and four short stubby limbs (two stubby arms, two stubby legs) with rounded ends and NO hands and NO fingers. Flat head/case tone #e8dcc0. RENDER (copy EXACTLY from the FIRST reference image): a clean FLAT CEL cartoon render, flat colours at full cel strength with an even medium-thick dark warm brown-black #241a12 outline on every edge. It must NOT be painterly, NOT airbrushed, NOT soft-blended, NOT textured and NOT sketchy. RESTING FACE (copy the eye and mouth SHAPE EXACTLY from the FIRST reference image, into the screen panel): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows above them, and a small closed mouth with the faintest upturn at its corners. Both eyes look straight out at the viewer, level and symmetric. RESTING STANCE, drawn as a STRICT FLAT FRONT ELEVATION: the case is seen from DIRECTLY in front, dead-on and orthographic, so its front panel is a perfectly upright RECTANGLE filling the whole body silhouette. NO side panel, NO top panel and NO bevelled edge strip is visible anywhere: you cannot see any face of the box except the front one, and there is ZERO perspective, ZERO turn and ZERO tilt. The silhouette is exactly mirror-symmetric about a vertical centre line. Both stubby arms hang straight down against the sides at the SAME height and the SAME angle as each other, mirrored. Both stubby legs are the SAME length, planted flat, level and side by side with an even gap between them, both feet pointing straight at the viewer and both level on the ground: neither leg is lifted, bent, forward, behind, or angled. It is NOT walking, NOT striding, NOT turning and NOT tilted. It holds NOTHING. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text."
+ }
+]

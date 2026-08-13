@@ -1,0 +1,148 @@
+{
+  "drive-maker": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "fail",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "The flat-cap hides the crown but the visible face (cheek-to-jaw curve) reads as a round near-circle, consistent with the base template's roundness.",
+      "no_nose_no_ears": "A distinct ear is drawn on the character's left side, poking out from under the cap brim with a visible inner-ear line (tragus curve) -- a clear FAIL. No nose is drawn.",
+      "four_digit_hands": "Both resting hands at the sides show the standard simplified mitt shape with finger-separation lines reading as three fingers plus a thumb, matching the base rig hand.",
+      "proportion": "Large round head over a short compact body in the long coat -- squat proportion matches the base template, not tall or lanky.",
+      "flat_cel_render": "Flat colour fills throughout (cap, coat, trousers) with banded cel-style shading, no airbrush/gradient blending, greys in the coat read clearly warm-brown-tinted.",
+      "outline_consistency": "Even medium-thick dark warm-brown-black outline runs continuously around cap, face, coat and limbs with no thin or missing segments."
+    }
+  },
+  "bond-investor": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Head is a round near-circle, only slightly taller than wide, closely matching the base template's proportions.",
+      "no_nose_no_ears": "No nose shape is drawn (only a horizontal wrinkle line under the glasses); the grey side hair fully covers the ear area on both sides with no ear silhouette visible.",
+      "four_digit_hands": "Both hands hang at the sides showing the simplified three-finger-plus-thumb mitt shape consistent with the base rig hand, no extra digits visible.",
+      "proportion": "Large round head on a short, slightly stocky cardigan-clad body -- squat proportion held, not elongated.",
+      "flat_cel_render": "Flat colour fills on cardigan, shirt and trousers with soft cel shading bands; the ribbed cuffs/hem are a flat pattern detail, not a gradient or airbrush effect; the striped trousers read as warm brown tones, not drained grey.",
+      "outline_consistency": "Even medium-thick warm-brown-black outline is continuous across hair, glasses frames, face and clothing."
+    }
+  },
+  "return-customer": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "fail",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Head reads as a round near-circle under the beanie, only slightly taller than wide.",
+      "no_nose_no_ears": "Both ears are clearly and unmistakably drawn poking out from under the beanie on both sides of the head, each with a visible inner curve line -- a clear FAIL. No nose is drawn (beard covers the lower face without a nose bump).",
+      "four_digit_hands": "Both resting hands show the simplified mitt with finger-separation lines reading as three fingers plus thumb, consistent with the rig hand, no five-digit hand visible.",
+      "proportion": "Large round head on a short, compact puffer-jacket body -- squat proportion matches the base template.",
+      "flat_cel_render": "Flat navy colour fill on the puffer jacket with clean cel shading bands and quilted-seam linework (a design detail, not a gradient/airbrush texture); dark trousers read as warm-tinted near-black, not drained grey.",
+      "outline_consistency": "Even medium-thick dark outline runs continuously around beanie, beard, jacket and boots with no thin or missing sections."
+    }
+  },
+  "brick-co-seller": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "fail",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "The sun hat covers the crown but the visible face is round enough, only slightly taller than wide, in line with the base template.",
+      "no_nose_no_ears": "A distinct nose shape with a nostril line is drawn above the mustache, and an ear is also visible on the character's right side beneath the hat brim -- a double FAIL (both nose and ear present).",
+      "four_digit_hands": "Both hands at the sides show the simplified mitt shape with finger lines reading as three fingers plus thumb, consistent with the rig.",
+      "proportion": "Large round head on a short, stocky apron-clad body -- squat proportion held, not tall or lanky.",
+      "flat_cel_render": "Flat warm-brown colour fills throughout (hat, shirt, apron, boots) with soft cel shading; the dirt-stain marks on the apron are flat stylized blobs, not a gradient/painterly texture; no drained greyscale patches.",
+      "outline_consistency": "Even medium-thick dark warm-brown-black outline is continuous around hat, face, apron and boots."
+    }
+  },
+  "tv-chef": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Head is a clean round near-circle, only slightly taller than wide, matching the base.png template almost exactly.",
+      "no_nose_no_ears": "No nose is drawn; the blonde hair fully covers both ear positions down to the jawline with no ear silhouette visible.",
+      "four_digit_hands": "Both resting hands show the simplified mitt shape with finger-separation lines reading as three fingers plus thumb, consistent with the base rig hand.",
+      "proportion": "Large round head over a short compact chef's-whites body -- squat proportion matches the base template closely.",
+      "flat_cel_render": "Flat colour fills on the chef whites, apron and plaid trousers with soft cel shading; the plaid pattern is drawn in bold, non-hairline lines as a flat design element, not painterly texture.",
+      "outline_consistency": "Even medium-thick dark warm-brown-black outline is continuous across hair, whites, apron and trousers."
+    }
+  },
+  "trial-judge": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Head reads as a round near-circle, only slightly taller than wide, in line with the base template.",
+      "no_nose_no_ears": "No nose shape is drawn (only a wrinkle line under the glasses bridge); the white hair fully covers both ears with no ear silhouette visible.",
+      "four_digit_hands": "The visible resting hand shows the simplified mitt shape with finger lines reading as three fingers plus thumb, consistent with the rig hand.",
+      "proportion": "Large round head on a short compact robed body -- squat proportion held, robe bulk does not read as tall/lanky.",
+      "flat_cel_render": "The black robe is a flat, evenly-filled colour with clean cel shading bands (a legitimate black garment, not a drained neutral grey standing in for another colour); no airbrush or gradient blending anywhere.",
+      "outline_consistency": "Even medium-thick dark outline is visible and continuous around the robe, jabot, face and hands, distinguishable from the black fill throughout."
+    }
+  },
+  "hr-officer": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "fail",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Head reads as a round near-circle, only slightly taller than wide, consistent with the base template.",
+      "no_nose_no_ears": "The hair is pulled back into a bun, exposing a clearly drawn ear with an inner curve line on the character's left side -- a clear FAIL. No nose is drawn.",
+      "four_digit_hands": "Both resting hands show the simplified mitt shape with finger-separation lines reading as three fingers plus thumb, consistent with the rig.",
+      "proportion": "Large round head over a short compact cardigan-and-skirt body -- squat proportion held, not elongated.",
+      "flat_cel_render": "Flat colour fills on the cardigan and blouse; the herringbone/tweed skirt pattern is a bold repeated flat zigzag design element (like the other frames' plaid/pinstripe details), not a painterly or gradient texture; no drained greyscale.",
+      "outline_consistency": "Even medium-thick dark warm-brown-black outline is continuous around hair, face, cardigan and skirt."
+    }
+  },
+  "crowd-exemplar": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass",
+      "crowd_face_simplification": "pass"
+    },
+    "evidence": {
+      "head_shape": "The unhaired leftmost figure's bald head is a clean round near-circle matching the base template; the other five figures' faces beneath their hair volume read as round-cheeked as well, though hair bulk (bun, afro-curl) makes the overall silhouette look taller -- judged on the visible head/face shape, not the hair, this passes.",
+      "no_nose_no_ears": "All six figures show plain dot eyes and a single mouth line with no nose bump and no ear drawn on any figure (hair covers ear positions where hair is present, and the bald figure also shows no ear).",
+      "four_digit_hands": "Where hands are visible at the figures' sides they read as small simplified mitts consistent with the three-finger-plus-thumb rig hand; no five-digit hand is visible on any figure.",
+      "proportion": "All six figures show the same squat ratio -- a large round head over a short, compact body -- matching the base template's head-to-body ratio; none reads as tall or lanky relative to the others.",
+      "flat_cel_render": "Flat colour fills across all six figures' skin tones and clothing with only soft cel shading, no gradient/airbrush blending; clothing colours (blue, green, brown, grey) read as clearly tinted, not drained to greyscale.",
+      "outline_consistency": "Even outline weight is held across all six figures relative to their smaller on-canvas scale, with no figure missing outline on any part.",
+      "crowd_face_simplification": "Counted 6 figures; every one carries the identical simplified crowd face -- two plain dot eyes and one simple neutral mouth line, no nose, no ears, no teeth on any of them. No figure stands out as more detailed or individuated than the rest."
+    }
+  }
+}

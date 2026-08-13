@@ -1,0 +1,126 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-slump--expr-worried--def769f5.png": {
+   "canonical_sha256": "466b11a812ab98e36992162687ddd021298c57749ec725c81edc9a937837025e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-13"
+  },
+  "_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27.png": {
+   "canonical_sha256": "dfd1816ca4593ed2719d69580b1df420aa2d66697aee0002f1061782ab09a805",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-13"
+  },
+  "refs/base/expr-surprised.png": {
+   "canonical_sha256": "7801c2d56e99b45c299ee1bb5380d89affd7ec0b90cdccaf370504f08d83d70d",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/base/expr-talking.png": {
+   "canonical_sha256": "d09fd7b909225ab1255b1c0dc05854efd0f415411ac76e4f3d0af6b3568a88ea",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/base/expr-caught.png": {
+   "canonical_sha256": "075738c553afc87fbfac5afacb825ac03c88b71ee75db6c92a818bfbd3bd8720",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/base/carry-by-handle.png": {
+   "canonical_sha256": "8a146578151ae8089f1d0f36ced59280367e25f5cbf79aacbe8284ac7b5a5f98",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/base/action-present.png": {
+   "canonical_sha256": "3700c90703eda73310776d78d731dfc6d375701c6e929082b07feec84760105d",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/base/back-to-viewer.png": {
+   "canonical_sha256": "96e599e2b8a377f8d38b7760f3573ad7d52b783cbc8a0d5a31eef5b446aab25c",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/base/action-shrug.png": {
+   "canonical_sha256": "fc7f501feba4a90ce3421ac19afff7a36b62c4b9fafc9e9802f452cc0aa95ad7",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/base/hold-one-hand.png": {
+   "canonical_sha256": "543d2bda2c48c14d33e0b7b0314231e025999107e1df00082f7834b7473e7e4a",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/env/prop-drive.png": {
+   "canonical_sha256": "66084194d12ca18a20005a50c7ae27b9ff903e07c7e00f1e06d4dabaa8e243d6",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  },
+  "refs/env/prop-beige-pc.png": {
+   "canonical_sha256": "2b405e2b79d1ab61fb60f2e325f74d1d03e73837cba68f56e77efc0ed7961271",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  }
+ }
+}

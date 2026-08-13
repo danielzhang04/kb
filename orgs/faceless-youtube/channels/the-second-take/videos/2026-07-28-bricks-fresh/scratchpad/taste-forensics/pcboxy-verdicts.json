@@ -1,0 +1,36 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-slump--expr-worried--def769f5.png": {
+   "canonical_sha256": "466b11a812ab98e36992162687ddd021298c57749ec725c81edc9a937837025e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-13"
+  },
+  "_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27.png": {
+   "canonical_sha256": "dfd1816ca4593ed2719d69580b1df420aa2d66697aee0002f1061782ab09a805",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-13"
+  },
+  "refs/pc-boxy/pc-boxy.png": {
+   "canonical_sha256": "dff1d8c61d4824eb330078062fbf62a7683ed04c5ad33816526319e6eaa4d2ae",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "boss ruling 2026-08-13: machine-tier spirit satisfied (symmetric/static/neutral/nothing held); 3/4 turn accepted as inherited geometry; frontality = optional Daniel follow-up. Verifier pair a2fc4d0bd5897b5f4/aae7a7b2c481a45c4 passed all axes except resting_stance frontality, overruled per spirit law.",
+   "date": "2026-08-13"
+  }
+ }
+}
