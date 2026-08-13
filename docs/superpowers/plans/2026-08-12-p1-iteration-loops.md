@@ -866,3 +866,22 @@ reasons, approve/decline, cycle accounting untouched). Task 7's scope gains
 5. Landed Task 4/6/A1 tests that enshrine advance-time minting may be adjusted only with an
    explicit list and justification; sibling-group scoping, CAS versioning, gate kinds, and
    idempotent replay stay untouched.
+
+### A3 (2026-08-13, boss ruling) — artifact-producing routes require declared recipient artifacts
+
+**Trigger:** Task 7 review found (MAJOR) that `artifactProducingTurn` requires the recipient
+stage to declare artifacts, while the Task-1 validation layer only requires the GROUP's artifacts
+to be a subset of the participant-stage union — so a rework/delegate recipient with no declared
+artifacts silently skips the always-on no-progress backstop (successor minted, supersession
+recorded, cycle consumed, progress never byte-verified). The spec makes the backstop mandatory
+"even if the definition says nothing about them"; a definition's shape must not opt out.
+
+**Ruling:** The Task-7 fix round may tighten the Task-1 validation layer (defs/proposal/compile
+files as needed): every route whose `requestKinds` include an artifact-producing kind
+(`rework`, `delegate`) must target a recipient stage declaring at least one artifact; violating
+definitions fail before launch. Existing test fixtures that relied on artifact-less producing
+recipients are updated to declare artifacts (each listed in the task report). Boss also ruled on
+the review's F2: the byte-progress snapshot set stays scoped to the RECIPIENT STAGE's declared
+artifacts — group-level artifacts are the group's acceptance surface, verified by verdicts, and
+byte-checking another participant's artifact on a producer's turn would false-park; documented
+here so the choice is auditable.
