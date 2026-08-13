@@ -21,6 +21,7 @@ import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 import { startStrandedArchiver } from './write/strandedArchiver.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
+import { assertSupportedRepositoryData } from './schema/startup.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -113,7 +114,9 @@ export function humanRequestSweepLogLine(result: HumanRequestSweepResult): strin
  * `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every write route 403s; with an RP origin but
  * no provisioned passkey, no session can be minted and every write route 401s.
  */
-export function buildApp(): FastifyInstance {
+export function buildApp(options: { repoRoot?: string; validateData?: boolean } = {}): FastifyInstance {
+  const repoRoot = options.repoRoot ?? process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../', import.meta.url));
+  if (options.validateData !== false) assertSupportedRepositoryData(repoRoot);
   const app = Fastify({ logger: false });
 
   app.get('/healthz', async () => {
@@ -122,20 +125,20 @@ export function buildApp(): FastifyInstance {
     return { ok: true, node: process.versions.node };
   });
 
-  app.register(kbBrowserRoutes); // D0.5: read-only KB browser (GET-only /api/kb/*)
-  registerRegistry(app); // D0.6: read-only registries (GET-only /api/registry/*)
-  registerPlaneA(app); // D0.9: read-only Plane-A snapshot for the Control landing (GET /api/index)
-  registerDag(app); // D3.4: read-only pipeline DAG projection over depends-on (GET /api/dag)
-  registerRoutingRead(app); // R2.1/R2.4: read-only effective-routing projection (GET /api/routing)
-  registerAgents(app); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
-  registerPanels(app); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
-  const bus = registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
+  app.register(kbBrowserRoutes, { repoRoot }); // D0.5: read-only KB browser (GET-only /api/kb/*)
+  registerRegistry(app, repoRoot); // D0.6: read-only registries (GET-only /api/registry/*)
+  registerPlaneA(app, repoRoot); // D0.9: read-only Plane-A snapshot for the Control landing (GET /api/index)
+  registerDag(app, repoRoot); // D3.4: read-only pipeline DAG projection over depends-on (GET /api/dag)
+  registerRoutingRead(app, repoRoot); // R2.1/R2.4: read-only effective-routing projection (GET /api/routing)
+  registerAgents(app, repoRoot); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
+  registerPanels(app, repoRoot); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
+  const bus = registerHub(app, { repoRoot }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
   // ONE surface context per process: its `sessionConfig` (HMAC secret) is resolved exactly once here and
   // SHARED with the PTY route below. Without this, the write surface and the PTY route each called
   // `resolveSessionSecret()` independently; with `DASHBOARD_SESSION_SECRET` unset that yields two DIFFERENT
   // random secrets, so a token minted at login (write-surface secret) can never verify at /api/pty (its own
   // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
-  const surfaceCtx = makeSurfaceContext({ hubBus: bus });
+  const surfaceCtx = makeSurfaceContext({ hubBus: bus, repoRoot });
   const controlStoreWatcher = wireControlStoreTick(bus, surfaceCtx.stateRoot);
   app.addHook('onClose', async () => {
     try {
@@ -270,8 +273,8 @@ export function buildApp(): FastifyInstance {
 }
 
 /** Start the daemon on the loopback interface. */
-export async function start(port: number = PORT, host: string = HOST): Promise<FastifyInstance> {
-  const app = buildApp();
+export async function start(port: number = PORT, host: string = HOST, options: { repoRoot?: string } = {}): Promise<FastifyInstance> {
+  const app = buildApp({ repoRoot: options.repoRoot, validateData: true });
   await app.listen({ port, host });
   return app;
 }

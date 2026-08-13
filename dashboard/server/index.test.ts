@@ -24,7 +24,7 @@ afterEach(async () => {
 
 describe('server', () => {
   it('binds localhost only and returns 200 on /healthz', async () => {
-    app = buildApp();
+    app = buildApp({ validateData: false });
     // ephemeral port, localhost bind
     await app.listen({ port: 0, host: '127.0.0.1' });
 
@@ -43,7 +43,7 @@ describe('server', () => {
   });
 
   it('/healthz reports the pinned node major', async () => {
-    app = buildApp();
+    app = buildApp({ validateData: false });
     await app.listen({ port: 0, host: '127.0.0.1' });
 
     const port = (app.server.address() as { port: number }).port;
