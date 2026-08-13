@@ -1,9 +1,18 @@
 import type {
   ProposalCompletionGate,
+  ProposalIterationGroup,
+  ProposalIterationParticipant,
+  ProposalIterationRequestKind,
+  ProposalIterationRole,
+  ProposalIterationRoute,
+  ProposalIterationScheduleStep,
+  ProposalIterationTerminalAuthority,
+  ProposalIterationVerdict,
   ProposalReview,
+  ProposalReviewCriterion,
   ResolvedAgentAssignment,
 } from './proposal.ts';
-import type { ReviewOutcome } from './reviewOutcome.ts';
+import type { ReviewOutcome, ReviewOutcomeCriterion } from './reviewOutcome.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -168,6 +177,114 @@ export interface GenerationSupersession {
   failedReviewReceiptRef: string;
   operationKey: string;
   createdAt: string;
+}
+
+export type IterationRole = ProposalIterationRole;
+export type IterationRequestKind = ProposalIterationRequestKind;
+export type IterationVerdict = ProposalIterationVerdict;
+export type IterationParkReason = 'exhausted' | 'no-progress';
+export interface IterationParticipant extends ProposalIterationParticipant {}
+export interface IterationRoute extends ProposalIterationRoute {}
+export interface IterationScheduleStep extends ProposalIterationScheduleStep {}
+export interface IterationTerminalAuthority extends ProposalIterationTerminalAuthority {}
+
+export interface IterationFinding {
+  findingId: string;
+  criterionId: string;
+  severity: 'blocking' | 'advisory';
+  summary: string;
+  evidencePaths: string[];
+}
+
+export interface IterationPosition {
+  positionId: string;
+  participantId: string;
+  summary: string;
+  generationRefs: string[];
+}
+
+export interface IterationDissent {
+  dissentId: string;
+  participantId: string;
+  positionId: string;
+  summary: string;
+}
+
+export interface IterationResidue {
+  unresolvedFindings: IterationFinding[];
+  positions: IterationPosition[];
+  recordedDissent: IterationDissent[];
+  requestRefs: string[];
+  receiptRefs: string[];
+  activeGenerationRefs: string[];
+  acceptedGenerationRefs: string[];
+  nextRouteId: string;
+  cycleUnit: string;
+  cyclesUsed: number;
+  maxCycles: number;
+}
+
+export interface IterationRequest {
+  schema: 'kb.iteration-request/v1';
+  requestRef: string;
+  iterationLoopRef: string;
+  routeId: string;
+  senderParticipantId: string;
+  recipientParticipantId: string;
+  kind: IterationRequestKind;
+  cycle: number;
+  inputGenerationRefs: string[];
+  baseCommit: string;
+  artifactHashes: Record<string, string>;
+  criteria: ProposalReviewCriterion[];
+  unresolvedFindingRefs: string[];
+  preservedInvariants: string[];
+  nextAcceptanceCheck: string;
+  instructions: string;
+}
+
+export interface IterationReceipt {
+  schema: 'kb.iteration-receipt/v1';
+  receiptRef: string;
+  requestRef: string;
+  iterationLoopRef: string;
+  participantId: string;
+  cycle: number;
+  verdict: IterationVerdict;
+  inputGenerationRefs: string[];
+  criteria: ReviewOutcomeCriterion[];
+  findings: IterationFinding[];
+  positions: IterationPosition[];
+  recordedDissent: IterationDissent[];
+  summary: string;
+  outcomeHash: string;
+  outputGenerationRefs: string[];
+  baseCommit: string;
+  canonicalCommit: string;
+  createdAt: string;
+}
+
+export interface IterationLoop extends ProposalIterationGroup {
+  iterationLoopRef: string;
+  runRef: string;
+  definitionHash: string;
+  cyclesUsed: number;
+  state:
+    | 'awaiting-seed' | 'awaiting-turn' | 'running-turn'
+    | 'failed' | 'rework-queued' | 'exhausted'
+    | 'parked' | 'awaiting-completion-gate' | 'awaiting-park-gate'
+    | 'passed' | 'declined';
+  turnOwnerParticipantId?: string;
+  currentStepId?: string;
+  activeGenerationRefs: string[];
+  acceptedGenerationRefs?: string[];
+  lastReceiptRef?: string;
+  gateRef?: string;
+  parkReason?: IterationParkReason;
+  unresolvedResidue?: IterationResidue;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ReviewLoop {

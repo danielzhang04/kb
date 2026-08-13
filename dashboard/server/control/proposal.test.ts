@@ -424,3 +424,120 @@ describe('canonical immutable revisions', () => {
     expect(() => createProposalRevision(proposal, 2, forged)).toThrow('previous revision content hash is invalid');
   });
 });
+
+it('rejects browser-supplied iteration fields that differ from the compiler-owned snapshot', () => {
+  const compiled: PlanProposal = {
+    ...proposal,
+    stages: [proposal.stages[0], { ...proposal.stages[1], dependsOn: ['compile'] }],
+    iterationGroups: [{
+      iterationGroupId: 'compiler-review',
+      goal: 'Produce an accepted compiler.',
+      participants: [
+        { participantId: 'producer', stageRef: 'compile', role: 'manager', perspective: 'Own the compiler.', mandate: 'Produce and revise the compiler.' },
+        { participantId: 'judge', stageRef: 'review', role: 'judge', perspective: 'Apply the criterion.', mandate: 'Pass only a complete compiler.' },
+      ],
+      routes: [
+        { routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['compile'] },
+      ],
+      activation: { seedParticipantId: 'producer', seedArtifactIds: ['compiler'] },
+      initialStepId: 'review',
+      schedule: [
+        { stepId: 'review', routeId: 'to-judge', cycle: 'current' },
+      ],
+      artifacts: ['compiler'],
+      criteria: [{ id: 'quality', description: 'Compiler is complete.' }],
+      maxCycles: 3,
+      cycleUnit: 'One revision and judge verdict.',
+      terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+    }],
+  };
+  expect(validatePlanProposal(compiled, REGISTRY)).toEqual({
+    ok: false,
+    detail: "unknown field 'iterationGroups'",
+  });
+  expect(validateServerCompiledPlanProposal(compiled, REGISTRY)).toEqual({ ok: true, value: compiled });
+  const drifted = structuredClone(compiled);
+  drifted.iterationGroups![0].routes[0].baseResolutionStageIds = ['review'];
+  expect(validateServerCompiledPlanProposal(drifted, REGISTRY)).toMatchObject({
+    ok: false,
+    detail: expect.stringMatching(/baseResolutionStageIds|compiler-owned/),
+  });
+
+  const roleIndependent = structuredClone(compiled);
+  roleIndependent.iterationGroups![0].participants[1].role = 'contributor';
+  expect(validateServerCompiledPlanProposal(roleIndependent, REGISTRY)).toMatchObject({ ok: true });
+
+  for (const empty of ['artifacts', 'seed'] as const) {
+    const candidate = structuredClone(compiled);
+    if (empty === 'artifacts') candidate.iterationGroups![0].artifacts = [];
+    else candidate.iterationGroups![0].activation.seedArtifactIds = [];
+    expect(validateServerCompiledPlanProposal(candidate, REGISTRY)).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/artifacts|seedArtifactIds/),
+    });
+  }
+
+  const invalidParticipantGoal = structuredClone(compiled);
+  invalidParticipantGoal.iterationGroups![0].participants[1].goal = 'A judge must not carry the accepting-manager goal.';
+  expect(validateServerCompiledPlanProposal(invalidParticipantGoal, REGISTRY)).toMatchObject({
+    ok: false,
+    detail: expect.stringMatching(/participant goals require an accepting manager or coordinator/),
+  });
+
+  const unusedRoute = structuredClone(compiled);
+  unusedRoute.iterationGroups![0].routes.push({
+    routeId: 'unused-return', senderParticipantId: 'judge', recipientParticipantId: 'producer',
+    requestKinds: ['reply'], baseResolutionStageIds: ['review'],
+  });
+  expect(validateServerCompiledPlanProposal(unusedRoute, REGISTRY)).toMatchObject({
+    ok: false,
+    detail: expect.stringMatching(/route 'unused-return'.*not referenced/),
+  });
+
+  const danglingParticipant = structuredClone(compiled);
+  danglingParticipant.stages.push({
+    ...proposal.stages[1], id: 'observer', title: 'Observe compiler', action: 'review:observation',
+    workOrder: 'Observe only when scheduled.', dependsOn: ['compile'], humanGates: [],
+  });
+  danglingParticipant.iterationGroups![0].participants.push({
+    participantId: 'ghost', stageRef: 'observer', role: 'contributor',
+    perspective: 'Observe the compiler.', mandate: 'Contribute only when scheduled.',
+  });
+  expect(validateServerCompiledPlanProposal(danglingParticipant, REGISTRY)).toMatchObject({
+    ok: false,
+    detail: expect.stringMatching(/participant 'ghost'.*recipient.*reachable/),
+  });
+
+  const parkedSuccessor = structuredClone(compiled);
+  parkedSuccessor.iterationGroups![0].routes.push({
+    routeId: 'parked-return', senderParticipantId: 'judge', recipientParticipantId: 'producer',
+    requestKinds: ['reply'], baseResolutionStageIds: ['review'],
+  });
+  parkedSuccessor.iterationGroups![0].schedule.push({
+    stepId: 'invalid-parked-successor', routeId: 'parked-return',
+    after: { stepId: 'review', participantId: 'judge', verdict: 'parked' }, cycle: 'current',
+  });
+  expect(validateServerCompiledPlanProposal(parkedSuccessor, REGISTRY)).toMatchObject({
+    ok: false,
+    detail: expect.stringMatching(/parked.*must not have.*successor/),
+  });
+
+  const gateCollision = structuredClone(compiled);
+  gateCollision.stages[1] = {
+    ...gateCollision.stages[1],
+    assignment: {
+      agentId: 'fyt-checker', declarationPath: 'agents/fyt-checker.md', declarationHash: 'c'.repeat(64),
+      profileId: 'worker:claude:claude-sonnet-5', runtime: 'claude', model: 'claude-sonnet-5',
+    },
+    workflowProfile: 'checker-readonly',
+    review: { subjectStageId: 'compile', maxCreatorReworks: 1, criteria: [{ id: 'quality', description: 'Compiler is complete.' }] },
+    completionGate: { id: 'shared-completion', kind: 'approval', prompt: 'Stage approval.', requiresReview: 'pass' },
+  };
+  gateCollision.iterationGroups![0].completionGate = {
+    id: 'shared-completion', kind: 'approval', prompt: 'Different group approval.', requiresReview: 'pass',
+  };
+  expect(validateServerCompiledPlanProposal(gateCollision, { ...REGISTRY, workflowProfiles: ['checker-readonly'] })).toMatchObject({
+    ok: false,
+    detail: expect.stringMatching(/duplicate human gate id 'shared-completion'/),
+  });
+});

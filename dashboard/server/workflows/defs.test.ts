@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { instantiateWorkflowDef, parseWorkflowDef } from './defs.ts';
+import { instantiateWorkflowDef, parseWorkflowDef, workflowIterationVerdictVocabulary } from './defs.ts';
 
 const KNOWN = new Set(['research', 'gmail-triage', 'drive-author', 'producer', 'checker-readonly']);
 
@@ -499,7 +499,10 @@ describe('parseWorkflowDef', () => {
       '      criteria:', '        - id: safety', '          description: Safe',
     ].join('\n');
     expect(parseWorkflowDef(md(base), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/direct dependsOn/) });
-    expect(parseWorkflowDef(md(base.replace('      maxCreatorReworks: 1', '      maxCreatorReworks: 3')), { knownProfiles: KNOWN })).toMatchObject({ ok: false });
+    expect(parseWorkflowDef(md(base
+      .replace('      subjectStageId: missing', '      subjectStageId: create')
+      .replace('      maxCreatorReworks: 1', '      maxCreatorReworks: 3')), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: true, value: { stages: [{}, { review: { maxCreatorReworks: 3 } }] } });
     expect(parseWorkflowDef(md(base.replace('    action: review:thing', '    action: implement:check')), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/review requires/) });
     expect(parseWorkflowDef(md(base.replace('    review:', '    unexpected: nope\n    review:')), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/unknown field/) });
   });
@@ -689,5 +692,313 @@ describe('parseWorkflowDef', () => {
       if (result.ok) return;
       expect(result.detail).toMatch(/at most 64/);
     });
+  });
+});
+
+function iterationGroupLines(options: {
+  groupId?: string;
+  producerParticipantId?: string;
+  judgeParticipantId?: string;
+  producerStageRef?: string;
+  judgeStageRef?: string;
+  artifactId?: string;
+  goal?: string | null;
+  maxCycles?: number | null;
+} = {}): string[] {
+  const groupId = options.groupId ?? 'revision';
+  const producerParticipantId = options.producerParticipantId ?? 'producer';
+  const judgeParticipantId = options.judgeParticipantId ?? 'judge';
+  const producerStageRef = options.producerStageRef ?? 'create';
+  const judgeStageRef = options.judgeStageRef ?? 'check';
+  const artifactId = options.artifactId ?? 'draft';
+  const lines = [
+    `  - iterationGroupId: ${groupId}`,
+    ...(options.goal === null ? [] : [`    goal: ${options.goal ?? 'Produce a draft that passes the quality criterion.'}`]),
+    '    participants:',
+    `      - participantId: ${producerParticipantId}`,
+    `        stageRef: ${producerStageRef}`,
+    '        role: manager',
+    '        perspective: Own the implementable artifact.',
+    '        mandate: Produce and revise the declared artifact.',
+    `      - participantId: ${judgeParticipantId}`,
+    `        stageRef: ${judgeStageRef}`,
+    '        role: judge',
+    '        perspective: Apply the declared criterion conservatively.',
+    '        mandate: Pass only a criterion-complete artifact.',
+    '    routes:',
+    `      - routeId: ${groupId}-to-judge`,
+    `        senderParticipantId: ${producerParticipantId}`,
+    `        recipientParticipantId: ${judgeParticipantId}`,
+    '        requestKinds: [review]',
+    '    activation:',
+    `      seedParticipantId: ${producerParticipantId}`,
+    `      seedArtifactIds: [${artifactId}]`,
+    `    initialStepId: ${groupId}-review`,
+    '    schedule:',
+    `      - stepId: ${groupId}-review`,
+    `        routeId: ${groupId}-to-judge`,
+    '        cycle: current',
+    `    artifacts: [${artifactId}]`,
+    '    criteria:',
+    `      - id: ${groupId}-quality`,
+    '        description: The artifact is complete and safe.',
+    ...(options.maxCycles === null ? [] : [`    maxCycles: ${options.maxCycles ?? 3}`]),
+    '    cycleUnit: One revision followed by one judge verdict.',
+    '    terminalAuthorities:',
+    `      - participantId: ${judgeParticipantId}`,
+    '        verdict: pass',
+  ];
+  return lines;
+}
+
+function iterationWorkflow(groups = [iterationGroupLines()]): string {
+  return md([
+    'id: iteration-contract',
+    'project: kb-ops',
+    'title: Iteration contract',
+    'profile: research',
+    'stages:',
+    '  - id: create',
+    '    title: Create',
+    '    action: implement:draft',
+    '    target: orgs/kb-ops/output',
+    '    workOrder: Create the draft.',
+    '    artifacts:',
+    '      - id: draft',
+    '        path: orgs/kb-ops/output/draft.md',
+    '        description: Draft artifact.',
+    '  - id: check',
+    '    title: Check',
+    '    action: review:draft',
+    '    target: orgs/kb-ops/reviews',
+    '    workOrder: Check the draft.',
+    '  - id: create-two',
+    '    title: Create two',
+    '    action: implement:draft-two',
+    '    target: orgs/kb-ops/output',
+    '    workOrder: Create the second draft.',
+    '    agentId: shared-agent',
+    '    profileId: worker:claude:claude-sonnet-5',
+    '    artifacts:',
+    '      - id: draft-two',
+    '        path: orgs/kb-ops/output/draft-two.md',
+    '        description: Second draft artifact.',
+    '  - id: check-two',
+    '    title: Check two',
+    '    action: review:draft-two',
+    '    target: orgs/kb-ops/reviews',
+    '    workOrder: Check the second draft.',
+    '    agentId: shared-agent',
+    '    profileId: worker:claude:claude-sonnet-5',
+    'iterationGroups:',
+    ...groups.flat(),
+  ].join('\n'));
+}
+
+describe('iteration group definitions', () => {
+  it('parses an iteration group only when participants routes mandates cycleUnit and maxCycles are declared', () => {
+    const result = parseWorkflowDef(iterationWorkflow(), { knownProfiles: KNOWN });
+    expect(result).toMatchObject({ ok: true, value: { iterationGroups: [{
+      iterationGroupId: 'revision',
+      participants: [
+        { participantId: 'producer', stageRef: 'create', role: 'manager', mandate: expect.any(String), perspective: expect.any(String) },
+        { participantId: 'judge', stageRef: 'check', role: 'judge', mandate: expect.any(String), perspective: expect.any(String) },
+      ],
+      routes: [
+        { routeId: 'revision-to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'] },
+      ],
+      cycleUnit: 'One revision followed by one judge verdict.',
+      maxCycles: 3,
+    }] } });
+  });
+
+  it('rejects missing or nonpositive bounds duplicate participants unknown routes and undeclared terminal authorities', () => {
+    const valid = iterationWorkflow();
+    const cases: Array<[string, RegExp]> = [
+      [valid.replace('    maxCycles: 3\n', ''), /maxCycles/],
+      [valid.replace('    maxCycles: 3', '    maxCycles: 0'), /positive safe integer/],
+      [valid.replace('      - participantId: judge', '      - participantId: producer'), /participant.*unique|duplicate participant/],
+      [valid.replace('        routeId: revision-to-judge', '        routeId: missing-route'), /unknown route/],
+      [valid.replace('      - participantId: judge\n        verdict: pass', '      - participantId: outsider\n        verdict: pass'), /terminal authorit/],
+    ];
+    for (const [candidate, detail] of cases) {
+      expect(parseWorkflowDef(candidate, { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(detail) });
+    }
+  });
+
+  it('rejects nested groups shared participant stages parallel turns and ambiguous schedule matches', () => {
+    const valid = iterationWorkflow();
+    const nested = valid.replace('    participants:', '    iterationGroups: []\n    participants:');
+    const sharedWithinGroup = valid.replace('        stageRef: check', '        stageRef: create');
+    const parallel = valid.replace(
+      '    schedule:',
+      '    schedule:\n      - stepId: unguarded-parallel\n        routeId: revision-to-judge\n        cycle: current',
+    );
+    const ambiguous = valid.replace(
+      '    artifacts: [draft]',
+      '      - stepId: duplicate-a\n        routeId: revision-to-judge\n        after:\n          stepId: revision-review\n          participantId: producer\n          verdict: fulfilled\n        cycle: next\n      - stepId: duplicate-b\n        routeId: revision-to-judge\n        after:\n          stepId: revision-review\n          participantId: producer\n          verdict: fulfilled\n        cycle: next\n    artifacts: [draft]',
+    );
+    for (const [candidate, detail] of [
+      [nested, /iterationGroups\[0\].*unknown field/],
+      [sharedWithinGroup, /participant stage.*only one|stage.*more than one/],
+      [parallel, /parallel|after/],
+      [ambiguous, /ambiguous|exactly one/],
+    ] as Array<[string, RegExp]>) {
+      expect(parseWorkflowDef(candidate, { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(detail) });
+    }
+  });
+
+  it('allows separate participant stages in different groups to use the same agent', () => {
+    const groups = [
+      iterationGroupLines(),
+      iterationGroupLines({
+        groupId: 'revision-two', producerParticipantId: 'producer-two', judgeParticipantId: 'judge-two',
+        producerStageRef: 'create-two', judgeStageRef: 'check-two', artifactId: 'draft-two',
+      }),
+    ];
+    const result = parseWorkflowDef(iterationWorkflow(groups), { knownProfiles: KNOWN });
+    expect(result).toMatchObject({ ok: true, value: { iterationGroups: [{}, {}] } });
+  });
+
+  it('rejects a group with neither a group goal nor a goal-bearing accepting manager or coordinator', () => {
+    expect(parseWorkflowDef(iterationWorkflow([iterationGroupLines({ goal: null })]), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/goal/) });
+  });
+
+  it('rejects an activation seed outside the group or seed artifacts outside that participant stage', () => {
+    const valid = iterationWorkflow();
+    for (const [candidate, detail] of [
+      [valid.replace('      seedParticipantId: producer', '      seedParticipantId: outsider'), /seed participant/],
+      [valid.replace('      seedArtifactIds: [draft]', '      seedArtifactIds: [draft-two]'), /seed artifact/],
+    ] as Array<[string, RegExp]>) {
+      expect(parseWorkflowDef(candidate, { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(detail) });
+    }
+  });
+
+  it('requires every participant to receive a reachable step and every route to be scheduled', () => {
+    const danglingParticipant = iterationWorkflow().replace(
+      '    routes:',
+      '      - participantId: ghost\n        stageRef: check-two\n        role: contributor\n        perspective: Observe the work.\n        mandate: Contribute when scheduled.\n    routes:',
+    );
+    expect(parseWorkflowDef(danglingParticipant, { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/participant 'ghost'.*recipient.*reachable/),
+    });
+
+    const danglingRoute = iterationWorkflow().replace(
+      '    activation:',
+      '      - routeId: unused-return\n        senderParticipantId: judge\n        recipientParticipantId: producer\n        requestKinds: [reply]\n    activation:',
+    );
+    expect(parseWorkflowDef(danglingRoute, { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/route 'unused-return'.*not referenced/),
+    });
+  });
+
+  it('derives terminal legality from declarations rather than participant roles', () => {
+    const contributorPass = iterationWorkflow().replace('        role: judge', '        role: contributor');
+    expect(parseWorkflowDef(contributorPass, { knownProfiles: KNOWN })).toMatchObject({
+      ok: true,
+      value: { iterationGroups: [{ terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }] }] },
+    });
+  });
+
+  it('accepts universal parked without successor coverage and a one-shot initial step without after', () => {
+    const parsed = parseWorkflowDef(iterationWorkflow(), { knownProfiles: KNOWN });
+    expect(parsed).toMatchObject({ ok: true, value: { iterationGroups: [{ schedule: [{ stepId: 'revision-review' }] }] } });
+    if (!parsed.ok) return;
+    const group = parsed.value.iterationGroups![0];
+    expect(group.schedule[0].after).toBeUndefined();
+    expect(workflowIterationVerdictVocabulary(group)).toEqual({ producer: ['parked'], judge: ['parked'] });
+  });
+
+  it('rejects a participant successor for universal parked', () => {
+    const parkedSuccessor = iterationWorkflow().replace(
+      '    activation:',
+      '      - routeId: revision-to-producer\n        senderParticipantId: judge\n        recipientParticipantId: producer\n        requestKinds: [reply]\n    activation:',
+    ).replace(
+      '    artifacts: [draft]',
+      '      - stepId: invalid-parked-successor\n        routeId: revision-to-producer\n        after:\n          stepId: revision-review\n          participantId: judge\n          verdict: parked\n        cycle: current\n    artifacts: [draft]',
+    );
+    expect(parseWorkflowDef(parkedSuccessor, { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/parked.*must not have.*successor/),
+    });
+  });
+
+  it('requires after on every noninitial schedule step', () => {
+    const missingAfter = iterationWorkflow().replace(
+      '    artifacts: [draft]',
+      '      - stepId: unguarded-second\n        routeId: revision-to-judge\n        cycle: current\n    artifacts: [draft]',
+    );
+    expect(parseWorkflowDef(missingAfter, { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/after is required except on initialStepId/),
+    });
+  });
+
+  it('requires nonempty group artifacts and activation seed artifacts', () => {
+    expect(parseWorkflowDef(iterationWorkflow().replace('    artifacts: [draft]', '    artifacts: []'), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/artifacts.*nonempty/) });
+    expect(parseWorkflowDef(iterationWorkflow().replace('      seedArtifactIds: [draft]', '      seedArtifactIds: []'), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/seed artifact/) });
+  });
+
+  it('shares one gate id namespace between stage and iteration completion gates', () => {
+    const collision = iterationWorkflow().replace(
+      '    workOrder: Check the draft.',
+      '    workOrder: Check the draft.\n    dependsOn: [create]\n    agentId: fyt-checker\n    profileId: worker:claude:claude-sonnet-5\n    workflowProfile: checker-readonly\n    review:\n      subjectStageId: create\n      maxCreatorReworks: 1\n      criteria:\n        - id: stage-quality\n          description: The draft is complete.\n    completionGate:\n      id: shared-gate\n      kind: approval\n      prompt: Approve the check.\n      requiresReview: pass',
+    ).replace(
+      '    terminalAuthorities:',
+      '    completionGate:\n      id: shared-gate\n      kind: approval\n      prompt: Approve accepted output.\n      requiresReview: pass\n    terminalAuthorities:',
+    );
+    expect(parseWorkflowDef(collision, { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/duplicate human gate id 'shared-gate'/),
+    });
+  });
+
+  it('rejects every reachable nonterminal participant verdict without an in-cycle or next-cycle successor', () => {
+    const uncovered = iterationWorkflow().replace(
+      '    artifacts: [draft]',
+      '      - stepId: revision-rework\n        routeId: revision-to-producer\n        after:\n          stepId: revision-review\n          participantId: judge\n          verdict: fail\n        cycle: current\n      - stepId: revision-review-again\n        routeId: revision-to-judge\n        after:\n          stepId: revision-rework\n          participantId: producer\n          verdict: fulfilled\n        cycle: next\n      - stepId: revision-park\n        routeId: revision-to-producer\n        after:\n          stepId: revision-review-again\n          participantId: judge\n          verdict: parked\n        cycle: current\n    artifacts: [draft]',
+    ).replace(
+      '        requestKinds: [review]',
+      '        requestKinds: [review]\n      - routeId: revision-to-producer\n        senderParticipantId: judge\n        recipientParticipantId: producer\n        requestKinds: [rework]',
+    );
+    expect(parseWorkflowDef(uncovered, { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/nonterminal|successor|coverage/),
+    });
+  });
+
+  it('preserves declared cycle markers and rejects a next-cycle initial activation without a predecessor', () => {
+    const judge = parseWorkflowDef(iterationWorkflow(), { knownProfiles: KNOWN });
+    expect(judge).toMatchObject({ ok: true, value: { iterationGroups: [{ schedule: [
+      { stepId: 'revision-review', cycle: 'current' },
+    ] }] } });
+
+    const configurations = [
+      ['peer', 'accept'],
+      ['mediator', 'consensus'],
+      ['coordinator', 'complete'],
+    ] as const;
+    for (const [role, terminalVerdict] of configurations) {
+      const candidate = iterationWorkflow()
+        .replace('        role: judge', `        role: ${role}`)
+        .replace('        verdict: pass', `        verdict: ${terminalVerdict}`);
+      const parsed = parseWorkflowDef(candidate, { knownProfiles: KNOWN });
+      expect(parsed).toMatchObject({ ok: true, value: { iterationGroups: [{ schedule: [
+        { cycle: 'current' },
+      ] }] } });
+    }
+    expect(parseWorkflowDef(iterationWorkflow().replace('        cycle: current', '        cycle: next'), { knownProfiles: KNOWN }))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/activation supplies no predecessor/) });
+  });
+
+  it('accepts a positive safe-integer maxCycles without a platform ceiling', () => {
+    const maxCycles = Number.MAX_SAFE_INTEGER;
+    const result = parseWorkflowDef(iterationWorkflow([iterationGroupLines({ maxCycles })]), { knownProfiles: KNOWN });
+    expect(result).toMatchObject({ ok: true, value: { iterationGroups: [{ maxCycles }] } });
   });
 });

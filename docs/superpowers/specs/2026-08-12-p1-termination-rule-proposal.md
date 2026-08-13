@@ -311,6 +311,11 @@ interface IterationReceipt extends Omit<IterationOutcome, 'schema'> {
 }
 ```
 
+Verdict legality is declaration-driven rather than inferred from role labels. A participant's terminal
+verdicts are exactly its `terminalAuthorities`; its nonterminal vocabulary is the verdicts naming it in
+schedule `after` conditions, plus `fulfilled` when it receives `rework` or `delegate`, and universal
+`parked`, which always transfers control to the platform human gate and is exempt from successor coverage.
+
 The closed parser may require or forbid outcome fields by verdict and participant role. A worker never
 chooses `receiptRef`, output generation refs, commits, timestamps, or the final receipt hash. The server
 mints those after canonical integration. The runtime transition function remains generic: validate

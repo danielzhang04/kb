@@ -128,6 +128,61 @@ export interface ProposalReview {
 /** Compiler-only checker completion gate. Browser proposals cannot carry this field. */
 export interface ProposalCompletionGate { id: string; kind: 'approval'; prompt: string; requiresReview: 'pass'; }
 
+export type ProposalIterationRole = 'peer' | 'judge' | 'mediator' | 'manager' | 'coordinator' | 'contributor';
+export type ProposalIterationRequestKind = 'review' | 'rework' | 'position' | 'reply' | 'delegate' | 'check';
+export type ProposalIterationVerdict =
+  | 'fulfilled'
+  | 'accept' | 'rework'
+  | 'pass' | 'fail'
+  | 'consensus' | 'continue'
+  | 'complete' | 'parked';
+export type ProposalIterationTerminalVerdict = 'accept' | 'pass' | 'consensus' | 'complete';
+
+export interface ProposalIterationParticipant {
+  participantId: string;
+  stageRef: string;
+  role: ProposalIterationRole;
+  perspective: string;
+  mandate: string;
+  goal?: string;
+}
+
+export interface ProposalIterationRoute {
+  routeId: string;
+  senderParticipantId: string;
+  recipientParticipantId: string;
+  requestKinds: ProposalIterationRequestKind[];
+  baseResolutionStageIds: string[];
+}
+
+export interface ProposalIterationScheduleStep {
+  stepId: string;
+  routeId: string;
+  after?: { stepId: string; participantId: string; verdict: ProposalIterationVerdict };
+  cycle: 'current' | 'next';
+}
+
+export interface ProposalIterationTerminalAuthority {
+  participantId: string;
+  verdict: ProposalIterationTerminalVerdict;
+}
+
+export interface ProposalIterationGroup {
+  iterationGroupId: string;
+  goal?: string;
+  participants: ProposalIterationParticipant[];
+  routes: ProposalIterationRoute[];
+  activation: { seedParticipantId: string; seedArtifactIds: string[] };
+  initialStepId: string;
+  schedule: ProposalIterationScheduleStep[];
+  artifacts: string[];
+  criteria: ProposalReviewCriterion[];
+  maxCycles: number;
+  cycleUnit: string;
+  terminalAuthorities: ProposalIterationTerminalAuthority[];
+  completionGate?: ProposalCompletionGate;
+}
+
 /** Each stage is one executable task node in the deterministic DAG. */
 export interface ProposalStage {
   id: string;
@@ -159,6 +214,8 @@ export interface PlanProposal {
   scope: ProposalScope;
   governanceRefs: string[];
   stages: ProposalStage[];
+  /** Compiler-owned iteration contract. Browser proposals cannot carry this field. */
+  iterationGroups?: ProposalIterationGroup[];
   /**
    * The workflow tool-allowlist profile this proposal executes under, as DATA (not merely as a
    * proposal-id hash input). The worker adapter resolves `--allowedTools` from it; an absent or
@@ -216,7 +273,7 @@ const TOP_REQUIRED_FIELDS = [
 ] as const;
 const TOP_FIELDS = new Set<string>([...TOP_REQUIRED_FIELDS, 'profile']);
 /** `parameters` is compiler-only: an assistant/browser proposal that declares it is refused. */
-const COMPILED_TOP_FIELDS = new Set<string>([...TOP_FIELDS, 'parameters']);
+const COMPILED_TOP_FIELDS = new Set<string>([...TOP_FIELDS, 'parameters', 'iterationGroups']);
 const MAX_PARAMETERS = 16;
 const MANAGER_FIELDS = new Set(['runtime', 'model', 'requiredSkills']);
 const COMPILED_MANAGER_FIELDS = new Set([...MANAGER_FIELDS, 'assignment']);
@@ -236,6 +293,17 @@ const COMPILED_HUMAN_GATE_FIELDS = new Set([...HUMAN_GATE_FIELDS, 'spendAuthoriz
 const REVIEW_FIELDS = new Set(['subjectStageId', 'maxCreatorReworks', 'criteria']);
 const REVIEW_CRITERION_FIELDS = new Set(['id', 'description']);
 const COMPLETION_GATE_FIELDS = new Set(['id', 'kind', 'prompt', 'requiresReview']);
+const ITERATION_GROUP_FIELDS = new Set([
+  'iterationGroupId', 'goal', 'participants', 'routes', 'activation', 'initialStepId', 'schedule',
+  'artifacts', 'criteria', 'maxCycles', 'cycleUnit', 'terminalAuthorities', 'completionGate',
+]);
+const ITERATION_PARTICIPANT_FIELDS = new Set(['participantId', 'stageRef', 'role', 'perspective', 'mandate', 'goal']);
+const ITERATION_ROUTE_FIELDS = new Set([
+  'routeId', 'senderParticipantId', 'recipientParticipantId', 'requestKinds', 'baseResolutionStageIds',
+]);
+const ITERATION_SCHEDULE_FIELDS = new Set(['stepId', 'routeId', 'after', 'cycle']);
+const ITERATION_AFTER_FIELDS = new Set(['stepId', 'participantId', 'verdict']);
+const ITERATION_AUTHORITY_FIELDS = new Set(['participantId', 'verdict']);
 const SOURCE_FIELDS = new Set(['role', 'state', 'visibility', 'text']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -591,8 +659,9 @@ function validateStage(
       return { ok: false, detail: `${label}.review.subjectStageId must be a direct dependency` };
     }
     const maxCreatorReworks = value.review.maxCreatorReworks;
-    if (typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks) || maxCreatorReworks < 0 || maxCreatorReworks > 2) {
-      return { ok: false, detail: `${label}.review.maxCreatorReworks must be an integer from 0 to 2` };
+    if (typeof maxCreatorReworks !== 'number' || !Number.isSafeInteger(maxCreatorReworks)
+      || maxCreatorReworks < 0 || maxCreatorReworks > Number.MAX_SAFE_INTEGER - 1) {
+      return { ok: false, detail: `${label}.review.maxCreatorReworks must be a nonnegative safe integer that can be incremented` };
     }
     if (!Array.isArray(value.review.criteria) || value.review.criteria.length < 1 || value.review.criteria.length > 16) {
       return { ok: false, detail: `${label}.review.criteria must contain 1-16 items` };
@@ -651,6 +720,368 @@ function validateStage(
       ...(completionGate ? { completionGate } : {}),
     },
   };
+}
+
+const PROPOSAL_ITERATION_ROLES = new Set<ProposalIterationRole>(['peer', 'judge', 'mediator', 'manager', 'coordinator', 'contributor']);
+const PROPOSAL_ITERATION_REQUEST_KINDS = new Set<ProposalIterationRequestKind>(['review', 'rework', 'position', 'reply', 'delegate', 'check']);
+const PROPOSAL_ITERATION_VERDICTS = new Set<ProposalIterationVerdict>([
+  'fulfilled', 'accept', 'rework', 'pass', 'fail', 'consensus', 'continue', 'complete', 'parked',
+]);
+const PROPOSAL_TERMINAL_VERDICTS = new Set<ProposalIterationTerminalVerdict>(['accept', 'pass', 'consensus', 'complete']);
+
+function validateProposalIterationGroups(
+  raw: unknown,
+  stages: readonly ProposalStage[],
+): ProposalValidation<ProposalIterationGroup[]> {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_PROPOSAL_STAGES) {
+    return { ok: false, detail: `iterationGroups must contain 1-${MAX_PROPOSAL_STAGES} groups` };
+  }
+  const stageById = new Map(stages.map((stage) => [stage.id, stage]));
+  const groupIds = new Set<string>();
+  const assignedStages = new Set<string>();
+  const groups: ProposalIterationGroup[] = [];
+  for (let groupIndex = 0; groupIndex < raw.length; groupIndex += 1) {
+    const value = raw[groupIndex];
+    const label = `iterationGroups[${groupIndex}]`;
+    if (!isRecord(value)) return { ok: false, detail: `${label} must be an object` };
+    const fields = exactFields(value, ITERATION_GROUP_FIELDS, [
+      'iterationGroupId', 'participants', 'routes', 'activation', 'initialStepId', 'schedule', 'artifacts',
+      'criteria', 'maxCycles', 'cycleUnit', 'terminalAuthorities',
+    ]);
+    if (fields) return { ok: false, detail: `${label}: ${fields}` };
+    const groupId = validateId(value.iterationGroupId, `${label}.iterationGroupId`);
+    if (!groupId.ok) return groupId;
+    if (groupIds.has(groupId.value)) return { ok: false, detail: 'iteration group ids must be unique' };
+    groupIds.add(groupId.value);
+    let goal: string | undefined;
+    if (Object.prototype.hasOwnProperty.call(value, 'goal')) {
+      const parsed = validateText(value.goal, `${label}.goal`, MAX_SUMMARY_CHARS);
+      if (!parsed.ok) return parsed;
+      goal = parsed.value;
+    }
+    if (!Array.isArray(value.participants) || value.participants.length < 2 || value.participants.length > MAX_PROPOSAL_STAGES) {
+      return { ok: false, detail: `${label}.participants must contain 2-${MAX_PROPOSAL_STAGES} participants` };
+    }
+    const participants: ProposalIterationParticipant[] = [];
+    const participantsById = new Map<string, ProposalIterationParticipant>();
+    for (let index = 0; index < value.participants.length; index += 1) {
+      const entry = value.participants[index];
+      const itemLabel = `${label}.participants[${index}]`;
+      if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be an object` };
+      const participantFields = exactFields(entry, ITERATION_PARTICIPANT_FIELDS, ['participantId', 'stageRef', 'role', 'perspective', 'mandate']);
+      if (participantFields) return { ok: false, detail: `${itemLabel}: ${participantFields}` };
+      const participantId = validateId(entry.participantId, `${itemLabel}.participantId`);
+      if (!participantId.ok) return participantId;
+      const stageRef = validateId(entry.stageRef, `${itemLabel}.stageRef`);
+      if (!stageRef.ok) return stageRef;
+      if (!stageById.has(stageRef.value)) return { ok: false, detail: `${itemLabel}.stageRef names an unknown stage` };
+      if (participantsById.has(participantId.value)) return { ok: false, detail: `${label} participant ids must be unique` };
+      if (assignedStages.has(stageRef.value)) return { ok: false, detail: `participant stage '${stageRef.value}' may appear in only one iteration group` };
+      if (typeof entry.role !== 'string' || !PROPOSAL_ITERATION_ROLES.has(entry.role as ProposalIterationRole)) {
+        return { ok: false, detail: `${itemLabel}.role is invalid` };
+      }
+      const perspective = validateText(entry.perspective, `${itemLabel}.perspective`, MAX_WORK_ORDER_CHARS);
+      if (!perspective.ok) return perspective;
+      const mandate = validateText(entry.mandate, `${itemLabel}.mandate`, MAX_WORK_ORDER_CHARS);
+      if (!mandate.ok) return mandate;
+      let participantGoal: string | undefined;
+      if (Object.prototype.hasOwnProperty.call(entry, 'goal')) {
+        const parsed = validateText(entry.goal, `${itemLabel}.goal`, MAX_SUMMARY_CHARS);
+        if (!parsed.ok) return parsed;
+        participantGoal = parsed.value;
+      }
+      const participant = {
+        participantId: participantId.value, stageRef: stageRef.value, role: entry.role as ProposalIterationRole,
+        perspective: perspective.value, mandate: mandate.value, ...(participantGoal ? { goal: participantGoal } : {}),
+      };
+      participants.push(participant);
+      participantsById.set(participant.participantId, participant);
+      assignedStages.add(participant.stageRef);
+    }
+
+    if (!Array.isArray(value.routes) || value.routes.length === 0 || value.routes.length > MAX_LIST_ITEMS) {
+      return { ok: false, detail: `${label}.routes must contain 1-${MAX_LIST_ITEMS} routes` };
+    }
+    const routes: ProposalIterationRoute[] = [];
+    const routesById = new Map<string, ProposalIterationRoute>();
+    for (let index = 0; index < value.routes.length; index += 1) {
+      const entry = value.routes[index];
+      const itemLabel = `${label}.routes[${index}]`;
+      if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be an object` };
+      const routeFields = exactFields(entry, ITERATION_ROUTE_FIELDS, [...ITERATION_ROUTE_FIELDS]);
+      if (routeFields) return { ok: false, detail: `${itemLabel}: ${routeFields}` };
+      const routeId = validateId(entry.routeId, `${itemLabel}.routeId`);
+      if (!routeId.ok) return routeId;
+      const senderParticipantId = validateId(entry.senderParticipantId, `${itemLabel}.senderParticipantId`);
+      if (!senderParticipantId.ok) return senderParticipantId;
+      const recipientParticipantId = validateId(entry.recipientParticipantId, `${itemLabel}.recipientParticipantId`);
+      if (!recipientParticipantId.ok) return recipientParticipantId;
+      const sender = participantsById.get(senderParticipantId.value);
+      const recipient = participantsById.get(recipientParticipantId.value);
+      if (!sender || !recipient || sender === recipient) return { ok: false, detail: `${itemLabel} must name distinct declared participants` };
+      if (routesById.has(routeId.value)) return { ok: false, detail: `${label} route ids must be unique` };
+      if (!Array.isArray(entry.requestKinds) || entry.requestKinds.length === 0
+        || new Set(entry.requestKinds).size !== entry.requestKinds.length
+        || entry.requestKinds.some((kind) => typeof kind !== 'string' || !PROPOSAL_ITERATION_REQUEST_KINDS.has(kind as ProposalIterationRequestKind))) {
+        return { ok: false, detail: `${itemLabel}.requestKinds must contain unique declared kinds` };
+      }
+      if (!Array.isArray(entry.baseResolutionStageIds) || entry.baseResolutionStageIds.length === 0
+        || new Set(entry.baseResolutionStageIds).size !== entry.baseResolutionStageIds.length
+        || entry.baseResolutionStageIds.some((stageId) => typeof stageId !== 'string' || !stageById.has(stageId))) {
+        return { ok: false, detail: `${itemLabel}.baseResolutionStageIds must be a nonempty unique list of participant stages` };
+      }
+      const route = {
+        routeId: routeId.value,
+        senderParticipantId: sender.participantId,
+        recipientParticipantId: recipient.participantId,
+        requestKinds: [...entry.requestKinds] as ProposalIterationRequestKind[],
+        baseResolutionStageIds: [...entry.baseResolutionStageIds] as string[],
+      };
+      routes.push(route);
+      routesById.set(route.routeId, route);
+    }
+    for (const route of routes) {
+      const expected = [...new Set(routes
+        .filter((candidate) => candidate.recipientParticipantId === route.recipientParticipantId)
+        .map((candidate) => participantsById.get(candidate.senderParticipantId)?.stageRef)
+        .filter((stageRef): stageRef is string => stageRef !== undefined))];
+      if (route.baseResolutionStageIds.length !== expected.length
+        || route.baseResolutionStageIds.some((stageRef, index) => stageRef !== expected[index])) {
+        return { ok: false, detail: `${label}.routes '${route.routeId}' baseResolutionStageIds differs from compiler-owned fan-in wiring` };
+      }
+    }
+
+    if (!isRecord(value.activation)) return { ok: false, detail: `${label}.activation must be an object` };
+    const activationFields = exactFields(value.activation, new Set(['seedParticipantId', 'seedArtifactIds']), ['seedParticipantId', 'seedArtifactIds']);
+    if (activationFields) return { ok: false, detail: `${label}.activation: ${activationFields}` };
+    const seedParticipantId = validateId(value.activation.seedParticipantId, `${label}.activation.seedParticipantId`);
+    if (!seedParticipantId.ok) return seedParticipantId;
+    const seedParticipant = participantsById.get(seedParticipantId.value);
+    if (!seedParticipant) return { ok: false, detail: `${label}.activation seed participant is outside the group` };
+    const seedArtifacts = validateUniqueStringArray(value.activation.seedArtifactIds, `${label}.activation.seedArtifactIds`, 1, MAX_ARTIFACTS, validateId);
+    if (!seedArtifacts.ok) return seedArtifacts;
+    const declaredSeedArtifacts = (stageById.get(seedParticipant.stageRef)?.artifacts ?? []).map((artifact) => artifact.id);
+    if (declaredSeedArtifacts.length !== seedArtifacts.value.length
+      || declaredSeedArtifacts.some((artifactId) => !seedArtifacts.value.includes(artifactId))) {
+      return { ok: false, detail: `${label}.activation seed artifacts differ from the compiler-owned stage snapshot` };
+    }
+
+    const initialStepId = validateId(value.initialStepId, `${label}.initialStepId`);
+    if (!initialStepId.ok) return initialStepId;
+    if (!Array.isArray(value.schedule) || value.schedule.length === 0 || value.schedule.length > MAX_LIST_ITEMS) {
+      return { ok: false, detail: `${label}.schedule must contain 1-${MAX_LIST_ITEMS} steps` };
+    }
+    const schedule: ProposalIterationScheduleStep[] = [];
+    const stepsById = new Map<string, ProposalIterationScheduleStep>();
+    const triggers = new Set<string>();
+    for (let index = 0; index < value.schedule.length; index += 1) {
+      const entry = value.schedule[index];
+      const itemLabel = `${label}.schedule[${index}]`;
+      if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be an object` };
+      const stepFields = exactFields(entry, ITERATION_SCHEDULE_FIELDS, ['stepId', 'routeId', 'cycle']);
+      if (stepFields) return { ok: false, detail: `${itemLabel}: ${stepFields}` };
+      const stepId = validateId(entry.stepId, `${itemLabel}.stepId`);
+      if (!stepId.ok) return stepId;
+      const routeId = validateId(entry.routeId, `${itemLabel}.routeId`);
+      if (!routeId.ok) return routeId;
+      const route = routesById.get(routeId.value);
+      if (!route) return { ok: false, detail: `${itemLabel} names an unknown route` };
+      if (stepsById.has(stepId.value)) return { ok: false, detail: `${label} schedule step ids must be unique` };
+      if (entry.cycle !== 'current' && entry.cycle !== 'next') return { ok: false, detail: `${itemLabel}.cycle must be current or next` };
+      let after: ProposalIterationScheduleStep['after'];
+      if (Object.prototype.hasOwnProperty.call(entry, 'after')) {
+        if (!isRecord(entry.after)) return { ok: false, detail: `${itemLabel}.after must be an object` };
+        const afterFields = exactFields(entry.after, ITERATION_AFTER_FIELDS, [...ITERATION_AFTER_FIELDS]);
+        if (afterFields) return { ok: false, detail: `${itemLabel}.after: ${afterFields}` };
+        const afterStepId = validateId(entry.after.stepId, `${itemLabel}.after.stepId`);
+        if (!afterStepId.ok) return afterStepId;
+        const afterParticipantId = validateId(entry.after.participantId, `${itemLabel}.after.participantId`);
+        if (!afterParticipantId.ok) return afterParticipantId;
+        if (!participantsById.has(afterParticipantId.value) || route.senderParticipantId !== afterParticipantId.value) {
+          return { ok: false, detail: `${itemLabel}.after participant must be the route sender` };
+        }
+        if (typeof entry.after.verdict !== 'string' || !PROPOSAL_ITERATION_VERDICTS.has(entry.after.verdict as ProposalIterationVerdict)) {
+          return { ok: false, detail: `${itemLabel}.after.verdict is invalid` };
+        }
+        const trigger = `${afterStepId.value}\0${afterParticipantId.value}\0${entry.after.verdict}`;
+        if (triggers.has(trigger)) return { ok: false, detail: `${label}.schedule contains an ambiguous trigger` };
+        triggers.add(trigger);
+        after = {
+          stepId: afterStepId.value,
+          participantId: afterParticipantId.value,
+          verdict: entry.after.verdict as ProposalIterationVerdict,
+        };
+      } else if (stepId.value !== initialStepId.value) {
+        return { ok: false, detail: `${itemLabel}.after is required except on initialStepId` };
+      } else if (entry.cycle !== 'current') {
+        return { ok: false, detail: `${itemLabel}.cycle must be current when activation supplies no predecessor` };
+      }
+      const step = {
+        stepId: stepId.value, routeId: route.routeId,
+        ...(after ? { after } : {}),
+        cycle: entry.cycle as ProposalIterationScheduleStep['cycle'],
+      } satisfies ProposalIterationScheduleStep;
+      schedule.push(step);
+      stepsById.set(step.stepId, step);
+    }
+    if (!stepsById.has(initialStepId.value)) return { ok: false, detail: `${label}.initialStepId names an unknown step` };
+    for (const step of schedule) {
+      if (!step.after) continue;
+      const predecessor = stepsById.get(step.after.stepId);
+      if (!predecessor) return { ok: false, detail: `${label}.schedule names an unknown predecessor` };
+      const predecessorRoute = routesById.get(predecessor.routeId) as ProposalIterationRoute;
+      if (predecessorRoute.recipientParticipantId !== step.after.participantId) {
+        return { ok: false, detail: `${label}.schedule predecessor participant differs from the routed recipient` };
+      }
+    }
+    const initialRoute = routesById.get((stepsById.get(initialStepId.value) as ProposalIterationScheduleStep).routeId) as ProposalIterationRoute;
+    if (initialRoute.senderParticipantId !== seedParticipant.participantId) {
+      return { ok: false, detail: `${label}.initial route differs from the activation seed` };
+    }
+    for (const participant of participants) {
+      if (participant.stageRef === seedParticipant.stageRef) continue;
+      if (!stageById.get(participant.stageRef)?.dependsOn.includes(seedParticipant.stageRef)) {
+        return { ok: false, detail: `${label} participant stage dependency differs from compiler-owned activation wiring` };
+      }
+    }
+
+    const artifacts = validateUniqueStringArray(value.artifacts, `${label}.artifacts`, 1, MAX_ARTIFACTS, validateId);
+    if (!artifacts.ok) return artifacts;
+    const participantArtifacts = new Set(participants.flatMap((participant) =>
+      (stageById.get(participant.stageRef)?.artifacts ?? []).map((artifact) => artifact.id)));
+    const unknownArtifact = artifacts.value.find((artifactId) => !participantArtifacts.has(artifactId));
+    if (unknownArtifact) return { ok: false, detail: `${label}.artifacts names unknown participant artifact '${unknownArtifact}'` };
+    if (!Array.isArray(value.criteria) || value.criteria.length === 0 || value.criteria.length > 16) {
+      return { ok: false, detail: `${label}.criteria must contain 1-16 items` };
+    }
+    const criteria: ProposalReviewCriterion[] = [];
+    const criterionIds = new Set<string>();
+    for (let index = 0; index < value.criteria.length; index += 1) {
+      const entry = value.criteria[index];
+      if (!isRecord(entry)) return { ok: false, detail: `${label}.criteria[${index}] must be an object` };
+      const criterionFields = exactFields(entry, REVIEW_CRITERION_FIELDS, ['id', 'description']);
+      if (criterionFields) return { ok: false, detail: `${label}.criteria[${index}]: ${criterionFields}` };
+      const id = validateId(entry.id, `${label}.criteria[${index}].id`);
+      if (!id.ok) return id;
+      const description = validateText(entry.description, `${label}.criteria[${index}].description`, MAX_TITLE_CHARS);
+      if (!description.ok) return description;
+      if (criterionIds.has(id.value)) return { ok: false, detail: `${label}.criteria ids must be unique` };
+      criterionIds.add(id.value);
+      criteria.push({ id: id.value, description: description.value });
+    }
+    if (typeof value.maxCycles !== 'number' || !Number.isSafeInteger(value.maxCycles) || value.maxCycles <= 0) {
+      return { ok: false, detail: `${label}.maxCycles must be a positive safe integer` };
+    }
+    const cycleUnit = validateText(value.cycleUnit, `${label}.cycleUnit`, MAX_SUMMARY_CHARS);
+    if (!cycleUnit.ok) return cycleUnit;
+    if (!Array.isArray(value.terminalAuthorities) || value.terminalAuthorities.length === 0) {
+      return { ok: false, detail: `${label}.terminalAuthorities must be nonempty` };
+    }
+    const terminalAuthorities: ProposalIterationTerminalAuthority[] = [];
+    const terminalKeys = new Set<string>();
+    for (let index = 0; index < value.terminalAuthorities.length; index += 1) {
+      const entry = value.terminalAuthorities[index];
+      const itemLabel = `${label}.terminalAuthorities[${index}]`;
+      if (!isRecord(entry)) return { ok: false, detail: `${itemLabel} must be an object` };
+      const authorityFields = exactFields(entry, ITERATION_AUTHORITY_FIELDS, [...ITERATION_AUTHORITY_FIELDS]);
+      if (authorityFields) return { ok: false, detail: `${itemLabel}: ${authorityFields}` };
+      const participantId = validateId(entry.participantId, `${itemLabel}.participantId`);
+      if (!participantId.ok) return participantId;
+      const participant = participantsById.get(participantId.value);
+      if (!participant || typeof entry.verdict !== 'string'
+        || !PROPOSAL_TERMINAL_VERDICTS.has(entry.verdict as ProposalIterationTerminalVerdict)) {
+        return { ok: false, detail: `${itemLabel} is not an authorized terminal authority` };
+      }
+      const key = `${participant.participantId}\0${entry.verdict}`;
+      if (terminalKeys.has(key)) return { ok: false, detail: `${label}.terminalAuthorities must be unique` };
+      terminalKeys.add(key);
+      terminalAuthorities.push({ participantId: participant.participantId, verdict: entry.verdict as ProposalIterationTerminalVerdict });
+    }
+    for (const participant of participants) {
+      if (participant.goal !== undefined
+        && ((participant.role !== 'manager' && participant.role !== 'coordinator')
+          || !terminalAuthorities.some((authority) => authority.participantId === participant.participantId))) {
+        return { ok: false, detail: `${label} participant goals require an accepting manager or coordinator terminal authority` };
+      }
+    }
+    if (!goal && !participants.some((participant) => participant.goal !== undefined)) {
+      return { ok: false, detail: `${label} requires a group goal or goal-bearing accepting manager or coordinator` };
+    }
+    const participantVocabulary = new Map(participants.map((participant) => [
+      participant.participantId, new Set<ProposalIterationVerdict>(['parked']),
+    ]));
+    const successors = new Map<string, ProposalIterationScheduleStep>();
+    const referencedRouteIds = new Set<string>();
+    for (const step of schedule) {
+      referencedRouteIds.add(step.routeId);
+      if (!step.after) continue;
+      const terminalKey = `${step.after.participantId}\0${step.after.verdict}`;
+      if (step.after.verdict === 'parked') {
+        return { ok: false, detail: `${label} parked must not have a participant successor step` };
+      }
+      if (terminalKeys.has(terminalKey)) {
+        return { ok: false, detail: `${label} terminal-authority verdict '${step.after.verdict}' must not have a successor step` };
+      }
+      participantVocabulary.get(step.after.participantId)?.add(step.after.verdict);
+      successors.set(`${step.after.stepId}\0${step.after.participantId}\0${step.after.verdict}`, step);
+    }
+    for (const route of routes) {
+      if (route.requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
+        participantVocabulary.get(route.recipientParticipantId)?.add('fulfilled');
+      }
+      if (!referencedRouteIds.has(route.routeId)) {
+        return { ok: false, detail: `${label} route '${route.routeId}' is not referenced by any schedule step` };
+      }
+    }
+    const pending = [initialStepId.value];
+    const visited = new Set<string>();
+    const enteredParticipants = new Set<string>([seedParticipant.participantId]);
+    while (pending.length > 0) {
+      const stepId = pending.pop() as string;
+      if (visited.has(stepId)) continue;
+      visited.add(stepId);
+      const step = stepsById.get(stepId) as ProposalIterationScheduleStep;
+      const route = routesById.get(step.routeId) as ProposalIterationRoute;
+      const recipient = participantsById.get(route.recipientParticipantId) as ProposalIterationParticipant;
+      enteredParticipants.add(recipient.participantId);
+      for (const verdict of participantVocabulary.get(recipient.participantId) ?? []) {
+        // `parked` is universal and always transfers control to the platform human gate, so it is
+        // deliberately exempt from successor coverage.
+        if (verdict === 'parked' || terminalKeys.has(`${recipient.participantId}\0${verdict}`)) continue;
+        const successor = successors.get(`${stepId}\0${recipient.participantId}\0${verdict}`);
+        if (!successor) return { ok: false, detail: `${label} nonterminal verdict '${verdict}' has no successor` };
+        pending.push(successor.stepId);
+      }
+    }
+    if (visited.size !== schedule.length) return { ok: false, detail: `${label}.schedule contains an unreachable step` };
+    const danglingParticipant = participants.find((participant) => !enteredParticipants.has(participant.participantId));
+    if (danglingParticipant) {
+      return { ok: false, detail: `${label} participant '${danglingParticipant.participantId}' is not the recipient of a reachable schedule step` };
+    }
+
+    let completionGate: ProposalCompletionGate | undefined;
+    if (Object.prototype.hasOwnProperty.call(value, 'completionGate')) {
+      if (!isRecord(value.completionGate)) return { ok: false, detail: `${label}.completionGate must be an object` };
+      const gateFields = exactFields(value.completionGate, COMPLETION_GATE_FIELDS, [...COMPLETION_GATE_FIELDS]);
+      if (gateFields) return { ok: false, detail: `${label}.completionGate: ${gateFields}` };
+      const id = validateId(value.completionGate.id, `${label}.completionGate.id`);
+      if (!id.ok) return id;
+      const prompt = validateText(value.completionGate.prompt, `${label}.completionGate.prompt`, 2_000);
+      if (!prompt.ok) return prompt;
+      if (value.completionGate.kind !== 'approval' || value.completionGate.requiresReview !== 'pass') {
+        return { ok: false, detail: `${label}.completionGate must be approval requiring review pass` };
+      }
+      completionGate = { id: id.value, kind: 'approval', prompt: prompt.value, requiresReview: 'pass' };
+    }
+    groups.push({
+      iterationGroupId: groupId.value, ...(goal ? { goal } : {}), participants, routes,
+      activation: { seedParticipantId: seedParticipant.participantId, seedArtifactIds: seedArtifacts.value },
+      initialStepId: initialStepId.value, schedule, artifacts: artifacts.value, criteria,
+      maxCycles: value.maxCycles, cycleUnit: cycleUnit.value, terminalAuthorities,
+      ...(completionGate ? { completionGate } : {}),
+    });
+  }
+  return { ok: true, value: groups };
 }
 
 function validatePlanProposalInternal(
@@ -759,6 +1190,7 @@ function validatePlanProposalInternal(
   }
   const stages: ProposalStage[] = [];
   const ids = new Set<string>();
+  const stageGatesById = new Map<string, { gate: ProposalHumanGate | ProposalCompletionGate; stage: ProposalStage }>();
   for (let index = 0; index < input.stages.length; index += 1) {
     const stage = validateStage(input.stages[index], index, registry, allowResolvedAssignments);
     if (!stage.ok) return stage;
@@ -805,6 +1237,50 @@ function validatePlanProposalInternal(
     }
   }
   if (visited !== stages.length) return { ok: false, detail: 'proposal stage graph contains a cycle' };
+  for (const stage of stages) {
+    for (const gate of [...stage.humanGates, ...(stage.completionGate ? [stage.completionGate] : [])]) {
+      if (stageGatesById.has(gate.id)) return { ok: false, detail: `duplicate human gate id '${gate.id}'` };
+      stageGatesById.set(gate.id, { gate, stage });
+    }
+  }
+  let iterationGroups: ProposalIterationGroup[] | undefined;
+  if (Object.prototype.hasOwnProperty.call(input, 'iterationGroups')) {
+    if (!allowResolvedAssignments) return { ok: false, detail: 'iterationGroups is a compiler-only field' };
+    const parsed = validateProposalIterationGroups(input.iterationGroups, stages);
+    if (!parsed.ok) return parsed;
+    for (const group of parsed.value) {
+      if (!group.completionGate) continue;
+      const stageEntry = stageGatesById.get(group.completionGate.id);
+      const review = stageEntry?.stage.review;
+      const managerParticipant = review
+        ? group.participants.find((participant) => participant.participantId === `${review.subjectStageId}-manager`)
+        : undefined;
+      const judgeParticipant = stageEntry
+        ? group.participants.find((participant) => participant.participantId === `${stageEntry.stage.id}-judge`)
+        : undefined;
+      const isLegacyCompilerAlias = stageEntry !== undefined
+        && review !== undefined
+        && group.iterationGroupId === `${stageEntry.stage.id}-iteration`
+        && group.participants.length === 2
+        && managerParticipant?.stageRef === review.subjectStageId
+        && managerParticipant.role === 'manager'
+        && judgeParticipant?.stageRef === stageEntry.stage.id
+        && judgeParticipant.role === 'judge'
+        && group.activation.seedParticipantId === managerParticipant.participantId
+        && group.terminalAuthorities.length === 1
+        && group.terminalAuthorities[0].participantId === judgeParticipant.participantId
+        && group.terminalAuthorities[0].verdict === 'pass'
+        && stageEntry.gate.kind === group.completionGate.kind
+        && stageEntry.gate.prompt === group.completionGate.prompt
+        && 'requiresReview' in stageEntry.gate
+        && stageEntry.gate.requiresReview === group.completionGate.requiresReview;
+      if (stageEntry && !isLegacyCompilerAlias) {
+        return { ok: false, detail: `duplicate human gate id '${group.completionGate.id}'` };
+      }
+      if (!stageEntry) stageGatesById.set(group.completionGate.id, { gate: group.completionGate, stage: stages[0] });
+    }
+    iterationGroups = parsed.value;
+  }
   const value: PlanProposal = {
     schema: PLAN_PROPOSAL_SCHEMA,
     proposalId: proposalId.value,
@@ -823,6 +1299,7 @@ function validatePlanProposalInternal(
   // content hash of every pre-existing profile-less proposal. Same rule for `parameters`.
   if (profile !== undefined) value.profile = profile;
   if (parameters !== undefined) value.parameters = parameters;
+  if (iterationGroups !== undefined) value.iterationGroups = iterationGroups;
   return { ok: true, value };
 }
 

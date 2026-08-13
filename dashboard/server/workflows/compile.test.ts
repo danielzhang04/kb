@@ -87,6 +87,7 @@ const CHECKER = def([
   'id: checker', 'project: kb-ops', 'title: Checker', 'profile: research',
   'stages:',
   '  - id: create', '    title: Create', '    action: implement:thing', '    target: orgs/kb-ops/output', '    workOrder: Create',
+  '    artifacts:', '      - id: result', '        path: orgs/kb-ops/output/result.md', '        description: Result to review.',
   '  - id: check', '    title: Check', '    action: review:thing', '    target: orgs/kb-ops/reviews', '    workOrder: Check', '    dependsOn: [create]',
   '    agentId: fyt-production', '    profileId: worker:claude:claude-sonnet-5', '    workflowProfile: checker-readonly',
   '    review:', '      subjectStageId: create', '      maxCreatorReworks: 1', '      criteria:', '        - id: safety', '          description: No unsafe changes',
@@ -367,15 +368,20 @@ describe('compileWorkflowDef', () => {
     expect(differentSelectedProfile.value.proposalId).not.toBe(compiled.value.proposalId);
   });
 
-  it('compiles checker metadata into compiler-only proposal fields and includes it in proposal identity', () => {
+  it('compiles checker metadata into compatibility fields and the generic iteration group and includes it in proposal identity', () => {
     const compiled = compileWorkflowDef(CHECKER, bindingEnvironment());
-    expect(compiled).toMatchObject({ ok: true, value: { stages: [
-      {}, {
+    expect(compiled).toMatchObject({ ok: true, value: {
+      stages: [{}, {
         workflowProfile: 'checker-readonly',
         review: { subjectStageId: 'create', maxCreatorReworks: 1, criteria: [{ id: 'safety' }] },
         completionGate: { id: 'checker-approval', kind: 'approval', requiresReview: 'pass' },
-      }, {},
-    ] } });
+      }, {}],
+      iterationGroups: [{
+        criteria: [{ id: 'safety' }],
+        maxCycles: 2,
+        completionGate: { id: 'checker-approval', kind: 'approval', requiresReview: 'pass' },
+      }],
+    } });
     if (!compiled.ok) return;
     expect(compiled.value.stages[1]).toMatchObject({
       scope: { write: [] },
@@ -618,5 +624,179 @@ describe('compileWorkflowDef', () => {
       expect(a.value.proposalId).toBe(b.value.proposalId);
       expect(a.value.proposalId).not.toBe(c.value.proposalId);
     });
+  });
+});
+
+function authoredIterationDef(): WorkflowDef {
+  return def([
+    'id: authored-iteration', 'project: kb-ops', 'title: Authored iteration', 'profile: research',
+    'stages:',
+    '  - id: create', '    title: Create', '    action: implement:draft', '    target: orgs/kb-ops/output', '    workOrder: Create.',
+    '    artifacts:', '      - id: draft', '        path: orgs/kb-ops/output/draft.md', '        description: Draft.',
+    '  - id: check', '    title: Check', '    action: review:draft', '    target: orgs/kb-ops/reviews', '    workOrder: Check.',
+    'iterationGroups:',
+    '  - iterationGroupId: revision',
+    '    goal: Produce an accepted draft.',
+    '    participants:',
+    '      - participantId: producer', '        stageRef: create', '        role: manager',
+    '        perspective: Own the artifact.', '        mandate: Produce and revise the draft.',
+    '      - participantId: judge', '        stageRef: check', '        role: judge',
+    '        perspective: Apply the criterion.', '        mandate: Pass only a complete draft.',
+    '    routes:',
+    '      - routeId: to-judge', '        senderParticipantId: producer', '        recipientParticipantId: judge', '        requestKinds: [review]',
+    '    activation:', '      seedParticipantId: producer', '      seedArtifactIds: [draft]',
+    '    initialStepId: review',
+    '    schedule:',
+    '      - stepId: review', '        routeId: to-judge', '        cycle: current',
+    '    artifacts: [draft]',
+    '    criteria:', '      - id: quality', '        description: Draft is complete.',
+    '    maxCycles: 3', '    cycleUnit: One revision and judge verdict.',
+    '    terminalAuthorities:', '      - participantId: judge', '        verdict: pass',
+  ].join('\n'));
+}
+
+describe('iteration group compilation', () => {
+  const legacyEnvironment = () => bindingEnvironment({
+    executionProfiles: PROFILES.map((profile) => profile.id === 'worker:claude:claude-sonnet-5'
+      ? { ...profile, model: 'claude-sonnet-5' }
+      : { ...profile }),
+  });
+
+  it('derives stage dependency and base-resolution wiring for every declared iteration route', () => {
+    const authored = authoredIterationDef();
+    const group = authored.iterationGroups![0];
+    const fanIn: WorkflowDef = {
+      ...authored,
+      stages: [
+        ...authored.stages,
+        { ...authored.stages[0], id: 'peer', title: 'Peer', workOrder: 'Contribute another current generation.', artifacts: [] },
+      ],
+      iterationGroups: [{
+        ...group,
+        participants: [
+          ...group.participants,
+          { participantId: 'peer', stageRef: 'peer', role: 'contributor', perspective: 'Contribute.', mandate: 'Produce a peer generation.' },
+        ],
+        routes: [
+          ...group.routes,
+          { routeId: 'to-producer', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'] },
+          { routeId: 'judge-to-peer', senderParticipantId: 'judge', recipientParticipantId: 'peer', requestKinds: ['rework'] },
+          { routeId: 'peer-to-judge', senderParticipantId: 'peer', recipientParticipantId: 'judge', requestKinds: ['review'] },
+        ],
+        schedule: [
+          { stepId: 'review', routeId: 'to-judge', after: { stepId: 'producer-rework', participantId: 'producer', verdict: 'fulfilled' }, cycle: 'next' },
+          { stepId: 'peer-rework', routeId: 'judge-to-peer', after: { stepId: 'review', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+          { stepId: 'peer-review', routeId: 'peer-to-judge', after: { stepId: 'peer-rework', participantId: 'peer', verdict: 'fulfilled' }, cycle: 'current' },
+          { stepId: 'producer-rework', routeId: 'to-producer', after: { stepId: 'peer-review', participantId: 'judge', verdict: 'fail' }, cycle: 'current' },
+        ],
+      }],
+    };
+    const compiled = compileWorkflowDef(fanIn, { registry: REGISTRY });
+    expect(compiled).toMatchObject({ ok: true });
+    if (!compiled.ok) return;
+    expect(compiled.value.stages.map((stage) => [stage.id, stage.dependsOn])).toEqual([
+      ['create', []],
+      ['check', ['create']],
+      ['peer', ['create']],
+    ]);
+    expect(compiled.value.iterationGroups?.[0].routes).toEqual([
+      expect.objectContaining({ routeId: 'to-judge', baseResolutionStageIds: ['create', 'peer'] }),
+      expect.objectContaining({ routeId: 'to-producer', baseResolutionStageIds: ['check'] }),
+      expect.objectContaining({ routeId: 'judge-to-peer', baseResolutionStageIds: ['check'] }),
+      expect.objectContaining({ routeId: 'peer-to-judge', baseResolutionStageIds: ['create', 'peer'] }),
+    ]);
+    expect(validateServerCompiledPlanProposal(compiled.value, REGISTRY)).toMatchObject({ ok: true });
+  });
+
+  it('compiles a legacy review block into the judge configuration with maxCycles equal to maxCreatorReworks plus one', () => {
+    for (const maxCreatorReworks of [1, 3, Number.MAX_SAFE_INTEGER - 1]) {
+      const candidate: WorkflowDef = {
+        ...CHECKER,
+        stages: [
+          CHECKER.stages[0],
+          { ...CHECKER.stages[1], review: { ...CHECKER.stages[1].review!, maxCreatorReworks } },
+          CHECKER.stages[2],
+        ],
+      };
+      const compiled = compileWorkflowDef(candidate, legacyEnvironment());
+      expect(compiled).toMatchObject({ ok: true, value: { iterationGroups: [{
+        participants: [{ role: 'manager', stageRef: 'create' }, { role: 'judge', stageRef: 'check' }],
+        maxCycles: maxCreatorReworks + 1,
+        terminalAuthorities: [{ participantId: 'check-judge', verdict: 'pass' }],
+      }] } });
+      if (!compiled.ok) continue;
+      expect(compiled.value.stages[1].review).toEqual(candidate.stages[1].review);
+      expect(compiled.value.iterationGroups?.[0].schedule[0]).toEqual({
+        stepId: 'check-review',
+        routeId: 'check-to-judge',
+        after: { stepId: 'check-rework', participantId: 'create-manager', verdict: 'fulfilled' },
+        cycle: 'next',
+      });
+    }
+  });
+
+  it('maps a legacy review completion gate to the generic post-acceptance completion gate', () => {
+    const compiled = compileWorkflowDef(CHECKER, legacyEnvironment());
+    expect(compiled).toMatchObject({ ok: true, value: { iterationGroups: [{ completionGate: {
+      id: 'checker-approval', kind: 'approval', prompt: 'Approve checker result?', requiresReview: 'pass',
+    } }] } });
+    if (!compiled.ok) return;
+    expect(compiled.value.stages[1].completionGate).toEqual(CHECKER.stages[1].completionGate);
+  });
+
+  it('fails loudly when a legacy review subject declares no artifacts', () => {
+    const subject = { ...CHECKER.stages[0], artifacts: [] };
+    const candidate: WorkflowDef = { ...CHECKER, stages: [subject, CHECKER.stages[1], CHECKER.stages[2]] };
+    expect(compileWorkflowDef(candidate, legacyEnvironment())).toMatchObject({
+      ok: false,
+      reason: 'legacy-review-artifacts-required',
+      detail: "review stage 'check' subject 'create' must declare at least one artifact",
+    });
+  });
+
+  it('keeps normal write scope for a checker profile stage without a review block', () => {
+    const checker = CHECKER.stages[1];
+    const candidate: WorkflowDef = {
+      ...CHECKER,
+      stages: [
+        CHECKER.stages[0],
+        { ...checker, review: undefined, completionGate: undefined },
+        CHECKER.stages[2],
+      ],
+    };
+    const compiled = compileWorkflowDef(candidate, legacyEnvironment());
+    expect(compiled).toMatchObject({ ok: true });
+    if (!compiled.ok) return;
+    expect(compiled.value.stages[1].scope.write).toEqual(['orgs/kb-ops/reviews']);
+    expect(compiled.value.scope.write).toContain('orgs/kb-ops/reviews');
+  });
+
+  it('rejects a legacy rework count that cannot be incremented as a safe integer', () => {
+    const review = CHECKER.stages[1].review!;
+    const forged: WorkflowDef = {
+      ...CHECKER,
+      stages: [CHECKER.stages[0], { ...CHECKER.stages[1], review: { ...review, maxCreatorReworks: Number.MAX_SAFE_INTEGER } }, CHECKER.stages[2]],
+    };
+    expect(compileWorkflowDef(forged, legacyEnvironment())).toMatchObject({
+      ok: false,
+      reason: 'legacy-review-bound-unsafe',
+    });
+  });
+
+  it('hash-binds iteration groups mandates routes and terminal authorities into the proposal identity', () => {
+    const base = authoredIterationDef();
+    const group = base.iterationGroups![0];
+    const variants: WorkflowDef[] = [
+      { ...base, iterationGroups: [{ ...group, participants: [{ ...group.participants[0], mandate: 'A changed immutable mandate.' }, group.participants[1]] }] },
+      { ...base, iterationGroups: [{ ...group, routes: [{ ...group.routes[0], requestKinds: ['check'] }] }] },
+      { ...base, iterationGroups: [{
+        ...group,
+        terminalAuthorities: [...group.terminalAuthorities, { participantId: 'producer', verdict: 'complete' }],
+      }] },
+    ];
+    const compiled = [base, ...variants].map((candidate) => compileWorkflowDef(candidate, { registry: REGISTRY }));
+    expect(compiled.every((result) => result.ok)).toBe(true);
+    const ids = compiled.map((result) => result.ok ? result.value.proposalId : '');
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
