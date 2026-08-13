@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import forge as forge_module
 from forge import (Kit, cmd_batch, seed_role_violations, seed_roles_text, seeding_law_violations,
-                   SEED_CAP, STYLE_TILE, STYLE_ANCHOR_ROLE)
+                   PLATE_COMPOSITION, SEED_CAP, STYLE_TILE, STYLE_ANCHOR_ROLE)
 from conftest import isolate_staging, stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
@@ -33,6 +33,13 @@ TILE = REFS + "env/scene-style-tile.png"
 LETTERING = REFS + "env/lettering-marker-italic.png"
 CAST = "`miniscribe-rep`, `expr-smug`, `action-powerstance`,"
 PNG = b"\x89PNG\r\n\x1a\n"
+EXPECTED_PLATE_COMPOSITION = (
+    "PLATE COMPOSITION — this overrides generic depth framing: eye-level, frontal or only mildly "
+    "oblique; reserve one continuous standable-ground zone from foreground into midground, roughly "
+    "25–35% of the frame and wide enough for two full-body rig silhouettes to share one plane "
+    "without furniture overlap. Any foreground depth prop stays at one edge and never crosses that "
+    "zone. Outside it, keep the set rich and working with its real furniture, stock, and machinery."
+)
 
 # The poyais-era TWO VOICES, verbatim from the era import SHA `ff36f63`:
 #   HEAD — style-bible.md:90-93 (§2b STYLE-ONLY descriptor)
@@ -181,6 +188,29 @@ def test_omitting_the_tile_by_name_suppresses_the_derived_seed():
     assert err is None, err
     t1 = _by_name(spec, "T1")
     assert t1["seed"] == [] and t1["plate"] is True, t1
+
+
+def test_plate_composition_is_exact_once_on_cast_free_place_firsts_including_lettered_ones():
+    """The composition law keys to the place-first shape, not `plate`: lettering is content-seeded
+    but the lettered L114-shaped root still establishes the actor-ready place for later scenes."""
+    assert PLATE_COMPOSITION == EXPECTED_PLATE_COMPOSITION
+    spec, err = _run(_doc(
+        {"id": "L114", "place": "brick-yard",
+         "still_prompt": "A working brick yard with a sign reading 'BRICKS' over the gate."},
+        {"id": "L115", "place": "brick-yard", "stage": "yard", "stage_role": "delta",
+         "still_prompt": "The same working brick yard, unchanged, with a ledger on the gate table."},
+        {"id": "N01", "still_prompt": "A standalone ledger on a bare table."}))
+    assert err is None, err
+    lettered = _by_name(spec, "L114")
+    delta = _by_name(spec, "L115")
+    no_place = _by_name(spec, "N01")
+    assert lettered["plate"] is False and lettered["plate_composition"] is True, lettered
+    assert not delta.get("plate_composition") and not no_place.get("plate_composition")
+    k = _kit()
+    prompt = k.prompt_for("environment", lettered["delta"],
+                          generated_policy=PLATE_COMPOSITION if lettered["plate_composition"] else "")
+    assert prompt.count(PLATE_COMPOSITION) == 1, prompt
+    assert prompt.index(PLATE_COMPOSITION) < prompt.index(lettered["delta"]), prompt
 
 
 # --- seed-cap arithmetic -------------------------------------------------------------------------

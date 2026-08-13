@@ -61,12 +61,14 @@ def test_exact_replace_changes_one_causal_span_and_preserves_all_other_bytes():
         "kind": "scene", "shot": "T01", "name": "T01-card-retry",
         "defect": "content",
         "replace": {"from": old, "to": new},
-    })
+    }, item={"name": "T01", "delta": CANONICAL, "payload": CANONICAL,
+             "seed": ["canonical-seed.png"], "plate_composition": True})
     expected = CANONICAL.replace(old, new)
     assert out["payload"] == expected, out["payload"]
     assert out["delta"].endswith(expected), out["delta"]
     assert out["payload"].count(new) == 1
     assert out["payload"].replace(new, old) == CANONICAL
+    assert out["plate_composition"] is True, out
 
 
 def test_additive_instruction_that_restates_or_opposes_a_canonical_clause_rejects():
@@ -131,13 +133,15 @@ def test_policy_zones_precede_authored_payload_and_only_the_style_suffix_follows
     descriptor = "DESCRIPTOR ZONE"
     crowd = "CROWD POLICY ZONE"
     rig = "RIG POLICY ZONE"
+    composition = "PLATE COMPOSITION POLICY ZONE"
     replacement = "AUTHOR-PAYLOAD: the literal BRICKS clause."
     suffix = "FIXED CHANNEL STYLE SUFFIX"
-    text = forge.assemble_prompt(descriptor, replacement, crowd, rig)
-    assert text == "\n\n".join((descriptor, crowd, rig, replacement))
+    text = forge.assemble_prompt(descriptor, replacement, crowd, rig, composition)
+    assert text == "\n\n".join((descriptor, crowd, rig, composition, replacement))
     assert text.endswith(replacement)
-    tailed = forge.assemble_prompt(descriptor, replacement, crowd, rig, suffix)
-    assert tailed == "\n\n".join((descriptor, crowd, rig, replacement, suffix))
+    assert text.index(composition) < text.index(replacement)
+    tailed = forge.assemble_prompt(descriptor, replacement, crowd, rig, composition, suffix)
+    assert tailed == "\n\n".join((descriptor, crowd, rig, composition, replacement, suffix))
     assert tailed.endswith(suffix) and tailed.index(replacement) < tailed.index(suffix)
 
 

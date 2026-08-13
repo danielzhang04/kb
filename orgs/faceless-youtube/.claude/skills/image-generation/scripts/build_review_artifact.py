@@ -218,7 +218,7 @@ INVARIANTS = {
                      "(stock/machines/materials, depth filled edge-to-edge, any signage in the §5 "
                      "ink) — not an empty hangar, not a prop-shop — AND still offers a flat open "
                      "floor plane in fore/midground at figure scale a rig figure could be stood on "
-                     "(visual-grammar §2 plate law; bible §3/§5)",
+                     "— AND " + forge.PLATE_COMPOSITION,
 }
 # `place-owner` is not in this static table: its question embeds the place's own
 # declared literal (`owner cue '<LITERAL>' legible in frame per L-1?`), built per shot

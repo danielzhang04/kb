@@ -276,6 +276,9 @@ def test_the_plate_review_row_asks_for_OCCUPANCY_not_only_for_a_place_to_stand()
     assert "empty hangar" in q and "prop-shop" in q, q          # both bounds
     assert "stood on" in q, q                                    # the original half survives
     assert "ink" in q, q                                         # §5 signage ink, authored
+    assert forge.PLATE_COMPOSITION in q, q                        # one shared composition-law prose home
+    assert "eye-level, frontal or only mildly oblique" in q, q
+    assert "25–35%" in q, q
 
 
 def test_insertability_fires_only_on_a_generated_cast_free_plate():

@@ -274,8 +274,8 @@ def figures_expansion(figures, crowd_rig):
     return crowd_rig if _fig_declared(figures)[1] and crowd_rig else ""
 
 
-def assemble_prompt(descriptor, payload, figures_text="", righold="", suffix=""):
-    """Provider zones, ONE place: descriptor -> generated figure/rig policy -> authored payload
+def assemble_prompt(descriptor, payload, figures_text="", righold="", generated_policy="", suffix=""):
+    """Provider zones, ONE place: descriptor -> generated figure/rig/scene policy -> authored payload
     -> the file's `global_prompt_suffix`.
 
     THE LOOK IS STATED IN EXACTLY TWO VOICES, at the two ends of the prompt: the bible's §2b
@@ -291,7 +291,7 @@ def assemble_prompt(descriptor, payload, figures_text="", righold="", suffix="")
     fixed channel data that follows it. Crowd policy still precedes RIG-HOLD so the hold's crowd
     exemption refers to a clause already stated.
     """
-    return "\n\n".join(p for p in (descriptor, figures_text, righold, payload, suffix) if p)
+    return "\n\n".join(p for p in (descriptor, figures_text, righold, generated_policy, payload, suffix) if p)
 
 
 class Kit:
@@ -379,7 +379,7 @@ class Kit:
             if os.path.exists(cand): return cand
         raise SystemExit(f"seed frame not found: {s}")
 
-    def prompt_for(self, mode, delta, hold=False, figures=None, suffix=""):
+    def prompt_for(self, mode, delta, hold=False, figures=None, generated_policy="", suffix=""):
         if mode == "identity":
             descriptor = self.desc_identity
         elif mode in ("new_character", "environment", "style"):
@@ -390,6 +390,7 @@ class Kit:
             descriptor, delta,
             figures_expansion(figures, self.desc_crowdrig),
             self.desc_righold if hold else "",
+            generated_policy,
             suffix or "")
 
 # --- THE SEEDING LAW -----------------------------------------------------------------------
@@ -446,6 +447,17 @@ LETTERING_EXEMPLAR = "lettering-marker-italic"
 # layout, never content (see `seed_roles_text`'s `style-anchor` role prose).
 STYLE_TILE = "scene-style-tile"
 STYLE_ANCHOR_ROLE = "style-anchor"
+
+# Cast-free place-first frames establish the actor-ready staging plane that later figure scenes
+# inherit. This is generated policy, not authored place prose, so it stays independent of the
+# `plate` content-seed marker (lettered place-first frames are still in scope).
+PLATE_COMPOSITION = (
+    "PLATE COMPOSITION — this overrides generic depth framing: eye-level, frontal or only mildly "
+    "oblique; reserve one continuous standable-ground zone from foreground into midground, roughly "
+    "25–35% of the frame and wide enough for two full-body rig silhouettes to share one plane "
+    "without furniture overlap. Any foreground depth prop stays at one edge and never crosses that "
+    "zone. Outside it, keep the set rich and working with its real furniture, stock, and machinery."
+)
 
 # A prompt DRAWS in-world text when it supplies a quoted literal. Deliberately the same notion
 # `lint_shots.py`'s `_QUOTED` uses (copied, one regex per side, same precedent as the shot-class
@@ -1287,7 +1299,9 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False, gate=True)
         # not carry one (it is a 2:3 identity card on a plain ground; the suffix's `16:9`,
         # built-but-flat ENVIRONMENT recipe and "no on-screen narrator or host face" are scene
         # facts that would fight it), and an ad-hoc `forge gen` request carries none either.
+        generated_policy = PLATE_COMPOSITION if r.get("plate_composition") else ""
         text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
+                            generated_policy=generated_policy,
                             suffix=r.get("prompt_suffix") or "")
         aspect = r.get("aspect", "2:3")
         size = r.get("image_size") or image_size
@@ -2295,6 +2309,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
         # chained onto a plate is still cast-free, and inheriting a parent that already drifted is
         # precisely the case that needs the register re-anchored.
         cast_free = not (fig_roles or canon_roles or crowd or anon_declared)
+        plate_composition = bool(declared_place and parent is None and place_frame is None and cast_free)
         if (cast_free and STYLE_TILE not in tagged_names and STYLE_TILE not in omitted
                 and reg_assets.get(STYLE_TILE)):
             tagged_names.append(STYLE_TILE)
@@ -2412,6 +2427,8 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                 "expression_change": expression_change or None,
                 "parent_depth": depth, "lineage": lineage,
                 "why": why_text}
+        if plate_composition:
+            item["plate_composition"] = True
         if in_scope:
             if staged and not (shot.get("figures") or depicts_figures(text)):
                 raise SystemExit(f"{name}: a STEP-1-seeded scene gen with no rig-hold signal — a "
