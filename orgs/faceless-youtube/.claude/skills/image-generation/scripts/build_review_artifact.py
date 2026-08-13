@@ -24,13 +24,16 @@ C-6 closing step, widened by P3 (2026-08-12) to every SEEDING ASSET: with `--sta
 <kit>/_staging` the board carries a card per STEP-1 figure forge would REFUSE to seed from, and
 with `--assets <frame.png> ...` it carries one per plate, environment reference, prop, crowd
 exemplar or pose/expression primitive forge refused — those live outside staging, so forge's own
-refusal prints the path to pass here. It writes an asset-verdicts SKELETON keyed by asset id +
-`canonical_sha256`. The same fresh-eyes pass that rules on the scenes rules on those assets; the
-orchestrator fills the skeleton's verdicts and runs `stamp_review.py --figures <skeleton>
-<staging>`, which is what makes an asset minted in slice N seedable in slice N+1. The
-single-writer law is untouched — this script writes only the INPUT; `stamp_review.py` remains the
-only writer of `<staging>/review.json`, and the pending list is `forge.figure_reuse_blocker`
-itself, so the board and forge's refusal can never disagree about what "seedable" means.
+refusal prints the path to pass here. A non-empty `--assets` list is an explicit board scope: it
+boards only those paths, not unrelated pending STEP-1 cards in staging. It writes an
+asset-verdicts SKELETON keyed by asset id + `canonical_sha256`; a row with an existing store record
+is pre-filled from that record, so an untouched row is safe to merge back. The same fresh-eyes pass
+that rules on the scenes rules on those assets; the orchestrator fills the skeleton's verdicts and
+runs `stamp_review.py --figures <skeleton> <staging>`, which is what makes an asset minted in slice
+N seedable in slice N+1. The single-writer law is untouched — this script writes only the INPUT;
+`stamp_review.py` remains the only writer of `<staging>/review.json`, and the pending list is
+`forge.figure_reuse_blocker` itself, so the board and forge's refusal can never disagree about what
+"seedable" means.
 
 Usage:
   py -3 build_review_artifact.py --video <video-dir> --out <out.html> [--title T]
@@ -346,14 +349,14 @@ def pending_assets(staging, extra=()):
     next batch would otherwise hard-stop on. One already carrying an all-pass, digest-current
     record is silently absent: it is seedable, and re-ruling it is eye cost for nothing.
 
-    Staged STEP-1 cards are found by walking `<kit>/_staging`; every OTHER P3 class lives outside
-    staging (a plate under the video's `assets/scenes/`, a prop or primitive under the kit's
-    `refs/`), so those arrive as explicit `extra` paths — which is exactly what forge's own
-    refusal prints when it names the frame that stopped the batch. Enumerating them by scanning
-    instead would board every scene the run has ever generated, since a scene frame's verdict
-    lives in the scenes manifest, not in this store."""
+    With `extra`, the candidate set is exactly those explicitly named paths; otherwise every
+    pending staged STEP-1 card is included. Other P3 classes live outside staging (a plate under
+    the video's `assets/scenes/`, a prop or primitive
+    under the kit's `refs/`), and forge's refusal prints the frame to pass here. Scanning instead
+    would board every scene the run has ever generated, since a scene frame's verdict lives in the
+    scenes manifest, not in this store."""
     candidates = []
-    if staging and os.path.isdir(staging):
+    if not extra and staging and os.path.isdir(staging):
         candidates = [os.path.join(staging, fn) for fn in sorted(os.listdir(staging))
                       if fn.startswith(forge.FIGURE_PREFIX) and fn.endswith(".png")]
     for path in extra or ():
@@ -388,31 +391,44 @@ def figure_character(fig_id):
     return fig_id[len(forge.FIGURE_PREFIX):].split("--")[0]
 
 
-def asset_verdict_skeleton(assets, reviewer="fresh-eyes", date=None):
+def asset_verdict_skeleton(assets, reviewer="fresh-eyes", date=None, staging=None):
     """`stamp_review.py --figures`' INPUT, pre-keyed so the human only fills verdicts.
 
-    Emits the C-6 pinned record shape per ASSET with every applicable invariant present and EMPTY
-    (`""`), and `canonical_sha256` computed from the bytes on disk right now — the same bytes the
-    board just rendered, which is what the store's staleness check compares against. Which
-    invariants apply is the asset's CLASS question, answered once by `invariants_for`, so a plate
-    is never asked to hold a rig. Records are keyed by the store key `pending_assets` already
-    resolved, never re-derived here — a second derivation is how a verdict lands under a key the
-    gate does not read. This script never writes `<staging>/review.json`: `stamp_review.py` remains
-    its only writer, and the store's `figures` wrapper key is kept verbatim — renaming it would
-    strand every verdict already on disk."""
+    Emits the C-6 pinned record shape per ASSET. A record already applying to the asset's current
+    bytes is copied into its pinned fields (verdicts, reviewer, date and digests), so passing an
+    untouched row through `stamp_review.py --figures` is idempotent even though that writer replaces
+    explicitly supplied records wholesale. An asset with no record gets every applicable invariant
+    EMPTY (`""`) and the requested default reviewer/date. Which invariants apply is the asset's
+    CLASS question, answered once by `invariants_for`, so a plate is never asked to hold a rig.
+    Records are keyed by the store key `pending_assets` already resolved, never re-derived here —
+    a second derivation is how a verdict lands under a key the gate does not read. This script never
+    writes `<staging>/review.json`: `stamp_review.py` remains its only writer, and the store's
+    `figures` wrapper key is kept verbatim — renaming it would strand every verdict already on
+    disk."""
     import time
     stamp = date or time.strftime("%Y-%m-%d")
+    kit = os.path.dirname(os.path.abspath(staging or "."))
     out = {}
     for asset_key, path, _why in assets:
-        out[asset_key] = {"canonical_sha256": forge.frame_digest(path), "expression_sha256": None,
-                          "verdicts": {slug: "" for slug in invariants_for(asset_key)},
-                          "reviewer": reviewer, "date": stamp}
+        record = forge.figure_review_record(staging, path, kit) if staging else None
+        current_sha = forge.frame_digest(path)
+        if (isinstance(record, dict) and record.get("canonical_sha256") == current_sha
+                and all(k in record for k in ("canonical_sha256", "verdicts", "reviewer", "date"))):
+            out[asset_key] = {"canonical_sha256": record["canonical_sha256"],
+                              "expression_sha256": record.get("expression_sha256"),
+                              "verdicts": dict(record["verdicts"] or {}),
+                              "reviewer": record["reviewer"], "date": record["date"]}
+        else:
+            out[asset_key] = {"canonical_sha256": current_sha, "expression_sha256": None,
+                              "verdicts": {slug: "" for slug in invariants_for(asset_key)},
+                              "reviewer": reviewer, "date": stamp}
     return {"figures": out}
 
 
 def collect(video, only, staging=None, assets=()):
     """One card per generated FILE (a shot may have a plate + several cutouts), then one card per
-    SEEDING ASSET still pending a ruling — a STEP-1 card, or any P3 class named in `assets`."""
+    SEEDING ASSET still pending a ruling — staged STEP-1 cards, or only the P3 paths in a non-empty
+    `assets` scope."""
     S, M, MAN = shot_index(video), motion_index(video), manifest_index(video)
     LIB = library_assets(video)
     named_by_shot = named_figures_by_shot(LIB)
@@ -651,7 +667,7 @@ def main():
                     help="PNG paths for P3's other seeding classes — a place plate, environment "
                          "reference, prop, crowd exemplar, pose/expression primitive. They live "
                          "OUTSIDE staging, so forge's refusal prints the frame and you pass it "
-                         "here; each is boarded and skeletoned through the same gate predicate")
+                         "here; when present, only these paths are boarded and skeletoned")
     ap.add_argument("--figures-out", dest="figures_out",
                     help="where to write that skeleton (default <video>/assets/_review/"
                          "figure-verdicts.json); the input to `stamp_review.py --figures`")
@@ -679,7 +695,7 @@ def main():
         if pending:
             os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
             with io.open(out, "w", encoding="utf-8") as f:
-                json.dump(asset_verdict_skeleton(pending), f, ensure_ascii=False, indent=1)
+                json.dump(asset_verdict_skeleton(pending, staging=a.staging), f, ensure_ascii=False, indent=1)
                 f.write("\n")
             print("%s  (%d seeding asset(s) pending a ruling — fill each verdict, then: "
                   "py -3 stamp_review.py --figures %s %s)"

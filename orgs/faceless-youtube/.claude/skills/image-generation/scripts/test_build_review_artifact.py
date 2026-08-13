@@ -529,7 +529,7 @@ def test_the_asset_skeleton_is_stamp_reviews_input_shape_with_empty_verdicts():
         path, sha = _staged_figure(staging, "fig-zeta-clerk--sit--expr-deadpan")
         pending = bra.pending_assets(staging)
         key = pending[0][0]                      # the gate's own key, never re-derived here
-        skeleton = bra.asset_verdict_skeleton(pending)
+        skeleton = bra.asset_verdict_skeleton(pending, staging=staging)
         rec = skeleton["figures"][key]
         assert bra.asset_stem(key) == "fig-zeta-clerk--sit--expr-deadpan", key
         assert rec["canonical_sha256"] == sha, rec
@@ -545,6 +545,90 @@ def test_the_asset_skeleton_is_stamp_reviews_input_shape_with_empty_verdicts():
         with io.open(os.path.join(staging, "review.json"), "w", encoding="utf-8") as f:
             json.dump(store, f)
         assert bra.pending_assets(staging) == []
+
+
+def test_assets_subset_round_trips_an_unnamed_failed_record_through_the_real_writer():
+    """A targeted re-review must not blank a different PARKED asset's ruling and provenance."""
+    with tempfile.TemporaryDirectory() as td:
+        staging = os.path.join(td, "_staging")
+        target_path, _target_sha = _staged_figure(staging, "fig-zeta-clerk--sit--expr-deadpan")
+        _failed_path, failed_sha = _staged_figure(
+            staging, "fig-vintner-nine--stand--expr-smug")
+        kit = os.path.dirname(staging)
+        failed_key = forge.store_key(_failed_path, kit)
+        failed_record = {
+            "canonical_sha256": failed_sha,
+            "expression_sha256": None,
+            "verdicts": {"rig": "fail", "pose": "fail"},
+            "reviewer": "fresh-eyes: PARKED on pose; elbow breaks the established silhouette",
+            "date": "2026-08-11",
+        }
+        review_path = Path(staging) / "review.json"
+        review_path.write_text(json.dumps({"figures": {failed_key: failed_record}}, indent=1) + "\n",
+                               encoding="utf-8")
+
+        # `--assets` is a scope, not an additive request for every pending STEP-1 card.
+        pending = bra.pending_assets(staging, [target_path])
+        assert [key for key, _path, _why in pending] == [forge.store_key(target_path, kit)]
+        skeleton = bra.asset_verdict_skeleton(pending, staging=staging)
+        target_key = pending[0][0]
+        skeleton["figures"][target_key]["verdicts"] = {
+            slug: "pass" for slug in skeleton["figures"][target_key]["verdicts"]}
+        figures_in = Path(td) / "subset-verdicts.json"
+        figures_in.write_text(json.dumps(skeleton, indent=1) + "\n", encoding="utf-8")
+
+        assert stamp_review.main(["--figures", str(figures_in), staging]) == 0
+        persisted = json.loads(review_path.read_text(encoding="utf-8"))
+        assert persisted["figures"][failed_key] == failed_record
+
+
+def test_asset_skeleton_prefills_an_existing_failed_record_without_default_reviewer():
+    with tempfile.TemporaryDirectory() as td:
+        staging = os.path.join(td, "_staging")
+        path, sha = _staged_figure(staging, "fig-zeta-clerk--sit--expr-deadpan")
+        kit = os.path.dirname(staging)
+        key = forge.store_key(path, kit)
+        record = {
+            "canonical_sha256": sha,
+            "expression_sha256": None,
+            "verdicts": {"rig": "fail"},
+            "reviewer": "fresh-eyes: provenance survives re-review",
+            "date": "2026-08-11",
+        }
+        (Path(staging) / "review.json").write_text(json.dumps({"figures": {key: record}}),
+                                                     encoding="utf-8")
+
+        skeleton = bra.asset_verdict_skeleton(bra.pending_assets(staging), staging=staging)
+        assert skeleton["figures"][key] == record
+
+
+def test_asset_skeleton_blanks_a_stale_record_after_the_asset_is_reminted():
+    with tempfile.TemporaryDirectory() as td:
+        staging = os.path.join(td, "_staging")
+        path, old_sha = _staged_figure(staging, "fig-zeta-clerk--sit--expr-deadpan")
+        kit = os.path.dirname(staging)
+        key = forge.store_key(path, kit)
+        record = {
+            "canonical_sha256": old_sha,
+            "expression_sha256": None,
+            "verdicts": {slug: "pass" for slug in bra.FIGURE_INVARIANTS},
+            "reviewer": "fresh-eyes: old bytes passed",
+            "date": "2026-08-11",
+        }
+        (Path(staging) / "review.json").write_text(json.dumps({"figures": {key: record}}),
+                                                     encoding="utf-8")
+
+        _png(path, color=(1, 2, 3))
+        new_sha = forge.frame_digest(path)
+        assert new_sha != old_sha
+
+        skeleton = bra.asset_verdict_skeleton(
+            bra.pending_assets(staging), staging=staging, date="2026-08-13")
+        rec = skeleton["figures"][key]
+        assert rec["canonical_sha256"] == new_sha
+        assert rec["verdicts"] == {slug: "" for slug in bra.FIGURE_INVARIANTS}
+        assert rec["reviewer"] == "fresh-eyes"
+        assert rec["date"] == "2026-08-13"
 
 
 def test_pending_assets_become_review_cards_carrying_their_class_invariants():
@@ -597,7 +681,7 @@ def test_a_non_figure_seeding_asset_is_boarded_and_skeletoned_through_the_same_g
         assert "rig" not in dict(card["invariants"]), card["invariants"]
         assert card["canon"] == [], card         # no canonical to compare a plate against
         # ... and the skeleton it writes is the same `stamp_review.py --figures` input shape
-        skeleton = bra.asset_verdict_skeleton(pending)
+        skeleton = bra.asset_verdict_skeleton(pending, staging=staging)
         rec = skeleton["figures"][pending[0][0]]
         assert set(rec["verdicts"]) == set(bra.ASSET_INVARIANTS), rec
         rec["verdicts"] = {k: "pass" for k in rec["verdicts"]}

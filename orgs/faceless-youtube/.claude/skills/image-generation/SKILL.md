@@ -365,10 +365,11 @@ member's own canonical — Pass 1, step 1.) The loop, in order:
    <board.html> --staging <kit>/_staging [--assets <frame.png> ...]`. Alongside the scene cards it renders one card
    per STEP-1 figure forge would refuse (its refusal reason is the card's badge, and the pending list IS forge's own
    gate, so the two can never disagree). The other classes live outside staging, so forge's refusal prints each
-   frame's path and you pass them to `--assets`; each is boarded through that same predicate and asked only the
-   invariants its class can answer (no rig row on a plate). It writes an **asset-verdicts skeleton** to
-   `<video>/assets/_review/figure-verdicts.json` (override with `--figures-out`) — pre-keyed by asset id with
-   `canonical_sha256` already computed from the bytes on disk, and every verdict left EMPTY.
+   frame's path and you pass them to `--assets`; a non-empty `--assets` scopes the board strictly to those named
+   paths. Each is boarded through that same predicate and asked only the invariants its class can answer (no rig row
+   on a plate). It writes an **asset-verdicts skeleton** to `<video>/assets/_review/figure-verdicts.json` (override
+   with `--figures-out`): rows carrying a store record that matches the current bytes are pre-filled verbatim
+   (verdicts, reviewer, date); every other row is blank with the fresh `canonical_sha256`.
 2. **The fresh-eyes pass rules those cards too**, on the same three axes, at the same ordinary viewing scale. Its
    scene rulings merge into `assets/_review/merged.json` as always; its ASSET rulings fill in the skeleton's
    verdicts (`"pass"` / `"fail"` per invariant — an asset needs every one to read `pass`).
