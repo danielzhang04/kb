@@ -448,3 +448,17 @@
 - sync_skills --check in sync. preamble + pyyaml OK. Queue: inbox 28, working 2 (6a6bc3dd halted
   codex + this card), done 352, approvals 0, archived 1. 17 codex cost rows today, all $0.00 subscription.
 - Push path: recorded in the run summary.
+
+## 2026-08-13 nightly (cloud)
+- Dispatch emitted 1 card (6a7d5f9e nightly-review); self-executed inbox->working, dashboards
+  regenerated, Result written, ->done.
+- sync_daemon_dirs.py STILL absent on ops (recurring; 6a605ebb). Ran origin/main copy in
+  refs-fallback per precedent. Drift set UNCHANGED since 08-12: 5 main-only + 5 content-differs
+  (same fyt files) + 1 ops-only `orgs/kb-ops/workflows/acceptance-run.md` = 11 total. Per the
+  dedupe rule ("no new card when UNCHANGED"), filed NO new wake-me card this run — the four
+  standing cards (6a605ebb, 6a6c3d8e, 6a718533, 6a7c0ebf) already cover the complete current state.
+  LESSON confirmed: read the newest drift card first, diff the set, only file when it changed.
+- sync_skills --check in sync. preamble + pyyaml OK. Queue: inbox 25 (15 inbox + 10 blocked),
+  working 2 (6a6bc3dd halted codex + this card), done 437, approvals 0, archived 1. 15 codex cost
+  rows today, all $0.00 subscription; budget $0/$30.
+- Push path: recorded in the run summary.
