@@ -1,0 +1,171 @@
+{
+  "schema": "p8-contracts/1",
+  "note": "Boss-authored per-shot P8 contract content (forensics 2026-08-13). Driver passes every string VERBATIM into its labeled section. surfaces/negatives/pose/emitters/counts are lists of clauses; camera is one sentence placed FIRST in the Composition block.",
+  "shots": {
+    "L36": {
+      "camera": "Mid-wide shot in slight isometric from the left — the main stack's left face visible in two-point perspective, horizon low, surrounding smaller stacks cropped by the frame edges.",
+      "surfaces": [
+        "money-bill paper fill exactly #d3d3a9 (light sage — NOT dark olive); bill hatching as thin #7b835e linework only",
+        "oval seals on bill faces #b8c493",
+        "wrap band cream #f4e5c8 with black marker-caps text",
+        "floor warm tan #f0d8b0; background cream #f5e6c9"
+      ],
+      "counts": [
+        "one large central pallet-sized stack; four smaller stacks at frame corners, cropped"
+      ],
+      "negatives": [
+        "the side stacks are bare bricks of bills WITHOUT cream strap bands — only the central stack carries the labeled band",
+        "no straps, ribbons, or bands anywhere except the central labeled band"
+      ],
+      "pose": [
+        "the man stands hands-on-hips atop the stack at ~35-40% of frame height, smug half-lidded eyes, small closed smile, soft contact shadow under his feet"
+      ],
+      "emitters": [],
+      "orientation": [
+        "the '125 MILLION' band is a paper strap wrapping the stack's front-center: it sits ON the bills, its edges parallel the stack's vertical edges, its face tilts with the stack's perspective, text tilted with the face — it is not a separate full-height column"
+      ]
+    },
+    "L50": {
+      "camera": "Mid shot from front-left of the desk — the desk corner enters at lower-left, wood floor visible at far left, banker standing behind the desk at left, money stack dominating center-right on the desk.",
+      "surfaces": [
+        "bills sage green warmed by lamplight (light olive-sage, clearly lighter than dark olive)",
+        "desk top warm orange-brown #b87038; wall paneling mid wood-brown #a06030",
+        "label band and straps cream; text black marker caps"
+      ],
+      "counts": [
+        "desk set at far right desk edge: one inkwell, one white quill, one pen rest — nothing more"
+      ],
+      "negatives": [
+        "no chair visible; the banker is NOT seated",
+        "no extra desk clutter beyond the listed desk set"
+      ],
+      "pose": [
+        "the banker STANDS upright leaning slightly forward, gray hair, deadpan half-lidded eyes, one straight arm extended with the hand resting on the stack top, dark brown pinstripe three-piece suit"
+      ],
+      "emitters": [
+        "the emerald banker's lamp GLOWS: bright warm cone from under the green shade onto the desk, a soft elliptical warm pool around the stack, a highlight rim on the shade"
+      ],
+      "orientation": [
+        "the cream label band runs diagonally along the stack's TOP edge, foreshortened with the stack's perspective, '20 MILLION' in black marker caps following the band's tilt; two additional plain cream straps wrap the stack vertically at its left and right thirds"
+      ]
+    },
+    "L28": {
+      "camera": "One-point perspective straight down the center aisle at eye level; a bench corner with a vivid blue mat cuts into the bottom-right foreground.",
+      "surfaces": [
+        "ceiling pale gray-blue #b8c4c8 (LIGHT — not dark teal), darker gray-teal wedges only in the far upper corners",
+        "roller door light-mid gray #98a8a8 with thin slat lines",
+        "walls cream #e8e4d0 above a teal wainscot band #689890",
+        "floor cool gray #a8b8b0 with one LARGE soft elliptical light pool #b0b8b0 filling the center aisle — soft-edged, feathered, blending gradually into the floor, not a hard-edged disc",
+        "work mats vivid steel blue #6090a8 ONLY on the bench mats; component trays beige; benches steel gray",
+        "storage bins neutral gray #889898 — open-front angled picking bins with open fronts facing out, NOT lidded tote boxes"
+      ],
+      "counts": [
+        "about 8 hanging fluorescent fixtures in two receding rows on thin rods",
+        "left shelf unit holds 9 open-front bins in 3 rows of 3",
+        "3 angled beige component trays per bench row, each holding neat rows of parts"
+      ],
+      "negatives": [
+        "the right side of the aisle past the benches is BARE wall — no shelf unit on the right",
+        "no large foreground parts tray; the only foreground element is the bench corner with its blue mat"
+      ],
+      "pose": [],
+      "emitters": [],
+      "orientation": []
+    },
+    "L42": {
+      "camera": "CLOSE-UP: the balance beam crosses the frame; the scale's base and pedestal are OUT of frame below — the bottom edge crops the pivot column; pans large; background bare cream with no floor line.",
+      "surfaces": [
+        "pans, beam and pivot dark charcoal gray flat fills",
+        "carton warm tan #c8a878 with a darker tan interior; the carton's left wall shows dark stacked slot-edges",
+        "bills pale sage #d3d3a9 with olive linework; straps cream"
+      ],
+      "counts": [
+        "left pan: one open empty carton and exactly ONE bill leaning against it",
+        "right pan: one tall stack of banded money bricks, alternating dark-olive and green layers with cream straps"
+      ],
+      "negatives": [
+        "no scale base, no floor line, no shadow ellipse, no extra bills"
+      ],
+      "pose": [],
+      "emitters": [],
+      "orientation": [
+        "the scale tilts hard — the loaded right pan far lower than the left"
+      ]
+    },
+    "L32": {
+      "camera": "Mid shot in a light-gray void room with soft floor shadows only; workbench right of center seen from slightly front-left, scientist left of center.",
+      "surfaces": [
+        "walls and floor flat light warm gray #a8a8a0 void, floor slightly lighter #d8d0d0 under the lamp pool",
+        "workbench warm mid-wood #a88058 with a pegboard back panel rising behind the bench top; a wooden tool rail ON that panel holds hanging pliers, wrench and spanner; the bench has a lower shelf",
+        "hanging dome lamp warm cream-brown #988068",
+        "the drive plate lies FLAT on the bench, dark charcoal, with a strong radial red glow bloom #e04030 and two wavy gray smoke wisps rising",
+        "red bucket on the floor at right; plain flat-cel brown stool at bottom-left"
+      ],
+      "counts": [],
+      "negatives": [
+        "tools hang on the bench's own pegboard back panel — NOT on a separate wall-mounted board to the right",
+        "no free-standing farm table; the bench is a workbench with back panel and lower shelf"
+      ],
+      "pose": [
+        "the scientist recoils upright-backward: torso twisted left, one mitted hand raised palm-out at head height, the other mitt at chest, right leg kicked up; wide oval eyes with small pupils, big open mouth"
+      ],
+      "emitters": [
+        "the dome lamp emits a visible warm cone onto the bench and drive; the red glow blooms radially from the plate onto nearby surfaces"
+      ],
+      "orientation": []
+    },
+    "L35": {
+      "camera": "Wide shot down a deep workshop hall; the pallet pyramid centered, a skylight beam and two side beams falling from the roof; workbenches recede on BOTH sides and a second forklift stands at the right.",
+      "surfaces": [
+        "roof trusses dark brown-charcoal #384848 flat fills",
+        "walls cream above, gray-green below",
+        "crates pale cream shrink-wrapped #d8d0c0 — the wrap sheen is pale blue-white flat highlights, NOT warm tan cardboard and NOT photoreal plastic film",
+        "pallets mid wood-brown; floor pale #e0d8c0 with a wide soft feathered pool under the pyramid"
+      ],
+      "counts": [
+        "the pyramid has FOUR tiers of shrink-wrapped pallet crates — 1 on top, then 3, then 5, then 7 at the base, about 16 crates, dense and touching",
+        "about 6 workbenches recede along the walls"
+      ],
+      "negatives": [
+        "no warm cardboard boxes, no strapping bands on crates"
+      ],
+      "pose": [
+        "the man stands atop the pyramid at ~12% frame height, both arms raised in triumph, tiny elated grin face"
+      ],
+      "emitters": [],
+      "orientation": []
+    },
+    "L33": {
+      "camera": "One-point perspective down the center aisle as in L28; the two men centered mid-aisle inside the soft light pool.",
+      "surfaces": [
+        "storage bins neutral gray #889898 — NO blue tint; vivid steel-blue #6090a8 ONLY on the rectangular work mats",
+        "ceiling pale gray-blue #b8c4c8, not dark teal; roller door light-mid gray #98a8a8",
+        "floor pool soft-edged and feathered, blending gradually into the floor"
+      ],
+      "counts": [],
+      "negatives": [],
+      "pose": [
+        "the rep's trousers dark charcoal; the rep's hair mid-brown"
+      ],
+      "emitters": [],
+      "orientation": []
+    },
+    "L27": {
+      "camera": "Mid-wide from floor level; the tarped pallet stack fills the left 55% of frame, figure right of it in profile pulling the tarp.",
+      "surfaces": [
+        "walls smooth flat gray-green #a8b0a0 — NO cinderblock or block coursing, NO concrete speckle; floor plain flat gray",
+        "roller door plain gray slats WITHOUT a top roller drum",
+        "tarp blue-gray #9aa8b8; shrink-wrap has a pale blue-white flat sheen; carton faces cream"
+      ],
+      "counts": [],
+      "negatives": [
+        "no surface texture anywhere: flat painted fills with linework only"
+      ],
+      "pose": [],
+      "emitters": [
+        "the hanging bulb emits a visible warm cone and a soft warm pool on the door and floor below it; the skylight casts a soft cool beam upper-left"
+      ],
+      "orientation": []
+    }
+  }
+}
