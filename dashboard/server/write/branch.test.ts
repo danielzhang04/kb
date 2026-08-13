@@ -39,6 +39,7 @@ function prRecorder(): { opener: PrOpener; requests: PrRequest[] } {
 describe('classifyTarget', async () => {
   it('classifies queue/**, ledgers/**, traces/** as coordination', async () => {
     expect(classifyTarget('queue/inbox/card-x.md')).toBe('coordination');
+    expect(classifyTarget('./queue/inbox/card-x.md')).toBe('coordination');
     expect(classifyTarget('queue/paused/dispatcher.md')).toBe('coordination');
     expect(classifyTarget('ledgers/audit/dashboard-audit.ndjson')).toBe('coordination');
     expect(classifyTarget('traces/card-x/index.html')).toBe('coordination');

@@ -27,6 +27,26 @@ describe('parseCardFrontmatter / groupByState', () => {
     expect(parseValidatedCard(MINIMAL_CARD.replace('---\n', '---\nschema-version: 1\n')).meta['schema-version']).toBe(1);
   });
 
+  it('accepts optional approval-channel and quarantine metadata', () => {
+    const approval = MINIMAL_CARD.replace(
+      'owner: null',
+      'owner: null\nassurance: possession\nexpires: 2026-08-12T18:30:00+00:00',
+    );
+    expect(parseValidatedCard(approval).meta).toMatchObject({
+      assurance: 'possession',
+      expires: '2026-08-12T18:30:00+00:00',
+    });
+
+    const quarantined = MINIMAL_CARD.replace(
+      'owner: null',
+      'owner: null\nquarantine: true\nquarantine-reason: telegram hash prefix mismatch',
+    );
+    expect(parseValidatedCard(quarantined).meta).toMatchObject({
+      quarantine: true,
+      'quarantine-reason': 'telegram hash prefix mismatch',
+    });
+  });
+
   it.each(['schema-version: 2', 'schema-version: one'])('rejects %s', (line) => {
     expect(() => parseValidatedCard(MINIMAL_CARD.replace('---\n', `---\n${line}\n`))).toThrow(/schema-version/);
   });

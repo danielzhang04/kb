@@ -30,7 +30,7 @@
  * never-executed-as-instructions reason. The named test below keeps its original title (as given) but
  * asserts against `## Feedback`, with this note inline.
  */
-import { runPythonSync } from '../runtime/python.ts';
+import { pythonFailureResult, runPythonSync } from '../runtime/python.ts';
 import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
@@ -102,12 +102,7 @@ export const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
     const stdout = runPythonSync(['-c', code, jsonArg], { cwd: repoRoot });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (error) {
-    const failure = error as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };
-    return {
-      exitCode: typeof failure.status === 'number' ? failure.status : 1,
-      stdout: failure.stdout?.toString() ?? '',
-      stderr: failure.stderr?.toString() ?? '',
-    };
+    return pythonFailureResult(error);
   }
 };
 

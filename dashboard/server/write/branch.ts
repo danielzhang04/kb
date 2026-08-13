@@ -41,7 +41,7 @@ const PROJECT_STATE = /^orgs\/[^/]+\/STATE\.md$/;
 
 /** Normalize a relpath to forward-slash, no leading slash, for prefix comparisons. */
 function normalize(relpath: string): string {
-  return relpath.replace(/\\/g, '/').replace(/^\/+/, '');
+  return relpath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
 }
 
 /**
@@ -51,7 +51,7 @@ function normalize(relpath: string): string {
  * durable content, per the plan's binary classification.
  */
 export function isCoordinationPath(relpath: string): boolean {
-  const norm = relpath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+  const norm = normalize(relpath);
   return COORDINATION_PREFIXES.some((prefix) => norm.startsWith(prefix)) || PROJECT_STATE.test(norm);
 }
 

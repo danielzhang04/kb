@@ -12,7 +12,8 @@
  * other block list or indented continuation is a parse error — and it never interprets body text.
  */
 
-import { assertCardSchema, assertSupportedVersion } from '../schema/versions.ts';
+import { assertCardSchema, assertSupportedVersion, readCompatibility } from '../schema/versions.ts';
+import { defaultPlatformRoot } from '../runtime/python.ts';
 
 export type CardFieldValue = string | number | boolean | null | string[];
 
@@ -54,6 +55,9 @@ export const CARD_STATES = [
   'approved',
   'rejected',
 ] as const;
+
+/** Physical queue directories read by the live projections and startup validator. */
+export const CARD_QUEUE_DIRS = ['inbox', 'working', 'approvals', 'done'] as const;
 
 /**
  * The only list-valued keys governance/card-schema.md declares (`project: <org>|[orgs]`,
@@ -146,14 +150,14 @@ export function parseCardFrontmatter(text: string): ParsedCard {
 }
 
 /** Parse a queue card and enforce its supported version and closed machine schema. */
-export function parseValidatedCard(text: string): ParsedCard {
+export function parseValidatedCard(text: string, platformRoot: string = defaultPlatformRoot()): ParsedCard {
   const parsed = parseCardFrontmatter(text);
   const meta: Record<string, unknown> = { ...parsed.meta };
   if (meta['schema-version'] !== undefined) {
     meta['schema-version'] = coerceSchemaVersion(meta['schema-version']);
   }
-  const version = assertSupportedVersion('cards', meta['schema-version']);
-  assertCardSchema(meta, version);
+  const version = assertSupportedVersion('cards', meta['schema-version'], readCompatibility(platformRoot));
+  assertCardSchema(meta, version, platformRoot);
   return { meta: meta as CardMeta, body: parsed.body };
 }
 

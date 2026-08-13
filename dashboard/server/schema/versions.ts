@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
+import type { ValidateFunction } from 'ajv';
 import { defaultPlatformRoot } from '../runtime/python.ts';
 
 export interface CompatibilityMatrix {
@@ -8,8 +9,18 @@ export interface CompatibilityMatrix {
   workflows: { current: 1; supported: readonly [0, 1] };
 }
 
+const compatibilityByRoot = new Map<string, CompatibilityMatrix>();
+const cardValidatorByRoot = new Map<string, ValidateFunction>();
+
+function platformKey(platformRoot: string): string {
+  return resolve(platformRoot);
+}
+
 export function readCompatibility(platformRoot: string = defaultPlatformRoot()): CompatibilityMatrix {
-  const parsed = JSON.parse(readFileSync(join(platformRoot, 'schemas', 'compatibility.json'), 'utf8')) as Record<string, unknown>;
+  const root = platformKey(platformRoot);
+  const cached = compatibilityByRoot.get(root);
+  if (cached) return cached;
+  const parsed = JSON.parse(readFileSync(join(root, 'schemas', 'compatibility.json'), 'utf8')) as Record<string, unknown>;
   const closed = (value: unknown): value is { current: 1; supported: [0, 1] } => {
     if (!value || typeof value !== 'object') return false;
     const item = value as { current?: unknown; supported?: unknown };
@@ -21,7 +32,25 @@ export function readCompatibility(platformRoot: string = defaultPlatformRoot()):
   if (Object.keys(matrix).sort().join(',') !== 'cards,workflows' || !closed(matrix.cards) || !closed(matrix.workflows)) {
     throw new Error('unsupported platform compatibility matrix');
   }
-  return matrix as unknown as CompatibilityMatrix;
+  const compatible = matrix as unknown as CompatibilityMatrix;
+  compatibilityByRoot.set(root, compatible);
+  return compatible;
+}
+
+function cardValidator(platformRoot: string): ValidateFunction {
+  const root = platformKey(platformRoot);
+  const cached = cardValidatorByRoot.get(root);
+  if (cached) return cached;
+  const schema = JSON.parse(readFileSync(join(root, 'schemas', 'cards', 'v1.schema.json'), 'utf8')) as object;
+  const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+  cardValidatorByRoot.set(root, validate);
+  return validate;
+}
+
+/** Load and validate both schema infrastructure files before repository data is inspected. */
+export function assertSchemaInfrastructure(platformRoot: string = defaultPlatformRoot()): void {
+  readCompatibility(platformRoot);
+  cardValidator(platformRoot);
 }
 
 export function assertSupportedVersion(
@@ -41,8 +70,7 @@ export function assertCardSchema(
   version: 0 | 1,
   platformRoot: string = defaultPlatformRoot(),
 ): void {
-  const schema = JSON.parse(readFileSync(join(platformRoot, 'schemas', 'cards', 'v1.schema.json'), 'utf8')) as object;
-  const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+  const validate = cardValidator(platformRoot);
   const candidate = version === 0 ? { ...meta, 'schema-version': 1 } : meta;
   if (!validate(candidate)) {
     const detail = validate.errors?.map((error) => `${error.instancePath || '/'} ${error.message ?? 'is invalid'}`).join('; ') ?? 'is invalid';

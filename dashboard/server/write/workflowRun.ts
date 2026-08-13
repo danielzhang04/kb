@@ -20,7 +20,7 @@ import {
 } from './branch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
 import { pushOpsWithReconcile } from './opsPushRetry.ts';
-import { runPythonSync } from '../runtime/python.ts';
+import { pythonFailureResult, runPythonSync } from '../runtime/python.ts';
 
 export const MAX_WORKFLOW_STAGES = 32;
 
@@ -519,12 +519,7 @@ const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
     const stdout = runPythonSync(['-c', code, jsonArg], { cwd: repoRoot });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (error) {
-    const err = error as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };
-    return {
-      exitCode: typeof err.status === 'number' ? err.status : 1,
-      stdout: err.stdout?.toString() ?? '',
-      stderr: err.stderr?.toString() ?? '',
-    };
+    return pythonFailureResult(error);
   }
 };
 

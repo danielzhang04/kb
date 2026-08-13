@@ -42,7 +42,7 @@ import type { SessionClaims, SessionConfig } from '../auth/session.ts';
 import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
-import { runPythonSync } from '../runtime/python.ts';
+import { pythonFailureResult, runPythonSync } from '../runtime/python.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {
@@ -83,12 +83,7 @@ export const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
     const stdout = runPythonSync(['-c', code, jsonArg], { cwd: repoRoot });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (err) {
-    const e = err as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };
-    return {
-      exitCode: typeof e.status === 'number' ? e.status : 1,
-      stdout: e.stdout ? e.stdout.toString() : '',
-      stderr: e.stderr ? e.stderr.toString() : '',
-    };
+    return pythonFailureResult(err);
   }
 };
 

@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 import cards
 
@@ -11,6 +14,11 @@ def test_new_card_emits_schema_v1(tmp_path, monkeypatch):
 def test_absent_schema_version_is_transition_v0():
     card = cards.parse_text("""---\nid: version-test\nproject: kb-ops\naction: test:noop\ntarget: phase-i\nrisk-tier: T1\nstate: inbox\n---\n""")
     assert cards.card_schema_version(card.meta) == 0
+
+
+def test_python_supported_card_versions_match_platform_compatibility_matrix():
+    matrix = json.loads((Path(__file__).parents[1] / "schemas" / "compatibility.json").read_text(encoding="utf-8"))
+    assert cards.SUPPORTED_CARD_SCHEMA_VERSIONS == frozenset(matrix["cards"]["supported"])
 
 
 @pytest.mark.parametrize("value", [2, -1, "1", True])

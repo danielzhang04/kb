@@ -27,3 +27,30 @@ it.each([
   writeFileSync(join(root, 'queue', 'inbox', name), source);
   expect(() => assertSupportedRepositoryData(root)).toThrow(new RegExp(`${name}.*card schema|${name}.*frontmatter`, 's'));
 });
+
+it('reports missing schema infrastructure distinctly before scanning cards', () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'schema-startup-repo-'));
+  const platformRoot = mkdtempSync(join(tmpdir(), 'schema-startup-platform-'));
+  mkdirSync(join(repoRoot, 'queue', 'inbox'), { recursive: true });
+  expect(() => assertSupportedRepositoryData(repoRoot, platformRoot)).toThrow(/schema infrastructure error.*compatibility\.json/s);
+});
+
+it('reports a missing card schema as infrastructure failure rather than a malformed card', () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'schema-startup-repo-'));
+  const platformRoot = mkdtempSync(join(tmpdir(), 'schema-startup-platform-'));
+  mkdirSync(join(platformRoot, 'schemas'), { recursive: true });
+  writeFileSync(join(platformRoot, 'schemas', 'compatibility.json'), JSON.stringify({
+    cards: { current: 1, supported: [0, 1] },
+    workflows: { current: 1, supported: [0, 1] },
+  }));
+  expect(() => assertSupportedRepositoryData(repoRoot, platformRoot)).toThrow(/schema infrastructure error.*v1\.schema\.json/s);
+});
+
+it('ignores archived and nested queue markdown that runtime readers never scan', () => {
+  const root = mkdtempSync(join(tmpdir(), 'schema-startup-flat-'));
+  mkdirSync(join(root, 'queue', 'archived'), { recursive: true });
+  mkdirSync(join(root, 'queue', 'inbox', 'nested'), { recursive: true });
+  writeFileSync(join(root, 'queue', 'archived', 'bad.md'), 'not frontmatter');
+  writeFileSync(join(root, 'queue', 'inbox', 'nested', 'bad.md'), 'not frontmatter');
+  expect(() => assertSupportedRepositoryData(root)).not.toThrow();
+});

@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FSWatcher } from 'chokidar';
 import { indexRepo, watchPlaneA } from './indexer.ts';
 
@@ -48,6 +48,23 @@ describe('indexRepo', () => {
     );
     expect(idx.ledgers.dispatch.count).toBe(2);
     expect(idx.orgStates).toHaveLength(1);
+    expect(idx.rejectedCards).toBe(0);
+  });
+
+  it('counts and warns for rejected cards without dropping valid cards', () => {
+    const repo = scratchRepo();
+    const malformed = join(repo, 'queue', 'inbox', 'malformed.md');
+    writeFileSync(malformed, 'not frontmatter', 'utf-8');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const idx = indexRepo(repo);
+      expect(idx.rejectedCards).toBe(1);
+      expect(Object.values(idx.cards).flat()).toHaveLength(7);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(malformed));
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/frontmatter/i));
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

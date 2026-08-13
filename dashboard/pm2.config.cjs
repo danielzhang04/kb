@@ -58,6 +58,9 @@ module.exports = {
         // writes use a dedicated ops worktree. This prevents normal dashboard development from making
         // Launch fail (or switching the developer checkout behind the IDE).
         DASHBOARD_REPO_ROOT: 'C:\\Users\\danie\\kb-worktrees\\dashboard-ops',
+        // Immutable platform assets (schemas, scripts, and dashboard/config) come from the pinned main
+        // checkout, never whichever feature worktree happened to launch PM2.
+        DASHBOARD_PLATFORM_ROOT: 'C:\\Users\\danie\\kb-worktrees\\dashboard-prod',
         // Durable Composer artifacts use a separate reviewed work-branch checkout. Keeping this root
         // distinct from DASHBOARD_REPO_ROOT makes it impossible for a save commit to contaminate ops.
         DASHBOARD_DURABLE_REPO_ROOT: 'C:\\Users\\danie\\kb-worktrees\\dashboard-durable',

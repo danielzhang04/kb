@@ -18,9 +18,24 @@ import {
 } from './launch.ts';
 import type { LaunchDeps, PyRunResult, PyRunner, SessionInput } from './launch.ts';
 import type { PreambleRunner } from './preambleGate.ts';
+import { pythonFailureResult } from '../runtime/python.ts';
 
 const SECRET = Buffer.from('launch-test-secret-do-not-reuse');
 const SESSION_CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
+
+it('preserves timeout signal and error context when Python produced no stderr', () => {
+  const timeout = Object.assign(new Error('spawnSync py ETIMEDOUT'), {
+    status: null,
+    signal: 'SIGTERM',
+    stdout: '',
+    stderr: '',
+  });
+  expect(pythonFailureResult(timeout)).toEqual({
+    exitCode: 1,
+    stdout: '',
+    stderr: 'signal SIGTERM: spawnSync py ETIMEDOUT',
+  });
+});
 
 function okPreamble(): PreambleRunner {
   return () => ({ exitCode: 0, stdout: 'PREAMBLE OK\n', stderr: '' });

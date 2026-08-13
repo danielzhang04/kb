@@ -226,8 +226,8 @@ function symlinkGuard(repoRoot: string, cardId: string): string | null {
  * LIFECYCLE guard. Before any routing mutation, resolve the target card's authoritative frontmatter
  * state + owner and determine whether the card is still safely mutable. Uses the same
  * `findCardFile` locator as {@link symlinkGuard} (run FIRST, so a symlinked/escaping target is already
- * refused before we read here) and the read-side `parseCardFrontmatter`. Returns null when the card is
- * absent (the py path then reports not-found itself) or its frontmatter is unparseable (let py handle it).
+ * refused before we read here) and the read-side `parseValidatedCard`. Returns null only when the card
+ * is absent (the py path then reports not-found itself); malformed cards fail closed.
  */
 function routingLifecycleGuard(
   repoRoot: string,
@@ -249,8 +249,12 @@ function routingLifecycleGuard(
       };
     }
     return lifecycleLock(String(meta.state), meta.owner);
-  } catch {
-    return null;
+  } catch (error) {
+    return {
+      state: 'unknown',
+      disposition: 'state-not-reroutable',
+      reason: `card cannot be safely rerouted because validation failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 

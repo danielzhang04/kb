@@ -332,6 +332,29 @@ describe('setCardRouting — lifecycle guard', () => {
     expect(seen).toHaveLength(0);
   });
 
+  it('fails closed when the authoritative card is schema-invalid', async () => {
+    plant('card-invalid', 'blocked', 'inbox');
+    const path = join(repo, 'queue', 'inbox', 'card-invalid.md');
+    writeFileSync(path, readFileSync(path, 'utf-8').replace('state: blocked', 'state: blocked\nunknown-field: value'));
+    const seen: { code: string; op: any }[] = [];
+    const { runner, calls } = recorder();
+
+    const result = await setCardRouting(
+      { repoRoot: repo, cardId: 'card-invalid', sessionToken: token(), sessionConfig: CONFIG },
+      { runtime: 'codex', model: 'gpt-5-codex' },
+      { runPy: fakePy(seen), runGit: runner, appendAudit: noAudit },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      error: 'routing-state-locked',
+      disposition: 'state-not-reroutable',
+    });
+    expect(seen).toHaveLength(0);
+    expectNoCoordinationMutation(calls);
+  });
+
   it('allows only the exact managed workflow authority to reroute its assigned inbox card', async () => {
     plant('card-managed', 'inbox', 'inbox', 'codex-worker', 'run-managed');
     const seen: { code: string; op: any }[] = [];

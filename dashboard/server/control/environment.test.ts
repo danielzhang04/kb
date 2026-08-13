@@ -34,6 +34,8 @@ describe('control environment', () => {
     expect(registry.runtimes).toEqual({ claude: ['claude-opus'], codex: ['codex-safe'] });
     expect(registry.skills).toContain('tests');
     expect(registry.skills).not.toContain('unsafe');
+    expect(registry.repositories.forProject('atlas').id).toBe('atlas@1');
+    expect(() => registry.repositories.forProject('atlas-prep')).toThrow(/not registered/);
   });
 
   it('builds fixed manager/worker profiles without arbitrary browser capabilities', () => {
