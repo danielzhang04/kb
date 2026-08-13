@@ -184,7 +184,7 @@ export interface GenerationSupersession {
 export type IterationRole = ProposalIterationRole;
 export type IterationRequestKind = ProposalIterationRequestKind;
 export type IterationVerdict = ProposalIterationVerdict;
-export type IterationParkReason = 'exhausted' | 'no-progress';
+export type IterationParkReason = 'exhausted' | 'no-progress' | 'parked';
 export interface IterationParticipant extends ProposalIterationParticipant {}
 export interface IterationRoute extends ProposalIterationRoute {}
 export interface IterationScheduleStep extends ProposalIterationScheduleStep {}
@@ -230,6 +230,8 @@ export interface IterationRequest {
   schema: 'kb.iteration-request/v1';
   requestRef: string;
   iterationLoopRef: string;
+  /** Server-owned schedule identity bound into the canonical request fingerprint. */
+  stepId?: string;
   routeId: string;
   senderParticipantId: string;
   recipientParticipantId: string;
@@ -279,6 +281,76 @@ export interface IterationLoop extends ProposalIterationGroup {
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ActivateIterationLoopInput {
+  expectedLoopVersion: number;
+  seedGenerationRefs: string[];
+  artifactGenerationRefs: Record<string, string>;
+  operationKey: string;
+}
+
+export interface RecordIterationRequestInput {
+  expectedLoopVersion: number;
+  routeId: string;
+  kind: IterationRequestKind;
+  inputGenerationRefs: string[];
+  baseCommit: string;
+  artifactHashes: Record<string, string>;
+  unresolvedFindingRefs: string[];
+  preservedInvariants: string[];
+  nextAcceptanceCheck: string;
+  instructions: string;
+  operationKey: string;
+}
+
+export interface RecordIterationReceiptInput {
+  expectedLoopVersion: number;
+  requestRef: string;
+  outcome: IterationOutcome;
+  outputGenerationRefs: string[];
+  baseCommit: string;
+  canonicalCommit: string;
+  participantAttemptRef: string;
+  operationKey: string;
+}
+
+export interface AdvanceIterationTurnInput {
+  expectedLoopVersion: number;
+  expectedReceiptRef: string;
+  expectedActiveGenerationRefs: string[];
+  nextStepId: string;
+  operationKey: string;
+  successorGenerationRef?: string;
+}
+
+export interface ParkIterationLoopInput {
+  expectedLoopVersion: number;
+  expectedReceiptRef: string;
+  expectedActiveGenerationRefs: string[];
+  reason: IterationParkReason;
+  nextRouteId: string;
+  operationKey: string;
+}
+
+export interface IterationParkResult {
+  loop: IterationLoop;
+  receipt: IterationReceipt;
+  receiptVersion: number;
+  gate: HumanRequest;
+}
+
+export interface ResolveIterationGateInput {
+  expectedRequestRevision: number;
+  expectedLoopVersion: number;
+  expectedReceiptVersion: number;
+  decision: 'approved' | 'declined' | 'rejected' | 'changes-requested';
+  operationKey: string;
+  response?: string | null;
+}
+
+export interface IterationGateResult extends IterationParkResult {
+  interventionRequest: HumanRequest | null;
 }
 
 export interface ReviewLoop {
@@ -381,6 +453,8 @@ export interface HumanRequest {
   runRef: string;
   stageRef: string | null;
   kind: HumanRequestKind;
+  /** Generic iteration-gate discriminator; completion approvals leave this absent. */
+  gateKind?: 'iteration-park';
   revision: number;
   state: 'open' | 'resolved';
   title: string;

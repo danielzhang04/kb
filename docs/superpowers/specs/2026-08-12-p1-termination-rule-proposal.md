@@ -195,7 +195,7 @@ type IterationVerdict =
   | 'pass' | 'fail'
   | 'consensus' | 'continue'
   | 'complete' | 'parked';
-type IterationParkReason = 'exhausted' | 'no-progress';
+type IterationParkReason = 'exhausted' | 'no-progress' | 'parked';
 
 interface IterationParticipant {
   participantId: string;
@@ -321,6 +321,9 @@ Verdict legality is declaration-driven rather than inferred from role labels. A 
 verdicts are exactly its `terminalAuthorities`; its nonterminal vocabulary is the verdicts naming it in
 schedule `after` conditions, plus `fulfilled` when it receives `rework` or `delegate`, and universal
 `parked`, which always transfers control to the platform human gate and is exempt from successor coverage.
+An explicit participant `parked` verdict atomically opens the same `iteration-park` gate with reason
+`parked`, full exhaustion-equivalent residue, and the same exact-set approve or decline semantics. This
+is the universal control transfer already required above, not an additional definition rule.
 
 The closed parser may require or forbid outcome fields by verdict and participant role. A worker never
 chooses `receiptRef`, output generation refs, commits, timestamps, or the final receipt hash. The server

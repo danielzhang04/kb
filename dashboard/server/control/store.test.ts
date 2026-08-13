@@ -1002,6 +1002,520 @@ function corruptIterationLoop(runRef: string): PersistedRow {
   };
 }
 
+function task4IterationGroup(prefix = 'draft', withCompletionGate = false) {
+  const build = `${prefix}-build`;
+  const check = `${prefix}-check`;
+  const author = `${prefix}-author`;
+  const judge = `${prefix}-judge`;
+  const artifact = `${prefix}-artifact`;
+  return {
+    iterationGroupId: `${prefix}-loop`, goal: `Accept ${prefix}.`,
+    participants: [
+      { participantId: author, stageRef: build, role: 'contributor' as const, perspective: `Create ${prefix}.`, mandate: `Write ${prefix}.` },
+      { participantId: judge, stageRef: check, role: 'judge' as const, perspective: `Check ${prefix}.`, mandate: `Judge ${prefix}.` },
+    ],
+    routes: [
+      { routeId: `${prefix}-to-judge`, senderParticipantId: author, recipientParticipantId: judge, requestKinds: ['review' as const], baseResolutionStageIds: [build] },
+      { routeId: `${prefix}-to-author`, senderParticipantId: judge, recipientParticipantId: author, requestKinds: ['rework' as const], baseResolutionStageIds: [check] },
+    ],
+    activation: { seedParticipantId: author, seedArtifactIds: [artifact] }, initialStepId: `${prefix}-review`,
+    schedule: [
+      { stepId: `${prefix}-review`, routeId: `${prefix}-to-judge`, after: { stepId: `${prefix}-rework`, participantId: author, verdict: 'fulfilled' as const }, cycle: 'next' as const },
+      { stepId: `${prefix}-rework`, routeId: `${prefix}-to-author`, after: { stepId: `${prefix}-review`, participantId: judge, verdict: 'fail' as const }, cycle: 'current' as const },
+    ],
+    artifacts: [artifact], criteria: [{ id: `${prefix}-criterion`, description: `${prefix} is acceptable.` }],
+    maxCycles: 2, cycleUnit: `One ${prefix} generation and verdict.`,
+    terminalAuthorities: [{ participantId: judge, verdict: 'pass' as const }],
+    ...(withCompletionGate ? { completionGate: { id: `${prefix}-approval`, kind: 'approval' as const, prompt: `Approve ${prefix}.`, requiresReview: 'pass' as const } } : {}),
+  };
+}
+
+function createTask4IterationRun(store: ControlPlaneStore, groups = [task4IterationGroup()]) {
+  const stages = groups.flatMap((group) => [
+    { stageId: group.participants[0]!.stageRef, title: `${group.iterationGroupId} build`, dependsOn: [] as string[] },
+    { stageId: group.participants[1]!.stageRef, title: `${group.iterationGroupId} check`, dependsOn: [group.participants[0]!.stageRef] },
+  ]);
+  const snapshot = {
+    schema: 'kb.plan-proposal/v1', manager: {}, iterationGroups: structuredClone(groups),
+    stages: groups.flatMap((group) => [
+      { id: group.participants[0]!.stageRef, title: `${group.iterationGroupId} build`, dependsOn: [], artifacts: [{ id: group.artifacts[0], path: `${group.iterationGroupId}.md` }] },
+      { id: group.participants[1]!.stageRef, title: `${group.iterationGroupId} check`, dependsOn: [group.participants[0]!.stageRef], artifacts: [] },
+    ]),
+  } as unknown as JsonObject;
+  const proposal = createApprovedProposal(store, 'alice', snapshot);
+  const created = store.createRun('alice', {
+    title: 'Task 4 iteration run', proposalRef: proposal.proposalRef, proposalRevision: proposal.revision,
+    expectedProposalHash: proposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+    idempotencyKey: `task4-${groups.map((group) => group.iterationGroupId).join('-')}`,
+    iterationGroups: structuredClone(groups), stages,
+  });
+  if (!created.ok) throw new Error(created.detail);
+  return created.value;
+}
+
+function commitTask4Seed(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const stage = detail.value.stages.find((candidate) => candidate.stageId === `${prefix}-build`);
+  if (!stage) throw new Error('seed stage missing');
+  const linked = store.linkStageCard('alice', stage.stageRef, stage.version, `card-${prefix}`);
+  if (!linked.ok) throw new Error(linked.detail);
+  const attempt = store.createAttempt('alice', stage.stageRef, { expectedStageVersion: linked.value.version, runtime: 'codex', model: 'fixed' });
+  if (!attempt.ok) throw new Error(attempt.detail);
+  const starting = store.transitionAttempt('alice', attempt.value.attemptRef, attempt.value.version, 'starting');
+  if (!starting.ok) throw new Error(starting.detail);
+  const running = store.transitionAttempt('alice', starting.value.attemptRef, starting.value.version, 'running');
+  if (!running.ok) throw new Error(running.detail);
+  const succeeded = store.transitionAttempt('alice', running.value.attemptRef, running.value.version, 'succeeded');
+  if (!succeeded.ok) throw new Error(succeeded.detail);
+  const current = store.getRun('alice', runRef);
+  if (!current.ok) throw new Error(current.detail);
+  const currentStage = current.value.stages.find((candidate) => candidate.stageRef === stage.stageRef)!;
+  const generation = store.recordStageGeneration('alice', stage.stageRef, {
+    expectedStageVersion: currentStage.version, expectedAttemptVersion: succeeded.value.version, expectedGeneration: 1,
+    operationKey: `result:${runRef}:${stage.stageId}`,
+    resultHash: createHash('sha256').update(prefix).digest('hex'), resultCardRef: `card-${prefix}`,
+    baseCommit: 'b'.repeat(40), canonicalCommit: createHash('sha1').update(prefix).digest('hex'),
+  });
+  if (!generation.ok) throw new Error(generation.detail);
+  return generation.value;
+}
+
+function activateTask4Loop(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const generation = commitTask4Seed(store, runRef, prefix);
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops.find((candidate) => candidate.iterationGroupId === `${prefix}-loop`)!;
+  const activated = store.activateIterationLoop('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, seedGenerationRefs: [generation.generationRef],
+    artifactGenerationRefs: { [`${prefix}-artifact`]: generation.generationRef },
+    operationKey: `iteration-activate:${runRef}:${prefix}-loop:c1`,
+  });
+  if (!activated.ok) throw new Error(activated.detail);
+  return { generation, loop: activated.value };
+}
+
+function task4Request(store: ControlPlaneStore, runRef: string, prefix = 'draft') {
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops.find((candidate) => candidate.iterationGroupId === `${prefix}-loop`)!;
+  const generation = detail.value.stageGenerations.find((candidate) => candidate.generationRef === loop.activeGenerationRefs[0])!;
+  return store.recordIterationRequest('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, routeId: `${prefix}-to-judge`, kind: 'review',
+    inputGenerationRefs: [generation.generationRef], baseCommit: generation.canonicalCommit!,
+    artifactHashes: { [`${prefix}-artifact`]: generation.resultHash! }, unresolvedFindingRefs: [], preservedInvariants: [],
+    nextAcceptanceCheck: `Apply ${prefix}-criterion.`, instructions: `Judge ${prefix}.`, operationKey: `iteration-request:${runRef}:${prefix}:c1`,
+  });
+}
+
+function task4Receipt(store: ControlPlaneStore, runRef: string, prefix = 'draft', verdict: 'pass' | 'fail' = 'fail') {
+  const request = task4Request(store, runRef, prefix);
+  if (!request.ok) throw new Error(request.detail);
+  const detail = store.getRun('alice', runRef);
+  if (!detail.ok) throw new Error(detail.detail);
+  const loop = detail.value.iterationLoops.find((candidate) => candidate.iterationGroupId === `${prefix}-loop`)!;
+  const generation = detail.value.stageGenerations.find((candidate) => candidate.generationRef === request.value.inputGenerationRefs[0])!;
+  const findingId = `${prefix}-finding`;
+  return store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+    expectedLoopVersion: loop.version, requestRef: request.value.requestRef,
+    outcome: {
+      schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef, iterationLoopRef: loop.iterationLoopRef,
+      participantId: `${prefix}-judge`, cycle: request.value.cycle, verdict, inputGenerationRefs: [...request.value.inputGenerationRefs],
+      criteria: [{ criterionId: `${prefix}-criterion`, verdict, findingIds: verdict === 'fail' ? [findingId] : [] }],
+      findings: verdict === 'fail' ? [{ findingId, criterionId: `${prefix}-criterion`, severity: 'blocking', summary: `${prefix} failed.`, evidencePaths: [] }] : [],
+      positions: [],
+      recordedDissent: [], summary: `${prefix} ${verdict}.`,
+    },
+    outputGenerationRefs: [], baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!,
+    participantAttemptRef: generation.attemptRef, operationKey: `iteration-receipt:${runRef}:${prefix}:c1:${verdict}`,
+  });
+}
+
+describe('Task 4 generic iteration state machine', () => {
+  it('records one iteration request and receipt idempotently by operation key', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const request = task4Request(store, created.run.runRef);
+    expect(request).toMatchObject({ ok: true });
+    expect(task4Request(store, created.run.runRef)).toMatchObject({ ok: true, replayed: true, value: { requestRef: request.ok ? request.value.requestRef : '' } });
+    const receipt = task4Receipt(store, created.run.runRef);
+    expect(receipt).toMatchObject({ ok: true });
+    const replayDetail = store.getRun('alice', created.run.runRef);
+    if (!replayDetail.ok) throw new Error(replayDetail.detail);
+    const participantAttemptRef = replayDetail.value.stageGenerations[0]?.attemptRef;
+    if (!participantAttemptRef) throw new Error('iteration receipt attempt missing');
+    const replay = store.recordIterationReceipt('alice', receipt.ok ? receipt.value.iterationLoopRef : '', receipt.ok ? {
+      expectedLoopVersion: 999, requestRef: receipt.value.requestRef,
+      outcome: { schema: 'kb.iteration-outcome/v1', requestRef: receipt.value.requestRef, iterationLoopRef: receipt.value.iterationLoopRef, participantId: 'draft-judge', cycle: 1, verdict: 'fail', inputGenerationRefs: [...receipt.value.inputGenerationRefs], criteria: receipt.value.criteria, findings: receipt.value.findings, positions: receipt.value.positions, recordedDissent: receipt.value.recordedDissent, summary: receipt.value.summary },
+      outputGenerationRefs: [], baseCommit: receipt.value.baseCommit, canonicalCommit: receipt.value.canonicalCommit,
+      participantAttemptRef,
+      operationKey: `iteration-receipt:${created.run.runRef}:draft:c1:fail`,
+    } : {} as never);
+    expect(replay).toMatchObject({ ok: true, replayed: true, value: { receiptRef: receipt.ok ? receipt.value.receiptRef : '' } });
+    const detail = store.getRun('alice', created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: { iterationRequests: [expect.anything()], iterationReceipts: [expect.anything()] } });
+  });
+
+  it('turns a parked verdict into exactly one restart-durable linked gate resolvable approve and decline', () => {
+    for (const decision of ['approved', 'declined'] as const) {
+      const root = mkdtempSync(join(tmpdir(), `control-store-task4-verdict-park-${decision}-`));
+      roots.push(root);
+      const store = createFileControlPlaneStore(root, deterministicOptions());
+      const created = createTask4IterationRun(store);
+      activateTask4Loop(store, created.run.runRef);
+      const request = task4Request(store, created.run.runRef);
+      if (!request.ok) throw new Error(request.detail);
+      const before = store.getRun('alice', created.run.runRef);
+      if (!before.ok) throw new Error(before.detail);
+      const loop = before.value.iterationLoops[0]!;
+      const generation = before.value.stageGenerations.find((item) => item.generationRef === request.value.inputGenerationRefs[0])!;
+      const receipt = store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+        expectedLoopVersion: loop.version, requestRef: request.value.requestRef,
+        outcome: {
+          schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef, iterationLoopRef: loop.iterationLoopRef,
+          participantId: 'draft-judge', cycle: request.value.cycle, verdict: 'parked',
+          inputGenerationRefs: [...request.value.inputGenerationRefs],
+          criteria: [{ criterionId: 'draft-criterion', verdict: 'unverified', findingIds: [] }],
+          findings: [],
+          positions: [], recordedDissent: [], summary: 'Participant parked explicitly.',
+        },
+        outputGenerationRefs: [], baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!,
+        participantAttemptRef: generation.attemptRef, operationKey: `iteration-receipt:${created.run.runRef}:parked:${decision}`,
+      });
+      if (!receipt.ok) throw new Error(receipt.detail);
+      let restarted = createFileControlPlaneStore(root, deterministicOptions());
+      const parked = restarted.getRun('alice', created.run.runRef);
+      if (!parked.ok) throw new Error(parked.detail);
+      const parkedLoop = parked.value.iterationLoops[0]!;
+      const gates = parked.value.humanRequests.filter((item) => item.gateKind === 'iteration-park');
+      expect(parkedLoop).toMatchObject({ state: 'awaiting-park-gate', parkReason: 'parked', interventionRef: gates[0]?.requestRef,
+        unresolvedResidue: { requestRefs: [request.value.requestRef], receiptRefs: [receipt.value.receiptRef],
+          activeGenerationRefs: loop.activeGenerationRefs, acceptedGenerationRefs: [] } });
+      expect(gates).toHaveLength(1);
+      const resolved = restarted.resolveIterationGate('alice', gates[0]!.requestRef, {
+        expectedRequestRevision: gates[0]!.revision, expectedLoopVersion: parkedLoop.version,
+        expectedReceiptVersion: 1, decision, operationKey: `resolve-parked-verdict-${decision}`,
+      });
+      expect(resolved).toMatchObject({ ok: true, value: { loop: { state: decision === 'approved' ? 'passed' : 'declined' } } });
+      restarted = createFileControlPlaneStore(root, deterministicOptions());
+      expect(restarted.getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: {
+        humanRequests: [expect.objectContaining({ requestRef: gates[0]!.requestRef, state: 'resolved' })],
+        iterationLoops: [expect.objectContaining({ state: decision === 'approved' ? 'passed' : 'declined' })],
+      } });
+    }
+  });
+
+  it('activates an awaiting seed loop atomically and idempotently from its pinned seed generation', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    const { generation, loop } = activateTask4Loop(store, created.run.runRef);
+    expect(loop).toMatchObject({ state: 'awaiting-turn', cyclesUsed: 1, currentStepId: 'draft-review', turnOwnerParticipantId: 'draft-judge', activeGenerationRefs: [generation.generationRef] });
+    expect(store.activateIterationLoop('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: 0, seedGenerationRefs: [generation.generationRef], artifactGenerationRefs: { 'draft-artifact': generation.generationRef },
+      operationKey: `iteration-activate:${created.run.runRef}:draft-loop:c1`,
+    })).toMatchObject({ ok: true, replayed: true, value: { version: loop.version } });
+  });
+
+  it('advances only the declared route with matching loop and generation CAS versions', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-review', operationKey: 'advance-wrong-route',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework', operationKey: 'advance-declared-route',
+    })).toMatchObject({ ok: true, value: { state: 'awaiting-turn', currentStepId: 'draft-rework', turnOwnerParticipantId: 'draft-author', cyclesUsed: 1 } });
+  });
+
+  it('replays a queued generic supersession only for the matching operation key and fingerprint', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task4-advance-replay-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    const failed = failCheckerReview(store, committed);
+    const successor = store.advanceReviewGeneration('alice', committed.created.run.runRef, failed.input);
+    if (!successor.ok) throw new Error(successor.detail);
+    const detail = store.getRun('alice', committed.created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as Record<string, any>;
+    const genericInput = {
+      expectedLoopVersion: loop.version - 1, expectedReceiptRef: failed.receipt.reviewReceiptRef,
+      expectedActiveGenerationRefs: [committed.generation.generationRef], nextStepId: loop.currentStepId!,
+      successorGenerationRef: successor.value.generationRef, operationKey: failed.input.idempotencyKey,
+    };
+    const storedLoop = document.iterationLoops.find((item: Record<string, unknown>) => item.iterationLoopRef === loop.iterationLoopRef);
+    const storedSupersession = document.generationSupersessions.find(
+      (item: Record<string, unknown>) => item.successorGenerationRef === successor.value.generationRef,
+    );
+    storedLoop.lastReceiptRef = failed.receipt.reviewReceiptRef;
+    storedSupersession.operationFingerprint = createHash('sha256')
+      .update(canonicalJsonForTest({ iterationLoopRef: loop.iterationLoopRef, ...genericInput })).digest('hex');
+    writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
+
+    const restarted = createFileControlPlaneStore(root, deterministicOptions());
+    expect(restarted.advanceIterationTurn('alice', loop.iterationLoopRef, genericInput)).toMatchObject({
+      ok: true, replayed: true, value: { state: 'rework-queued', activeGenerationRefs: [successor.value.generationRef] },
+    });
+    expect(restarted.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      ...genericInput, operationKey: 'advance-generic-different-caller-key',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('uses the persisted current step when a four-step schedule reuses a route', () => {
+    const group = task4IterationGroup();
+    group.initialStepId = 'draft-review-b';
+    (group as { schedule: Array<{ stepId: string; routeId: string; after: { stepId: string; participantId: string; verdict: 'fulfilled' | 'fail' }; cycle: 'current' | 'next' }> }).schedule = [
+      { stepId: 'draft-review-a', routeId: 'draft-to-judge', after: { stepId: 'draft-rework-a', participantId: 'draft-author', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'draft-rework-a', routeId: 'draft-to-author', after: { stepId: 'draft-review-a', participantId: 'draft-judge', verdict: 'fail' }, cycle: 'current' },
+      { stepId: 'draft-review-b', routeId: 'draft-to-judge', after: { stepId: 'draft-rework-b', participantId: 'draft-author', verdict: 'fulfilled' }, cycle: 'current' },
+      { stepId: 'draft-rework-b', routeId: 'draft-to-author', after: { stepId: 'draft-review-b', participantId: 'draft-judge', verdict: 'fail' }, cycle: 'next' },
+    ];
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store, [group]);
+    activateTask4Loop(store, created.run.runRef);
+    const request = task4Request(store, created.run.runRef);
+    if (!request.ok) throw new Error(request.detail);
+    expect(request.value.stepId).toBe('draft-review-b');
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    let detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework-a', operationKey: 'reused-route-wrong-successor',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const advanced = store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework-b', operationKey: 'reused-route-declared-successor',
+    });
+    expect(advanced).toMatchObject({ ok: true, value: { currentStepId: 'draft-rework-b' } });
+    detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const generation = detail.value.stageGenerations[0]!;
+    expect(store.recordIterationRequest('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: advanced.ok ? advanced.value.version : -1, routeId: 'draft-to-author', kind: 'rework',
+      inputGenerationRefs: [...loop.activeGenerationRefs], baseCommit: generation.canonicalCommit!,
+      artifactHashes: { 'draft-artifact': generation.resultHash! }, unresolvedFindingRefs: ['draft-finding'], preservedInvariants: [],
+      nextAcceptanceCheck: 'Resolve the finding.', instructions: 'Rework the draft.', operationKey: 'reused-route-cycle-two-request',
+    })).toMatchObject({ ok: true, value: { stepId: 'draft-rework-b', cycle: 2 } });
+  });
+
+  it('rejects exhausted-reason parking before the declared cycle bound is exhausted', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(store.parkIterationLoop('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'exhausted',
+      nextRouteId: 'draft-to-author', operationKey: 'park-exhausted-too-early',
+    })).toMatchObject({ ok: false, reason: 'ineligible', detail: expect.stringContaining('not exhausted') });
+  });
+
+  it('blocks a generic rework on a run-wide non-iteration intervention', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const intervention = store.createHumanRequest('alice', created.run.runRef, {
+      kind: 'intervention', title: 'Launch reconciliation', prompt: 'Reconcile the launch before more work.',
+    });
+    if (!intervention.ok) throw new Error(intervention.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], nextStepId: 'draft-rework',
+      operationKey: 'advance-blocked-by-reconciliation',
+    })).toMatchObject({ ok: false, reason: 'ineligible', detail: expect.stringContaining('open gate or intervention') });
+  });
+
+  it('rejects a stale turn owner duplicate successor or receipt from the wrong participant', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const request = task4Request(store, created.run.runRef);
+    if (!request.ok) throw new Error(request.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const generation = detail.value.stageGenerations[0]!;
+    expect(store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, requestRef: request.value.requestRef,
+      outcome: { schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef, iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-author', cycle: 1, verdict: 'fail', inputGenerationRefs: [...request.value.inputGenerationRefs], criteria: [{ criterionId: 'draft-criterion', verdict: 'fail', findingIds: ['draft-finding'] }], findings: [{ findingId: 'draft-finding', criterionId: 'draft-criterion', severity: 'blocking', summary: 'failed', evidencePaths: [] }], positions: [], recordedDissent: [], summary: 'failed' },
+      outputGenerationRefs: [], baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!, participantAttemptRef: generation.attemptRef, operationKey: 'wrong-participant',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const after = store.getRun('alice', created.run.runRef);
+    if (!after.ok) throw new Error(after.detail);
+    expect(store.advanceIterationTurn('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...after.value.iterationLoops[0]!.activeGenerationRefs], nextStepId: 'draft-rework', operationKey: 'stale-owner',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(store.recordIterationReceipt('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: after.value.iterationLoops[0]!.version, requestRef: request.value.requestRef,
+      outcome: { schema: 'kb.iteration-outcome/v1', requestRef: request.value.requestRef, iterationLoopRef: loop.iterationLoopRef, participantId: 'draft-judge', cycle: 1, verdict: 'fail', inputGenerationRefs: [...request.value.inputGenerationRefs], criteria: receipt.value.criteria, findings: receipt.value.findings, positions: receipt.value.positions, recordedDissent: [], summary: receipt.value.summary },
+      outputGenerationRefs: [], baseCommit: generation.baseCommit!, canonicalCommit: generation.canonicalCommit!, participantAttemptRef: generation.attemptRef, operationKey: 'duplicate-successor-receipt',
+    })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('parks an explicit participant stop atomically with every unresolved finding position artifact and next route', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-task4-park-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const created = createTask4IterationRun(store);
+    activateTask4Loop(store, created.run.runRef);
+    const receipt = task4Receipt(store, created.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops[0]!;
+    const parked = store.parkIterationLoop('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'parked', nextRouteId: 'draft-to-author', operationKey: 'park-draft-explicit',
+    });
+    expect(parked).toMatchObject({ ok: true, value: { loop: { state: 'awaiting-park-gate', parkReason: 'parked', unresolvedResidue: {
+      unresolvedFindings: [{ findingId: 'draft-finding' }], positions: [],
+      activeGenerationRefs: loop.activeGenerationRefs, nextRouteId: 'draft-to-author', cyclesUsed: 1, maxCycles: 2,
+    } }, gate: { kind: 'approval', gateKind: 'iteration-park', state: 'open' } } });
+    const restarted = createFileControlPlaneStore(root, deterministicOptions()).getRun('alice', created.run.runRef);
+    expect(restarted).toMatchObject({ ok: true, value: { iterationLoops: [expect.objectContaining({
+      state: 'awaiting-park-gate', parkReason: 'parked', interventionRef: parked.ok ? parked.value.gate.requestRef : '',
+    })] } });
+  });
+
+  it('scopes an open iteration park gate to its group while a sibling group completes', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store, [task4IterationGroup('left'), task4IterationGroup('right')]);
+    activateTask4Loop(store, created.run.runRef, 'left');
+    activateTask4Loop(store, created.run.runRef, 'right');
+    const leftReceipt = task4Receipt(store, created.run.runRef, 'left');
+    if (!leftReceipt.ok) throw new Error(leftReceipt.detail);
+    let detail = store.getRun('alice', created.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const left = detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'left-loop')!;
+    expect(store.parkIterationLoop('alice', left.iterationLoopRef, {
+      expectedLoopVersion: left.version, expectedReceiptRef: leftReceipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...left.activeGenerationRefs], reason: 'parked', nextRouteId: 'left-to-author', operationKey: 'park-left',
+    })).toMatchObject({ ok: true });
+    expect(task4Receipt(store, created.run.runRef, 'right', 'pass')).toMatchObject({ ok: true });
+    detail = store.getRun('alice', created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: { iterationLoops: expect.arrayContaining([
+      expect.objectContaining({ iterationGroupId: 'left-loop', state: 'awaiting-park-gate' }),
+      expect.objectContaining({ iterationGroupId: 'right-loop', state: 'passed' }),
+    ]) } });
+  });
+
+  it('scopes an open iteration completion gate to its group while a sibling group takes a turn', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const created = createTask4IterationRun(store, [task4IterationGroup('left', true), task4IterationGroup('right')]);
+    activateTask4Loop(store, created.run.runRef, 'left');
+    activateTask4Loop(store, created.run.runRef, 'right');
+    expect(task4Receipt(store, created.run.runRef, 'left', 'pass')).toMatchObject({ ok: true });
+    expect(task4Request(store, created.run.runRef, 'right')).toMatchObject({ ok: true });
+    expect(store.getRun('alice', created.run.runRef)).toMatchObject({ ok: true, value: { iterationLoops: expect.arrayContaining([
+      expect.objectContaining({ iterationGroupId: 'left-loop', state: 'awaiting-completion-gate' }),
+      expect.objectContaining({ iterationGroupId: 'right-loop', state: 'running-turn' }),
+    ]) } });
+  });
+
+  it('approves the exact parked generation set or declines without adding a cycle', () => {
+    for (const decision of ['approved', 'declined'] as const) {
+      const store = createInMemoryControlPlaneStore(deterministicOptions());
+      const created = createTask4IterationRun(store);
+      activateTask4Loop(store, created.run.runRef);
+      const receipt = task4Receipt(store, created.run.runRef);
+      if (!receipt.ok) throw new Error(receipt.detail);
+      let detail = store.getRun('alice', created.run.runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      const loop = detail.value.iterationLoops[0]!;
+      const parked = store.parkIterationLoop('alice', loop.iterationLoopRef, {
+        expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+        expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'parked', nextRouteId: 'draft-to-author', operationKey: `park-${decision}`,
+      });
+      if (!parked.ok) throw new Error(parked.detail);
+      const resolved = store.resolveIterationGate('alice', parked.value.gate.requestRef, {
+        expectedRequestRevision: parked.value.gate.revision, expectedLoopVersion: parked.value.loop.version,
+        expectedReceiptVersion: parked.value.receiptVersion, decision, operationKey: `resolve-${decision}`,
+      });
+      expect(resolved).toMatchObject({ ok: true, value: { loop: {
+        state: decision === 'approved' ? 'passed' : 'declined', cyclesUsed: 1,
+        ...(decision === 'approved' ? { acceptedGenerationRefs: loop.activeGenerationRefs } : {}),
+      } } });
+      expect(store.resolveIterationGate('alice', parked.value.gate.requestRef, {
+        expectedRequestRevision: parked.value.gate.revision, expectedLoopVersion: parked.value.loop.version,
+        expectedReceiptVersion: parked.value.receiptVersion, decision, operationKey: `resolve-${decision}`,
+      })).toMatchObject({ ok: true, replayed: true, value: { interventionRequest: null } });
+      detail = store.getRun('alice', created.run.runRef);
+      expect(detail.ok && detail.value.iterationLoops[0]!.cyclesUsed).toBe(1);
+    }
+  });
+
+  it('keeps post-acceptance completion approval distinct from iteration-park approval', () => {
+    const completionStore = createInMemoryControlPlaneStore(deterministicOptions());
+    const completionRun = createTask4IterationRun(completionStore, [task4IterationGroup('draft', true)]);
+    activateTask4Loop(completionStore, completionRun.run.runRef);
+    expect(task4Receipt(completionStore, completionRun.run.runRef, 'draft', 'pass')).toMatchObject({ ok: true });
+    const completion = completionStore.getRun('alice', completionRun.run.runRef);
+    if (!completion.ok) throw new Error(completion.detail);
+    expect(completion.value.iterationLoops[0]).toMatchObject({ state: 'awaiting-completion-gate', completionGateRef: expect.any(String) });
+    expect(completion.value.humanRequests).toContainEqual(expect.objectContaining({ requestRef: completion.value.iterationLoops[0]!.completionGateRef, kind: 'approval' }));
+    const completionGate = completion.value.humanRequests.find((request) => request.requestRef === completion.value.iterationLoops[0]!.completionGateRef)!;
+    expect(completionStore.resolveIterationGate('alice', completionGate.requestRef, {
+      expectedRequestRevision: completionGate.revision, expectedLoopVersion: completion.value.iterationLoops[0]!.version,
+      expectedReceiptVersion: 1, decision: 'changes-requested', operationKey: 'completion-needs-changes',
+    })).toMatchObject({ ok: true, value: { loop: { state: 'parked' }, interventionRequest: { kind: 'intervention' } } });
+
+    const parkStore = createInMemoryControlPlaneStore(deterministicOptions());
+    const parkRun = createTask4IterationRun(parkStore);
+    activateTask4Loop(parkStore, parkRun.run.runRef);
+    const receipt = task4Receipt(parkStore, parkRun.run.runRef);
+    if (!receipt.ok) throw new Error(receipt.detail);
+    const beforePark = parkStore.getRun('alice', parkRun.run.runRef);
+    if (!beforePark.ok) throw new Error(beforePark.detail);
+    const loop = beforePark.value.iterationLoops[0]!;
+    const parked = parkStore.parkIterationLoop('alice', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, expectedReceiptRef: receipt.value.receiptRef,
+      expectedActiveGenerationRefs: [...loop.activeGenerationRefs], reason: 'no-progress', nextRouteId: 'draft-to-author', operationKey: 'park-no-progress',
+    });
+    if (!parked.ok) throw new Error(parked.detail);
+    expect(parked.value.gate).toMatchObject({ kind: 'approval', gateKind: 'iteration-park' });
+    expect(parkStore.resolveIterationGate('alice', parked.value.gate.requestRef, {
+      expectedRequestRevision: 1, expectedLoopVersion: parked.value.loop.version, expectedReceiptVersion: parked.value.receiptVersion,
+      decision: 'changes-requested', operationKey: 'extend-parked-run',
+    })).toMatchObject({ ok: false, reason: 'invalid' });
+  });
+
+  it('uses triggerReceiptRef for every generation supersession', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const committed = commitCheckerSubject(store);
+    const failed = failCheckerReview(store, committed);
+    expect(store.advanceReviewGeneration('alice', committed.created.run.runRef, failed.input)).toMatchObject({ ok: true });
+    const detail = store.getRun('alice', committed.created.run.runRef);
+    expect(detail).toMatchObject({ ok: true, value: { generationSupersessions: [{ triggerReceiptRef: failed.receipt.reviewReceiptRef }] } });
+    expect(detail.ok && detail.value.generationSupersessions[0]).not.toHaveProperty('failedReviewReceiptRef');
+  });
+});
+
 describe('Task 2 generic iteration durability', () => {
   it('materializes approved iteration groups with immutable definition hashes and version zero', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
