@@ -1,0 +1,58 @@
+{
+  "L65-w11-retry.png": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Matched against shots.json L65 still_prompt. Big desk across the midground carries a black rotary telephone and one closed cream folder (zoom-checked, blank -- no text or markings); empty high-backed orange leather swivel chair pushed back behind the desk; tall mullioned window fills the back wall on a flat pale-yellow sky with the tops of two palm crowns visible through the glass; a separate large potted palm stands stage-left; bare cream wall stage-right with nothing hung on it; foreground depth delivered by a cropped brown visitor-chair back at the lower-left. All load-bearing elements from the still_prompt are present and correctly placed.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere -- folder is blank on zoom, phone has no dial labels legible, bare wall has nothing hung on it.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": ""
+  },
+  "L86-w11-retry.png": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Matched against shots.json L86 still_prompt. Steel pallet racking runs away on both sides of the aisle carrying shrink-wrapped pallets of flat cartons on the lower tiers; concrete floor with yellow lane paint down both sides of the aisle; row of pendant roof lights overhead; foreground depth from a cropped rack upright at the right edge. All load-bearing elements present.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "'MINISCRIBE' painted across the end panel closing the aisle, verified letter-by-letter via a 3x zoom crop: M-I-N-I-S-C-R-I-B-E -- exact match, no stray characters, no extra words.",
+      "act_text": "n/a -- not authored for this shot; the place_owner lettering is covered under the lettering axis."
+    },
+    "notes": ""
+  },
+  "L112-w11-retry.png": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Matched against shots.json L112 still_prompt. Bare concrete slab shows swirling drag/scarring marks consistent with old pallet marks; corrugated-panel side walls; roller shutter at the far end open across roughly its lower half with a slab of daylight spilling in underneath ('half up'); empty steel mezzanine stair stage-left; wall panels plain and unmarked floor to eaves; foreground depth from a large cropped diagonal steel stanchion at the right edge. Ceiling-fittings zoom confirms they render unlit/'dead' (grey, no glow) against the single daylight shaft, matching the authored light note. All named load-bearing elements present and correct.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere on the walls, shutter, stair, or fittings.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": "A prominent unauthored bright-yellow diagonal floor line runs from the upper-right toward the stair, crossing a large share of the visible floor -- not called out in the still_prompt (which authors only the pallet-mark scarring on the floor) and visually reads like lane-marking paint, similar in style to the yellow lane paint authored for the separate MINISCRIBE warehouse place (L86). Ruled non-blocking because it does not substitute or obscure any named load-bearing element (concrete slab, corrugated walls, half-up shutter, stair, stanchion, dead ceiling fittings are all present and correct) and carries no readable text/figures, but it is a more prominent and more place-confusable addition than the thin cosmetic line flagged in the prior round's L112 -- worth a maker's look before this plate ships, since 'rented warehouse under nobody's name' is supposed to read as generically unmarked and a bold lane-style stripe cuts against that."
+  },
+  "hr-officer-w11-retry-candidate.png": {
+    "axes": {
+      "resting_face": "pass",
+      "registry_identity": "pass"
+    },
+    "evidence": {
+      "resting_face": "Zoom-compared directly against refs/base/base.png. Heavy lowered upper eyelids, small dark pupils centered and set high, thin brows on a slight inner-to-outer downward angle (same angle as the base template), mouth a small closed near-neutral line with a faint upward curve identical in shape/size to the base template's mouth -- not an added smile or other emotion, it is the template's default line reproduced as-is. Eyes level, forward at viewer, face symmetric. Matches base.png template.",
+      "registry_identity": "Rust-red knitted cardigan worn open over a cream blouse with visible collar; long solid rust-brown skirt (renders as a solid color rather than a woven tweed texture, consistent with this channel's flat vector art style and with how the prior round's verified frame rendered the same garment); reading spectacles clearly hanging on a chain resting on the chest between the open cardigan lapels; dark hair pinned up in a bun at the back/top of the head; flat brown shoes visible in the full-body frame; slight build. All three of the registry's canonical costume items (cardigan, blouse, skirt) plus the spectacles-on-chain and pinned-up hair are present and correctly rendered. No lettering/logo visible."
+    },
+    "notes": ""
+  }
+}

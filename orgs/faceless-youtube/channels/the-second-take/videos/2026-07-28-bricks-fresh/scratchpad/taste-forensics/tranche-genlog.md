@@ -131,3 +131,86 @@ is restored, `py -3 t15_gen.py 1 --live` resumes at round 1 with nothing to redo
 | 4 | crowd-exemplar-reroll-candidate | R2 | 1 | $0.039 | $0.156 | OK -> _staging/crowd-exemplar-reroll-candidate.png; 6-figure crowd re-roll with 3-3.5-head squat proportion law |
 | 5 | crowd-exemplar-reroll-r2-candidate | R2 | 1 | $0.039 | $0.195 | OK -> _staging/crowd-exemplar-reroll-r2-candidate.png; retained t16 crowd prompt with exact-uniform 3-3.5-head build, compact bodies, and short stubby legs under one head-width |
 | 6 | crowd-exemplar-reroll-r3-candidate | R3 | 1 | $0.039 | $0.234 | OK -> _staging/crowd-exemplar-reroll-r3-candidate.png; channel crowd frame seed pinned; restyled only era dress, distributed flat head tones, and repeating hair silhouettes |
+
+## Wave 1 — 2026-08-13
+
+### W1 plate mints
+
+- 2026-08-13 | L65 | dry: cast-free PLATE; one reviewed `scene-style-tile` style-anchor seed; 0 API calls / $0.000.
+- 2026-08-13 | L65 | first live invocation: local batch-path resolution failed before forge loaded the spec; 0 API calls / $0.000; reissued with the absolute spec path.
+- 2026-08-13 | L65 | generated `visual-kit/_staging/L65.png` via gated one-item batch; 1 API call, 55.9 s, 0 stalls, 0 503s; $0.039 cumulative $0.039. No promotion, stamp, or manifest write.
+- 2026-08-13 | L84 | dry: cast-free PLATE; one reviewed `scene-style-tile` style-anchor seed; 0 API calls / $0.000.
+- 2026-08-13 | L84 | generated `visual-kit/_staging/L84.png` via gated one-item batch; 1 API call, 54.3 s, 0 stalls, 0 503s; $0.039 cumulative $0.078. No promotion, stamp, or manifest write.
+- 2026-08-13 | L86 | dry: cast-free PLATE; reviewed `lettering-marker-italic` and `scene-style-tile` seeds; 0 API calls / $0.000.
+- 2026-08-13 | L86 | generated `visual-kit/_staging/L86.png` via gated one-item batch; 1 API call, 58.0 s, 0 stalls, 0 503s; $0.039 cumulative $0.117. No promotion, stamp, or manifest write.
+
+### W2 plate-mint generation log
+
+- Rate: $0.039 per live provider call
+- Hard cap: $0.300
+- Scope: L112, L114, L198; gated one-item batches only
+
+| Shot | Attempt | Result | Elapsed | Calls | Stalls | Spend |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| L112 | 1 | OK — `_staging/L112.png` | 40.3s | 1 | 0 | $0.039 |
+| L114 | 1 | OK — `_staging/L114.png` | 70.7s | 1 | 0 | $0.039 |
+| L198 | 1 | OK — `_staging/L198.png` | 58.0s | 1 | 0 | $0.039 |
+
+**Total:** 3 calls, 0 stalls, $0.117; $0.183 remains under the $0.300 cap.
+
+### W3 - hr-officer canonical re-run
+
+- Date: 2026-08-13
+- Result: `OK` (one live provider call; 39.9 seconds)
+- Forge route: `forge.py gen --kit channels/the-second-take/visual-kit --mode new_character --aspect 2:3 --name w3-hr-officer-rerun --character hr-officer --seed refs/base/base.png --delta <below>`
+- Forge output renamed without modification from `_staging/w3-hr-officer-rerun.png` to `_staging/hr-officer-w3-rerun-candidate.png`.
+- SHA-256: `c99e4915f0ffa5b3dd80d0a45445b03b4b66fdc3c0384cd67c6009e102f383e8`
+- Spend: `$0.039` (one 1K `gemini-3-pro-image` call; forge default). Cap remaining: `$0.061`.
+- Deviations: none. The T16 hr-officer delta was reused byte-for-byte; only forge's output name was W3-specific before the requested rename. No verification, promotion, stamping, registry write, or canonical-ref write.
+
+## Exact delta passed to forge
+
+```text
+A full-body standing character reference sheet of ONE cast member, the HR officer, a woman. IDENTITY: dark hair pinned up, slight build, flat head tone #e0b48d; costume is a rust-red knitted cardigan over a cream blouse, a long tweed skirt and flat shoes, with reading spectacles hanging on a chain at the chest. The long tweed skirt is one single flat solid colour fill in flat cel shading - no fabric texture, no weave, no stitching, no quilting lines, no herringbone, no mottling; the only shading is the style's simple two-tone cel shadow.  CRITICAL FACE RULE, overriding anything the costume suggests: this character has NO EARS AT ALL and NO NOSE AT ALL. Draw NO ear on either side of the head - not under the headwear, not beside the hair, not in front of it. The sides of the head are smooth bare skin running unbroken down to the jawline, with no ear shape, no ear outline and no inner-ear line anywhere. Draw NO nose - no nose shape, no bridge, no nostril line, no shading where a nose would be. The face carries ONLY eyes, brows and a mouth. Flat stylized cartoon skull - no jaw, no cheekbones, no realistic face structure. RESTING FACE (copy EXACTLY from the reference image, the bald template): heavy lowered upper eyelids covering the top of each eye, small pupils set high against the upper lid, thin level gently-arched brows, and a small closed mouth with the faintest upturn at its corners. Eyes look straight out at the viewer, level and symmetric, not sideways, not up, not down. RESTING STANCE (copy EXACTLY from the reference image): standing straight and frontal, facing the viewer square-on, both shoulders level, both arms hanging straight down at the sides, both hands open, relaxed and EMPTY, feet flat and evenly planted. Carries NOTHING and touches nothing. No emotion of any kind, completely neutral and at rest. Plain flat light-grey studio background, no horizon line, no floor line, no props, no text.
+```
+
+### W4 — core-base primitive re-runs — generation log
+
+Scope: stage-only fresh candidates for `handshake`, `expr-laughing`, `action-offering`, and `action-slump`. No registration, promotion, stamping, or `refs/base/` mutation.
+
+## Sanctioned route
+
+- `image-generation/SKILL.md:92-98` — base-seeded `2:3` pose/action/interaction primitives hold the base resting face; interaction templates use two blank mannequins, contact geometry, and pupils-only eye-line; expressions are moderate.
+- `forge.py:382-393, 1233-1249, 1312-1320` — `gen` assembles the locked identity descriptor, preflights at $0, seeds the supplied base PNG, then writes only to kit `_staging/`.
+- `2026-07-10-character-asset-base-expansion-build.md:181-189` — handshake’s two-mannequin intent and right-to-right clasp geometry.
+
+## Preflight plan
+
+All four calls use `forge.py gen --mode identity --aspect 2:3 --seed refs/base/base.png`, 1K default, and names reserved to this worker as `w4-*-rerun-candidate`. Historical local ledger rate: $0.039/call; planned maximum: $0.156 of the $0.30 cap.
+
+| Primitive | Delta sent after forge’s locked identity descriptor | Dry run | Live result | Spend |
+| --- | --- | --- | --- | --- |
+| handshake | TWO blank bald base mannequins, both in the base costume and base RESTING face, full-body on a plain soft light-grey studio ground. A genuine right-to-right handshake: the LEFT mannequin reaches ACROSS its own body with its right arm; the RIGHT mannequin reaches with its right arm; their hands clasp cleanly at chest height, each hand a classic four-digit cartoon hand. Each free left hand hangs at that figure's outer side. Keep both heads front-facing with no turn: only their pupils look toward the other figure. Medium 3/4 two-shot, both figures on the same plane, no props, no text. | clean, 0 calls | `visual-kit/_staging/w4-handshake-rerun-candidate.png` | $0.039 |
+| expr-laughing | One full-body base figure in the base's unchanged relaxed standing pose, base costume and plain soft light-grey studio ground. Change ONLY the facial expression to a moderate, legible laugh: gently lifted brows, happy crescent eyes, and a clearly open smiling mouth. No extreme caricature, no props, no text. | clean, 0 calls | `visual-kit/_staging/w4-expr-laughing-rerun-candidate.png` | $0.039 |
+| action-offering | One full-body base figure on a plain soft light-grey studio ground, base RESTING face unchanged. A reusable OFFERING pose: torso upright, both arms extended forward at waist height, both empty open palms turned up and slightly cupped as if offering an absent object; hands clearly separated and fully visible, each a classic four-digit cartoon hand. No object, no props, no text. | clean, 0 calls | `visual-kit/_staging/w4-action-offering-rerun-candidate.png` | $0.039 |
+| action-slump | One full-body base figure on a plain soft light-grey studio ground, base RESTING face unchanged. A reusable SLUMP: shoulders dropped, upper body sagging forward, arms hanging loose at the sides, head inclined down; clear defeated posture without any object, props, or text. | clean, 0 calls | `visual-kit/_staging/w4-action-slump-rerun-candidate.png` | $0.039 |
+
+## Result
+
+Four 1K calls completed: 0 provider errors, 0 429s, 0 503s, 0 stalls, and 0 re-issues. **Total: $0.156 / $0.300.** Candidates remain staged only; the verifier pairs rule them next.
+
+### W11 — targeted Wave-1 texture retries
+
+- Date: 2026-08-13
+- Rate: $0.039 per 1K call; cap: $0.250
+- Policy: 4-minute stall -> one re-issue; two 503s park; two FreeTier limit-0 429s halt globally as BILLING.
+- No promotion, registry, manifest, or review-store write for these retries.
+
+| Frame | Added local clause | Result | Elapsed | Spend | Staged path |
+| --- | --- | --- | ---: | ---: | --- |
+| L65 | the floor is one single flat solid colour fill in flat cel shading - no basket-weave, no pattern, no texture; at most one clean darker cel shadow slab | OK | 42.1s | $0.039 | `channels/the-second-take/visual-kit/_staging/L65-w11-retry.png` |
+| L86 | the shrink-wrapped cartons use flat wrap fills, clean line-art wrap lines only, no gradient sheen, no airbrushed streaks, no soft highlights | OK | 50.5s | $0.039 | `channels/the-second-take/visual-kit/_staging/L86-w11-retry.png` |
+| L112 | the concrete floor is one flat concrete fill and the yellow lane paint is clean flat stripes, no scuff marks, no smears, no feathered gradients | OK | 42.2s | $0.039 | `channels/the-second-take/visual-kit/_staging/L112-w11-retry.png` |
+| hr-officer | The long tweed skirt is one single flat solid colour fill in flat cel shading - no crosshatch, no lattice, no weave, no herringbone, no fabric texture of any kind; flat like a paper cut-out; the only shading is the style's simple two-tone cel shadow.  | OK | 32.7s | $0.039 | `channels/the-second-take/visual-kit/_staging/hr-officer-w11-retry-candidate.png` |
+
+**Total:** $0.156 across 4 successful 1K calls; cap remaining $0.094.

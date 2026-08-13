@@ -1,0 +1,41 @@
+{
+  "L65-w11-retry.png": {
+    "flat_cel_render": "pass",
+    "register": "pass",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "PREVIOUSLY-FAILING SURFACE FIXED: the office floor (crop w12_L65_floor_tight.png) is now a clean flat two-tone fill -- base warm-tan floor colour, a lighter hard-edged sun-slab highlight shape, and a single flat mid-tone shadow shape cast by the desk/chair -- with zero basket-weave, parquet, or any repeating hatch texture anywhere from foreground to background. The dense diagonal weave that failed at w8/w11 is gone; all shape edges are crisp and hard, not feathered. Re-ruled the rest of the frame per instruction: desk (crop w12_L65_desk_chair.png) is a flat gold fill with one hard-edged diagonal shadow band across the top, no gradient wash; office chair is a flat orange fill with only sparse clean tufting-seam construction lines, no texture; walls are flat unbroken cream; window mullions and exterior palms are flat clean fills. register: floor, desk, chair and walls now hold the same flat, evenly-shaded simplification level as the approved L28/L29/L33 register -- no detail-creep/photorealism element remains. outline_consistency: even medium-thick dark brown-black outline continuous around desk, chair, window frame, plant pot and wall base, no thin/missing segments. palette_discipline: cream-amber-charcoal per the still_prompt is honored (warm gold desk/floor, cream walls); sky-blue window and green palms are incidental exterior/plant colours, not spikes; the hard sun slab remains authored warmth per the prompt, legal as previously ruled."
+  },
+  "L86-w11-retry.png": {
+    "flat_cel_render": "fail",
+    "register": "fail",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "PREVIOUSLY-FAILING SURFACE NOT FIXED: the shrink-wrapped carton pallets are the retry target and the failure persists unchanged. Tight crop (w12_L86_boxes_tight.png) and the wider rack crop (w12_L86_racking.png) show every visible pallet face -- both racks, foreground through background -- still carrying soft, blurred, varying-opacity diagonal white streaks layered over the flat shrink-wrap band lines: a gradient/airbrushed sheen texture, the same failure mode documented at w8/w11, not sparse clean line-art. This is the exact named hazard for this frame and it was not resolved by the retry. register also FAILs on the same grounds: the airbrushed carton sheen is a photorealism/detail-creep element with no counterpart in the flat, evenly-lit L28/L29/L33 register. Re-ruled the rest per instruction: racking uprights, cross-braces and shelf beams (w12_L86_racking.png) are clean flat cel with no texture; floor (w12_L86_floor.png) is a flat grey fill with only sparse, clean, hard-edged scuff strokes and a crisp flat yellow lane-paint stripe, no wash -- floor and racking would pass on their own but do not save the frame given the carton fail. outline_consistency: even dark outline continuous around racking, pallets and the MINISCRIBE lettering, no breaks. palette_discipline: cool grey-teal-cream per the still_prompt is honored (grey-teal racking, cream/tan cartons, grey floor); the yellow lane paint remains a single legible accent colour per the established one-accent convention, not a spike."
+  },
+  "L112-w11-retry.png": {
+    "flat_cel_render": "pass",
+    "register": "pass",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "PREVIOUSLY-FAILING SURFACE FIXED: the concrete floor's tire/pallet scuff marks (crops w12_L112_scuff_tight.png, w12_L112_vignette.png) are now drawn as crisp, hard-edged, consistent-width arcing strokes -- clean single construction lines forming legible circular/overlapping tire-track shapes -- with no feathering, no blur, no varying-opacity streaking. This is the fix for the exact w8/w11 failure mode (soft, feathered, fanning parallel-band smears). A broad soft-edged shadow patch sits under the mezzanine stair in the same crop; checked against the approved register (L28.png shows the same convention: soft radial light/shadow pooling on the floor under the hanging lamps) and this reads as legitimate broad ambient shading, not a texture violation, since it carries no repeating pattern and is sparse/singular. Re-ruled the rest per instruction: lane paint (crop w12_L112_lanepaint.png) is a clean flat solid yellow stripe with hard edges, no gradient wash, no longer the item in question but confirmed clean; corrugated side walls and mezzanine stair (crop w12_L112_walls.png) retain the sparse, evenly-spaced flat rib-line convention already passed at w8, no texture. register: floor, lane paint, walls and stair now hold the flat, evenly-shaded L28/L29/L33 simplification level throughout, no remaining detail-creep. outline_consistency: even dark outline continuous around stair, uprights, shutter and wall panels, no thin/missing segments. palette_discipline: cool grey-cream per the still_prompt is honored; this candidate's accent line reads as yellow lane paint rather than the red safety-line noted at w8, but it remains a single legible accent colour on an otherwise grey-cream frame, consistent with the one-accent-colour convention (cf. L01) -- not a spike."
+  },
+  "hr-officer-w11-retry-candidate.png": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Round near-circle head, only slightly taller than wide (crop w12_hr_head.png), matching the standing verified ref (refs/hr-officer/hr-officer.png) and base.png silhouette closely.",
+      "no_nose_no_ears": "Hair falls fully over both sides of the head down past the jawline, no ear shape or inner-ear line visible on either side; the bun sits high and clear of the ear/jaw zone. No nose drawn -- only eyebrows, eyes, a mouth line and a small shadow crease beneath the mouth (not a nose bump/bridge/nostril), matching the ref's minimal treatment.",
+      "four_digit_hands": "PREVIOUSLY-FAILING CHARACTER, non-skirt rig axes re-checked and clean: left hand (crop w12_hr_lhand.png) and right hand (crop w12_hr_rhand.png) both show the simplified mitt shape with clear finger-separation lines reading as three fingers plus thumb, consistent with the established rig hand family; no five-digit realistic hand, no fused or extra digits on either hand.",
+      "proportion": "Large round head over a short, compact cardigan-and-skirt body; silhouette and scale match the standing verified ref closely at direct visual comparison (same pose/crop), squat proportion held.",
+      "flat_cel_render": "SECOND-OCCURRENCE HAZARD FIXED: tight crop of the skirt (w12_hr_skirt_tight.png) shows a completely flat solid brown fill with only simple two-tone cel shading (one clean vertical shadow band down the left side) -- zero crosshatch, weave, lattice, or zigzag texture anywhere from waistband to hem. This resolves the w11 regression to the same failure class fixed once already for this character at t16 (herringbone/tweed) and again at w11 (crosshatch weave). The candidate's skirt is brown rather than the ref's olive/khaki, but colour is outside this axis's scope (no palette_discipline axis is defined for this character) and the flat-fill treatment itself now matches the ref's 'flat solid skirt with only simple two-tone cel shading' description exactly. Cardigan, blouse, hair and skin remain flat and clean as at w11.",
+      "outline_consistency": "Even medium-thick dark warm-brown-black outline is continuous around hair, face, cardigan, skirt and both hands (visible in all crops), no thin or missing segments anywhere on the figure."
+    }
+  }
+}

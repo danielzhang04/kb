@@ -1,0 +1,134 @@
+{
+  "L65": {
+    "flat_cel_render": "fail",
+    "register": "fail",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "Desk, chairs, walls, window and palms are clean flat fills with simple two-tone cel shading (verified close crop of desktop: flat tan fill, one clean shadow band, no texture). FAIL is the floor: a dense, regularly-repeating diagonal basket-weave/parquet pattern of short hatch strokes covers the entire visible floor from foreground to background (crop zoom_L65_floor_tight.png) -- this reads as a pixel noise/weave texture wash, not sparse clean construction line-art, the same failure class as the r1 'diamond-lattice'/'mottled canvas' garment fails in t16-verdicts-B.json applied here to a floor surface. register also FAILs on the same grounds: the dense repeating floor texture is a detail-creep/photorealism element absent from the approved L28/L29/L33 register (which use flat, unpatterned floor fills), so the frame does not hold the house simplification level uniformly across the composition. outline_consistency: even medium-thick dark brown-black outline runs continuously around desk, chair, window frame and wall -- no thin/missing segments. palette_discipline: cream-amber-charcoal per the still_prompt is honored (warm gold desk/floor, cream walls, charcoal chair); the sky-blue window and green palms are incidental exterior/plant colours, not saturation spikes; the hard sun slab is authored warmth per the prompt, legal."
+  },
+  "L84": {
+    "flat_cel_render": "pass",
+    "register": "pass",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "Table, chairs, document boxes, coat stand, door and window all flat fills with simple two-tone cel shading, no gradient wash or weave/noise texture anywhere (verified close crop of table+chairs). Simplification level and line weight match L28/L29/L33 register exactly -- no photorealism or detail creep. Even medium-thick dark outline is continuous around every furniture piece and the window mullions. Cool grey-cream-teal palette per the still_prompt is held precisely (grey walls/floor, cream table/chairs, teal seat cushions and window trim); no neon or saturation spikes."
+  },
+  "L86": {
+    "flat_cel_render": "fail",
+    "register": "fail",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "Racking, floor and end-wall lettering are clean flat cel (floor: sparse scuff strokes only, no wash). FAIL is the shrink-wrapped carton pallets: close crop (zoom_L86_boxes_tight.png) shows each pallet face carrying not just the expected flat shrink-wrap band lines but soft, blurred, varying-opacity diagonal white gradient sheen streaks layered over them -- a gradient wash/highlight texture, explicitly the disallowed failure mode, not sparse clean line-art. This appears on every visible pallet face in the aisle, both racks. register also FAILs: the soft airbrushed sheen on the cartons is a photorealism/detail-creep element with no counterpart in the flat, evenly-lit L28/L29/L33 register. outline_consistency: even dark outline is continuous around racking uprights, pallets and the MINISCRIBE lettering -- no breaks. palette_discipline: cool grey-teal-cream per the still_prompt is honored (grey-teal racking, cream/tan cartons, grey floor); the yellow lane paint is a single legible accent colour in the same convention as other approved frames' single accent (cf. L01's red power-stud accent), not a spike."
+  },
+  "L112": {
+    "flat_cel_render": "fail",
+    "register": "fail",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "Corrugated side walls, mezzanine stair, roller shutter and ceiling fittings are all clean flat cel with sparse, evenly-spaced vertical rib lines reading as legitimate corrugated-metal construction line-art (verified crop zoom_L112_walls.png), not a texture violation. FAIL is the concrete floor's tire/pallet scuff marks: tight crop (zoom_L112_scuff_tight.png) shows the marks as soft, feathered, varying-opacity streaks fanning in parallel bands -- a gradient wash/mottling effect, not a single crisp construction stroke -- covering a large foreground swath of the floor. register also FAILs on the same grounds: the airbrushed scuff-mark treatment is a detail-creep/photorealism element beyond the flat, evenly-shaded floors in the approved L28/L29/L33 register. outline_consistency: even dark outline holds continuously around the stair, uprights and shutter, no thin/missing segments. palette_discipline: cool grey-cream per the still_prompt is honored; the single red safety-line accent follows the established one-accent-colour convention (cf. L01), not a spike."
+  },
+  "L114": {
+    "flat_cel_render": "pass",
+    "register": "pass",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "Brick stacks are drawn as individual bricks with clean, moderately-spaced line-art dividers on a flat two-tone-shaded ochre/red fill (verified crop zoom_L114_bricks.png) -- this is legitimate construction detail (each line demarcates a real brick edge, matching how the approved kit draws other literal repeating content), not a noise/weave texture. Ground/dirt yard carries only sparse, clean scuff-mark strokes and flat shadow patches (crop zoom_L114_ground.png), no gradient wash. Corrugated shed wall and roof use the same sparse rib-line convention passed on L112. register matches the house simplification level throughout, no detail creep. outline_consistency: even dark brown-black outline continuous around every brick cube, the shed and the forklift. palette_discipline: 'Ochre-red-cream palette, hard high sun' is the shot's own authored description -- the visible brick reds and warm ground tones are exactly this authored warmth (per the explicit carve-out for L114), not a saturation-spike violation; no neon anywhere."
+  },
+  "L198": {
+    "flat_cel_render": "pass",
+    "register": "pass",
+    "outline_consistency": "pass",
+    "palette_discipline": "pass",
+    "reason": "Judge's bench, jury box, counsel tables and gallery pews are flat fills with simple two-tone cel shading and sparse clean panel-line/plank-line construction detail only (verified crop zoom_L198_pews.png) -- no weave, mottling, or gradient wash on any wood surface. Simplification level matches L28/L29/L33 register precisely. Even medium-thick dark warm-brown outline is continuous around every pew, table and window frame. Cream-oak-teal palette per the still_prompt is held (cream walls, oak-brown furniture, teal floor stripe/wainscot trim); no neon or saturation spikes."
+  },
+  "hr-officer-w3-rerun-candidate": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "fail",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Round near-circle head, only slightly taller than wide, matching the standing verified ref (refs/hr-officer/hr-officer.png) and base.png.",
+      "no_nose_no_ears": "Hair falls fully over both sides of the head down to the jawline with no ear shape or inner-ear line visible on either side; the bun sits high and clear of the ear/jaw zone. No nose is drawn -- only eyebrows, eyes and a mouth line (crop zoom_hr_head.png), matching the ref.",
+      "four_digit_hands": "Both hands (crops zoom_hr_lhand.png, zoom_hr_rhand.png) show the simplified mitt shape with finger-separation lines reading as three to four fingers plus thumb, consistent with the rig hand family; no five-digit realistic hand, no fused/extra digits.",
+      "proportion": "Large round head over a short, compact cardigan-and-skirt body -- silhouette and scale match the standing verified ref almost exactly at direct visual comparison (same pose, same crop), squat proportion held.",
+      "flat_cel_render": "KNOWN-HAZARD CONFIRMED FAIL: tight crop of the skirt (zoom_hr_skirt.png) shows a dense, uniform diagonal crosshatch/lattice weave pattern covering the entire garment from waistband to hem. This is a regression to the exact r1 failure mode already fixed and documented for this character in t16-verdicts-B.json ('Fixed from the r1 herringbone/tweed failure... no weave pattern, no zigzag texture, no mottling anywhere on it'). The standing verified ref (refs/hr-officer/hr-officer.png) shows a flat solid olive/khaki skirt with only simple two-tone cel shading and no texture -- this candidate does not match it. Cardigan, blouse, hair and skin remain flat and clean; the failure is isolated to the skirt fill.",
+      "outline_consistency": "Even medium-thick dark warm-brown-black outline is continuous around hair, face, cardigan and skirt, no thin or missing segments."
+    }
+  },
+  "w4-handshake-rerun-candidate": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Both figures (crops zoom_hs_fig0_head.png, zoom_hs_fig1_head.png) show the same perfectly round bald head as base.png, no deviation.",
+      "no_nose_no_ears": "Verified on both figures individually: plain round bald heads, two eyes, brows and a mouth line only -- no nose bump/bridge/nostril, no ear shape on either figure, matching base.png's minimal treatment exactly.",
+      "four_digit_hands": "All four hands checked individually: the clasped handshake (crop zoom_hs_clasp.png) shows the simplified mitt convention on both hands (thumb plus finger-separation lines), and each figure's free hanging hand (crops zoom_hs_fig0_free.png, zoom_hs_fig1_free.png) likewise shows the same rig mitt shape with three-to-four fingers plus thumb -- no five-digit realistic hand, no fusion, on either figure.",
+      "proportion": "Both figures share an identical silhouette scale to each other and to base.png (same hoodie/trouser template, same head-to-body ratio at direct visual comparison across the full-body crop zoom_hs_torso.png) -- squat proportion held on both, no scale mismatch between the two figures.",
+      "flat_cel_render": "Hoodies and trousers on both figures are flat colour fills with simple two-tone cel shading and only sparse, clean construction lines (drawstrings, cuff ribbing, a couple of fold-crease strokes) -- verified in crop zoom_hs_torso.png; no weave, mottling or gradient wash on either figure.",
+      "outline_consistency": "Even dark brown outline is continuous around both figures' heads, hoodies, arms and legs at matching weight -- no figure is thinner-lined than the other."
+    }
+  },
+  "w4-expr-laughing-rerun-candidate": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Round bald head matching base.png exactly (crop zoom_laugh_head.png).",
+      "no_nose_no_ears": "Laughing expression uses closed crescent eyes, raised brows and an open smiling mouth with tongue/teeth-line detail, but no nose (no bump/bridge/nostril anywhere between the eyes and mouth) and no ear shape on either side of the head -- at or below base.png's own minimal nose treatment.",
+      "four_digit_hands": "Both resting hands (crops zoom_laugh_lhand.png, zoom_laugh_rhand.png) show the simplified rig mitt with three-to-four finger-separation lines plus thumb, consistent with base.png's hand family.",
+      "proportion": "Large round head over the short compact hoodie-and-trouser body, silhouette matching base.png closely at direct visual comparison; no elongation or scale distortion.",
+      "flat_cel_render": "Hoodie and trousers are flat fills with simple two-tone cel shading and only sparse construction lines (drawstrings, cuff ribbing, fold creases) -- verified crop zoom_laugh_torso.png -- no texture, weave or gradient wash anywhere on the garment.",
+      "outline_consistency": "Even dark brown outline is continuous around head, hoodie and legs, no thin or missing segments."
+    }
+  },
+  "w4-action-offering-rerun-candidate": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Round bald head matching base.png exactly (crop zoom_off_head.png).",
+      "no_nose_no_ears": "Neutral-pleasant expression with two eyes, brows and a closed-mouth line only -- no nose shape or shading, no ear on either side, matching base.png's minimal treatment.",
+      "four_digit_hands": "Both hands held out palms-up in the offering pose (crops zoom_off_lhand.png, zoom_off_rhand.png) show the simplified rig mitt with three finger-separation lines plus thumb visible on the near hand and a consistent mitt silhouette on the far hand -- no five-digit realistic hand, no extra/fused digits on either.",
+      "proportion": "Large round head over the short compact hoodie-and-trouser body; silhouette matches base.png's squat proportion at direct visual comparison, arms raised for the offering gesture do not distort the torso/leg ratio.",
+      "flat_cel_render": "Hoodie and trousers are flat fills with simple two-tone cel shading and only sparse construction lines -- verified crop zoom_off_torso.png -- no texture, weave or gradient wash anywhere.",
+      "outline_consistency": "Even dark brown outline is continuous around head, hoodie, both raised arms and legs, no thin or missing segments."
+    }
+  },
+  "w4-action-slump-rerun-candidate": {
+    "axes": {
+      "head_shape": "pass",
+      "no_nose_no_ears": "pass",
+      "four_digit_hands": "pass",
+      "proportion": "pass",
+      "flat_cel_render": "pass",
+      "outline_consistency": "pass"
+    },
+    "evidence": {
+      "head_shape": "Round bald head matching base.png exactly (crop zoom_slump_head.png), head tilted down for the dejected expression but the circular shape itself is undistorted.",
+      "no_nose_no_ears": "Downcast worried/sad expression uses drooping brows and half-lidded eyes with a small flat mouth line only -- no nose shape or shading, no ear on either side, matching base.png's minimal treatment.",
+      "four_digit_hands": "Both resting hands (crops zoom_slump_lhand.png, zoom_slump_rhand.png) show the simplified rig mitt with three-to-four finger-separation lines plus thumb, consistent with base.png's hand family; no five-digit realistic hand.",
+      "proportion": "Large round head over the short compact hoodie-and-trouser body, silhouette matching base.png closely at direct visual comparison; the downward head tilt is a pose change, not a proportion distortion -- head width and body scale are unchanged from base.png.",
+      "flat_cel_render": "Hoodie and trousers are flat fills with simple two-tone cel shading and only sparse construction lines (drawstrings, cuff ribbing, a fold-crease at the belly) -- verified crop zoom_slump_torso.png -- no texture, weave or gradient wash anywhere.",
+      "outline_consistency": "Even dark brown outline is continuous around head, hoodie and legs, no thin or missing segments."
+    }
+  }
+}

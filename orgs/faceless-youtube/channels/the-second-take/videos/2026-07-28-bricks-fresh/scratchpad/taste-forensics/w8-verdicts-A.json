@@ -1,0 +1,147 @@
+{
+  "L65": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Big desk across midground carries a black telephone and one closed cream folder; empty high-backed leather swivel chair pushed back behind it; tall window fills the back wall on a flat pale sky with the tops of two palm crowns visible through the glass; a separate potted palm stands stage-left; bare cream wall stage-right with nothing hung on it; foreground depth delivered by a cropped brown chair back at the lower-left. All load-bearing elements from the still_prompt are present.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere in the frame -- folder is blank, no signage on the bare wall.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": ""
+  },
+  "L84": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Long table across midground with stacking chairs pushed in around it (counted ~10 chairs rather than the authored eight -- a headcount drift on the same furniture type/layout, not a missing or substituted element); two closed grey steel document boxes squared up at the near end of the table; a coat stand by the door stage-left holding nothing; window at the back showing a frosted/snowy car park with parked cars, matching the L83 winter-arrival continuity. Foreground depth delivered by a cropped teal chair back at the lower-right.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "Document boxes carry only blank label-slot rectangles (dark tab + lighter panel), no legible text; no other signage anywhere in frame.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": "Chair count reads ~10 rather than the authored 'eight stacking chairs' -- ruled cosmetic drift (same chair type/layout around the table, not a substitution of a load-bearing element), non-blocking."
+  },
+  "L86": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Steel pallet racking runs away on both sides of the aisle carrying shrink-wrapped pallets of flat cartons on the lower tiers; concrete floor with yellow lane paint; row of pendant/strip roof lights overhead; foreground depth from a cropped rack upright at the right edge.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "'MINISCRIBE' painted across the end panel closing the aisle, verified letter-by-letter via zoom crop: M-I-N-I-S-C-R-I-B-E -- exact match, no stray characters or extra words.",
+      "act_text": "n/a -- not authored for this shot; the place_owner lettering is covered under the lettering axis."
+    },
+    "notes": ""
+  },
+  "L112": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Bare concrete slab shows visible drag/scarring marks consistent with old pallet marks; corrugated side walls; roller shutter at the far end open roughly across its lower half with a slab of daylight spilling in underneath, reading as 'half up'; empty steel mezzanine stair stage-left; wall panels plain and unmarked floor to eaves; foreground depth from a large cropped diagonal steel stanchion at the right edge; overhead light fittings render unlit ('dead') against the single daylight shaft, matching the authored light note.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere on the walls, shutter, or fittings.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": "An unauthored thin red/orange floor safety-line is visible at the lower right, not called out in the still_prompt. Judged as a cosmetic added floor marking, not a substitution of any named load-bearing element (concrete slab, corrugated walls, shutter, stair, stanchion all present and correct), so it does not move the verdict off pass."
+  },
+  "L114": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Banded cubes of red clay bricks stacked in long rows across the dirt yard; corrugated shed stage-right with its double doors open on a dark interior; low ridge of dry hills beyond; a forklift standing idle beside the stacks; foreground depth from a large cropped brick cube at the lower-left; a plain painted board hangs over the shed doors.",
+      "no_figures": "Zoomed the forklift cab specifically -- the seat is empty, no driver figure or silhouette anywhere in the cab or elsewhere in frame.",
+      "lettering": "Board reads exactly 'COLORADO BRICK', verified via a tight zoom crop -- exact match, no stray marks or extra words (the two flecks flanking the text are wood-grain/rivet texture on the board, not characters).",
+      "act_text": "n/a -- not authored for this shot; the place_owner lettering is covered under the lettering axis."
+    },
+    "notes": ""
+  },
+  "L198": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Raised timber bench at the far end with an empty high-backed chair behind it; tiered empty jury box stage-left (double row of chairs, consistent with a twelve-seat box, though several seats are occluded behind the near counsel table so an exact recount of twelve is not fully verifiable); two counsel tables squared up in the midground; multiple rows of gallery pews running toward the viewer; panelled walls with tall plain windows; foreground depth from a cropped pew back across the bottom of the frame.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere in the frame.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": "Jury box seat count could not be fully confirmed at exactly twelve due to occlusion by the near counsel table; the box's structure and scale read consistent with a twelve-seat box, treated as cosmetic/non-blocking."
+  },
+  "hr-officer-w3-rerun-candidate": {
+    "axes": {
+      "resting_face": "pass",
+      "registry_identity": "pass"
+    },
+    "evidence": {
+      "resting_face": "Heavy lowered eyelids with pupils set slightly off-center in a level side-glance, thin level brows, small closed near-neutral mouth with no grin/frown -- face is near-pixel-identical to the pinned canonical hr-officer.png reference and consistent with the bald base template's resting-face construction (heavy lids, small flat mouth, symmetric level gaze).",
+      "registry_identity": "Rust-red knitted cardigan worn open over a cream blouse with visible collar; long tweed-textured brown skirt; reading spectacles clearly hanging on a chain resting on the chest; dark hair pinned up in a bun; flat brown shoes; slight build -- all five canonical costume/identity items from the registry row (characters.hr-officer) present and correct. No lettering or logo visible anywhere."
+    },
+    "notes": "Candidate is near-identical to the pinned refs/hr-officer/hr-officer.png reference render; no deviations observed."
+  },
+  "w4-handshake-rerun-candidate": {
+    "axes": {
+      "primitive_semantics": "pass",
+      "base_identity": "pass"
+    },
+    "evidence": {
+      "primitive_semantics": "Two base figures face each other with their right hands clasped together in a clear handshake grip at chest height, matching the OLD refs/base/handshake.png ref's same two-figure clasped-hands composition and slot meaning -- reads unambiguously as a handshake.",
+      "base_identity": "Both figures are the bald cream-head base rig on a plain grey background, correct resting body geometry (standing, hoodie + pants) outside the expressed handshake arm change; faces carry the base's default content closed-mouth expression, consistent with the ref."
+    },
+    "notes": ""
+  },
+  "w4-expr-laughing-rerun-candidate": {
+    "axes": {
+      "primitive_semantics": "pass",
+      "base_identity": "pass"
+    },
+    "evidence": {
+      "primitive_semantics": "Eyes scrunched shut with upturned crease lines, mouth wide open showing upper teeth and tongue -- an unambiguous open laughing expression, matching the OLD refs/base/expr-laughing.png ref's same read.",
+      "base_identity": "Bald cream base head on a plain grey background, standing neutral hoodie + pants body geometry unchanged outside the expressed laughing face."
+    },
+    "notes": ""
+  },
+  "w4-action-offering-rerun-candidate": {
+    "axes": {
+      "primitive_semantics": "pass",
+      "base_identity": "pass"
+    },
+    "evidence": {
+      "primitive_semantics": "Both hands raised and extended forward/outward with open cupped palms in a clear offering gesture, matching the OLD refs/base/action-offering.png ref's same two-hand offering pose and slot meaning.",
+      "base_identity": "Bald cream base rig on a plain grey background, correct resting face/body geometry outside the expressed arm gesture."
+    },
+    "notes": ""
+  },
+  "w4-action-slump-rerun-candidate": {
+    "axes": {
+      "primitive_semantics": "pass",
+      "base_identity": "pass"
+    },
+    "evidence": {
+      "primitive_semantics": "Full-body hunched/drooping posture with the head bowed forward and down, shoulders rounded inward, downcast half-lidded eyes and a flat downturned mouth -- an unambiguous defeated slump, matching the OLD refs/base/action-slump.png ref's same full-body slumped read.",
+      "base_identity": "Bald cream base rig on a plain grey background, body proportions and hoodie + pants consistent with the base rig outside the expressed slump posture."
+    },
+    "notes": ""
+  }
+}
