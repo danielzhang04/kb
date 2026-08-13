@@ -1,5 +1,21 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import type { SurfaceContext } from './http/context.ts';
+import { makeSurfaceContext } from './http/surface.ts';
+
+const serviceCgroupChildCount = vi.hoisted(() => vi.fn(() => 0));
+const quiescenceSpy = vi.hoisted(() => vi.fn());
+
+vi.mock('./release/serviceCgroup.ts', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./release/serviceCgroup.ts')>(),
+  serviceCgroupChildCount,
+}));
+
+vi.mock('./release/quiescence.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./release/quiescence.ts')>();
+  quiescenceSpy.mockImplementation(actual.quiescence);
+  return { ...actual, quiescence: quiescenceSpy };
+});
 import {
   buildApp,
   DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS,
@@ -16,6 +32,9 @@ import {
 let app: FastifyInstance | undefined;
 
 afterEach(async () => {
+  serviceCgroupChildCount.mockReset();
+  serviceCgroupChildCount.mockReturnValue(0);
+  quiescenceSpy.mockClear();
   if (app) {
     await app.close();
     app = undefined;
@@ -53,6 +72,49 @@ describe('server', () => {
     // guards an accidental unpinned Node upgrade
     expect(process.versions.node.startsWith('24.')).toBe(true);
     expect(body.node.startsWith('24.')).toBe(true);
+  });
+
+  it('keeps health and readiness public but readiness payload minimal', async () => {
+    const app = buildApp({ validateData: false, readiness: async () => ({ ok: true, quiescent: false, blockers: ['workers-active'] }) });
+    expect((await app.inject({ method: 'GET', url: '/healthz' })).statusCode).toBe(200);
+    const response = await app.inject({ method: 'GET', url: '/readyz' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ok: true, quiescent: false, blockers: ['workers-active'] });
+    await app.close();
+  });
+
+  it('reports no worker blocker from the real readiness closure while the latch is locked', async () => {
+    const ctx = makeSurfaceContext({
+      executionLatch: {
+        snapshot: () => ({ state: 'locked', source: 'test', unlockedAt: null, unlockedBy: null }),
+      } as unknown as SurfaceContext['executionLatch'],
+    });
+
+    const readiness = await ctx.readiness();
+    expect(quiescenceSpy).toHaveBeenLastCalledWith(expect.objectContaining({ activeWorkers: 0 }));
+    expect(readiness.blockers).not.toContain('workers-active');
+  });
+
+  it('reports a worker blocker from the real readiness closure while the latch is unlocked', async () => {
+    const ctx = makeSurfaceContext({
+      executionLatch: {
+        snapshot: () => ({ state: 'unlocked', source: 'test', unlockedAt: null, unlockedBy: null }),
+      } as unknown as SurfaceContext['executionLatch'],
+    });
+
+    const readiness = await ctx.readiness();
+    expect(quiescenceSpy).toHaveBeenLastCalledWith(expect.objectContaining({ activeWorkers: 1 }));
+    expect(readiness.quiescent).toBe(false);
+    expect(readiness.blockers).toContain('workers-active');
+  });
+
+  it('fails closed through /readyz when the service cgroup probe throws', async () => {
+    serviceCgroupChildCount.mockImplementation(() => { throw new Error('cgroup unavailable'); });
+    const realReadinessApp = buildApp({ validateData: false });
+
+    const response = await realReadinessApp.inject({ method: 'GET', url: '/readyz' });
+    expect(response.json()).toEqual({ ok: true, quiescent: false, blockers: ['service-cgroup-unknown'] });
+    await realReadinessApp.close();
   });
 });
 

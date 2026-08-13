@@ -73,6 +73,11 @@ export type VibeSpawner = (args: string[], cwd: string) => VibeProcess;
 // adapters) so Fastify/PM2 shutdown can terminate live work before the process exits.
 const activeVibeProcesses = new Set<VibeProcess>();
 
+/** Number of currently tracked Composer/vibe children. */
+export function activeVibeProcessCount(): number {
+  return activeVibeProcesses.size;
+}
+
 function stopTrackedProcess(proc: VibeProcess): void {
   activeVibeProcesses.delete(proc);
   try { proc.kill(); } catch { /* best-effort drain; shutdown must continue through every child */ }

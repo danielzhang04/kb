@@ -11,7 +11,7 @@ import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
 import { rateLimit, lockout } from '../security/ratelimit.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
-import { drainVibeProcesses, spawnVibe } from './session.ts';
+import { activeVibeProcessCount, drainVibeProcesses, spawnVibe } from './session.ts';
 import type { SessionInput, VibeDeps, VibeHandlers, VibeProcess, VibeSpawner } from './session.ts';
 
 const SECRET = Buffer.from('vibe-test-secret-do-not-reuse');
@@ -119,9 +119,11 @@ describe('spawnVibe — spawned-child containment', async () => {
     const deps = baseDeps({ spawn: spawner, rateLimitGuard: guard });
     expect((await spawnVibe('one', validSession(), noopHandlers(), deps)).ok).toBe(true);
     expect((await spawnVibe('two', validSession(), noopHandlers(), deps)).ok).toBe(true);
+    expect(activeVibeProcessCount()).toBe(2);
     expect(drainVibeProcesses()).toBe(2);
     expect(first.isKilled()).toBe(true);
     expect(second.isKilled()).toBe(true);
+    expect(activeVibeProcessCount()).toBe(0);
     expect(drainVibeProcesses()).toBe(0);
   });
 

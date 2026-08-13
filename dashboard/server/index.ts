@@ -22,6 +22,7 @@ import { startStrandedArchiver } from './write/strandedArchiver.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
+import type { SurfaceContext } from './http/context.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -114,7 +115,13 @@ export function humanRequestSweepLogLine(result: HumanRequestSweepResult): strin
  * `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every write route 403s; with an RP origin but
  * no provisioned passkey, no session can be minted and every write route 401s.
  */
-export function buildApp(options: { repoRoot?: string; validateData?: boolean } = {}): FastifyInstance {
+export interface BuildAppOptions {
+  repoRoot?: string;
+  validateData?: boolean;
+  readiness?: SurfaceContext['readiness'];
+}
+
+export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const repoRoot = options.repoRoot ?? process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../', import.meta.url));
   if (options.validateData !== false) assertSupportedRepositoryData(repoRoot);
   const app = Fastify({ logger: false });
@@ -138,7 +145,7 @@ export function buildApp(options: { repoRoot?: string; validateData?: boolean } 
   // `resolveSessionSecret()` independently; with `DASHBOARD_SESSION_SECRET` unset that yields two DIFFERENT
   // random secrets, so a token minted at login (write-surface secret) can never verify at /api/pty (its own
   // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
-  const surfaceCtx = makeSurfaceContext({ hubBus: bus, repoRoot });
+  const surfaceCtx = makeSurfaceContext({ hubBus: bus, repoRoot, readiness: options.readiness });
   const controlStoreWatcher = wireControlStoreTick(bus, surfaceCtx.stateRoot);
   app.addHook('onClose', async () => {
     try {
@@ -148,6 +155,7 @@ export function buildApp(options: { repoRoot?: string; validateData?: boolean } 
       // ignore â€” best-effort teardown
     }
   });
+  app.get('/readyz', async () => await surfaceCtx.readiness());
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
   // D15: workflow-definition registry (GET /api/workflows[/:id] read-only) + the governed one-step launch
   // (POST /api/workflows/:id/launch) in its OWN origin/rate-limit/session child scope. Shares surfaceCtx

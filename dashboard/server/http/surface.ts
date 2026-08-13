@@ -30,7 +30,9 @@ import { createProviderIdProtector } from '../composer/protector.ts';
 import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
 import { drainVibeProcesses } from '../vibe/session.ts';
+import { activeVibeProcessCount } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
+import { activeAsyncGitCount } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
@@ -46,6 +48,8 @@ import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
+import { quiescence } from '../release/quiescence.ts';
+import { serviceCgroupChildCount } from '../release/serviceCgroup.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -145,9 +149,32 @@ export function makeSurfaceContext(
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   let offAttemptIo: (() => void) | null = null;
   let stopQueueBridge: (() => void) | undefined;
-  const ctx: SurfaceContext = {
+  let ctx!: SurfaceContext;
+  ctx = {
     repoRoot,
     stateRoot,
+    readiness: overrides.readiness ?? (async () => {
+      const activation = ctx.executionLatch?.snapshot();
+      let serviceCgroupChildren: number;
+      try {
+        serviceCgroupChildren = serviceCgroupChildCount();
+      } catch {
+        return { ok: true, quiescent: false, blockers: ['service-cgroup-unknown'] };
+      }
+      return quiescence({
+        executionState: activation?.state ?? 'locked',
+        bridgeStopped: ctx.stopQueueBridge === undefined,
+        queuedWork: 0,
+        // The latch does not expose a worker count. Until the deferred coordinator
+        // supplies one, an unlocked latch is conservatively treated as active;
+        // locked/locking state already prevents readiness through executionState.
+        activeWorkers: activation?.state === 'unlocked' ? 1 : 0,
+        activeGit: activeAsyncGitCount(),
+        activePty: ctx.ptySessions?.liveCount() ?? 0,
+        activeComposer: activeVibeProcessCount(),
+        serviceCgroupChildren,
+      });
+    }),
     hubBus: overrides.hubBus,
     definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),

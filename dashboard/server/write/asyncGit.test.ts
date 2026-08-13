@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { tmpdir } from 'node:os';
-import { AsyncGitError, createAsyncGitRunner, drainAsyncGit, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
+import { activeAsyncGitCount, AsyncGitError, createAsyncGitRunner, drainAsyncGit, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
 
 const NODE = process.execPath;
 /** A child that ignores signals is not needed — we only need one that outlives the test's timeout. */
@@ -95,6 +95,7 @@ describe('drainAsyncGit — kills live children on shutdown', () => {
     const secondSettled = second.then(() => 'resolved', () => 'rejected');
 
     // Both are alive and tracked; draining kills both.
+    expect(activeAsyncGitCount()).toBe(2);
     expect(drainAsyncGit()).toBe(2);
 
     // A killed child (SIGKILL, exit code null) surfaces as a rejection, not a silent success.
@@ -102,6 +103,7 @@ describe('drainAsyncGit — kills live children on shutdown', () => {
     expect(await secondSettled).toBe('rejected');
 
     // Draining again finds nothing left.
+    expect(activeAsyncGitCount()).toBe(0);
     expect(drainAsyncGit()).toBe(0);
   });
 });

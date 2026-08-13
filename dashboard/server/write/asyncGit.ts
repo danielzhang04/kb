@@ -150,6 +150,11 @@ export function opsGitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.Process
 // spawner uses for `claude` children.
 const liveChildren = new Set<ChildProcess>();
 
+/** Number of currently tracked async git/gh children. */
+export function activeAsyncGitCount(): number {
+  return liveChildren.size;
+}
+
 /** Kill every in-flight async git/gh child during daemon shutdown. Returns the number signalled. */
 export function drainAsyncGit(): number {
   const active = [...liveChildren];
