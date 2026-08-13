@@ -336,3 +336,15 @@
   must not touch credential files even as symlinks — classifier enforced, correctly).
 - REMAINS: Daniel's G4 ruling (board artifact in boss conversation); P8 candidate fix ruled-on
   then ~0.16 re-mint; merge + worktree sweep + DELETE the worktree .env copy.
+
+## 2026-08-13 — P6 lesson: grade the prompt before grading the model
+- P5 declared the codex engine below-floor on all 4 metrics; Daniel's one-line challenge
+  ("that's the best it can do?") exposed that the composer COMMANDED the failure: a literal
+  ink hex (+18 warm) the obedient model executed, plus an Avoid block banning tonal features
+  the accepted style actually has. When a generator follows literal values, verify the
+  commanded values match the measured target BEFORE running a study against it. A verdict
+  pipeline can be flawless and still measure its own prompt bug.
+- Style exemplar choice needs measurement too: first-pick L31 measured warm (+30 ink); L47
+  measured +9 and carried more detail. Eyeballing chose L31; measuring chose L47.
+- review.json nests under a "figures" key — a flat .get(name) reads NO-ENTRY for plates that
+  are actually ALLPASS. Check the store's schema before declaring provenance absent.
