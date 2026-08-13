@@ -45,6 +45,30 @@ describe('kbBrowserRoutes (read-only)', () => {
     await app.close();
   });
 
+  it('returns 403 for platform source even with an authenticated route scope', async () => {
+    const app = await appWithRoutes();
+    const response = await app.inject({ method: 'GET', url: '/api/kb/file?path=dashboard/server/index.ts' });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: 'read-root-refused' });
+    await app.close();
+  });
+
+  it('returns 403 descending into a nested .git under an approved root', async () => {
+    const app = await appWithRoutes();
+    const r = await app.inject({ method: 'GET', url: '/api/kb/tree?path=orgs/demo/.git' });
+    expect(r.statusCode).toBe(403);
+    expect(r.json()).toMatchObject({ error: 'read-root-refused' });
+    await app.close();
+  });
+
+  it('rejects an encoded traversal from an approved root into platform source', async () => {
+    const app = await appWithRoutes();
+    const response = await app.inject({ method: 'GET', url: '/api/kb/file?path=docs%2F..%2Fdashboard%2Fserver%2Findex.ts' });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: 'read-root-refused' });
+    await app.close();
+  });
+
   it('exposes NO write endpoint (POST/PUT/DELETE are 404)', async () => {
     const app = await appWithRoutes();
     for (const method of ['POST', 'PUT', 'DELETE'] as const) {

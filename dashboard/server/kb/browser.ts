@@ -16,8 +16,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { isAbsolute, join, relative as relativePath, resolve, sep } from 'node:path';
 
 export class PathEscapeError extends Error {
   constructor(relpath: string) {
@@ -25,6 +25,10 @@ export class PathEscapeError extends Error {
     this.name = 'PathEscapeError';
   }
 }
+
+export const DEFAULT_KB_READ_ROOTS = ['docs', 'orgs', 'queue', 'ledgers', 'memory', 'dashboards', 'handoffs'] as const;
+
+export class ReadRootError extends Error {}
 
 export interface TreeEntry {
   name: string;
@@ -45,7 +49,7 @@ export interface Commit {
   subject: string;
 }
 
-/** Directories never surfaced by the browser (VCS internals + build/dependency output). */
+/** Directories never surfaced by the browser (VCS internals + build/dependency output), enforced on both the listing and read path. */
 const HIDDEN = new Set(['.git', 'node_modules', 'dist']);
 
 /**
@@ -60,7 +64,7 @@ export function resolveWithin(repoRoot: string, relpath: string): string {
 
   const root = resolve(repoRoot);
   const target = resolve(root, relpath);
-  const rel = relative(root, target);
+  const rel = relativePath(root, target);
   // `rel === ''` → the root itself (allowed). Anything starting with `..` (or that comes back
   // absolute, e.g. a different Windows drive) has escaped the root.
   if (rel !== '' && (rel === '..' || rel.startsWith('..' + sep) || rel.startsWith('../') || isAbsolute(rel))) {
@@ -69,23 +73,83 @@ export function resolveWithin(repoRoot: string, relpath: string): string {
   return target;
 }
 
+/** Refuse symlinks and junctions at every existing path component beneath repoRoot. */
+export function assertNoSymlinkComponents(repoRoot: string, target: string): void {
+  const root = resolve(repoRoot);
+  const relative = relativePath(root, target);
+  if (relative === '..' || relative.startsWith(`..${sep}`) || isAbsolute(relative)) {
+    throw new ReadRootError('path is outside repository');
+  }
+  let cursor = root;
+  for (const part of ['', ...relative.split(sep).filter(Boolean)]) {
+    if (part) cursor = join(cursor, part);
+    let stat;
+    try {
+      stat = lstatSync(cursor);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') break;
+      throw err;
+    }
+    if (stat.isSymbolicLink()) throw new ReadRootError(`symlink component refused: ${cursor}`);
+  }
+}
+
+/** Resolve a path only when it remains under an approved, non-symlinked KB data root. */
+export function resolveWithinAllowedRoot(
+  repoRoot: string,
+  relpath: string,
+  allowedRoots: readonly string[] = DEFAULT_KB_READ_ROOTS,
+): string {
+  const normalized = relpath.replace(/\\/g, '/').replace(/^\.\//, '');
+  const target = resolveWithin(repoRoot, normalized);
+  const segments = normalized.split('/').filter((s) => s !== '' && s !== '.');
+  const first = segments[0];
+  if (!first || !allowedRoots.includes(first)) {
+    throw new ReadRootError('path is outside approved KB read roots');
+  }
+  // HIDDEN is a read-path control, not just a listing filter: without this a nested repo under an
+  // approved root serves .git/config at 200. Case-insensitive because Windows FS is.
+  for (const segment of segments) {
+    if (HIDDEN.has(segment.toLowerCase())) {
+      throw new ReadRootError(`refused directory component: ${segment}`);
+    }
+  }
+  const approvedRoot = resolve(repoRoot, first);
+  const approvedRelative = relativePath(approvedRoot, target);
+  if (approvedRelative === '..' || approvedRelative.startsWith(`..${sep}`) || isAbsolute(approvedRelative)) {
+    throw new ReadRootError('path is outside approved KB read roots');
+  }
+  assertNoSymlinkComponents(repoRoot, target);
+  return target;
+}
+
 /** Normalise an absolute path under repoRoot to a POSIX relpath for transport. */
 function toPosixRel(repoRoot: string, abs: string): string {
-  const rel = relative(resolve(repoRoot), abs);
+  const rel = relativePath(resolve(repoRoot), abs);
   return rel.split(sep).join('/');
 }
 
 /** List the directory at `subpath` (default: repo root), confined to `repoRoot`. */
-export function listTree(repoRoot: string, subpath = ''): TreeListing {
-  const dir = resolveWithin(repoRoot, subpath);
-  const dirents = readdirSync(dir, { withFileTypes: true });
-  const entries: TreeEntry[] = dirents
-    .filter((d) => !(d.isDirectory() && HIDDEN.has(d.name)))
-    .map((d) => ({
-      name: d.name,
-      path: toPosixRel(repoRoot, join(dir, d.name)),
-      type: d.isDirectory() ? ('dir' as const) : ('file' as const),
-    }));
+export function listTree(
+  repoRoot: string,
+  subpath = '',
+  allowedRoots: readonly string[] = DEFAULT_KB_READ_ROOTS,
+): TreeListing {
+  const dir = subpath === '' ? resolve(repoRoot) : resolveWithinAllowedRoot(repoRoot, subpath, allowedRoots);
+  assertNoSymlinkComponents(repoRoot, dir);
+  const entries: TreeEntry[] = readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => !(entry.isDirectory() && HIDDEN.has(entry.name)))
+    .filter((entry) => subpath !== '' || allowedRoots.includes(entry.name))
+    .map((entry) => {
+      if (subpath === '' && entry.isSymbolicLink()) {
+        throw new ReadRootError(`symlink component refused: ${join(dir, entry.name)}`);
+      }
+      return {
+        name: entry.name,
+        path: toPosixRel(repoRoot, join(dir, entry.name)),
+        type: entry.isDirectory() ? ('dir' as const) : ('file' as const),
+      };
+    });
   // Directories first, then files; alphabetical within each group.
   entries.sort((a, b) => {
     if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
@@ -95,8 +159,12 @@ export function listTree(repoRoot: string, subpath = ''): TreeListing {
 }
 
 /** Read a file's UTF-8 content, confined to `repoRoot`. Read-only. */
-export function readFile(repoRoot: string, relpath: string): string {
-  const file = resolveWithin(repoRoot, relpath);
+export function readFile(
+  repoRoot: string,
+  relpath: string,
+  allowedRoots: readonly string[] = DEFAULT_KB_READ_ROOTS,
+): string {
+  const file = resolveWithinAllowedRoot(repoRoot, relpath, allowedRoots);
   return readFileSync(file, 'utf-8');
 }
 
@@ -121,9 +189,15 @@ const LOG_FORMAT = '--format=%H%x09%an%x09%ad%x09%s';
  * Per-file commit history via `git log --follow` (tracks the file across renames), newest first.
  * The relpath is confined to `repoRoot` BEFORE any git call, so a traversal input never reaches git.
  */
-export function fileHistory(repoRoot: string, relpath: string, runGit: GitRunner = defaultGitRunner): Commit[] {
-  resolveWithin(repoRoot, relpath); // throws PathEscapeError on escape — guards the subprocess.
-  const posixRel = relpath.split(sep).join('/');
+export function fileHistory(
+  repoRoot: string,
+  relpath: string,
+  runGit: GitRunner = defaultGitRunner,
+  allowedRoots: readonly string[] = DEFAULT_KB_READ_ROOTS,
+): Commit[] {
+  // Guard first, then hand git the CANONICALISED path — never the caller's original string.
+  const target = resolveWithinAllowedRoot(repoRoot, relpath, allowedRoots);
+  const posixRel = toPosixRel(repoRoot, target);
   const out = runGit(repoRoot, ['log', '--follow', LOG_FORMAT, '--', posixRel]);
   return out
     .split(/\r?\n/)

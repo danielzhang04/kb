@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { fileHistory, listTree, readFile, PathEscapeError } from './browser.ts';
+import { fileHistory, listTree, readFile, PathEscapeError, resolveWithinAllowedRoot } from './browser.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 
@@ -76,6 +76,46 @@ describe('readFile', () => {
   it('refuses a path outside the repo root', () => {
     expect(() => readFile(REPO_A, '../../../etc/passwd')).toThrow(PathEscapeError);
     expect(() => readFile(REPO_A, '/etc/passwd')).toThrow(PathEscapeError);
+  });
+
+  it.each(['CLAUDE.md', '.git/config', 'dashboard/server/index.ts', 'scripts/cards.py'])('refuses non-data path %s', (relpath) => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-read-roots-'));
+    const file = join(root, ...relpath.split('/'));
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, 'not browser data', 'utf8');
+    expect(() => readFile(root, relpath)).toThrow(/approved KB read root/);
+  });
+
+  it('refuses an approved-root prefix that traverses into a platform path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-read-prefix-'));
+    const file = join(root, 'dashboard', 'server', 'index.ts');
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, 'not browser data', 'utf8');
+    expect(() => readFile(root, 'docs/../dashboard/server/index.ts')).toThrow(/approved KB read root/);
+  });
+
+  it.each(['docs/note.md', 'orgs/demo/STATE.md', 'queue/inbox/card.md', 'memory/agent.md'])('allows approved data path %s', (relpath) => {
+    expect(() => resolveWithinAllowedRoot(REPO_A, relpath)).not.toThrow();
+  });
+
+  it.each([
+    'orgs/demo/.git/config',
+    'orgs/demo/node_modules/pkg/index.js',
+    'orgs/demo/dist/bundle.js',
+    'orgs/demo/.GIT/config',
+  ])('refuses hidden platform directory inside an approved root: %s', (relpath) => {
+    expect(() => resolveWithinAllowedRoot(REPO_A, relpath)).toThrow(/refused directory component/);
+  });
+
+  it.each(['approved-root', 'intermediate', 'final-file'])('rejects a symlink at the %s component', (position) => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-read-link-'));
+    const outside = mkdtempSync(join(tmpdir(), 'kb-read-outside-'));
+    writeFileSync(join(outside, 'secret.md'), 'secret', 'utf8');
+    if (position === 'approved-root') symlinkSync(outside, join(root, 'docs'), process.platform === 'win32' ? 'junction' : 'dir');
+    else if (position === 'intermediate') { mkdirSync(join(root, 'docs')); symlinkSync(outside, join(root, 'docs', 'linked'), process.platform === 'win32' ? 'junction' : 'dir'); }
+    else { mkdirSync(join(root, 'docs')); symlinkSync(outside, join(root, 'docs', 'note.md'), process.platform === 'win32' ? 'junction' : 'dir'); }
+    const relpath = position === 'approved-root' ? 'docs/secret.md' : position === 'intermediate' ? 'docs/linked/secret.md' : 'docs/note.md';
+    expect(() => resolveWithinAllowedRoot(root, relpath)).toThrow(/symlink component/);
   });
 });
 
