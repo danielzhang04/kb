@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from forge import (FIGURE_PREFIX, Kit, _interaction_primitives, _split_primitives, _stem,
                    cmd_batch, figure_card_payload, interaction_violations, shot_cast,
                    text_bearing)
-from conftest import stamp_kit
+from conftest import isolate_staging, stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
@@ -57,9 +57,8 @@ def _kit():
     # registry's relative asset paths are written against (same fixture shape as
     # test_forge_seed_roles_and_delta.py).
     kit.root = str(ROOT)
-    kit.staging = os.path.join(tempfile.mkdtemp(), "_staging")
-    os.makedirs(kit.staging)
-    return kit
+    # Per-test staging, never the channel's own: `Kit.staging` is the LIVE P3 review store.
+    return isolate_staging(kit)
 
 
 def _batch(shots, scope=None):

@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import forge as forge_module
 from forge import (Kit, cmd_batch, seed_role_violations, seed_roles_text, seeding_law_violations,
                    SEED_CAP, STYLE_TILE, STYLE_ANCHOR_ROLE)
-from conftest import stamp_kit
+from conftest import isolate_staging, stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
@@ -59,9 +59,8 @@ ERA_SUFFIX = (
 def _kit():
     k = Kit(str(KIT_DIR), dry=True)
     k.root = str(ROOT)          # a worktree has no env marker for `Kit` to walk up to
-    k.staging = os.path.join(tempfile.mkdtemp(), "_staging")
-    os.makedirs(k.staging)
-    return k
+    # Per-test staging, never the channel's own: `Kit.staging` is the LIVE P3 review store.
+    return isolate_staging(k)
 
 
 def _doc(*shots):

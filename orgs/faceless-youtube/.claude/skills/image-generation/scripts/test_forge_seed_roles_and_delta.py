@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from forge import (Kit, RETRY_OVERLAY_SCHEMA, SEED_CAP, cmd_batch, cmd_retry_batch,
                    placement_delta, preflight_batch)
-from conftest import stamp_kit
+from conftest import isolate_staging, stamp_kit
 import forge as forge_module
 
 
@@ -36,9 +36,8 @@ def _kit():
     # checkout; a worktree has none, so pin the root the fixture's relative seed paths are written
     # against instead of resolving them off the filesystem root.
     kit.root = str(ROOT)
-    kit.staging = os.path.join(tempfile.mkdtemp(), "_staging")
-    os.makedirs(kit.staging)
-    return kit
+    # Per-test staging, never the channel's own: `Kit.staging` is the LIVE P3 review store.
+    return isolate_staging(kit)
 
 
 def _write_json(path, value):

@@ -13,7 +13,7 @@ from forge import (BASE_TEMPLATE, Kit, cmd_batch, cmd_gen, figure_frame_name, me
                    preflight_batch, resolve_request_seeds, seed_roles_text, seeding_law_violations,
                    shot_cast, place_anchor_for, video_root_for,
                    cmd_retry_batch, RETRY_OVERLAY_SCHEMA)
-from conftest import stamp_all_pass, stamp_kit
+from conftest import isolate_staging, stamp_all_pass, stamp_kit
 
 KIT_DIR = (Path(__file__).resolve().parents[4]
            / "channels" / "the-second-take" / "visual-kit")
@@ -27,9 +27,9 @@ def _real_kit():
     walk reaches the filesystem root and every registry-relative seed path stops resolving."""
     k = Kit(str(KIT_DIR), dry=True)
     k.root = str(ROOT)
-    k.staging = os.path.join(tempfile.mkdtemp(), "_staging")
-    os.makedirs(k.staging)   # never let a live run's staged frames alter a slate fixture
-    return k
+    # Per-test staging, never the channel's own: `Kit.staging` is the LIVE P3 review store, and a
+    # live run's staged frames must not alter a slate fixture either.
+    return isolate_staging(k)
 
 REFS = "channels/c/visual-kit/refs/"
 REG = {
