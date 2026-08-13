@@ -174,7 +174,9 @@ export interface GenerationSupersession {
   runRef: string;
   predecessorGenerationRef: string;
   successorGenerationRef: string;
-  failedReviewReceiptRef: string;
+  triggerReceiptRef: string;
+  /** @deprecated Temporary Task-13 compatibility projection. Never persisted. */
+  failedReviewReceiptRef?: string;
   operationKey: string;
   createdAt: string;
 }
@@ -279,7 +281,10 @@ export interface IterationLoop extends ProposalIterationGroup {
   activeGenerationRefs: string[];
   acceptedGenerationRefs?: string[];
   lastReceiptRef?: string;
-  gateRef?: string;
+  /** Distinct post-semantic-acceptance approval gate. */
+  completionGateRef?: string;
+  /** Iteration park or rejected-completion intervention. */
+  interventionRef?: string;
   parkReason?: IterationParkReason;
   unresolvedResidue?: IterationResidue;
   version: number;
@@ -455,7 +460,12 @@ export interface RunDetail {
   humanRequests: HumanRequest[];
   stageGenerations: StageGeneration[];
   generationSupersessions: GenerationSupersession[];
+  iterationLoops: IterationLoop[];
+  iterationRequests: IterationRequest[];
+  iterationReceipts: IterationReceipt[];
+  /** @deprecated Temporary Task-13 compatibility projections. */
   reviewLoops: ReviewLoop[];
+  /** @deprecated Temporary Task-13 compatibility projections. */
   reviewReceipts: ReviewReceipt[];
 }
 

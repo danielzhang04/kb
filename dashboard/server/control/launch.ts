@@ -218,6 +218,7 @@ export async function executeApprovedLaunch(
       predecessorRunRef,
       expectedPredecessorVersion: predecessorRunRef === null ? undefined : input.expectedPredecessorVersion,
       agentWorkspaceLaunch: input.agentWorkspaceLaunch ?? null,
+      iterationGroups: parsed.value.iterationGroups ? structuredClone(parsed.value.iterationGroups) : [],
       stages: parsed.value.stages.map((stage) => ({
         stageId: stage.id,
         title: stage.title,

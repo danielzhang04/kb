@@ -163,6 +163,52 @@ describe('control proposal routes', () => {
 
   afterEach(async () => app.close());
 
+  it('launch passes the exact compiler-owned iteration group snapshot to createRun', async () => {
+    const iterationGroups: NonNullable<PlanProposal['iterationGroups']> = [{
+      iterationGroupId: 'verify-report', goal: 'Accept the verification result.',
+      participants: [
+        { participantId: 'verifier', stageRef: 'verify', role: 'contributor', perspective: 'Produce evidence.', mandate: 'Run focused tests.' },
+        { participantId: 'reporter', stageRef: 'report', role: 'judge', perspective: 'Assess evidence.', mandate: 'Check the report.' },
+      ],
+      routes: [
+        { routeId: 'to-report', senderParticipantId: 'verifier', recipientParticipantId: 'reporter', requestKinds: ['review'], baseResolutionStageIds: ['verify'] },
+        { routeId: 'to-verify', senderParticipantId: 'reporter', recipientParticipantId: 'verifier', requestKinds: ['rework'], baseResolutionStageIds: ['report'] },
+      ],
+      activation: { seedParticipantId: 'verifier', seedArtifactIds: ['verification'] }, initialStepId: 'review',
+      schedule: [
+        { stepId: 'review', routeId: 'to-report', after: { stepId: 'rework', participantId: 'verifier', verdict: 'fulfilled' }, cycle: 'next' },
+        { stepId: 'rework', routeId: 'to-verify', after: { stepId: 'review', participantId: 'reporter', verdict: 'fail' }, cycle: 'current' },
+      ],
+      artifacts: ['verification'], criteria: [{ id: 'green', description: 'Focused tests are green.' }],
+      maxCycles: 2, cycleUnit: 'One verification and report verdict.', terminalAuthorities: [{ participantId: 'reporter', verdict: 'pass' }],
+    }];
+    const snapshot: PlanProposal = {
+      ...structuredClone(proposal), iterationGroups: structuredClone(iterationGroups),
+      stages: proposal.stages.map((stage) => stage.id === 'verify'
+        ? { ...structuredClone(stage), artifacts: [{ id: 'verification', path: 'dashboard/server/control/verification.txt', description: 'Verification evidence.' }] }
+        : structuredClone(stage)),
+    };
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'iteration-launch', sourceTurnId: 'iteration-launch-turn', title: snapshot.title,
+      snapshot: snapshot as unknown as JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
+      expectedHash: stored.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-iteration-launch',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const createRun = vi.spyOn(controlStore, 'createRun');
+    const launched = await app.inject({
+      method: 'POST', url: `/api/control/proposals/${stored.value.proposalRef}/revisions/1/launch`, headers: headers(token),
+      payload: { expectedHash: stored.value.hash, idempotencyKey: 'launch-iteration-snapshot' },
+    });
+    // This surface's narrow subprocess stub intentionally does not emulate the workflow-card batch
+    // publisher; the assertion is on the launch/store boundary immediately before that later seam.
+    expect(launched.statusCode, launched.body).toBe(500);
+    expect(createRun).toHaveBeenCalledOnce();
+    expect(createRun.mock.calls[0]?.[1].iterationGroups).toEqual(iterationGroups);
+  });
+
   it('refuses every non-exact historical reconciliation body before any audit, proposal, or filesystem runner', async () => {
     const base = {
       expectedRunVersion: 7, expectedManagerGeneration: 1, expectedRequestRevision: 2, expectedNextEventCursor: 6,
