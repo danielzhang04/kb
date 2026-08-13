@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import { indexSkills } from '../registry/skills.ts';
 import { loadPolicy } from '../routing/policy.ts';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import { defaultPlatformRoot } from '../runtime/python.ts';
 import type { ExecutionProfile, PolicyEnvironment } from './policy.ts';
+import { loadRepositoryRegistry, type RepositoryRegistry } from './repositoryRegistry.ts';
 
 export interface RuntimeSkillRegistry {
   runtimes: Record<string, string[]>;
@@ -14,6 +16,7 @@ export interface RuntimeSkillRegistry {
    * populates it, and a proposal declaring a profile is refused when it is absent (`proposal.ts`).
    */
   workflowProfiles?: string[];
+  repositories: RepositoryRegistry;
 }
 
 /** Runtime/models and executable skills are read from server-owned registries, never browser input. */
@@ -28,7 +31,12 @@ export function loadRuntimeSkillRegistry(repoRoot: string): RuntimeSkillRegistry
     .flatMap((skill) => [skill.slug, skill.name])
     .filter((value, index, all) => value && all.indexOf(value) === index)
     .sort();
-  return { runtimes, skills, workflowProfiles: [...workflowProfileIds()].sort() };
+  return {
+    runtimes,
+    skills,
+    workflowProfiles: [...workflowProfileIds()].sort(),
+    repositories: loadRepositoryRegistry(join(defaultPlatformRoot(), 'dashboard', 'config', 'repositories.json'), { repoRoot }),
+  };
 }
 
 /**

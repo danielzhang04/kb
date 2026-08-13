@@ -38,6 +38,10 @@ const REGISTRY: RuntimeSkillRegistry = {
   // The proposal validator fails CLOSED on `profile`: an absent or empty list admits nothing, so a
   // registry without this field refuses every compiled proposal.
   workflowProfiles: ['research', 'gmail-triage', 'drive-author', 'producer'],
+  repositories: {
+    forProject() { throw new Error('project is not registered'); },
+    resolve() { throw new Error('repository binding identity is stale or unknown'); },
+  },
 };
 
 // The server-owned execution profiles the registry route knows about (design D13). `producer` is the

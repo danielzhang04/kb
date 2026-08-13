@@ -147,7 +147,14 @@ describe('proposal identity and hashing are unchanged by the new field', () => {
   };
 
   it('deriveProposalId is stable and covers the effective read scope (Layer A re-anchor)', () => {
-    const compiled = compileWorkflowDef(DEF, { registry: { runtimes: { claude: ['claude-opus', 'claude-sonnet'] }, skills: [] } });
+    const compiled = compileWorkflowDef(DEF, { registry: {
+      runtimes: { claude: ['claude-opus', 'claude-sonnet'] },
+      skills: [],
+      repositories: {
+        forProject() { throw new Error('project is not registered'); },
+        resolve() { throw new Error('repository binding identity is stale or unknown'); },
+      },
+    } });
     expect(compiled.ok).toBe(true);
     // Layer A (2026-07-21) deliberately added the effective read scope to deriveProposalId's preimage so
     // a changed read scope forces re-approval (docs/specs/2026-07-21-worker-read-scope-design.md §4.2).
