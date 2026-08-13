@@ -35,6 +35,12 @@ describe('parseWorkflowDef', () => {
     expect(result.value.stages[0].riskTier).toBe('T2');
   });
 
+  it('accepts transition v0 and explicit v1, but rejects v2', () => {
+    expect(parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN })).toMatchObject({ ok: true, value: { schemaVersion: undefined } });
+    expect(parseWorkflowDef(md(`schemaVersion: 1\n${SINGLE}`), { knownProfiles: KNOWN })).toMatchObject({ ok: true, value: { schemaVersion: 1 } });
+    expect(parseWorkflowDef(md(`schemaVersion: 2\n${SINGLE}`), { knownProfiles: KNOWN })).toMatchObject({ ok: false, detail: expect.stringMatching(/schemaVersion/) });
+  });
+
   it('makes validation-slice an explicit non-publication workflow class', () => {
     const valid = parseWorkflowDef(md(SINGLE.replace('profile: research', 'executionMode: validation-slice\nprofile: research')), { knownProfiles: KNOWN });
     expect(valid).toMatchObject({ ok: true });

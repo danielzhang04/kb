@@ -220,6 +220,11 @@ describe('composer/artifactTypes — deploy mapping', () => {
     expect(plan.endpoint).toBe('save');
   });
 
+  it('serializes new workflow artifacts as schema v1', () => {
+    const plan = toDeploy('workflow', workflow());
+    expect(plan.content).toContain('---\nschemaVersion: 1\nid: "nightly"');
+  });
+
   it('workflow stage emits a logical agent/profile pair without raw executor routing fields', () => {
     const plan = toDeploy('workflow', workflow({
       stages: [{
@@ -307,6 +312,7 @@ describe('composer/artifactTypes — deploy mapping', () => {
   it('legacy workflow stage serialization remains byte-for-byte unchanged without an assignment pair', () => {
     expect(toDeploy('workflow', workflow()).content).toBe([
       '---',
+      'schemaVersion: 1',
       'id: "nightly"',
       'project: "kb"',
       'title: "nightly"',
