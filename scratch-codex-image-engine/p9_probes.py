@@ -116,6 +116,37 @@ def probe_c():
     return prompt, seeds, hits
 
 
+def probe_b2():
+    prompt = "\n".join([
+        "Use case: illustration-story",
+        "Asset type: documentary-style animated video still frame",
+        "Input images: Image 1: the established assembly-floor room — reproduce this "
+        "frame's room EXACTLY: geometry, hanging MINISCRIBE sign, roller shutter, bin "
+        "rack, benches, blue work mats, palette, line weight and lighting; change ONLY by "
+        "adding the two figures; Image 2: character reference for ibm-suit — match "
+        "exactly — do not copy its background; Image 3: character reference for "
+        "miniscribe-rep — match exactly — do not copy its background; Image 4: "
+        "interaction reference for the handshake geometry only.",
+        "Primary request: the two men stand centered mid-aisle inside the soft floor "
+        "light pool, shaking hands; ibm-suit on the left, deadpan smug half-lidded eyes; "
+        "miniscribe-rep on the right, huge open grin with closed happy eyes; figures "
+        "about 45% of frame height, full bodies visible.",
+        "Composition/framing: exactly Image 1's camera and layout; 16:9 landscape; "
+        "compose for a 1376x768 pixel frame.",
+        AVOID_MATTE.replace(
+            ", words, letters, numerals or signage",
+            ", words, letters, numerals or signage other than the MINISCRIBE sign "
+            "exactly as it appears in Image 1"),
+    ])
+    seeds = [
+        str(BASE / "L28.png"),
+        str(KIT / "_staging/fig-ibm-suit--expr-smug.png"),
+        str(KIT / "_staging/fig-miniscribe-rep--expr-delighted.png"),
+        str(KIT / "refs/base/handshake.png"),
+    ]
+    return prompt, seeds
+
+
 def probe_d():
     bible = (KIT / "style-bible.md").read_text(encoding="utf-8")
     lines = bible.splitlines()
@@ -158,6 +189,8 @@ def main():
         plan["A2"] = probe_a(2)
     if "B" in want:
         plan["B"] = probe_b()
+    if "B2" in want:
+        plan["B2"] = probe_b2()
     if "C" in want:
         p, s, hits = probe_c()
         print(f"C strip fragments hit: {hits}/{len(C_STRIP)}")
@@ -176,15 +209,18 @@ def main():
             assert Path(s).is_file(), f"{key}: missing seed {s}"
         pfile = OUT / "prompts" / f"{key}.txt"
         pfile.write_text(prompt, encoding="utf-8", newline="\n")
-        print(f"{key}: {len(prompt)} chars, {len(seeds)} seeds — generating...")
-        png, meta = fc.generate(prompt_path=str(pfile), seeds=seeds, canvas=CANVAS,
-                                name=f"p9-{key}")
         native = OUT / f"p9-{key}-native.png"
-        native.write_bytes(png if isinstance(png, bytes) else png[0])
-        norm = fc.normalize_to_canvas(native.read_bytes(), CANVAS) \
-            if hasattr(fc, "normalize_to_canvas") else None
-        if norm:
-            (OUT / f"p9-{key}.png").write_bytes(norm)
+        meta = {}
+        if native.is_file():
+            print(f"{key}: native exists — banking without regeneration")
+        else:
+            print(f"{key}: {len(prompt)} chars, {len(seeds)} seeds — generating...")
+            png, meta = fc.generate(prompt_path=str(pfile), seeds=seeds, canvas=CANVAS,
+                                    name=f"p9-{key}")
+            native.write_bytes(png if isinstance(png, bytes) else png[0])
+        norm = fc.normalize_to_canvas(native.read_bytes(), CANVAS)
+        norm_bytes = norm[0] if isinstance(norm, tuple) else norm
+        (OUT / f"p9-{key}.png").write_bytes(norm_bytes)
         m = measure(str(native))
         row = {"probe": key, "chars": len(prompt), "seeds": seeds,
                "native_m1": m["m1"], "native_m2": m["m2"], "native_m3": m["m3"],
