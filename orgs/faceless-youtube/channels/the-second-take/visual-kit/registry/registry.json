@@ -588,14 +588,6 @@
       "tag": "stamp"
     },
     {
-      "name": "action-tugofwar",
-      "file": "channels/the-second-take/visual-kit/refs/base/action-tugofwar.png",
-      "character": "base",
-      "kind": "interaction",
-      "tag": "tug-of-war",
-      "seed_frame": "channels/the-second-take/visual-kit/refs/base/base.png"
-    },
-    {
       "name": "action-recoil",
       "file": "channels/the-second-take/visual-kit/refs/base/action-recoil.png",
       "character": "base",

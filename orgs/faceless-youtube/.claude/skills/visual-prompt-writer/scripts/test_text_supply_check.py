@@ -201,6 +201,14 @@ def test_bare_reading_is_still_a_text_verb_when_it_introduces_lettering():
                                     SUFFIX) == []
 
 
+def test_reading_eyewear_exemption_keeps_text_requests_intact():
+    """Eyewear compounds are objects; bare `reading` remains a supplied-text verb."""
+    assert unsupplied_text_requests(
+        "an auditor in full-rim reading spectacles low on the nose, inspecting a clipboard", SUFFIX) == []
+    assert unsupplied_text_requests("a placard reading 'SOLD' beside the door", SUFFIX) == []
+    assert unsupplied_text_requests("a sign reading beside the door", SUFFIX)
+
+
 def test_text_supply_check_reports_id_field_and_excerpt():
     hard = []
     from lint_shots import text_supply_check

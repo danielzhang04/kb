@@ -223,7 +223,7 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   cap.
 - **An `interaction` slug is a TWO-FIGURE geometry reference, never one figure's pose.** The asset is
   two blank mannequins carrying the clasp geometry and eye-line; it resolves the contact BETWEEN two
-  bodies and binds to neither alone. So `handshake` / `handoff` / `fistbump` / `action-tugofwar` are
+  bodies and binds to neither alone. So `handshake` / `handoff` / `fistbump` are
   authored ONLY on a fresh two-cast **stage base**, where forge seeds the template scene-level
   alongside both figures' step-1 cards (row above). On a solo shot or a delta beat there is no legal
   slate for one: stage the gesture in prose — within what each figure's seeded primitive can hold —

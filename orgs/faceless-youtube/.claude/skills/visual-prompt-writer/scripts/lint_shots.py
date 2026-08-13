@@ -477,9 +477,9 @@ _RENDER_VERB = re.compile(
     # entirely and the hyphen guard kept, because the rig vocabulary is full of
     # compounds that end in one — "bare-headed" investors flagged L10, whose
     # placard "reading 'CROSS-SELLING'" was correctly authored all along.
-    # (?!\s+glasses) : "half-moon READING GLASSES" is an object on a face, not an
-    # instruction to letter anything (bricks L148, a HARD false positive).
-    r"|(?<!-)\b(?:reading(?!\s+glasses\b)|labell?ed|captioned|titled|that\s+says|which\s+reads)\b",
+    # (?!\s+(?:glasses|spectacles)) : eyewear compounds ("reading glasses", "reading
+    # spectacles") are objects on a face, not lettering instructions (bricks L148).
+    r"|(?<!-)\b(?:reading(?!\s+(?:glasses|spectacles)\b)|labell?ed|captioned|titled|that\s+says|which\s+reads)\b",
     re.IGNORECASE)
 
 # "reads as" / "read as" / "reading as" is this project's idiom for LEGIBILITY ("he reads

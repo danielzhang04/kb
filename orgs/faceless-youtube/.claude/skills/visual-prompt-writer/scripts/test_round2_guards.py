@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import lint_shots as L  # noqa: E402
 
 SUFFIX = "hand-lettered marker capitals for any in-world text"
-INTERACTIONS = {"handshake", "handoff", "fistbump", "action-tugofwar"}
+INTERACTIONS = {"handshake", "handoff", "fistbump"}
 
 # L29 verbatim — the shot whose seed recipe was physically unsatisfiable while every lint law
 # in the file passed it clean, which is exactly why it needed a law of its own.

@@ -136,7 +136,7 @@ thumbnail) reads — one file per video at `channels/<name>/videos/<slug>/shots.
   carrying pose AND expression) or open a new stage on that shot. The parent is forge's own binding: the
   previous shot in file order sharing this shot's `place or stage or id`, not simply the previous line.
 - **Interaction-template law (lint-enforced, HARD; forge refuses in parallel).** An `interaction`-kind
-  registry slug (`handshake`, `handoff`, `fistbump`, `action-tugofwar`) is a TWO-FIGURE geometry
+  registry slug (`handshake`, `handoff`, `fistbump`) is a TWO-FIGURE geometry
   reference — two blank mannequins carrying clasp geometry and eye-line — and seeds the SCENE alongside
   both figures' step-1 cards, never one figure's pose slot. Legal only on a shot naming exactly 2 SEEDED
   figures (2 named cast), and never on a `stage_role: delta` (that slate is parent +

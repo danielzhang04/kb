@@ -1783,8 +1783,8 @@
         "stage_role": "base",
         "shot_class": "staged-interaction",
         "source": "ai-gen",
-        "still_prompt": "`miniscribe-rep`, `expr-smug`, stage-left and `return-customer`, `expr-skeptical`, stage-right, facing each other across the top of a wrapped pallet with their near hands clasped over it, both holding the same plane at a matching eye line and an equal relative head scale. A quiet receiving bay behind them: a roller door half down, an empty forklift, a bare brick wall. Grey-navy-cream palette, flat overcast light, foreground depth from a cropped pallet corner at the lower-right.",
-        "notes": "The arrangement is a deal between two parties, so it is staged as one, both of them named cast. The clasp is authored in PROSE rather than on an interaction template: `return-customer` is a new cast member owed a Pass-1 mint, so until his canonical lands the shot resolves to one seeded figure and a template would bind a two-body geometry to a single card. Re-declare the slug only after the mint. [F-09]"
+        "still_prompt": "`miniscribe-rep`, `expr-smug`, stage-left and `return-customer`, `expr-skeptical`, stage-right, joined in `handshake` across the top of a wrapped pallet, their near hands clasped over it, both holding the same plane at a matching eye line and an equal relative head scale. A quiet receiving bay behind them: a roller door half down, an empty forklift, a bare brick wall. Grey-navy-cream palette, flat overcast light, foreground depth from a cropped pallet corner at the lower-right.",
+        "notes": "The arrangement is a deal between two named parties. `return-customer` now has a canonical, so this fresh two-cast stage base legally declares the `handshake` interaction template; forge supplies two STEP-1 figure cards plus the scene-level template. [F-09]"
       },
       {
         "id": "L134",

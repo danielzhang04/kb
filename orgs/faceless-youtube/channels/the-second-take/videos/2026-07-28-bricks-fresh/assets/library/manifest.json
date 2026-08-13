@@ -112,17 +112,6 @@
    "notes": "Reused from the channel registry; no generation."
   },
   {
-   "name": "action-tugofwar",
-   "kind": "interaction",
-   "file": "channels/the-second-take/visual-kit/refs/base/action-tugofwar.png",
-   "source": "reused",
-   "shots": [
-    "L17",
-    "L18"
-   ],
-   "notes": "Reused from the channel registry; no generation."
-  },
-  {
    "name": "action-walk",
    "kind": "action",
    "file": "channels/the-second-take/visual-kit/refs/base/action-walk.png",
