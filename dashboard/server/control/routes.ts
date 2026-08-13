@@ -438,6 +438,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   scope.post('/api/control/proposals/:proposalRef/revisions/:revision/launch', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const { proposalRef, revision } = req.params as { proposalRef: string; revision: string };
     const body = record(req.body);
     const stored = ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision), readScope(req));
@@ -482,6 +484,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   scope.post('/api/control/execution/unlock', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const latch = ctx.executionLatch;
     if (!latch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
     // Audit BEFORE constructing anything: an unlock that cannot be recorded does not happen.

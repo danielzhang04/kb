@@ -864,6 +864,8 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
     scope.post('/api/workflows/:id/launch', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
       const sub = subject(req);
       if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+      const admission = ctx.admission('new-work');
+      if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
       const { id } = req.params as { id: string };
       // Launch identity is CLIENT-supplied. A server-minted key would make every double-click or proxy
       // retry a fresh run with duplicate canonical cards, so an absent key is refused, never invented.
@@ -932,6 +934,8 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
     scope.post('/api/workflows/:id/assignment-amendments', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
       const sub = subject(req);
       if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+      const admission = ctx.admission('new-work');
+      if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
       const { id } = req.params as { id: string };
       const input = parseAmendmentBody(req.body);
       if (!input) return reply.code(400).send({ error: 'invalid-assignment-amendment-body' });
@@ -943,6 +947,8 @@ export function registerWorkflows(app: FastifyInstance, ctx: SurfaceContext): vo
     scope.post('/api/workflows/:id/governance-amendments', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
       const sub = subject(req);
       if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+      const admission = ctx.admission('new-work');
+      if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
       const { id } = req.params as { id: string };
       const input = parseGovernanceAmendmentBody(req.body);
       if (!input) return reply.code(400).send({ error: 'invalid-governance-amendment-body' });

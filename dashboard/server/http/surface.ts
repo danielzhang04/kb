@@ -53,6 +53,8 @@ import { quiescence } from '../release/quiescence.ts';
 import { serviceCgroupChildCount } from '../release/serviceCgroup.ts';
 import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
 import { resolveCoordinationPublication } from '../write/outbox.ts';
+import { admit } from '../control/admission.ts';
+import { outboxStatus } from '../write/outboxStatus.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -160,6 +162,9 @@ export function makeSurfaceContext(
     repoRoot,
     coordinationPublication,
     outboxRoot,
+    admission: overrides.admission ?? ((kind) => admit(kind, coordinationPublication === 'outbox'
+      ? outboxStatus(outboxRoot)
+      : { pending: 0, oldestAgeMs: 0, degraded: false, reasons: [] })),
     stateRoot,
     readiness: overrides.readiness ?? (async () => {
       const activation = ctx.executionLatch?.snapshot();

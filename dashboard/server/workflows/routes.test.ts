@@ -20,6 +20,7 @@ import {
   workflowPrimingText,
 } from './routes.ts';
 import { createFileAssignmentAmendmentStore, createInMemoryAssignmentAmendmentStore } from './amendmentStore.ts';
+import { admit } from '../control/admission.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('workflow-route-test-secret-32byte!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -68,10 +69,12 @@ describe('workflow definition routes', () => {
   let composerStore: ReturnType<typeof createInMemoryComposerStore>;
   let token: string;
   let auditRows: Array<Record<string, unknown>>;
+  let admissionStatus: { pending: number; oldestAgeMs: number; degraded: boolean; reasons: string[] };
 
   beforeEach(async () => {
     let id = 0;
     auditRows = [];
+    admissionStatus = { pending: 0, oldestAgeMs: 0, degraded: false, reasons: [] };
     controlStore = createInMemoryControlPlaneStore({ newId: () => `ref-${++id}` });
     composerStore = createInMemoryComposerStore({ protector: createProviderIdProtector(SESSION.secret) });
     token = mintSession('operator', SESSION).token;
@@ -84,6 +87,7 @@ describe('workflow definition routes', () => {
       credentials: () => [],
       controlStore,
       composerStore,
+      admission: (kind) => admit(kind, admissionStatus),
       ...injected,
       appendAudit: (repoRoot, event) => {
         auditRows.push(event as unknown as Record<string, unknown>);
@@ -181,6 +185,31 @@ describe('workflow definition routes', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json().error).toBe('idempotency-key-required');
     expect(controlStore.listRuns('operator')).toHaveLength(0);
+  });
+
+  it('refuses a workflow launch before proposal or run side effects when the outbox is degraded', async () => {
+    admissionStatus = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
+    const response = await app.inject({
+      method: 'POST', url: '/api/workflows/research-brief/launch', headers: headers(token),
+      payload: await launchPayload(app, 'research-brief', 'outbox-degraded'),
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ error: 'outbox-degraded' });
+    expect(controlStore.listRuns('operator')).toHaveLength(0);
+    expect(auditRows).toHaveLength(0);
+  });
+
+  it('refuses workflow definition amendments before durable save side effects when the outbox is degraded', async () => {
+    admissionStatus = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
+    for (const url of [
+      '/api/workflows/research-brief/assignment-amendments',
+      '/api/workflows/research-brief/governance-amendments',
+    ]) {
+      const response = await app.inject({ method: 'POST', url, headers: headers(token), payload: {} });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ error: 'outbox-degraded' });
+    }
+    expect(auditRows).toHaveLength(0);
   });
 
   it('launches a definition through the canonical path and stalls at the activation gate', async () => {

@@ -46,6 +46,7 @@ import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import type { activateManagedRootCards } from '../write/workflowRun.ts';
 import type { EventBus } from '../hub/bus.ts';
 import type { quiescence } from '../release/quiescence.ts';
+import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -61,6 +62,8 @@ export interface SurfaceContext {
   coordinationPublication?: CoordinationPublication;
   /** Durable VM spool root used when coordination publication is `outbox`. */
   outboxRoot?: string;
+  /** Admission policy for work that would add to the durable outbox. */
+  admission: (kind: AdmissionKind) => AdmissionDecision;
   /** Dashboard-owned runtime state root; never a repository content path. */
   stateRoot: string;
   /** Minimal, unauthenticated readiness probe. */

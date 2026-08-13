@@ -95,6 +95,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
   const auditOpts = { runGit: ctx.opsGit, now: ctx.now };
 
   scope.post('/api/write/save', { preHandler }, async (req, reply: FastifyReply) => {
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const relpath = str(body.relpath);
@@ -141,6 +143,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
   });
 
   scope.post('/api/write/launch', { preHandler }, async (req, reply: FastifyReply) => {
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     // C7.7 — an OPTIONAL operator-assigned owner. Absent/empty → today's unowned-card path. When present,
@@ -219,6 +223,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
   );
 
   scope.post('/api/write/rerun', { preHandler }, async (req, reply: FastifyReply) => {
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const cardId = str(body.cardId);

@@ -26,6 +26,7 @@ import type { HostOpenRequest, PtyHost, PtySession } from '../pty/host.ts';
 import type { EventBus } from '../hub/bus.ts';
 import type { AttemptIoAppend } from '../control/attemptIo.ts';
 import type { OwnedCard, QueueBridgeOptions } from '../control/queueBridge.ts';
+import { admit } from '../control/admission.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
@@ -449,6 +450,20 @@ describe('write surface — composition chain', () => {
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ error: 'fleet-frozen' });
     expect(audit.rows).toHaveLength(0);
+  });
+
+  it('returns 503 before a new launch when the outbox is degraded, but still accepts STOP', async () => {
+    const degraded = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
+    const runPy = vi.fn(okPy);
+    ({ app } = buildApp({ admission: (kind) => admit(kind, degraded), runPy }));
+    const launch = await app.inject({
+      method: 'POST', url: '/api/write/launch', headers: headers(true),
+      payload: { project: 'kb-ops', action: 'report:self-lint', target: 'orgs/kb-ops/output', riskTier: 'T1' },
+    });
+    expect(launch.statusCode).toBe(503);
+    expect(launch.json()).toMatchObject({ error: 'outbox-degraded' });
+    expect(runPy).not.toHaveBeenCalled();
+    expect((await app.inject({ method: 'POST', url: '/api/write/stop', headers: headers(true), payload: {} })).statusCode).toBe(200);
   });
 
   it('save is refused 503 on preamble failure before any file or git write', async () => {
