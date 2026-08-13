@@ -77,20 +77,9 @@ def _merge(entries):
 
 def dominant_palette(arr):
     """P7's palette policy, deduplicated before free base slots admit accents."""
-    entries = p7._clusters(arr)
+    candidates, entries = p7.palette_candidates(arr)
     if not entries:
         return []
-    ink = p7.ink_rgb(arr)
-    ink_index = min(range(len(entries)), key=lambda index: (
-        float(np.linalg.norm(np.asarray(entries[index]["rgb"], dtype=float) - ink)), entries[index]["rgb"]))
-    candidates = []
-    for index, entry in enumerate(entries):
-        if index == ink_index:
-            continue
-        copied = dict(entry)
-        copied["is_accent"] = (copied["saturation"] >= p7.ACCENT_SATURATION and
-                               copied["coverage"] >= p7.ACCENT_COVERAGE)
-        candidates.append(copied)
     ordered = sorted(candidates, key=lambda entry: (-entry["count"], entry["rgb"]))
     selected = _merge(ordered[:PALETTE_SIZE])
     # Near-duplicate creams may free a top-six slot. Fill those first from the

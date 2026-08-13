@@ -53,23 +53,38 @@ def _clusters(arr, *, clusters=QUANTIZE_CLUSTERS):
     return entries
 
 
-def dominant_palette(arr):
-    """Return top-six clusters plus every saturated, material-coverage accent cluster."""
+def palette_candidates(arr):
+    """Classify clusters once, removing measured ink only when it is not also an accent."""
     entries = _clusters(arr)
     if not entries:
-        return []
+        return [], entries
     measured_ink = ink_rgb(arr)
     ink_index = min(range(len(entries)), key=lambda index: (
         float(np.linalg.norm(np.asarray(entries[index]["rgb"], dtype=float) - measured_ink)),
         entries[index]["rgb"],
     ))
-    non_ink = [entry for index, entry in enumerate(entries) if index != ink_index]
+    candidates = []
+    for index, entry in enumerate(entries):
+        copied = dict(entry)
+        copied["is_accent"] = (copied["saturation"] >= ACCENT_SATURATION and
+                               copied["coverage"] >= ACCENT_COVERAGE)
+        if index == ink_index and not copied["is_accent"]:
+            continue
+        candidates.append(copied)
+    return candidates, entries
+
+
+def dominant_palette(arr):
+    """Return top-six clusters plus every saturated, material-coverage accent cluster."""
+    non_ink, entries = palette_candidates(arr)
+    if not entries:
+        return []
     ordered = sorted(non_ink, key=lambda entry: (-entry["count"], entry["rgb"]))
     dominant = {id(entry) for entry in ordered[:PALETTE_SIZE]}
     chosen = [entry for entry in ordered if id(entry) in dominant or
-              (entry["saturation"] >= ACCENT_SATURATION and entry["coverage"] >= ACCENT_COVERAGE)]
+              entry["is_accent"]]
     return [{"hex": _hex(entry["rgb"]), "coverage": round(entry["coverage"], 6),
-             "is_accent": entry["saturation"] >= ACCENT_SATURATION and entry["coverage"] >= ACCENT_COVERAGE}
+             "is_accent": entry["is_accent"]}
             for entry in chosen]
 
 

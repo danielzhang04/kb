@@ -57,6 +57,10 @@ TRANSPORT_SEED_CEILING = 5
 # --- competed under the never-droppable floor.
 STUDY_SEED_CAP = 5
 REGISTER_SEED_ADDED_BY = "codex_register_policy"
+STYLE_ANCHOR_ADDED_BY = "style_anchor"
+_STYLE_ANCHOR_AUTH = object()
+_STYLE_ANCHOR_AUTH_KEY = "_codex_style_anchor_auth"
+_STYLE_ANCHOR_PATH_KEY = "_codex_style_anchor_path"
 
 # --- §4.6 normalization canvas. (16:9,1K) is VERIFIED MEASURED: all 23 baseline frames in
 # --- scratch-codex-image-engine/gemini-baseline/ are 1376×768 (SKILL.md L130's "~1344×768"
@@ -181,6 +185,33 @@ def with_register_seed(item: dict, seeds: list[str], tile_path: str | None) -> t
     return copied, list(seeds) + [tile], True
 
 
+def with_style_anchor(item: dict, path: str) -> dict:
+    """Append one controlled style anchor after at most four content references.
+
+    The returned item is authorized for exactly one matching final transport path.  This keeps
+    ``CODEX_SEED_CAP`` at four for authored/content seeds while allowing only the style anchor to
+    occupy the optional fifth transport slot.
+    """
+    name = item.get("name", "<unnamed>")
+    supplied = os.fspath(path)
+    if not os.path.isabs(supplied):
+        raise CodexContractError(f"{name}: style anchor path is not absolute: {path!r}")
+    anchor = os.path.realpath(supplied)
+    if not os.path.isfile(anchor):
+        raise CodexContractError(f"{name}: style anchor path is not a file: {anchor}")
+    roles = copy.deepcopy(item.get("seed_roles") or [])
+    if len(roles) > CODEX_SEED_CAP:
+        raise CodexContractError(
+            f"{name}: style anchor can follow at most {CODEX_SEED_CAP} content seeds; "
+            "only the controlled anchor may occupy the fifth slot")
+    copied = dict(item)
+    copied["seed_roles"] = roles + [
+        {"path": anchor, "role": "style-anchor", "character": None}]
+    copied[_STYLE_ANCHOR_AUTH_KEY] = _STYLE_ANCHOR_AUTH
+    copied[_STYLE_ANCHOR_PATH_KEY] = anchor
+    return copied
+
+
 def prepare_seeds(item: dict, seeds: list[str], cap=CODEX_SEED_CAP) -> list[str]:
     """§4.5 + §4.7: canonicalize the spec's content seeds and enforce its doctrine cap."""
     name = item.get("name", "<unnamed>")
@@ -300,7 +331,11 @@ def residual_idiom(text: str) -> list[str]:
 # --- convention is NOT ported: P2b E2 measured it ~4x worse on this engine.
 USE_CASE = "illustration-story"
 ASSET_TYPE = "documentary-style animated video still frame"
-COMPOSED_CHAR_BUDGET = 2200      # P2b E1: 1740 -> 4032 chars was ~6x worse at constant facts
+# P2b measured ~4k thin-prompt detour cost; P8 r1 (2026-08-13) measured 4,169–5,130
+# char contract prompts at 0 redos, ~2.5min walls, best visual quality — 6000 is a
+# sanity bound, not a quality law.
+COMPOSED_CHAR_WARN = 2200
+COMPOSED_CHAR_HARD_LIMIT = 6000
 COMPOSER_FORMATS = ("labeled", "minimal")
 
 CODEX_REGISTER_BLOCK = {
@@ -384,6 +419,45 @@ def quoted_literals(text):
     return out
 
 
+def validate_composed_output(item, reg, composed):
+    """Validate the final composer bytes, whether produced by the built-in or injected composer."""
+    name = item.get("name", "<unnamed>")
+    if not isinstance(composed, str):
+        raise CodexContractError(f"{name}: composer returned non-text output")
+    translated_payload = translate_idiom(resolve_slugs(
+        item.get("payload") or item.get("delta") or "", reg))
+    if translated_payload and translated_payload not in composed:
+        raise CodexContractError(
+            f"{name}: composed output deleted or changed the translated authored payload")
+    if item.get("avoid") and not re.search(r"(?m)^Avoid:\s*\S", composed):
+        raise CodexContractError(f"{name}: composed output is missing the authored Avoid block")
+
+    # P7/P8 carry an explicit allowlist.  Legacy engine items without the field retain their
+    # authored quoted literals as the implicit allowlist until their specs are migrated.
+    allowed = (item.get("lettering_strings") if "lettering_strings" in item
+               else quoted_literals(item.get("payload") or item.get("delta") or ""))
+    allowed = list(allowed or [])
+    for literal in quoted_literals(composed):
+        if literal not in allowed:
+            raise CodexContractError(
+                f"{name}: quoted literal {literal!r} is not on the shot lettering allowlist")
+
+    length = len(composed)
+    if length >= COMPOSED_CHAR_HARD_LIMIT:
+        raise CodexContractError(
+            f"{name}: composed prompt length {length} reaches hard limit "
+            f"{COMPOSED_CHAR_HARD_LIMIT}")
+    if length >= COMPOSED_CHAR_WARN:
+        warnings.warn(
+            f"{name}: composed prompt length {length} is at or above warn threshold "
+            f"{COMPOSED_CHAR_WARN}", RuntimeWarning, stacklevel=2)
+    residual = residual_idiom(composed)
+    if residual:
+        warnings.warn(f"residual staging idiom in composed prompt: {residual}",
+                      RuntimeWarning, stacklevel=2)
+    return residual
+
+
 def input_images_line(seed_roles):
     parts = []
     for i, entry in enumerate(seed_roles or [], start=1):
@@ -432,10 +506,6 @@ def compose_minimal(item, *, reg, canvas, aspect):
     framing = f"{canvas[0]}×{canvas[1]}; {aspect} landscape."
     head += " " + framing
     composed = f"{head}\n\nAvoid: {avoid_text(bool(quotes))}\n"
-    residual = residual_idiom(composed)
-    if residual:
-        warnings.warn(f"residual staging idiom in composed prompt: {residual}",
-                      RuntimeWarning, stacklevel=2)
     return composed
 
 
@@ -464,10 +534,6 @@ def compose_prompt(item, *, reg, canvas, aspect, fmt="labeled"):
     lines.append(f"Constraints: {constraints_text(item)}")
     lines.append(f"Avoid: {avoid_text(bool(quotes))}")
     composed = "\n".join(lines) + "\n"
-    residual = residual_idiom(composed)
-    if residual:
-        warnings.warn(f"residual staging idiom in composed prompt: {residual}",
-                      RuntimeWarning, stacklevel=2)
     return composed
 
 
@@ -1056,8 +1122,6 @@ class RunOptions:
     register_seed_tile: str | None = None
     # Study-only injection point.  When unset, the production composer is used unchanged.
     compose_fn: Callable[[dict, dict, tuple[int, int], str], str] | None = None
-    # Study-only: a dedicated style reference can use the already-enforced transport ceiling.
-    seed_cap_override: int | None = None
 
 
 def run_item(k, item, seeds, opts, session=None):
@@ -1074,17 +1138,26 @@ def run_item(k, item, seeds, opts, session=None):
         _staging_png(k, name)
     except SystemExit as e:
         raise CodexContractError(str(e)) from None
-    residual = residual_idiom(item.get("payload") or "")
     item, seeds, tile_added = with_register_seed(item, seeds or [], opts.register_seed_tile)
-    seed_cap = opts.seed_cap_override
-    if seed_cap is not None and (seed_cap < 0 or seed_cap > TRANSPORT_SEED_CEILING):
-        raise CodexContractError(f"{name}: seed_cap_override must be between 0 and "
-                                 f"{TRANSPORT_SEED_CEILING}")
-    prepared = prepare_seeds(item, seeds, cap=seed_cap if seed_cap is not None
-                             else (STUDY_SEED_CAP if tile_added else CODEX_SEED_CAP))
+    style_added = item.get(_STYLE_ANCHOR_AUTH_KEY) is _STYLE_ANCHOR_AUTH
+    if style_added:
+        if tile_added:
+            raise CodexContractError(f"{name}: controlled style anchor cannot be combined with register seed")
+        anchor = item.get(_STYLE_ANCHOR_PATH_KEY)
+        if not seeds or os.path.realpath(os.fspath(seeds[-1])) != anchor:
+            raise CodexContractError(f"{name}: controlled style anchor must be the final transport seed")
+        roles = item.get("seed_roles") or []
+        if not roles or roles[-1].get("role") != "style-anchor" or \
+                os.path.realpath(os.fspath(roles[-1].get("path", ""))) != anchor:
+            raise CodexContractError(f"{name}: controlled style anchor role/path mismatch")
+        prepared = prepare_seeds(item, seeds[:-1], cap=CODEX_SEED_CAP) + [anchor]
+        assert_transport_seed_ceiling(item, prepared)
+    else:
+        prepared = prepare_seeds(item, seeds, cap=STUDY_SEED_CAP if tile_added else CODEX_SEED_CAP)
     composed = (opts.compose_fn(item, k.reg, canvas, aspect)
                 if opts.compose_fn is not None
                 else compose_prompt(item, reg=k.reg, canvas=canvas, aspect=aspect, fmt=opts.fmt))
+    residual = validate_composed_output(item, k.reg, composed)
     composed_path = os.path.join(composed_prompt_dir(k.staging), f"{name}.txt")
 
     if opts.dry_run:
@@ -1114,7 +1187,8 @@ def run_item(k, item, seeds, opts, session=None):
             row = build_log_row(name=name, meta=meta, composed_path=composed_path,
                                 composed_text=composed, seed_shas=shas, residual=residual,
                                 kit_root=k.kit,
-                                added_by=REGISTER_SEED_ADDED_BY if tile_added else None)
+                                added_by=(STYLE_ANCHOR_ADDED_BY if style_added else
+                                          REGISTER_SEED_ADDED_BY if tile_added else None))
             status = "OK" if published else "SKIP publish (concurrent survivor)"
         except CodexRunError as e:
             meta = {"session_mode": "session" if session else "isolated",

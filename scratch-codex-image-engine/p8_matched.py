@@ -23,6 +23,7 @@ import study_run as sr  # noqa: E402
 REGISTERS_PATH = HERE / "p8-registers.json"
 CONTRACTS_PATH = HERE / "p8-contracts.json"
 TARGET_SHOTS = ("L36", "L50", "L28", "L42", "L32", "L35", "L33", "L27")
+SHOT_SPEC = copy.deepcopy(p7.SHOT_SPEC)
 REPORT_SCHEMA = "p8-results/1"
 CLOSED_INVENTORY = ("The scene contains EXACTLY the elements listed â€” add nothing else: no extra shelving, "
                     "furniture, trays, straps, mechanisms, or props.")
@@ -56,6 +57,11 @@ def load_register_data(path=REGISTERS_PATH):
             raise RuntimeError(f"invalid P8 anchor for {shot}")
         if not register.get("palette") or not register.get("fill_modes"):
             raise RuntimeError(f"invalid P8 palette or fill modes for {shot}")
+    for shot in p7r.TARGET_SHOTS:
+        computed = p7r.choose_anchor(shot, shots)
+        if anchors[shot] != computed:
+            raise RuntimeError(
+                f"P8 anchor mismatch for {shot}: stored={anchors[shot]}, computed={computed}")
     return data
 
 
@@ -66,7 +72,7 @@ def _clauses(label, clauses):
 def compose_matched(item, reg, canvas, aspect, *, register, shot, contracts, style_path, deltas=()):
     """P7 prompt layout with P8's verbatim boss-contract extensions."""
     payload = fc.translate_idiom(fc.resolve_slugs(item.get("payload") or item.get("delta") or "", reg))
-    p7_spec, spec = p7.SHOT_SPEC[shot], contracts["shots"][shot]
+    p7_spec, spec = SHOT_SPEC[shot], contracts["shots"][shot]
     content_roles = [entry for entry in item.get("seed_roles") or [] if entry.get("role") != "style-anchor"]
     content = p7._content_images_line(content_roles)
     style_index = len(content_roles) + 1
@@ -102,7 +108,7 @@ def compose_matched(item, reg, canvas, aspect, *, register, shot, contracts, sty
         *_clauses("Pose", spec["pose"]),
         *_clauses("Emitters", spec["emitters"]),
         *_clauses("Orientation", spec["orientation"]),
-        f"Lettering: {p7_spec['lettering']}",
+        *p7._lettering_lines(p7_spec["lettering_strings"], p7_spec["lettering_treatment"]),
         f"Input images: {'; '.join(part for part in (content, style) if part)}",
         fc.framing_line(aspect, canvas),
         p7._palette_line(shot, register),
@@ -130,10 +136,11 @@ def _compose_for(register, shot, contracts, style_path, deltas):
 def reference_plan(derived, data, shot):
     anchor = data["anchors"][shot]
     style_path = str((p7.BASELINE_DIR / f"{anchor}.png").resolve())
-    roles = list(copy.deepcopy(derived["items"][shot].get("seed_roles") or [])) + [
-        {"path": style_path, "role": "style-anchor", "character": None}]
-    refs = list(derived["seeds"][shot]) + [style_path]
-    return (*p7.trim_references(roles, refs), anchor)
+    roles = list(copy.deepcopy(derived["items"][shot].get("seed_roles") or []))
+    refs = list(derived["seeds"][shot])
+    roles, refs, trims = p7.trim_references(roles, refs, cap=fc.CODEX_SEED_CAP)
+    return (roles + [{"path": style_path, "role": "style-anchor", "character": None}],
+            refs + [style_path], trims, anchor)
 
 
 def make_generate_fn(derived, data, contracts, deltas, *, stats):
@@ -141,19 +148,28 @@ def make_generate_fn(derived, data, contracts, deltas, *, stats):
         shot = cell["shot"]
         item = copy.deepcopy(derived["items"][shot])
         item["name"] = staged_name(cell)
-        item["seed_roles"], refs, trims, _ = reference_plan(derived, data, shot)
-        style_path = next(path for role, path in zip(item["seed_roles"], refs) if role.get("role") == "style-anchor")
+        planned_roles, refs, trims, anchor = reference_plan(derived, data, shot)
+        style_path = refs[-1]
+        item["seed_roles"] = planned_roles[:-1]
+        item["lettering_strings"] = list(SHOT_SPEC[shot]["lettering_strings"])
+        item["avoid"] = True
+        item = fc.with_style_anchor(item, style_path)
         stats["ref_trims"][shot] = trims
         fc.assert_transport_seed_ceiling(item, refs)
         stats["run_item_calls"] += 1
         status, row = fc.run_item(derived["kit"], item, refs, fc.RunOptions(
-            compose_fn=_compose_for(data["shots"][shot], shot, contracts, style_path, deltas),
-            seed_cap_override=fc.TRANSPORT_SEED_CEILING))
+            compose_fn=_compose_for(data["shots"][shot], shot, contracts, style_path, deltas)))
         output = Path(forge._staging_png(derived["kit"], item["name"]))
         if status == "OK":
             stats["subprocess_generations"] += 1
         if row is not None:
             stats["engine_rows"][shot] = row
+        stats["provenance"][staged_name(cell)] = {
+            "anchor": anchor,
+            "refs_used": [{"role": role.get("role"), "path": path}
+                          for role, path in zip(item["seed_roles"], refs)],
+            "ref_trims": copy.deepcopy(trims),
+        }
         if (status == "OK" or status.startswith("SKIP")) and output.is_file():
             return str(output.resolve())
         raise RuntimeError(f"{item['name']}: forge_codex.run_item returned {status}")
@@ -180,6 +196,16 @@ def _load_deltas(path):
     return data
 
 
+def _engine_rows(kit, cells):
+    path = Path(fc.engine_log_path(kit.staging))
+    if not path.is_file():
+        return {}
+    wanted = {staged_name(cell) for cell in cells}
+    return {row["name"]: row for row in
+            (json.loads(line) for line in path.read_text(encoding="utf-8").splitlines())
+            if row.get("name") in wanted}
+
+
 def run_driver(*, results_dir, mode, shots=TARGET_SHOTS, deltas=None, fake_mode="ok", register_path=REGISTERS_PATH):
     results_dir = Path(results_dir).resolve()
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -192,12 +218,26 @@ def run_driver(*, results_dir, mode, shots=TARGET_SHOTS, deltas=None, fake_mode=
     derived["kit"].staging = str((results_dir / "p8-staging").resolve())
     Path(derived["kit"].staging).mkdir(parents=True, exist_ok=True)
     cells = driver_cells(shots, round_number=round_number)
-    stats = {"run_item_calls": 0, "subprocess_generations": 0, "engine_rows": {}, "ref_trims": {}}
+    stats = {"run_item_calls": 0, "subprocess_generations": 0, "engine_rows": {},
+             "ref_trims": {}, "provenance": {}}
     results_path = results_dir / "p8-results.jsonl"
-    summary = sr.run_study(cells=cells, generate_fn=make_generate_fn(derived, data, contracts, deltas, stats=stats),
-                           measure_fn=sm.measure, results_path=str(results_path), budget=sr.Budget(len(cells)), baseline_m1=None)
+    summary = p7.run_banked_study(
+        cells=cells, generate_fn=make_generate_fn(derived, data, contracts, deltas, stats=stats),
+        measure_fn=sm.measure, results_path=results_path, budget=sr.Budget(len(cells)),
+        provenance=stats["provenance"], name_fn=staged_name)
+    wanted = {f"{cell['lever']}|{cell['shot']}|{cell['variant']}|{cell['rep']}" for cell in cells}
+    result_rows = [row for row in sr.load_results(str(results_path))
+                   if f"{row['lever']}|{row['shot']}|{row['variant']}|{row['rep']}" in wanted]
+    engines = _engine_rows(derived["kit"], cells)
+    mismatches = []
+    for row in result_rows:
+        mismatch = p7._seed_evidence_mismatch(
+            row.get("provenance") or {}, engines.get(staged_name(row), {}))
+        if mismatch:
+            mismatches.append({"shot": row["shot"], "variant": row["variant"], **mismatch})
     return {"schema": REPORT_SCHEMA, "mode": mode, "shots": list(shots), "round": round_number,
-            "results_path": str(results_path), "this_run": dict(summary, **stats)}
+            "results_path": str(results_path), "this_run": dict(summary, **stats),
+            "results": result_rows, "provenance_mismatches": mismatches}
 
 
 def main(argv=None):

@@ -770,6 +770,7 @@ def test_composer_warns_for_a_residual_from_a_poisoned_registry_item():
         with warnings.catch_warnings(record=True) as reported:
             warnings.simplefilter("always")
             composed = fc.compose_prompt(item, reg=poisoned, canvas=(1376, 768), aspect="16:9")
+            fc.validate_composed_output(item, poisoned, composed)
     finally:
         fc.residual_idiom = original
 
@@ -945,7 +946,7 @@ def test_brevity_budget_and_no_fact_stated_twice():
     import forge_codex as fc
     for item in (_item_L29(), _item_L26()):
         out = fc.compose_prompt(item, reg=REGISTRY, canvas=(1376, 768), aspect="16:9")
-        assert len(out) <= fc.COMPOSED_CHAR_BUDGET, (item["name"], len(out))
+        assert len(out) < fc.COMPOSED_CHAR_WARN, (item["name"], len(out))
         assert out.count("#241a12") == 1
         assert out.count("clean flat 2.5D vector cartoon") == 1
         assert out.count("#d7402b") == 1
@@ -2463,24 +2464,143 @@ def test_isolated_mode_uses_a_fresh_thread_per_frame():
     assert all(r["session_mode"] == "isolated" and r["turn_index"] == 1 for r in rows)
 
 
-def test_runoptions_study_composer_and_five_reference_cap_are_opt_in_only():
-    fc, k, _tmp, staging, seed = _kit_for_run("ok")
-    item = _runnable_item("P6-override", seed)
-    custom = "P6 custom composer bytes\n"
-    status, row = fc.run_item(
-        k, item, [seed] * 5,
-        fc.RunOptions(dry_run=True, compose_fn=lambda *_args: custom,
-                      seed_cap_override=fc.TRANSPORT_SEED_CEILING))
-    assert status == "DRY" and row is None
-    assert (staging / "_codex" / "prompts" / "P6-override.txt").read_text(encoding="utf-8") == custom
-    assert fc.RunOptions().compose_fn is None and fc.RunOptions().seed_cap_override is None
+def _composed_at_length(fc, item, length):
+    payload = fc.translate_idiom(fc.resolve_slugs(item["payload"], REGISTRY))
+    base = payload + "\nAvoid: x\n"
+    assert len(base) <= length
+    return base + ("x" * (length - len(base)))
+
+
+def test_run_item_runtime_content_cap_defaults_to_four_without_an_override_field():
+    fc, k, _tmp, _staging, seed = _kit_for_run("ok")
+    item = _runnable_item("five-content-seeds", seed)
+    composed = item["payload"] + "\nAvoid: x\n"
+    assert "seed_cap_override" not in fc.RunOptions.__dataclass_fields__
     raised = None
     try:
-        fc.run_item(k, _runnable_item("P6-invalid-cap", seed), [seed],
-                    fc.RunOptions(dry_run=True, seed_cap_override=fc.TRANSPORT_SEED_CEILING + 1))
+        fc.run_item(k, item, [seed] * 5,
+                    fc.RunOptions(dry_run=True, compose_fn=lambda *_args: composed))
     except fc.CodexContractError as exc:
         raised = str(exc)
-    assert raised is not None and "seed_cap_override" in raised
+    assert raised is not None and "CODEX_SEED_CAP=4" in raised
+
+
+def test_with_style_anchor_is_the_only_controlled_fifth_seed_path_and_is_logged():
+    fc, k, tmp, _staging, seed = _kit_for_run("ok")
+    content = [_png(tmp / f"content-{index}.png") for index in range(4)]
+    anchor = _png(tmp / "accepted-style-anchor.png")
+    item = _runnable_item("controlled-style-anchor", seed)
+    item["seed_roles"] = [{"path": path, "role": "figure", "character": f"c{index}"}
+                          for index, path in enumerate(content)]
+    item = fc.with_style_anchor(item, anchor)
+    assert item["seed_roles"][-1] == {
+        "path": os.path.realpath(anchor), "role": "style-anchor", "character": None}
+    status, row = fc.run_item(k, item, content + [anchor], fc.RunOptions())
+    assert status == "OK" and row["added_by"] == "style_anchor"
+    assert list(row["seed_sha256"]) == [*map(os.path.realpath, content), os.path.realpath(anchor)]
+
+
+def test_with_style_anchor_validates_path_and_never_allows_six_total_seeds():
+    import forge_codex as fc
+
+    tmp = Path(tempfile.mkdtemp(prefix="style-anchor-"))
+    anchor = _png(tmp / "anchor.png")
+    item = {"name": "too-many", "seed_roles": [
+        {"path": _png(tmp / f"content-{index}.png"), "role": "figure", "character": None}
+        for index in range(5)]}
+    for bad_path in ("relative.png", str(tmp / "missing.png")):
+        try:
+            fc.with_style_anchor({"name": "bad", "seed_roles": []}, bad_path)
+        except fc.CodexContractError as exc:
+            assert "bad" in str(exc)
+        else:
+            raise AssertionError(f"invalid style anchor accepted: {bad_path}")
+    try:
+        fc.with_style_anchor(item, anchor)
+    except fc.CodexContractError as exc:
+        assert "fifth" in str(exc) or "4 content" in str(exc)
+    else:
+        raise AssertionError("a sixth total seed was accepted")
+
+
+def test_custom_composer_result_gets_residual_warning_and_payload_containment_validation():
+    import warnings
+
+    fc, k, _tmp, _staging, seed = _kit_for_run("ok")
+    item = _runnable_item("custom-validator", seed)
+    translated = fc.translate_idiom(fc.resolve_slugs(item["payload"], k.reg))
+    custom = translated + "\nhe waits in the wings, left of the mark\nAvoid: x\n"
+    with warnings.catch_warnings(record=True) as reported:
+        warnings.simplefilter("always")
+        status, row = fc.run_item(k, item, [seed],
+                                  fc.RunOptions(dry_run=True,
+                                                compose_fn=lambda *_args: custom))
+    assert status == "DRY" and row is None
+    assert any("residual staging idiom" in str(entry.message) for entry in reported)
+
+    try:
+        fc.run_item(k, item, [seed], fc.RunOptions(
+            dry_run=True, compose_fn=lambda *_args: "Avoid: x\n"))
+    except fc.CodexContractError as exc:
+        assert "custom-validator" in str(exc) and "payload" in str(exc)
+    else:
+        raise AssertionError("custom composer was allowed to delete the authored payload")
+
+
+def test_composed_output_budget_warn_and_reject_boundaries_are_exact():
+    import warnings
+    import forge_codex as fc
+
+    item = {"name": "budget-boundary", "payload": "payload.", "seed_roles": []}
+    for length, warns, rejects in ((2199, False, False), (2200, True, False),
+                                   (5999, True, False), (6000, False, True)):
+        composed = _composed_at_length(fc, item, length)
+        with warnings.catch_warnings(record=True) as reported:
+            warnings.simplefilter("always")
+            raised = None
+            try:
+                fc.validate_composed_output(item, REGISTRY, composed)
+            except fc.CodexContractError as exc:
+                raised = str(exc)
+        assert (raised is not None) is rejects, (length, raised)
+        assert any("composed prompt length" in str(entry.message) for entry in reported) is warns
+    assert fc.COMPOSED_CHAR_WARN == 2200 and fc.COMPOSED_CHAR_HARD_LIMIT == 6000
+
+
+def test_composed_output_requires_avoid_block_when_item_carries_avoid_content():
+    import forge_codex as fc
+
+    item = {"name": "avoid-loss", "payload": "payload.", "avoid": ["logos"]}
+    try:
+        fc.validate_composed_output(item, REGISTRY, "payload.\n")
+    except fc.CodexContractError as exc:
+        assert "avoid-loss" in str(exc) and "Avoid" in str(exc)
+    else:
+        raise AssertionError("composer deleted an authored Avoid block")
+
+
+def test_pre_generation_lettering_allowlist_rejects_every_unapproved_quoted_literal():
+    import forge_codex as fc
+
+    item = {"name": "lettering", "payload": "paint the sign", "lettering_strings": ["ONE", "TWO"]}
+    good = ('paint the sign\nText allowlist: text allowed VERBATIM and nothing else: '
+            '"ONE"; "TWO".\nAvoid: x\n')
+    assert fc.validate_composed_output(item, REGISTRY, good) == []
+    for composed, literal in ((good.replace('"TWO".', '"TWO"; "THREE".'), "THREE"),
+                              ('paint the sign\n"SURPRISE"\nAvoid: x\n', "SURPRISE")):
+        try:
+            fc.validate_composed_output(item, REGISTRY, composed)
+        except fc.CodexContractError as exc:
+            assert "lettering" in str(exc) and literal in str(exc)
+        else:
+            raise AssertionError(f"unapproved literal accepted: {literal}")
+    plain = {"name": "no-lettering", "payload": "plain scene", "lettering_strings": []}
+    try:
+        fc.validate_composed_output(plain, REGISTRY, 'plain scene\n"NOPE"\nAvoid: x\n')
+    except fc.CodexContractError as exc:
+        assert "no-lettering" in str(exc) and "NOPE" in str(exc)
+    else:
+        raise AssertionError("non-lettering shot accepted a quoted literal")
 
 
 ALL_TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

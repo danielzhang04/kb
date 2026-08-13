@@ -241,14 +241,13 @@ def make_generate_fn(derived, registers, *, stats):
         shot = cell["shot"]
         item = copy.deepcopy(items[shot])
         item["name"] = staged_name(cell)
-        style_role = {"path": str(STYLE_EXEMPLAR.resolve()), "role": "style-anchor", "character": None}
-        item["seed_roles"] = list(item.get("seed_roles") or []) + [style_role]
-        refs = list(seeds[shot]) + [str(STYLE_EXEMPLAR.resolve())]
+        style_path = str(STYLE_EXEMPLAR.resolve())
+        item = fc.with_style_anchor(item, style_path)
+        refs = list(seeds[shot]) + [style_path]
         fc.assert_transport_seed_ceiling(item, refs)
         stats["run_item_calls"] += 1
         status, row = fc.run_item(kit, item, refs,
-                                  fc.RunOptions(compose_fn=_compose_for(registers[shot]),
-                                                seed_cap_override=fc.TRANSPORT_SEED_CEILING))
+                                  fc.RunOptions(compose_fn=_compose_for(registers[shot])))
         out = Path(forge._staging_png(kit, item["name"]))
         if status == "OK":
             stats["subprocess_generations"] += 1

@@ -20,6 +20,46 @@ def test_small_saturated_patch_is_retained_as_an_accent_cluster():
     assert set(blue[0]) == {"hex", "coverage", "is_accent"}
 
 
+def test_palette_policy_constants_and_accent_coverage_boundary_are_pinned():
+    import p7_register as p7
+
+    assert p7.PALETTE_SIZE == 6
+    assert p7.ACCENT_COVERAGE == 0.003
+    assert p7.sm.DARK_FRACTION == 0.03
+    entries = [
+        {"rgb": (10, 10, 10), "count": 300, "coverage": .03, "saturation": 0},
+        {"rgb": (210, 210, 200), "count": 9401, "coverage": .9401, "saturation": .05},
+        {"rgb": (0, 90, 220), "count": 30, "coverage": .003, "saturation": 1.0},
+        {"rgb": (220, 30, 0), "count": 29, "coverage": .0029, "saturation": 1.0},
+    ]
+    saved_clusters, saved_ink = p7._clusters, p7.ink_rgb
+    p7._clusters = lambda _arr: entries
+    p7.ink_rgb = lambda _arr: np.asarray((10, 10, 10), dtype=float)
+    try:
+        palette = p7.dominant_palette(np.zeros((10, 10, 3), dtype=np.uint8))
+    finally:
+        p7._clusters, p7.ink_rgb = saved_clusters, saved_ink
+    assert any(entry["hex"] == "#005adc" and entry["is_accent"] for entry in palette)
+    assert not any(entry["hex"] == "#dc1e00" and entry["is_accent"] for entry in palette)
+
+
+def test_cluster_removed_as_ink_is_still_retained_when_it_is_a_material_accent():
+    import p7_register as p7
+
+    entries = [
+        {"rgb": (0, 30, 90), "count": 200, "coverage": .02, "saturation": 1.0},
+        {"rgb": (210, 210, 200), "count": 9800, "coverage": .98, "saturation": .05},
+    ]
+    saved_clusters, saved_ink = p7._clusters, p7.ink_rgb
+    p7._clusters = lambda _arr: entries
+    p7.ink_rgb = lambda _arr: np.asarray((0, 30, 90), dtype=float)
+    try:
+        palette = p7.dominant_palette(np.zeros((10, 10, 3), dtype=np.uint8))
+    finally:
+        p7._clusters, p7.ink_rgb = saved_clusters, saved_ink
+    assert any(entry["hex"] == "#001e5a" and entry["is_accent"] for entry in palette)
+
+
 def test_anchor_is_self_excluding_and_prefers_a_warm_neighbour():
     import p7_register as p7
 
@@ -30,6 +70,17 @@ def test_anchor_is_self_excluding_and_prefers_a_warm_neighbour():
     }
     assert p7.choose_anchor("L36", registers) == "L50"
     assert p7.choose_anchor("L50", registers) == "L36"
+
+
+def test_anchor_choice_depends_on_the_half_weight_palette_warmth_term():
+    import p7_register as p7
+
+    registers = {
+        "source": {"ink_hex": "#000000", "palette": [{"hex": "#000000", "coverage": 1.0}]},
+        "ink-only-winner": {"ink_hex": "#010000", "palette": [{"hex": "#640000", "coverage": 1.0}]},
+        "warmth-winner": {"ink_hex": "#020000", "palette": [{"hex": "#000000", "coverage": 1.0}]},
+    }
+    assert p7.choose_anchor("source", registers) == "warmth-winner"
 
 
 ALL_TESTS = [value for name, value in sorted(globals().items()) if name.startswith("test_")]
