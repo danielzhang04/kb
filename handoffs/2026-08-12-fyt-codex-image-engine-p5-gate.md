@@ -46,3 +46,28 @@ https://claude.ai/code/artifact/0c208d02-31ad-424e-9da3-a0b084017226
 ## Done means done
 When Daniel rules: run P5 per the plan §P5 section, then Wave-2 promotion questions
 (register-seed production path) route through spec §10.
+
+---
+
+## UPDATE 2026-08-12 late: STUDY RAN — STOP-AND-ESCALATE, Daniel's ruling owed
+
+Daniel's "Continue" opened the gate; the study ran to completion the same night.
+
+**Result: the ratified floor FAILED on all four metrics.** Codex inks +14..+38 (M1) vs the
+real Gemini baselines' +0.5..+6.2 — the real house register is far cooler than the
+style-bible hex implied; codex is also flatter (M2) and much more palette-concentrated
+(M3). The L1 style tile is the only lever that materially moves ink; not enough. L44
+(single-figure) clears the M1 floor on every lever but fails the M2/M3 bands — no shot
+class clears the full floor.
+
+**Escalation packet (side-by-side board with lightbox, scorecard, two outcomes):**
+https://claude.ai/code/artifact/37967d78-2d98-42ff-8d11-1dddc4232971
+Options per ruling 3 (no post-processing): (a) accept measured difference for a named
+shot class, or (b) PARK the engine — recommended. **No further generation until Daniel
+rules.**
+
+Spend truth: 24 gens + 1 transport re-issue = 25/40 turns, 4.64M input tokens (83%
+cached), ~63 min generation wall, $0 API. Fidelity: 3 mismatch (published+marked), 18
+unverifiable, 3 verified. Full paired table + verdict:
+`.superpowers/sdd/2026-08-11-codex-image-engine/p5-real-results/` in the arc worktree;
+P5 driver committed @ 39731bf.
