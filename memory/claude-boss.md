@@ -303,3 +303,36 @@
 - Fix: WakeGate — wake needs `wake_patience` (3) consecutive frames above threshold; sub-patience runs log "wake spike suppressed (peak …)". Verified live: spikes kept arriving every ~2-3 min, all suppressed, 0 ghost ENGAGED post-restart. Tuning knobs if it recurs: patience 4-5 or wake_threshold 0.6, read peaks off pm2 log.
 - Ops fact: the RUNNING Atlas is a plain (non-git) copy at `kb-worktrees/atlas/atlas` with its own .venv; deploy = copy changed files there + `pm2 restart atlas-worker`. Repo `atlas/` and running copy were identical pre-fix; keep them in sync when merging #120.
 - Diagnosis shortcut: wake-session transcripts in dashboard-ops `orgs/atlas/output/transcripts/` show exactly what STT heard per wake — fastest way to distinguish ghost wakes from real speech.
+
+## 2026-08-13 - Bricks taste-forensics: Phase-3 implementation + G4 mint (boss run)
+- SHIPPED: all 11 approved G2 proposals on claude/bricks-taste-forensics @ 0a3f7a6 (pushed,
+  unmerged): P2 performer-tier rollback (-240 lines), P3 universal asset gate, P4-6 crowd/plate
+  doctrine, P8 compose-from-primitives + card-holds-act, P9 delta face ownership, P10 pose retry,
+  P12 expression veto; P11 proved a NO-OP by diff (era text already restored — the verdict's
+  "record already-restored" clause beat the urge to manufacture edits). 536 tests, whole-branch
+  opus review SHIP after a 6-item line-spec'd fix round. G4 mint: 13/18 verified at 0.78 of the
+  5.00 cap; two real doctrine defects isolated (P8 pose regression, P9 half-landed). Handoff:
+  handoffs/2026-08-13-fyt-bricks-taste-forensics-g4.md.
+- WORKED (the wave's engine): per-cluster fresh opus implementer -> opus adversarial reviewer
+  with LIVE PROBES (not just diff reads) -> scoped fix rounds -> boss commit with explicit paths.
+  Probe-style reviews caught 5 shipping-class defects tests missed: plate-as-parent gate bypass,
+  reference-role retry bypass, Gate-2 row that passed the defect it judged, dual costume
+  instructions in one request, unscoped expression release re-creating the parked-L34 bug.
+- WORKED: reviewer emits line-exact FIX SPECS (file:line, current text, required wording,
+  acceptance) -> one fixer closes all six in a single round with zero interpretation drift.
+- LEARNED (validation slices earn their money): the G4 defects were only visible because the
+  slice had CONTROLS — 4 untouched-prose beats vs 2 re-authored beats made the P8 regression a
+  4/4-vs-0/2 fact instead of a vibe; L46's same-primitive success was the decisive isolate.
+  Design validation slices with controls, not just coverage.
+- LEARNED (agent refusal as signal): the 9a worker refused to stamp "operator-reviewed"
+  provenance as fabrication — right instinct, resolved by making the provenance string TRUTHFUL
+  (boss ruling + actual basis) instead of overriding or skipping. When a worker balks on
+  integrity grounds, fix the artifact's honesty, not the worker.
+- LEARNED (test suites vs live stores): fixtures stamping the PRODUCTION review store (even
+  transiently) make a gate untrustworthy; the fix is structural isolation + an import-time guard
+  + a source-scan test, not cleanup. Check every gate-adjacent suite for live-store writes.
+- LEARNED: worktrees lack gitignored roots (.env) — Kit-root walks and env loading silently
+  resolve to drive root; 8h made it fail-loud; the mint needed Daniel to hand-copy .env (agents
+  must not touch credential files even as symlinks — classifier enforced, correctly).
+- REMAINS: Daniel's G4 ruling (board artifact in boss conversation); P8 candidate fix ruled-on
+  then ~0.16 re-mint; merge + worktree sweep + DELETE the worktree .env copy.
