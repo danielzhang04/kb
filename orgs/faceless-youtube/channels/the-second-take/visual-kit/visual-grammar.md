@@ -241,6 +241,17 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   that literal's clause. Any trailing scene-fact clause after the payload breaks it — state scene facts
   BEFORE the lettered element, never after. A literal the shot merely carries
   under L-1 (a place's owner sign, redrawn) is not that shot's payload and is exempt.
+  **What "LAST" governs OFF the lettering half (adjudicated 2026-08-13).** For an UNLETTERED payload —
+  a staged relation, a punch object — the rule governs the payload's **PROMINENCE, not its literal
+  sentence position**: the payload is stated as its own clause and is never buried mid-prompt behind
+  boilerplate. **A terminal depth/atmosphere clause is a LEGAL close** ("foreground depth from a
+  cropped bench end at the lower-right"): it is a framing fact the generator reads as composition
+  rather than as the shot's instruction, and it is the house template carried by every
+  human-approved frame this channel has shipped. The shape to hunt is therefore a trailing clause
+  that RE-OPENS THE SCENE after the payload — a fresh setting sentence, a new prop inventory, a
+  second staging idea — never the standing depth/palette/light tail. **The lettering half above is
+  unchanged and stays the exception:** a quoted literal still closes its prompt, and lint still
+  HARD-fails a non-delta lettered shot that does not.
 
 ## 3. Composition — a decision, driven by the payload
 

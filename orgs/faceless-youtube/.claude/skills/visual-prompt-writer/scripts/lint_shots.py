@@ -2177,6 +2177,29 @@ _GENERIC_PLURAL_ROLE = re.compile(
 # role list above.
 _IRREGULAR_ROLE = {"foremen": "foreman"}
 
+# "One of the executives brought his own family in at night" names a SINGULAR story-bearer, not a
+# generic plural role: the sentence singles ONE person out of the group, and the tier law then
+# requires that person be CAST - there is no anonymous-foreground tier left to demote him to
+# (`visual-grammar.md` §2). Matching the bare role inside this construction inverted the guard: it
+# demanded mass action for the one beat the script had already made individual, which is the very
+# demotion C-8's own fix direction forbids ("never a demotion of the beat to rear-zone crowd").
+# Two-sided, and deliberately narrow: ONLY this construction is exempt, so a bare "the executives"
+# still refuses an unjustified named lead exactly as before, and a shot casting a lead for a beat
+# the VO keeps plural is still the L100 defect. Measured blast radius on this script: one
+# construction, one shot (L159).
+_SINGLED_OUT_OF_GROUP = re.compile(r"\bone of (?:the|its|their|his|her)\s+$", re.IGNORECASE)
+
+
+def _unsingled_plural_role(vo):
+    """The first generic-plural role in `vo` the sentence has NOT singled one person out of.
+
+    Returns the match (truthy, and carries `.group()` for the message) or None."""
+    for m in _GENERIC_PLURAL_ROLE.finditer(vo):
+        if not _SINGLED_OUT_OF_GROUP.search(vo[:m.start()]):
+            return m
+    return None
+
+
 # --- C-8 action chain: the shared-prop test ----------------------------------
 # The action chain is decided from `vo_text` ONLY - the NARRATION is what continues an
 # action across shots. It is deliberately NOT decided from `still_prompt` idioms: the
@@ -2453,7 +2476,7 @@ def semantic_cast_check(label, shots, id2text, chars, hard):
     for i, sh in enumerate(shots):
         sid = sh.get("id")
         vo = id2text.get(sid, "")
-        plural = _GENERIC_PLURAL_ROLE.search(vo)
+        plural = _unsingled_plural_role(vo)
         if not plural:
             continue
         prompt = sh.get("still_prompt") or ""

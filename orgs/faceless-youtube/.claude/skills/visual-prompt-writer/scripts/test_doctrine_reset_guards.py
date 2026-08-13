@@ -1302,3 +1302,38 @@ def test_e2e_an_unchained_same_place_continuation_fails():
     assert run(_chain_file()) == 1                                  # unchained continuation
     assert run(_chain_file(stage="cabinet", stage_role="base")) == 0   # a chain declared
     assert run(_chain_file(hard_cut=True)) == 0                     # or an explicit hard cut
+
+
+def test_semantic_cast_one_of_the_role_is_a_singular_story_bearer():
+    """The "one of the <role>" construction singles ONE person out of a group, so the beat is
+    individual and the tier law requires it be CAST - there is no anonymous-foreground tier to
+    demote him to. Real prose: bricks-fresh L159, the only shot in that script that hits it."""
+    shots = [{"id": "L159", "still_prompt": "`brick-foreman` (`expr-worried`) tapes a carton shut "
+              "under one clip lamp."}]
+    hard = []
+    L.semantic_cast_check("lf", shots,
+                          {"L159": "One of the executives even brought his own family"},
+                          CHARS, hard)
+    assert hard == [], hard
+
+
+def test_semantic_cast_bare_plural_role_still_refuses_a_named_lead():
+    """The other side of the same fix: exempting "one of the executives" must not exempt a BARE
+    plural role, which is still the L100 defect."""
+    shots = [{"id": "L160", "still_prompt": "`brick-foreman` (`expr-worried`) tapes a carton shut."}]
+    hard = []
+    L.semantic_cast_check("lf", shots, {"L160": "The executives packed the boxes themselves"},
+                          CHARS, hard)
+    assert len(hard) == 1 and "brick-foreman" in hard[0], hard
+
+
+def test_semantic_cast_one_of_the_exemption_is_positional_not_global():
+    """Narrowness: a sentence that singles one person out of ONE group and still names a SECOND
+    group generically is judged on the second group."""
+    shots = [{"id": "L161", "still_prompt": "`brick-foreman` (`expr-deadpan`) shrugs at camera."}]
+    hard = []
+    L.semantic_cast_check("lf", shots,
+                          {"L161": "One of the executives told the accountants to sign"},
+                          CHARS, hard)
+    assert len(hard) == 1 and "accountants" in hard[0], hard
+

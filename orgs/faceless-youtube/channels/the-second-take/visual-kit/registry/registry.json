@@ -103,6 +103,48 @@
       "head_tone": "#f4d5b9",
       "costume": "PINNED canonical outfit: steel-grey three-piece suit (jacket, matching waistcoat, trousers) over a white shirt with a grey tie, ONE gold tie clip (its single identity tag), brown shoes; swept silver-grey hair, clean-shaven, lean build. No spectacles, no pocket square. Renders in this unless a shot authors a change.",
       "base": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png"
+    },
+    "drive-maker": {
+      "role": "The hard-drive TRADE personified — the industry as an actor, carrying the picks-and-shovels beats before MiniScribe is disclosed (L18-L21), and, on a boss-accepted ruling, doubling as the rival buyer Maxtor at L233/L234 ~200 shots later. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L18-L21, L233, L234.",
+      "head_tone": "#dba97d",
+      "costume": "PINNED canonical outfit: brown knee-length warehouse coat worn open over a plain collarless shirt, a flat cap, mid-brown trousers and work boots; short sandy hair, wiry build. The breast pocket is left plain and the collar open. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png"
+    },
+    "bond-investor": {
+      "role": "The MiniScribe BONDHOLDER personified — the retail investor who bought on the fake numbers, sues, wins the headline verdict, watches it evaporate and collects a quarter. Carries the final act's human cost. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L194, L195, L197, L199, L209, L210, L212, L237.",
+      "head_tone": "#f0d3b4",
+      "costume": "PINNED canonical outfit: fawn knitted cardigan over an open-collar shirt, brown corduroy trousers, tartan slippers; thin grey hair combed over, wire-rimmed spectacles, slight build. The slippers are load-bearing — later beats play on him never having changed out of them. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/bond-investor/bond-investor.png"
+    },
+    "return-customer": {
+      "role": "The COMPLICIT CUSTOMER personified — the distributor who agreed in advance to leave the pallets shrink-wrapped and mail them back, so the same bricks counted twice. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L132, L133, L134, L136.",
+      "head_tone": "#b07f55",
+      "costume": "PINNED canonical outfit: navy quilted delivery coat with the breast patch left plain and unlettered, dark trousers, heavy boots, a knitted navy beanie pushed back; dark beard, broad build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png"
+    },
+    "brick-co-seller": {
+      "role": "The Colorado Brick Company personified — sells the 26,000 bricks and is the story's last laugh, the one party that came out ahead. PLANNED at VPW step 3a 2026-08-13, not yet minted (was named-but-unminted in the 2026-08-06 file). Appears L115, L239, L240.",
+      "head_tone": "#c98a5c",
+      "costume": "PINNED canonical outfit: dusty tan work shirt with the sleeves rolled, a heavy canvas apron, a wide-brimmed straw hat worn square, dark work trousers and boots; weathered face, greying moustache. Renders in this unless a shot authors a change (L239 deliberately pushes the hat back).",
+      "base": "channels/the-second-take/visual-kit/refs/brick-co-seller/brick-co-seller.png"
+    },
+    "tv-chef": {
+      "role": "A GENERIC television kitchen-rescue host — the archetype the script's Gordon Ramsay aside invokes, staged so Wiles can occupy the identical frame one cut later. NEVER a likeness of the real named cook (imagery policy: no depiction of a real named person). PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L55, L56, L60.",
+      "head_tone": "#f4d9c0",
+      "costume": "PINNED canonical outfit: double-breasted white chef's jacket with the sleeves shoved to the elbow, a mid-blue apron tied at the waist, dark checked trousers; cropped fair hair, heavy build, bare-headed. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/tv-chef/tv-chef.png"
+    },
+    "trial-judge": {
+      "role": "The trial JUDGE — throws the $550M verdict out days after the jury returned it, the video's biggest reversal. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L207, L208.",
+      "head_tone": "#e8c9a8",
+      "costume": "PINNED canonical outfit: black judicial robe over a white wing collar, half-moon reading spectacles low on the nose; close-cropped white hair, jowly build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/trial-judge/trial-judge.png"
+    },
+    "hr-officer": {
+      "role": "HR personified — the one force that actually beat the fraud, and the withheld peak's punchline. The cast's only woman. PLANNED at VPW step 3a 2026-08-13, not yet minted. Appears L243.",
+      "head_tone": "#e0b48d",
+      "costume": "PINNED canonical outfit: rust-red knitted cardigan over a cream blouse, a long tweed skirt, flat shoes; dark hair pinned up, reading spectacles on a chain, slight build. Renders in this unless a shot authors a change.",
+      "base": "channels/the-second-take/visual-kit/refs/hr-officer/hr-officer.png"
     }
   },
   "assets": [

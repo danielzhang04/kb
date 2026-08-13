@@ -241,13 +241,19 @@ def test_the_unregistered_report_is_a_message_and_never_a_refusal():
 
 
 def test_an_unregistered_character_shaped_slug_is_reported_too():
-    """The live L115/L239/L240 case: a cast member authored before it was ever minted. Nothing
-    else in the pipeline can see it — it is not a primitive, so no primitive law reaches it."""
+    """A cast member authored before it was ever minted. Nothing else in the pipeline can see it —
+    it is not a primitive, so no primitive law reaches it.
+
+    The original fixture used `brick-co-seller`, the live L115/L239/L240 case. That slug was given
+    a `characters{}` PLAN ROW on 2026-08-13 (with the other six bricks-fresh mints), so it is no
+    longer unregistered and now resolves down the missing-canonical path instead — which is the
+    POINT of that change, and exactly why this test needs an example that is still genuinely absent
+    from the registry. The assertion and the behaviour under test are unchanged."""
     reqs = _batch([
         {"id": "L115", "still_prompt":
-            "`brick-co-seller` leans over the counter beside `terry-johnson`, `expr-delighted`."},
+            "`warehouse-clerk` leans over the counter beside `terry-johnson`, `expr-delighted`."},
     ])
-    assert "brick-co-seller" in reqs["L115"]["why"], reqs["L115"]["why"]
+    assert "warehouse-clerk" in reqs["L115"]["why"], reqs["L115"]["why"]
 
 
 def test_a_registered_non_primitive_slug_is_not_reported_as_unregistered():
