@@ -34,6 +34,7 @@ import type { JsonObject, RunDetail } from './types.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
 import { commitPreparedCoordination, defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
+import type { CoordinationPublication } from '../write/outbox.ts';
 
 export class QueueBridgeError extends Error {}
 
@@ -766,7 +767,7 @@ async function defaultReconcileTriggerCard(ctx: SurfaceContext, card: OwnedCard,
   const runPy = ctx.runPy ?? defaultPyRunner;
   const runGit = ctx.opsGit ?? defaultGitRunner;
   await withOpsTransaction(async () => {
-    await prepareCoordination(ctx.repoRoot, runGit);
+    await prepareCoordination(ctx.repoRoot, runGit, ctx.coordinationPublication, ctx.outboxRoot);
     const res = runPy(ctx.repoRoot, QUEUE_BRIDGE_RECONCILE_SCRIPT, JSON.stringify({ cardId: card.id, runRef }));
     if (res.exitCode !== 0) {
       throw new QueueBridgeError(`trigger-card reconciliation failed: ${res.stderr.trim() || res.stdout.trim() || '(no output)'}`);
@@ -776,6 +777,8 @@ async function defaultReconcileTriggerCard(ctx: SurfaceContext, card: OwnedCard,
       runGit,
       alsoStage: [card.path],
       message: `chore(queue): reconcile bridged trigger card ${card.id} -> ${runRef}`,
+      publication: ctx.coordinationPublication,
+      outboxRoot: ctx.outboxRoot,
     });
   });
 }
@@ -877,6 +880,8 @@ export interface SettleFleetLedgerDeps {
   runPreamble?: PreambleRunner;
   /** Ops-checkout git seam (D2.5). Injected for hermetic tests; defaults to the shared async runner. */
   opsGit?: GitRunner;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 export interface SettleFleetLedgerInput {
@@ -927,6 +932,8 @@ export async function settleFleetCostLedger(deps: SettleFleetLedgerDeps, input: 
       alsoStage: rest,
       message: `chore(ledgers): settle fleet cost rows for ${input.runRef}`,
       maxRetryPushes: 1,
+      publication: deps.publication,
+      outboxRoot: deps.outboxRoot,
     });
   }
   return { emitted, blocked: false };
@@ -956,6 +963,8 @@ export interface SettleRunLedgerDeps {
   runPreamble?: PreambleRunner;
   /** Ops-checkout git seam (D2.5). Injected for hermetic tests; defaults to the shared async runner. */
   opsGit?: GitRunner;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 export interface SettleRunLedgerInput {
@@ -994,7 +1003,14 @@ export async function settleFleetLedgerForRun(deps: SettleRunLedgerDeps, input: 
   if (!TERMINAL_RUN_STATES.includes(got.value.run.state)) return { settled: false, emitted: 0, blocked: false };
   const stages = collectTerminalStageCosts(got.value, input.readUsageMicros ?? ZERO_USAGE_MICROS);
   const res = await settleFleetCostLedger(
-    { repoRoot: deps.repoRoot, runPy: deps.runPy, runPreamble: deps.runPreamble, opsGit: deps.opsGit },
+    {
+      repoRoot: deps.repoRoot,
+      runPy: deps.runPy,
+      runPreamble: deps.runPreamble,
+      opsGit: deps.opsGit,
+      publication: deps.publication,
+      outboxRoot: deps.outboxRoot,
+    },
     { subject, runRef: input.runRef, stages },
   );
   return { settled: !res.blocked, emitted: res.emitted, blocked: res.blocked };

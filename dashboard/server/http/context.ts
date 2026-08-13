@@ -17,6 +17,7 @@ import type { WebAuthnCredential } from '@simplewebauthn/server';
 import { appendAudit as realAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow, OpsGitRunner } from '../audit/log.ts';
 import type { GitRunner, PrOpener } from '../write/branch.ts';
+import type { CoordinationPublication } from '../write/outbox.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { VibeSpawner } from '../vibe/session.ts';
@@ -56,6 +57,10 @@ export type AppendAuditLocalFn = (repoRoot: string, event: AuditEvent, now?: () 
 export interface SurfaceContext {
   /** Canonical ops worktree used for live reads and coordination writes. */
   repoRoot: string;
+  /** Coordination publication is resolved once at the HTTP composition root. */
+  coordinationPublication?: CoordinationPublication;
+  /** Durable VM spool root used when coordination publication is `outbox`. */
+  outboxRoot?: string;
   /** Dashboard-owned runtime state root; never a repository content path. */
   stateRoot: string;
   /** Minimal, unauthenticated readiness probe. */
@@ -164,7 +169,12 @@ export interface SurfaceContext {
 
 /** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */
 export function auditFn(ctx: SurfaceContext): AppendAuditFn {
-  return ctx.appendAudit ?? realAppendAudit;
+  if (ctx.appendAudit) return ctx.appendAudit;
+  return (repoRoot, event, options = {}) => realAppendAudit(repoRoot, event, {
+    ...options,
+    publication: ctx.coordinationPublication,
+    outboxRoot: ctx.outboxRoot,
+  });
 }
 
 /**

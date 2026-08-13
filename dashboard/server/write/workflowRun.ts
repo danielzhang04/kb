@@ -20,6 +20,7 @@ import {
 } from './branch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
 import { pushOpsWithReconcile } from './opsPushRetry.ts';
+import type { CoordinationPublication } from './outbox.ts';
 import { pythonFailureResult, runPythonSync } from '../runtime/python.ts';
 
 export const MAX_WORKFLOW_STAGES = 32;
@@ -215,6 +216,8 @@ export interface ManagedRootActivationOptions {
   reassertAfterReconcile?: () => void | Promise<void>;
   /** Remotely prove every terminal root before a claim or queue mutation. */
   verifyCompletedRoots?: (input: { runRef: string; cardRefs: string[] }) => Promise<void>;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 /**
@@ -239,7 +242,7 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
   const runGit = options.runGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
   return withOpsTransaction(async () => {
-  await prepareCoordination(options.repoRoot, runGit);
+  await prepareCoordination(options.repoRoot, runGit, options.publication, options.outboxRoot);
   const staged = (await runGit(options.repoRoot, ['diff', '--cached', '--name-only', '-z']))
     .split('\0').map((path) => path.trim()).filter(Boolean);
   if (staged.length > 0) throw new Error(`managed root activation refuses dirty index: ${staged.join(', ')}`);
@@ -290,17 +293,21 @@ export async function activateManagedRootCards(options: ManagedRootActivationOpt
       // policy still throws. Never `authorizeAfterPrepare` here: that half emits the T3 authorize audit
       // row and takes the activation claim, and two lost races would triple both for one act.
       onReconciled: reassertAfterReconcile,
+      publication: options.publication,
+      outboxRoot: options.outboxRoot,
     });
   } else {
     // An idempotent replay still proves the committed canonical branch reached the remote. Its reconcile
     // pulls, so it carries the same checkout guard the commit path uses — an unproven checkout must
     // never be rebased (2026-07-30 jam class).
-    await pushOpsWithReconcile({
-      repoRoot: options.repoRoot,
-      runGit,
-      beforeReconcile: () => assertCoordinationCheckout(options.repoRoot, runGit),
-      onReconciled: reassertAfterReconcile,
-    });
+    if ((options.publication ?? 'direct') === 'direct') {
+      await pushOpsWithReconcile({
+        repoRoot: options.repoRoot,
+        runGit,
+        beforeReconcile: () => assertCoordinationCheckout(options.repoRoot, runGit),
+        onReconciled: reassertAfterReconcile,
+      });
+    }
   }
   for (const path of cardPaths) {
     const committed = (await runGit(options.repoRoot, ['show', `HEAD:${path}`])).replace(/\r\n?/g, '\n');

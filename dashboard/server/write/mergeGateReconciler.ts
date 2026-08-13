@@ -24,6 +24,7 @@ import type { CardMutationOp } from './cardRespond.ts';
 import type { PyRunner } from './launch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
 import { commitPreparedCoordination, defaultGitRunner, prepareCoordination } from './branch.ts';
+import type { CoordinationPublication } from './outbox.ts';
 import type { GitRunner } from './branch.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
 import type { AuditEvent, AuditRow } from '../audit/log.ts';
@@ -102,6 +103,8 @@ export interface ReconcileDeps {
   now?: () => Date;
   /** Fresh Plane-A snapshot source; default {@link indexRepo}. */
   indexRepo?: (repoRoot: string) => PlaneAIndex;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 /**
@@ -170,7 +173,7 @@ export async function reconcileMergeGates(deps: ReconcileDeps): Promise<{ closed
         const result = await execute(op, {
           repoRoot: deps.repoRoot,
           runPy: deps.runPy,
-          prepareWrite: deps.prepareWrite ?? ((repoRoot) => prepareCoordination(repoRoot, opsGit)),
+          prepareWrite: deps.prepareWrite ?? ((repoRoot) => prepareCoordination(repoRoot, opsGit, deps.publication, deps.outboxRoot)),
         });
         appendLocal(deps.repoRoot, { action: 'merge-gate-reconcile', cardId, result: 'done', detail: { prNumber, disposition } }, deps.now);
         const [first, ...rest] = result.paths;
@@ -179,6 +182,8 @@ export async function reconcileMergeGates(deps: ReconcileDeps): Promise<{ closed
           runGit: opsGit,
           alsoStage: [...rest, AUDIT_REL_PATH],
           message: `chore(queue): reconcile merge gate ${cardId} (PR #${prNumber} ${disposition})`,
+          publication: deps.publication,
+          outboxRoot: deps.outboxRoot,
         });
       });
       closed.push(cardId);

@@ -51,6 +51,8 @@ import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGat
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import { quiescence } from '../release/quiescence.ts';
 import { serviceCgroupChildCount } from '../release/serviceCgroup.ts';
+import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
+import { resolveCoordinationPublication } from '../write/outbox.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -117,6 +119,9 @@ export function makeSurfaceContext(
 ): SurfaceContext {
   const sessionConfig = overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() };
   const repoRoot = overrides.repoRoot ?? resolveRepoRoot();
+  const coordinationPublication = overrides.coordinationPublication
+    ?? resolveCoordinationPublication(activation.env as NodeJS.ProcessEnv | undefined);
+  const outboxRoot = overrides.outboxRoot ?? '/var/lib/kb/state/outbox';
   const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
   const controlStore = overrides.controlStore ?? createFileControlPlaneStore(stateRoot);
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
@@ -153,6 +158,8 @@ export function makeSurfaceContext(
   let ctx!: SurfaceContext;
   ctx = {
     repoRoot,
+    coordinationPublication,
+    outboxRoot,
     stateRoot,
     readiness: overrides.readiness ?? (async () => {
       const activation = ctx.executionLatch?.snapshot();
@@ -302,6 +309,16 @@ export function makeSurfaceContext(
 
 /** Register the governed write surface (auth + write + composer + approvals) as one guarded child scope. */
 export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext = makeSurfaceContext()): void {
+  app.addHook('onReady', async () => {
+    if (ctx.coordinationPublication === 'outbox') {
+      await prepareCoordination(
+        ctx.repoRoot,
+        ctx.opsGit ?? defaultGitRunner,
+        ctx.coordinationPublication,
+        ctx.outboxRoot,
+      );
+    }
+  });
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
   // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
   app.addHook('preClose', async () => {

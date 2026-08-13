@@ -34,6 +34,7 @@ def test_bootstrap_stops_old_service_before_clone_and_disables_remotes(tmp_path,
     assert clone_index > 0
     assert ["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "origin", "disabled://desktop-promotion-only"] in commands
     assert ["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "--push", "origin", "disabled://desktop-promotion-only"] in commands
+    assert ["git", "-C", "/var/lib/kb/ops", "update-ref", "refs/kb-outbox/spooled", "HEAD"] in commands
     assert ["install", "-d", "-o", "root", "-g", "root", "-m", "0700", "/var/lib/kb-release-staging"] in commands
     assert ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/opt/kb-releases"] in commands
     assert not any(command[:6] == ["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard"] and command[-1] == "/opt/kb-releases" for command in commands)

@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   classifyTarget,
   routeWrite,
@@ -60,6 +63,66 @@ describe('publishPreparedCoordinationCommit', () => {
   const settlement = 'a'.repeat(40);
   const remote = 'b'.repeat(40);
   const paths = ['ledgers/audit/dashboard-audit.ndjson', 'queue/done/idea.md', 'queue/working/story.md'];
+
+  it('spools a prepared commit without fetching or pushing in outbox mode', async () => {
+    const parent = 'c'.repeat(40);
+    const calls: string[][] = [];
+    const outboxRoot = mkdtempSync(join(tmpdir(), 'prepared-outbox-'));
+    const runner: GitRunner = async (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command === 'rev-parse --verify refs/kb-outbox/spooled') return `${parent}\n`;
+      if (command === `rev-list --reverse ${parent}..HEAD`) return `${settlement}\n`;
+      if (command === `rev-list --parents -n 1 ${settlement}`) return `${settlement} ${parent}\n`;
+      if (args[0] === 'diff-tree') return `${paths.join('\0')}\0`;
+      if (args[0] === 'bundle') { writeFileSync(args[2], 'bundle'); return ''; }
+      if (args[0] === 'update-ref') return '';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+
+    await expect(publishPreparedCoordinationCommit('/fake/repo', settlement, {
+      runGit: runner,
+      relpaths: paths,
+      publication: 'outbox',
+      outboxRoot,
+    })).resolves.toBe(settlement);
+    expect(calls.some((args) => args[0] === 'fetch' || args[0] === 'pull' || args[0] === 'push')).toBe(false);
+    expect(calls).toContainEqual(['update-ref', 'refs/kb-outbox/spooled', settlement, parent]);
+  });
+
+  it('reports an outbox recovery failure after the publication boundary as durability unknown', async () => {
+    const parent = 'c'.repeat(40);
+    const calls: string[][] = [];
+    const outboxRoot = mkdtempSync(join(tmpdir(), 'published-outbox-error-'));
+    const runner: GitRunner = async (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z' || command.startsWith('status ')) return '';
+      if (command === 'rev-parse HEAD') return `${settlement}\n`;
+      if (command === 'rev-parse --verify refs/kb-outbox/spooled') return `${parent}\n`;
+      if (command === `rev-list --reverse ${parent}..HEAD`) return `${settlement}\n`;
+      if (command === `rev-list --parents -n 1 ${settlement}`) return `${settlement} ${parent}\n`;
+      if (args[0] === 'diff-tree') return `${paths.join('\0')}\0`;
+      if (args[0] === 'update-ref') return '';
+      if (args[0] === 'bundle') throw new Error('outbox is full');
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+
+    const failure = await publishPreparedCoordinationCommit('/fake/repo', settlement, {
+      runGit: runner,
+      relpaths: paths,
+      publication: 'outbox',
+      outboxRoot,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(PublishedCoordinationCommitError);
+    expect((failure as PublishedCoordinationCommitError).commit).toBe(settlement);
+    expect(calls.some((args) => args[0] === 'reset')).toBe(false);
+  });
 
   it('does not return a locally committed settlement until origin/ops proves it reachable', async () => {
     const calls: string[][] = [];
@@ -464,6 +527,70 @@ describe('branch denylist — durable content NEVER pushes to main/ops (defense 
 });
 
 describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, audit)', async () => {
+  it('outbox preparation never fetches, pulls, or pushes', async () => {
+    const calls: string[][] = [];
+    const runner: GitRunner = async (_root, args) => {
+      calls.push(args);
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'ops\n';
+      if (args.join(' ') === 'rev-parse --verify refs/kb-outbox/spooled') return `${'a'.repeat(40)}\n`;
+      if (args[0] === 'rev-list') return '';
+      if (args[0] === 'diff') return '';
+      return '';
+    };
+    await prepareCoordination('/fake/repo', runner, 'outbox', '/spool');
+    expect(calls.flat()).not.toEqual(expect.arrayContaining(['fetch', 'pull', 'push']));
+  });
+
+  it('recovers before a prepared write, then spools the new commit without remote publication', async () => {
+    const parent = 'a'.repeat(40);
+    const commit = 'b'.repeat(40);
+    const relpath = 'queue/inbox/card.md';
+    const outboxRoot = mkdtempSync(join(tmpdir(), 'commit-outbox-'));
+    const calls: string[][] = [];
+    let committed = false;
+    const runner: GitRunner = async (_root, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'rev-parse --verify refs/kb-outbox/spooled') return `${parent}\n`;
+      if (command === `rev-list --reverse ${parent}..HEAD`) return committed ? `${commit}\n` : '';
+      if (command === 'diff --cached --name-only -z') return '';
+      if (args[0] === 'add') return '';
+      if (args[0] === 'commit') { committed = true; return ''; }
+      if (command === 'rev-parse HEAD') return `${commit}\n`;
+      if (command === `rev-list --parents -n 1 ${commit}`) return `${commit} ${parent}\n`;
+      if (args[0] === 'diff-tree') return `${relpath}\0`;
+      if (args[0] === 'bundle') { writeFileSync(args[2], 'bundle'); return ''; }
+      if (args[0] === 'update-ref') return '';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+
+    await commitPreparedCoordination('/fake/repo', relpath, {
+      runGit: runner,
+      publication: 'outbox',
+      outboxRoot,
+    });
+
+    expect(calls.some((args) => ['fetch', 'pull', 'push'].includes(args[0]))).toBe(false);
+    expect(calls).toContainEqual(['update-ref', 'refs/kb-outbox/spooled', commit, parent]);
+  });
+
+  it('refuses a non-coordination path before creating an outbox commit', async () => {
+    const calls: string[][] = [];
+    const runner: GitRunner = async (_root, args) => {
+      calls.push(args);
+      if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      throw new Error(`unexpected git invocation: ${args.join(' ')}`);
+    };
+
+    await expect(commitPreparedCoordination('/fake/repo', 'docs/not-coordination.md', {
+      runGit: runner,
+      publication: 'outbox',
+      outboxRoot: '/spool',
+    })).rejects.toThrow('outbox refuses a non-coordination path: docs/not-coordination.md');
+    expect(calls).toEqual([['rev-parse', '--abbrev-ref', 'HEAD']]);
+  });
+
   it.each([
     'memory/codex-worker.md',
     'dashboards/executive.md',

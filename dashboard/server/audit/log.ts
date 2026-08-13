@@ -21,6 +21,8 @@ import { dirname, join } from 'node:path';
 import { createAsyncGitRunner, resolveCheckedOutBranch, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
+import { isCoordinationPath } from '../write/branch.ts';
+import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
 
 /** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. Widened
  *  to allow a `Promise` so the async default coexists with synchronous test fakes. Shared, unified type. */
@@ -95,6 +97,8 @@ export interface CommitAuditOptions {
   message?: string;
   /** How many extra push attempts (each preceded by a reconciling `pull --rebase`) after the first. */
   maxRetryPushes?: number;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 /**
@@ -120,21 +124,39 @@ export async function commitAuditToOps(
   // working tree is dirty and a plain `pull --rebase` aborts ("cannot pull with rebase: You have unstaged
   // changes"). Autostash shelves the pending row (and any other unstaged change in this shared checkout),
   // rebases onto origin/ops, then restores it — so only the FIRST write ever succeeded before this.
-  await runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
+  if ((options.publication ?? 'direct') === 'outbox') {
+    await recoverUnspooledCoordinationCommits({
+      repoRoot,
+      spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+      runGit,
+      isCoordinationPath,
+    });
+  } else {
+    await runGit(repoRoot, ['pull', '--rebase', '--autostash', 'origin', 'ops']);
+  }
   await runGit(repoRoot, ['add', '--', AUDIT_REL_PATH]);
   await runGit(repoRoot, ['commit', '-m', message, '--only', '--', AUDIT_REL_PATH]);
 
   // Push; a push rejected because another ops writer got there first means re-read state (pull --rebase)
   // and retry, bounded (`write/opsPushRetry.ts`). The append above already happened exactly once — only
   // the push step is retried, so a retry never duplicates a row.
-  await pushOpsWithReconcile({
-    repoRoot,
-    runGit,
-    maxRetryPushes,
-    // `--autostash` for the same reason the pre-commit pull above needs it: this shared checkout may
-    // hold another writer's unstaged work, and a plain `pull --rebase` refuses to run over it.
-    reconcileArgs: ['pull', '--rebase', '--autostash', 'origin', 'ops'],
-  });
+  if ((options.publication ?? 'direct') === 'outbox') {
+    await recoverUnspooledCoordinationCommits({
+      repoRoot,
+      spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+      runGit,
+      isCoordinationPath,
+    });
+  } else {
+    await pushOpsWithReconcile({
+      repoRoot,
+      runGit,
+      maxRetryPushes,
+      // `--autostash` for the same reason the pre-commit pull above needs it: this shared checkout may
+      // hold another writer's unstaged work, and a plain `pull --rebase` refuses to run over it.
+      reconcileArgs: ['pull', '--rebase', '--autostash', 'origin', 'ops'],
+    });
+  }
   });
 }
 
@@ -143,6 +165,8 @@ export interface AppendAuditOptions {
   maxRetryPushes?: number;
   message?: string;
   now?: () => Date;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 /** The one branch coordination writes are ever allowed to run git against (CLAUDE.md's Branch rules). */
@@ -196,6 +220,8 @@ export async function appendAudit(
     await commitAuditToOps(repoRoot, options.runGit ?? defaultOpsGitRunner, {
       message: options.message ?? `chore(audit): ${event.action}${event.cardId ? ` ${event.cardId}` : ''}`,
       maxRetryPushes: options.maxRetryPushes,
+      publication: options.publication,
+      outboxRoot: options.outboxRoot,
     });
     return { ...row, synced: true };
   });

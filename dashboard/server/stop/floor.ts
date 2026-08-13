@@ -42,6 +42,8 @@ import type { SessionClaims, SessionConfig } from '../auth/session.ts';
 import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
+import { isCoordinationPath } from '../write/branch.ts';
+import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
 import { pythonFailureResult, runPythonSync } from '../runtime/python.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
@@ -136,12 +138,22 @@ async function commitToOps(
   message: string,
   runGit: OpsGitRunner,
   maxRetryPushes = 3,
+  publication: CoordinationPublication = 'direct',
+  outboxRoot = '/var/lib/kb/state/outbox',
 ): Promise<void> {
-  await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  if (publication === 'outbox') {
+    await recoverUnspooledCoordinationCommits({ repoRoot, spoolRoot: outboxRoot, runGit, isCoordinationPath });
+  } else {
+    await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  }
   await runGit(repoRoot, ['add', '--', ...relPaths]);
   await runGit(repoRoot, ['commit', '-m', message]);
 
-  await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
+  if (publication === 'outbox') {
+    await recoverUnspooledCoordinationCommits({ repoRoot, spoolRoot: outboxRoot, runGit, isCoordinationPath });
+  } else {
+    await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
+  }
 }
 
 /** Injectable dependencies shared by every primitive in this module. Every field is hermetic-test-safe. */
@@ -149,6 +161,8 @@ export interface FloorDeps {
   repoRoot: string;
   runPy?: PyRunner;
   runGit?: OpsGitRunner;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 export type WriteStopOutcome = { ok: true; path: string } | Unauthenticated;
@@ -210,6 +224,9 @@ export async function requestStop(cardId: string, session: SessionInput, deps: F
       [path],
       `chore(stop): ${id} working -> stop-requested -> halting`,
       deps.runGit ?? defaultOpsGitRunner,
+      3,
+      deps.publication,
+      deps.outboxRoot,
     );
 
     return { ok: true, cardId: id, cardPath: path, state };
@@ -234,7 +251,15 @@ export async function pauseCadence(name: string, session: SessionInput, deps: Fl
     mkdirSync(dirname(abs), { recursive: true });
     if (!existsSync(abs)) writeFileSync(abs, '', 'utf8');
 
-    await commitToOps(deps.repoRoot, [relPath], `chore(pause): ${name}`, deps.runGit ?? defaultOpsGitRunner);
+    await commitToOps(
+      deps.repoRoot,
+      [relPath],
+      `chore(pause): ${name}`,
+      deps.runGit ?? defaultOpsGitRunner,
+      3,
+      deps.publication,
+      deps.outboxRoot,
+    );
 
     return { ok: true, path: relPath };
   });

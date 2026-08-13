@@ -117,6 +117,33 @@ afterEach(async () => {
 });
 
 describe('write surface — composition chain', () => {
+  it('resolves outbox publication once and recovers the anchor before readiness', async () => {
+    const calls: string[][] = [];
+    const anchor = 'a'.repeat(40);
+    const opsGit: GitRunner = async (_repo, args) => {
+      calls.push(args);
+      const command = args.join(' ');
+      if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+      if (command === 'diff --cached --name-only -z') return '';
+      if (command === 'rev-parse --verify refs/kb-outbox/spooled') return `${anchor}\n`;
+      if (command === `rev-list --reverse ${anchor}..HEAD`) return '';
+      throw new Error(`unexpected git invocation: ${command}`);
+    };
+    const ctx = makeSurfaceContext(
+      { repoRoot: REPO_A, sessionConfig, allowedOrigins: [GOOD_ORIGIN], opsGit },
+      { env: { KB_COORDINATION_PUBLICATION: 'outbox' } },
+    );
+    app = Fastify({ logger: false });
+    registerWriteSurface(app, ctx);
+
+    await app.ready();
+
+    expect(ctx.coordinationPublication).toBe('outbox');
+    expect(ctx.outboxRoot).toBe('/var/lib/kb/state/outbox');
+    expect(calls).toContainEqual(['rev-parse', '--verify', 'refs/kb-outbox/spooled']);
+    expect(calls.some((args) => ['fetch', 'pull', 'push'].includes(args[0]))).toBe(false);
+  });
+
   it('routes exist (a session-less POST is 401, never 404)', async () => {
     ({ app } = buildApp());
     for (const url of [

@@ -162,7 +162,7 @@ export async function executeApprovedLaunch(
       // Reconcile canonical ops before loading executable policy, routing, or running the post-pull
       // preamble. The launcher below receives no second pull hook, so approval checks and publication
       // are evaluated against the same local canonical snapshot.
-      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
+      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner, ctx.coordinationPublication, ctx.outboxRoot);
     } catch {
       return { status: 409, body: { error: 'canonical-reconciliation-failed' } };
     }
@@ -395,6 +395,8 @@ export async function executeApprovedLaunch(
         // enters reconcile-required, exactly as before. A conflicting rebase aborts and parks too
         // (`write/opsPushRetry.ts`).
         onReconciled: reassertCompiledPolicy,
+        publication: ctx.coordinationPublication,
+        outboxRoot: ctx.outboxRoot,
       });
       for (const card of outcome.cards) {
         const stage = created.value.stages.find((candidate) => candidate.stageId === card.stageId);
@@ -435,6 +437,8 @@ export async function executeApprovedLaunch(
       await activateManagedRootCards({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
+        publication: ctx.coordinationPublication,
+        outboxRoot: ctx.outboxRoot,
         authorizeAfterPrepare: reassertCompiledPolicy,
         // The same proof at a different moment: `authorizeAfterPrepare` runs once after the opening
         // pull, `reassertAfterReconcile` after every pull a rejected push forces. This closure is pure

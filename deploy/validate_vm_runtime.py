@@ -39,6 +39,12 @@ def validate_ops_root(root: Path) -> None:
         raise RuntimeError("ops push remote is not disabled")
 
 
+def validate_outbox_anchor(root: Path, run=subprocess.run) -> None:
+    result = run(["git", "show-ref", "--verify", "--quiet", "refs/kb-outbox/spooled"], cwd=root)
+    if result.returncode != 0:
+        raise RuntimeError("outbox anchor refs/kb-outbox/spooled is absent")
+
+
 def validate_releases_root(value: os.stat_result) -> None:
     if value.st_uid != 0 or value.st_gid != 0 or not stat.S_ISDIR(value.st_mode) or stat.S_IMODE(value.st_mode) != 0o755:
         raise RuntimeError("release root must be root:root 0755")
@@ -140,6 +146,7 @@ def main() -> int:
         validate_releases_root(Path("/opt/kb-releases").stat())
         show, text = read_static_unit(args.unit)
         validate_static_unit(show, text)
+        validate_outbox_anchor(args.ops_root)
         fields = STATIC_SHOW
     else:
         show = read_live_unit(args.unit)

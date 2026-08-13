@@ -22,9 +22,10 @@ import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { defaultPyRunner } from './launch.ts';
 import type { PyRunner } from './launch.ts';
-import { prepareCoordination, defaultGitRunner } from './branch.ts';
+import { prepareCoordination, defaultGitRunner, publishPreparedCoordinationCommit } from './branch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
 import type { GitRunner } from './branch.ts';
+import type { CoordinationPublication } from './outbox.ts';
 import { loadPolicy } from '../routing/policy.ts';
 import type { PolicyDoc } from '../routing/policy.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
@@ -53,6 +54,8 @@ export interface CardRoutingDeps {
   loadPolicyFn?: (repoRoot: string) => PolicyDoc;
   /** Server-internal authority for a managed stage whose assigned inbox card is proven not started. */
   managedAssignedInbox?: { workflowRef: string };
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
   /** Re-run caller-specific CAS and executable policy after canonical ops reconciliation. */
   authorizeAfterReconcile?: () => Extract<CardRoutingOutcome, { ok: false }> | null;
 }
@@ -298,7 +301,7 @@ async function apply(
   // where an assigned/approved remote card was validated from stale local state, and avoids attempting
   // a pull after Python has already dirtied the card and audit paths.
   try {
-    await prepareCoordination(input.repoRoot, runGit);
+    await prepareCoordination(input.repoRoot, runGit, deps.publication, deps.outboxRoot);
   } catch (err) {
     return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
   }
@@ -392,7 +395,18 @@ async function apply(
     return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
   }
 
-  try {
+  if ((deps.publication ?? 'direct') === 'outbox') {
+    try {
+      await publishPreparedCoordinationCommit(input.repoRoot, routingCommit, {
+        runGit,
+        relpaths: [parsed.path, AUDIT_REL_PATH],
+        publication: deps.publication,
+        outboxRoot: deps.outboxRoot,
+      });
+    } catch (err) {
+      return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
+    }
+  } else try {
     await runGit(input.repoRoot, ['push', 'origin', 'ops']);
   } catch {
     try {

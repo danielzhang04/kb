@@ -639,6 +639,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             },
             runGit: ctx.opsGit ?? defaultGitRunner,
             runPy: ctx.runPy,
+            publication: ctx.coordinationPublication,
+            outboxRoot: ctx.outboxRoot,
           });
           return reply.send({ ok: true, value: outcome.result, replayed: outcome.replayed, canonicalCommit: outcome.canonicalCommit });
         } catch (error) {
@@ -882,6 +884,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       appendAudit: ctx.appendAuditLocal,
       now: ctx.now,
       managedAssignedInbox: { workflowRef: runRef },
+      publication: ctx.coordinationPublication,
+      outboxRoot: ctx.outboxRoot,
       authorizeAfterReconcile: () => {
         const checked = authorize();
         return checked.ok ? null : {
@@ -943,7 +947,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     }
     // One ops transaction (nested audit/reconcile helpers reenter the held lock).
     return withOpsTransaction(async () => {
-    try { await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner); }
+    try { await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner, ctx.coordinationPublication, ctx.outboxRoot); }
     catch { return reply.code(409).send({ error: 'canonical-reconciliation-failed' }); }
     const parsed = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     if (!parsed.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: parsed.detail });
@@ -1705,7 +1709,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
     let proposalForDispatch: PlanProposal | null = null;
     const preparationFailure = await withOpsTransaction(async (): Promise<LaunchOutcome | null> => {
     try {
-      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
+      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner, ctx.coordinationPublication, ctx.outboxRoot);
     } catch {
       return { status: 409, body: { error: 'canonical-reconciliation-failed' } };
     }
@@ -1774,6 +1778,8 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
       await (ctx.activateManagedRoots ?? activateManagedRootCards)({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
+        publication: ctx.coordinationPublication,
+        outboxRoot: ctx.outboxRoot,
         verifyCompletedRoots: async ({ cardRefs }) => {
           if (!ctx.verifyCanonicalResult) throw new CompletedRootProvenanceError('canonical result verifier is unavailable');
           for (const cardRef of cardRefs) {

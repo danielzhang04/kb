@@ -70,6 +70,18 @@ def test_ops_checkout_requires_disabled_push_remote(tmp_path, monkeypatch):
     assert calls[0][1]["timeout"] > 0
 
 
+def test_outbox_mode_requires_initialized_anchor(tmp_path):
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return subprocess.CompletedProcess(argv, 1)
+
+    with pytest.raises(RuntimeError, match="outbox anchor refs/kb-outbox/spooled is absent"):
+        validate_vm_runtime.validate_outbox_anchor(tmp_path, run=run)
+    assert calls == [(["git", "show-ref", "--verify", "--quiet", "refs/kb-outbox/spooled"], {"cwd": tmp_path})]
+
+
 def test_releases_root_must_be_root_owned_0755():
     validate_vm_runtime.validate_releases_root(SimpleNamespace(st_uid=0, st_gid=0, st_mode=0o40755))
     with pytest.raises(RuntimeError, match="root:root 0755"):
