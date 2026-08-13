@@ -831,3 +831,38 @@ these changes:
 `rejects a fulfilled receipt whose output lineage does not match the committed successor`,
 and the full pre-amendment store suite stays green (any landed test that enshrines the
 legacy-only mechanism may be adjusted only with an explicit list and justification).
+
+### A2 (2026-08-13, boss ruling) — commit-time successor minting and the pre-integration park
+
+**Trigger:** The Task 7 implementer stopped per the execution rules. Verified at HEAD 60eb89fc:
+(1) A1's `advanceIterationTurn` mints the queued successor generation AND records its
+supersession at ADVANCE time (store.ts:5426-5459), before the producer executes — but Task 7's
+no-progress park "creates no successor generation or supersession and makes no integration
+call", and byte-identical output is only knowable AFTER worker execution; (2) `parkIterationLoop`
+accepts only a receipt-bearing `failed` loop, and `IterationResidue` (types.ts:215-227) lacks
+the attempted request, parsed outcome, artifact snapshot, and failure reason Task 7 requires in
+no-progress residue.
+
+**Ruling:** Internal sequencing completion; no locked semantics change (park gate contract,
+reasons, approve/decline, cycle accounting untouched). Task 7's scope gains
+`dashboard/server/control/store.ts` (beyond `runCanSucceed`) and
+`dashboard/server/control/types.ts` for exactly these changes:
+
+1. Producer-turn successor GENERATION rows are minted at canonical-commit time, following the
+   existing DAG `recordStageGeneration` pattern (adopt-or-create at commit). Advance mints only
+   the successor ATTEMPT and scheduling state; no generation row exists for a producer turn
+   before its result commits.
+2. `GenerationSupersession` rows are recorded ONLY at successor commit, with `triggerReceiptRef`
+   = the receipt that caused the rework. "Uses triggerReceiptRef for every generation
+   supersession" (Task 4) still holds; the timing moves.
+3. `parkIterationLoop` gains a pre-integration mode: park from `running-turn` with reason
+   `no-progress` (also used for missing/empty/irregular required outputs), requiring no receipt
+   for the current turn; the exhaustion path keeps its existing receipt-based preconditions. The
+   parked attempt is marked interrupted; loop active generation refs remain the pinned inputs;
+   stage pointers roll back to the predecessor; no cycle is consumed.
+4. `IterationResidue` gains the no-progress evidence fields: attempted request ref, parsed
+   outcome (bounded), per-artifact snapshot (path, size, SHA-256, byte-identical flag), and
+   failure reason. The durability validator covers the extended shape and the new states.
+5. Landed Task 4/6/A1 tests that enshrine advance-time minting may be adjusted only with an
+   explicit list and justification; sibling-group scoping, CAS versioning, gate kinds, and
+   idempotent replay stay untouched.
