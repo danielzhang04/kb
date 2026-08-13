@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "cards": { "current": 1, "supported": [0, 1] },
+  "workflows": { "current": 1, "supported": [0, 1] }
+}

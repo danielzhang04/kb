@@ -32,6 +32,8 @@ ROLES = ("scout", "manage", "work", "inspect", "consolidate")
 # against the runtime registry by scripts/routing.resolve(), so cards.py need
 # not couple to governance/model-routing.yaml. Gemini is deferred (memory).
 RUNTIMES = ("claude", "codex")
+CARD_SCHEMA_VERSION = 1
+SUPPORTED_CARD_SCHEMA_VERSIONS = frozenset({0, CARD_SCHEMA_VERSION})
 REQUIRED = ("id", "project", "action", "target", "risk-tier", "state")
 STATE_DIR = {
     "inbox": "inbox", "blocked": "inbox",
@@ -83,11 +85,28 @@ class Card:
     path: Path | None = None
 
 
+def card_schema_version(meta: dict) -> int:
+    value = meta.get("schema-version", 0)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValidationError("schema-version must be an integer")
+    if value not in SUPPORTED_CARD_SCHEMA_VERSIONS:
+        raise ValidationError(f"unsupported card schema-version: {value}")
+    return value
+
+
+def migrate_card(card: Card, target_version: int = CARD_SCHEMA_VERSION) -> Card:
+    if target_version != CARD_SCHEMA_VERSION:
+        raise ValidationError(f"unsupported card migration target: {target_version}")
+    card_schema_version(card.meta)
+    return Card(meta={**card.meta, "schema-version": target_version}, body=card.body)
+
+
 def new_id() -> str:
     return f"{int(time.time()):08x}-{secrets.token_hex(4)}"
 
 
 def _validate(meta: dict) -> None:
+    card_schema_version(meta)
     for key in REQUIRED:
         if meta.get(key) in (None, ""):
             raise ValidationError(f"missing required field: {key}")
@@ -105,6 +124,7 @@ def _validate(meta: dict) -> None:
 
 def new_card(project, action, target, risk_tier, body: str = "", **extra) -> Card:
     meta = {
+        "schema-version": CARD_SCHEMA_VERSION,
         "id": new_id(), "project": project, "action": action, "target": target,
         "risk-tier": risk_tier, "owner": None, "claim-token": None,
         "state": "inbox", "approval": None, "workflow": None,

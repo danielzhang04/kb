@@ -2,6 +2,31 @@ import pytest
 import cards
 
 
+def test_new_card_emits_schema_v1(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    card = cards.new_card(project="kb-ops", action="test:noop", target="phase-i", risk_tier="T1")
+    assert card.meta["schema-version"] == 1
+
+
+def test_absent_schema_version_is_transition_v0():
+    card = cards.parse_text("""---\nid: version-test\nproject: kb-ops\naction: test:noop\ntarget: phase-i\nrisk-tier: T1\nstate: inbox\n---\n""")
+    assert cards.card_schema_version(card.meta) == 0
+
+
+@pytest.mark.parametrize("value", [2, -1, "1", True])
+def test_unsupported_card_schema_is_rejected(value):
+    meta = {"id": "version-test", "project": "kb-ops", "action": "test:noop", "target": "x", "risk-tier": "T1", "state": "inbox", "schema-version": value}
+    with pytest.raises(cards.ValidationError, match="schema-version"):
+        cards._validate(meta)
+
+
+def test_migrate_v0_card_to_v1_without_changing_body():
+    card = cards.parse_text("""---\nid: version-test\nproject: kb-ops\naction: test:noop\ntarget: x\nrisk-tier: T1\nstate: inbox\n---\n\n## Work order\nkeep me\n""")
+    migrated = cards.migrate_card(card)
+    assert migrated.meta["schema-version"] == 1
+    assert migrated.body == card.body
+
+
 def test_new_card_has_required_meta():
     c = cards.new_card("faceless-youtube", "regenerate dashboards", "dashboards/", "T1")
     for key in ("id", "project", "action", "target", "risk-tier", "state"):
