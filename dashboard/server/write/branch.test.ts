@@ -49,6 +49,10 @@ describe('classifyTarget', async () => {
     expect(classifyTarget('docs/plans/2026-07-16-dashboard-implementation.md')).toBe('durable');
     expect(classifyTarget('orgs/demo/_index.md')).toBe('durable');
   });
+
+  it('does not classify a nested non-project STATE path as coordination', () => {
+    expect(classifyTarget('orgs/kb-ops/archive/STATE.md')).toBe('durable');
+  });
 });
 
 describe('publishPreparedCoordinationCommit', () => {
@@ -459,6 +463,26 @@ describe('branch denylist — durable content NEVER pushes to main/ops (defense 
 });
 
 describe('routeWrite — coordination files (queue/**, ledgers/**, traces/**, audit)', async () => {
+  it.each([
+    'memory/codex-worker.md',
+    'dashboards/executive.md',
+    'handoffs/2026-08-11-cutover.md',
+    'orgs/kb-ops/STATE.md',
+  ])('publishes %s with the ops pull-rebase-push route', async (relpath) => {
+    const calls: string[][] = [];
+    const runGit: GitRunner = async (_root, args) => {
+      calls.push(args);
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'ops\n';
+      if (args[0] === 'diff' || args[0] === 'status') return '';
+      return '';
+    };
+    const openPr = vi.fn();
+    await expect(routeWrite('/repo', relpath, { runGit, openPr })).resolves.toBe('coordination');
+    expect(calls).toContainEqual(['pull', '--rebase', 'origin', 'ops']);
+    expect(calls).toContainEqual(['push', 'origin', 'ops']);
+    expect(openPr).not.toHaveBeenCalled();
+  });
+
   it('routes to ops via pull --rebase -> add -> commit -> push, in that order', async () => {
     const { runner, calls } = recorder();
 

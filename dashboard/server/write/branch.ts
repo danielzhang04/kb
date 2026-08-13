@@ -29,7 +29,15 @@ import type { OpsGitRunner } from './asyncGit.ts';
 export type Target = 'durable' | 'coordination';
 
 /** Runtime write classes that route to `ops` (pull-rebase-push), never a work-branch PR. */
-const COORDINATION_PREFIXES = ['queue/', 'ledgers/', 'traces/'];
+const COORDINATION_PREFIXES = [
+  'queue/',
+  'ledgers/',
+  'traces/',
+  'memory/',
+  'dashboards/',
+  'handoffs/',
+] as const;
+const PROJECT_STATE = /^orgs\/[^/]+\/STATE\.md$/;
 
 /** Normalize a relpath to forward-slash, no leading slash, for prefix comparisons. */
 function normalize(relpath: string): string {
@@ -42,9 +50,13 @@ function normalize(relpath: string): string {
  * queue/paused/** markers — ops pull-rebase-push). Total: everything not explicitly coordination is
  * durable content, per the plan's binary classification.
  */
+export function isCoordinationPath(relpath: string): boolean {
+  const norm = relpath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+  return COORDINATION_PREFIXES.some((prefix) => norm.startsWith(prefix)) || PROJECT_STATE.test(norm);
+}
+
 export function classifyTarget(relpath: string): Target {
-  const norm = normalize(relpath);
-  return COORDINATION_PREFIXES.some((p) => norm.startsWith(p)) ? 'coordination' : 'durable';
+  return isCoordinationPath(relpath) ? 'coordination' : 'durable';
 }
 
 /** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. Widened
