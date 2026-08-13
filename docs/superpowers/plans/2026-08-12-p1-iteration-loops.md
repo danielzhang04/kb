@@ -783,3 +783,51 @@ The first seven commands must be green. Save the `npm run typecheck` output and 
 baseline: exactly 7 known errors, with no changed location or new error. Then complete the Opus
 adversarial review, the two-run LIVE RUN PROOF in Task 14, and Daniel's gate. A pass requires evidence for
 all three; none may be waived by the others.
+
+## Amendments
+
+### A1 (2026-08-13, boss ruling) — Task 6 gains store.ts for producer-turn completion
+
+**Trigger:** The Task 6 implementer stopped per the execution rules: Task 4's landed generic
+transitions cannot express Task 6's required semantics. Verified against `store.ts` at HEAD
+800ba78: (1) `recordIterationRequest` is legal only in `awaiting-turn` (:5006); (2)
+`advanceIterationTurn` parks queued successors in `rework-queued`, where no request can be
+recorded (:5251); (3) the legacy projection inside `recordStageGeneration` auto-routes a
+producer commit straight to the judge with no durable `fulfilled` receipt (:4887-4914); (4) no
+generic transition mints or adopts the queued successor generation — only the legacy path does;
+(5) `recordIterationReceipt` binds every receipt to the primary INPUT generation's base and
+canonical commits (:5084-5087), contradicting Task 6's post-integration receipt whose lineage
+for an artifact-producing turn is the OUTPUT successor's.
+
+**Ruling:** This is mechanical completion of the one-state-machine contract already stated in
+Task 4's acceptance ("Every legal transition is a single atomic store mutation") and Task 6's
+implementation text (durable `fulfilled` receipts between rework and the next reviewing
+verdict). No Daniel-locked semantic changes (termination order, bounds, park contract, gate
+kinds are untouched). Task 6's file list therefore gains `dashboard/server/control/store.ts`,
+`dashboard/server/control/store.test.ts`, and `dashboard/server/control/types.ts` for exactly
+these changes:
+
+1. Producer turns are first-class loop turns. `recordIterationRequest` is also legal when the
+   loop awaits its producer turn (state `rework-queued`, recipient = the successor route's
+   recipient); recording transitions to `running-turn` as usual. No other entry state changes.
+2. `recordIterationReceipt` branches its lineage check by verdict family: verdict-producing
+   receipts keep the existing input-generation binding; a `fulfilled` receipt validates OUTPUT
+   lineage — its `outputGenerationRefs` name the committed successor generation(s) whose base
+   and canonical commits match the receipt's, with the request's input refs preserved on the
+   receipt for audit. `fulfilled` still cannot terminate a group and still carries no criteria
+   verdicts (parser-enforced).
+3. The generic path adopts/commits the queued successor generation for producer turns without
+   the legacy projection. The legacy auto-route inside `recordStageGeneration` remains solely
+   for the uncut legacy-syntax callers and is deleted or reclassified as migration-only in
+   Task 13; the Task 6 execution engine never routes new-syntax runs through it.
+4. Cycle accounting for producer turns derives from schedule-step cycle markers exactly like
+   verdict turns (no separate counter).
+5. The Task 2 durability validator covers `fulfilled` receipts and any state-union adjustment;
+   the corrupted-fixture load test grows to include one.
+
+**New named store tests (in addition to Task 6's list):**
+`records a producer iteration request while a rework successor is queued`,
+`mints a durable fulfilled receipt with output lineage after canonical integration`,
+`rejects a fulfilled receipt whose output lineage does not match the committed successor`,
+and the full pre-amendment store suite stays green (any landed test that enshrines the
+legacy-only mechanism may be adjusted only with an explicit list and justification).
