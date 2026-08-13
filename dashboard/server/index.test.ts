@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { SurfaceContext } from './http/context.ts';
 import { makeSurfaceContext } from './http/surface.ts';
+import { mintSession } from './auth/session.ts';
+import type { SessionConfig } from './auth/session.ts';
 
 const serviceCgroupChildCount = vi.hoisted(() => vi.fn(() => 0));
 const quiescenceSpy = vi.hoisted(() => vi.fn());
@@ -30,6 +32,13 @@ import {
 } from './index.ts';
 
 let app: FastifyInstance | undefined;
+const TEST_ORIGIN = 'http://kb.test';
+const TEST_SESSION: SessionConfig = { secret: Buffer.from('index-test-session-secret-32-bytes!'), ttlMs: 60_000 };
+const matrixHeaders = { origin: TEST_ORIGIN, host: 'kb.test' };
+// Mint inside each assertion: this file takes long enough that a module-load token can expire while
+// later matrix rows are still running.
+const sessionHeaders = () => ({ ...matrixHeaders, authorization: `Bearer ${mintSession('operator', TEST_SESSION).token}` });
+const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION });
 
 afterEach(async () => {
   serviceCgroupChildCount.mockReset();
@@ -42,6 +51,39 @@ afterEach(async () => {
 });
 
 describe('server', () => {
+  it.each([
+    '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
+    '/api/registry', '/api/registry/skills', '/api/registry/connections',
+    '/api/index', '/api/ledgers/slices', '/api/dag', '/api/routing',
+    '/api/agents', '/api/agents/system-workers', '/api/agents/example',
+    '/api/panels/health', '/api/panels/usage', '/api/panels/atlas',
+    '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
+    '/api/human-inbox', '/api/approvals', '/api/composer/sessions', '/api/composer/sessions/example',
+    '/api/control/proposals', '/api/control/execution', '/api/control/runs', '/api/control/runs/example',
+    '/api/control/proposals/example/revisions/example', '/api/control/runs/example/attempts/example/io',
+    '/api/control/runs/example/events', '/api/control/retention/inventory',
+    '/api/pty/sessions', '/api/pty/session-runs', '/api/pty/session-runs/example', '/events',
+  ])('rejects unauthenticated read %s', async (url) => {
+    app = matrixApp();
+    const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {
+    app = matrixApp();
+    const method = url.includes('/auth/') ? 'POST' : 'GET';
+    expect((await app.inject({ method, url, headers: matrixHeaders })).statusCode).not.toBe(401);
+  });
+
+  it.each([
+    ['/api/kb/file?path=docs/x.md', 404], ['/api/kb/history?path=docs/x.md', 200],
+    ['/api/agents/example', 404], ['/api/workflows/example', 404], ['/api/composer/sessions/example', 404],
+    ['/api/control/runs/example', 404], ['/api/control/runs/example/events', 404],
+  ])('keeps matched resource %s at its normal %i after authentication', async (url, expected) => {
+    app = matrixApp();
+    expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode).toBe(expected);
+  });
+
   it('binds localhost only and returns 200 on /healthz', async () => {
     app = buildApp({ validateData: false });
     // ephemeral port, localhost bind

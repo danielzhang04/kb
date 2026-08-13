@@ -9,8 +9,9 @@ import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
-import { wireControlStoreTick } from './hub/bus.ts';
+import { createBus, wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
+import { requireSession, surfaceRateLimitHook } from './http/middleware.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
@@ -108,23 +109,33 @@ export function humanRequestSweepLogLine(result: HumanRequestSweepResult): strin
 }
 
 /**
- * Build the Fastify backend. `/healthz` and the read-only hub/registry/planeA routes stay pre-auth;
- * the governed WRITE surface (auth ceremonies, save/launch/stop, vibe, approvals) is registered by
- * `registerWriteSurface` as its own encapsulated, Origin/Host- + rate-limit-guarded child scope, with
- * each mutating route additionally session-gated (U2). It is fail-closed by default: with no
- * `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every write route 403s; with an RP origin but
- * no provisioned passkey, no session can be minted and every write route 401s.
+ * Build the Fastify backend. Only `/healthz`, `/readyz`, static assets, and the four session-minting auth
+ * ceremonies stay public. Every other matched data route — repository/state reads, hub streams, PTY,
+ * and writes — is in an Origin/Host- + rate-limit-guarded scope with a session pre-handler. It is
+ * fail-closed by default: with no `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every governed
+ * route 403s; with an RP origin but no provisioned passkey, no session can be minted and every governed
+ * route 401s.
  */
 export interface BuildAppOptions {
   repoRoot?: string;
   validateData?: boolean;
   readiness?: SurfaceContext['readiness'];
+  allowedOrigins?: SurfaceContext['allowedOrigins'];
+  sessionConfig?: SurfaceContext['sessionConfig'];
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const repoRoot = options.repoRoot ?? process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../', import.meta.url));
   if (options.validateData !== false) assertSupportedRepositoryData(repoRoot);
   const app = Fastify({ logger: false });
+  const bus = createBus();
+  const surfaceCtx = makeSurfaceContext({
+    hubBus: bus,
+    repoRoot,
+    readiness: options.readiness,
+    allowedOrigins: options.allowedOrigins,
+    sessionConfig: options.sessionConfig,
+  });
 
   app.get('/healthz', async () => {
     // `node` echoes the running runtime version so an accidental unpinned Node
@@ -132,20 +143,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     return { ok: true, node: process.versions.node };
   });
 
-  app.register(kbBrowserRoutes, { repoRoot }); // D0.5: read-only KB browser (GET-only /api/kb/*)
-  registerRegistry(app, repoRoot); // D0.6: read-only registries (GET-only /api/registry/*)
-  registerPlaneA(app, repoRoot); // D0.9: read-only Plane-A snapshot for the Control landing (GET /api/index)
-  registerDag(app, repoRoot); // D3.4: read-only pipeline DAG projection over depends-on (GET /api/dag)
-  registerRoutingRead(app, repoRoot); // R2.1/R2.4: read-only effective-routing projection (GET /api/routing)
-  registerAgents(app, repoRoot); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
-  registerPanels(app, repoRoot); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
-  const bus = registerHub(app, { repoRoot }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
+  registerHub(app, { repoRoot, bus, allowedOrigins: surfaceCtx.allowedOrigins, sessionConfig: surfaceCtx.sessionConfig });
   // ONE surface context per process: its `sessionConfig` (HMAC secret) is resolved exactly once here and
   // SHARED with the PTY route below. Without this, the write surface and the PTY route each called
   // `resolveSessionSecret()` independently; with `DASHBOARD_SESSION_SECRET` unset that yields two DIFFERENT
   // random secrets, so a token minted at login (write-surface secret) can never verify at /api/pty (its own
   // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
-  const surfaceCtx = makeSurfaceContext({ hubBus: bus, repoRoot, readiness: options.readiness });
   const controlStoreWatcher = wireControlStoreTick(bus, surfaceCtx.stateRoot);
   app.addHook('onClose', async () => {
     try {
@@ -156,11 +159,23 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
   });
   app.get('/readyz', async () => await surfaceCtx.readiness());
+  app.register(async (scope) => {
+    originPlugin(scope, { allowedOrigins: surfaceCtx.allowedOrigins });
+    scope.addHook('onRequest', surfaceRateLimitHook(surfaceCtx.readRateGuard, surfaceCtx.rateGuard));
+    scope.addHook('preHandler', requireSession(surfaceCtx.sessionConfig));
+    scope.register(kbBrowserRoutes, { repoRoot });
+    registerRegistry(scope, repoRoot);
+    registerPlaneA(scope, repoRoot);
+    registerDag(scope, repoRoot);
+    registerRoutingRead(scope, repoRoot);
+    registerAgents(scope, repoRoot);
+    registerPanels(scope, repoRoot);
+    registerWorkflows(scope, surfaceCtx);
+  });
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
   // D15: workflow-definition registry (GET /api/workflows[/:id] read-only) + the governed one-step launch
   // (POST /api/workflows/:id/launch) in its OWN origin/rate-limit/session child scope. Shares surfaceCtx
   // so the launch route mints/verifies against the same session secret as the write surface.
-  registerWorkflows(app, surfaceCtx);
   // D3.1 temporary in-process PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
   // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request shaped
   // and fits a long-lived WS upgrade poorly. The route runs the fleet preamble BEFORE session validation,
@@ -176,6 +191,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     // conditional spread would instead have let the route fabricate a raw, ungated shell host.
     const ptyCtx = makePtyRouteContext({
       sessionConfig: surfaceCtx.sessionConfig,
+      allowedOrigins: surfaceCtx.allowedOrigins,
       ptyHost: surfaceCtx.ptyHost,
       ...(surfaceCtx.ptySessions ? { registry: surfaceCtx.ptySessions } : {}),
       // Leg 2: the daemon records the entity-primed sessions it spawns (agent / workflow), and tapes

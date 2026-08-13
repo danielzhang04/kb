@@ -1137,20 +1137,21 @@ describe('registerPtyRoute REST session endpoints', () => {
       (repoRoot, agentId) => (agentId === 'fyt-runner' ? `${repoRoot}/agents/fyt-runner.md` : null),
     );
     try {
-      const unknown = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=ghost' });
+      const headers = { authorization: `Bearer ${validToken()}` };
+      const unknown = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=ghost', headers });
       expect(unknown.statusCode).toBe(400);
       expect(unknown.json()).toEqual({ error: 'unknown-agent' });
 
-      const traversal = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=..%2F..%2Fsecrets' });
+      const traversal = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=..%2F..%2Fsecrets', headers });
       expect(traversal.statusCode).toBe(400);
 
-      const badMode = await app.inject({ method: 'GET', url: '/api/pty?spawn=bash' });
+      const badMode = await app.inject({ method: 'GET', url: '/api/pty?spawn=bash', headers });
       expect(badMode.statusCode).toBe(400);
       expect(badMode.json()).toMatchObject({ error: 'bad-spawn-request', reason: 'unknown-spawn-mode' });
 
       // A roster-known agent clears admission; the non-upgrade GET then falls through to the route's
       // own 404, which is exactly what proves the hook did NOT refuse it.
-      const allowed = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=fyt-runner' });
+      const allowed = await app.inject({ method: 'GET', url: '/api/pty?spawn=agent&agent=fyt-runner', headers });
       expect(allowed.statusCode).toBe(404);
     } finally {
       await app.close();
@@ -1164,31 +1165,32 @@ describe('registerPtyRoute REST session endpoints', () => {
       (repoRoot, ref) => (ref === 'email-triage' ? `${repoRoot}/orgs/kb-ops/workflows/email-triage.md` : null),
     );
     try {
-      const unknown = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=ghost' });
+      const headers = { authorization: `Bearer ${validToken()}` };
+      const unknown = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=ghost', headers });
       expect(unknown.statusCode).toBe(400);
       expect(unknown.json()).toEqual({ error: 'unknown-workflow' });
 
-      const traversal = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=..%2F..%2Fsecrets' });
+      const traversal = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=..%2F..%2Fsecrets', headers });
       expect(traversal.statusCode).toBe(400);
       expect(traversal.json()).toEqual({ error: 'unknown-workflow' });
 
-      const missingRef = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow' });
+      const missingRef = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow', headers });
       expect(missingRef.statusCode).toBe(400);
       expect(missingRef.json()).toMatchObject({ error: 'bad-spawn-request', reason: 'workflow-required' });
 
-      const crossWired = await app.inject({ method: 'GET', url: '/api/pty?spawn=claude&workflow=email-triage' });
+      const crossWired = await app.inject({ method: 'GET', url: '/api/pty?spawn=claude&workflow=email-triage', headers });
       expect(crossWired.statusCode).toBe(400);
       expect(crossWired.json()).toMatchObject({ error: 'bad-spawn-request', reason: 'workflow-not-allowed' });
 
       // An allowlisted ref clears admission; the non-upgrade GET then falls through to the route's 404.
-      const allowed = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=email-triage' });
+      const allowed = await app.inject({ method: 'GET', url: '/api/pty?spawn=workflow&workflow=email-triage', headers });
       expect(allowed.statusCode).toBe(404);
     } finally {
       await app.close();
     }
   });
 
-  it('GET /api/pty/sessions requires a bearer and lists only the caller-owned sessions', async () => {
+  it('GET /api/pty/sessions accepts bearer or session cookie and lists only the caller-owned sessions', async () => {
     const registry = createPersistentSessionRegistry();
     registry.create('owner-1', fakePtyHost({ sessionId: 'pty-a' }).host, OPEN_REQ);
     registry.create('owner-2', fakePtyHost({ sessionId: 'pty-b' }).host, OPEN_REQ);
@@ -1205,6 +1207,13 @@ describe('registerPtyRoute REST session endpoints', () => {
       expect(res.statusCode).toBe(200);
       const body = res.json() as { sessions: Array<{ sessionId: string }> };
       expect(body.sessions.map((s) => s.sessionId)).toEqual(['pty-a']); // owner-2's session is not visible
+
+      const cookie = await app.inject({
+        method: 'GET',
+        url: '/api/pty/sessions',
+        headers: { cookie: `kb_session=${encodeURIComponent(validToken('owner-1'))}` },
+      });
+      expect(cookie.statusCode).toBe(200);
     } finally {
       await app.close();
     }

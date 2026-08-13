@@ -1,13 +1,14 @@
 /**
- * U2 — the governed write surface's composition root. Builds one encapsulated Fastify child scope that
+ * U2 — the governed HTTP surface's composition root. Builds one encapsulated Fastify child scope that
  * applies, as `onRequest` hooks in this exact order, the SAME primitives the hub already uses:
  *
  *   1. `security/origin.ts#originPlugin`   — Origin/Host guard (fail-closed: empty allowlist 403s all).
  *   2. `http/middleware.ts#writeRateLimitHook` — sliding-window rate-limit + lockout.
  *
- * then registers the auth / write / composer / approvals routes onto that scope (each mutating route adds
- * its own `requireSession` preHandler, so the full chain is origin -> rate-limit -> session -> gate ->
- * audit). `/healthz` and the read-only hub/registry/planeA routes stay OUTSIDE this scope — untouched.
+ * It registers the public auth ceremonies, then a nested authenticated scope for write, composer,
+ * control, and approval routes. That scope is the fail-closed backstop; individual mutating routes keep
+ * their own `requireSession` preHandlers and gates. `/healthz`, `/readyz`, static assets, and the
+ * read-only data scope are composed elsewhere.
  *
  * All security config is resolved ONCE here (notably the session secret — re-resolving per request would
  * mint a fresh random secret and invalidate every token). Tests call `makeSurfaceContext` with overrides
@@ -20,7 +21,7 @@ import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
 import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
 import { resolveCredentials } from '../auth/credentialStore.ts';
-import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, surfaceRateLimitHook } from './middleware.ts';
+import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
@@ -320,10 +321,15 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
     originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
     scope.addHook('onRequest', surfaceRateLimitHook(ctx.readRateGuard, ctx.rateGuard));
 
+    // Session-minting ceremonies stay public (but origin/rate guarded). Every other route in this
+    // surface inherits this scope-level session gate, so a future GET cannot accidentally ship public.
     registerAuthRoutes(scope, ctx);
-    registerWriteRoutes(scope, ctx);
-    registerComposerRoutes(scope, ctx);
-    registerControlRoutes(scope, ctx);
-    registerApprovalsRoutes(scope, ctx);
+    scope.register(async (authenticated) => {
+      authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
+      registerWriteRoutes(authenticated, ctx);
+      registerComposerRoutes(authenticated, ctx);
+      registerControlRoutes(authenticated, ctx);
+      registerApprovalsRoutes(authenticated, ctx);
+    });
   });
 }

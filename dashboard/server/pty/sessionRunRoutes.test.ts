@@ -73,7 +73,7 @@ async function harness(options: {
 }
 
 describe('GET /api/pty/session-runs', () => {
-  it('requires a bearer and lists only the caller-owned runs, newest first', async () => {
+  it('accepts bearer or session cookie and lists only the caller-owned runs, newest first', async () => {
     const root = stateRoot();
     const store = createSessionRunStore(root);
     const { app } = await harness({ store, root });
@@ -92,6 +92,11 @@ describe('GET /api/pty/session-runs', () => {
       // Server-internal fields are not published to a browser.
       expect(runs[0]).not.toHaveProperty('owner');
       expect(runs[0]).not.toHaveProperty('primingPath');
+
+      const cookie = await app.inject({
+        method: 'GET', url: '/api/pty/session-runs', headers: { cookie: `kb_session=${encodeURIComponent(token('operator-1'))}` },
+      });
+      expect(cookie.statusCode).toBe(200);
     } finally {
       await app.close();
     }

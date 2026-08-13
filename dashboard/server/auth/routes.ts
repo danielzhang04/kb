@@ -174,6 +174,9 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
     // actually guards (defence-in-depth behind the `if (!result.verified)` return above).
     const { token, claims } = mintSessionFromVerifiedAssertion(result, OPERATOR.id, ctx.sessionConfig);
     auditFn(ctx)(ctx.repoRoot, { action: 'auth', owner: OPERATOR.id, result: 'login' }, { runGit: ctx.opsGit, now: ctx.now });
+    const maxAge = Math.max(1, Math.floor((claims.exp - (ctx.sessionConfig.now ?? Date.now)()) / 1000));
+    const secure = config.origin.startsWith('https://') ? '; Secure' : '';
+    reply.header('Set-Cookie', `kb_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`);
     return reply.code(200).send({ token, expiresAt: claims.exp });
   });
 }

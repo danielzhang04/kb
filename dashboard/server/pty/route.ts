@@ -54,7 +54,7 @@ import { assertOrigin, resolveAllowedOrigins } from '../security/origin.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import { resolveSessionSecret, resolveSessionTtlMs, verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
-import { bearerToken } from '../http/middleware.ts';
+import { sessionToken } from '../http/middleware.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import { withOpsTransaction } from '../write/asyncGit.ts';
@@ -512,8 +512,8 @@ export async function handlePtyConnection(
     return;
   }
 
-  // 3. Session gate — must be signed in. The token rides the subprotocol, never the URL.
-  const token = tokenFromSubprotocol(req);
+  // 3. Session gate — the bearer rides the subprotocol, never the URL; same-origin clients may use the HttpOnly cookie.
+  const token = tokenFromSubprotocol(req) ?? sessionToken(req);
   const session = token ? verifySession(token, ctx.sessionConfig) : null;
   if (!session || !session.ok) {
     await audit('unauthenticated');
@@ -861,7 +861,7 @@ export function requireBearerOwner(
   reply: FastifyReply,
   sessionConfig: SessionConfig,
 ): string | undefined {
-  const token = bearerToken(req);
+  const token = sessionToken(req);
   const check = token ? verifySession(token, sessionConfig) : { ok: false as const, reason: 'malformed' as const };
   if (!check.ok) {
     void reply.code(401).send({ error: 'unauthenticated', reason: check.reason });
@@ -892,6 +892,12 @@ export async function registerPtyRoute(
     {
       websocket: true,
       preValidation: async (req: FastifyRequest, reply: FastifyReply) => {
+        const token = tokenFromSubprotocol(req) ?? sessionToken(req);
+        const check = token ? verifySession(token, ctx.sessionConfig) : { ok: false as const, reason: 'malformed' as const };
+        if (!check.ok) {
+          await reply.code(401).send({ error: 'unauthenticated', reason: check.reason });
+          return;
+        }
         const parsed = parseSpawnParams(req.url);
         if (!parsed.ok) {
           await reply.code(400).send({ error: 'bad-spawn-request', reason: parsed.reason });
