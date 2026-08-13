@@ -348,3 +348,11 @@
   measured +9 and carried more detail. Eyeballing chose L31; measuring chose L47.
 - review.json nests under a "figures" key — a flat .get(name) reads NO-ENTRY for plates that
   are actually ALLPASS. Check the store's schema before declaring provenance absent.
+
+## 2026-08-13 — Workflow-platform P1 tasks 1-4 (boss session, codex builders + opus reviewers)
+- WORKED: codex-deep builds + fresh-opus adversarial review + codex fix + SAME-reviewer delta re-review (SendMessage) caught mechanism-level defects green suites missed on ALL FOUR tasks (premature Task-13 deletion killing live enforcement; restart boot-brick on approved completion gates; closed-schema smuggling holes; parked-verdict wedge). Reviewers that RUN probes (hostile defs, lifecycle-restart scripts, differential fuzz vs HEAD) beat reviewers that read. Demand probes in review briefs.
+- WORKED: bounded fix discipline (≤2 rounds per task, Daniel's no-infinite-iterations ruling applied to orchestration) — every task closed within 2; round-2 briefs quoting the reviewer's exact specified fix close in ~4 min on terra.
+- WORKED: baseline-first briefs (builder halts on unexpected failures) — Task-2 builder correctly halted on the reconciliation load-flake; boss verified isolated (23/23), amended the brief, re-dispatched. Judge authorizedFailedRunReconciliation ISOLATED only.
+- FAILED: codex-deep dispatch died on transient DNS ("No such host is known", 5 reconnects) — worktree left clean; re-dispatch fresh after DNS resolves. Spooled cards (3) published via temp worktree from origin/ops → push HEAD:ops.
+- FAILED: boss fix-ruling over-corrected once (gateKind-based gate scoping broke sibling completion gates — completion gates carry no gateKind); identity-based scoping (receipt ownership) was correct. Lesson: when scoping a guard, scope by ownership identity, not by a tag only some members carry.
+- LESSON: builders overreach scope even with binding Do-not-touch lists (Task-1 did Task-13's deletion early; suites stayed green because tests hand-build the deleted input). Negative space needs adversarial review, never suite-green trust.
