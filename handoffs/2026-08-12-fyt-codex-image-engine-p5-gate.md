@@ -71,3 +71,33 @@ cached), ~63 min generation wall, $0 API. Fidelity: 3 mismatch (published+marked
 unverifiable, 3 verified. Full paired table + verdict:
 `.superpowers/sdd/2026-08-11-codex-image-engine/p5-real-results/` in the arc worktree;
 P5 driver committed @ 39731bf.
+
+---
+
+## UPDATE 2026-08-13 — P6 match test: park recommendation SUPERSEDED
+
+Daniel challenged the escalation ("Really? That's the best it can do?") and directed an
+8-shot match test with re-engineered prompting. **The P5 failure was the prompt, not the
+engine.** Three defects found and fixed:
+1. Composer commanded the style-bible ink `#241a12` (R−B +18); codex obeys literal hexes —
+   P5 graded codex against values its own prompt forbade. Fix: measured per-shot ink +
+   palette hexes from accepted baselines (`scratch-codex-image-engine/p6-registers.json`).
+2. Synthetic tile was a weak style anchor. Fix: accepted frame L47 as the sole style
+   reference, role-labeled with a do-not-copy-content clause (research: card 6a7d3c59).
+3. The Avoid block banned gradients/contact shadows/texture that the accepted house style
+   actually has → commanded poster-flatness (the M2/M3 misses). Fix: inverted to
+   requirements.
+
+Build: codex worker card 6a7d4408; additive engine surface `RunOptions.compose_fn` +
+bounded `seed_cap_override` (flag: not fresh-eyes reviewed — review before production
+adoption). Commit d623af5 on `claude/codex-image-engine`.
+
+**Real run: 8/8 gens (L26 L28 L29 L33 L36 L40 L44 L46), 0 redos, $0 API. |ΔM1| ≤ 5 on
+7/8 shots (P5 L0: 1/4); palette counts within 3–67 of baseline on 6/8 (P5: 64–131 off).
+Visual match confirmed frame-by-frame.** Residual gaps are content-level: expression
+nuance, set-dressing density, signage (composer's no-words law vs house lettering —
+needs a doctrine ruling).
+
+Board: https://claude.ai/code/artifact/c7f7e647-77a4-4472-84ca-fe20260ecb12
+Results: `.superpowers/sdd/2026-08-11-codex-image-engine/p6-real-results/` (arc worktree).
+Next gate: Daniel judges production adoption (spec §10 wave-2 promotion + lettering ruling).
