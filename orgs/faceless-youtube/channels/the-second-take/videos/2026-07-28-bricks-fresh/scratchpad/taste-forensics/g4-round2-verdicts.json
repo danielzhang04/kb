@@ -1,0 +1,76 @@
+{
+ "figures": {
+  "fig-miniscribe-rep--action-slump--expr-worried--def769f5": {
+   "canonical_sha256": "466b11a812ab98e36992162687ddd021298c57749ec725c81edc9a937837025e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  },
+  "fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27": {
+   "canonical_sha256": "dfd1816ca4593ed2719d69580b1df420aa2d66697aee0002f1061782ab09a805",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  },
+  "L29": {
+   "canonical_sha256": "a300131f7e2883ff472c6f36ec6e277c4b5af34d602f174e0e39ed8b0a712ab8",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "",
+    "line-register": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  },
+  "L33": {
+   "canonical_sha256": "20ff17c3b44bd553356a87715ee2e0a665c22e767e0c1f98ad6f10c7b0d42111",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "",
+    "line-register": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  },
+  "L38": {
+   "canonical_sha256": "29372262b4b9a1fcd23abdbdebd9114b2fc6899954b19d2056fc59b2ac5f3bb1",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "",
+    "line-register": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  },
+  "L44": {
+   "canonical_sha256": "1ffb2725862fb5bfe5eaaef7e8070a0946901fd73694b0327be574904fd710bc",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "",
+    "line-register": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  },
+  "L169": {
+   "canonical_sha256": "43a177a5e94cd7c5f2cc5b251004e3d3a0e93545b637a9a1fd1c5f05e1ea1192",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "",
+    "line-register": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  }
+ }
+}

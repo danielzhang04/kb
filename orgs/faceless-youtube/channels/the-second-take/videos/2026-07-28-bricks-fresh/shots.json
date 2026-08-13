@@ -373,8 +373,8 @@
         "source": "ai-gen",
         "place": "miniscribe-floor",
         "place_owner": "MINISCRIBE",
-        "still_prompt": "A single-storey assembly floor seen wide and head-on, entirely empty of people: two long steel benches running back into the depth with anti-static mats and part trays laid along them, a rack of empty tote bins stage-left, a roller door shut at the far end, strip lights in rows overhead. Cool grey-teal-cream palette, flat even industrial light, foreground depth from a cropped bench end cutting the lower-right corner. Over the entrance at the back of the floor hangs a plain painted board carrying one word: 'MINISCRIBE'.",
-        "notes": "Place plate: cast-free by law, so the naming clause lands on the brand and the next cut carries the personification. Figureless run is the plate's job. [F-01]"
+        "still_prompt": "A single-storey assembly floor seen wide and head-on, free of people but fully at work: two long steel benches running back into the depth with anti-static mats, part trays and half-built drive chassis laid along them in progress, powered screwdrivers hanging on balancers above the line, a rack of loaded tote bins stage-left and stacked pallets of flat cartons beyond it, the roller door at the far end rolled up on a loading bay, strip lights in rows overhead across a hall that runs the full width of the building. Cool grey-teal-cream palette, flat even industrial light, foreground depth from a cropped bench end cutting the lower-right corner. Over the entrance at the back of the floor hangs a plain painted board carrying one word in hand-lettered marker capitals, ink #241a12: 'MINISCRIBE'.",
+        "notes": "Place plate: cast-free by law, authored at working occupancy per P5 — the floor doing its job at the scale the script implies, signage ink stated. The naming clause lands on the brand and the next cut carries the personification. [F-01]"
       },
       {
         "id": "L29",
@@ -387,7 +387,7 @@
         "place": "miniscribe-floor",
         "stage": "floor-reveal",
         "stage_role": "base",
-        "still_prompt": "`miniscribe-rep`, `expr-delighted`, `action-powerstance`, planted centre in the entrance at the back of the assembly floor, the painted board 'MINISCRIBE' hanging over him. The floor as established: two long steel benches running back into the depth, the rack of tote bins stage-left, the roller door shut beyond. Cool grey-teal-cream palette, flat strip light, foreground depth from a cropped bench end at the lower-right.",
+        "still_prompt": "`miniscribe-rep`, `expr-delighted`, `action-powerstance`, planted centre in the entrance at the back of the assembly floor, the painted board 'MINISCRIBE' hanging over him. The floor as established: two long steel benches running back into the depth with work in progress along them, the rack of loaded tote bins stage-left, the roller door up on the loading bay beyond. Cool grey-teal-cream palette, flat strip light, foreground depth from a cropped bench end at the lower-right.",
         "notes": "Character reveal on the naming beat, one cut after the plate; the sign is L-1 carry, not this shot's payload."
       },
       {
@@ -441,7 +441,7 @@
         "place": "miniscribe-floor",
         "stage": "ibm-deal",
         "stage_role": "base",
-        "still_prompt": "`ibm-suit`, `expr-smug`, and `miniscribe-rep`, `expr-delighted`, clasped in `handshake` at centre frame on the assembly floor, both holding the same plane at a matching eye line and an equal relative head scale. Behind them the floor runs back into the depth: steel benches, the tote rack stage-left, the roller door up on flat grey daylight. Cool grey-teal-cream palette, flat strip light, foreground depth from a cropped bench end at the lower-right.",
+        "still_prompt": "`ibm-suit`, `expr-smug`, and `miniscribe-rep`, `expr-delighted`, clasped in `handshake` at centre frame on the assembly floor, both holding the same plane at a matching eye line and an equal relative head scale. Behind them the floor runs back into the depth: steel benches carrying work in progress, the loaded tote rack stage-left, the roller door up on flat grey daylight. Cool grey-teal-cream palette, flat strip light, foreground depth from a cropped bench end at the lower-right.",
         "notes": "Fresh two-figure stage base, so the contact geometry rides the interaction template legally. [F-29]"
       },
       {
@@ -504,8 +504,8 @@
         "vo_text": "they were selling to giants like Compaq and",
         "shot_class": "physicalized-imbalance",
         "source": "ai-gen",
-        "still_prompt": "One seeded performer, `base`, `expr-deadpan`, `action-armscrossed`, in an oversized charcoal three-piece suit, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-pleading`, `action-offering`, stands knee-high to him at the lower-left on the same plane, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
-        "notes": "The size gap is the argument, so the cropped face is deliberate and stated."
+        "still_prompt": "`ibm-suit`, `expr-deadpan`, `action-armscrossed`, colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. `miniscribe-rep`, `expr-worried`, `action-offering`, stands knee-high to him at the lower-left on the same plane, at a deliberately unequal relative head scale, holding one flat carton up toward the giant with his eye line raised past the frame top. Flat cream ground and backdrop, charcoal-cream-teal palette, even frontal light, foreground depth from a cropped shoe edge at the bottom-left.",
+        "notes": "The size gap is the argument, so the cropped face is deliberate and stated. The giant is the established institutional buyer cast by name (P2) rather than an anonymous performer; the vetoed pleading expression is replaced by a restrained one (P12)."
       },
       {
         "id": "L39",
@@ -515,8 +515,8 @@
         "vo_text": "making over 600 million dollars a year.",
         "shot_class": "number-glued-to-object",
         "source": "ai-gen",
-        "still_prompt": "`miniscribe-rep`, `expr-greedy`, `hold-both-hands`, stage-right, shoving the rear doors of an armoured cash truck shut against a wall of banded notes bulging out of the load bed. A depot yard: chain-link fence behind, a second truck parked beyond it, low warehouse roofs on the skyline. Charcoal-green-cream palette, flat overcast light, foreground depth from a cropped bollard at the lower-left. Across the truck's rear panel runs the stencilled figure '600 MILLION'.",
-        "notes": "Peak revenue as a container that cannot hold it. [F-28]"
+        "still_prompt": "`miniscribe-rep`, `expr-greedy`, `hold-both-hands`, stage-right, both palms flat against the rear door of an armoured cash truck, holding it closed on a load bed packed with banded notes that bulge through the gap. A depot yard: chain-link fence behind, a second truck parked beyond it, low warehouse roofs on the skyline. Charcoal-green-cream palette, flat overcast light, foreground depth from a cropped bollard at the lower-left. Across the truck's rear panel runs the stencilled figure '600 MILLION'.",
+        "notes": "Peak revenue as a container that cannot hold it. Re-authored per P8: the figure's sentence is composed FROM `hold-both-hands` instead of asking it for a shoving act it cannot hold — the mechanism behind this beat's 6c2 expression drift. [F-28]"
       },
       {
         "id": "L40",
@@ -585,7 +585,7 @@
         "place": "miniscribe-floor",
         "stage": "order-cut",
         "stage_role": "base",
-        "still_prompt": "`ibm-suit`, `expr-annoyed`, `action-thumbsdown`, planted centre on the assembly floor with one lone flat carton on the concrete at his feet where a loaded pallet stood. The floor behind him runs back into the depth: benches bare, the tote rack stage-left half empty, the roller door shut. Cool grey-teal-cream palette gone colder, flat strip light with the far end of the floor unlit, foreground depth from a cropped bench end at the lower-right.",
+        "still_prompt": "`ibm-suit`, `expr-annoyed`, `action-thumbsdown`, planted centre on the assembly floor with one lone flat carton on the concrete at his feet where a loaded pallet stood. The floor behind him runs back into the depth: benches stripped of work in progress, the tote rack stage-left half empty, the roller door pulled down. Cool grey-teal-cream palette gone colder, flat strip light with the far end of the floor unlit, foreground depth from a cropped bench end at the lower-right.",
         "notes": "The customer's decision staged on the supplier's floor, where it lands. [F-26]"
       },
       {
@@ -613,8 +613,8 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "One seeded performer, `base`, `expr-crestfallen`, `hold-both-hands`, in a grey work coat, stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door. On the far side of the far bench a subdued crowd stands and watches him go, arms down, faces flat and tired. Cool grey-teal palette drained toward grey, flat strip light with every fourth ceiling fitting dark, foreground depth from a cropped bench end at the lower-right.",
-        "notes": "Human-cost beat: humour off, one body carrying it and the mass authored as subdued rather than neutral. [F-26]"
+        "still_prompt": "`line-worker`, `expr-crestfallen`, `hold-both-hands`, stage-left, carrying a cardboard box of desk things down the length of the assembly floor toward the roller door. On the far side of the far bench a subdued crowd stands and watches him go, in grey work coats and plain early-1980s workwear, arms down, faces flat and tired. Cool grey-teal palette drained toward grey, flat strip light with every fourth ceiling fitting dark, foreground depth from a cropped bench end at the lower-right.",
+        "notes": "Human-cost beat: humour off, one body carrying it and the mass authored as subdued rather than neutral. The story-bearer is a NEW named cast member (`line-worker`) minted through the standard cast-generation waves per P2, not an anonymous performer. [F-26]"
       },
       {
         "id": "L47",
@@ -641,8 +641,8 @@
         "place": "miniscribe-floor",
         "stage": "trouble-floor",
         "stage_role": "base",
-        "still_prompt": "`miniscribe-rep`, `expr-worried`, `action-slump`, alone stage-centre on the assembly floor with his shoulders down, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the concrete beside him. Grey-teal-cream palette turned cold, foreground depth from a cropped empty tote bin at the lower-right.",
-        "notes": "The company personified in trouble rather than a falling chart. [F-26]"
+        "still_prompt": "`miniscribe-rep`, `expr-worried`, `action-slump`, alone stage-centre on the assembly floor, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittings are dark and the far end of the floor sits in shadow; a single roof light drops one cold shaft onto the concrete beside him. Grey-teal-cream palette turned cold, foreground depth from a cropped empty tote bin at the lower-right.",
+        "notes": "The company personified in trouble rather than a falling chart. Re-authored per P8: the shoulders-down stance prose that re-posed `action-slump` is dropped — the card is minted holding the act its sentence authors. [F-26]"
       },
       {
         "id": "L49",
@@ -2273,7 +2273,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "A wide view down the assembly floor with paper chains looped along the roof trusses and a small tinsel tree standing on the end bench. On the far side of the benches a subdued crowd of workers stands in coats, queued along the aisle toward a hatch in the far wall, nobody talking. The floor as established: steel benches running back into the depth, the tote racks stage-left. Cool grey-teal palette with one warm string of coloured bulbs, flat strip light, foreground depth from a cropped bench end at the lower-right.",
+        "still_prompt": "A wide view down the assembly floor with paper chains looped along the roof trusses and a small tinsel tree standing on the end bench. On the far side of the benches a subdued crowd of workers stands in winter coats over grey work clothes, queued along the aisle toward a hatch in the far wall, faces tired and nobody talking. The floor as established: steel benches running back into the depth, the tote racks stage-left. Cool grey-teal palette with one warm string of coloured bulbs, flat strip light, foreground depth from a cropped bench end at the lower-right.",
         "notes": "Palette turn on the human-cost beat; the decorations are the cruelty and the queue is the news. [F-14]"
       },
       {

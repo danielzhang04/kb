@@ -1,0 +1,5 @@
+  [1/3] L28: skip (exists in staging)
+  [2/3] fig-line-worker--hold-both-hands--expr-crestfallen--1d776b7a: START provider call
+  [2/3] fig-line-worker--hold-both-hands--expr-crestfallen--1d776b7a: OK -> _staging/fig-line-worker--hold-both-hands--expr-crestfallen--1d776b7a.png
+  [3/3] L46: skip (seed awaits review) — L46: figure `fig-line-worker--hold-both-hands--expr-crestfallen--1d776b7a` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  == 1 generated, 0 failed, 1 skipped, 1 held for review ==

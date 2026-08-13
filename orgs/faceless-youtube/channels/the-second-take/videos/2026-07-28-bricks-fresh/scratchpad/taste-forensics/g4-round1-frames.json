@@ -1,0 +1,185 @@
+[
+ {
+  "name": "L28",
+  "aspect": "16:9",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "role": "environment",
+    "character": "lettering-marker-italic"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+    "role": "style-anchor",
+    "character": "scene-style-tile"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference — preserve its authored place facts. The SECOND image is the channel's SCENE STYLE TILE — a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION — match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it — not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA single-storey assembly floor seen wide and head-on, free of people but fully at work: two long steel benches running back into the depth with anti-static mats, part trays and half-built drive chassis laid along them in progress, powered screwdrivers hanging on balancers above the line, a rack of loaded tote bins stage-left and stacked pallets of flat cartons beyond it, the roller door at the far end rolled up on a loading bay, strip lights in rows overhead across a hall that runs the full width of the building. Cool grey-teal-cream palette, flat even industrial light, foreground depth from a cropped bench end cutting the lower-right corner. Over the entrance at the back of the floor hangs a plain painted board carrying one word in hand-lettered marker capitals, ink #241a12: 'MINISCRIBE'."
+ },
+ {
+  "name": "fig-miniscribe-rep--action-powerstance--expr-delighted--2ca9a597",
+  "aspect": "2:3",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+    "role": "canonical",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+    "role": "expression",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+    "role": "pose",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-powerstance` pose reference for `miniscribe-rep` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre in the entrance at the back of the assembly floor, the painted board hanging over him. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene."
+ },
+ {
+  "name": "fig-ibm-suit--expr-smug--13275cca",
+  "aspect": "2:3",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+    "role": "canonical",
+    "character": "ibm-suit"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+    "role": "expression",
+    "character": "ibm-suit"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is `ibm-suit`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `ibm-suit` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `ibm-suit` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: and, clasped in at centre frame on the assembly floor, both holding the same plane at a matching eye line and an equal relative head scale. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene."
+ },
+ {
+  "name": "fig-miniscribe-rep--expr-delighted--13275cca",
+  "aspect": "2:3",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+    "role": "canonical",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+    "role": "expression",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: and, clasped in at centre frame on the assembly floor, both holding the same plane at a matching eye line and an equal relative head scale. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene."
+ },
+ {
+  "name": "fig-ibm-suit--action-armscrossed--expr-deadpan--7d403f11",
+  "aspect": "2:3",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+    "role": "canonical",
+    "character": "ibm-suit"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+    "role": "expression",
+    "character": "ibm-suit"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+    "role": "pose",
+    "character": "ibm-suit"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is `ibm-suit`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `ibm-suit` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `ibm-suit` holds in the parent scene, and no other figure's. The THIRD image is the `action-armscrossed` pose reference for `ibm-suit` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene."
+ },
+ {
+  "name": "fig-miniscribe-rep--action-offering--expr-worried--24a6dfcf",
+  "aspect": "2:3",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+    "role": "canonical",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+    "role": "expression",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
+    "role": "pose",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-worried` expression reference for `miniscribe-rep` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-offering` pose reference for `miniscribe-rep` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: colossal and dominant across the right two-thirds of the frame, seated on a plain concrete block with only his legs and torso inside the border. stands knee-high to him at the lower-left on the same plane, at a deliberately unequal relative head scale, holding one flat carton up toward the giant with his eye line raised past the frame top. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene."
+ },
+ {
+  "name": "fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27",
+  "aspect": "2:3",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+    "role": "canonical",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+    "role": "expression",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+    "role": "pose",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-greedy` expression reference for `miniscribe-rep` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `hold-both-hands` pose reference for `miniscribe-rep` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right, both palms flat against the rear door of an armoured cash truck, holding it closed on a load bed packed with banded notes that bulge through the gap. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene."
+ },
+ {
+  "name": "fig-ibm-suit--action-thumbsdown--expr-annoyed--a8e7e3a3",
+  "aspect": "2:3",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+    "role": "canonical",
+    "character": "ibm-suit"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+    "role": "expression",
+    "character": "ibm-suit"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-thumbsdown.png",
+    "role": "pose",
+    "character": "ibm-suit"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is `ibm-suit`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-annoyed` expression reference for `ibm-suit` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `ibm-suit` holds in the parent scene, and no other figure's. The THIRD image is the `action-thumbsdown` pose reference for `ibm-suit` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre on the assembly floor with one lone flat carton on the concrete at his feet where a loaded pallet stood. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene."
+ },
+ {
+  "name": "fig-miniscribe-rep--action-slump--expr-worried--def769f5",
+  "aspect": "2:3",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+    "role": "canonical",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+    "role": "expression",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-slump.png",
+    "role": "pose",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "prompt": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-worried` expression reference for `miniscribe-rep` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-slump` pose reference for `miniscribe-rep` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: alone stage-centre on the assembly floor, the benches around him cleared to bare steel and the tote racks empty. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene."
+ }
+]

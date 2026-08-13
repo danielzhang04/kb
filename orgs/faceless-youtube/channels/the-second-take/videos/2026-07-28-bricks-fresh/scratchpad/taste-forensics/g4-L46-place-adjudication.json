@@ -1,0 +1,21 @@
+{
+  "plate_description": "L28.png is a steel-framed industrial factory hall with exposed ceiling trusses and rows of fluorescent tube fixtures, a tan banner reading MINISCRIBE hanging center-frame. The left side has gray steel shelving stacked with brown/blue parts bins, boxes on top, and wrapped pallets on the floor. A center workbench run with blue tabletops holds hard-drive assembly parts and tool trays under hanging pneumatic hoists, with a closed roller loading-bay door and a delivery truck visible in the background. A matching bench run continues along the right side under a glass-partitioned corridor, and the floor throughout is painted gray concrete.",
+  "shared_features": [
+    "MINISCRIBE banner sign, same wording, font, and position",
+    "steel ceiling trusses and matching rows of fluorescent light fixtures",
+    "left-side steel shelving unit with brown/blue parts bins and boxes on top",
+    "wrapped/strapped pallets stacked near the left shelving",
+    "center workbench run with blue tabletops, tool trays, and hard-drive parts",
+    "hanging pneumatic tool hoists over the center and right bench runs",
+    "right-side bench run under a glass-partitioned corridor",
+    "closed roller loading-bay door with delivery truck visible in background",
+    "gray painted concrete floor",
+    "large hard-drive unit on the blue-topped foreground table"
+  ],
+  "differences": [
+    "a line of workers now queues down the center aisle (state addition, expected)",
+    "one worker walks in the foreground carrying a box (state addition, expected)",
+    "color grade reads slightly cooler/flatter (authored grade change, expected)"
+  ],
+  "place_continuity": "pass"
+}

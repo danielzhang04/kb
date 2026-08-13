@@ -1,0 +1,93 @@
+{
+ "figures": {
+  "fig-ibm-suit--action-armscrossed--expr-deadpan--7d403f11": {
+   "canonical_sha256": "a458815fab0d786f3623e3337378f375a5a629dde9f371afdd372aa86a1a48e1",
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "fig-ibm-suit--action-thumbsdown--expr-annoyed--a8e7e3a3": {
+   "canonical_sha256": "ad0d4bbccd6bd15e3a628031e73e9f6f923319e56119627724fa8dfea8960cf4",
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "fig-ibm-suit--expr-smug--13275cca": {
+   "canonical_sha256": "e34797863ddac16d5f803dd81b71c75b6d368c09c58e7dbcd92ba34d10548fe4",
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "fig-miniscribe-rep--action-offering--expr-worried--24a6dfcf": {
+   "canonical_sha256": "f178429e79f8ae08af2c109d8ebb83861d0fc060fe9c058281b82ff978cc44a0",
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "fig-miniscribe-rep--action-powerstance--expr-delighted--2ca9a597": {
+   "canonical_sha256": "00bce1c2d6eaf67770cab4422968dbe4352883683d5871f6777fec09e7d2d92b",
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "fig-miniscribe-rep--action-slump--expr-worried--def769f5": {
+   "canonical_sha256": "466b11a812ab98e36992162687ddd021298c57749ec725c81edc9a937837025e",
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "fig-miniscribe-rep--expr-delighted--13275cca": {
+   "canonical_sha256": "844051755a3a57ccff04e1532932775f47f27a244a96d68517becf328c230b47",
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27": {
+   "canonical_sha256": "dfd1816ca4593ed2719d69580b1df420aa2d66697aee0002f1061782ab09a805",
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "L28": {
+   "canonical_sha256": "8944ca87f8d5e6e038f86f92fc7f86248f66f6cb73c6c8d4fce1653b8a293f25",
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round1 + sonnet-verifier-B g4-round1 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  }
+ }
+}

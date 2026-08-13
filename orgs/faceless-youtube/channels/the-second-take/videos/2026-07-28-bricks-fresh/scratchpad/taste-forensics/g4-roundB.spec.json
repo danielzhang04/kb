@@ -1,0 +1,42 @@
+[
+  {
+    "name": "L34",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is `ibm-suit`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The THIRD image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose.\n\n`ibm-suit` and `miniscribe-rep` still hand-clasped at centre frame on the assembly floor, holding the same plane at a matching eye line and an equal relative head scale, benches running back into the depth, the tote rack stage-left, cool grey-teal-cream palette under flat strip light. Only this changes: through the open roller door behind them a queue of loaded pallets now waits nose to tail out into the yard; everything else exactly as established.",
+    "payload": "`ibm-suit` and `miniscribe-rep` still hand-clasped at centre frame on the assembly floor, holding the same plane at a matching eye line and an equal relative head scale, benches running back into the depth, the tote rack stage-left, cool grey-teal-cream palette under flat strip light. Only this changes: through the open roller door behind them a queue of loaded pallets now waits nose to tail out into the yard; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L33.png",
+      "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L33.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/ibm-suit/ibm-suit.png",
+        "role": "canonical",
+        "character": "ibm-suit"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 2,
+    "lineage": 1,
+    "why": "`ibm-suit` delta -> parent + canonical; `miniscribe-rep` delta -> parent + canonical"
+  }
+]

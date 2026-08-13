@@ -1,0 +1,11 @@
+{
+  "L28": { "rig": "pass", "expression-register": "n/a", "reason": "factory-floor place plate, no foreground named figures, default pass" },
+  "fig-miniscribe-rep--action-powerstance--expr-delighted--2ca9a597": { "rig": "pass", "expression-register": "pass", "reason": "round head/no nose-ears, costume matches canonical, fists on hips match powerstance ref, closed grin+squint matches delighted" },
+  "fig-ibm-suit--expr-smug--13275cca": { "rig": "pass", "expression-register": "pass", "reason": "identity/rig clean; face reads as a weak/subtle smug (close to neutral default) but matches half-lidded knowing-smirk register" },
+  "fig-miniscribe-rep--expr-delighted--13275cca": { "rig": "pass", "expression-register": "pass", "reason": "identity clean, right hand shows clear 3-finger+thumb rig; closed-eye open grin matches delighted primitive" },
+  "fig-ibm-suit--action-armscrossed--expr-deadpan--7d403f11": { "rig": "pass", "expression-register": "pass", "reason": "arms crossed at chest matches armscrossed ref, identity clean, half-lidded flat-mouth face matches deadpan" },
+  "fig-miniscribe-rep--action-offering--expr-worried--24a6dfcf": { "rig": "pass", "expression-register": "pass", "reason": "left hand extended shows clear 3-finger+thumb, both-hands-out pose matches offering ref, wide eyes+open frown matches worried" },
+  "fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27": { "rig": "fail", "expression-register": "pass", "reason": "POSE MISMATCH: named hold-both-hands requires both hands raised holding an object in front (see ref), but figure stands with both hands hanging at sides doing nothing -- no object, no raised-hands action at all" },
+  "fig-ibm-suit--action-thumbsdown--expr-annoyed--a8e7e3a3": { "rig": "pass", "expression-register": "pass", "reason": "extended arm with curled-fist thumb-down matches thumbsdown ref, other hand shows clear 3-finger+thumb, furrowed half-lidded frown matches annoyed" },
+  "fig-miniscribe-rep--action-slump--expr-worried--def769f5": { "rig": "fail", "expression-register": "pass", "reason": "POSE MISMATCH: named action-slump requires a hunched/drooping posture with head bowed down (see ref), but figure stands fully upright with head level -- no slump at all; face itself does match worried (wide eyes, open frown)" }
+}

@@ -1,0 +1,4 @@
+{
+  "fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27": { "rig": "fail", "expression-register": "pass", "reason": "Left hand is a closed fist doing a sideways thumbs-up and the right hand hovers loosely near the belt buckle -- hands are apart, not brought together with palms turned inward toward each other as hold-both-hands requires; expression matches expr-greedy (slanted brows, half-lidded eyes, smug closed-mouth smirk)." },
+  "fig-miniscribe-rep--action-slump--expr-worried--def769f5": { "rig": "fail", "expression-register": "pass", "reason": "Shoulders are level and square, spine is straight, head sits upright facing forward with no downward hang -- the body reads fully upright, only the face carries the mood, which is the explicit action-slump fail case; expression matches expr-worried (raised worried brows, wide round eyes, open frown mouth)." }
+}

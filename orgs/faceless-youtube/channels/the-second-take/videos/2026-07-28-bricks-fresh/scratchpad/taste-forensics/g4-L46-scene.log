@@ -1,0 +1,5 @@
+  [1/3] L28: skip (exists in staging)
+  [2/3] fig-line-worker--hold-both-hands--expr-crestfallen--1d776b7a: skip (exists in staging)
+  [3/3] L46: START provider call
+  [3/3] L46: OK -> _staging/L46.png
+  == 1 generated, 0 failed, 2 skipped, 0 held for review ==

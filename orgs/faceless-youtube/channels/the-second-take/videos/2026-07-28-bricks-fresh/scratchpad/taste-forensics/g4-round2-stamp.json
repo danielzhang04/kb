@@ -1,0 +1,59 @@
+{
+ "figures": {
+  "L29": {
+   "canonical_sha256": "a300131f7e2883ff472c6f36ec6e277c4b5af34d602f174e0e39ed8b0a712ab8",
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round2 + sonnet-verifier-B g4-round2 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "L33": {
+   "canonical_sha256": "20ff17c3b44bd553356a87715ee2e0a665c22e767e0c1f98ad6f10c7b0d42111",
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round2 + sonnet-verifier-B g4-round2 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "L38": {
+   "canonical_sha256": "29372262b4b9a1fcd23abdbdebd9114b2fc6899954b19d2056fc59b2ac5f3bb1",
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round2 + sonnet-verifier-B g4-round2 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "L44": {
+   "canonical_sha256": "1ffb2725862fb5bfe5eaaef7e8070a0946901fd73694b0327be574904fd710bc",
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round2 + sonnet-verifier-B g4-round2 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "L169": {
+   "canonical_sha256": "43a177a5e94cd7c5f2cc5b251004e3d3a0e93545b637a9a1fd1c5f05e1ea1192",
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round2 + sonnet-verifier-B g4-round2 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  },
+  "fig-line-worker--hold-both-hands--expr-crestfallen--1d776b7a": {
+   "canonical_sha256": "c110f5e3cb9514af24df21e7ed20dd31fba64ef7fd808605e6a6ee89ea2ccdb1",
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round2 + sonnet-verifier-B g4-round2 (disjoint axes, merged: any fail = fail)",
+   "date": "2026-08-12"
+  }
+ }
+}

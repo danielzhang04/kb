@@ -1,117 +1,52 @@
 [
  {
-  "id": "L26",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
   "id": "L28",
   "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass"
  },
  {
   "id": "L29",
   "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L30",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L31",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L35",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L36",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L37",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L40",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L41",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L42",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L43",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L50",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L27",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L32",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass"
  },
  {
   "id": "L33",
   "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L44",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L46",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L47",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L48",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
- },
- {
-  "id": "L49",
-  "worst": "clean",
-  "why": "wave-2 promotion pass: round-1 all-clean or retry-round-1 all-clean per scratchpad/6c2-w2verify-a.json, 6c2-w2verify-b.json, 6c2-w2verify-r1.json"
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass"
  },
  {
   "id": "L38",
   "worst": "clean",
-  "why": "wave-2 verification round 2 (final round) pass per scratchpad/6c2-w2verify-r2.json#L38: fresh root, first verification, all axes pass (composition_staging/figures/ink_law/register_flatcel), only minor/trivial defects noted (costume hue drift, prose-approximate scale)"
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass"
  },
  {
-  "id": "L45",
+  "id": "L44",
   "worst": "clean",
-  "why": "wave-2 verification round 2 (final round) pass per scratchpad/6c2-w2verify-r2.json#L45-fix: corrective re-roll of the L45 rejected prior (_staging/_rejected-6c2-w2r1/L45.png), both named correctives (4-digit hands, no boot over the void) landed, ship-it verdict; ink_law flagged non-blocking (warm, no cool inversion, above batch ceiling — batch-level note, not a per-frame defect)"
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass"
+ },
+ {
+  "id": "L46",
+  "worst": "clean",
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass"
+ },
+ {
+  "id": "L169",
+  "worst": "clean",
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass"
+ },
+ {
+  "id": "L34",
+  "worst": "HIGH",
+  "why": "delta_discipline: canonical-expression leak PERSISTS on `miniscribe-rep` after P9 - on a beat whose prose authors NO expression change (\"everything else exactly as established\"), his eyes went from closed happy-squint to wide open with pupils and his mouth from open grin to small closed smile; `ibm-suit` resolved the identical spec correctly. Measured vs the verified parent L33: miniscribe-rep face interior 43.70% changed, ibm-suit head 10.21%, place regions 3.28-3.82%, authored roller-door delta 50.67%. P9 DID fix the hair half of the 6c2 leak (hair core 37.58% -> 6.51%) but not the expression half (face interior 29.79% -> 43.70%). Candidate frame left at visual-kit/_staging/L34.png, NOT promoted. Not re-rolled: the 6c2 record's standing diagnosis is that place, ibm-suit and the authored delta are all correct and a fresh roll risks all three to fix one face, and P9's seed-role expression-authority prose is already present in the assembled prompt, so the gap is spec-side, not a generator lottery."
+ },
+ {
+  "id": "L39",
+  "worst": "HIGH",
+  "why": "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
+ },
+ {
+  "id": "L48",
+  "worst": "HIGH",
+  "why": "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--action-slump--expr-worried--def769f5` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
  }
 ]

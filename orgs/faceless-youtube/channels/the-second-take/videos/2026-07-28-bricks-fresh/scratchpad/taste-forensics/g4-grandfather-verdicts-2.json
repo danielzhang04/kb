@@ -1,0 +1,36 @@
+{
+ "figures": {
+  "fig-miniscribe-rep--action-slump--expr-worried--def769f5": {
+   "canonical_sha256": "466b11a812ab98e36992162687ddd021298c57749ec725c81edc9a937837025e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  },
+  "fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27": {
+   "canonical_sha256": "dfd1816ca4593ed2719d69580b1df420aa2d66697aee0002f1061782ab09a805",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-12"
+  },
+  "expr-crestfallen": {
+   "canonical_sha256": "4cf713b0a144bed628c8bbce9c167aba657d69dc7be6ee66fbe03461fe7f9afc",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "grandfathered 2026-08-13 - boss ruling per Daniel G2 trust statement (2026-08-12); standing asset in use across prior operator-reviewed runs, predates the P3 gate",
+   "date": "2026-08-13"
+  }
+ }
+}

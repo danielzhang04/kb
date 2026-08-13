@@ -1,0 +1,13 @@
+{
+ "figures": {
+  "L46": {
+   "canonical_sha256": "cbe9ae5d7ae1ba40aea259ec5678a317faf1f0aa43cea96b6f4309a8053c6a02",
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "sonnet-verifier-A g4-round2b + sonnet-verifier-B g4-round2b (disjoint axes, merged); place-continuity fail from B overturned by fresh adjudicator sonnet-verifier-B2 g4-round2b-adjudication (B misdescribed the L28 plate; adjudicator and orchestrator both confirm same hall)",
+   "date": "2026-08-12"
+  }
+ }
+}

@@ -463,8 +463,10 @@
     }
    ],
    "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
+   "review_status": "parked",
+   "parked_reasons": [
+    "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--action-slump--expr-worried--def769f5` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
+   ],
    "retry_cause": "r1 defect fixed by exact replace — from: \"alone stage-centre on the assembly floor with his shoulders down, the benches around him cleared to bare steel and the tote racks empty. Half the ceiling fittin\" -> to: \"alone stage-centre on the assembly floor in a real SLUMP that the drawing must execute, not an upright stand: his shoulders visibly DROPPED and rounded well below their normal line, his head hanging f\"",
    "parent_depth": 1,
    "lineage": 1,
@@ -513,7 +515,7 @@
    "flagged": false,
    "review_status": "parked",
    "parked_reasons": [
-    "figures / continuity_figure / delta_discipline: canonical-expression-leak — miniscribe-rep's whole head (hair silhouette + expression) was redrawn off the canonical seed instead of held from the parent (37.58% hair-core / 29.79% face-interior changed vs parent); ibm-suit resolved the identical spec correctly (identity+costume from canonical, expression from parent, head+hair core 0.00% changed) — a spec gap in seed_roles expression authority, not a place or generator failure (place seed 0.00-0.11% across every region, MINISCRIBE fascia 0.00%, authored pallet-queue delta landed clean)"
+    "delta_discipline: canonical-expression leak PERSISTS on `miniscribe-rep` after P9 - on a beat whose prose authors NO expression change (\"everything else exactly as established\"), his eyes went from closed happy-squint to wide open with pupils and his mouth from open grin to small closed smile; `ibm-suit` resolved the identical spec correctly. Measured vs the verified parent L33: miniscribe-rep face interior 43.70% changed, ibm-suit head 10.21%, place regions 3.28-3.82%, authored roller-door delta 50.67%. P9 DID fix the hair half of the 6c2 leak (hair core 37.58% -> 6.51%) but not the expression half (face interior 29.79% -> 43.70%). Candidate frame left at visual-kit/_staging/L34.png, NOT promoted. Not re-rolled: the 6c2 record's standing diagnosis is that place, ibm-suit and the authored delta are all correct and a fresh roll risks all three to fix one face, and P9's seed-role expression-authority prose is already present in the assembled prompt, so the gap is spec-side, not a generator lottery."
    ],
    "retry_cause": null,
    "parent_depth": 2,
@@ -563,9 +565,7 @@
    "flagged": false,
    "review_status": "parked",
    "parked_reasons": [
-    "figures / rig: miniscribe-rep NOSE drawn (bridge line, hooked nostril, nasolabial fold) — rig law is NO NOSE; collateral regression vs the rejected prior, which held this clean",
-    "figures / rig: miniscribe-rep EAR drawn with an inner helix curl — rig law is NO EARS; same collateral regression",
-    "figures / expression register: expr-greedy corrective did not land — card is a closed-mouth smirk under half-lidded eyes, frame renders a teeth-bared effort grimace with hard angry brows"
+    "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
    ],
    "retry_cause": "r1 defect (stencil on wrong panel, notes staged on roof) targeted by exact overlay replace — from: \"Across the truck's rear panel runs the stencilled figure '600 MILLION'.\" -> to: \"The truck is seen from behind: the stencilled figure '600 MILLION' runs across the REAR DOOR PANEL he is shoving shut...\"; 3 of 4 correctives landed (stencil placement, notes bulge, bare roof) but the 4th (closed-mouth smirk) did not, and the re-roll introduced 2 new rig regressions (nose, ear) on a face the rejected prior held clean",
    "parent_depth": 0,
@@ -590,6 +590,11 @@
    "parent_depth": 0,
    "lineage": 0,
    "notes": "`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-recoil--expr-shock REUSED; RETRY overlay from `L45`; promoted from _staging/L45-fix.png (sha256 d7195187dc9cefcfab102e345eaab8df41908288e23055a330a3bd28a50ae0a2, verified match on copy: True) to canonical assets/scenes/L45.png per chain-parent resolution law; verify record scratchpad/6c2-w2verify-r2.json#L45-fix (wave-2 retry round 2 / final round, pass — corrective re-roll of the L45 rejected prior at _staging/_rejected-6c2-w2r1/L45.png, sha256 d3a3cb3a..., ship-it verdict; ink_law flagged non-blocking, a batch-level ochre-scene note not a per-frame defect)"
+  },
+  {
+   "shot_id": "L169",
+   "review_status": "verified",
+   "parked_reasons": []
   }
  ]
 }

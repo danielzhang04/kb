@@ -563,6 +563,18 @@
    "notes": "Reused from the channel registry; no generation."
   },
   {
+   "name": "line-worker",
+   "kind": "identity",
+   "file": "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+   "head_tone": "#c8936b",
+   "costume": "PINNED canonical outfit: knee-length grey cotton work coat worn open over an olive button shirt and dark charcoal trousers, sleeves pushed to the forearm, plain dark work shoes; short black side-parted hair, clean-shaven, plain build. No badge, no tie. Renders in this unless a shot authors a change.",
+   "source": "generated (G4 taste-forensics slice, Pass 1)",
+   "shots": [
+    "L46"
+   ],
+   "notes": "Minted 2026-08-12 by the G4 paid mint (task 9c) as the NEW named cast member P2 requires for L46's human-cost beat, through the standard cast-generation wave seeded off refs/base/base.png. Carries no human review record by design: a named cast member's own canonical is the ONE P3 gate exemption (G2 ruling). Role: an anonymous MiniScribe assembly-line worker — the human cost of the fraud, not a lead."
+  },
+  {
    "name": "miniscribe-rep",
    "kind": "identity",
    "file": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",

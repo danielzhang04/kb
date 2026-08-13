@@ -1,0 +1,19 @@
+  [1/16] L28: skip (exists in staging)
+  [2/16] fig-miniscribe-rep--action-powerstance--expr-delighted--2ca9a597: skip (exists in staging)
+  [3/16] L29: skip (exists in staging)
+  [4/16] fig-ibm-suit--expr-smug--13275cca: skip (exists in staging)
+  [5/16] fig-miniscribe-rep--expr-delighted--13275cca: skip (exists in staging)
+  [6/16] L33: skip (exists in staging)
+  [7/16] fig-ibm-suit--action-armscrossed--expr-deadpan--7d403f11: skip (exists in staging)
+  [8/16] fig-miniscribe-rep--action-offering--expr-worried--24a6dfcf: skip (exists in staging)
+  [9/16] L38: skip (exists in staging)
+  [10/16] fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27: skip (exists in staging)
+  [11/16] L39: skip (seed awaits review) — L39: figure `fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS rig. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  [12/16] fig-ibm-suit--action-thumbsdown--expr-annoyed--a8e7e3a3: skip (exists in staging)
+  [13/16] L44: START provider call
+  [13/16] L44: OK -> _staging/L44.png
+  [14/16] fig-miniscribe-rep--action-slump--expr-worried--def769f5: skip (exists in staging)
+  [15/16] L48: skip (seed awaits review) — L48: figure `fig-miniscribe-rep--action-slump--expr-worried--def769f5` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS expression-register, flat-cel-hazard, rig. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  [16/16] L169: START provider call
+  [16/16] L169: OK -> _staging/L169.png
+  == 2 generated, 0 failed, 12 skipped, 2 held for review ==

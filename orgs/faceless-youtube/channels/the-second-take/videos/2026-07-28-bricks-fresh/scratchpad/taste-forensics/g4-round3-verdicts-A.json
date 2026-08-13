@@ -1,0 +1,9 @@
+{
+  "L34": {
+    "rig": "pass",
+    "delta-discipline": "fail",
+    "ibm_suit_held": "yes",
+    "miniscribe_rep_held": "no",
+    "reason": "miniscribe-rep's expression changed: L33 has eyes closed in a happy squint with a wide open grin showing teeth, L34 has eyes wide open with visible round pupils and a small closed close-mouth smile with no teeth; ibm-suit's half-lidded eyes, brows, and closed-mouth smirk are held pixel-faithful from the parent."
+  }
+}

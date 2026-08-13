@@ -1,0 +1,22 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L39",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27",
+      "defect": "pose",
+      "instruction": "POSTURE IS THE DEFECT. The previous card came back with both arms hanging straight down at the sides, which is the canonical's default standing pose, not the seeded one. Take the ARM AND HAND POSITION from the pose reference exactly: both arms raised and brought forward in front of the chest, elbows bent, both hands up at mid-torso height with the palms turned inward toward each other as if closing on something held between them. Both hands must be clearly raised and forward of the body. Keep the face, head and costume as seeded."
+    },
+    {
+      "kind": "step1",
+      "shot": "L48",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--action-slump--expr-worried--def769f5",
+      "defect": "pose",
+      "instruction": "POSTURE IS THE DEFECT. The previous card came back standing fully upright and square, which is the canonical's default standing pose, not the seeded one. Take the WHOLE-BODY POSTURE from the pose reference exactly: shoulders rolled forward and dropped, upper back curved into a stoop, head hanging forward and down off the bowed neck, arms limp and hanging slightly forward of the hips, knees soft. The silhouette must read as a defeated slump from across the room, not as an upright figure with a sad face. Keep the face, head and costume as seeded."
+    }
+  ]
+}
