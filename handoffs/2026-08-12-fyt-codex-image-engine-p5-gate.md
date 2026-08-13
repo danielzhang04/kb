@@ -101,3 +101,42 @@ needs a doctrine ruling).
 Board: https://claude.ai/code/artifact/c7f7e647-77a4-4472-84ca-fe20260ecb12
 Results: `.superpowers/sdd/2026-08-11-codex-image-engine/p6-real-results/` (arc worktree).
 Next gate: Daniel judges production adoption (spec §10 wave-2 promotion + lettering ruling).
+
+---
+
+## UPDATE 2026-08-13: P7 EXACT-MATCH ROUND — 10/10 generated, four more mechanisms fixed
+
+Daniel's directive (away, run-through-checkpoint): one more brainstorm→build→run cycle to
+match approved bricks shots exactly. Targets = 10 promoted 6c2 scenes (SHA-verified
+identical to `assets/scenes/`): L27 L28 L29 L32 L33 L35 L36 L42 L44 L50 (4 P6-weak
+retests + L29 control + 5 unseen).
+
+**Boss forensics found four NEW mechanisms beyond P6's fixes:**
+1. Top-4 palette clamp FORBADE small-area accent colours (vivid steel-blue work mats,
+   red sign) — the prompt's own constraint erased them.
+2. No composition contract → figure scale drift (70–75% vs baseline 45–55%), lost light
+   pools, lost floor/wall boundary, added depth-of-field blur.
+3. Abstract emotion words underdetermine faces ("delighted" → smug half-lid).
+4. Blanket no-words law suppressed house-legal lettering (MINISCRIBE sign, money bands).
+
+**P7 levers (spec: `scratch-codex-image-engine/p7-boss-spec.md`, driver commit fc8815f):**
+accent-aware registers (top-6 + saturated minority clusters, all 23 frames), class-matched
+style anchors (nearest-register accepted frame, warm→warm), per-shot composition/expression-
+geometry/dressing contracts (verbatim pass-through), lettering exceptions ("no words EXCEPT
+the exact string(s)"), saturation + no-blur guards. 43 scratch + 126 engine tests green.
+4 STEP-1 plates SHA+ALLPASS-verified from main staging (machine-local copies).
+
+**Result (10 gens, 0 redos, $0 API):** MINISCRIBE sign renders in red marker caps on all
+4 sign shots; L33's rep finally grins (expression geometry landed); L36 band = "125
+MILLION" marker italics (P6: stencil gray), dM3=0; blue mats vivid everywhere; figure
+scale + light pools correct. |dM1|≤5 on 5/10 — but M1 is layout-sensitive; visual review
+says 8-10/10 read as near-matches. Residuals now fine-grained: money greens 1–2 shades
+dark (L36/L50), L28 roller-door/ceiling tone, small prop geometry (L42 pedestal, L32
+bench), L50 band prints flat not tilted.
+
+**Board artifact:** https://claude.ai/code/artifact/96d4a5bc-cd24-4864-a73e-76551475414f
+Results: arc worktree `.superpowers/sdd/2026-08-11-codex-image-engine/p7-real-results/`.
+
+**Open for Daniel (unchanged + new):** adoption ruling (spec §10 wave-2 promotion);
+lettering doctrine ruling (P7 lifted no-words per-string for the TEST — production needs a
+law); fresh-eyes review of engine compose_fn/seed_cap_override extension still owed.

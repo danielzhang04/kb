@@ -356,3 +356,22 @@
 - FAILED: codex-deep dispatch died on transient DNS ("No such host is known", 5 reconnects) — worktree left clean; re-dispatch fresh after DNS resolves. Spooled cards (3) published via temp worktree from origin/ops → push HEAD:ops.
 - FAILED: boss fix-ruling over-corrected once (gateKind-based gate scoping broke sibling completion gates — completion gates carry no gateKind); identity-based scoping (receipt ownership) was correct. Lesson: when scoping a guard, scope by ownership identity, not by a tag only some members carry.
 - LESSON: builders overreach scope even with binding Do-not-touch lists (Task-1 did Task-13's deletion early; suites stayed green because tests hand-build the deleted input). Negative space needs adversarial review, never suite-green trust.
+
+## 2026-08-13 — P7 exact-match round (codex-image-engine)
+- WORKED: forensic diffing of failed outputs against targets BEFORE re-prompting — found the
+  top-4 palette clamp was literally forbidding accent colours the target contained (blue
+  mats, red sign). Lesson class: a constraint derived from a lossy measurement can outlaw
+  the thing you're trying to reproduce; always check the constraint against the target's
+  full content, not just the dominant statistics.
+- WORKED: contracts beat adjectives with gpt-image-2 — figure scale as % of frame height,
+  expression as concrete geometry ("closed curved-down eyes, huge open smile showing upper
+  teeth"), lettering as exact string + treatment. Every one of these landed on first gen.
+- WORKED: per-item exception clauses ("no words EXCEPT the exact string(s) specified")
+  instead of lifting a ban wholesale — signs rendered, no stray text appeared.
+- WATCH: paired |dM1| is layout-sensitive, not style-pure — L29 measured 7.3 while being a
+  near-perfect visual match (its light layout differs). Judge with eyes, use metrics as
+  tripwires only.
+- FAILED (minor): worker's Avoid-list wording had inverted polarity ("Avoid: no words...")
+  — review generated prompt TEXT, not just code, before running paid/real cells.
+- Residual knob for any P8: money-green saturation runs dark when the class anchor has dark
+  bills — anchor choice steers fill value more than the palette hex list does.
