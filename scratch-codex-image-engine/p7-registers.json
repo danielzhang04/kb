@@ -1,0 +1,1077 @@
+{
+  "anchors": {
+    "L27": "L30",
+    "L28": "L48",
+    "L29": "L44",
+    "L32": "L37",
+    "L33": "L44",
+    "L35": "L47",
+    "L36": "L40",
+    "L42": "L41",
+    "L44": "L29",
+    "L50": "L49"
+  },
+  "schema": "faceless-youtube/codex-image-engine-p7-registers@2",
+  "shots": {
+    "L26": {
+      "ink_hex": "#1d2116",
+      "palette": [
+        {
+          "coverage": 0.125953,
+          "hex": "#7cada6",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.105105,
+          "hex": "#97c5bb",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.102869,
+          "hex": "#817568",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.092654,
+          "hex": "#93c5ba",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.087018,
+          "hex": "#f9f1d5",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.081766,
+          "hex": "#6b5c56",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.06895,
+          "hex": "#8cbeb3",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.026917,
+          "hex": "#74a099",
+          "is_accent": true
+        }
+      ]
+    },
+    "L27": {
+      "ink_hex": "#241409",
+      "palette": [
+        {
+          "coverage": 0.09137,
+          "hex": "#a59f93",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.084922,
+          "hex": "#a6b0b0",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.082977,
+          "hex": "#908a7e",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.08121,
+          "hex": "#cec0a5",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.07097,
+          "hex": "#7a7d7b",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.070961,
+          "hex": "#6a6963",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.064746,
+          "hex": "#534539",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.040953,
+          "hex": "#7f6e5d",
+          "is_accent": true
+        }
+      ]
+    },
+    "L28": {
+      "ink_hex": "#0f0f0c",
+      "palette": [
+        {
+          "coverage": 0.120429,
+          "hex": "#697c7d",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.110861,
+          "hex": "#b0bbb7",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.098307,
+          "hex": "#ede9cf",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.092173,
+          "hex": "#839191",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.080151,
+          "hex": "#9ea9a5",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.066471,
+          "hex": "#678c99",
+          "is_accent": true
+        }
+      ]
+    },
+    "L29": {
+      "ink_hex": "#070907",
+      "palette": [
+        {
+          "coverage": 0.150036,
+          "hex": "#aeb9b4",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.116958,
+          "hex": "#687b7b",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.106122,
+          "hex": "#97a29e",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.090522,
+          "hex": "#eee9ce",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.085243,
+          "hex": "#858d89",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.064916,
+          "hex": "#798787",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.05812,
+          "hex": "#658897",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.04586,
+          "hex": "#3f322c",
+          "is_accent": true
+        }
+      ]
+    },
+    "L30": {
+      "ink_hex": "#2d1c0f",
+      "palette": [
+        {
+          "coverage": 0.090785,
+          "hex": "#a4a198",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.087654,
+          "hex": "#cfccbb",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.087163,
+          "hex": "#d0cdbc",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.082759,
+          "hex": "#b8aea0",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.069494,
+          "hex": "#90928d",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.067106,
+          "hex": "#afa99d",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.060931,
+          "hex": "#bda180",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.044186,
+          "hex": "#604f3f",
+          "is_accent": true
+        }
+      ]
+    },
+    "L31": {
+      "ink_hex": "#271609",
+      "palette": [
+        {
+          "coverage": 0.09133,
+          "hex": "#d4cebb",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.083689,
+          "hex": "#b8ad9d",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.081398,
+          "hex": "#a59f94",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.080048,
+          "hex": "#8f8f8a",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.079649,
+          "hex": "#d0cbb8",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.067095,
+          "hex": "#ada79a",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.059037,
+          "hex": "#c09e7a",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.042765,
+          "hex": "#5b4a3b",
+          "is_accent": true
+        }
+      ]
+    },
+    "L32": {
+      "ink_hex": "#341e11",
+      "palette": [
+        {
+          "coverage": 0.310246,
+          "hex": "#afaca7",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.098004,
+          "hex": "#aeaba6",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.091511,
+          "hex": "#dbd8d3",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.0801,
+          "hex": "#a07d68",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.078175,
+          "hex": "#dbd7d4",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.056274,
+          "hex": "#a9a298",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.031171,
+          "hex": "#caa588",
+          "is_accent": true
+        }
+      ]
+    },
+    "L33": {
+      "ink_hex": "#080907",
+      "palette": [
+        {
+          "coverage": 0.128806,
+          "hex": "#667879",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.128251,
+          "hex": "#adb9b4",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.120597,
+          "hex": "#ede8ce",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.100669,
+          "hex": "#95a19d",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.092314,
+          "hex": "#849392",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.063926,
+          "hex": "#69969d",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.052618,
+          "hex": "#342a26",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.012326,
+          "hex": "#658188",
+          "is_accent": true
+        }
+      ]
+    },
+    "L35": {
+      "ink_hex": "#0e0e0a",
+      "palette": [
+        {
+          "coverage": 0.109308,
+          "hex": "#e2dfc6",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.098927,
+          "hex": "#3c4e4d",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.08351,
+          "hex": "#536764",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.072702,
+          "hex": "#7a938e",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.071486,
+          "hex": "#453d3a",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.068664,
+          "hex": "#999c8c",
+          "is_accent": false
+        }
+      ]
+    },
+    "L36": {
+      "ink_hex": "#1f1102",
+      "palette": [
+        {
+          "coverage": 0.185923,
+          "hex": "#f4e5c8",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.131123,
+          "hex": "#f5e5cb",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.098537,
+          "hex": "#d3d3a9",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.095154,
+          "hex": "#7b835e",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.087776,
+          "hex": "#b6ae88",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.075817,
+          "hex": "#f5e6c9",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.075625,
+          "hex": "#eeddb2",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.056699,
+          "hex": "#858763",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.024601,
+          "hex": "#574d35",
+          "is_accent": true
+        }
+      ]
+    },
+    "L37": {
+      "ink_hex": "#301e0c",
+      "palette": [
+        {
+          "coverage": 0.147734,
+          "hex": "#b1dfdf",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.111566,
+          "hex": "#c0e8e4",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.107693,
+          "hex": "#faf2d6",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.09118,
+          "hex": "#7b7e69",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.087645,
+          "hex": "#bddbcb",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.066978,
+          "hex": "#dabc90",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.049149,
+          "hex": "#c1986c",
+          "is_accent": true
+        }
+      ]
+    },
+    "L38": {
+      "ink_hex": "#1f0e07",
+      "palette": [
+        {
+          "coverage": 0.155882,
+          "hex": "#faecc9",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.122956,
+          "hex": "#f9ebc8",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.114891,
+          "hex": "#484743",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.101545,
+          "hex": "#bbb39f",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.095247,
+          "hex": "#fbebc9",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.091201,
+          "hex": "#7e8177",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.063387,
+          "hex": "#24383a",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.062242,
+          "hex": "#392d27",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.033556,
+          "hex": "#425958",
+          "is_accent": true
+        }
+      ]
+    },
+    "L40": {
+      "ink_hex": "#1c1405",
+      "palette": [
+        {
+          "coverage": 0.346136,
+          "hex": "#f6e7c0",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.102284,
+          "hex": "#5b534f",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.080577,
+          "hex": "#f7e8c1",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.080263,
+          "hex": "#868b70",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.06303,
+          "hex": "#f5e6bf",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.053103,
+          "hex": "#4c4a42",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.026856,
+          "hex": "#352e23",
+          "is_accent": true
+        }
+      ]
+    },
+    "L41": {
+      "ink_hex": "#211a0b",
+      "palette": [
+        {
+          "coverage": 0.16554,
+          "hex": "#524c46",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.158948,
+          "hex": "#f6e7be",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.132907,
+          "hex": "#f5e6bd",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.121957,
+          "hex": "#f6e8bf",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.092797,
+          "hex": "#6d6f5c",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.043378,
+          "hex": "#cfc4a0",
+          "is_accent": false
+        }
+      ]
+    },
+    "L42": {
+      "ink_hex": "#1e1608",
+      "palette": [
+        {
+          "coverage": 0.129582,
+          "hex": "#534c46",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.097435,
+          "hex": "#f6e7bc",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.090363,
+          "hex": "#f7e8bc",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.080534,
+          "hex": "#f5e6bb",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.078217,
+          "hex": "#f4e5ba",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.069677,
+          "hex": "#857a61",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.052835,
+          "hex": "#685c46",
+          "is_accent": true
+        }
+      ]
+    },
+    "L43": {
+      "ink_hex": "#1b1009",
+      "palette": [
+        {
+          "coverage": 0.131481,
+          "hex": "#203438",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.108865,
+          "hex": "#213135",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.088715,
+          "hex": "#344e4f",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.087542,
+          "hex": "#3f4442",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.075683,
+          "hex": "#a27f5e",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.07336,
+          "hex": "#f5e1c0",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.050327,
+          "hex": "#1c2f33",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.048598,
+          "hex": "#d3a87e",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.037852,
+          "hex": "#3c504e",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.035169,
+          "hex": "#324d4e",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.031733,
+          "hex": "#281f17",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.02868,
+          "hex": "#314f50",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.018856,
+          "hex": "#27393b",
+          "is_accent": true
+        }
+      ]
+    },
+    "L44": {
+      "ink_hex": "#0e100e",
+      "palette": [
+        {
+          "coverage": 0.110518,
+          "hex": "#eeebd2",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.108185,
+          "hex": "#779392",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.106231,
+          "hex": "#adb7b2",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.073692,
+          "hex": "#9ca39b",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.072966,
+          "hex": "#55676d",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.063421,
+          "hex": "#464244",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.038777,
+          "hex": "#698d9d",
+          "is_accent": true
+        }
+      ]
+    },
+    "L45": {
+      "ink_hex": "#412412",
+      "palette": [
+        {
+          "coverage": 0.108302,
+          "hex": "#dfdbc8",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.102796,
+          "hex": "#f8f3dd",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.097298,
+          "hex": "#e3a050",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.092256,
+          "hex": "#837764",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.072808,
+          "hex": "#ece9d3",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.069025,
+          "hex": "#e3decb",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.062473,
+          "hex": "#d69a51",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.048052,
+          "hex": "#c19760",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.041185,
+          "hex": "#a98358",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.022393,
+          "hex": "#e4b171",
+          "is_accent": true
+        }
+      ]
+    },
+    "L46": {
+      "ink_hex": "#0d0e0b",
+      "palette": [
+        {
+          "coverage": 0.122568,
+          "hex": "#677a7b",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.112692,
+          "hex": "#abb7b4",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.105253,
+          "hex": "#8e9d9b",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.100612,
+          "hex": "#bbc8c1",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.073283,
+          "hex": "#829393",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.067812,
+          "hex": "#808c8a",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.038232,
+          "hex": "#638695",
+          "is_accent": true
+        }
+      ]
+    },
+    "L47": {
+      "ink_hex": "#1c1913",
+      "palette": [
+        {
+          "coverage": 0.10734,
+          "hex": "#b2bbb9",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.096349,
+          "hex": "#859292",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.092549,
+          "hex": "#e5e2cb",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.08862,
+          "hex": "#a5a18d",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.071408,
+          "hex": "#909c9a",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.066849,
+          "hex": "#729c99",
+          "is_accent": true
+        }
+      ]
+    },
+    "L48": {
+      "ink_hex": "#10110e",
+      "palette": [
+        {
+          "coverage": 0.13135,
+          "hex": "#313f3f",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.084775,
+          "hex": "#6a7e80",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.083492,
+          "hex": "#9eaaa9",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.081434,
+          "hex": "#475859",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.079773,
+          "hex": "#7d8c8b",
+          "is_accent": false
+        },
+        {
+          "coverage": 0.072541,
+          "hex": "#eae7ce",
+          "is_accent": false
+        }
+      ]
+    },
+    "L49": {
+      "ink_hex": "#361001",
+      "palette": [
+        {
+          "coverage": 0.112972,
+          "hex": "#cc8e4f",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.087816,
+          "hex": "#ba7d45",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.085477,
+          "hex": "#965d32",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.072995,
+          "hex": "#94592f",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.072003,
+          "hex": "#5a412e",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.067053,
+          "hex": "#a36b3c",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.058292,
+          "hex": "#8f5830",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.055209,
+          "hex": "#865532",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.053419,
+          "hex": "#b77a42",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.050985,
+          "hex": "#744528",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.045807,
+          "hex": "#532a13",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.040806,
+          "hex": "#946540",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.022157,
+          "hex": "#b78957",
+          "is_accent": true
+        }
+      ]
+    },
+    "L50": {
+      "ink_hex": "#321105",
+      "palette": [
+        {
+          "coverage": 0.092123,
+          "hex": "#b6743d",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.089604,
+          "hex": "#975b32",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.087835,
+          "hex": "#884d2b",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.074901,
+          "hex": "#563824",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.074392,
+          "hex": "#a86838",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.073619,
+          "hex": "#f2d19f",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.067902,
+          "hex": "#908c62",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.064444,
+          "hex": "#cb8d4f",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.062473,
+          "hex": "#b26c37",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.061822,
+          "hex": "#90512c",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.057476,
+          "hex": "#713d22",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.045367,
+          "hex": "#51240f",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.043479,
+          "hex": "#bdbb81",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.031713,
+          "hex": "#784d31",
+          "is_accent": true
+        },
+        {
+          "coverage": 0.019005,
+          "hex": "#916941",
+          "is_accent": true
+        }
+      ]
+    }
+  }
+}
