@@ -35,7 +35,6 @@
  * `py`/`git` binary or touches the network — see `floor.test.ts`), and `sigkillBackstop` takes an
  * injected clock (`now`) and an injected `kill` function (no test ever sends a real OS signal).
  */
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { verifySession } from '../auth/session.ts';
@@ -43,6 +42,7 @@ import type { SessionClaims, SessionConfig } from '../auth/session.ts';
 import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
+import { runPythonSync } from '../runtime/python.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {
@@ -80,10 +80,7 @@ export type PyRunner = (repoRoot: string, code: string, jsonArg: string) => PyRu
 /** Default runner: shells `py -3 -c <code> <jsonArg>`, matching `write/launch.ts#defaultPyRunner`. */
 export const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
   try {
-    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], {
-      cwd: repoRoot,
-      encoding: 'utf-8',
-    });
+    const stdout = runPythonSync(['-c', code, jsonArg], { cwd: repoRoot });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (err) {
     const e = err as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };

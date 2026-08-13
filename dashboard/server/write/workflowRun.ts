@@ -5,7 +5,6 @@
  * intent and dependencies; the server supplies card ids, the workflow run id, claim tokens, and routing.
  * Every card is prepared and published by one fixed Python subprocess through scripts/cards.py.
  */
-import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,6 +20,7 @@ import {
 } from './branch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
 import { pushOpsWithReconcile } from './opsPushRetry.ts';
+import { runPythonSync } from '../runtime/python.ts';
 
 export const MAX_WORKFLOW_STAGES = 32;
 
@@ -516,7 +516,7 @@ print(json.dumps({"runId": op["runId"], "cards": results}))
 
 const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
   try {
-    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], { cwd: repoRoot, encoding: 'utf-8' });
+    const stdout = runPythonSync(['-c', code, jsonArg], { cwd: repoRoot });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (error) {
     const err = error as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };

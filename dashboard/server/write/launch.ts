@@ -30,7 +30,7 @@
  * never-executed-as-instructions reason. The named test below keeps its original title (as given) but
  * asserts against `## Feedback`, with this note inline.
  */
-import { execFileSync } from 'node:child_process';
+import { runPythonSync } from '../runtime/python.ts';
 import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from './preambleGate.ts';
@@ -99,17 +99,14 @@ export type PyRunner = (repoRoot: string, code: string, jsonArg: string) => PyRu
  */
 export const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
   try {
-    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], {
-      cwd: repoRoot,
-      encoding: 'utf-8',
-    });
+    const stdout = runPythonSync(['-c', code, jsonArg], { cwd: repoRoot });
     return { exitCode: 0, stdout, stderr: '' };
-  } catch (err) {
-    const e = err as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };
+  } catch (error) {
+    const failure = error as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };
     return {
-      exitCode: typeof e.status === 'number' ? e.status : 1,
-      stdout: e.stdout ? e.stdout.toString() : '',
-      stderr: e.stderr ? e.stderr.toString() : '',
+      exitCode: typeof failure.status === 'number' ? failure.status : 1,
+      stdout: failure.stdout?.toString() ?? '',
+      stderr: failure.stderr?.toString() ?? '',
     };
   }
 };

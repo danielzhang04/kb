@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { resolvePython } from '../runtime/python.ts';
 import { commitPreparedCoordination, type GitRunner } from '../write/branch.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { WorkflowRunRequest } from '../write/workflowRun.ts';
@@ -38,6 +39,9 @@ import {
   reconcileAuthorized20260801FailedRun,
   validateSettlementCommitObject,
 } from './authorizedFailedRunReconciliation.ts';
+
+const python = resolvePython();
+const pythonArgs = (args: readonly string[]): string[] => [...python.prefixArgs, ...args];
 
 const SOURCE_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const HISTORICAL_PROPOSAL = JSON.parse(readFileSync(join(
@@ -162,7 +166,7 @@ import cards
 for spec in json.loads(sys.argv[1]):
     cards.save(cards.Card(meta=spec["meta"], body=spec["body"]), Path("queue"))
 `;
-  execFileSync('python', ['-c', script, JSON.stringify(cardSpecs(workflow))], {
+  execFileSync(python.command, pythonArgs(['-c', script, JSON.stringify(cardSpecs(workflow))]), {
     cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
@@ -176,7 +180,7 @@ import cards
 card = cards.parse(Path(sys.argv[1]))
 print(json.dumps({"meta": card.meta, "body": card.body}))
 `;
-  return JSON.parse(execFileSync('python', ['-c', script, relpath], {
+  return JSON.parse(execFileSync(python.command, pythonArgs(['-c', script, relpath]), {
     cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   }).trim()) as { meta: Record<string, unknown>; body: string };
 }
@@ -281,7 +285,7 @@ function fixture(): Fixture {
     return git(repoRoot, args);
   };
   const runPy: PyRunner = (_root, script, payload) => {
-    const result = spawnSync('python', ['-c', script, payload], { cwd: repoRoot, encoding: 'utf8' });
+    const result = spawnSync(python.command, pythonArgs(['-c', script, payload]), { cwd: repoRoot, encoding: 'utf8' });
     return { exitCode: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
   };
   const storeImpl = new ReconciliationStore();
@@ -326,11 +330,11 @@ function assertTerminalCards(f: Fixture): void {
 
 describe('authorized failed FYT run reconciliation', () => {
   it('emits syntactically valid Python for the fixed card operation', () => {
-    const result = spawnSync('python', [
+    const result = spawnSync(python.command, pythonArgs([
       '-c',
       'import sys; compile(sys.argv[1], "authorized-failed-run-card-script", "exec")',
       AUTHORIZED_FAILED_RUN_CARD_SCRIPT,
-    ], { encoding: 'utf8' });
+    ]), { encoding: 'utf8' });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
   });
@@ -344,11 +348,11 @@ describe('authorized failed FYT run reconciliation', () => {
     expect(AUTHORIZED_FAILED_RUN_CARD_SCRIPT.match(/safe_dump\([^)]*width=10\*\*9\)/g)).toHaveLength(2);
     const target = `orgs/faceless-youtube/channels/the-second-take/videos/2026-07-31-codex-thin-slice ${'and one more long segment '.repeat(4)}tail`;
     expect(target.length).toBeGreaterThan(120);
-    const dumped = spawnSync('python', ['-c', `
+    const dumped = spawnSync(python.command, pythonArgs(['-c', `
 import json, sys, yaml
 meta = json.loads(sys.argv[1])
 print(yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, width=10**9), end="")
-`, JSON.stringify({ id: 'wf-long', project: 'faceless-youtube', action: 'render:slice', target, 'risk-tier': 'T2', owner: 'codex', state: 'blocked' })], { encoding: 'utf8' });
+`, JSON.stringify({ id: 'wf-long', project: 'faceless-youtube', action: 'render:slice', target, 'risk-tier': 'T2', owner: 'codex', state: 'blocked' })]), { encoding: 'utf8' });
     expect(dumped.stderr).toBe('');
     expect(dumped.status).toBe(0);
     expect(dumped.stdout.split('\n').some((line) => /^\s/.test(line) && line.trim() !== '')).toBe(false);
