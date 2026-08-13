@@ -51,8 +51,16 @@ def test_derivation_uses_forge_content_seeds_and_suppresses_only_the_synthetic_t
     assert derived["suppressed_tiles"]["L26"] == 1
     assert all(paths for paths in derived["fake_seed_placeholders"].values())
     substitutions = derived["baseline_content_seed_substitutions"]
+    # Environment-dependent branch: substitution fires only when a forge-named STEP-1
+    # plate is ABSENT from kit staging. On plate-staged machines this dict is legally
+    # empty (every seed resolves), so a >=1 count cannot be pinned against the live
+    # derivation — proven both ways live on 2026-08-13 (plate-less fix worktree fired
+    # it; plate-staged arc worktree did not). Pin consistency instead of count.
     assert set(substitutions) <= {"L29", "L33", "L44", "L46"}
-    assert sum(len(paths) for paths in substitutions.values()) >= 1
+    for shot, paths in substitutions.items():
+        assert paths, f"{shot}: substitution recorded with no paths"
+        assert all(Path(p).stem in p6.TARGET_SHOTS for p in paths)
+        assert not set(paths) & set(derived["fake_seed_placeholders"].get(shot, []))
 
 
 def test_l33_prompt_is_the_exact_p6_shape_with_l31_last_and_no_bible_ink_leak():
