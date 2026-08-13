@@ -1393,11 +1393,15 @@ def seed_roles_text(seed_roles):
             # i.e. on a fresh STEP-1 card with no expression reference. Unqualified, this role was
             # the strongest face image on every delta slate and the model re-synthesised the face
             # from it: the r2 verifier's parked L34 "CANONICAL EXPRESSION LEAK".
-            detail = (f"`{character}`'s character canonical — identity, head tone, hair and the "
-                      "pinned costume come from this image only, and so does the RENDER REGISTER "
-                      "of the face: how its eyes, brows and mouth are drawn. It fixes the "
-                      "expression's SHAPE only when neither an expression reference nor a parent "
-                      "scene is present, and it never fixes the pose")
+            # Final fix round (I-4+I-5, 2026-08-12): "come from this image only" contradicted the
+            # card payload's authored-clothing branch, and the per-cast-member conditional pushed
+            # a 2-cast delta slate past the ~600-1,100-char adherence band. The parent and
+            # expression roles now assert their own ownership positively, so the enumeration of
+            # what does NOT own the shape is dropped here rather than restated.
+            detail = (f"`{character}`'s character canonical — identity, head tone, hair, the "
+                      "pinned costume unless this beat authors a change, and the face's RENDER "
+                      "REGISTER: how eyes, brows and mouth are DRAWN, never which shape they "
+                      "take where another seed carries it. Never the pose")
         elif role == "parent":
             # P9: the delta recipe is parent + canonical and buys no third seed for the face, so
             # the parent's own pixels are told to carry the held expression and stance — the
@@ -1492,10 +1496,12 @@ def figure_card_payload(pose=None, clause=""):
 
     THE DRESS HALF IS CONDITIONAL, IN PROSE. Most derived clauses author no garment at all (the
     sentence naming a figure is usually setting and placement), and an unconditional "dress the
-    figure in what this reads" then CONTRADICTS the canonical seed's own role prose — "identity,
-    head tone, hair and the pinned costume come from this image only" — leaving the two strongest
-    instructions in one request disagreeing. So the clause dresses the figure only WHERE IT AUTHORS
-    CLOTHING, and otherwise defers to the costume the canonical pins. No garment detection in code:
+    figure in what this reads" would leave the two strongest instructions in one request
+    disagreeing. So the clause dresses the figure only WHERE IT AUTHORS CLOTHING, and otherwise
+    defers to the costume the canonical pins. The canonical's own role prose (`seed_roles_text`)
+    states the same law from the other side, and conditionally — "the pinned costume unless this
+    beat authors a change" (I-4, 2026-08-12; it used to read "come from this image only", which
+    made the pair contradict on exactly the branch below). No garment detection in code:
     the model reads its own quoted description, which is the one reader that can tell a shop coat
     from a loading bay. A named character's card is costume-invariant again, exactly as P2 had it,
     except where a beat deliberately authors a change — which is legal doctrine (Pass-1: "in its
@@ -2598,7 +2604,19 @@ def _retry_step1(entry, source, k, label):
         raise SystemExit(f"{label}: STEP-1 `instruction` must be a non-empty string when present.")
     # A re-mint inherits the card the batch would build, clause and all (P8) — same deriver, same
     # source prose — so repairing a face never quietly drops the beat's act back to a neutral stance.
-    payload = figure_card_payload(pose, beat_clause(source.get("still_prompt") or "", character))
+    # I-1 (2026-08-12): and the NAME is derived from that same recipe rather than trusted from the
+    # overlay. A card's name carries its derived-clause digest, so a hand-typed name writes a frame
+    # the next `batch` never looks up — it re-mints the card instead, silently discarding this
+    # retry's instruction. Raising (not silently correcting) matches this file's fail-loud idiom.
+    clause = beat_clause(source.get("still_prompt") or "", character)
+    expected = figure_frame_name(character, pose, expr, clause)
+    if entry["name"] != expected:
+        raise SystemExit(
+            f"{label}: STEP-1 retry `name` is `{entry['name']}` but this shot's recipe mints "
+            f"`{expected}`. A card's name carries its derived-clause digest (P8), so a hand-typed "
+            f"name lands a frame the next `batch` never looks up — it re-mints instead, without "
+            f"this retry's instruction. Copy the name from the review board.")
+    payload = figure_card_payload(pose, clause)
     if instruction:
         payload += "\n\n" + instruction.strip()
     delta = placement_delta(payload, seed_roles)

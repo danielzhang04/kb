@@ -315,13 +315,59 @@ def _prose(*roles):
          for role, name, character in roles])
 
 
+# FINAL FIX ROUND (I-4 + I-5, 2026-08-12) — the canonical role string, on both its counts.
+#
+# I-4: "identity, head tone, hair and the pinned costume come from THIS IMAGE ONLY" contradicted the
+# STEP-1 card payload, which sends the beat's DERIVED clause and lets it author dress ("Where that
+# description AUTHORS clothing…"). Two of the strongest instructions in one request disagreed, and
+# which one won was the model's call. The costume grant is now conditional in the same direction the
+# payload already is, so the pair states one law.
+#
+# I-5: the role also carried a per-cast-member conditional enumerating what does NOT fix the
+# expression's shape. It repeated on EVERY canonical, so a two-cast delta slate — the at-cap legal
+# shape — pushed its prose past the ~600-1,100-char adherence band this file's recipes are held to.
+# The parent and expression roles each assert their own ownership positively, so the enumeration is
+# redundant and is dropped rather than restated once per figure.
+def test_the_canonical_role_states_a_conditional_costume_and_no_this_image_only_claim():
+    card = _prose(("canonical", "miniscribe-rep", "miniscribe-rep"))
+    assert "unless this beat authors a change" in card, card
+    assert "come from this image only" not in card, card
+    # the register grant survives the compression, shape-scoped rather than enumerated
+    assert "how eyes, brows and mouth are DRAWN" in card, card
+    assert "never which shape they take where another seed carries it" in card, card
+    assert "Never the pose" in card, card
+
+
+def test_the_two_cast_delta_slate_prose_stays_inside_the_adherence_band():
+    """The canonical role repeats ONCE PER CAST MEMBER, so its length is multiplied by every slate
+    that seeds two. The two-cast delta (parent + canonical A + canonical B) is the shape I-5
+    measured: the per-figure conditional pushed it past the ~600-1,100-char band these recipes are
+    held to, and instructions read after the band are read weakly. Upper bound only — the prose may
+    shrink further, never regrow."""
+    two_cast_delta = _prose(("parent", "D01", None),
+                            ("canonical", "miniscribe-rep", "miniscribe-rep"),
+                            ("canonical", "terry-johnson", "terry-johnson"))
+    assert len(two_cast_delta) < 1100, (len(two_cast_delta), two_cast_delta)
+    # the other two live slate shapes stay inside it as well
+    one_cast_delta = _prose(("parent", "D01", None),
+                            ("canonical", "miniscribe-rep", "miniscribe-rep"))
+    card = _prose(("canonical", "miniscribe-rep", "miniscribe-rep"),
+                  ("expression", "expr-smug", "miniscribe-rep"),
+                  ("pose", "action-powerstance", "miniscribe-rep"))
+    assert len(one_cast_delta) < 1100, (len(one_cast_delta), one_cast_delta)
+    assert len(card) < 1100, (len(card), card)
+    # and no canonical on any of them still carries the dropped enumeration
+    for slate in (two_cast_delta, one_cast_delta, card):
+        assert "It fixes the" not in slate, slate
+
+
 # P9 — the COMPLETENESS WALK: every recipe shape `seed_roles_text` can emit leaves zero attribute
 # (identity, face shape, face render register, pose, costume, set) unowned.
 def test_every_recipe_shape_states_complete_attribute_ownership():
     card = _prose(("canonical", "miniscribe-rep", "miniscribe-rep"),
                   ("expression", "expr-smug", "miniscribe-rep"),
                   ("pose", "action-powerstance", "miniscribe-rep"))
-    for owned in ("identity, head tone, hair and the pinned costume come from this image only",
+    for owned in ("identity, head tone, hair, the pinned costume unless this beat authors a change",
                   "RENDER REGISTER", "copy only eye/brow/mouth shape",
                   "copy only body pose, hands and limb placement"):
         assert owned in card, card
@@ -338,7 +384,7 @@ def test_every_recipe_shape_states_complete_attribute_ownership():
     assert "preserve its held set and existing composition" in delta, delta
     assert "STANCE and EXPRESSION" in delta, delta
     assert "RENDER REGISTER" in delta, delta
-    assert "never fixes the pose" in delta, delta
+    assert "Never the pose" in delta, delta
 
     # a delta that DOES author a change: the seeded reference takes the attribute back off the
     # parent, stated on the reference itself as well as on the parent — and scoped to ITS OWN

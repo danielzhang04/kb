@@ -171,11 +171,15 @@ def test_step1_retry_remains_the_permitted_expression_remint_route():
         "still_prompt": "`hq-banker`, `expr-fear`, `action-point`, at the factory gate.",
         "assets": {},
     }
+    # I-1 (2026-08-12): the overlay's `name` is CHECKED against the shot's own recipe, so this
+    # fixture carries the derived name the review board would show — the same one `batch` mints.
+    name = forge.figure_frame_name("hq-banker", "action-point", "expr-fear",
+                                   forge.beat_clause(source["still_prompt"], "hq-banker"))
     out = forge._retry_step1(
         {"kind": "step1", "shot": "T01", "character": "hq-banker",
-         "name": "fig-hq-banker-remint", "defect": "expression"},
+         "name": name, "defect": "expression"},
         source, SimpleNamespace(reg=reg), "retry entry 1")
-    assert out["name"] == "fig-hq-banker-remint"
+    assert out["name"] == name
     assert out["mode"] == "environment" and out["aspect"] == "2:3"
     assert out["seed"] == ["refs/hq-banker.png", "refs/expr-fear.png", "refs/action-point.png"]
     assert "`expr-fear` expression reference" in out["delta"]
@@ -204,7 +208,10 @@ def test_step1_retry_accepts_a_pose_defect_and_re_poses_through_the_beat_clause(
               "assets": {}}
     out = forge._retry_step1(
         {"kind": "step1", "shot": "T01", "character": "hq-banker",
-         "name": "fig-hq-banker-repose", "defect": "pose"},
+         "name": forge.figure_frame_name(
+             "hq-banker", "action-point", "expr-fear",
+             forge.beat_clause(source["still_prompt"], "hq-banker")),
+         "defect": "pose"},
         source, SimpleNamespace(reg=reg), "retry entry 1")
     assert out["retry_authority"]["defect"] == "pose", out["retry_authority"]
     # the re-mint re-poses because the pose primitive is re-seeded AND the P8 clause (clothing +
@@ -214,6 +221,60 @@ def test_step1_retry_accepts_a_pose_defect_and_re_poses_through_the_beat_clause(
     clause = forge.beat_clause(source["still_prompt"], "hq-banker")
     assert out["payload"] == forge.figure_card_payload("action-point", clause), out["payload"]
     assert "bodily ACT" in out["payload"], out["payload"]
+
+
+# I-1 (final fix round, 2026-08-12) — THE NAME IS DERIVED, NOT TRUSTED. A STEP-1 card's name
+# carries the digest of its derived clause (P8), so an overlay that hand-types a readable name
+# writes a frame under a key the next `batch` never looks up: the batch re-mints the card from the
+# recipe instead, silently discarding the retry's instruction and the human's spend with it. The
+# builder now refuses that entry instead of building it.
+def _step1_reg_and_source():
+    reg = {
+        "characters": {"hq-banker": {"base": "refs/hq-banker.png"}},
+        "assets": [
+            {"name": "expr-fear", "kind": "expression", "file": "refs/expr-fear.png"},
+            {"name": "action-point", "kind": "action", "file": "refs/action-point.png"},
+        ],
+    }
+    source = {"still_prompt": "`hq-banker`, `expr-fear`, `action-point`, at the factory gate.",
+              "assets": {}}
+    return reg, source
+
+
+def test_step1_retry_refuses_a_hand_typed_name_that_carries_no_derived_digest():
+    reg, source = _step1_reg_and_source()
+    expected = forge.figure_frame_name("hq-banker", "action-point", "expr-fear",
+                                       forge.beat_clause(source["still_prompt"], "hq-banker"))
+    try:
+        forge._retry_step1(
+            {"kind": "step1", "shot": "T01", "character": "hq-banker",
+             "name": "fig-hq-banker-remint", "defect": "expression"},
+            source, SimpleNamespace(reg=reg), "retry entry 1")
+    except SystemExit as error:
+        message = str(error)
+        # the refusal names BOTH: what was supplied and what the recipe mints, so the repair is a
+        # copy-paste rather than a re-derivation by hand.
+        assert "fig-hq-banker-remint" in message, message
+        assert expected in message, message
+        assert "review board" in message, message
+    else:
+        assert False, "a STEP-1 retry must refuse a name this shot's recipe does not mint"
+
+
+def test_step1_retry_accepts_the_derived_name_and_still_carries_the_beat_clause():
+    reg, source = _step1_reg_and_source()
+    clause = forge.beat_clause(source["still_prompt"], "hq-banker")
+    expected = forge.figure_frame_name("hq-banker", "action-point", "expr-fear", clause)
+    out = forge._retry_step1(
+        {"kind": "step1", "shot": "T01", "character": "hq-banker",
+         "name": expected, "defect": "expression"},
+        source, SimpleNamespace(reg=reg), "retry entry 1")
+    assert out["name"] == expected, out["name"]
+    # the check is a GUARD, not a rewrite: the spec it returns is the one the recipe already built,
+    # clause and all.
+    assert out["payload"] == forge.figure_card_payload("action-point", clause), out["payload"]
+    assert "factory gate" in out["payload"], out["payload"]
+    assert out["seed"] == ["refs/hq-banker.png", "refs/expr-fear.png", "refs/action-point.png"]
 
 
 def test_step1_retry_still_refuses_a_defect_outside_the_enum():
@@ -240,5 +301,5 @@ if __name__ == "__main__":
             except BaseException as error:  # SystemExit is a useful red-TDD failure too.
                 failures.append((name, error))
                 print(f"FAIL {name}: {type(error).__name__}: {error}")
-    print(f"{11 - len(failures)}/11 passed")
+    print(f"{13 - len(failures)}/13 passed")
     sys.exit(bool(failures))

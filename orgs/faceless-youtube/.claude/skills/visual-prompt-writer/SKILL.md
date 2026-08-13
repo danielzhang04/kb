@@ -70,8 +70,10 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    prompt prose ("MacGregor, `expr-smug`, `action-salute`, stage-left, facing right"). **On a
    registry-backed (named cast) figure, never describe body pose, finger mechanics, or facial
    expression in words** — that figure's seed carries them, and naming the asset IS the authoring act. A
-   name the registry lacks may still be written; `image-generation`'s Pass-1 gate surfaces it for the
-   human's pre-gen approval, and a veto comes back to you as a restage.
+   pose, expression, prop, plate or place name the registry lacks may still be written; the Pass-1 gate
+   surfaces it for the human's pre-gen approval, and a veto comes back to you as a restage. A new named
+   CAST member is minted through the standard cast-generation wave without a separate human slot (G2,
+   2026-08-12) — you still plan it into the cast list at Step 3a.
    **COMPOSE the figure's sentence FROM that vocabulary.** The bodily act a sentence gives a figure IS the
    primitive bound to it, written around the backticked name ("stands `action-powerstance`, `expr-smug`, at
    the head of an assembly line"), never a second act the seed cannot hold. The card is minted holding the

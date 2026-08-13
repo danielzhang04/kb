@@ -123,7 +123,8 @@ Judge against the **approved canonical** (`refs/<char>/<char>-base.png`), never 
   Crowd also judges §2d's BOUNDED variety axes, so they are decided on the pixels and not merely
   written: **era-appropriate dress** (every crowd figure dressed for THIS shot's own scene era and
   setting, never the seed exemplar's period dress) and **at most 2–3 repeating hair/headwear
-  silhouettes** for the group. Both fail in either direction — a uniform group and a per-figure
+  silhouettes** and **at most 2–3 repeating FLAT head tones** drawn from the channel's cast
+  head-tone set for the group. All three fail in either direction — a uniform group and a per-figure
   invention are the same defect, one axis apart.
 - **Expression register-fit** — judged against the BEAT: a calm/ordinary/sincere/grim beat wants a restrained
   face, an **over-the-top expression for its beat is a defect**; big faces need a comedic peak.

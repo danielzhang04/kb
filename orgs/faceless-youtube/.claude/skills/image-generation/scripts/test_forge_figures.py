@@ -138,6 +138,55 @@ def test_p1_pin_four_digit_hand_law_reaches_every_figure_bearing_payload():
     assert "hands, where visible, are the same four-digit cartoon hand" in text
 
 
+def _flat(text):
+    """The bible is hard-wrapped prose, so a pinned span crosses line breaks wherever the
+    paragraph happens to wrap. Collapsing runs of whitespace pins the WORDS, not the wrap column:
+    a rewording still fails, a re-wrap does not."""
+    return " ".join(text.split())
+
+
+_FLAT_MD = _flat(_MD)
+# §3 runs from its own heading to §4's — a span is pinned WHERE it is law, so a sentence deleted
+# from the checklist cannot pass because similar words survive in some other section.
+_SECTION_3 = _flat(_MD.split("## 3. The rig checklist")[1].split("## 4. Palette")[0])
+
+
+# P1 PIN — the IDENTITY-FAIL law (style-bible §3). Approved as P1 evidence (c) and believed to be
+# carried by this wave; it was never implemented in 801dad1, so the three spans that make a wrong
+# head tone, a wrong hairline or a wrong outfit a FAIL rather than a variation had no test at all.
+# They are the axes an identity check exists to fail on, and §3's "never checked — these vary" list
+# sits eleven lines below them: a reword that let costume or head tone drift into that list would
+# have gone through silently. Pinned as prose (the human reads §3 at Gate 2), not via forge.
+def test_p1_pin_the_identity_fail_law_survives_verbatim_in_section_3():
+    for span in ("head tone AND hair must MATCH its canonical",
+                 "identity FAIL even when every form invariant passes",
+                 "the pinned canonical costume is identity; a wrong outfit fails unless authored"):
+        assert span in _SECTION_3, span
+        assert span in _FLAT_MD, span
+
+
+# I-6/B-2 (final fix round, 2026-08-12) — §3's crowd row judges THREE bounded axes. The head-tone
+# axis was law in §2d and enforced at the payload, but §3 — the checklist a human actually reads at
+# Gate 2 — listed only dress and hair while §3's own closing sentence already claimed all three.
+# No §3 fingerprint test existed, which is how an unapproved edit reached the section unnoticed;
+# this is that missing fingerprint.
+def test_section_3_pins_all_three_bounded_crowd_axes():
+    for axis in ("**era-appropriate dress**",
+                 "every crowd figure dressed for THIS shot's own scene era and setting, never the "
+                 "seed exemplar's period dress",
+                 "**at most 2–3 repeating hair/headwear silhouettes**",
+                 "**at most 2–3 repeating FLAT head tones** drawn from the channel's cast "
+                 "head-tone set for the group"):
+        assert axis in _SECTION_3, axis
+    # the count sentence must agree with the number of axes above it — the self-contradiction the
+    # fix closes, and the thing a fourth axis would have to update.
+    assert "All three fail in either direction" in _SECTION_3, _SECTION_3
+    assert "Both fail in either direction" not in _FLAT_MD, "§3 still counts two axes"
+    # and §3's closing scope note, which promises exactly these three, stays true as written
+    assert ("§2d's own bounded dress, hair-silhouette and head-tone axes, judged above"
+            in _SECTION_3), _SECTION_3
+
+
 # --- (c) legacy shot: byte-identical to pre-`figures` assembly ----------------------------------
 def test_shot_without_figures_keeps_payload_final_under_the_new_zone_order():
     """REGRESSION GUARD. The pre-`figures` assembly was `descriptor + "\\n\\n" + delta` plus

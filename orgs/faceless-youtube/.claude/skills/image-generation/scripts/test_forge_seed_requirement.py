@@ -227,10 +227,12 @@ def test_the_abolished_tier_leaves_no_seed_role_prose_behind():
     for gone in ("seeded PERFORMER", "ANONYMOUS figure", "recurs nowhere",
                  "shared BASE RIG template", "era costume it wears"):
         assert gone not in text, (gone, text)
-    # a named cast member's prose is byte-identical to before (P9 edits it later, not P2)
+    # a named cast member still gets the full canonical grant — P2 deletes the abolished tier's
+    # prose and nothing else. (The costume half became conditional in the final fix round, I-4:
+    # "come from this image only" contradicted the card payload's authored-clothing branch.)
     cast_text = seed_roles_text(
         [{"path": CANON, "role": "canonical", "character": "hq-banker"}])
-    assert "pinned costume come from this image only" in cast_text, cast_text
+    assert "pinned costume unless this beat authors a change" in cast_text, cast_text
 
 
 def test_the_anon_foreground_refusal_routes_to_cast_or_mass_action_not_a_performer():
@@ -654,17 +656,22 @@ def test_the_micro_pattern_strip_never_touches_a_cast_characters_pinned_costume(
     # ...and where a beat DOES author dress on a named character (P8 sends every cast card the
     # derived clause), the micro-pattern adjective is what the card loses: the garment survives,
     # `quilted` does not, and the seed-role prose still points identity and costume at the
-    # canonical image rather than at the prose.
+    # canonical image — conditionally on the costume half since the final fix round (I-4), which is
+    # exactly the branch this beat takes.
     reg = {"characters": {"hq-banker": {"base": "refs/hq-banker.png", "costume": pinned}},
            "assets": [{"name": "expr-fear", "kind": "expression", "file": "refs/expr-fear.png"}]}
+    prompt = "`hq-banker`, `expr-fear`, in his quilted overcoat at the gate."
     out = forge_module._retry_step1(
         {"kind": "step1", "shot": "T01", "character": "hq-banker",
-         "name": "fig-hq-banker-remint", "defect": "expression"},
-        {"still_prompt": "`hq-banker`, `expr-fear`, in his quilted overcoat at the gate."},
+         "name": forge_module.figure_frame_name(
+             "hq-banker", None, "expr-fear",
+             forge_module.beat_clause(prompt, "hq-banker")),
+         "defect": "expression"},
+        {"still_prompt": prompt},
         SimpleNamespace(reg=reg), "retry entry 1")
     assert "minted for reads" in out["payload"], out["payload"]
     assert "overcoat" in out["payload"] and "quilted" not in out["payload"], out["payload"]
-    assert "pinned costume come from this image only" in out["delta"], out["delta"]
+    assert "pinned costume unless this beat authors a change" in out["delta"], out["delta"]
 
     # I1: the dress half is CONDITIONAL, so the two strongest instructions in one request never
     # disagree. The common live shape is a clause with NO garment content at all (setting and
@@ -822,6 +829,18 @@ def _retry(shots_path, out, overlay, staged=None):
     return json.load(open(out, encoding="utf-8")), None
 
 
+_T02_PROMPT = "`miniscribe-rep`, `expr-smug`, `action-powerstance`, at a brickyard gate."
+
+
+def _t02_step1_name():
+    """The name T02's own recipe mints — what the review board shows and the ONLY name a STEP-1
+    retry on that shot may carry (I-1): the digest half is derived from the beat's prose, so a
+    hand-typed name writes a frame the next `batch` never looks up."""
+    return forge_module.figure_frame_name(
+        "miniscribe-rep", "action-powerstance", "expr-smug",
+        forge_module.beat_clause(_T02_PROMPT, "miniscribe-rep"))
+
+
 def _retry_fixture():
     v = tempfile.mkdtemp()
     os.makedirs(os.path.join(v, "assets"))
@@ -834,7 +853,7 @@ def _retry_fixture():
          "still_prompt": ("A small crowd waits at a factory gate beside `prop-drive` under "
                           "clear morning light.")},
         {"id": "T02", "source": "ai-gen", "stage_role": "base",
-         "still_prompt": "`miniscribe-rep`, `expr-smug`, `action-powerstance`, at a brickyard gate."}
+         "still_prompt": _T02_PROMPT}
     ]}}
     shots, out = os.path.join(v, "shots.json"), os.path.join(v, "retry-spec.json")
     json.dump(doc, open(shots, "w", encoding="utf-8"))
@@ -850,12 +869,15 @@ def test_retry_overlay_derives_duplicate_scenes_and_one_step1_only_request():
          "defect": "content",
          "replace": {"from": "small crowd", "to": "small background crowd"}},
         {"kind": "step1", "shot": "T02", "character": "miniscribe-rep",
-         "name": "fig-miniscribe-rep-retry", "defect": "rig",
+         "name": _t02_step1_name(), "defect": "rig",
          "instruction": "Both visible hands are open and empty."}
     ]}
     spec, err = _retry(shots, out, overlay)
     assert err is None, err
-    assert [r["name"] for r in spec] == ["T01-retry-a", "T01-retry-b", "fig-miniscribe-rep-retry"], spec
+    assert [r["name"] for r in spec] == ["T01-retry-a", "T01-retry-b", _t02_step1_name()], spec
+    # the derived name states the whole recipe: character, pose, expression, clause digest
+    assert _t02_step1_name().startswith("fig-miniscribe-rep--action-powerstance--expr-smug--"), \
+        _t02_step1_name()
     first = spec[0]
     assert first["plate"] is False and first["payload"].startswith("A small crowd"), first
     assert first["seed"][0].replace("\\", "/").endswith("refs/env/prop-drive.png"), first["seed"]

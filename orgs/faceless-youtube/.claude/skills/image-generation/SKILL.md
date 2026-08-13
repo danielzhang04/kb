@@ -42,7 +42,8 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
    prompts. VPW names each figure, pose, expression and recurring prop **inline in the `still_prompt` as backticked
    registry vocabulary**; resolve every name against `registry.json` and the video's library, recording its kind
    (character | group | prop | pose | expression | interaction), the shot ids needing it, and the satisfying file.
-   - A **named character** earns a slot even for one shot — free-drawn in a scene it falls off the rig. So does a
+   - A **named character** earns a Pass-1 row (an asset that must exist before the shot seeds it) even for one
+     shot — free-drawn in a scene it falls off the rig. So does a
      **figure inside diegetic media** (a brochure figure, portrait, poster), in its registry-pinned costume unless
      the shot authored a change. A **group**'s canonical is a group frame (N members together, matching outfits)
      locking member count, costume, look and rig, no pose/expression; a member who ever acts alone is promoted to
@@ -68,8 +69,8 @@ Output: `assets/library/` + `manifest.json`, plus the per-shot asset tags Pass 2
      and hair still varies inside the 2–3-silhouette bound per group. A video that has not minted one
      falls back to the channel's standing `refs/base/crowd-exemplar.png`.
    - The ONE exemption: a **named cast member minted through the standard cast-generation wave from the asset base**
-     needs no per-item human slot of its own — its own canonical is trusted (G2 ruling, 2026-08-12); everything it is
-     seeded WITH (pose, expression, plate, prop) is still listed here.
+     needs no human ruling of its own — it still carries a Pass-1 row. Its own canonical is trusted (G2 ruling,
+     2026-08-12); everything it is seeded WITH (pose, expression, plate, prop) is still listed here.
 2. **HUMAN PRE-GEN APPROVAL — the gate. STOP.** List every asset the registry and library LACK, each with the shots
    needing it and one line of what it would draw. **Generate nothing until the human rules.** Approved → build it.
    **Vetoed → never re-request it and never improvise it inside a scene: flag the beat back to
