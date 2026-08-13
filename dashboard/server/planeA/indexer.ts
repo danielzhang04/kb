@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
-import { cardTitle, groupByState, parseCardFrontmatter } from './cards.ts';
+import { cardTitle, groupByState, parseValidatedCard } from './cards.ts';
 import type { CardProjection, ParsedCard } from './cards.ts';
 import { defaultNamingRegistry } from '../naming.ts';
 import type { NamingRegistry } from '../naming.ts';
@@ -49,7 +49,7 @@ function readCards(repoRoot: string, naming: NamingRegistry): CardProjection[] {
     for (const name of readdirSync(full)) {
       if (!name.endsWith('.md')) continue;
       try {
-        cards.push(projectCard(parseCardFrontmatter(readFileSync(join(full, name), 'utf-8')), naming));
+        cards.push(projectCard(parseValidatedCard(readFileSync(join(full, name), 'utf-8')), naming));
       } catch {
         // A malformed/partially-written card must never crash the index; skip it this pass.
       }

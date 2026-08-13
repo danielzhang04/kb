@@ -27,7 +27,7 @@ import { launchCard, rerunAsDependsOn } from './launch.ts';
 import type { LaunchOutcome, RiskTier } from './launch.ts';
 import { respondToCard, resolveCardPath } from './cardRespond.ts';
 import type { RespondVerb } from './cardRespond.ts';
-import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { parseValidatedCard } from '../planeA/cards.ts';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
 import { setOverride, clearOverride } from './routingOverride.ts';
@@ -426,9 +426,9 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (!cardPath) {
       return reply.code(404).send({ error: 'card-not-found', reason: `no card ${cardId} under queue/` });
     }
-    let parsed: ReturnType<typeof parseCardFrontmatter>;
+    let parsed: ReturnType<typeof parseValidatedCard>;
     try {
-      parsed = parseCardFrontmatter(readFileSync(cardPath, 'utf8'));
+      parsed = parseValidatedCard(readFileSync(cardPath, 'utf8'));
     } catch (err) {
       return reply.code(500).send({ error: 'card-parse-failed', detail: err instanceof Error ? err.message : String(err) });
     }

@@ -17,7 +17,7 @@
  */
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep, isAbsolute } from 'node:path';
-import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { parseValidatedCard } from '../planeA/cards.ts';
 import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { defaultPyRunner } from './launch.ts';
@@ -239,7 +239,7 @@ function routingLifecycleGuard(
   const found = findCardFile(queueRoot, cardId);
   if (!found) return null;
   try {
-    const meta = parseCardFrontmatter(readFileSync(found, 'utf-8')).meta;
+    const meta = parseValidatedCard(readFileSync(found, 'utf-8')).meta;
     if (managedAssignedInbox && String(meta.state) === 'inbox') {
       if (meta.owner && meta.id === cardId && meta.workflow === managedAssignedInbox.workflowRef) return null;
       return {

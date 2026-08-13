@@ -212,6 +212,7 @@ describe('setCardRouting — lifecycle guard', () => {
       `id: ${cardId}`,
       `owner: ${owner ?? 'null'}`,
       `state: ${state}`,
+      'project: kb',
       'action: push-remote',
       'target: t',
       'risk-tier: T3',

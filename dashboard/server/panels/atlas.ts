@@ -20,7 +20,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { parseValidatedCard } from '../planeA/cards.ts';
 import type { CardFieldValue } from '../planeA/cards.ts';
 
 /** The worker base URL when `ATLAS_STATE_URL` is unset. The daemon owns 4317; the worker owns 4360. */
@@ -227,7 +227,7 @@ export function readAtlasCards(repoRoot: string): AtlasCard[] {
       if (!name.endsWith('.md')) continue;
       let meta;
       try {
-        meta = parseCardFrontmatter(readFileSync(join(full, name), 'utf-8')).meta;
+        meta = parseValidatedCard(readFileSync(join(full, name), 'utf-8')).meta;
       } catch {
         continue;
       }

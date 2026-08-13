@@ -12,6 +12,8 @@
  * other block list or indented continuation is a parse error — and it never interprets body text.
  */
 
+import { assertCardSchema, assertSupportedVersion } from '../schema/versions.ts';
+
 export type CardFieldValue = string | number | boolean | null | string[];
 
 export interface CardMeta {
@@ -22,6 +24,7 @@ export interface CardMeta {
   'risk-tier': string;
   owner: string | null;
   state: string;
+  'schema-version'?: number;
   [key: string]: CardFieldValue | undefined;
 }
 
@@ -77,6 +80,13 @@ function coerceScalar(raw: string): CardFieldValue {
   return stripQuotes(v);
 }
 
+function coerceSchemaVersion(raw: unknown): number {
+  if (typeof raw !== 'string') throw new Error('card frontmatter schema-version must be a base-10 integer');
+  const value = raw.trim();
+  if (!/^-?\d+$/.test(value)) throw new Error('card frontmatter schema-version must be a base-10 integer');
+  return Number.parseInt(value, 10);
+}
+
 function stripQuotes(v: string): string {
   if (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) {
     return v.slice(1, -1);
@@ -124,14 +134,27 @@ export function parseCardFrontmatter(text: string): ParsedCard {
     }
     if (/^\s/.test(line)) throw new Error('card frontmatter has an unsupported continuation');
     const colon = line.indexOf(':');
-    if (colon === -1) continue; // skip malformed / continuation lines defensively
+    if (colon === -1) throw new Error('card frontmatter line is missing a colon');
     const key = line.slice(0, colon).trim();
     const rawValue = line.slice(colon + 1);
+    if (Object.hasOwn(meta, key)) throw new Error(`card frontmatter has a duplicate key: ${key}`);
     meta[key] = coerceScalar(rawValue);
     pendingBlockList = rawValue.trim() === '' && CARD_LIST_KEYS.has(key) ? key : null;
   }
 
   return { meta: meta as CardMeta, body };
+}
+
+/** Parse a queue card and enforce its supported version and closed machine schema. */
+export function parseValidatedCard(text: string): ParsedCard {
+  const parsed = parseCardFrontmatter(text);
+  const meta: Record<string, unknown> = { ...parsed.meta };
+  if (meta['schema-version'] !== undefined) {
+    meta['schema-version'] = coerceSchemaVersion(meta['schema-version']);
+  }
+  const version = assertSupportedVersion('cards', meta['schema-version']);
+  assertCardSchema(meta, version);
+  return { meta: meta as CardMeta, body: parsed.body };
 }
 
 /** Group parsed cards by their `state` field. One bucket per state that appears. Generic so the
