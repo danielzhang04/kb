@@ -44,7 +44,6 @@ import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
 import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
-import { registerPaidActionRoute } from './paidActionRoute.ts';
 import type { EntityDisplay } from '../naming.ts';
 import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
 
@@ -280,12 +279,6 @@ class ActivationPreparationError extends Error {
 export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
   const preHandler = requireSession(ctx.sessionConfig);
 
-  // FYT paid-action wiring (Unit D2): the non-session `POST /api/control/paid-action` route and its
-  // bearer-grant preHandler. Registered on this same guarded scope (origin + rate-limit apply) but WITHOUT
-  // `requireSession`, since a headless worker has no browser session. It derives every spend-bearing
-  // identity server-side from the resolved grant + execution state — see paidActionRoute.ts.
-  registerPaidActionRoute(scope, ctx);
-
   scope.get('/api/control/proposals', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -438,6 +431,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   scope.post('/api/control/proposals/:proposalRef/revisions/:revision/launch', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const { proposalRef, revision } = req.params as { proposalRef: string; revision: string };
     const body = record(req.body);
     const stored = ctx.controlStore.getProposalRevision(sub, proposalRef, Number(revision), readScope(req));
@@ -482,6 +477,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   scope.post('/api/control/execution/unlock', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const latch = ctx.executionLatch;
     if (!latch) return reply.code(409).send({ error: 'execution-latch-unavailable' });
     // Audit BEFORE constructing anything: an unlock that cannot be recorded does not happen.
@@ -639,6 +636,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             },
             runGit: ctx.opsGit ?? defaultGitRunner,
             runPy: ctx.runPy,
+            publication: ctx.coordinationPublication,
+            outboxRoot: ctx.outboxRoot,
           });
           return reply.send({ ok: true, value: outcome.result, replayed: outcome.replayed, canonicalCommit: outcome.canonicalCommit });
         } catch (error) {
@@ -882,6 +881,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       appendAudit: ctx.appendAuditLocal,
       now: ctx.now,
       managedAssignedInbox: { workflowRef: runRef },
+      publication: ctx.coordinationPublication,
+      outboxRoot: ctx.outboxRoot,
       authorizeAfterReconcile: () => {
         const checked = authorize();
         return checked.ok ? null : {
@@ -943,7 +944,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     }
     // One ops transaction (nested audit/reconcile helpers reenter the held lock).
     return withOpsTransaction(async () => {
-    try { await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner); }
+    try { await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner, ctx.coordinationPublication, ctx.outboxRoot); }
     catch { return reply.code(409).send({ error: 'canonical-reconciliation-failed' }); }
     const parsed = validateServerCompiledPlanProposal(stored.value.snapshot, loadRuntimeSkillRegistry(ctx.repoRoot));
     if (!parsed.ok) return reply.code(409).send({ error: 'stored-proposal-invalid', detail: parsed.detail });
@@ -1705,7 +1706,7 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
     let proposalForDispatch: PlanProposal | null = null;
     const preparationFailure = await withOpsTransaction(async (): Promise<LaunchOutcome | null> => {
     try {
-      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner);
+      await prepareCoordination(ctx.repoRoot, ctx.opsGit ?? defaultGitRunner, ctx.coordinationPublication, ctx.outboxRoot);
     } catch {
       return { status: 409, body: { error: 'canonical-reconciliation-failed' } };
     }
@@ -1774,6 +1775,8 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
       await (ctx.activateManagedRoots ?? activateManagedRootCards)({
         repoRoot: ctx.repoRoot, runRef, cardRefs: rootCards, runPy: ctx.runPy,
         runGit: ctx.opsGit ?? defaultGitRunner,
+        publication: ctx.coordinationPublication,
+        outboxRoot: ctx.outboxRoot,
         verifyCompletedRoots: async ({ cardRefs }) => {
           if (!ctx.verifyCanonicalResult) throw new CompletedRootProvenanceError('canonical result verifier is unavailable');
           for (const cardRef of cardRefs) {

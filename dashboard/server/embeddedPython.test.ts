@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { resolvePython } from './runtime/python.ts';
 
 // Server modules ship Python as exported string constants (run via python at runtime).
 // tsc and vitest never parse that Python, so a stray token stays invisible until a live
@@ -46,10 +47,10 @@ const SCRIPTS: Record<string, string> = {
   WEBAUTHN_VERIFY_SCRIPT,
 };
 
-const python = process.platform === 'win32' ? 'py' : 'python3';
+const python = resolvePython();
 
 function pythonAvailable(): boolean {
-  const r = spawnSync(python, ['-c', 'pass'], { encoding: 'utf8' });
+  const r = spawnSync(python.command, [...python.prefixArgs, '-c', 'pass'], { encoding: 'utf8' });
   return r.status === 0;
 }
 
@@ -64,7 +65,7 @@ describe('embedded Python scripts are syntactically valid', () => {
   });
   for (const [name, script] of Object.entries(SCRIPTS)) {
     it.runIf(havePython)(`${name} parses`, () => {
-      const r = spawnSync(python, ['-c', 'import ast,sys; ast.parse(sys.stdin.read())'], {
+      const r = spawnSync(python.command, [...python.prefixArgs, '-c', 'import ast,sys; ast.parse(sys.stdin.read())'], {
         input: script,
         encoding: 'utf8',
       });

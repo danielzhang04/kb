@@ -15,7 +15,8 @@
  * dashboard/server/trace/commit.ts) — so every test here is hermetic: no real STOP file, env var, or
  * budget ledger state is ever touched by the test suite.
  */
-import { execFileSync } from 'node:child_process';
+import { join } from 'node:path';
+import { defaultPlatformRoot, runPythonSync } from '../runtime/python.ts';
 
 /** Raw result of one preamble-check subprocess run. */
 export interface PreambleRunResult {
@@ -29,18 +30,16 @@ export type PreambleRunner = (repoRoot: string) => PreambleRunResult;
 
 /** Default runner: shells the real `py -3 scripts/preamble.py` (the fleet's single source of truth). */
 export const defaultPreambleRunner: PreambleRunner = (repoRoot) => {
+  const platformRoot = defaultPlatformRoot();
   try {
-    const stdout = execFileSync('py', ['-3', 'scripts/preamble.py'], {
-      cwd: repoRoot,
-      encoding: 'utf-8',
-    });
+    const stdout = runPythonSync([join(platformRoot, 'scripts', 'preamble.py')], { cwd: repoRoot, platformRoot });
     return { exitCode: 0, stdout, stderr: '' };
-  } catch (err) {
-    const e = err as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };
+  } catch (error) {
+    const failure = error as { status?: number; stdout?: string; stderr?: string };
     return {
-      exitCode: typeof e.status === 'number' ? e.status : 1,
-      stdout: e.stdout ? e.stdout.toString() : '',
-      stderr: e.stderr ? e.stderr.toString() : '',
+      exitCode: failure.status ?? 1,
+      stdout: failure.stdout ?? '',
+      stderr: failure.stderr ?? String(error),
     };
   }
 };

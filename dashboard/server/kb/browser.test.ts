@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { fileHistory, listTree, readFile, PathEscapeError } from './browser.ts';
+import { fileHistory, listTree, readFile, PathEscapeError, resolveWithinAllowedRoot } from './browser.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 
@@ -77,6 +77,46 @@ describe('readFile', () => {
     expect(() => readFile(REPO_A, '../../../etc/passwd')).toThrow(PathEscapeError);
     expect(() => readFile(REPO_A, '/etc/passwd')).toThrow(PathEscapeError);
   });
+
+  it.each(['CLAUDE.md', '.git/config', 'dashboard/server/index.ts', 'scripts/cards.py'])('refuses non-data path %s', (relpath) => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-read-roots-'));
+    const file = join(root, ...relpath.split('/'));
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, 'not browser data', 'utf8');
+    expect(() => readFile(root, relpath)).toThrow(/approved KB read root/);
+  });
+
+  it('refuses an approved-root prefix that traverses into a platform path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-read-prefix-'));
+    const file = join(root, 'dashboard', 'server', 'index.ts');
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, 'not browser data', 'utf8');
+    expect(() => readFile(root, 'docs/../dashboard/server/index.ts')).toThrow(/approved KB read root/);
+  });
+
+  it.each(['docs/note.md', 'orgs/demo/STATE.md', 'queue/inbox/card.md', 'memory/agent.md'])('allows approved data path %s', (relpath) => {
+    expect(() => resolveWithinAllowedRoot(REPO_A, relpath)).not.toThrow();
+  });
+
+  it.each([
+    'orgs/demo/.git/config',
+    'orgs/demo/node_modules/pkg/index.js',
+    'orgs/demo/dist/bundle.js',
+    'orgs/demo/.GIT/config',
+  ])('refuses hidden platform directory inside an approved root: %s', (relpath) => {
+    expect(() => resolveWithinAllowedRoot(REPO_A, relpath)).toThrow(/refused directory component/);
+  });
+
+  it.each(['approved-root', 'intermediate', 'final-file'])('rejects a symlink at the %s component', (position) => {
+    const root = mkdtempSync(join(tmpdir(), 'kb-read-link-'));
+    const outside = mkdtempSync(join(tmpdir(), 'kb-read-outside-'));
+    writeFileSync(join(outside, 'secret.md'), 'secret', 'utf8');
+    if (position === 'approved-root') symlinkSync(outside, join(root, 'docs'), process.platform === 'win32' ? 'junction' : 'dir');
+    else if (position === 'intermediate') { mkdirSync(join(root, 'docs')); symlinkSync(outside, join(root, 'docs', 'linked'), process.platform === 'win32' ? 'junction' : 'dir'); }
+    else { mkdirSync(join(root, 'docs')); symlinkSync(outside, join(root, 'docs', 'note.md'), process.platform === 'win32' ? 'junction' : 'dir'); }
+    const relpath = position === 'approved-root' ? 'docs/secret.md' : position === 'intermediate' ? 'docs/linked/secret.md' : 'docs/note.md';
+    expect(() => resolveWithinAllowedRoot(root, relpath)).toThrow(/symlink component/);
+  });
 });
 
 describe('fileHistory', () => {
@@ -94,13 +134,13 @@ describe('fileHistory', () => {
     expect(() => fileHistory(gitRepo, '../../etc/passwd')).toThrow(PathEscapeError);
   });
 
-  it('uses an injectable git runner so tests are hermetic (no real git needed)', () => {
+  it('canonicalizes the confined path before passing it to the injectable git runner', () => {
     const calls: Array<{ repoRoot: string; args: string[] }> = [];
     const fakeRunner = (repoRoot: string, args: string[]): string => {
       calls.push({ repoRoot, args });
       return ['deadbeef\tAlice\tMon\tmocked subject'].join('\n');
     };
-    const commits = fileHistory(REPO_A, 'queue/inbox/card-inbox.md', fakeRunner);
+    const commits = fileHistory(REPO_A, './queue//inbox/card-inbox.md', fakeRunner);
     expect(commits).toEqual([
       { hash: 'deadbeef', author: 'Alice', date: 'Mon', subject: 'mocked subject' },
     ]);
@@ -108,5 +148,14 @@ describe('fileHistory', () => {
     expect(calls[0].args[0]).toBe('log');
     expect(calls[0].args).toContain('--follow');
     expect(calls[0].args[calls[0].args.length - 1]).toBe('queue/inbox/card-inbox.md');
+  });
+
+  it.runIf(process.platform === 'win32')('canonicalizes Windows separators before passing a path to git', () => {
+    const calls: string[][] = [];
+    fileHistory(REPO_A, 'queue\\inbox\\card-inbox.md', (_repoRoot, args) => {
+      calls.push(args);
+      return '';
+    });
+    expect(calls[0].at(-1)).toBe('queue/inbox/card-inbox.md');
   });
 });

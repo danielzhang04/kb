@@ -1,5 +1,24 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import type { SurfaceContext } from './http/context.ts';
+import { makeSurfaceContext } from './http/surface.ts';
+import { mintSession } from './auth/session.ts';
+import type { SessionConfig } from './auth/session.ts';
+import { runtimeCapabilities } from './runtime/capabilities.ts';
+
+const serviceCgroupChildCount = vi.hoisted(() => vi.fn(() => 0));
+const quiescenceSpy = vi.hoisted(() => vi.fn());
+
+vi.mock('./release/serviceCgroup.ts', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./release/serviceCgroup.ts')>(),
+  serviceCgroupChildCount,
+}));
+
+vi.mock('./release/quiescence.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./release/quiescence.ts')>();
+  quiescenceSpy.mockImplementation(actual.quiescence);
+  return { ...actual, quiescence: quiescenceSpy };
+});
 import {
   buildApp,
   DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS,
@@ -14,8 +33,18 @@ import {
 } from './index.ts';
 
 let app: FastifyInstance | undefined;
+const TEST_ORIGIN = 'http://kb.test';
+const TEST_SESSION: SessionConfig = { secret: Buffer.from('index-test-session-secret-32-bytes!'), ttlMs: 60_000 };
+const matrixHeaders = { origin: TEST_ORIGIN, host: 'kb.test' };
+// Mint inside each assertion: this file takes long enough that a module-load token can expire while
+// later matrix rows are still running.
+const sessionHeaders = () => ({ ...matrixHeaders, authorization: `Bearer ${mintSession('operator', TEST_SESSION).token}` });
+const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION });
 
 afterEach(async () => {
+  serviceCgroupChildCount.mockReset();
+  serviceCgroupChildCount.mockReturnValue(0);
+  quiescenceSpy.mockClear();
   if (app) {
     await app.close();
     app = undefined;
@@ -23,8 +52,56 @@ afterEach(async () => {
 });
 
 describe('server', () => {
+  it('omits PTY routes on Linux and reports the governed bridge capability', async () => {
+    const createPty = vi.fn(() => { throw new Error('must not construct'); });
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'), createPtyHost: createPty,
+    });
+    const capabilities = await app.inject({
+      method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
+    });
+    expect(capabilities.statusCode).toBe(200);
+    expect(capabilities.json()).toMatchObject({ pty: false, runnerTrigger: false, vibe: false, dashboardBridge: true });
+    expect((await app.inject({ method: 'GET', url: '/api/pty/sessions', headers: sessionHeaders() })).statusCode).toBe(404);
+    expect(createPty).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
+    '/api/registry', '/api/registry/skills', '/api/registry/connections',
+    '/api/index', '/api/ledgers/slices', '/api/dag', '/api/routing',
+    '/api/agents', '/api/agents/system-workers', '/api/agents/example',
+    '/api/panels/health', '/api/panels/usage', '/api/panels/atlas',
+    '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
+    '/api/human-inbox', '/api/approvals', '/api/composer/sessions', '/api/composer/sessions/example',
+    '/api/control/proposals', '/api/control/execution', '/api/control/runs', '/api/control/runs/example',
+    '/api/control/proposals/example/revisions/example', '/api/control/runs/example/attempts/example/io',
+    '/api/control/runs/example/events', '/api/control/retention/inventory',
+    '/api/pty/sessions', '/api/pty/session-runs', '/api/pty/session-runs/example', '/events',
+  ])('rejects unauthenticated read %s', async (url) => {
+    app = matrixApp();
+    const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {
+    app = matrixApp();
+    const method = url.includes('/auth/') ? 'POST' : 'GET';
+    expect((await app.inject({ method, url, headers: matrixHeaders })).statusCode).not.toBe(401);
+  });
+
+  it.each([
+    ['/api/kb/file?path=docs/x.md', 404], ['/api/kb/history?path=docs/x.md', 200],
+    ['/api/agents/example', 404], ['/api/workflows/example', 404], ['/api/composer/sessions/example', 404],
+    ['/api/control/runs/example', 404], ['/api/control/runs/example/events', 404],
+  ])('keeps matched resource %s at its normal %i after authentication', async (url, expected) => {
+    app = matrixApp();
+    expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode).toBe(expected);
+  });
+
   it('binds localhost only and returns 200 on /healthz', async () => {
-    app = buildApp();
+    app = buildApp({ validateData: false });
     // ephemeral port, localhost bind
     await app.listen({ port: 0, host: '127.0.0.1' });
 
@@ -39,20 +116,85 @@ describe('server', () => {
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body).toEqual({ ok: true, node: '24.18.0' });
+    expect(body).toEqual({ ok: true });
   });
 
-  it('/healthz reports the pinned node major', async () => {
-    app = buildApp();
+  it('/healthz does not disclose the runtime version', async () => {
+    app = buildApp({ validateData: false });
     await app.listen({ port: 0, host: '127.0.0.1' });
 
     const port = (app.server.address() as { port: number }).port;
     const res = await fetch(`http://127.0.0.1:${port}/healthz`);
-    const body = (await res.json()) as { ok: boolean; node: string };
+    const body = (await res.json()) as { ok: boolean; node?: string };
+    expect(body).toEqual({ ok: true });
+    expect(body.node).toBeUndefined();
+  });
 
-    // guards an accidental unpinned Node upgrade
-    expect(process.versions.node.startsWith('24.')).toBe(true);
-    expect(body.node.startsWith('24.')).toBe(true);
+  it.each([
+    'activation health',
+    'tier-0 export readiness',
+    'reconciliation gate',
+    'restore drill',
+  ])('serves readiness to the Host-only %s caller on a daemon with no configured origin', async () => {
+    // The bytes export_tier0.py / backup_tier0.py (curl) and apply_ops_reconciliation.py /
+    // activate_release.py (urllib) actually send. The production unit configures no RP origin.
+    const app = buildApp({
+      validateData: false,
+      allowedOrigins: [],
+      readiness: async () => ({ ok: true, quiescent: true, blockers: [] }),
+    });
+    const response = await app.inject({
+      method: 'GET', url: '/readyz', headers: { host: '127.0.0.1:4317' },
+    });
+    expect(response.statusCode).toBe(200);
+    // Byte-for-byte what backup_tier0.wait_for_locked_readiness compares against.
+    expect(response.json()).toEqual({ ok: true, quiescent: true, blockers: [] });
+    await app.close();
+  });
+
+  it('reports no worker blocker from the real readiness closure while the latch is locked', async () => {
+    const ctx = makeSurfaceContext({
+      executionLatch: {
+        snapshot: () => ({ state: 'locked', source: 'test', unlockedAt: null, unlockedBy: null }),
+      } as unknown as SurfaceContext['executionLatch'],
+    });
+
+    const readiness = await ctx.readiness();
+    expect(quiescenceSpy).toHaveBeenLastCalledWith(expect.objectContaining({ activeWorkers: 0 }));
+    expect(readiness.blockers).not.toContain('workers-active');
+  });
+
+  it('reports a worker blocker from the real readiness closure while the latch is unlocked', async () => {
+    const ctx = makeSurfaceContext({
+      executionLatch: {
+        snapshot: () => ({ state: 'unlocked', source: 'test', unlockedAt: null, unlockedBy: null }),
+      } as unknown as SurfaceContext['executionLatch'],
+    });
+
+    const readiness = await ctx.readiness();
+    expect(quiescenceSpy).toHaveBeenLastCalledWith(expect.objectContaining({ activeWorkers: 1 }));
+    expect(readiness.quiescent).toBe(false);
+    expect(readiness.blockers).toContain('workers-active');
+  });
+
+  it('memoizes the synchronous service-cgroup probe across readiness bursts and expires after one second', async () => {
+    let nowMs = Date.parse('2026-08-13T12:00:00.000Z');
+    const ctx = makeSurfaceContext({ now: () => new Date(nowMs) });
+    await ctx.readiness();
+    await ctx.readiness();
+    expect(serviceCgroupChildCount).toHaveBeenCalledTimes(1);
+    nowMs += 1_001;
+    await ctx.readiness();
+    expect(serviceCgroupChildCount).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed through /readyz when the service cgroup probe throws', async () => {
+    serviceCgroupChildCount.mockImplementation(() => { throw new Error('cgroup unavailable'); });
+    const realReadinessApp = buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN] });
+
+    const response = await realReadinessApp.inject({ method: 'GET', url: '/readyz', headers: matrixHeaders });
+    expect(response.json()).toEqual({ ok: true, quiescent: false, blockers: ['service-cgroup-unknown'] });
+    await realReadinessApp.close();
   });
 });
 

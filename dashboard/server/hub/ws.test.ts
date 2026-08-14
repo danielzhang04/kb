@@ -9,6 +9,8 @@ import type { FSWatcher } from 'chokidar';
 import WebSocket from 'ws';
 import { registerReadWs } from './ws.ts';
 import { createBus, wirePlaneA } from './bus.ts';
+import { registerHub } from './index.ts';
+import { mintSession } from '../auth/session.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 
@@ -78,4 +80,52 @@ describe('registerReadWs', () => {
     expect(frame).toContain('"channel":"planeA"');
     expect(frame).toContain('card-new.md');
   }, 15_000);
+
+  it('rejects unauthenticated upgrades before a stream opens, while accepting cookie and bearer sessions', async () => {
+    const bus = createBus();
+    const session = { secret: Buffer.from('hub-ws-session-secret'), ttlMs: 60_000 };
+    let origin = '';
+    app = Fastify({ logger: false });
+    registerHub(app, { bus, sessionConfig: session, allowedOrigins: () => [origin] });
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (app.server.address() as { port: number }).port;
+    origin = `http://127.0.0.1:${port}`;
+    const url = `ws://127.0.0.1:${port}/ws`;
+
+    for (const headers of [
+      { origin },
+      { origin, cookie: 'kb_session=%E0%A4%A' },
+    ]) {
+      await new Promise<void>((resolve, reject) => {
+        let opened = false;
+        let frames = 0;
+        const socket = new WebSocket(url, { headers });
+        socket.on('open', () => { opened = true; });
+        socket.on('message', () => { frames += 1; });
+        socket.on('unexpected-response', (_request, response) => {
+          expect(response.statusCode).toBe(401);
+          response.resume();
+          response.on('end', () => {
+            expect(opened).toBe(false);
+            expect(frames).toBe(0);
+            resolve();
+          });
+        });
+        socket.on('error', (err) => reject(err));
+      });
+    }
+
+    const token = mintSession('operator', session).token;
+    for (const headers of [
+      { origin, cookie: `kb_session=${encodeURIComponent(token)}` },
+      { origin, authorization: `Bearer ${token}` },
+    ]) {
+      await new Promise<void>((resolve, reject) => {
+        const socket = new WebSocket(url, { headers });
+        socket.on('open', () => socket.close());
+        socket.on('close', () => resolve());
+        socket.on('error', reject);
+      });
+    }
+  });
 });

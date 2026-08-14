@@ -1,12 +1,20 @@
 import Fastify from 'fastify';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SessionConfig } from './session.ts';
 import { rememberChallenge } from './credentialStore.ts';
 import { registerAuthRoutes } from './routes.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
 
-const SESSION: SessionConfig = { secret: Buffer.from('auth-route-test-secret-thirty-two-b!'), ttlMs: 60_000 };
+const verifyAssertionMock = vi.hoisted(() => vi.fn());
+vi.mock('./webauthn.ts', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./webauthn.ts')>(),
+  verifyAssertion: verifyAssertionMock,
+}));
+
+const SESSION: SessionConfig = {
+  secret: Buffer.from('auth-route-test-secret-thirty-two-b!'), ttlMs: 60_000, now: () => 1_700_000_000_000,
+};
 const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: 'http://localhost:5317' });
 
 /** A lightweight ctx for `registerAuthRoutes` alone: real defaults for anything these routes never
@@ -37,6 +45,7 @@ describe('auth ceremony routes', () => {
   afterEach(async () => {
     await app?.close();
     app = undefined;
+    verifyAssertionMock.mockReset();
   });
 
   it('a genuinely unknown ceremonyId is refused as bad-ceremony', async () => {
@@ -125,5 +134,30 @@ describe('auth ceremony routes', () => {
     const res = await app.inject({ method: 'POST', url: '/api/auth/assert/options', payload: {} });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ error: 'webauthn-unconfigured' });
+  });
+
+  it.each([
+    ['http://localhost:5317', false],
+    ['https://kb.example.test', true],
+  ])('sets a hardened session cookie when the RP origin is %s', async (origin, secure) => {
+    ({ app } = buildApp({
+      webAuthnConfig: () => ({ rpID: new URL(origin).hostname, rpName: 'test', origin }),
+      credentials: () => [{ id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 }],
+    }));
+    verifyAssertionMock.mockResolvedValue({ verified: true });
+    const options = await app.inject({ method: 'POST', url: '/api/auth/assert/options', payload: {} });
+    const ceremonyId = (options.json() as { ceremonyId: string }).ceremonyId;
+    const response = await app.inject({
+      method: 'POST', url: '/api/auth/assert/verify', payload: { ceremonyId, response: { id: 'cred-1' } },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const cookie = String(response.headers['set-cookie']);
+    expect(cookie).toMatch(/^kb_session=/);
+    expect(cookie).toContain('Path=/');
+    expect(cookie).toContain('HttpOnly');
+    expect(cookie).toContain('SameSite=Strict');
+    expect(cookie).toContain('Max-Age=60');
+    expect(cookie.includes('; Secure')).toBe(secure);
   });
 });

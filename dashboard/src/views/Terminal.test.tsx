@@ -161,6 +161,14 @@ function makeSessionsClient(live: PtySessionSummary[] = []): TerminalSessionsCli
 const STORAGE_KEY = 'kb-terminal-tabs-v1';
 
 describe('Terminal — session gating + subprotocol token', () => {
+  it('renders a calm disabled message without constructing a socket when PTY is unavailable', async () => {
+    const { factory } = makeFactory();
+    render(unlocked(<Terminal ptyEnabled={false} socketFactory={factory} sessionsClient={makeSessionsClient()} />));
+    expect(screen.getByText('Terminal is disabled on this host.')).toBeTruthy();
+    await act(async () => Promise.resolve());
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it('locked, it renders one calm unlock line and never opens a socket', () => {
     const factory = vi.fn();
     render(

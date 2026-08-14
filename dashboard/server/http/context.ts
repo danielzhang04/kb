@@ -17,6 +17,7 @@ import type { WebAuthnCredential } from '@simplewebauthn/server';
 import { appendAudit as realAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow, OpsGitRunner } from '../audit/log.ts';
 import type { GitRunner, PrOpener } from '../write/branch.ts';
+import type { CoordinationPublication } from '../write/outbox.ts';
 import type { PyRunner } from '../write/launch.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
 import type { VibeSpawner } from '../vibe/session.ts';
@@ -44,6 +45,9 @@ import type { TranscriptRecorder } from '../pty/transcripts.ts';
 import type { DefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import type { activateManagedRootCards } from '../write/workflowRun.ts';
 import type { EventBus } from '../hub/bus.ts';
+import type { quiescence } from '../release/quiescence.ts';
+import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
+import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -53,10 +57,22 @@ export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: Appe
 export type AppendAuditLocalFn = (repoRoot: string, event: AuditEvent, now?: () => Date) => AuditRow;
 
 export interface SurfaceContext {
+  /** Host capabilities resolved once at the composition root. */
+  runtimeCapabilities: RuntimeCapabilities;
   /** Canonical ops worktree used for live reads and coordination writes. */
   repoRoot: string;
+  /** Coordination publication is resolved once at the HTTP composition root. */
+  coordinationPublication?: CoordinationPublication;
+  /** Durable VM spool root used when coordination publication is `outbox`. */
+  outboxRoot?: string;
+  /** Startup recovery fault retained as degraded state so /readyz remains available for repair tooling. */
+  outboxRecoveryFailure?: string;
+  /** Admission policy for work that would add to the durable outbox. */
+  admission: (kind: AdmissionKind) => AdmissionDecision;
   /** Dashboard-owned runtime state root; never a repository content path. */
   stateRoot: string;
+  /** Minimal, unauthenticated readiness probe. */
+  readiness: () => Promise<ReturnType<typeof quiescence>>;
   /** Optional live hub bus; the surface uses it only while an execution latch is armed. */
   hubBus?: EventBus;
   /** Restart-safe, server-owned pending definition-amendment records. */
@@ -161,7 +177,12 @@ export interface SurfaceContext {
 
 /** The audit fn a route should call — the injected fake in tests, the real git-committing one otherwise. */
 export function auditFn(ctx: SurfaceContext): AppendAuditFn {
-  return ctx.appendAudit ?? realAppendAudit;
+  if (ctx.appendAudit) return ctx.appendAudit;
+  return (repoRoot, event, options = {}) => realAppendAudit(repoRoot, event, {
+    ...options,
+    publication: ctx.coordinationPublication,
+    outboxRoot: ctx.outboxRoot,
+  });
 }
 
 /**

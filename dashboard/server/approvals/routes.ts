@@ -2,9 +2,7 @@
  * U2 — approvals routes.
  *
  *   GET  /api/approvals        -> ranked pending cards, each with its `assurance.ts#buttonsFor` gating.
- *                                 READ-ONLY, NO session: this is the corroboration feed the operator
- *                                 reads BEFORE any biometric step (the brief's show-then-prompt ordering
- *                                 law). Still behind the scope's Origin/Host guard + rate-limiter.
+ *                                 Session-gated alongside every other repository/state read.
  *   POST /api/approvals/verify -> drives the channel's verifier (`inbox.ts#driveVerify` -> the fleet's
  *                                 `scripts/approvals.py` / D2.3's `scripts/webauthn_verify.py`). Session-
  *                                 gated; the WebAuthn channel additionally performs the load-bearing
@@ -50,7 +48,8 @@ function resolveCardPath(repoRoot: string, cardId: string): string | null {
 }
 
 export function registerApprovalsRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
-  scope.get('/api/human-inbox', async (_req, reply: FastifyReply) => {
+  const preHandler = requireSession(ctx.sessionConfig);
+  scope.get('/api/human-inbox', { preHandler }, async (_req, reply: FastifyReply) => {
     const index = indexRepo(ctx.repoRoot);
     // The repo-root STOP freeze file is deliberately uncommitted/local; presence alone drives the
     // synthetic STOP intervention. We check EXISTENCE only and never read its contents.
@@ -58,13 +57,13 @@ export function registerApprovalsRoutes(scope: FastifyInstance, ctx: SurfaceCont
     return reply.code(200).send(projectHumanInbox(index, { stopPresent }));
   });
 
-  scope.get('/api/approvals', async (_req, reply: FastifyReply) => {
+  scope.get('/api/approvals', { preHandler }, async (_req, reply: FastifyReply) => {
     const index = indexRepo(ctx.repoRoot);
     const pending = listPending(index).map((card) => ({ card, buttons: buttonsFor(card) }));
     return reply.code(200).send({ pending });
   });
 
-  scope.post('/api/approvals/verify', { preHandler: requireSession(ctx.sessionConfig) }, async (req: FastifyRequest, reply: FastifyReply) => {
+  scope.post('/api/approvals/verify', { preHandler }, async (req: FastifyRequest, reply: FastifyReply) => {
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const cardId = typeof body.cardId === 'string' ? body.cardId : '';

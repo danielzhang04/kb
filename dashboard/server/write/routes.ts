@@ -27,7 +27,7 @@ import { launchCard, rerunAsDependsOn } from './launch.ts';
 import type { LaunchOutcome, RiskTier } from './launch.ts';
 import { respondToCard, resolveCardPath } from './cardRespond.ts';
 import type { RespondVerb } from './cardRespond.ts';
-import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { parseValidatedCard } from '../planeA/cards.ts';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import { writeStop, requestStop, pauseCadence } from '../stop/floor.ts';
 import { setOverride, clearOverride } from './routingOverride.ts';
@@ -95,6 +95,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
   const auditOpts = { runGit: ctx.opsGit, now: ctx.now };
 
   scope.post('/api/write/save', { preHandler }, async (req, reply: FastifyReply) => {
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const relpath = str(body.relpath);
@@ -123,6 +125,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       openPr: ctx.openPr,
       runPreamble: ctx.runPreamble,
       message: typeof body.message === 'string' ? body.message : undefined,
+      publication: ctx.coordinationPublication,
+      outboxRoot: ctx.outboxRoot,
     });
     // FINDING 3: audit ONLY on the success path (a consequential write actually occurred). A refusal
     // writes no ops-committed audit row — refused writes must not amplify into a pull-rebase-push each.
@@ -139,6 +143,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
   });
 
   scope.post('/api/write/launch', { preHandler }, async (req, reply: FastifyReply) => {
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     // C7.7 — an OPTIONAL operator-assigned owner. Absent/empty → today's unowned-card path. When present,
@@ -167,7 +173,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         repoRoot: ctx.repoRoot,
         runPreamble: ctx.runPreamble,
         runPy: ctx.runPy,
-        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner),
+        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner, ctx.coordinationPublication, ctx.outboxRoot),
       },
     );
     // The card and its audit row are one coordination transaction: pull happened inside launchCard's
@@ -187,6 +193,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
           runGit: ctx.opsGit ?? defaultGitRunner,
           alsoStage: [AUDIT_REL_PATH],
           message: `chore(queue): launch card ${outcome.cardId}`,
+          publication: ctx.coordinationPublication,
+          outboxRoot: ctx.outboxRoot,
         });
         const runner = owner ? (ctx.triggerRunner ?? defaultTriggerRunner)(owner) : {
           status: 'unbound' as const,
@@ -215,6 +223,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
   );
 
   scope.post('/api/write/rerun', { preHandler }, async (req, reply: FastifyReply) => {
+    const admission = ctx.admission('new-work');
+    if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
     const session = verifiedSession(req);
     const body = asRecord(req.body);
     const cardId = str(body.cardId);
@@ -231,7 +241,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         repoRoot: ctx.repoRoot,
         runPreamble: ctx.runPreamble,
         runPy: ctx.runPy,
-        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner),
+        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner, ctx.coordinationPublication, ctx.outboxRoot),
       },
     );
     // Same transaction as launch: pull before cards.py, then append the audit locally and commit the
@@ -249,6 +259,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
           runGit: ctx.opsGit ?? defaultGitRunner,
           alsoStage: [AUDIT_REL_PATH],
           message: `chore(queue): rerun card ${cardId} as ${outcome.cardId}`,
+          publication: ctx.coordinationPublication,
+          outboxRoot: ctx.outboxRoot,
         });
         return reply.code(200).send({ ok: true, cardId: outcome.cardId, cardPath: outcome.cardPath });
       } catch (err) {
@@ -266,7 +278,13 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const session = verifiedSession(req);
     const outcome = writeStop(
       { token: session?.token, config: ctx.sessionConfig },
-      { repoRoot: ctx.repoRoot, runPy: ctx.runPy, runGit: ctx.opsGit },
+      {
+        repoRoot: ctx.repoRoot,
+        runPy: ctx.runPy,
+        runGit: ctx.opsGit,
+        publication: ctx.coordinationPublication,
+        outboxRoot: ctx.outboxRoot,
+      },
     );
     // FINDING 3: audit only when the STOP sentinel was actually written.
     if (outcome.ok) {
@@ -292,7 +310,13 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const outcome = await requestStop(
       cardId,
       { token: session?.token, config: ctx.sessionConfig },
-      { repoRoot: ctx.repoRoot, runPy: ctx.runPy, runGit: ctx.opsGit },
+      {
+        repoRoot: ctx.repoRoot,
+        runPy: ctx.runPy,
+        runGit: ctx.opsGit,
+        publication: ctx.coordinationPublication,
+        outboxRoot: ctx.outboxRoot,
+      },
     );
     // FINDING 3: audit only on a successful state transition.
     if (outcome.ok) {
@@ -315,7 +339,13 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     const outcome = await pauseCadence(
       name,
       { token: session?.token, config: ctx.sessionConfig },
-      { repoRoot: ctx.repoRoot, runPy: ctx.runPy, runGit: ctx.opsGit },
+      {
+        repoRoot: ctx.repoRoot,
+        runPy: ctx.runPy,
+        runGit: ctx.opsGit,
+        publication: ctx.coordinationPublication,
+        outboxRoot: ctx.outboxRoot,
+      },
     );
     // FINDING 3: audit only when the cadence was actually paused.
     if (outcome.ok) {
@@ -426,9 +456,9 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
     if (!cardPath) {
       return reply.code(404).send({ error: 'card-not-found', reason: `no card ${cardId} under queue/` });
     }
-    let parsed: ReturnType<typeof parseCardFrontmatter>;
+    let parsed: ReturnType<typeof parseValidatedCard>;
     try {
-      parsed = parseCardFrontmatter(readFileSync(cardPath, 'utf8'));
+      parsed = parseValidatedCard(readFileSync(cardPath, 'utf8'));
     } catch (err) {
       return reply.code(500).send({ error: 'card-parse-failed', detail: err instanceof Error ? err.message : String(err) });
     }
@@ -446,7 +476,7 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
       {
         repoRoot: ctx.repoRoot,
         runPy: ctx.runPy,
-        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner),
+        prepareWrite: (repoRoot) => prepareCoordination(repoRoot, ctx.opsGit ?? defaultGitRunner, ctx.coordinationPublication, ctx.outboxRoot),
       },
     );
     if (!outcome.ok) {
@@ -474,6 +504,8 @@ export function registerWriteRoutes(scope: FastifyInstance, ctx: SurfaceContext)
         runGit: ctx.opsGit ?? defaultGitRunner,
         alsoStage: [...rest, AUDIT_REL_PATH],
         message: `chore(queue): ${verb} card ${cardId}`,
+        publication: ctx.coordinationPublication,
+        outboxRoot: ctx.outboxRoot,
       });
       // G3 reply-liveness: the write is DONE and committed. Now report whether any consumer is online for
       // this card's owner so a hanging reply is VISIBLE, not silent. This is a read-only probe AFTER the

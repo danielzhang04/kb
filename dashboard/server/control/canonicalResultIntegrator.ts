@@ -3,10 +3,16 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync,
 import { renameWithRetrySync } from '../atomicRename.ts';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
-import { defaultGitRunner, prepareCoordination, type GitRunner } from '../write/branch.ts';
+import {
+  defaultGitRunner,
+  isCoordinationPath,
+  prepareCoordination,
+  type GitRunner,
+} from '../write/branch.ts';
 import { resolveCheckedOutBranch, withOpsTransaction } from '../write/asyncGit.ts';
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
+import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
 import type { CanonicalStageResult, CanonicalStageResultPayload, ResultIntegrator, WorkerArtifactResult } from './execution.ts';
 import { canonicalResultOperationKey, canonicalStageResultHash, planAttemptWorktreePath } from './execution.ts';
 import { createLocalGitCommandRunner, type GitCommandRunner } from './adapters.ts';
@@ -86,6 +92,8 @@ export interface CanonicalGitResultIntegratorOptions {
   baseCommit: string;
   gitRunner?: GitCommandRunner;
   coordinationGit?: GitRunner;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
   runPy?: PyRunner;
   /**
    * READ-ONLY branch resolution for the coordination checkout, injected as its OWN seam — deliberately
@@ -571,12 +579,17 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       if (remoteCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('generation lineage is not remotely durable');
       return;
     }
-    await opsGit(coordinationRoot, [
-      'fetch', '--no-tags', 'origin', 'refs/heads/ops:refs/remotes/origin/ops',
-    ]);
-    const publishedCommit = (await opsGit(
-      coordinationRoot, ['rev-parse', '--verify', 'refs/remotes/origin/ops^{commit}'],
-    )).trim();
+    let publishedCommit: string;
+    if ((options.publication ?? 'direct') === 'outbox') {
+      publishedCommit = (await opsGit(coordinationRoot, ['rev-parse', 'HEAD'])).trim();
+    } else {
+      await opsGit(coordinationRoot, [
+        'fetch', '--no-tags', 'origin', 'refs/heads/ops:refs/remotes/origin/ops',
+      ]);
+      publishedCommit = (await opsGit(
+        coordinationRoot, ['rev-parse', '--verify', 'refs/remotes/origin/ops^{commit}'],
+      )).trim();
+    }
     if (!SHA.test(publishedCommit)) {
       throw new CanonicalResultIntegrationError('published coordination commit is not immutable');
     }
@@ -732,7 +745,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         return { status: 'integrated' as const, resultHash: record.result.resultHash,
           durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
       }
-      await prepareCoordination(coordinationRoot, opsGit);
+      await prepareCoordination(coordinationRoot, opsGit, options.publication, options.outboxRoot);
       const dirty = await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']);
       if (dirty) throw new CanonicalResultIntegrationError('coordination index is dirty');
       record.state = 'canonical-intent';
@@ -773,7 +786,16 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         'commit', '-m', `chore(queue): integrate managed result ${record.cardRef}`, '--only', '--', ...changedPaths,
       ]);
     }
-    try {
+    if ((options.publication ?? 'direct') === 'outbox') {
+      if (changedPaths.length > 0) {
+        await recoverUnspooledCoordinationCommits({
+          repoRoot: coordinationRoot,
+          spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+          runGit: opsGit,
+          isCoordinationPath,
+        });
+      }
+    } else try {
       await opsGit(coordinationRoot, ['push', 'origin', 'ops']);
     } catch (pushError) {
       try {

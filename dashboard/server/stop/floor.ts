@@ -35,7 +35,6 @@
  * `py`/`git` binary or touches the network — see `floor.test.ts`), and `sigkillBackstop` takes an
  * injected clock (`now`) and an injected `kill` function (no test ever sends a real OS signal).
  */
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { verifySession } from '../auth/session.ts';
@@ -43,6 +42,9 @@ import type { SessionClaims, SessionConfig } from '../auth/session.ts';
 import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
+import { isCoordinationPath } from '../write/branch.ts';
+import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
+import { pythonFailureResult, runPythonSync } from '../runtime/python.ts';
 
 /** The bearer session token plus the config needed to verify it (mirrors `launch.ts`'s shape). */
 export interface SessionInput {
@@ -80,18 +82,10 @@ export type PyRunner = (repoRoot: string, code: string, jsonArg: string) => PyRu
 /** Default runner: shells `py -3 -c <code> <jsonArg>`, matching `write/launch.ts#defaultPyRunner`. */
 export const defaultPyRunner: PyRunner = (repoRoot, code, jsonArg) => {
   try {
-    const stdout = execFileSync('py', ['-3', '-c', code, jsonArg], {
-      cwd: repoRoot,
-      encoding: 'utf-8',
-    });
+    const stdout = runPythonSync(['-c', code, jsonArg], { cwd: repoRoot });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (err) {
-    const e = err as { status?: number | null; stdout?: Buffer | string; stderr?: Buffer | string };
-    return {
-      exitCode: typeof e.status === 'number' ? e.status : 1,
-      stdout: e.stdout ? e.stdout.toString() : '',
-      stderr: e.stderr ? e.stderr.toString() : '',
-    };
+    return pythonFailureResult(err);
   }
 };
 
@@ -144,12 +138,22 @@ async function commitToOps(
   message: string,
   runGit: OpsGitRunner,
   maxRetryPushes = 3,
+  publication: CoordinationPublication = 'direct',
+  outboxRoot = '/var/lib/kb/state/outbox',
 ): Promise<void> {
-  await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  if (publication === 'outbox') {
+    await recoverUnspooledCoordinationCommits({ repoRoot, spoolRoot: outboxRoot, runGit, isCoordinationPath });
+  } else {
+    await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  }
   await runGit(repoRoot, ['add', '--', ...relPaths]);
   await runGit(repoRoot, ['commit', '-m', message]);
 
-  await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
+  if (publication === 'outbox') {
+    await recoverUnspooledCoordinationCommits({ repoRoot, spoolRoot: outboxRoot, runGit, isCoordinationPath });
+  } else {
+    await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
+  }
 }
 
 /** Injectable dependencies shared by every primitive in this module. Every field is hermetic-test-safe. */
@@ -157,6 +161,8 @@ export interface FloorDeps {
   repoRoot: string;
   runPy?: PyRunner;
   runGit?: OpsGitRunner;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 export type WriteStopOutcome = { ok: true; path: string } | Unauthenticated;
@@ -218,6 +224,9 @@ export async function requestStop(cardId: string, session: SessionInput, deps: F
       [path],
       `chore(stop): ${id} working -> stop-requested -> halting`,
       deps.runGit ?? defaultOpsGitRunner,
+      3,
+      deps.publication,
+      deps.outboxRoot,
     );
 
     return { ok: true, cardId: id, cardPath: path, state };
@@ -242,7 +251,15 @@ export async function pauseCadence(name: string, session: SessionInput, deps: Fl
     mkdirSync(dirname(abs), { recursive: true });
     if (!existsSync(abs)) writeFileSync(abs, '', 'utf8');
 
-    await commitToOps(deps.repoRoot, [relPath], `chore(pause): ${name}`, deps.runGit ?? defaultOpsGitRunner);
+    await commitToOps(
+      deps.repoRoot,
+      [relPath],
+      `chore(pause): ${name}`,
+      deps.runGit ?? defaultOpsGitRunner,
+      3,
+      deps.publication,
+      deps.outboxRoot,
+    );
 
     return { ok: true, path: relPath };
   });

@@ -9,8 +9,9 @@ import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
 import { registerHub } from './hub/index.ts';
-import { wireControlStoreTick } from './hub/bus.ts';
+import { createBus, wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
+import { requireSession, surfaceRateLimitHook } from './http/middleware.ts';
 import { registerWorkflows } from './workflows/routes.ts';
 import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
@@ -21,6 +22,11 @@ import { startMergeGateReconciler } from './write/mergeGateReconciler.ts';
 import { startStrandedArchiver } from './write/strandedArchiver.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
+import { assertSupportedRepositoryData } from './schema/startup.ts';
+import type { SurfaceContext } from './http/context.ts';
+import type { RuntimeCapabilities } from './runtime/capabilities.ts';
+import type { VibeSpawner } from './vibe/session.ts';
+import { createPtyHost } from './pty/host.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -106,36 +112,50 @@ export function humanRequestSweepLogLine(result: HumanRequestSweepResult): strin
 }
 
 /**
- * Build the Fastify backend. `/healthz` and the read-only hub/registry/planeA routes stay pre-auth;
- * the governed WRITE surface (auth ceremonies, save/launch/stop, vibe, approvals) is registered by
- * `registerWriteSurface` as its own encapsulated, Origin/Host- + rate-limit-guarded child scope, with
- * each mutating route additionally session-gated (U2). It is fail-closed by default: with no
- * `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every write route 403s; with an RP origin but
- * no provisioned passkey, no session can be minted and every write route 401s.
+ * Build the Fastify backend. Only `/healthz`, static assets, and the four session-minting auth
+ * ceremonies and loopback-only `/readyz` stay public.
+ * Every other matched data route — repository/state reads, hub streams, PTY,
+ * and writes — is in an Origin/Host- + rate-limit-guarded scope with a session pre-handler. It is
+ * fail-closed by default: with no `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every governed
+ * route 403s; with an RP origin but no provisioned passkey, no session can be minted and every governed
+ * route 401s.
  */
-export function buildApp(): FastifyInstance {
+export interface BuildAppOptions {
+  repoRoot?: string;
+  validateData?: boolean;
+  readiness?: SurfaceContext['readiness'];
+  allowedOrigins?: SurfaceContext['allowedOrigins'];
+  sessionConfig?: SurfaceContext['sessionConfig'];
+  runtimeCapabilities?: RuntimeCapabilities;
+  spawn?: VibeSpawner;
+  createPtyHost?: typeof createPtyHost;
+}
+
+export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
+  const repoRoot = options.repoRoot ?? process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../', import.meta.url));
+  if (options.validateData !== false) assertSupportedRepositoryData(repoRoot);
   const app = Fastify({ logger: false });
+  const bus = createBus();
+  const surfaceCtx = makeSurfaceContext({
+    hubBus: bus,
+    repoRoot,
+    readiness: options.readiness,
+    allowedOrigins: options.allowedOrigins,
+    sessionConfig: options.sessionConfig,
+    runtimeCapabilities: options.runtimeCapabilities,
+    spawn: options.spawn,
+  }, { createPtyHost: options.createPtyHost });
 
   app.get('/healthz', async () => {
-    // `node` echoes the running runtime version so an accidental unpinned Node
-    // upgrade is caught (pinned to 24.18.0 via .nvmrc + package.json engines).
-    return { ok: true, node: process.versions.node };
+    return { ok: true };
   });
 
-  app.register(kbBrowserRoutes); // D0.5: read-only KB browser (GET-only /api/kb/*)
-  registerRegistry(app); // D0.6: read-only registries (GET-only /api/registry/*)
-  registerPlaneA(app); // D0.9: read-only Plane-A snapshot for the Control landing (GET /api/index)
-  registerDag(app); // D3.4: read-only pipeline DAG projection over depends-on (GET /api/dag)
-  registerRoutingRead(app); // R2.1/R2.4: read-only effective-routing projection (GET /api/routing)
-  registerAgents(app); // read-only fleet roster (GET /api/agents): queue owners ∪ ledger writers ∪ roles
-  registerPanels(app); // D3.5: read-only layer panels (GET /api/panels/health | /api/panels/usage)
-  const bus = registerHub(app, { repoRoot: process.env.DASHBOARD_REPO_ROOT }); // D0.4: SSE/WS hub + Origin/Host guard (/events, /ws)
+  registerHub(app, { repoRoot, bus, allowedOrigins: surfaceCtx.allowedOrigins, sessionConfig: surfaceCtx.sessionConfig });
   // ONE surface context per process: its `sessionConfig` (HMAC secret) is resolved exactly once here and
   // SHARED with the PTY route below. Without this, the write surface and the PTY route each called
   // `resolveSessionSecret()` independently; with `DASHBOARD_SESSION_SECRET` unset that yields two DIFFERENT
   // random secrets, so a token minted at login (write-surface secret) can never verify at /api/pty (its own
   // secret) → every PTY open failed `verifySession` with `bad-signature`. One secret keeps mint == verify.
-  const surfaceCtx = makeSurfaceContext({ hubBus: bus });
   const controlStoreWatcher = wireControlStoreTick(bus, surfaceCtx.stateRoot);
   app.addHook('onClose', async () => {
     try {
@@ -145,18 +165,39 @@ export function buildApp(): FastifyInstance {
       // ignore â€” best-effort teardown
     }
   });
+  // Loopback-only readiness for repair/export tooling. It must stay OUTSIDE the origin guard:
+  // export_tier0.py and backup_tier0.py call it with curl, apply_ops_reconciliation.py and
+  // activate_release.py with urllib. None sends an Origin, all send Host: 127.0.0.1:<port>, and
+  // deploy/systemd/kb-dashboard.service sets no DASHBOARD_RP_ORIGIN, so the allowlist is empty and the
+  // guard 403s all four. The DoS amplification S2 raised is closed by the 1s serviceCgroupChildCount
+  // memoization, not by this hook. Do NOT attach the read-rate hook either: the restore drill polls
+  // every 0.25s (240 req/min) against a 300/min budget with a 60s lockout — far too close to the edge.
+  app.get('/readyz', async () => await surfaceCtx.readiness());
+  app.register(async (scope) => {
+    originPlugin(scope, { allowedOrigins: surfaceCtx.allowedOrigins });
+    scope.addHook('onRequest', surfaceRateLimitHook(surfaceCtx.readRateGuard, surfaceCtx.rateGuard));
+    scope.addHook('preHandler', requireSession(surfaceCtx.sessionConfig));
+    scope.get('/api/runtime/capabilities', async () => surfaceCtx.runtimeCapabilities);
+    scope.register(kbBrowserRoutes, { repoRoot });
+    registerRegistry(scope, repoRoot);
+    registerPlaneA(scope, repoRoot);
+    registerDag(scope, repoRoot);
+    registerRoutingRead(scope, repoRoot);
+    registerAgents(scope, repoRoot);
+    registerPanels(scope, repoRoot);
+    registerWorkflows(scope, surfaceCtx);
+  });
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
   // D15: workflow-definition registry (GET /api/workflows[/:id] read-only) + the governed one-step launch
   // (POST /api/workflows/:id/launch) in its OWN origin/rate-limit/session child scope. Shares surfaceCtx
   // so the launch route mints/verifies against the same session secret as the write surface.
-  registerWorkflows(app, surfaceCtx);
   // D3.1 temporary in-process PTY bridge (/api/pty), in its OWN origin-guarded child scope (mirrors
   // registerHub). NOT folded into the write surface: its per-request rate-limit hook is HTTP-request shaped
   // and fits a long-lived WS upgrade poorly. The route runs the fleet preamble BEFORE session validation,
   // enforces the max-concurrent cap, and writes exactly one audit row per allowed-origin attempt. Its child
   // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
   // cross-user host/Factor-C path is a future hardening milestone, not an active control.
-  {
+  if (surfaceCtx.runtimeCapabilities.pty) {
     // ONE pty host + session registry for the whole daemon, resolved on the surface context. Manual
     // Terminal sessions persist across browser reconnects without coupling them to worker execution.
     // N4 (fail-closed host, 2026-08-03): the host is passed UNCONDITIONALLY. `makeSurfaceContext` always
@@ -165,6 +206,7 @@ export function buildApp(): FastifyInstance {
     // conditional spread would instead have let the route fabricate a raw, ungated shell host.
     const ptyCtx = makePtyRouteContext({
       sessionConfig: surfaceCtx.sessionConfig,
+      allowedOrigins: surfaceCtx.allowedOrigins,
       ptyHost: surfaceCtx.ptyHost,
       ...(surfaceCtx.ptySessions ? { registry: surfaceCtx.ptySessions } : {}),
       // Leg 2: the daemon records the entity-primed sessions it spawns (agent / workflow), and tapes
@@ -270,8 +312,8 @@ export function buildApp(): FastifyInstance {
 }
 
 /** Start the daemon on the loopback interface. */
-export async function start(port: number = PORT, host: string = HOST): Promise<FastifyInstance> {
-  const app = buildApp();
+export async function start(port: number = PORT, host: string = HOST, options: { repoRoot?: string } = {}): Promise<FastifyInstance> {
+  const app = buildApp({ repoRoot: options.repoRoot, validateData: true });
   await app.listen({ port, host });
   return app;
 }

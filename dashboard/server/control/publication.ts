@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { parseValidatedCard } from '../planeA/cards.ts';
 import type { GitRunner } from '../write/branch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import type { PlanProposal } from './proposal.ts';
@@ -62,7 +62,7 @@ export async function reconcileCanonicalPublication(input: {
     }
     let card;
     try {
-      card = parseCardFrontmatter(readFileSync(join(input.repoRoot, ...relpath.split('/')), 'utf8'));
+      card = parseValidatedCard(readFileSync(join(input.repoRoot, ...relpath.split('/')), 'utf8'));
     } catch (error) {
       return { ok: false, reason: 'malformed-card', detail: error instanceof Error ? error.message : String(error) };
     }

@@ -1,6 +1,6 @@
 /**
- * U2 — shared HTTP middleware for the governed write surface. Every mutating route composes, IN THIS
- * ORDER, before the module's own gate runs:
+ * U2 — shared HTTP middleware for the governed HTTP surface. Every authenticated read and mutating
+ * route composes, IN THIS ORDER, before the module's own handler or gate runs:
  *
  *   1. Origin/Host guard      — `security/origin.ts#originHook` (DNS-rebinding defence, ordering law 4).
  *   2. Rate-limit + lockout   — `security/ratelimit.ts#rateLimitHook` (sliding window + escalation).
@@ -10,11 +10,11 @@
  *                                NEVER replaces those — it is an earlier, coarser fail-closed layer.
  *   5. Audit row               — the route appends exactly one `audit/log.ts` row on the consequential path.
  *
- * NOTHING here reimplements a check that a gate module already owns. `requireSession` calls the exact
- * same `verifySession` the write modules call; the rate limiter and origin guard are the exact same
- * hooks the hub already uses. There is NO dev-mode flag, NO bypass, NO test backdoor: tests exercise
- * the real chain and inject only the leaf side-effect runners (git/py/spawn) the gate modules already
- * expose for their own unit tests.
+ * The only public routes are `/healthz`, `/readyz`, static SPA assets, and the four auth ceremonies that
+ * mint a session. `requireSession` calls the exact same `verifySession` the write modules call; the rate
+ * limiter and origin guard are the exact same hooks the hub uses. There is NO dev-mode flag, NO bypass,
+ * NO test backdoor: tests exercise the real chain and inject only the leaf side-effect runners (git/py/
+ * spawn) the gate modules already expose for their own unit tests.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { verifySession } from '../auth/session.ts';
@@ -33,6 +33,19 @@ export function bearerToken(req: { headers: { authorization?: string | string[] 
   return token.length > 0 ? token : undefined;
 }
 
+/** Extract a session from either its bearer header or the same-origin HttpOnly cookie. */
+export function sessionToken(req: { headers: { authorization?: string | string[]; cookie?: string } }): string | undefined {
+  const bearer = bearerToken(req);
+  if (bearer) return bearer;
+  for (const part of (req.headers.cookie ?? '').split(';')) {
+    const [name, value] = part.trim().split('=', 2);
+    if (name === 'kb_session' && value) {
+      try { return decodeURIComponent(value); } catch { return undefined; }
+    }
+  }
+  return undefined;
+}
+
 /** Per-request stash of the verified session — set by {@link requireSession}, read by handlers. A
  *  `WeakMap` keeps it off the request object entirely (no Fastify decoration, no `any` casts, and no
  *  chance a handler reads a claim the middleware never verified). */
@@ -44,7 +57,7 @@ export function verifiedSession(req: FastifyRequest): { token: string; claims: S
 }
 
 /**
- * A `preHandler` enforcing a valid WebAuthn-minted session bearer. Rejects with a calm 401 JSON error
+ * A `preHandler` enforcing a valid WebAuthn-minted session bearer or same-origin cookie. Rejects with a calm 401 JSON error
  * for a missing/malformed/expired/bad-signature token (mirroring `verifySession`'s own reasons), BEFORE
  * any handler or gate runs. On success stashes `{ token, claims }` for the handler to pass down to the
  * gate module (which independently re-verifies — defence in depth, never trusted-by-proxy).
@@ -52,12 +65,11 @@ export function verifiedSession(req: FastifyRequest): { token: string; claims: S
  * Runs as a `preHandler`, so it is always AFTER the scope's `onRequest` origin + rate-limit hooks —
  * preserving the origin -> rate-limit -> session order. It is NOT applied to the auth ceremony routes
  * (which mint the very session this checks — gating them on a session would be circular) nor to the
- * read-only `GET /api/approvals` list (a pre-auth corroboration read; the ordering law shows the card
- * BEFORE any biometric step).
+ * health/readiness probes, static assets, or the auth ceremony routes.
  */
 export function requireSession(sessionConfig: SessionConfig) {
   return async function preHandlerRequireSession(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const token = bearerToken(req);
+    const token = sessionToken(req);
     if (!token) {
       reply.code(401).send({ error: 'unauthenticated', reason: 'missing session token' });
       return;

@@ -20,6 +20,7 @@ import { authorizedFailedRunReconciliationGrant, authorizedFailedRunReconciliati
 import { AuthorizedFailedRunPublishedUncommittedError } from './authorizedFailedRunReconciliation.ts';
 import { createAttemptIoStore } from './attemptIo.ts';
 import { executeApprovedLaunch } from './launch.ts';
+import { admit } from './admission.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -2713,6 +2714,31 @@ describe('control execution latch routes', () => {
         owner: 'operator', target: 'execution', riskTier: 'T3',
         result: 'authorized:unlock', detail: { method: 'session-bearer' },
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('blocks control launches and unlocks while degraded, but still accepts the execution lock', async () => {
+    const { latch, unlock, lock } = fakeLatch('locked');
+    const degraded = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
+    const { app, token } = buildApp({ executionLatch: latch, admission: (kind: Parameters<SurfaceContext['admission']>[0]) => admit(kind, degraded) });
+    try {
+      const launch = await app.inject({
+        method: 'POST', url: '/api/control/proposals/missing/revisions/1/launch', headers: headers(token), payload: {},
+      });
+      expect(launch.statusCode).toBe(503);
+      expect(launch.json()).toMatchObject({ error: 'outbox-degraded' });
+      const unlockResponse = await app.inject({
+        method: 'POST', url: '/api/control/execution/unlock', headers: headers(token), payload: {},
+      });
+      expect(unlockResponse.statusCode).toBe(503);
+      expect(unlock).not.toHaveBeenCalled();
+      const lockResponse = await app.inject({
+        method: 'POST', url: '/api/control/execution/lock', headers: headers(token), payload: {},
+      });
+      expect(lockResponse.statusCode).toBe(200);
+      expect(lock).toHaveBeenCalledWith({ subject: 'operator' });
     } finally {
       await app.close();
     }

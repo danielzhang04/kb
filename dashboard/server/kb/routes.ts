@@ -8,11 +8,13 @@
 import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { fileHistory, listTree, readFile, PathEscapeError } from './browser.ts';
+import { fileHistory, listTree, readFile, PathEscapeError, ReadRootError } from './browser.ts';
 
 export interface KbBrowserOptions extends FastifyPluginOptions {
   /** Absolute path to the KB checkout the daemon projects. Defaults to the repo the daemon lives in. */
   repoRoot?: string;
+  /** Data roots the browser may expose. This is server configuration, never request input. */
+  allowedRoots?: readonly string[];
 }
 
 /** The daemon lives at `<repo>/dashboard/server/kb/routes.ts`; the KB checkout is three levels up. */
@@ -32,9 +34,10 @@ export async function kbBrowserRoutes(app: FastifyInstance, opts: KbBrowserOptio
 
   app.get('/api/kb/tree', async (req, reply) => {
     try {
-      return listTree(repoRoot, queryPath(req));
+      return listTree(repoRoot, queryPath(req), opts.allowedRoots);
     } catch (err) {
       if (err instanceof PathEscapeError) return reply.code(400).send({ error: err.message });
+      if (err instanceof ReadRootError) return reply.code(403).send({ error: 'read-root-refused' });
       return reply.code(404).send({ error: 'not found' });
     }
   });
@@ -42,9 +45,10 @@ export async function kbBrowserRoutes(app: FastifyInstance, opts: KbBrowserOptio
   app.get('/api/kb/file', async (req, reply) => {
     const relpath = queryPath(req);
     try {
-      return { path: relpath, content: readFile(repoRoot, relpath) };
+      return { path: relpath, content: readFile(repoRoot, relpath, opts.allowedRoots) };
     } catch (err) {
       if (err instanceof PathEscapeError) return reply.code(400).send({ error: err.message });
+      if (err instanceof ReadRootError) return reply.code(403).send({ error: 'read-root-refused' });
       return reply.code(404).send({ error: 'not found' });
     }
   });
@@ -52,9 +56,10 @@ export async function kbBrowserRoutes(app: FastifyInstance, opts: KbBrowserOptio
   app.get('/api/kb/history', async (req, reply) => {
     const relpath = queryPath(req);
     try {
-      return { path: relpath, commits: fileHistory(repoRoot, relpath) };
+      return { path: relpath, commits: fileHistory(repoRoot, relpath, undefined, opts.allowedRoots) };
     } catch (err) {
       if (err instanceof PathEscapeError) return reply.code(400).send({ error: err.message });
+      if (err instanceof ReadRootError) return reply.code(403).send({ error: 'read-root-refused' });
       return reply.code(404).send({ error: 'not found' });
     }
   });

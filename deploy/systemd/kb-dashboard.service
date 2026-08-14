@@ -1,0 +1,31 @@
+[Unit]
+Description=kb dashboard immutable platform
+After=network-online.target
+
+[Service]
+Type=simple
+User=kb-dashboard
+Group=kb-dashboard
+WorkingDirectory=/opt/kb-releases/current/dashboard
+Environment=DASHBOARD_PLATFORM_ROOT=/opt/kb-releases/current
+Environment=PYTHONPATH=/opt/kb-releases/current
+Environment=DASHBOARD_REPO_ROOT=/var/lib/kb/ops
+Environment=DASHBOARD_STATE_ROOT=/var/lib/kb/state
+Environment=DASHBOARD_EXECUTION_ACTIVATED=0
+Environment=KB_COORDINATION_PUBLICATION=outbox
+Environment=KB_VM_RUNTIME=1
+Environment=GIT_CONFIG_GLOBAL=/dev/null
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
+ExecStartPre=/usr/bin/python3 -I -B /usr/local/lib/kb/validate_vm_runtime.py --phase static --ops-root /var/lib/kb/ops --unit kb-dashboard.service
+ExecStart=/usr/bin/node --experimental-strip-types server/index.ts
+Restart=on-failure
+KillMode=control-group
+TimeoutStopSec=90
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/opt/kb-releases
+ReadWritePaths=/var/lib/kb/state /var/lib/kb/ops
+
+[Install]
+WantedBy=multi-user.target

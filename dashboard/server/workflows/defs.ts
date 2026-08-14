@@ -17,6 +17,7 @@
 import { classifyActionRisk } from '../control/policy.ts';
 import { isSafeRepoRelativePath, type ProposalRiskTier } from '../control/proposal.ts';
 import { parseYaml } from '../routing/yaml.ts';
+import { assertSupportedVersion } from '../schema/versions.ts';
 
 // Bounds mirror dashboard/server/control/proposal.ts so a definition can never compile to an
 // over-budget proposal.
@@ -208,6 +209,8 @@ export interface WorkflowManagerAssignment {
 }
 
 export interface WorkflowDef {
+  /** Absent for v0 definitions; new serializers write v1. */
+  schemaVersion?: number;
   id: string;
   project: string;
   title: string;
@@ -647,9 +650,19 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['id', 'project', 'title', 'executionMode', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages']);
+  const allowed = new Set(['schemaVersion', 'id', 'project', 'title', 'executionMode', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
+
+  const schemaVersion = frontmatter.schemaVersion;
+  if (schemaVersion !== undefined && !Number.isInteger(schemaVersion)) {
+    return { ok: false, detail: 'schemaVersion must be an integer when present' };
+  }
+  try {
+    assertSupportedVersion('workflows', schemaVersion);
+  } catch {
+    return { ok: false, detail: 'schemaVersion must be a supported workflow schema version' };
+  }
 
   const id = asString(frontmatter.id);
   if (id === null || !SAFE_ID_RE.test(id)) return { ok: false, detail: `id must be a safe identifier of 1-${MAX_ID_CHARS} characters` };
@@ -790,6 +803,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   return {
     ok: true,
     value: {
+      schemaVersion: schemaVersion as number | undefined,
       id, project, title, ...(executionMode ? { executionMode } : {}), profile, readScope: readScope.value, parameters: [...parameters],
       ...(governedBy ? { governedBy } : {}), ...(manager ? { manager } : {}), description, stages,
     },

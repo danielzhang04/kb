@@ -25,15 +25,27 @@ import { createAsyncGitRunner, createAsyncPrOpener, withOpsTransaction } from '.
 import { pushOpsWithReconcile } from './opsPushRetry.ts';
 import type { AsyncPrResult } from './asyncGit.ts';
 import type { OpsGitRunner } from './asyncGit.ts';
+import {
+  recoverUnspooledCoordinationCommits,
+  type CoordinationPublication,
+} from './outbox.ts';
 
 export type Target = 'durable' | 'coordination';
 
 /** Runtime write classes that route to `ops` (pull-rebase-push), never a work-branch PR. */
-const COORDINATION_PREFIXES = ['queue/', 'ledgers/', 'traces/'];
+const COORDINATION_PREFIXES = [
+  'queue/',
+  'ledgers/',
+  'traces/',
+  'memory/',
+  'dashboards/',
+  'handoffs/',
+] as const;
+const PROJECT_STATE = /^orgs\/[^/]+\/STATE\.md$/;
 
 /** Normalize a relpath to forward-slash, no leading slash, for prefix comparisons. */
 function normalize(relpath: string): string {
-  return relpath.replace(/\\/g, '/').replace(/^\/+/, '');
+  return relpath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
 }
 
 /**
@@ -42,9 +54,13 @@ function normalize(relpath: string): string {
  * queue/paused/** markers — ops pull-rebase-push). Total: everything not explicitly coordination is
  * durable content, per the plan's binary classification.
  */
-export function classifyTarget(relpath: string): Target {
+export function isCoordinationPath(relpath: string): boolean {
   const norm = normalize(relpath);
-  return COORDINATION_PREFIXES.some((p) => norm.startsWith(p)) ? 'coordination' : 'durable';
+  return COORDINATION_PREFIXES.some((prefix) => norm.startsWith(prefix)) || PROJECT_STATE.test(norm);
+}
+
+export function classifyTarget(relpath: string): Target {
+  return isCoordinationPath(relpath) ? 'coordination' : 'durable';
 }
 
 /** A git invocation runner. `args` is the full argv AFTER `git`. Injected for hermetic tests. Widened
@@ -163,6 +179,10 @@ export interface RouteOptions {
   alsoStage?: string[];
   /** Re-run caller-specific authorization after a rejected push pulls a newer canonical ops head. */
   onReconciled?: () => void | Promise<void>;
+  /** Coordination publication mode. Desktop defaults to direct remote publication. */
+  publication?: CoordinationPublication;
+  /** Durable local spool root used only when {@link publication} is `outbox`. */
+  outboxRoot?: string;
 }
 
 /**
@@ -174,11 +194,26 @@ export interface RouteOptions {
  * authoritative schema operation must happen only after the pull, while still committing an exact
  * multi-path set atomically afterwards.
  */
-export async function prepareCoordination(repoRoot: string, runGit: GitRunner = defaultGitRunner): Promise<void> {
+export async function prepareCoordination(
+  repoRoot: string,
+  runGit: GitRunner = defaultGitRunner,
+  publication: CoordinationPublication = 'direct',
+  outboxRoot = '/var/lib/kb/state/outbox',
+): Promise<void> {
   // Reentrant: a caller that already holds the ops-transaction span joins it; a careless future caller
   // that forgot the span lock at least serializes this individual step.
   return withOpsTransaction(async () => {
     await assertCoordinationCheckout(repoRoot, runGit);
+    if (publication === 'outbox') {
+      await assertCleanIndex(repoRoot, runGit);
+      await recoverUnspooledCoordinationCommits({
+        repoRoot,
+        spoolRoot: outboxRoot,
+        runGit,
+        isCoordinationPath,
+      });
+      return;
+    }
     await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
   });
 }
@@ -267,9 +302,37 @@ export async function commitPreparedCoordination(repoRoot: string, relpath: stri
   return withOpsTransaction(async () => {
   const stagePaths = [relpath, ...(options.alsoStage ?? [])];
   await assertCoordinationCheckout(repoRoot, runGit);
+  if ((options.publication ?? 'direct') === 'outbox') {
+    const offending = stagePaths.filter((path) => !isCoordinationPath(path));
+    if (offending.length > 0) {
+      throw new PreparedCoordinationCommitError(
+        `outbox refuses a non-coordination path: ${offending.join(', ')}`,
+      );
+    }
+    await recoverUnspooledCoordinationCommits({
+      repoRoot,
+      spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+      runGit,
+      isCoordinationPath,
+    });
+  }
   await assertCleanIndex(repoRoot, runGit);
   await runGit(repoRoot, ['add', '--', ...stagePaths]);
   await runGit(repoRoot, ['commit', '-m', message, '--only', '--', ...stagePaths]);
+
+  if ((options.publication ?? 'direct') === 'outbox') {
+    const head = (await runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
+    if (!/^[a-f0-9]{40}$/.test(head)) {
+      throw new PreparedCoordinationCommitError('local coordination commit identity is invalid');
+    }
+    await recoverUnspooledCoordinationCommits({
+      repoRoot,
+      spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+      runGit,
+      isCoordinationPath,
+    });
+    return;
+  }
 
   await pushOpsWithReconcile({
     repoRoot,
@@ -340,6 +403,8 @@ export interface PublishPreparedCoordinationCommitOptions {
   /** Re-prove exact committed content, not merely the changed-path envelope. */
   validateCommit?: (commit: string) => void | Promise<void>;
   maxRetryPushes?: number;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 /**
@@ -442,6 +507,7 @@ export async function publishPreparedCoordinationCommit(
     // The one-way door: set the instant a push exits 0, and never unset. Everything downstream reads
     // it as "the remote may already have our objects", which forbids rewinding local ops history.
     let pushed = false;
+    let outboxBoundary = false;
     try {
       await assertCoordinationCheckout(repoRoot, runGit);
       await assertCleanIndex(repoRoot, runGit);
@@ -456,6 +522,24 @@ export async function publishPreparedCoordinationCommit(
         throw new PreparedCoordinationCommitError('prepared commit changed an unexpected path set');
       }
       await options.validateCommit?.(expectedCommit);
+
+      if ((options.publication ?? 'direct') === 'outbox') {
+        options.assertAuthorized?.();
+        // Recovery may publish the manifest before its final anchor update. From this point onward the
+        // prepared commit must remain reachable at HEAD so restart can finish; it is never rolled back.
+        outboxBoundary = true;
+        try {
+          await recoverUnspooledCoordinationCommits({
+            repoRoot,
+            spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox',
+            runGit,
+            isCoordinationPath,
+          });
+        } catch (error) {
+          throw new PublishedCoordinationCommitError(expectedCommit, error);
+        }
+        return expectedCommit;
+      }
 
       for (let attempt = 0; attempt <= maxRetryPushes; attempt += 1) {
         await runGit(repoRoot, ['fetch', 'origin', 'ops']);
@@ -530,7 +614,9 @@ export async function publishPreparedCoordinationCommit(
     } catch (error) {
       // A refusal must never strand local ops history for the next writer to push blind — but once a
       // push has exited 0 the remote may already hold the commit, so nothing is ever rewound.
-      if (!pushed) await rollbackUnpublishedPreparedCommit(repoRoot, runGit, reconciliationCommit, expectedPaths);
+      if (!pushed && !outboxBoundary) {
+        await rollbackUnpublishedPreparedCommit(repoRoot, runGit, reconciliationCommit, expectedPaths);
+      }
       throw error;
     }
   });
@@ -540,7 +626,7 @@ export async function routeCoordination(repoRoot: string, relpath: string, optio
   const runGit = options.runGit ?? defaultGitRunner;
   // One span: prepare and commit must not interleave with any other ops transaction.
   return withOpsTransaction(async () => {
-    await prepareCoordination(repoRoot, runGit);
+    await prepareCoordination(repoRoot, runGit, options.publication, options.outboxRoot);
     await commitPreparedCoordination(repoRoot, relpath, { ...options, runGit });
   });
 }

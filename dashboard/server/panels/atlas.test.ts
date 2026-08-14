@@ -5,11 +5,11 @@
  * `orgs/atlas/output/transcripts/`, and the `atlas`-project queue cards. Unreachable / timeout /
  * malformed worker → an explicit `{ state: "OFFLINE", lastHeartbeat }` shape, never a 500, never blank.
  */
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import Fastify from 'fastify';
 import { fetchWorkerState, readTranscriptHistory, readAtlasCards, buildAtlasPanel } from './atlas.ts';
 import type { FetchLike } from './atlas.ts';
@@ -161,6 +161,24 @@ describe('buildAtlasPanel', () => {
     expect(panel.worker).toEqual(HEALTHY);
     expect(panel.history[0].file).toBe('2026-07-20-sess-newer.jsonl');
     expect(panel.cards.some((c) => c.id === 'atlas001-0001')).toBe(true);
+    expect(panel.rejectedCards).toBe(0);
+  });
+
+  it('counts and warns for malformed queue cards while retaining valid Atlas cards', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'atlas-rejected-'));
+    cpSync(REPO_ATLAS, repo, { recursive: true });
+    const malformed = join(repo, 'queue', 'inbox', 'malformed.md');
+    writeFileSync(malformed, 'not frontmatter', 'utf-8');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const panel = await buildAtlasPanel(repo, { fetchImpl: okFetch(HEALTHY) });
+      expect(panel.rejectedCards).toBe(1);
+      expect(panel.cards.some((c) => c.id === 'atlas001-0001')).toBe(true);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(malformed));
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/frontmatter/i));
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { tmpdir } from 'node:os';
-import { AsyncGitError, createAsyncGitRunner, drainAsyncGit, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
+import { activeAsyncGitCount, AsyncGitError, createAsyncGitRunner, drainAsyncGit, runTrackedProcess, withOpsTransaction } from './asyncGit.ts';
 
 const NODE = process.execPath;
 /** A child that ignores signals is not needed — we only need one that outlives the test's timeout. */
@@ -72,6 +72,25 @@ describe('withOpsTransaction — single-writer ops discipline', () => {
     expect(result).toBe('nested');
   });
 
+  it('keeps Git single-concurrent while a nested transaction re-enters without deadlocking', async () => {
+    const events: string[] = [];
+    let releaseFirst!: () => void;
+    const firstMayFinish = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const first = withOpsTransaction(async () => {
+      events.push('first:start');
+      await withOpsTransaction(async () => { events.push('first:nested'); });
+      await firstMayFinish;
+      events.push('first:end');
+    });
+    const second = withOpsTransaction(async () => { events.push('second:start'); });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(events).toEqual(['first:start', 'first:nested']);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(events).toEqual(['first:start', 'first:nested', 'first:end', 'second:start']);
+  });
+
   it('releases the lock when a transaction throws', async () => {
     await expect(withOpsTransaction(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
     expect(await withOpsTransaction(async () => 'after')).toBe('after');
@@ -95,6 +114,7 @@ describe('drainAsyncGit — kills live children on shutdown', () => {
     const secondSettled = second.then(() => 'resolved', () => 'rejected');
 
     // Both are alive and tracked; draining kills both.
+    expect(activeAsyncGitCount()).toBe(2);
     expect(drainAsyncGit()).toBe(2);
 
     // A killed child (SIGKILL, exit code null) surfaces as a rejection, not a silent success.
@@ -102,6 +122,7 @@ describe('drainAsyncGit — kills live children on shutdown', () => {
     expect(await secondSettled).toBe('rejected');
 
     // Draining again finds nothing left.
+    expect(activeAsyncGitCount()).toBe(0);
     expect(drainAsyncGit()).toBe(0);
   });
 });

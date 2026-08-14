@@ -1,13 +1,14 @@
 /**
- * U2 — the governed write surface's composition root. Builds one encapsulated Fastify child scope that
+ * U2 — the governed HTTP surface's composition root. Builds one encapsulated Fastify child scope that
  * applies, as `onRequest` hooks in this exact order, the SAME primitives the hub already uses:
  *
  *   1. `security/origin.ts#originPlugin`   — Origin/Host guard (fail-closed: empty allowlist 403s all).
  *   2. `http/middleware.ts#writeRateLimitHook` — sliding-window rate-limit + lockout.
  *
- * then registers the auth / write / composer / approvals routes onto that scope (each mutating route adds
- * its own `requireSession` preHandler, so the full chain is origin -> rate-limit -> session -> gate ->
- * audit). `/healthz` and the read-only hub/registry/planeA routes stay OUTSIDE this scope — untouched.
+ * It registers the public auth ceremonies, then a nested authenticated scope for write, composer,
+ * control, and approval routes. That scope is the fail-closed backstop; individual mutating routes keep
+ * their own `requireSession` preHandlers and gates. `/healthz`, `/readyz`, static assets, and the
+ * read-only data scope are composed elsewhere.
  *
  * All security config is resolved ONCE here (notably the session secret — re-resolving per request would
  * mint a fresh random secret and invalidate every token). Tests call `makeSurfaceContext` with overrides
@@ -20,7 +21,7 @@ import { resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
 import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
 import { resolveCredentials } from '../auth/credentialStore.ts';
-import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, surfaceRateLimitHook } from './middleware.ts';
+import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { registerAuthRoutes } from '../auth/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
@@ -30,10 +31,13 @@ import { createProviderIdProtector } from '../composer/protector.ts';
 import { createFileComposerStore, resolveDashboardStateRoot } from '../composer/store.ts';
 import { registerApprovalsRoutes } from '../approvals/routes.ts';
 import { drainVibeProcesses } from '../vibe/session.ts';
+import { activeVibeProcessCount } from '../vibe/session.ts';
 import { drainAsyncGit } from '../write/asyncGit.ts';
+import { activeAsyncGitCount } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
+import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
 import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
@@ -46,6 +50,13 @@ import { RunControlTransactions } from '../control/runTransactions.ts';
 import { DEFAULT_MANAGER_START_ACK_TIMEOUT_MS } from '../control/execution.ts';
 import { assertFleetRunnable, defaultPreambleRunner } from '../write/preambleGate.ts';
 import type { PreambleRunner } from '../write/preambleGate.ts';
+import { quiescence } from '../release/quiescence.ts';
+import { serviceCgroupChildCount } from '../release/serviceCgroup.ts';
+import { defaultGitRunner, prepareCoordination } from '../write/branch.ts';
+import { resolveCoordinationPublication } from '../write/outbox.ts';
+import { admit } from '../control/admission.ts';
+import { outboxStatus } from '../write/outboxStatus.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -67,6 +78,7 @@ export interface SurfaceActivationSeam {
   env?: Record<string, string | undefined>;
   createQueueBridge?: typeof createQueueBridge;
   dispatchClaimedCard?: typeof dispatchClaimedCard;
+  createPtyHost?: typeof createPtyHost;
 }
 
 const QUEUE_BRIDGE_INTERVAL_MS = 15_000;
@@ -112,6 +124,9 @@ export function makeSurfaceContext(
 ): SurfaceContext {
   const sessionConfig = overrides.sessionConfig ?? { secret: resolveSessionSecret(), ttlMs: resolveSessionTtlMs() };
   const repoRoot = overrides.repoRoot ?? resolveRepoRoot();
+  const coordinationPublication = overrides.coordinationPublication
+    ?? resolveCoordinationPublication(activation.env as NodeJS.ProcessEnv | undefined);
+  const outboxRoot = overrides.outboxRoot ?? '/var/lib/kb/state/outbox';
   const stateRoot = overrides.stateRoot ?? resolveDashboardStateRoot();
   const controlStore = overrides.controlStore ?? createFileControlPlaneStore(stateRoot);
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
@@ -127,27 +142,82 @@ export function makeSurfaceContext(
   const build = activation.build ?? buildActivatedExecution;
   const buildQueueBridge = activation.createQueueBridge ?? createQueueBridge;
   const dispatchQueueCard = activation.dispatchClaimedCard ?? dispatchClaimedCard;
+  const capabilities = overrides.runtimeCapabilities ?? runtimeCapabilities();
   // The daemon's PTY stack belongs exclusively to `/api/pty` browser terminals. Constructing a host
   // spawns nothing; only `open` does.
-  const underlyingPtyHost = overrides.ptyHost ?? createPtyHost({ shell: 'powershell.exe' });
-  const ptyHost = fleetGatedPtyHost(
-    underlyingPtyHost,
-    repoRoot,
-    overrides.runPreamble ?? defaultPreambleRunner,
-  );
-  const ptySessions = overrides.ptySessions ?? createPersistentSessionRegistry();
+  const underlyingPtyHost = capabilities.pty
+    ? (overrides.ptyHost ?? (activation.createPtyHost ?? createPtyHost)({ shell: 'powershell.exe' }))
+    : undefined;
+  const ptyHost = underlyingPtyHost
+    ? fleetGatedPtyHost(underlyingPtyHost, repoRoot, overrides.runPreamble ?? defaultPreambleRunner)
+    : undefined;
+  const ptySessions = capabilities.pty ? (overrides.ptySessions ?? createPersistentSessionRegistry()) : undefined;
   // Session runs + transcripts (leg 2). Construction is INERT: the store's JSON document is created
   // lazily and the recorder only touches disk once a session is actually taped, so building a context
   // — which every server test does — writes nothing. The `live` → `abandoned` boot sweep runs at ROUTE
   // REGISTRATION instead, the one moment that happens exactly once per daemon boot.
-  const ptySessionRuns = overrides.ptySessionRuns ?? createSessionRunStore(stateRoot);
-  const ptyTranscripts = overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot });
+  const ptySessionRuns = capabilities.pty ? (overrides.ptySessionRuns ?? createSessionRunStore(stateRoot)) : undefined;
+  const ptyTranscripts = capabilities.pty ? (overrides.ptyTranscripts ?? createTranscriptRecorder({ root: stateRoot })) : undefined;
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   let offAttemptIo: (() => void) | null = null;
   let stopQueueBridge: (() => void) | undefined;
-  const ctx: SurfaceContext = {
+  let serviceCgroupCache: { checkedAt: number; children: number | null } | undefined;
+  let ctx!: SurfaceContext;
+  ctx = {
+    runtimeCapabilities: capabilities,
     repoRoot,
+    coordinationPublication,
+    outboxRoot,
+    outboxRecoveryFailure: overrides.outboxRecoveryFailure,
+    admission: overrides.admission ?? ((kind) => {
+      const status = coordinationPublication === 'outbox'
+        ? outboxStatus(outboxRoot)
+        : { pending: 0, oldestAgeMs: 0, degraded: false, reasons: [] };
+      return admit(kind, ctx.outboxRecoveryFailure
+        ? {
+          ...status,
+          degraded: true,
+          reasons: [...status.reasons, 'outbox-recovery-failed'],
+        }
+        : status);
+    }),
     stateRoot,
+    readiness: overrides.readiness ?? (async () => {
+      const activation = ctx.executionLatch?.snapshot();
+      const recoveryBlockers = ctx.outboxRecoveryFailure ? ['outbox-recovery-failed'] : [];
+      const candidateNow = (ctx.now ?? (() => new Date()))().getTime();
+      const checkedAt = Number.isFinite(candidateNow) ? candidateNow : Date.now();
+      if (!serviceCgroupCache || checkedAt < serviceCgroupCache.checkedAt || checkedAt - serviceCgroupCache.checkedAt >= 1_000) {
+        try {
+          serviceCgroupCache = { checkedAt, children: serviceCgroupChildCount() };
+        } catch {
+          serviceCgroupCache = { checkedAt, children: null };
+        }
+      }
+      if (serviceCgroupCache.children === null) {
+        return {
+          ok: true,
+          quiescent: false,
+          blockers: [...recoveryBlockers, 'service-cgroup-unknown'],
+        };
+      }
+      const result = quiescence({
+        executionState: activation?.state ?? 'locked',
+        bridgeStopped: ctx.stopQueueBridge === undefined,
+        queuedWork: 0,
+        // The latch does not expose a worker count. Until the deferred coordinator
+        // supplies one, an unlocked latch is conservatively treated as active;
+        // locked/locking state already prevents readiness through executionState.
+        activeWorkers: activation?.state === 'unlocked' ? 1 : 0,
+        activeGit: activeAsyncGitCount(),
+        activePty: ctx.ptySessions?.liveCount() ?? 0,
+        activeComposer: activeVibeProcessCount(),
+        serviceCgroupChildren: serviceCgroupCache.children,
+      });
+      return recoveryBlockers.length === 0
+        ? result
+        : { ...result, quiescent: false, blockers: [...new Set([...result.blockers, ...recoveryBlockers])] };
+    }),
     hubBus: overrides.hubBus,
     definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
@@ -274,6 +344,22 @@ export function makeSurfaceContext(
 
 /** Register the governed write surface (auth + write + composer + approvals) as one guarded child scope. */
 export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext = makeSurfaceContext()): void {
+  app.addHook('onReady', async () => {
+    if (ctx.coordinationPublication !== 'outbox') return;
+    try {
+      await prepareCoordination(
+        ctx.repoRoot,
+        ctx.opsGit ?? defaultGitRunner,
+        ctx.coordinationPublication,
+        ctx.outboxRoot,
+      );
+      ctx.outboxRecoveryFailure = undefined;
+    } catch (error) {
+      // Degrade, never brick: repair/export tooling requires a listening daemon and /readyz blocker.
+      ctx.outboxRecoveryFailure = error instanceof Error ? error.message : String(error);
+      console.error('outbox recovery failed; entering degraded mode', error);
+    }
+  });
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
   // onClose would deadlock shutdown behind the very Composer children it was meant to stop.
   app.addHook('preClose', async () => {
@@ -293,10 +379,17 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
     originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
     scope.addHook('onRequest', surfaceRateLimitHook(ctx.readRateGuard, ctx.rateGuard));
 
+    // Session-minting ceremonies stay public (but origin/rate guarded). Every other route in this
+    // surface inherits this scope-level session gate, so a future GET cannot accidentally ship public.
     registerAuthRoutes(scope, ctx);
-    registerWriteRoutes(scope, ctx);
-    registerComposerRoutes(scope, ctx);
-    registerControlRoutes(scope, ctx);
-    registerApprovalsRoutes(scope, ctx);
+    // Session-less by design: its own preHandler resolves the durable spend grant.
+    registerPaidActionRoute(scope, ctx);
+    scope.register(async (authenticated) => {
+      authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
+      registerWriteRoutes(authenticated, ctx);
+      registerComposerRoutes(authenticated, ctx);
+      registerControlRoutes(authenticated, ctx);
+      registerApprovalsRoutes(authenticated, ctx);
+    });
   });
 }

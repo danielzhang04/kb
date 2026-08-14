@@ -20,7 +20,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { CARD_QUEUE_DIRS, parseValidatedCard } from '../planeA/cards.ts';
 import type { CardFieldValue } from '../planeA/cards.ts';
 
 /** The worker base URL when `ATLAS_STATE_URL` is unset. The daemon owns 4317; the worker owns 4360. */
@@ -33,7 +33,6 @@ export const HISTORY_LIMIT = 10;
 export const ATLAS_PROJECT = 'atlas';
 /** The four physical queue dirs (mirrors planeA/indexer). Logical states (blocked/approved/rejected)
  *  live inside these dirs and are read from each card's `state` field. */
-const QUEUE_DIRS = ['inbox', 'working', 'approvals', 'done'];
 const TRANSCRIPTS_SEGMENTS = ['orgs', 'atlas', 'output', 'transcripts'];
 
 /** Minimal Response surface this module needs — satisfied by the global `fetch` and by test fakes. */
@@ -92,6 +91,8 @@ export interface AtlasPanel {
   worker: WorkerSnapshot;
   history: HistoryEntry[];
   cards: AtlasCard[];
+  /** Present on live panel payloads; optional only for legacy/test payload literals. */
+  rejectedCards?: number;
 }
 
 /** Build the derived OFFLINE shape carrying the last-known heartbeat (or null). */
@@ -209,12 +210,13 @@ function isAtlasProject(project: CardFieldValue | undefined): boolean {
 
 /**
  * Read `project: atlas` queue cards across the four physical queue dirs, reusing the shared
- * `parseCardFrontmatter` (Evidence stays inert — only frontmatter is read). A missing dir or a
+ * `parseValidatedCard` (Evidence stays inert — only frontmatter is read). A missing dir or a
  * malformed card is skipped, never thrown.
  */
-export function readAtlasCards(repoRoot: string): AtlasCard[] {
+function readAtlasCardData(repoRoot: string): { cards: AtlasCard[]; rejectedCards: number } {
   const out: AtlasCard[] = [];
-  for (const dirName of QUEUE_DIRS) {
+  let rejectedCards = 0;
+  for (const dirName of CARD_QUEUE_DIRS) {
     const full = join(repoRoot, 'queue', dirName);
     if (!existsSync(full)) continue;
     let names: string[];
@@ -225,10 +227,13 @@ export function readAtlasCards(repoRoot: string): AtlasCard[] {
     }
     for (const name of names) {
       if (!name.endsWith('.md')) continue;
+      const path = join(full, name);
       let meta;
       try {
-        meta = parseCardFrontmatter(readFileSync(join(full, name), 'utf-8')).meta;
-      } catch {
+        meta = parseValidatedCard(readFileSync(path, 'utf-8')).meta;
+      } catch (error) {
+        rejectedCards += 1;
+        console.warn(`[atlas] rejected card ${path}: ${error instanceof Error ? error.message : String(error)}`);
         continue;
       }
       if (!isAtlasProject(meta.project)) continue;
@@ -240,15 +245,21 @@ export function readAtlasCards(repoRoot: string): AtlasCard[] {
       });
     }
   }
-  return out;
+  return { cards: out, rejectedCards };
+}
+
+export function readAtlasCards(repoRoot: string): AtlasCard[] {
+  return readAtlasCardData(repoRoot).cards;
 }
 
 /** Assemble the full Atlas panel payload: worker passthrough + transcript history + atlas cards. */
 export async function buildAtlasPanel(repoRoot: string, options: AtlasWorkerOptions = {}): Promise<AtlasPanel> {
   const worker = await fetchWorkerState(options);
+  const cardData = readAtlasCardData(repoRoot);
   return {
     worker,
     history: readTranscriptHistory(repoRoot),
-    cards: readAtlasCards(repoRoot),
+    cards: cardData.cards,
+    rejectedCards: cardData.rejectedCards,
   };
 }

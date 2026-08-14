@@ -1,9 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { groupByState, parseCardFrontmatter } from './cards.ts';
+import { groupByState, parseCardFrontmatter, parseValidatedCard } from './cards.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
+
+const MINIMAL_CARD = [
+  '---', 'id: version-test', 'project: kb-ops', 'action: test:noop', 'target: x',
+  'risk-tier: T1', 'owner: null', 'state: inbox', '---', '', '## Work order', 'x', '',
+].join('\n');
 
 /** The seven schema card states, one fixture card each (across the four physical dirs). */
 const CARD_FILES: Record<string, string> = {
@@ -17,6 +22,45 @@ const CARD_FILES: Record<string, string> = {
 };
 
 describe('parseCardFrontmatter / groupByState', () => {
+  it('accepts absent card schema-version as v0 and explicit v1', () => {
+    expect(parseValidatedCard(MINIMAL_CARD).meta['schema-version']).toBeUndefined();
+    expect(parseValidatedCard(MINIMAL_CARD.replace('---\n', '---\nschema-version: 1\n')).meta['schema-version']).toBe(1);
+  });
+
+  it('accepts optional approval-channel and quarantine metadata', () => {
+    const approval = MINIMAL_CARD.replace(
+      'owner: null',
+      'owner: null\nassurance: possession\nexpires: 2026-08-12T18:30:00+00:00',
+    );
+    expect(parseValidatedCard(approval).meta).toMatchObject({
+      assurance: 'possession',
+      expires: '2026-08-12T18:30:00+00:00',
+    });
+
+    const quarantined = MINIMAL_CARD.replace(
+      'owner: null',
+      'owner: null\nquarantine: true\nquarantine-reason: telegram hash prefix mismatch',
+    );
+    expect(parseValidatedCard(quarantined).meta).toMatchObject({
+      quarantine: true,
+      'quarantine-reason': 'telegram hash prefix mismatch',
+    });
+  });
+
+  it.each(['schema-version: 2', 'schema-version: one'])('rejects %s', (line) => {
+    expect(() => parseValidatedCard(MINIMAL_CARD.replace('---\n', `---\n${line}\n`))).toThrow(/schema-version/);
+  });
+
+  it.each([
+    MINIMAL_CARD.replace('action: test:noop\n', ''),
+    MINIMAL_CARD.replace('action: test:noop', 'action: [test:noop]'),
+    MINIMAL_CARD.replace('state: inbox', 'state: invented'),
+    MINIMAL_CARD.replace('risk-tier: T1', 'risk-tier: T4'),
+    MINIMAL_CARD.replace('owner: null', 'owner: null\nunknown-field: value'),
+  ])('rejects a card outside the closed machine schema', (source) => {
+    expect(() => parseValidatedCard(source)).toThrow(/card schema/);
+  });
+
   it('parses frontmatter for all 7 card states', () => {
     const cards = Object.values(CARD_FILES).map((rel) =>
       parseCardFrontmatter(readFileSync(REPO_A + rel, 'utf-8')),
@@ -121,7 +165,7 @@ describe('parseCardFrontmatter / groupByState', () => {
     expect(() => parseCardFrontmatter([...head, 'state:', '- working', '---', '', 'body'].join('\n')))
       .toThrow(/unexpected block-list/i);
     expect(() => parseCardFrontmatter([...head, 'state: inbox', 'owner:', '- codex-worker', '---', '', 'body'].join('\n')))
-      .toThrow(/unexpected block-list/i);
+      .toThrow(/duplicate key: owner/i);
 
     const listed = parseCardFrontmatter([
       '---', 'id: wf-multi', 'project:', '- kb', '- faceless-youtube', 'action: test', 'target: .',

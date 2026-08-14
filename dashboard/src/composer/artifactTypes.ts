@@ -627,6 +627,7 @@ function workflowPlan(draft: WorkflowDraft): DeployPlan {
   const relpath = `orgs/${draft.project}/workflows/${draft.filename}`;
   const content = [
     '---',
+    'schemaVersion: 1',
     `id: ${JSON.stringify(id)}`,
     `project: ${JSON.stringify(draft.project)}`,
     // The former draft had no distinct title field. The slug is a safe, deterministic display title

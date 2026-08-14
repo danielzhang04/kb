@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
-import { cardTitle, groupByState, parseCardFrontmatter } from './cards.ts';
+import { CARD_QUEUE_DIRS, cardTitle, groupByState, parseValidatedCard } from './cards.ts';
 import type { CardProjection, ParsedCard } from './cards.ts';
 import { defaultNamingRegistry } from '../naming.ts';
 import type { NamingRegistry } from '../naming.ts';
@@ -20,6 +20,8 @@ export interface PlaneAIndex {
   /** Cards carry their server-owned `displayName`/`shortRef`: this index IS the DTO `/api/index`,
    *  `/api/dag`, `/api/agents`, and `/api/human-inbox` are all built from. */
   cards: Record<string, CardProjection[]>;
+  /** Present on live indexer results; optional only for legacy/test projection literals. */
+  rejectedCards?: number;
   ledgers: LedgerRollup;
   orgStates: OrgState[];
 }
@@ -33,36 +35,40 @@ export interface PlaneADelta {
   index: PlaneAIndex;
 }
 
-const QUEUE_DIRS = ['inbox', 'working', 'approvals', 'done'];
-
 /** Attach the server-owned display identity to one parsed card. */
 export function projectCard(card: ParsedCard, naming: NamingRegistry): CardProjection {
   return { ...card, ...naming.displayFor('card', String(card.meta.id), cardTitle(card)) };
 }
 
 /** Read and parse every card across the four physical queue dirs. */
-function readCards(repoRoot: string, naming: NamingRegistry): CardProjection[] {
+function readCards(repoRoot: string, naming: NamingRegistry): { cards: CardProjection[]; rejectedCards: number } {
   const cards: CardProjection[] = [];
-  for (const dir of QUEUE_DIRS) {
+  let rejectedCards = 0;
+  for (const dir of CARD_QUEUE_DIRS) {
     const full = join(repoRoot, 'queue', dir);
     if (!existsSync(full)) continue;
     for (const name of readdirSync(full)) {
       if (!name.endsWith('.md')) continue;
+      const path = join(full, name);
       try {
-        cards.push(projectCard(parseCardFrontmatter(readFileSync(join(full, name), 'utf-8')), naming));
-      } catch {
+        cards.push(projectCard(parseValidatedCard(readFileSync(path, 'utf-8')), naming));
+      } catch (error) {
+        rejectedCards += 1;
+        console.warn(`[planeA] rejected card ${path}: ${error instanceof Error ? error.message : String(error)}`);
         // A malformed/partially-written card must never crash the index; skip it this pass.
       }
     }
   }
-  return cards;
+  return { cards, rejectedCards };
 }
 
 /** Build the full Plane-A index from scratch. `naming` is injectable so a test can point the ordinal
  *  registry at a temp file instead of the process-wide state root. */
 export function indexRepo(repoRoot: string, naming: NamingRegistry = defaultNamingRegistry()): PlaneAIndex {
+  const projected = readCards(repoRoot, naming);
   return {
-    cards: groupByState(readCards(repoRoot, naming)),
+    cards: groupByState(projected.cards),
+    rejectedCards: projected.rejectedCards,
     ledgers: rollupLedgers(repoRoot),
     orgStates: readOrgStates(repoRoot),
   };
@@ -84,7 +90,10 @@ function classify(repoRoot: string, changed: string): PlaneASlice {
 function reindexSlice(repoRoot: string, prev: PlaneAIndex, kind: PlaneASlice, naming: NamingRegistry): PlaneAIndex {
   switch (kind) {
     case 'cards':
-      return { ...prev, cards: groupByState(readCards(repoRoot, naming)) };
+      {
+        const projected = readCards(repoRoot, naming);
+        return { ...prev, cards: groupByState(projected.cards), rejectedCards: projected.rejectedCards };
+      }
     case 'ledgers':
       return { ...prev, ledgers: rollupLedgers(repoRoot) };
     case 'states':

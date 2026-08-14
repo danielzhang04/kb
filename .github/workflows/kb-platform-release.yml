@@ -1,0 +1,35 @@
+name: kb-platform-release
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 24.18.0, cache: npm, cache-dependency-path: dashboard/package-lock.json}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      # Fixture repos commit during tests; the bare runner has no git identity.
+      - run: git config --global user.name kb-ci && git config --global user.email kb-ci@users.noreply.github.com
+      # atlas ignored wholesale: its voice-stack deps (livekit, comtypes) don't install on ubuntu.
+      - run: python -m pytest -q --ignore=atlas
+      - run: npm ci
+        working-directory: dashboard
+      # Full vitest runs on the dev platform (its only validated baseline; plan defect #18) —
+      # Linux suite greening is banked for the Task-24/Gate-2 window.
+      - run: npm run typecheck && npm run build && npm prune --omit=dev
+        working-directory: dashboard
+      - run: python -m pytest -q -m slow tests/test_build_platform_release.py
+      - run: python scripts/build_platform_release.py --source . --version "$GITHUB_SHA" --output "kb-platform-$GITHUB_SHA.tar.gz" --attestation "kb-platform-$GITHUB_SHA.attestation.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kb-platform-${{ github.sha }}
+          path: |
+            kb-platform-${{ github.sha }}.tar.gz
+            kb-platform-${{ github.sha }}.attestation.json
+          if-no-files-found: error

@@ -26,6 +26,7 @@ import { resolveWithin, PathEscapeError } from '../kb/browser.ts';
 import { routeWrite, defaultGitRunner, defaultPrOpener } from './branch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
 import type { GitRunner, PrOpener, RouteOptions, Target } from './branch.ts';
+import type { CoordinationPublication } from './outbox.ts';
 import { parseYaml } from '../routing/yaml.ts';
 import { loadPolicy } from '../routing/policy.ts';
 import { parseCardFrontmatter } from '../planeA/cards.ts';
@@ -253,6 +254,8 @@ export interface SaveInput {
   workBranch?: string;
   message?: string;
   runPreamble?: PreambleRunner;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 /**
@@ -344,6 +347,8 @@ export async function save(input: SaveInput): Promise<SaveOutcome> {
       openPr: input.openPr ?? defaultPrOpener,
       workBranch: input.workBranch,
       message: input.message,
+      publication: input.publication,
+      outboxRoot: input.outboxRoot,
     };
 
     try {

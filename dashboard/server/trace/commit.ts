@@ -18,6 +18,8 @@ import { join } from 'node:path';
 import { createAsyncGitRunner, withOpsTransaction } from '../write/asyncGit.ts';
 import type { OpsGitRunner } from '../write/asyncGit.ts';
 import { pushOpsWithReconcile } from '../write/opsPushRetry.ts';
+import { isCoordinationPath } from '../write/branch.ts';
+import { recoverUnspooledCoordinationCommits, type CoordinationPublication } from '../write/outbox.ts';
 
 /**
  * A git invocation runner. `args` is the full argv AFTER `git`. Injected so tests need no real git and
@@ -52,6 +54,8 @@ export interface CommitOptions {
   message?: string;
   /** How many extra push attempts (each preceded by a reconciling `pull --rebase`) after the first. */
   maxRetryPushes?: number;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 /**
@@ -70,13 +74,25 @@ export async function commitTraceToOps(
 
   return withOpsTransaction(async () => {
   // Reconcile with remote ops before writing history, stage ONLY the trace dir, commit.
-  await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  if ((options.publication ?? 'direct') === 'outbox') {
+    await recoverUnspooledCoordinationCommits({
+      repoRoot, spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox', runGit, isCoordinationPath,
+    });
+  } else {
+    await runGit(repoRoot, ['pull', '--rebase', 'origin', 'ops']);
+  }
   await runGit(repoRoot, ['add', '--', relDir]);
   await runGit(repoRoot, ['commit', '-m', message]);
 
   // Push; a push rejected because another ops writer got there first means re-read state (pull --rebase)
   // and retry, bounded (`write/opsPushRetry.ts`).
-  await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
+  if ((options.publication ?? 'direct') === 'outbox') {
+    await recoverUnspooledCoordinationCommits({
+      repoRoot, spoolRoot: options.outboxRoot ?? '/var/lib/kb/state/outbox', runGit, isCoordinationPath,
+    });
+  } else {
+    await pushOpsWithReconcile({ repoRoot, runGit, maxRetryPushes });
+  }
   });
 }
 
@@ -88,6 +104,8 @@ export interface WriteTraceInput {
   commit?: boolean;
   runGit?: OpsGitRunner;
   message?: string;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 /**
@@ -99,6 +117,8 @@ export async function writeTrace(input: WriteTraceInput): Promise<string> {
   if (input.commit) {
     await commitTraceToOps(input.repoRoot, input.cardId, input.runGit ?? defaultOpsGitRunner, {
       message: input.message,
+      publication: input.publication,
+      outboxRoot: input.outboxRoot,
     });
   }
   return file;

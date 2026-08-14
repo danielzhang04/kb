@@ -191,6 +191,9 @@ export function registerComposerRoutes(scope: FastifyInstance, ctx: SurfaceConte
       const subject = verified?.claims.sub;
       const { composerRef } = req.params as { composerRef: string };
       if (!verified || !subject) return reply.code(401).send({ error: 'unauthenticated' });
+      if (!ctx.runtimeCapabilities.vibe) {
+        return reply.code(503).send({ error: 'capability-unavailable', capability: 'vibe' });
+      }
       const input = turnInput(req.body);
       if (!input.ok) return reply.code(400).send({ error: 'invalid-turn-body' });
       const { prompt } = input;

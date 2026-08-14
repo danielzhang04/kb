@@ -17,14 +17,15 @@
  */
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep, isAbsolute } from 'node:path';
-import { parseCardFrontmatter } from '../planeA/cards.ts';
+import { parseValidatedCard } from '../planeA/cards.ts';
 import { verifySession } from '../auth/session.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { defaultPyRunner } from './launch.ts';
 import type { PyRunner } from './launch.ts';
-import { prepareCoordination, defaultGitRunner } from './branch.ts';
+import { prepareCoordination, defaultGitRunner, publishPreparedCoordinationCommit } from './branch.ts';
 import { withOpsTransaction } from './asyncGit.ts';
 import type { GitRunner } from './branch.ts';
+import type { CoordinationPublication } from './outbox.ts';
 import { loadPolicy } from '../routing/policy.ts';
 import type { PolicyDoc } from '../routing/policy.ts';
 import { appendAuditRowLocal, AUDIT_REL_PATH } from '../audit/log.ts';
@@ -53,6 +54,8 @@ export interface CardRoutingDeps {
   loadPolicyFn?: (repoRoot: string) => PolicyDoc;
   /** Server-internal authority for a managed stage whose assigned inbox card is proven not started. */
   managedAssignedInbox?: { workflowRef: string };
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
   /** Re-run caller-specific CAS and executable policy after canonical ops reconciliation. */
   authorizeAfterReconcile?: () => Extract<CardRoutingOutcome, { ok: false }> | null;
 }
@@ -226,8 +229,8 @@ function symlinkGuard(repoRoot: string, cardId: string): string | null {
  * LIFECYCLE guard. Before any routing mutation, resolve the target card's authoritative frontmatter
  * state + owner and determine whether the card is still safely mutable. Uses the same
  * `findCardFile` locator as {@link symlinkGuard} (run FIRST, so a symlinked/escaping target is already
- * refused before we read here) and the read-side `parseCardFrontmatter`. Returns null when the card is
- * absent (the py path then reports not-found itself) or its frontmatter is unparseable (let py handle it).
+ * refused before we read here) and the read-side `parseValidatedCard`. Returns null only when the card
+ * is absent (the py path then reports not-found itself); malformed cards fail closed.
  */
 function routingLifecycleGuard(
   repoRoot: string,
@@ -239,7 +242,7 @@ function routingLifecycleGuard(
   const found = findCardFile(queueRoot, cardId);
   if (!found) return null;
   try {
-    const meta = parseCardFrontmatter(readFileSync(found, 'utf-8')).meta;
+    const meta = parseValidatedCard(readFileSync(found, 'utf-8')).meta;
     if (managedAssignedInbox && String(meta.state) === 'inbox') {
       if (meta.owner && meta.id === cardId && meta.workflow === managedAssignedInbox.workflowRef) return null;
       return {
@@ -249,8 +252,12 @@ function routingLifecycleGuard(
       };
     }
     return lifecycleLock(String(meta.state), meta.owner);
-  } catch {
-    return null;
+  } catch (error) {
+    return {
+      state: 'unknown',
+      disposition: 'state-not-reroutable',
+      reason: `card cannot be safely rerouted because validation failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
@@ -294,7 +301,7 @@ async function apply(
   // where an assigned/approved remote card was validated from stale local state, and avoids attempting
   // a pull after Python has already dirtied the card and audit paths.
   try {
-    await prepareCoordination(input.repoRoot, runGit);
+    await prepareCoordination(input.repoRoot, runGit, deps.publication, deps.outboxRoot);
   } catch (err) {
     return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
   }
@@ -388,7 +395,18 @@ async function apply(
     return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
   }
 
-  try {
+  if ((deps.publication ?? 'direct') === 'outbox') {
+    try {
+      await publishPreparedCoordinationCommit(input.repoRoot, routingCommit, {
+        runGit,
+        relpaths: [parsed.path, AUDIT_REL_PATH],
+        publication: deps.publication,
+        outboxRoot: deps.outboxRoot,
+      });
+    } catch (err) {
+      return { ok: false, status: 500, reason: err instanceof Error ? err.message : String(err) };
+    }
+  } else try {
     await runGit(input.repoRoot, ['push', 'origin', 'ops']);
   } catch {
     try {

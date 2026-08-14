@@ -15,6 +15,8 @@ import { registerSse } from './sse.ts';
 import { registerReadWs } from './ws.ts';
 import { originPlugin, resolveAllowedOrigins } from '../security/origin.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
+import type { SessionConfig } from '../auth/session.ts';
+import { requireSession } from '../http/middleware.ts';
 
 // Make the bus reachable for later tasks/the daemon (e.g. wiring the live Plane-B tail).
 declare module 'fastify' {
@@ -28,6 +30,8 @@ export interface HubOptions {
   allowedOrigins?: AllowedOrigins;
   /** When set, the live Plane-A file-watch is bridged onto the bus for this repo checkout. */
   repoRoot?: string;
+  /** Reuse the process-wide bus so hub events and the surface share one stream. */
+  bus?: EventBus;
 }
 
 /**
@@ -38,14 +42,15 @@ export interface HubOptions {
  * is validated. Within that scope the WS plugin is registered BEFORE the guard so a refused upgrade's
  * raw socket is cleanly torn down by the plugin's own onResponse cleanup.
  */
-export function registerHub(app: FastifyInstance, opts: HubOptions = {}): EventBus {
+export function registerHub(app: FastifyInstance, opts: HubOptions & { sessionConfig: SessionConfig }): EventBus {
   const allowedOrigins: AllowedOrigins = opts.allowedOrigins ?? resolveAllowedOrigins();
-  const bus = createBus();
+  const bus = opts.bus ?? createBus();
   app.decorate('hubBus', bus);
 
   app.register(async (scope) => {
     await registerReadWs(scope, bus, { allowedOrigins });
     originPlugin(scope, { allowedOrigins });
+    scope.addHook('preValidation', requireSession(opts.sessionConfig));
     registerSse(scope, bus);
   });
 

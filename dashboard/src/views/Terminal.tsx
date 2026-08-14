@@ -37,6 +37,8 @@ import type { PtySocketFactory, PtySpawnTarget, TerminalSessionsClient } from '.
 const MAX_TERMINALS = 8;
 
 export interface TerminalProps {
+  /** PTY is unavailable on the Linux VM; default preserves the established Windows behaviour. */
+  ptyEnabled?: boolean;
   /**
    * Whether the App-level terminal surface is currently visible. The App deliberately keeps this
    * component mounted while another destination (or Composer) is in front of it so live shells and
@@ -105,6 +107,7 @@ export function tabTarget(tab: TabEntry): ConsoleTarget {
  * nothing; unlocked it opens one tab and lets the operator add up to `MAX_TERMINALS`.
  */
 export function Terminal({
+  ptyEnabled = true,
   visible = true,
   fleetIdentity = 'dashboard daemon user',
   socketFactory = defaultPtySocketFactory,
@@ -324,6 +327,15 @@ export function Terminal({
   // shell has no "agent-primed" position to switch to.
   const activeTab = tabs.find((tab) => tab.id === activeId) ?? null;
   const activeSpawn = activeTab?.spawn ?? null;
+
+  if (!ptyEnabled) {
+    return (
+      <section className="terminal" aria-label="Terminal view" aria-hidden={!visible}>
+        <header className="terminal__header"><h2 className="terminal__title">Terminal</h2></header>
+        <p className="terminal__note" role="note">Terminal is disabled on this host.</p>
+      </section>
+    );
+  }
 
   return (
     <section className="terminal" aria-label="Terminal view" aria-hidden={!visible}>

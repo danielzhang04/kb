@@ -16,6 +16,10 @@ const REGISTRY: RuntimeSkillRegistry = {
   // registry without this field refuses every compiled proposal. The fixture must publish the same
   // closed set the def parser validates against.
   workflowProfiles: ['research', 'gmail-triage', 'drive-author', 'producer', 'checker-readonly'],
+  repositories: {
+    forProject() { throw new Error('project is not registered'); },
+    resolve() { throw new Error('repository binding identity is stale or unknown'); },
+  },
 };
 
 // Derived, not restated — the def parser and the proposal validator must agree on the closed set,
@@ -548,7 +552,14 @@ describe('compileWorkflowDef', () => {
   });
 
   it('fails when the registry has no claude models to route', () => {
-    const compiled = compileWorkflowDef(SINGLE, { registry: { runtimes: { codex: ['gpt-5.6-sol'] }, skills: [] } });
+    const compiled = compileWorkflowDef(SINGLE, { registry: {
+      runtimes: { codex: ['gpt-5.6-sol'] },
+      skills: [],
+      repositories: {
+        forProject() { throw new Error('project is not registered'); },
+        resolve() { throw new Error('repository binding identity is stale or unknown'); },
+      },
+    } });
     expect(compiled.ok).toBe(false);
   });
 

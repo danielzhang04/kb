@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "repositories": [
+    { "id": "kb-ops@1", "projects": ["kb-ops", "kb"], "root": "${DASHBOARD_REPO_ROOT}", "remote": "origin", "baseRef": "ops", "scope": ["orgs/kb-ops/**", "queue/**", "ledgers/**", "memory/**", "dashboards/**", "handoffs/**", "_index.md"], "credentialIdentity": "desktop-promotion" },
+    { "id": "atlas@1", "projects": ["atlas"], "root": "${DASHBOARD_REPO_ROOT}", "remote": "origin", "baseRef": "ops", "scope": ["orgs/atlas/**", "queue/**", "ledgers/**"], "credentialIdentity": "desktop-promotion" },
+    { "id": "faceless-youtube@1", "projects": ["faceless-youtube"], "root": "${DASHBOARD_REPO_ROOT}", "remote": "origin", "baseRef": "ops", "scope": ["orgs/faceless-youtube/**", "queue/**", "ledgers/**"], "credentialIdentity": "desktop-promotion" }
+  ]
+}

@@ -17,6 +17,7 @@ import {
 } from '../write/branch.ts';
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import type { WorkflowRunRequest } from '../write/workflowRun.ts';
+import type { CoordinationPublication } from '../write/outbox.ts';
 import {
   AUTHORIZED_20260801_FAILED_RUN_IDEMPOTENCY_KEY,
   AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_HASH,
@@ -142,6 +143,8 @@ export interface AuthorizedFailedRunReconciliationDeps {
   faultAfterMoves?: number;
   faultAfterAudit?: boolean;
   faultAfterGitAdd?: boolean;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
 }
 
 export interface AuthorizedFailedRunReconciliationOutcome {
@@ -480,9 +483,13 @@ function assertOneAuditRow(deps: AuthorizedFailedRunReconciliationDeps, baseline
 
 type ExactAuditPlan = { blobBaseline: string; baseline: string; blobSuffix: string; suffix: string };
 
-async function remoteAuditPlan(deps: AuthorizedFailedRunReconciliationDeps, runGit: GitRunner): Promise<ExactAuditPlan> {
+async function remoteAuditPlan(
+  deps: AuthorizedFailedRunReconciliationDeps,
+  runGit: GitRunner,
+  revision = 'refs/remotes/origin/ops',
+): Promise<ExactAuditPlan> {
   const repoRoot = deps.repoRoot;
-  const remote = (await runGit(repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+  const remote = (await runGit(repoRoot, ['rev-parse', revision])).trim();
   const path = (await runGit(repoRoot, ['ls-tree', '--name-only', remote, '--', AUDIT_REL_PATH])).trim();
   const blobBaseline = path === AUDIT_REL_PATH ? await runGit(repoRoot, ['show', `${remote}:${AUDIT_REL_PATH}`]) : '';
   const baseline = path === AUDIT_REL_PATH
@@ -680,8 +687,13 @@ async function isPreparedSettlementCommit(
     .split(/\r?\n/).map((value) => value.trim()).filter((value) => /^[a-f0-9]{40}$/.test(value));
   for (const candidate of candidates) {
     if (!samePathSet(await pathsFor(candidate), expected)) continue;
-    await runGit(deps.repoRoot, ['fetch', 'origin', 'ops']);
-    const remote = (await runGit(deps.repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+    let remote: string;
+    if ((deps.publication ?? 'direct') === 'outbox') {
+      remote = (await runGit(deps.repoRoot, ['rev-parse', '--verify', 'refs/kb-outbox/spooled'])).trim();
+    } else {
+      await runGit(deps.repoRoot, ['fetch', 'origin', 'ops']);
+      remote = (await runGit(deps.repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+    }
     try {
       await runGit(deps.repoRoot, ['merge-base', '--is-ancestor', candidate, remote]);
       return { commit: candidate, alreadyPublished: true };
@@ -711,6 +723,8 @@ async function finalizePreparedSettlement(
         validateCommit: async (commit) => {
           await validateSettlementCommitObject(deps, runGit, commit);
         },
+        publication: deps.publication,
+        outboxRoot: deps.outboxRoot,
       });
     } catch (error) {
       // The push exited 0 and the publish then lost its confirmation or its authorization re-check:
@@ -793,14 +807,21 @@ export async function reconcileAuthorized20260801FailedRun(
     if (!dirty) {
       const prepared = await isPreparedSettlementCommit(deps, runGit);
       if (prepared) return finalizePreparedSettlement(deps, runGit, prepared);
-      await prepareCoordination(deps.repoRoot, runGit);
+      await prepareCoordination(deps.repoRoot, runGit, deps.publication, deps.outboxRoot);
     }
     assertClaimed(deps);
     assertExternalState(deps);
-    await runGit(deps.repoRoot, ['fetch', 'origin', 'ops']);
-    const remote = (await runGit(deps.repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
-    const plans = await exactCardPlans(deps, runGit, remote);
-    const auditPlan = await remoteAuditPlan(deps, runGit);
+    let base: string;
+    if ((deps.publication ?? 'direct') === 'outbox') {
+      base = (await runGit(deps.repoRoot, ['rev-parse', 'HEAD'])).trim();
+    } else {
+      await runGit(deps.repoRoot, ['fetch', 'origin', 'ops']);
+      base = (await runGit(deps.repoRoot, ['rev-parse', 'refs/remotes/origin/ops'])).trim();
+    }
+    const plans = await exactCardPlans(deps, runGit, base);
+    const auditPlan = (deps.publication ?? 'direct') === 'outbox'
+      ? await remoteAuditPlan(deps, runGit, base)
+      : await remoteAuditPlan(deps, runGit);
 
     // Python proves the exact origin blobs and every logical edge, then Node completes one physical
     // inbox -> terminal copy through a same-handle prefix operation before deleting the exact source.

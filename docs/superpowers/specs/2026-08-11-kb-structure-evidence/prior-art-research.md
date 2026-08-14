@@ -1,0 +1,140 @@
+# Prior-art report
+
+## 1. GitOps: application code vs config/environment
+
+- **Flux** explicitly supports both a single config monorepo and a separate app-code repo referenced from the config repo. Its guidance warns that a monorepo cannot restrict production-config visibility by path and makes accidental production changes harder to review in large PRs; separate repos trade that for a cross-repo reference/pinning problem. [Flux repository structures](https://fluxcd.io/flux/guides/repository-structure/)
+
+- **KubeStack/Argo CD** separates cluster/platform configuration (“tenants, quotas, namespaces, Argo applications”) from application deployments, with Argo watching both. This is a clean ownership boundary: platform decides *where/under what policy*; app config decides *what runs*. [KubeStack GitOps structure](https://docs.stakater.com/kubestackplus/platform-setup/explanation/gitops-structure.html)
+
+- **SAP’s GitOps example** keeps all cluster configurations in one branch to make a multi-environment config change atomic in Git, while using environment-specific values for staged rollout. That is the core advantage of keeping tightly coupled desired state together. [SAP decentralized GitOps](https://community.sap.com/t5/devops-and-system-administration-blog-posts/decentralized-gitops-over-multiple-environments/ba-p/13516879)
+
+- The cross-repo failure mode is real but poorly quantified: **Vercel’s** training material illustrates one shared change becoming four repositories/four PRs/version-coordination steps; **Shopify** calls source/compiled split “more complex” because changes need backfilling across repos. These are good descriptions of version skew, not evidence of a universal threshold. [Vercel](https://vercel.com/academy/production-monorepos/monorepos-vs-polyrepos), [Shopify](https://shopify.dev/docs/storefronts/themes/best-practices/version-control)
+
+## 2. Monorepo vs polyrepo at 1–5 people
+
+- There is **no credible empirical rule** saying that a 1–5 person operation should split at a particular project count or repository size.
+
+- The strongest common finding is organizational: **Nx** and **Vercel** both characterize monorepos as optimizing atomic cross-project changes/shared tooling, while polyrepos optimize independent ownership, access control, and release cadence. [Nx](https://nx.dev/docs/kb/monorepo-vs-polyrepo), [Vercel](https://vercel.com/academy/production-monorepos/monorepos-vs-polyrepos)
+
+- The literature review of monorepos found the recurring benefits are simplified dependencies, coordinated cross-project changes, and refactoring; recurring costs are codebase complexity and build/tooling investment. It does not imply that unrelated binary data belongs with source code. [Brito, Terra & Valente](https://arxiv.org/abs/1810.09477)
+
+- **Shopify** is a useful heterogeneous-content precedent: it permits a source repo plus a compiled-code repo, but explicitly accepts the synchronization/backfill tax. That resembles platform code versus generated media more than it resembles splitting a cohesive service into micro-repos. [Shopify theme version-control options](https://shopify.dev/docs/storefronts/themes/best-practices/version-control)
+
+## 3. Git as coordination bus/database
+
+- **Gerrit NoteDb** is the heavyweight proof that Git can be an auditable metadata store: code-review metadata is stored as commits under per-change refs, replacing Gerrit’s former SQL backend. Gerrit chose it for colocated replication, consistency, and auditability—not as a general-purpose queue. [Gerrit NoteDb](https://gerrit-review.googlesource.com/Documentation/note-db.html)
+
+- Gerrit also shows the escape hatch: it batches allocation of shared sequence numbers to amortize ref-update cost, and Git’s reftable design specifically discusses writer queues/fairness for Gerrit-like repos with huge ref counts. [Gerrit configuration](https://gerrit-review.googlesource.com/Documentation/config-gerrit.html), [Git reftable](https://git-scm.com/docs/reftable)
+
+- **git-bug** stores issues/comments as Git objects for distributed, offline-first tracking. This validates Git as a durable, syncable work-record store; it does not claim queue semantics such as exactly-once delivery or high write throughput. [git-bug](https://github.com/git-bug/git-bug)
+
+- **GitHub Agentic Workflows** now offers “repo memory”: Markdown/JSON state on an orphan Git branch, auto-committed after a run, with concurrent pushes replayed on latest remote state. This is very close to kb’s durable agent-memory pattern. It deliberately caps default artifacts to 100 files, 100 KB/file, and 10 KB/patch. [GitHub Agentic Workflows repo memory](https://github.github.com/gh-aw/reference/repo-memory/)
+
+- The only primary, concrete hosted-Git write-rate guidance I found is GitHub Enterprise’s recommended maximum of **6 pushes/minute/repo**; it also recommends no more than 15 Git read operations/second/repo. I found no authoritative “N commits/day breaks Git” figure. [GitHub repository limits](https://docs.github.com/en/enterprise-server@3.19/repositories/creating-and-managing-repositories/repository-limits)
+
+## 4. High-churn machine-written state in Git
+
+- Git itself accumulates new loose objects before packing; automatic GC’s default loose-object threshold is about **6,700 objects**. Git maintenance notes that expensive repacking is a concern for large repositories and batches some work at **50,000 objects**. Those are maintenance triggers, not safe operating limits. [git-gc](https://git-scm.com/docs/git-gc), [git-maintenance](https://git-scm.com/docs/git-maintenance/2.30.0.html)
+
+- **GitHub** recommends keeping `.git` data below **10 GB**, keeping generated files out of Git/object storage instead, limiting a directory to 3,000 entries, and avoiding high push rates. It specifically calls out frequently modified wide directories as costly. [GitHub repository limits](https://docs.github.com/en/enterprise-server@3.19/repositories/creating-and-managing-repositories/repository-limits)
+
+- **GitHub Agentic Workflows** isolates machine memory to a small orphan branch and restricts file types/sizes. This is a practical pattern for low-volume durable state, but an orphan branch still shares the same object database: it separates history semantics, not aggregate Git storage. [Repo memory behavior and limits](https://github.github.com/gh-aw/reference/repo-memory/)
+
+- Production orchestrators put execution/event churn in a database and add retention. **Prefect** says events can quickly become its largest table and ships a vacuum service for old events, runs, logs, and orphaned artifacts. [Prefect database maintenance](https://docs.prefect.io/v3/advanced/database-maintenance)
+
+## 5. Engine, workflow definitions, and run state
+
+This three-way split is the standard architecture:
+
+| System | Engine/control plane | Workflow definitions | Run state |
+|---|---|---|---|
+| LangGraph Platform | API server + task queue | deployed graph package | Postgres checkpoints, threads, memories, runs |
+| Temporal | Temporal Service | worker-owned workflow/activity code | persistence DB: tasks, mutable execution state, append-only histories |
+| Airflow | scheduler, DAG processor, API/UI | DAG bundle, possibly Git-backed | metadata DB |
+| Prefect | Prefect Server/Cloud + workers | code image or worker-pulled Git/filesystem code | server DB |
+| Dagster | webserver, daemon, launchers | independently loaded code locations | SQLite/Postgres run/event/log storage |
+| n8n | n8n instance/queue workers | workflow objects, optionally Git source control | execution history in instance DB |
+
+- **LangGraph Agent Server** deploys graphs plus a persistence database and task queue; its default persistent model is PostgreSQL checkpoints, threads, memories, assistants, and runs. [LangGraph Agent Server](https://docs.langchain.com/langsmith/agent-server)
+
+- **Temporal** states this especially plainly: its persistence database stores dispatch tasks, mutable workflow-execution state, and an append-only event history. SQLite is development/testing only; production uses a supported SQL/Cassandra store. [Temporal persistence](https://docs.temporal.io/temporal-service/persistence)
+
+- **Airflow** separates a DAG bundle from scheduler/API components and metadata DB. Its documentation warns that unversioned local DAG folders can leave workers and processors seeing different DAG versions; versioned bundles such as Git let the scheduler pin a version per task. [Airflow architecture](https://airflow.apache.org/docs/apache-airflow/stable/core-concepts/overview.html)
+
+- **Prefect** says flow code is not stored in the server/Cloud: it is either baked into the runtime image or pulled from Git/filesystem/object storage at execution time; the server DB tracks flow/task states, logs, deployment metadata, events, and more. [Prefect code storage](https://docs.prefect.io/v3/how-to-guides/deployments/store-flow-code), [Prefect Server](https://docs.prefect.io/v3/concepts/server)
+
+- **Dagster** isolates user-code “code locations” from webserver/daemon processes over RPC, while using separate run/event/log storage. [Dagster code locations](https://master.dagster.dagster-docs.io/concepts/code-locations), [Dagster OSS architecture](https://op-graph-docs.dagster.dagster-docs.io/deployment/overview)
+
+- **n8n** uses Git for workflow/environment promotion but warns not to push and pull into the same instance because overwrites and merge conflicts can lose data. Execution history remains instance data. [n8n source-control environments](https://docs.n8n.io/source-control-environments/create-environments/), [n8n executions](https://docs.n8n.io/workflows/executions/all-executions/)
+
+## 6. Agent memory and knowledge
+
+- **OpenClaw** uses plain Markdown files in each agent workspace for durable memory, with a local SQLite-backed search index. It is a direct file-store-plus-derived-index precedent. [OpenClaw memory](https://docs.openclaw.ai/concepts/memory), [OpenClaw memory configuration](https://docs.openclaw.ai/reference/memory-config)
+
+- OpenClaw exposes a key failure mode: when `MEMORY.md` exceeds its bootstrap/context budget, the file remains on disk but the injected copy is truncated. File-based memory stays inspectable, but “exists on disk” does not mean “available to the agent.” [OpenClaw memory overview](https://docs.openclaw.ai/concepts/memory)
+
+- **LangGraph** supports both explicit persisted checkpointers and long-term stores; production examples use Postgres/Mongo/Redis, and semantic retrieval requires an embedding index. [LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence)
+
+- **Obsidian Git** is a mature human knowledge-base precedent for automatic Git backup/sync, but its ecosystem explicitly includes conflict resolution; community reports describe multi-device auto-sync conflicts and status operations taking minutes. The latter is anecdotal, not a benchmark. [Obsidian Git plugin](https://community.obsidian.md/plugins/obsidian-git), [reported conflict case](https://www.reddit.com/r/ObsidianMD/comments/1kbt182)
+
+- “Git as source of record + derived index” is therefore a successful pattern for relatively small, reviewable knowledge. I found no reliable evidence that agent fleets at high write volume use Git for ephemeral run state rather than a database.
+
+## 7. Large media beside Git
+
+- **GitHub** says Git LFS stores pointers in Git and large bytes elsewhere, but still imposes per-object limits of 2–5 GB by plan. This is fine for a modest set of source assets, not automatically a low-drag render archive. [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-git-large-file-storage)
+
+- Native **Git** documentation is blunt: large, incompressible blobs raise storage, memory, CPU, and packfile costs; once committed, removing them normally requires history rewriting. It also notes user complaints about LFS-family setup/usage complexity. [Git large-object promisors](https://git-scm.com/docs/large-object-promisors.html)
+
+- **DVC** is Git metadata plus arbitrary remote object storage; it supports S3-compatible endpoints, which fits Hetzner/S3-style storage. DVC is justified when one needs content-addressed data versioning, reproducible dataset/model lineage, and its cache/GC lifecycle—not merely “put video files in a bucket.” [DVC S3 remote](https://doc.dvc.org/user-guide/data-management/remote-storage/amazon-s3)
+
+- **git-annex** can use S3-compatible storage and supports encryption, chunking, content presence, and retrieval policy. Its configuration surface is substantially larger than a manifest convention; it is powerful when multi-copy/offline placement matters. [git-annex S3 remote](https://git-annex.branchable.com/special_remotes/S3/)
+
+- **lakeFS** was not well-supported by directly comparable solo-operator evidence in this search. It is a data-lake versioning control plane, not the obvious low-ceremony option for generated video renders.
+
+## 8. Deploy-on-merge to one tailnet-only VM
+
+- **GitHub Actions** supports deployment on `push`, with concurrency controls and deployment history. GitHub also warns that hosted runners may not reach internal/private services; self-hosted runners are the direct alternative. [GitHub Actions deployments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments)
+
+- **GitHub webhooks** are the normal push-to-deploy mechanism: GitHub sends an HTTP event to a server endpoint, which can deploy. A truly tailnet-only VM cannot receive that directly without an ingress bridge. [GitHub webhooks](https://docs.github.com/en/webhooks/about-webhooks)
+
+- **Single Server** is a current one-box pattern: a systemd daemon receives signed GitHub push events through Tailscale Funnel, fetches the exact pushed commit with short-lived credentials, then builds/deploys locally. It demonstrates a webhook approach that preserves a private management plane, at the cost of operating a webhook/Funnel path. [Single Server architecture](https://singleserver.com/docs/)
+
+- The simplest alternative for kb’s stated tailnet-only design is a systemd timer that polls/fetches the platform repo and deploys only a verified commit. That is an inference from the connectivity constraint, not a researched consensus. It sacrifices instant deployment for less public-facing machinery.
+
+# Patterns that map to kb
+
+Bluntly:
+
+- **Split platform code from kb data.** This matches every serious workflow platform’s engine/definition/run-state separation. The platform repo should build/deploy the daemon; kb should remain human/project knowledge, declarative workflow definitions, and durable coordination artifacts.
+
+- **Do not turn the kb Git repo into the runtime event store.** Keep cards, rules, project state, long-lived lessons, manifests, and audit-worthy decisions in Git. Put per-step logs, heartbeats, retries, leases, streaming transcripts, queue delivery state, and high-frequency metrics in SQLite/Postgres or append-only object logs with retention. That is where LangGraph, Temporal, Airflow, Prefect, and Dagster all draw the line.
+
+- **“Git source of record + derived search index” is validated.** OpenClaw and GitHub Agentic Workflows are direct precedents. Treat the index as disposable/rebuildable and never as the sole durable memory.
+
+- **Keep the `ops` branch small, sharded, and conflict-light.** One file per card/agent/day is much safer than shared ledgers/transcripts. The current optimistic pull-rebase-push discipline is reasonable at low volume, but it is conflict resolution—not queue semantics.
+
+- **Exile rendered media to object storage now.** Store a Git-tracked manifest containing immutable object key, digest, size, provenance/run ID, and lifecycle status. For a solo S3-compatible bucket, that has less operational drag than DVC, LFS, git-annex, or lakeFS. Add DVC only if reproducible data-version lineage becomes a first-class requirement.
+
+- **Pin cross-repo deployments.** The data/workflow repo should refer to immutable platform image digests or commit/build IDs, not “whatever `main` currently means.” Airflow’s warning about unversioned DAG bundles is the same skew problem in another costume.
+
+# Scale cliffs
+
+These are evidence-backed numbers, not predictions:
+
+- **GitHub repository activity:** recommended maximum **6 pushes/minute/repo** and **15 reads/sec/repo**. This is not a claim that 7 pushes/minute always fails; it is GitHub’s performance/throttling guidance. [Source](https://docs.github.com/en/enterprise-server@3.19/repositories/creating-and-managing-repositories/repository-limits)
+
+- **GitHub repository shape:** recommended `.git` size under **10 GB**; generated outputs outside Git; recommended single object below **1 MB** (100 MB enforced); directory width below **3,000**; branches below **5,000**. [Source](https://docs.github.com/en/enterprise-server@3.19/repositories/creating-and-managing-repositories/repository-limits)
+
+- **Local Git maintenance:** auto-GC triggers around **6,700 loose objects**; maintenance limits a loose-object batch to **50,000** to avoid long jobs. [Sources](https://git-scm.com/docs/git-gc), [git-maintenance](https://git-scm.com/docs/git-maintenance/2.30.0.html)
+
+- **GitHub’s own agent-memory implementation:** defaults to **100 files**, **100 KB/file**, and **10 KB patch** per persisted memory artifact. That is a deliberately conservative design, not a Git limit. [Source](https://github.github.com/gh-aw/reference/repo-memory/)
+
+- **Media:** GitHub recommends generated files go outside Git and LFS objects have a **2–5 GB** per-file plan limit. [Sources](https://docs.github.com/en/enterprise-server@3.19/repositories/creating-and-managing-repositories/repository-limits), [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-git-large-file-storage)
+
+- **There is no verified cliff** for “N projects,” “N collaborators,” or “N Git commits/day” for a one-person heterogeneous repo. The real early cliff for kb is likely shared-file conflict rate and unbounded generated artifacts, not project count.
+
+# Gaps / things not verified
+
+- I found no primary postmortem with a credible measured threshold for a Git-branch task queue comparable to “many small commits/day from multiple autonomous writers.”
+- I found no strong comparative evidence that DVC, git-annex, LFS, lakeFS, or plain manifests is universally best for solo generated-media workflows; the low-drag manifest recommendation is an inference from their documented operational surfaces.
+- I found no representative survey of long-lived multi-agent fleets proving what they use for memory. OpenClaw and GitHub Agentic Workflows are concrete, relevant implementations, but not a market census.
