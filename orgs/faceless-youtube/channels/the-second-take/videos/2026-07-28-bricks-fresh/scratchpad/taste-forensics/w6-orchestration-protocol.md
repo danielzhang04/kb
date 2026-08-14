@@ -18,6 +18,7 @@ Normative terms: **MUST**, **MUST NOT**, **STOP**.
 5. A named figure is seeded; a genuine mass is declared crowd. There is no anonymous foreground tier (`style-bible.md:31-38`; `SKILL.md:177-186`).
 6. Generation workers never review themselves, stamp, register, promote, edit manifests, or edit the review store (`SKILL.md:409-411,442-460`).
 7. Spend requires a human-approved plan and hard stop (`knowledge/operating-law.md:67-75`).
+8. **Spend rate (corrected 2026-08-14):** the engine `gemini-3-pro-image` bills **$0.134 per 1K/2K output image** (+ input tokens, ~$0.01/gen on multi-seed payloads; no free tier). Every plan, `--rate-usd`, cap check, and ledger row MUST use $0.134/gen minimum. The $0.039/gen figure used by genlogs before 2026-08-14 was the gemini-2.5-flash-image rate carried over in error; those ledger rows were corrected on ops 2026-08-14. Empirical all-in average from the 2026-07-30 priced wave: ~$0.17/gen. Batch API (async, 24h window) bills $0.067/gen — same model; use it only under an explicit human ruling.
 
 ## 1. Wave law
 

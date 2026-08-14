@@ -375,3 +375,13 @@ Total: 1 provider call, nominal $0.039 / $0.10 cap. The call completed in about 
 The literal negative phrase `no gradient, no soft highlight` caused the prompt linter's only hard violation because `gradient` is a banned render-technique term. It was replaced, without changing the requested surface constraint, by `single-colour fill with a crisp hard edge and an unblended matte surface`; the subsequent lint had 0 HARD violations.
 
 **Cycle total (w16+w18+w20+w22): $0.390. Wave-1 running total: $0.975.**
+
+## RATE CORRECTION ADDENDUM — 2026-08-14 (boss)
+
+Every dollar figure above was ledgered at $0.039/gen, the gemini-2.5-flash-image rate carried
+over in error. The engine for every call was gemini-3-pro-image, which bills $0.134 per 1K/2K
+output image (no free tier). Historical rows above are left as written (they are records of
+what was believed at the time); the true cost of the 78 billable calls across this arc
+(overnight 27 + G4 20 + wave-1 session 31) is ~$10.45 output-only, ~$11-12 with input tokens.
+Corrected delta rows were appended to ledgers/cost/claude-boss-2026-08-13.tsv and -14.tsv on
+ops. All rates from 2026-08-14 forward: $0.134/gen minimum (protocol §0.8).
