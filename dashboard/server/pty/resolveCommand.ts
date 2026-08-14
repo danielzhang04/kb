@@ -92,10 +92,12 @@ const defaultFileExists = (path: string): boolean => {
   }
 };
 
-/** PATH, then Path — Windows env lookups are case-insensitive but our record keys are not. */
-function pathEntries(env: Record<string, string | undefined>): string[] {
+/** PATH, then Path — Windows env lookups are case-insensitive but our record keys are not.
+ * The separator follows the EFFECTIVE platform (deps.platform), not the host: a win32-modeled
+ * resolver on a posix host must still split `C:\bin;D:\bin` on `;`. */
+function pathEntries(env: Record<string, string | undefined>, isWindows: boolean): string[] {
   const raw = env.PATH ?? env.Path ?? env.path ?? '';
-  return raw.split(delimiter).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  return raw.split(isWindows ? ';' : ':').map((entry) => entry.trim()).filter((entry) => entry.length > 0);
 }
 
 /** The extensions to try, most-preferred first. `''` is always first so an explicit `foo.exe` wins. */
@@ -128,7 +130,7 @@ export function resolveCommandPath(
   const now = deps.now ?? Date.now;
   const isWindows = (deps.platform ?? process.platform) === 'win32';
 
-  const dirs = isAbsolute(command) ? [] : pathEntries(env);
+  const dirs = isAbsolute(command) ? [] : pathEntries(env, isWindows);
   const exts = extensions(env, isWindows);
 
   const key = `${isWindows ? 'win' : 'posix'}\u0000${command}\u0000${dirs.join(delimiter)}\u0000${exts.join(';')}`;
