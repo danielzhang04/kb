@@ -1,5 +1,7 @@
 import hashlib
 import json
+import shutil
+import subprocess
 import sys
 import tarfile
 import types
@@ -18,12 +20,13 @@ from deploy import activate_release
 
 
 VERSION = "a" * 40
+NODE = shutil.which("node")
 
 
 def release_source(root: Path) -> Path:
     source = root / "source"
     for rel in (
-        "dashboard/dist/app.js", "dashboard/server/index.ts", "dashboard/package.json",
+        "dashboard/dist/app.js", "dashboard/server/index.ts", "dashboard/src/lib/timelineModel.ts", "dashboard/package.json",
         "dashboard/package-lock.json", "dashboard/node_modules/pkg/index.js", "scripts/cards.py",
         "schemas/compatibility.json", "dashboard/config/repositories.json",
         "deploy/activate_release.py", "deploy/bootstrap_vm.py", "deploy/export_tier0.py",
@@ -48,6 +51,7 @@ def test_release_is_versioned_and_excludes_data(tmp_path: Path):
         names = set(archive.getnames())
         assert "VERSION" in names
         assert "dashboard/server/index.ts" in names
+        assert "dashboard/src/lib/timelineModel.ts" in names
         assert "deploy/activate_release.py" in names
         assert "deploy/bootstrap_vm.py" in names
         assert "deploy/export_tier0.py" in names
@@ -57,6 +61,8 @@ def test_release_is_versioned_and_excludes_data(tmp_path: Path):
         assert not any(name.startswith("queue/") for name in names)
         assert archive.extractfile("VERSION").read().decode() == VERSION + "\n"
         assert "MANIFEST.sha256" in names
+        manifest = archive.extractfile("MANIFEST.sha256").read().decode("utf-8")
+        assert "  dashboard/src/lib/timelineModel.ts\n" in manifest
     assert json.loads(attestation.read_text(encoding="utf-8")) == {
         "archive": output.name,
         "schema": "kb.release-attestation/v1",
@@ -127,6 +133,7 @@ def test_published_javascript_build_directories_are_retained(tmp_path: Path):
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
 def test_real_repo_release_manifest_is_accepted_by_the_release_consumer(tmp_path: Path):
     source = Path(__file__).resolve().parents[1]
     required = [source / rel for rel in ("dashboard/dist", "dashboard/node_modules")]
@@ -134,6 +141,14 @@ def test_real_repo_release_manifest_is_accepted_by_the_release_consumer(tmp_path
         pytest.skip("real release build inputs are not installed")
     output = tmp_path / f"kb-platform-{VERSION}.tar.gz"
     build_release(source, VERSION, output, tmp_path / "attestation.json")
+    extracted = tmp_path / "extracted"
     with tarfile.open(output, "r:gz") as archive:
         entries = activate_release._manifest_entries(archive.extractfile("MANIFEST.sha256").read())
+        archive.extractall("\\\\?\\" + str(extracted) if sys.platform == "win32" else extracted)
     assert entries
+    result = subprocess.run(
+        [NODE, "--experimental-strip-types", "-e", f"import({(extracted / 'dashboard/server/index.ts').as_uri()!r})"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

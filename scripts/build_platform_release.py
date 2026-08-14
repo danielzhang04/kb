@@ -8,7 +8,7 @@ import tarfile
 from pathlib import Path
 
 RELEASE_ROOTS = (
-    "dashboard/dist", "dashboard/server", "dashboard/node_modules",
+    "dashboard/dist", "dashboard/server", "dashboard/src", "dashboard/node_modules",
     "dashboard/package.json", "dashboard/package-lock.json",
     "dashboard/config/repositories.json", "scripts", "schemas", "deploy",
 )
