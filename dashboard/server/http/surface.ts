@@ -37,6 +37,7 @@ import { activeAsyncGitCount } from '../write/asyncGit.ts';
 import { createFileControlPlaneStore } from '../control/store.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { registerControlRoutes } from '../control/routes.ts';
+import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
 import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
 import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
@@ -157,24 +158,46 @@ export function makeSurfaceContext(
   const definitionAmendmentStore = overrides.definitionAmendmentStore ?? createFileDefinitionAmendmentStore(stateRoot);
   let offAttemptIo: (() => void) | null = null;
   let stopQueueBridge: (() => void) | undefined;
+  let serviceCgroupCache: { checkedAt: number; children: number | null } | undefined;
   let ctx!: SurfaceContext;
   ctx = {
     repoRoot,
     coordinationPublication,
     outboxRoot,
-    admission: overrides.admission ?? ((kind) => admit(kind, coordinationPublication === 'outbox'
-      ? outboxStatus(outboxRoot)
-      : { pending: 0, oldestAgeMs: 0, degraded: false, reasons: [] })),
+    outboxRecoveryFailure: overrides.outboxRecoveryFailure,
+    admission: overrides.admission ?? ((kind) => {
+      const status = coordinationPublication === 'outbox'
+        ? outboxStatus(outboxRoot)
+        : { pending: 0, oldestAgeMs: 0, degraded: false, reasons: [] };
+      return admit(kind, ctx.outboxRecoveryFailure
+        ? {
+          ...status,
+          degraded: true,
+          reasons: [...status.reasons, 'outbox-recovery-failed'],
+        }
+        : status);
+    }),
     stateRoot,
     readiness: overrides.readiness ?? (async () => {
       const activation = ctx.executionLatch?.snapshot();
-      let serviceCgroupChildren: number;
-      try {
-        serviceCgroupChildren = serviceCgroupChildCount();
-      } catch {
-        return { ok: true, quiescent: false, blockers: ['service-cgroup-unknown'] };
+      const recoveryBlockers = ctx.outboxRecoveryFailure ? ['outbox-recovery-failed'] : [];
+      const candidateNow = (ctx.now ?? (() => new Date()))().getTime();
+      const checkedAt = Number.isFinite(candidateNow) ? candidateNow : Date.now();
+      if (!serviceCgroupCache || checkedAt < serviceCgroupCache.checkedAt || checkedAt - serviceCgroupCache.checkedAt >= 1_000) {
+        try {
+          serviceCgroupCache = { checkedAt, children: serviceCgroupChildCount() };
+        } catch {
+          serviceCgroupCache = { checkedAt, children: null };
+        }
       }
-      return quiescence({
+      if (serviceCgroupCache.children === null) {
+        return {
+          ok: true,
+          quiescent: false,
+          blockers: [...recoveryBlockers, 'service-cgroup-unknown'],
+        };
+      }
+      const result = quiescence({
         executionState: activation?.state ?? 'locked',
         bridgeStopped: ctx.stopQueueBridge === undefined,
         queuedWork: 0,
@@ -185,8 +208,11 @@ export function makeSurfaceContext(
         activeGit: activeAsyncGitCount(),
         activePty: ctx.ptySessions?.liveCount() ?? 0,
         activeComposer: activeVibeProcessCount(),
-        serviceCgroupChildren,
+        serviceCgroupChildren: serviceCgroupCache.children,
       });
+      return recoveryBlockers.length === 0
+        ? result
+        : { ...result, quiescent: false, blockers: [...new Set([...result.blockers, ...recoveryBlockers])] };
     }),
     hubBus: overrides.hubBus,
     definitionAmendmentStore,
@@ -315,13 +341,19 @@ export function makeSurfaceContext(
 /** Register the governed write surface (auth + write + composer + approvals) as one guarded child scope. */
 export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext = makeSurfaceContext()): void {
   app.addHook('onReady', async () => {
-    if (ctx.coordinationPublication === 'outbox') {
+    if (ctx.coordinationPublication !== 'outbox') return;
+    try {
       await prepareCoordination(
         ctx.repoRoot,
         ctx.opsGit ?? defaultGitRunner,
         ctx.coordinationPublication,
         ctx.outboxRoot,
       );
+      ctx.outboxRecoveryFailure = undefined;
+    } catch (error) {
+      // Degrade, never brick: repair/export tooling requires a listening daemon and /readyz blocker.
+      ctx.outboxRecoveryFailure = error instanceof Error ? error.message : String(error);
+      console.error('outbox recovery failed; entering degraded mode', error);
     }
   });
   // preClose runs before Fastify waits for long-lived streaming requests to finish. Draining in
@@ -346,6 +378,8 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext =
     // Session-minting ceremonies stay public (but origin/rate guarded). Every other route in this
     // surface inherits this scope-level session gate, so a future GET cannot accidentally ship public.
     registerAuthRoutes(scope, ctx);
+    // Session-less by design: its own preHandler resolves the durable spend grant.
+    registerPaidActionRoute(scope, ctx);
     scope.register(async (authenticated) => {
       authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
       registerWriteRoutes(authenticated, ctx);

@@ -30,7 +30,7 @@ export const productionCgroupIo: CgroupIo = {
 };
 
 export function serviceCgroupChildCount(
-  unit = 'kb-dashboard.service',
+  unit = process.env.DASHBOARD_SERVICE_UNIT ?? 'kb-dashboard.service',
   roots: readonly string[] = ['/sys/fs/cgroup'],
   io: CgroupIo = productionCgroupIo,
 ): number {

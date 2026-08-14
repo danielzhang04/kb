@@ -8,7 +8,7 @@
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
  */
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -115,6 +115,9 @@ afterEach(async () => {
     await app.close();
     app = undefined;
   }
+  rmSync(join(REPO_A, 'STOP'), { force: true });
+  rmSync(join(REPO_A, 'ledgers', 'audit'), { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 
 describe('write surface — composition chain', () => {
@@ -145,6 +148,75 @@ describe('write surface — composition chain', () => {
     expect(calls.some((args) => ['fetch', 'pull', 'push'].includes(args[0]))).toBe(false);
   });
 
+  it.each(['missing-anchor', 'staged-residue'] as const)(
+    'degrades an outbox recovery fault (%s) without bricking readiness or the repair path',
+    async (fault) => {
+      const anchor = 'a'.repeat(40);
+      const opsGit: GitRunner = async (_repo, args) => {
+        const command = args.join(' ');
+        if (command === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
+        if (command === 'diff --cached --name-only -z') {
+          return fault === 'staged-residue' ? 'queue/crash.md\0' : '';
+        }
+        if (command === 'rev-parse --verify refs/kb-outbox/spooled') {
+          if (fault === 'missing-anchor') throw new Error('missing outbox anchor');
+          return `${anchor}\n`;
+        }
+        if (command === `rev-list --reverse ${anchor}..HEAD`) return '';
+        throw new Error(`unexpected git invocation: ${command}`);
+      };
+      const ctx = makeSurfaceContext({
+        repoRoot: REPO_A,
+        sessionConfig,
+        allowedOrigins: [GOOD_ORIGIN],
+        coordinationPublication: 'outbox',
+        outboxRoot: mkdtempSync(join(tmpdir(), 'surface-outbox-recovery-')),
+        opsGit,
+      });
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      app = Fastify({ logger: false });
+      app.get('/readyz', async () => await ctx.readiness());
+      registerWriteSurface(app, ctx);
+
+      await app.ready();
+      const readiness = await app.inject({ method: 'GET', url: '/readyz' });
+      expect(readiness.statusCode).toBe(200);
+      expect(readiness.json().blockers).toContain('outbox-recovery-failed');
+      const save = await app.inject({
+        method: 'POST', url: '/api/write/save', headers: headers(true),
+        payload: { relpath: 'docs/refused.md', content: 'not written' },
+      });
+      expect(save.statusCode).toBe(503);
+      expect(save.json()).toMatchObject({ error: 'outbox-degraded' });
+    },
+  );
+
+  it('keeps the real pending count when recovery degradation applies the paid-continuation ceiling', () => {
+    const outboxRoot = mkdtempSync(join(tmpdir(), 'surface-outbox-ceiling-'));
+    const ready = join(outboxRoot, 'ready');
+    mkdirSync(ready);
+    try {
+      for (let index = 0; index < 1_000; index += 1) {
+        writeFileSync(join(ready, `${index.toString().padStart(40, '0')}.json`), 'invalid\n', 'utf8');
+      }
+      const ctx = makeSurfaceContext({
+        repoRoot: REPO_A,
+        sessionConfig,
+        coordinationPublication: 'outbox',
+        outboxRoot,
+        outboxRecoveryFailure: 'missing outbox anchor',
+      });
+
+      expect(ctx.admission('paid-continuation')).toEqual({
+        ok: false,
+        status: 503,
+        reason: 'outbox-degraded',
+      });
+    } finally {
+      rmSync(outboxRoot, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it('routes exist (a session-less POST is 401, never 404)', async () => {
     ({ app } = buildApp());
     for (const url of [
@@ -164,12 +236,69 @@ describe('write surface — composition chain', () => {
     const legacyComposer = await app.inject({
       method: 'POST', url: '/api/composer/turn', headers: headers(false), payload: {},
     });
-    expect(legacyComposer.statusCode).toBe(410);
-    // The read-only list exists too (no session required).
+    expect(legacyComposer.statusCode).toBe(401);
+    const authenticatedLegacyComposer = await app.inject({
+      method: 'POST', url: '/api/composer/turn', headers: headers(true), payload: {},
+    });
+    expect(authenticatedLegacyComposer.statusCode).toBe(410);
+    // Read-only routes remain session-gated, but still exist and work for an authenticated caller.
     const list = await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(false) });
-    expect(list.statusCode).toBe(200);
+    expect(list.statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/approvals', headers: headers(true) })).statusCode).toBe(200);
     const inbox = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
-    expect(inbox.statusCode).toBe(200);
+    expect(inbox.statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(true) })).statusCode).toBe(200);
+  });
+
+  it('composes paid-action behind its spend-grant gate while every session route keeps the session gate', async () => {
+    const grantToken = 'grant-bearer-token';
+    const grant = {
+      grantRef: 'grant-11111111111111111111111111111111',
+      runRef: 'run-grant', stageRef: 'stage-images', operation: 'fyt.gemini-3-pro-image-2k' as const,
+      maxCalls: 11, maxCostUsdMicros: 1_400_000, maxCharacters: 0, maxOutputs: 8,
+      tokenHash: 'b'.repeat(64), subject: 'operator', gateRequestRef: 'request-spend',
+      mintedAt: '2026-08-03T12:00:00.000Z', expiresAt: '2026-08-03T14:00:00.000Z',
+    };
+    const execute = vi.fn(async () => ({
+      status: 'succeeded' as const,
+      actionRef: 'paid-surface',
+      output: {
+        artifactPath: 'orgs/faceless-youtube/channels/demo/assets/scenes/s1.png',
+        mediaType: 'image/png' as const,
+        byteLength: 4,
+        sha256: 'a'.repeat(64),
+      },
+    }));
+    ({ app } = buildApp({
+      controlStore: {
+        getRun: () => ({ ok: true, value: { stages: [{ stageRef: 'stage-images', currentAttemptRef: 'attempt-7' }] } }),
+      } as unknown as SurfaceContext['controlStore'],
+      paidActionService: { execute, snapshot: () => [] } as unknown as SurfaceContext['paidActionService'],
+      spendGrantStore: { resolve: (candidate) => candidate === grantToken ? grant : null },
+      appendAudit: recordingAudit().fn,
+    }));
+
+    const missing = await app.inject({
+      method: 'POST', url: '/api/control/paid-action', headers: headers(false), payload: {},
+    });
+    expect(missing.statusCode).toBe(401);
+    expect(missing.json()).toMatchObject({ reason: 'missing spend grant token' });
+
+    const grantHeaders = { ...headers(false), authorization: `Bearer ${grantToken}` };
+    const paid = await app.inject({
+      method: 'POST', url: '/api/control/paid-action', headers: grantHeaders,
+      payload: {
+        operation: 'fyt.gemini-3-pro-image-2k', prompt: 'a brick',
+        seeds: [{ pngBase64: 'AAAA', sha256: 'c'.repeat(64) }],
+        expectedArtifactPath: 'orgs/faceless-youtube/channels/demo/assets/scenes/s1.png',
+      },
+    });
+    expect(paid.statusCode).toBe(200);
+    expect(execute).toHaveBeenCalledOnce();
+
+    const sessionRoute = await app.inject({ method: 'GET', url: '/api/control/execution', headers: grantHeaders });
+    expect(sessionRoute.statusCode).toBe(401);
+    expect(sessionRoute.json()).toMatchObject({ reason: 'malformed' });
   });
 
   it('403s a request whose Origin is not on the allowlist (DNS-rebinding guard)', async () => {
@@ -846,9 +975,11 @@ describe('approvals surface — verify wiring', () => {
 });
 
 describe('human inbox surface', () => {
-  it('aggregates approval and human-attention card states without requiring a session', async () => {
+  it('without a session is refused, and with one aggregates approval and human-attention states', async () => {
     ({ app } = buildApp());
-    const res = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
+    const refused = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(false) });
+    expect(refused.statusCode).toBe(401);
+    const res = await app.inject({ method: 'GET', url: '/api/human-inbox', headers: headers(true) });
     expect(res.statusCode).toBe(200);
     const payload = res.json() as {
       counts: { total: number; decision: number; intervention: number };

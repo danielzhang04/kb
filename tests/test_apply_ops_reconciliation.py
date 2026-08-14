@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from deploy.apply_ops_reconciliation import apply_reconciliation
+from deploy.apply_ops_reconciliation import apply_reconciliation, make_git_runner
 from scripts.promote_vm_outbox import promote_pending
 
 
@@ -85,10 +85,17 @@ def test_vm_reconciliation_requires_quiescence_and_all_receipts(tmp_path):
     bundle = tmp_path / "ops-return.bundle"
     bundle.write_bytes(b"bundle")
     with pytest.raises(RuntimeError, match="quiescent"):
-        apply_reconciliation(repo, spool, bundle, returned_receipts, "b" * 40, "c" * 40, readiness=lambda: {"quiescent": False})
+        apply_reconciliation(
+            repo, spool, bundle, returned_receipts, "b" * 40, "c" * 40,
+            readiness=lambda: {"quiescent": False}, run=make_git_runner(git_user=None),
+        )
     (spool / "ready" / "pending.json").write_text("{}", encoding="utf-8")
     with pytest.raises(RuntimeError, match="unreceipted"):
-        apply_reconciliation(repo, spool, bundle, returned_receipts, "b" * 40, "c" * 40, readiness=lambda: {"quiescent": True, "blockers": []})
+        apply_reconciliation(
+            repo, spool, bundle, returned_receipts, "b" * 40, "c" * 40,
+            readiness=lambda: {"quiescent": True, "blockers": []},
+            run=make_git_runner(git_user=None),
+        )
 
 
 def test_reconciliation_applies_exact_promoted_tree_and_is_idempotent(tmp_path, monkeypatch):
@@ -114,6 +121,7 @@ def test_reconciliation_applies_exact_promoted_tree_and_is_idempotent(tmp_path, 
     assert apply_reconciliation(
         vm, vm_spool, returned_bundle, returned_receipts, source, target,
         readiness=lambda: {"quiescent": True, "blockers": []},
+        run=make_git_runner(git_user=None),  # hermetic: never runuser into the service account
     ) == target
     assert git(vm, "rev-parse", "HEAD").stdout.strip() == target
     assert git(vm, "diff", "--quiet", "HEAD", "refs/heads/ops", check=False).returncode == 0
@@ -124,6 +132,46 @@ def test_reconciliation_applies_exact_promoted_tree_and_is_idempotent(tmp_path, 
         raise AssertionError("reconciled item replayed")
 
     assert promote_pending(desktop_spool, operator, tmp_path / "promotion-again", trusted, run_git=must_not_promote, clone_fresh=must_not_promote) == {"promoted": 0, "pending": 0, "failed": 0}
+
+
+def test_reconciliation_retains_only_the_newest_100_promoted_entries(tmp_path, monkeypatch):
+    origin, operator, vm, spool, trusted, source, manifest = integration_fixture(tmp_path)
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "task-17-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "task-17-test@example.invalid")
+
+    promoted = spool / "promoted"
+    promoted.mkdir()
+    old_ids = [f"{index:040x}" for index in range(100)]
+    for index, identity in enumerate(old_ids, start=1):
+        for suffix in (".json", ".bundle", ".receipt.json"):
+            path = promoted / f"{identity}{suffix}"
+            path.write_bytes(b"retired\n")
+            os.utime(path, ns=(index, index))
+
+    assert promote_pending(spool, operator, tmp_path / "promotion-work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+    target = git(origin, "rev-parse", "refs/heads/ops").stdout.strip()
+    bundle_repo = tmp_path / "bundle-repo"
+    git(tmp_path, "clone", str(origin), str(bundle_repo))
+    git(bundle_repo, "update-ref", "refs/kb-reconciled/ops", target)
+    returned_bundle = tmp_path / "ops-return.bundle"
+    git(bundle_repo, "bundle", "create", str(returned_bundle), "refs/kb-reconciled/ops")
+    returned_receipts = tmp_path / "returned-receipts"
+    returned_receipts.mkdir()
+    receipt_source = spool / "receipts" / f"{manifest['id']}.json"
+    (returned_receipts / receipt_source.name).write_bytes(receipt_source.read_bytes())
+
+    apply_reconciliation(
+        vm, spool, returned_bundle, returned_receipts, source, target,
+        readiness=lambda: {"quiescent": True, "blockers": []},
+        run=make_git_runner(git_user=None),
+    )
+
+    assert len(list(promoted.glob("*.receipt.json"))) == 100
+    assert not any(promoted.glob(f"{old_ids[0]}*"))
+    assert (promoted / f"{source}.receipt.json").is_file()
 
 
 def test_reconciliation_refuses_returned_receipt_mismatch_before_git(tmp_path):

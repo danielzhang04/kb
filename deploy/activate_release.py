@@ -65,20 +65,34 @@ def nofollow_flag(platform: str | None = None) -> int:
 
 
 @contextmanager
-def release_lock(releases: Path) -> Iterator[None]:
+def release_lock(
+    releases: Path,
+    maintenance_lock: Path = Path("/run/lock/kb-maintenance.lock"),
+) -> Iterator[None]:
     if _fcntl is None:
         if os.name == "posix":
             raise RuntimeError("Linux activation requires flock")
         yield
         return
-    flags = os.O_RDONLY | nofollow_flag() | getattr(os, "O_DIRECTORY", 0)
-    descriptor = os.open(releases, flags)
+    maintenance_lock.parent.mkdir(parents=True, exist_ok=True)
+    maintenance_descriptor = os.open(
+        maintenance_lock,
+        os.O_RDWR | os.O_CREAT | nofollow_flag(),
+        0o600,
+    )
     try:
-        _fcntl.flock(descriptor, _fcntl.LOCK_EX)
-        yield
+        _fcntl.flock(maintenance_descriptor, _fcntl.LOCK_EX)
+        flags = os.O_RDONLY | nofollow_flag() | getattr(os, "O_DIRECTORY", 0)
+        descriptor = os.open(releases, flags)
+        try:
+            _fcntl.flock(descriptor, _fcntl.LOCK_EX)
+            yield
+        finally:
+            _fcntl.flock(descriptor, _fcntl.LOCK_UN)
+            os.close(descriptor)
     finally:
-        _fcntl.flock(descriptor, _fcntl.LOCK_UN)
-        os.close(descriptor)
+        _fcntl.flock(maintenance_descriptor, _fcntl.LOCK_UN)
+        os.close(maintenance_descriptor)
 
 
 def parse_attestation(raw: bytes) -> dict[str, str]:
@@ -113,7 +127,7 @@ def safe_members(archive: tarfile.TarFile) -> Iterator[tarfile.TarInfo]:
 
 def _manifest_entries(raw: bytes) -> dict[str, str]:
     try:
-        text = raw.decode("ascii")
+        text = raw.decode("utf-8")
     except UnicodeDecodeError as error:
         raise RuntimeError("release manifest is invalid") from error
     entries: dict[str, str] = {}

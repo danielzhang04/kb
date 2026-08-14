@@ -46,6 +46,7 @@ function makeHarness(overrides: {
   currentAttemptRef?: string | null;
   appendAuditThrows?: boolean;
   omitPaidExecution?: boolean;
+  admission?: SurfaceContext['admission'];
 } = {}): Harness {
   const executeCalls: PaidActionRequest[] = [];
   const auditRows: Array<Record<string, unknown>> = [];
@@ -75,6 +76,7 @@ function makeHarness(overrides: {
     now: () => new Date('2026-08-03T13:00:00.000Z'),
     paidActionService,
     spendGrantStore,
+    admission: overrides.admission ?? (() => ({ ok: true })),
   } as unknown as SurfaceContext;
   return { ctx, executeCalls, auditRows };
 }
@@ -117,6 +119,16 @@ describe('POST /api/control/paid-action', () => {
     // Audit-before-mutate recorded exactly one governance row.
     expect(h.auditRows).toHaveLength(1);
     expect(h.auditRows[0]).toMatchObject({ action: 'control-paid-action-execute', owner: 'operator', target: 'run-grant' });
+  });
+
+  it('refuses a paid continuation at the hard spool ceiling before deriving or executing the action', async () => {
+    const h = makeHarness({ admission: () => ({ ok: false, status: 503, reason: 'outbox-degraded' }) });
+    mount(h.ctx);
+    const res = await app.inject({ method: 'POST', url: PAID_ACTION_ROUTE_PATH, headers: headers(VALID_TOKEN), payload: imageBody });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ error: 'outbox-degraded' });
+    expect(h.executeCalls).toHaveLength(0);
+    expect(h.auditRows).toHaveLength(0);
   });
 
   it('rejects a missing bearer token with 401 before touching the service', async () => {
@@ -261,6 +273,7 @@ describe('POST /api/control/paid-action', () => {
           snapshot: () => [],
         },
         spendGrantStore: { resolve: (token: string) => (token === VALID_TOKEN ? grant() : null) },
+        admission: () => ({ ok: true }),
       } as unknown as SurfaceContext;
       return { ctx, executeCalls };
     }

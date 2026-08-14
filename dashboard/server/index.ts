@@ -109,8 +109,9 @@ export function humanRequestSweepLogLine(result: HumanRequestSweepResult): strin
 }
 
 /**
- * Build the Fastify backend. Only `/healthz`, `/readyz`, static assets, and the four session-minting auth
- * ceremonies stay public. Every other matched data route — repository/state reads, hub streams, PTY,
+ * Build the Fastify backend. Only `/healthz`, static assets, and the four session-minting auth
+ * ceremonies and loopback-only `/readyz` stay public.
+ * Every other matched data route — repository/state reads, hub streams, PTY,
  * and writes — is in an Origin/Host- + rate-limit-guarded scope with a session pre-handler. It is
  * fail-closed by default: with no `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every governed
  * route 403s; with an RP origin but no provisioned passkey, no session can be minted and every governed
@@ -138,9 +139,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   app.get('/healthz', async () => {
-    // `node` echoes the running runtime version so an accidental unpinned Node
-    // upgrade is caught (pinned to 24.18.0 via .nvmrc + package.json engines).
-    return { ok: true, node: process.versions.node };
+    return { ok: true };
   });
 
   registerHub(app, { repoRoot, bus, allowedOrigins: surfaceCtx.allowedOrigins, sessionConfig: surfaceCtx.sessionConfig });
@@ -158,6 +157,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       // ignore â€” best-effort teardown
     }
   });
+  // Loopback-only readiness for repair/export tooling. It must stay OUTSIDE the origin guard:
+  // export_tier0.py and backup_tier0.py call it with curl, apply_ops_reconciliation.py and
+  // activate_release.py with urllib. None sends an Origin, all send Host: 127.0.0.1:<port>, and
+  // deploy/systemd/kb-dashboard.service sets no DASHBOARD_RP_ORIGIN, so the allowlist is empty and the
+  // guard 403s all four. The DoS amplification S2 raised is closed by the 1s serviceCgroupChildCount
+  // memoization, not by this hook. Do NOT attach the read-rate hook either: the restore drill polls
+  // every 0.25s (240 req/min) against a 300/min budget with a 60s lockout — far too close to the edge.
   app.get('/readyz', async () => await surfaceCtx.readiness());
   app.register(async (scope) => {
     originPlugin(scope, { allowedOrigins: surfaceCtx.allowedOrigins });

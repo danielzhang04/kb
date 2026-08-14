@@ -62,6 +62,8 @@ export interface SurfaceContext {
   coordinationPublication?: CoordinationPublication;
   /** Durable VM spool root used when coordination publication is `outbox`. */
   outboxRoot?: string;
+  /** Startup recovery fault retained as degraded state so /readyz remains available for repair tooling. */
+  outboxRecoveryFailure?: string;
   /** Admission policy for work that would add to the durable outbox. */
   admission: (kind: AdmissionKind) => AdmissionDecision;
   /** Dashboard-owned runtime state root; never a repository content path. */

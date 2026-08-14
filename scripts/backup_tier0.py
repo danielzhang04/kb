@@ -65,6 +65,7 @@ def backup(
     rpo_minutes: int = 15,
     run=run_command,
     now=utc_now,
+    remote_export_script: str = "/usr/local/lib/kb/export_tier0.py",
 ) -> dict:
     started = now()
     output.mkdir(parents=True, exist_ok=True)
@@ -72,7 +73,7 @@ def backup(
     export_id = secrets.token_hex(16)
     remote = f"/var/tmp/kb-tier0-{export_id}.tar"
     result = run([
-        "ssh", host, "sudo", "python3", "/opt/kb-releases/current/deploy/export_tier0.py",
+        "ssh", host, "sudo", "python3", remote_export_script,
         "--output", remote,
     ])
     _require_success(result, "remote tier-zero export")
@@ -191,6 +192,7 @@ def verify_restored_tree(target: Path, run=run_command) -> dict[str, bool]:
         started = run([
             "systemd-run", f"--unit={unit}", f"--working-directory={release / 'dashboard'}",
             "--property=KillMode=control-group", "--property=NoNewPrivileges=yes",
+            f"--setenv=DASHBOARD_SERVICE_UNIT={unit}",
             f"--setenv=DASHBOARD_PLATFORM_ROOT={release}", f"--setenv=PYTHONPATH={release}",
             "--setenv=DASHBOARD_EXECUTION_ACTIVATED=0", f"--setenv=DASHBOARD_REPO_ROOT={ops}",
             f"--setenv=DASHBOARD_STATE_ROOT={target / 'var/lib/kb/state'}", f"--setenv=DASHBOARD_PORT={port}",
@@ -308,7 +310,7 @@ def _validate_release_directory(release: Path) -> None:
     if COMMIT_RE.fullmatch(commit) is None or release.name != commit:
         raise RuntimeError("release directory name and VERSION disagree")
     rows: dict[str, str] = {}
-    for row in manifest.read_text(encoding="ascii").splitlines():
+    for row in manifest.read_text(encoding="utf-8").splitlines():
         try:
             digest, relative = row.split("  ", 1)
         except ValueError as error:
@@ -326,7 +328,9 @@ def _validate_release_directory(release: Path) -> None:
     actual = {
         item.relative_to(release).as_posix()
         for item in release.rglob("*")
-        if item.is_file() and not item.is_symlink() and item.name not in {"VERSION", "MANIFEST.sha256"}
+        if item.is_file()
+        and not item.is_symlink()
+        and item.relative_to(release).as_posix() not in {"VERSION", "MANIFEST.sha256"}
     }
     if set(rows) != actual:
         raise RuntimeError("release manifest does not cover exactly the release files")

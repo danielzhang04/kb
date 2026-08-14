@@ -39,15 +39,29 @@ export type RecoveryInput = Omit<SpoolInput, 'commit' | 'paths'>;
 
 const OUTBOX_ANCHOR = 'refs/kb-outbox/spooled';
 
-function fsyncPath(path: string): void {
+export interface FsyncIo {
+  platform: string;
+  open(path: string): number;
+  fsync(fd: number): void;
+  close(fd: number): void;
+}
+
+const productionFsyncIo: FsyncIo = {
+  platform: process.platform,
+  open: (path) => openSync(path, 'r'),
+  fsync: fsyncSync,
+  close: closeSync,
+};
+
+export function fsyncPath(path: string, io: FsyncIo = productionFsyncIo): void {
   // The production outbox runs on Linux. Windows test/simulation filesystems may reject fsync with
   // EPERM even for ordinary files, and Windows is never the durable VM publication environment.
-  if (process.platform === 'win32') return;
-  const fd = openSync(path, 'r');
+  if (io.platform === 'win32') return;
+  const fd = io.open(path);
   try {
-    fsyncSync(fd);
+    io.fsync(fd);
   } finally {
-    closeSync(fd);
+    io.close(fd);
   }
 }
 
@@ -69,6 +83,16 @@ export async function spoolCoordinationCommit(input: SpoolInput): Promise<Outbox
   if (!/^[0-9a-f]{40}$/.test(input.commit)) {
     throw new Error('outbox commit is not a full object id');
   }
+  const parentRow = (await input.runGit(input.repoRoot, [
+    'rev-list', '--parents', '-n', '1', input.commit,
+  ])).trim().split(/\s+/);
+  if (parentRow.length !== 2 || parentRow[0] !== input.commit) {
+    throw new Error('outbox commit must have a single parent');
+  }
+  const parent = parentRow[1];
+  if (!/^[0-9a-f]{40}$/.test(parent)) {
+    throw new Error('outbox parent is not a full object id');
+  }
   const paths = [...new Set(input.paths.map((path) => path.replace(/\\/g, '/')))].sort();
   const offending = paths.filter((path) => !input.isCoordinationPath(path));
   if (paths.length === 0 || offending.length > 0) {
@@ -81,16 +105,6 @@ export async function spoolCoordinationCommit(input: SpoolInput): Promise<Outbox
   ])).split('\0').filter(Boolean).sort();
   if (JSON.stringify(actualPaths) !== JSON.stringify(paths)) {
     throw new Error('outbox manifest paths do not match the commit');
-  }
-  const parentRow = (await input.runGit(input.repoRoot, [
-    'rev-list', '--parents', '-n', '1', input.commit,
-  ])).trim().split(/\s+/);
-  if (parentRow.length !== 2 || parentRow[0] !== input.commit) {
-    throw new Error('outbox commit must have a single parent');
-  }
-  const parent = parentRow[1];
-  if (!/^[0-9a-f]{40}$/.test(parent)) {
-    throw new Error('outbox parent is not a full object id');
   }
   const id = input.commit;
   const ready = join(input.spoolRoot, 'ready');

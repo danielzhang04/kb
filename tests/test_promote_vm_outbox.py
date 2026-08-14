@@ -14,13 +14,18 @@ from scripts.promote_vm_outbox import (
     APPROVAL_NAMESPACE,
     APPROVAL_PRINCIPAL,
     approval_value,
+    clone_fresh,
+    create_return_bundle,
     fetch_vm_outbox,
     parse_raw_diff,
+    promote_one,
     promote_pending,
     require_instruction_approval,
     validate_quarantine_chain,
     validate_snapshot,
+    upload_and_apply_reconciliation,
 )
+from deploy.apply_ops_reconciliation import apply_reconciliation
 
 
 BASE = "a" * 40
@@ -187,6 +192,30 @@ def real_fixture(tmp_path: Path, changes: list[tuple[str, str]]):
     return origin, operator, vm, spool, trusted, manifests
 
 
+def append_vm_outbox_item(vm: Path, spool: Path, rel: str, body: str, created_at: str) -> dict:
+    target = vm / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(body, encoding="utf-8")
+    git(vm, "add", rel)
+    git(vm, "commit", "-m", f"source {rel}")
+    commit = git(vm, "rev-parse", "HEAD").stdout.strip()
+    parent = git(vm, "rev-parse", "HEAD^").stdout.strip()
+    item_ref = f"refs/kb-outbox/items/{commit}"
+    git(vm, "update-ref", item_ref, commit)
+    bundle = spool / "ready" / f"{commit}.bundle"
+    git(vm, "bundle", "create", str(bundle), f"{parent}..{item_ref}")
+    git(vm, "update-ref", "-d", item_ref)
+    paths = sorted(git(vm, "diff-tree", "--no-commit-id", "--name-only", "-r", commit).stdout.splitlines())
+    manifest = {
+        "schema": "kb.ops-outbox/v1", "id": commit, "parent": parent, "commit": commit,
+        "paths": paths, "createdAt": created_at,
+        "bundleSha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+    }
+    (spool / "ready" / f"{commit}.json").write_bytes(canonical(manifest))
+    git(vm, "update-ref", "refs/kb-outbox/spooled", commit, parent)
+    return manifest
+
+
 def operator_state(repo: Path) -> tuple[str, str, str, bytes]:
     index = repo / ".git" / "index"
     return (
@@ -347,9 +376,79 @@ def test_fetch_vm_outbox_uses_argv_and_rejects_unsafe_host(tmp_path):
 
     assert fetch_vm_outbox("ops@example.test", tmp_path / "snapshot", run=run) == tmp_path / "snapshot"
     assert calls[0][0][:2] == ["scp", "-r"]
+    assert calls[0][1]["timeout"] == 900
     assert calls[1][0] == ["ssh", "ops@example.test", "git", "-C", "/var/lib/kb/ops", "rev-parse", "HEAD"]
+    assert calls[1][1]["timeout"] == 30
     with pytest.raises(ValueError):
         fetch_vm_outbox("-oProxyCommand=bad", tmp_path / "other", run=run)
+
+
+def test_return_bundle_and_reconciliation_transfers_use_transport_timeouts(tmp_path):
+    target = "d" * 40
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git_calls = []
+
+    def run_git_with_timeout(_repo, args, check=True, timeout=None):
+        git_calls.append((args, timeout))
+        if args[:2] == ["rev-parse", "refs/remotes/origin/ops^{commit}"]:
+            return completed(args, target + "\n")
+        if args[:2] == ["bundle", "list-heads"]:
+            return completed(args, f"{target} refs/kb-reconciled/ops\n")
+        return completed(args)
+
+    create_return_bundle(
+        repo, tmp_path / "work", target, run=run_git_with_timeout,
+        clone=lambda _operator, _target: repo,
+    )
+    bundle_call = next(call for call in git_calls if call[0][:2] == ["bundle", "create"])
+    assert bundle_call[1] == 900
+
+    receipts = tmp_path / "receipts"
+    receipts.mkdir()
+    transfer_calls = []
+
+    def run(args, **kwargs):
+        transfer_calls.append((args, kwargs))
+        return completed(args)
+
+    upload_and_apply_reconciliation(
+        "ops@example.test", tmp_path / "return.bundle", receipts, "a" * 40, target, run=run,
+    )
+    scp_calls = [kwargs for args, kwargs in transfer_calls if args[0] == "scp"]
+    assert [kwargs["timeout"] for kwargs in scp_calls] == [900, 900]
+    assert transfer_calls[0][1]["timeout"] == 30
+    assert "/usr/local/lib/kb/apply_ops_reconciliation.py" in transfer_calls[-1][0]
+
+
+def test_fresh_clone_uses_the_transport_timeout(tmp_path):
+    operator = tmp_path / "operator"
+    operator.mkdir()
+    git(operator, "init")
+    git(operator, "remote", "add", "origin", str(tmp_path / "origin.git"))
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+        return completed(args)
+
+    clone_fresh(operator, tmp_path / "clone", run=run)
+    assert calls[0][0][:2] == ["git", "clone"]
+    assert calls[0][1]["timeout"] == 900
+
+
+def test_promote_one_refuses_to_reuse_a_trailer_commit_with_the_wrong_tree(tmp_path):
+    manifest = {"id": COMMIT, "commit": COMMIT}
+
+    def run(_repo, args, check=True):
+        if args[0] == "log":
+            return completed(args, "d" * 40 + "\n")
+        if args[:2] == ["diff", "--quiet"]:
+            return completed(args, returncode=1)
+        return completed(args)
+
+    with pytest.raises(RuntimeError, match="tree differs"):
+        promote_one(tmp_path, tmp_path, manifest, "refs/kb-quarantine/test", run=run)
 
 
 def test_outage_then_retry_promotes_once_without_touching_operator_checkout(tmp_path, monkeypatch):
@@ -424,3 +523,32 @@ def test_two_item_chain_promotes_in_parent_order_and_writes_two_receipts(tmp_pat
         monkeypatch.setenv(f"GIT_{name}_EMAIL", "task-17-test@example.invalid")
     assert promote_pending(spool, operator, tmp_path / "work", trusted) == {"promoted": 2, "pending": 0, "failed": 0}
     assert [path.stem for path in sorted((spool / "receipts").glob("*.json"))] == sorted(item["id"] for item in manifests)
+
+
+def test_two_promotion_cycles_succeed(tmp_path, monkeypatch):
+    origin, operator, vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/one.jsonl", "one\n")],
+    )
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "task-17-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "task-17-test@example.invalid")
+
+    assert promote_pending(spool, operator, tmp_path / "work-cycle-1", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+    target = git(origin, "rev-parse", "refs/heads/ops").stdout.strip()
+    bundle, _repo = create_return_bundle(operator, tmp_path / "return-cycle-1", target)
+    assert apply_reconciliation(
+        vm, spool, bundle, spool / "receipts", manifests[-1]["commit"], target,
+        readiness=lambda: {"quiescent": True, "blockers": []},
+    ) == target
+    assert list((spool / "ready").iterdir()) == []
+    assert list((spool / "receipts").iterdir()) == []
+    assert validate_snapshot(spool) == []
+
+    append_vm_outbox_item(
+        vm, spool, "traces/two.jsonl", "two\n", "2026-08-11T12:00:02.000Z",
+    )
+    assert promote_pending(spool, operator, tmp_path / "work-cycle-2", target) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }

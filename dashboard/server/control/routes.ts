@@ -44,7 +44,6 @@ import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
 import { acceptsBoundary, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
-import { registerPaidActionRoute } from './paidActionRoute.ts';
 import type { EntityDisplay } from '../naming.ts';
 import { askForHumanRequest, type HumanRequestAsk } from './humanRequestAsk.ts';
 
@@ -279,12 +278,6 @@ class ActivationPreparationError extends Error {
 /** Authenticated app-local proposal/run control plane. Queue cards remain canonical execution truth. */
 export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
   const preHandler = requireSession(ctx.sessionConfig);
-
-  // FYT paid-action wiring (Unit D2): the non-session `POST /api/control/paid-action` route and its
-  // bearer-grant preHandler. Registered on this same guarded scope (origin + rate-limit apply) but WITHOUT
-  // `requireSession`, since a headless worker has no browser session. It derives every spend-bearing
-  // identity server-side from the resolved grant + execution state — see paidActionRoute.ts.
-  registerPaidActionRoute(scope, ctx);
 
   scope.get('/api/control/proposals', { preHandler }, async (req, reply) => {
     const sub = subject(req);

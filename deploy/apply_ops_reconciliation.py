@@ -23,34 +23,50 @@ RECEIPT_KEYS = {"schema", "id", "sourceCommit", "promotedCommit", "promotedAt"}
 SAFE_CHANGED_MODES = {"000000", "100644"}
 COMMAND_TIMEOUT = 30
 VM_GIT_USER = "kb-dashboard"
+PROMOTED_RETENTION_COUNT = 100
 _RAW_HEADER = re.compile(
     rb"\A:([0-7]{6}) ([0-7]{6}) ([0-9a-f]{40}|[0-9a-f]{64}) "
     rb"([0-9a-f]{40}|[0-9a-f]{64}) ([AMD])\Z"
 )
 
 
-def run_git(repo: Path, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
-    git_argv = ["git", "-c", f"safe.directory={repo}", *args]
-    environment = None
-    if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
-        git_argv = ["runuser", "--user", VM_GIT_USER, "--", *git_argv]
-        environment = {
-            "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
-            "HOME": "/var/lib/kb",
-            "LANG": "C.UTF-8",
-            "LC_ALL": "C.UTF-8",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_TERMINAL_PROMPT": "0",
-        }
-    return subprocess.run(
-        git_argv,
-        cwd=repo,
-        check=check,
-        capture_output=True,
-        timeout=COMMAND_TIMEOUT,
-        env=environment,
-    )
+def make_git_runner(git_user: str | None = VM_GIT_USER):
+    """Build the VM git runner.
+
+    ``git_user`` is the unprivileged account owning the ops checkout, and is a
+    parameter rather than an environment variable on purpose: this module runs
+    as root under sudo, so an env-settable account name would let a caller
+    choose which user git runs as. ``None`` disables the drop entirely and
+    exists for hermetic tests, which own their fixture as the current user.
+    """
+
+    def run(repo: Path, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+        git_argv = ["git", "-c", f"safe.directory={repo}", *args]
+        environment = None
+        if git_user is not None and os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
+            git_argv = ["runuser", "--user", git_user, "--", *git_argv]
+            environment = {
+                "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOME": "/var/lib/kb",
+                "LANG": "C.UTF-8",
+                "LC_ALL": "C.UTF-8",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+        return subprocess.run(
+            git_argv,
+            cwd=repo,
+            check=check,
+            capture_output=True,
+            timeout=COMMAND_TIMEOUT,
+            env=environment,
+        )
+
+    return run
+
+
+run_git = make_git_runner()
 
 
 def _run_without_check(run, repo: Path, args: list[str]) -> subprocess.CompletedProcess:
@@ -286,6 +302,33 @@ def write_receipt_durably(target: Path, value: dict) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _fsync_directory(path: Path) -> None:
+    if os.name == "nt":
+        return
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _prune_promoted_archive(promoted_dir: Path, keep: int = PROMOTED_RETENTION_COUNT) -> None:
+    """Keep only the newest complete promoted-entry groups, ordered by receipt mtime."""
+    receipts = sorted(
+        promoted_dir.glob("*.receipt.json"),
+        key=lambda path: (path.stat().st_mtime_ns, path.name),
+        reverse=True,
+    )
+    for receipt in receipts[keep:]:
+        identity = receipt.name.removesuffix(".receipt.json")
+        if COMMIT_RE.fullmatch(identity) is None:
+            continue
+        for suffix in (".json", ".bundle", ".receipt.json"):
+            path = promoted_dir / f"{identity}{suffix}"
+            if path.exists() or path.is_symlink():
+                path.unlink()
+
+
 def read_readiness() -> dict:
     with urllib.request.urlopen("http://127.0.0.1:4317/readyz", timeout=5) as response:
         if response.status != 200:
@@ -421,6 +464,19 @@ def apply_reconciliation(
     run(repo, ["branch", f"kb-before-reconcile-{head[:12]}", head])
     run(repo, ["reset", "--hard", target])
     run(repo, ["update-ref", "refs/kb-outbox/spooled", target, anchor])
+    promoted_dir = spool / "promoted"
+    promoted_dir.mkdir(parents=True, exist_ok=True)
+    for manifest in source_chain:
+        for suffix in (".json", ".bundle"):
+            source = spool / "ready" / f"{manifest['commit']}{suffix}"
+            if source.exists():
+                os.replace(source, promoted_dir / source.name)
+        receipt = spool / "receipts" / f"{manifest['commit']}.json"
+        if receipt.exists():
+            os.replace(receipt, promoted_dir / f"{manifest['commit']}.receipt.json")
+    _prune_promoted_archive(promoted_dir)
+    for directory in (promoted_dir, spool / "ready", spool / "receipts"):
+        _fsync_directory(directory)
     return target
 
 

@@ -151,6 +151,7 @@ async function makeChain(knobs: ChainKnobs = {}) {
       snapshot: () => (forceOrdinalOne() ? [] : service.snapshot()),
     },
     spendGrantStore: grantStore,
+    admission: () => ({ ok: true }),
   } as unknown as SurfaceContext;
 
   const app = Fastify();

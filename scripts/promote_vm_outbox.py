@@ -28,6 +28,7 @@ SAFE_CHANGED_MODES = {"000000", "100644"}
 APPROVAL_PRINCIPAL = "kb-ops-approver"
 APPROVAL_NAMESPACE = "kb-ops-instructions"
 COMMAND_TIMEOUT = 30
+TRANSPORT_TIMEOUT = 900
 _GOOD_SIGNATURE = re.compile(
     rb'\AGood "' + re.escape(APPROVAL_NAMESPACE.encode("ascii")) + rb'" signature for '
     + re.escape(APPROVAL_PRINCIPAL.encode("ascii"))
@@ -39,10 +40,15 @@ _RAW_HEADER = re.compile(
 )
 
 
-def run_git(repo: Path, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+def run_git(
+    repo: Path,
+    args: list[str],
+    check: bool = True,
+    timeout: int = COMMAND_TIMEOUT,
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", *args], cwd=repo, check=check, capture_output=True,
-        timeout=COMMAND_TIMEOUT,
+        timeout=timeout,
     )
 
 
@@ -56,6 +62,18 @@ def _run_without_check(run, repo: Path, args: list[str]) -> subprocess.Completed
     except (TypeError, ValueError):
         accepts_check = False
     return run(repo, args, check=False) if accepts_check else run(repo, args)
+
+
+def _run_with_timeout(run, repo: Path, args: list[str], timeout: int) -> subprocess.CompletedProcess:
+    try:
+        parameters = inspect.signature(run).parameters.values()
+        accepts_timeout = any(
+            parameter.name == "timeout" or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+    except (TypeError, ValueError):
+        accepts_timeout = False
+    return run(repo, args, timeout=timeout) if accepts_timeout else run(repo, args)
 
 
 def utc_now() -> datetime:
@@ -198,7 +216,7 @@ def fetch_vm_outbox(vm_host: str, snapshot_root: Path, run=subprocess.run) -> Pa
             str(snapshot_root),
         ],
         check=True,
-        timeout=COMMAND_TIMEOUT,
+        timeout=TRANSPORT_TIMEOUT,
     )
     result = run(
         ["ssh", vm_host, "git", "-C", "/var/lib/kb/ops", "rev-parse", "HEAD"],
@@ -454,7 +472,7 @@ def clone_fresh(operator_repo: Path, target: Path, run=subprocess.run) -> Path:
         ["git", "clone", "--no-tags", "--branch", "ops", "--single-branch", remote, str(target)],
         check=True,
         capture_output=True,
-        timeout=COMMAND_TIMEOUT,
+        timeout=TRANSPORT_TIMEOUT,
     )
     return target
 
@@ -514,6 +532,8 @@ def promote_one(
             ["log", "HEAD", "--format=%H", "--fixed-strings", f"--grep=KB-Outbox-ID: {manifest['id']}", "-1"],
         ).stdout
     ).strip()
+    if promoted and _run_without_check(run, repo, ["diff", "--quiet", source_ref, promoted]).returncode != 0:
+        raise RuntimeError("existing promotion commit tree differs from its source commit")
     if not promoted:
         run(repo, ["cherry-pick", "--no-commit", source_ref])
         run(
@@ -677,7 +697,9 @@ def create_return_bundle(
         raise RuntimeError("origin/ops does not equal the just-promoted target")
     run(repo, ["update-ref", "refs/kb-reconciled/ops", "refs/remotes/origin/ops"])
     bundle = repo.parent / f"ops-return-{secrets.token_hex(4)}.bundle"
-    run(repo, ["bundle", "create", str(bundle), "refs/kb-reconciled/ops"])
+    _run_with_timeout(
+        run, repo, ["bundle", "create", str(bundle), "refs/kb-reconciled/ops"], TRANSPORT_TIMEOUT,
+    )
     heads = _text(run(repo, ["bundle", "list-heads", str(bundle)]).stdout).splitlines()
     if heads != [f"{expected_target} refs/kb-reconciled/ops"]:
         raise RuntimeError("return bundle advertised ref mismatch")
@@ -691,18 +713,19 @@ def upload_and_apply_reconciliation(
     source_head: str,
     target_head: str,
     run=subprocess.run,
+    reconciliation_script: str = "/usr/local/lib/kb/apply_ops_reconciliation.py",
 ) -> None:
     if not SAFE_HOST.fullmatch(vm_host) or vm_host.startswith("-"):
         raise ValueError("vm host must be an SSH hostname with optional user")
     token = secrets.token_hex(12)
     remote = f"/var/tmp/kb-ops-reconcile-{token}"
     run(["ssh", vm_host, "mkdir", "-m", "0700", "--", remote], check=True, timeout=COMMAND_TIMEOUT)
-    run(["scp", "--", str(bundle), f"{vm_host}:{remote}/ops-return.bundle"], check=True, timeout=COMMAND_TIMEOUT)
-    run(["scp", "-r", "--", str(receipts), f"{vm_host}:{remote}/receipts"], check=True, timeout=COMMAND_TIMEOUT)
+    run(["scp", "--", str(bundle), f"{vm_host}:{remote}/ops-return.bundle"], check=True, timeout=TRANSPORT_TIMEOUT)
+    run(["scp", "-r", "--", str(receipts), f"{vm_host}:{remote}/receipts"], check=True, timeout=TRANSPORT_TIMEOUT)
     run(
         [
             "ssh", vm_host, "sudo", "flock", "-x", "/run/lock/kb-maintenance.lock",
-            "python3", "-I", "-B", "/usr/local/lib/kb/apply_ops_reconciliation.py",
+            "python3", "-I", "-B", reconciliation_script,
             "--repo", "/var/lib/kb/ops", "--spool", "/var/lib/kb/state/outbox",
             "--bundle", f"{remote}/ops-return.bundle", "--receipts", f"{remote}/receipts",
             "--expected-source-head", source_head, "--expected-target-head", target_head,

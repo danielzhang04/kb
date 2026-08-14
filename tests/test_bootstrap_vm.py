@@ -95,6 +95,11 @@ def test_install_root_validators_uses_root_owned_immutable_modes(tmp_path, monke
     monkeypatch.setattr(bootstrap_vm.tempfile, "mkstemp", lambda prefix: (os.open(tmp_path / "generated.py", os.O_CREAT | os.O_RDWR), str(tmp_path / "generated.py")))
     bootstrap_vm.install_root_validators(key_path, run=run)
     assert ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/usr/local/lib/kb"] in commands
-    assert any(command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0555"] and command[-1] == "/usr/local/lib/kb/activate_release.py" for command in commands)
+    for helper in ("activate_release.py", "apply_ops_reconciliation.py", "export_tier0.py"):
+        assert any(
+            command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0555"]
+            and command[-1] == f"/usr/local/lib/kb/{helper}"
+            for command in commands
+        )
     assert any(command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0444"] and command[-1] == "/usr/local/lib/kb/release_signing_public.py" for command in commands)
     assert any(command[-1] == "/etc/systemd/system/kb-dashboard.service" for command in commands)

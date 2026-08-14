@@ -100,28 +100,39 @@ describe('server', () => {
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body).toEqual({ ok: true, node: '24.18.0' });
+    expect(body).toEqual({ ok: true });
   });
 
-  it('/healthz reports the pinned node major', async () => {
+  it('/healthz does not disclose the runtime version', async () => {
     app = buildApp({ validateData: false });
     await app.listen({ port: 0, host: '127.0.0.1' });
 
     const port = (app.server.address() as { port: number }).port;
     const res = await fetch(`http://127.0.0.1:${port}/healthz`);
-    const body = (await res.json()) as { ok: boolean; node: string };
-
-    // guards an accidental unpinned Node upgrade
-    expect(process.versions.node.startsWith('24.')).toBe(true);
-    expect(body.node.startsWith('24.')).toBe(true);
+    const body = (await res.json()) as { ok: boolean; node?: string };
+    expect(body).toEqual({ ok: true });
+    expect(body.node).toBeUndefined();
   });
 
-  it('keeps health and readiness public but readiness payload minimal', async () => {
-    const app = buildApp({ validateData: false, readiness: async () => ({ ok: true, quiescent: false, blockers: ['workers-active'] }) });
-    expect((await app.inject({ method: 'GET', url: '/healthz' })).statusCode).toBe(200);
-    const response = await app.inject({ method: 'GET', url: '/readyz' });
+  it.each([
+    'activation health',
+    'tier-0 export readiness',
+    'reconciliation gate',
+    'restore drill',
+  ])('serves readiness to the Host-only %s caller on a daemon with no configured origin', async () => {
+    // The bytes export_tier0.py / backup_tier0.py (curl) and apply_ops_reconciliation.py /
+    // activate_release.py (urllib) actually send. The production unit configures no RP origin.
+    const app = buildApp({
+      validateData: false,
+      allowedOrigins: [],
+      readiness: async () => ({ ok: true, quiescent: true, blockers: [] }),
+    });
+    const response = await app.inject({
+      method: 'GET', url: '/readyz', headers: { host: '127.0.0.1:4317' },
+    });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ ok: true, quiescent: false, blockers: ['workers-active'] });
+    // Byte-for-byte what backup_tier0.wait_for_locked_readiness compares against.
+    expect(response.json()).toEqual({ ok: true, quiescent: true, blockers: [] });
     await app.close();
   });
 
@@ -150,11 +161,22 @@ describe('server', () => {
     expect(readiness.blockers).toContain('workers-active');
   });
 
+  it('memoizes the synchronous service-cgroup probe across readiness bursts and expires after one second', async () => {
+    let nowMs = Date.parse('2026-08-13T12:00:00.000Z');
+    const ctx = makeSurfaceContext({ now: () => new Date(nowMs) });
+    await ctx.readiness();
+    await ctx.readiness();
+    expect(serviceCgroupChildCount).toHaveBeenCalledTimes(1);
+    nowMs += 1_001;
+    await ctx.readiness();
+    expect(serviceCgroupChildCount).toHaveBeenCalledTimes(2);
+  });
+
   it('fails closed through /readyz when the service cgroup probe throws', async () => {
     serviceCgroupChildCount.mockImplementation(() => { throw new Error('cgroup unavailable'); });
-    const realReadinessApp = buildApp({ validateData: false });
+    const realReadinessApp = buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN] });
 
-    const response = await realReadinessApp.inject({ method: 'GET', url: '/readyz' });
+    const response = await realReadinessApp.inject({ method: 'GET', url: '/readyz', headers: matrixHeaders });
     expect(response.json()).toEqual({ ok: true, quiescent: false, blockers: ['service-cgroup-unknown'] });
     await realReadinessApp.close();
   });

@@ -134,13 +134,13 @@ describe('fileHistory', () => {
     expect(() => fileHistory(gitRepo, '../../etc/passwd')).toThrow(PathEscapeError);
   });
 
-  it('uses an injectable git runner so tests are hermetic (no real git needed)', () => {
+  it('canonicalizes the confined path before passing it to the injectable git runner', () => {
     const calls: Array<{ repoRoot: string; args: string[] }> = [];
     const fakeRunner = (repoRoot: string, args: string[]): string => {
       calls.push({ repoRoot, args });
       return ['deadbeef\tAlice\tMon\tmocked subject'].join('\n');
     };
-    const commits = fileHistory(REPO_A, 'queue/inbox/card-inbox.md', fakeRunner);
+    const commits = fileHistory(REPO_A, './queue//inbox/card-inbox.md', fakeRunner);
     expect(commits).toEqual([
       { hash: 'deadbeef', author: 'Alice', date: 'Mon', subject: 'mocked subject' },
     ]);
@@ -148,5 +148,14 @@ describe('fileHistory', () => {
     expect(calls[0].args[0]).toBe('log');
     expect(calls[0].args).toContain('--follow');
     expect(calls[0].args[calls[0].args.length - 1]).toBe('queue/inbox/card-inbox.md');
+  });
+
+  it.runIf(process.platform === 'win32')('canonicalizes Windows separators before passing a path to git', () => {
+    const calls: string[][] = [];
+    fileHistory(REPO_A, 'queue\\inbox\\card-inbox.md', (_repoRoot, args) => {
+      calls.push(args);
+      return '';
+    });
+    expect(calls[0].at(-1)).toBe('queue/inbox/card-inbox.md');
   });
 });

@@ -10,6 +10,7 @@ import {
   type GitRunner,
 } from './branch.ts';
 import {
+  fsyncPath,
   recoverUnspooledCoordinationCommits,
   spoolCoordinationCommit,
   type SpoolInput,
@@ -67,11 +68,31 @@ describe('coordination outbox', () => {
     expect(manifest.bundleSha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('refuses a merge commit and a non-canonical timestamp', async () => {
-    await expect(spoolCoordinationCommit(fixtureSpool({ parents: `${parent} ${'c'.repeat(40)}` })))
+  it('refuses a merge commit by its parent shape before diagnosing its empty diff', async () => {
+    const merge = fixtureSpool({ parents: `${parent} ${'c'.repeat(40)}`, paths: [] });
+    merge.runGit = async (_root, args) => {
+      if (args[0] === 'rev-list') return `${commit} ${parent} ${'c'.repeat(40)}\n`;
+      if (args[0] === 'diff-tree') return '';
+      throw new Error(`unexpected git command: ${args.join(' ')}`);
+    };
+    await expect(spoolCoordinationCommit(merge))
       .rejects.toThrow(/single parent/);
+  });
+
+  it('refuses a non-canonical timestamp', async () => {
     await expect(spoolCoordinationCommit(fixtureSpool({ now: () => new Date(Number.NaN) })))
       .rejects.toThrow(/timestamp/);
+  });
+
+  it('invokes the fsync seam on the non-win32 durability branch', () => {
+    const calls: Array<string | number> = [];
+    fsyncPath('/durable/item', {
+      platform: 'linux',
+      open: (path) => { calls.push(path); return 41; },
+      fsync: (fd) => { calls.push(fd); },
+      close: (fd) => { calls.push(fd); },
+    });
+    expect(calls).toEqual(['/durable/item', 41, 41]);
   });
 
   it('recovers a commit left after git commit but before spool publication', async () => {
@@ -107,11 +128,12 @@ describe('coordination outbox', () => {
       throw new Error(`unexpected git command: ${args.join(' ')}`);
     };
 
-    await spoolCoordinationCommit(input);
+    const manifest = await spoolCoordinationCommit(input);
 
     const manifestBytes = readFileSync(join(input.spoolRoot, 'ready', `${commit}.json`));
-    expect(manifestBytes.toString('utf8')).toContain('memory/caf\\u00e9-\\u6f22-\\ud83d\\ude00.md');
-    expect(manifestBytes.toString('utf8')).not.toContain(nonAsciiPath);
+    expect(manifestBytes.toString('utf8')).toBe(
+      `{"bundleSha256":"${manifest.bundleSha256}","commit":"${commit}","createdAt":"${manifest.createdAt}","id":"${commit}","parent":"${parent}","paths":["memory/caf\\u00e9-\\u6f22-\\ud83d\\ude00.md"],"schema":"kb.ops-outbox/v1"}\n`,
+    );
   });
 
   it('refuses invalid commit and parent ids before handing them to git revision arguments', async () => {

@@ -190,12 +190,28 @@ def test_release_lock_uses_exclusive_flock(tmp_path, monkeypatch):
         flock=lambda descriptor, operation: events.append((descriptor, operation)),
     )
     monkeypatch.setattr(activate_release, "_fcntl", fake_fcntl)
-    monkeypatch.setattr(activate_release.os, "open", lambda path, flags: events.append((path, flags)) or 41)
+    descriptors = iter([40, 41])
+    monkeypatch.setattr(
+        activate_release.os,
+        "open",
+        lambda path, flags, mode=0o777: events.append((path, flags, mode)) or next(descriptors),
+    )
     monkeypatch.setattr(activate_release.os, "close", lambda descriptor: events.append(("close", descriptor)))
     monkeypatch.setattr(activate_release, "nofollow_flag", lambda platform=None: 0)
-    with activate_release.release_lock(tmp_path):
+    maintenance = tmp_path / "kb-maintenance.lock"
+    with activate_release.release_lock(tmp_path, maintenance_lock=maintenance):
         events.append("inside")
-    assert events[1:4] == [(41, fake_fcntl.LOCK_EX), "inside", (41, fake_fcntl.LOCK_UN)]
+    assert events == [
+        (maintenance, os.O_RDWR | os.O_CREAT, 0o600),
+        (40, fake_fcntl.LOCK_EX),
+        (tmp_path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0), 0o777),
+        (41, fake_fcntl.LOCK_EX),
+        "inside",
+        (41, fake_fcntl.LOCK_UN),
+        ("close", 41),
+        (40, fake_fcntl.LOCK_UN),
+        ("close", 40),
+    ]
 
 
 def test_live_validation_failure_restores_previous_selection(tmp_path, monkeypatch):

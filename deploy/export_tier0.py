@@ -106,9 +106,11 @@ production_io = ProductionExportIo()
 def export(output: Path, io: ExportIo = production_io) -> None:
     if not io.is_root() or output.exists() or output.parent != io.output_root():
         raise RuntimeError("export requires root and a fresh /var/tmp target")
+    restart_error: BaseException | None = None
+    primary_error: BaseException | None = None
     with io.exclusive_lock(Path("/run/lock/kb-maintenance.lock")):
-        io.run(["systemctl", "stop", "kb-dashboard.service"])
         try:
+            io.run(["systemctl", "stop", "kb-dashboard.service"])
             if io.service_cgroup_children("kb-dashboard.service") != 0:
                 raise RuntimeError("service cgroup is not empty")
             io.run([
@@ -116,11 +118,21 @@ def export(output: Path, io: ExportIo = production_io) -> None:
                 "-C", "/", "-cf", str(output), *TIER_ZERO,
             ])
             io.fsync_file_and_parent(output)
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
-            io.run(["systemctl", "start", "kb-dashboard.service"])
-            locked = io.wait_readiness()
-            if not locked.get("quiescent") or "execution-unlocked" in locked.get("blockers", []):
-                raise RuntimeError("service did not restart locked")
+            try:
+                io.run(["systemctl", "start", "kb-dashboard.service"])
+                locked = io.wait_readiness()
+                if not locked.get("quiescent") or "execution-unlocked" in locked.get("blockers", []):
+                    raise RuntimeError("service did not restart locked")
+            except BaseException as error:
+                restart_error = error
+                # Preserve an in-flight export/stop failure; it is the root cause. With no primary
+                # failure, surface the restart/readiness failure after releasing the maintenance lock.
+    if restart_error is not None:
+        raise restart_error
 
 
 def main(argv: list[str] | None = None) -> int:

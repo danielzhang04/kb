@@ -197,7 +197,7 @@ function deriveCallOrdinal(
 }
 
 /**
- * Register `POST /api/control/paid-action` on the already-guarded control scope (origin + rate-limit apply
+ * Register `POST /api/control/paid-action` on the already-guarded write-surface scope (origin + rate-limit apply
  * as elsewhere). No `requireSession`: the preHandler is the bearer-grant check. Both the service and the
  * grant store are bound onto the context ONLY behind the activation gate, so when execution is locked the
  * route fails closed with a stable 503.
@@ -225,6 +225,11 @@ export function registerPaidActionRoute(scope: FastifyInstance, ctx: SurfaceCont
     const grant = grantByReq.get(req);
     if (!grant || !ctx.paidActionService) {
       return reply.code(401).send({ error: 'unauthenticated' });
+    }
+
+    const admission = ctx.admission('paid-continuation');
+    if (!admission.ok) {
+      return reply.code(admission.status).send({ error: admission.reason });
     }
 
     const attempt = deriveAttemptRef(ctx, grant);

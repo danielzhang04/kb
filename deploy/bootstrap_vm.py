@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
@@ -28,7 +28,11 @@ def public_key_module_source(public_key: str) -> str:
     return f"RELEASE_PUBLIC_KEY = {public_key!r}\n"
 
 
-def install_root_validators(release_public_key: Path, run=subprocess.run) -> None:
+def install_root_validators(
+    release_public_key: Path,
+    run=subprocess.run,
+    install_root: PurePosixPath = PurePosixPath("/usr/local/lib/kb"),
+) -> None:
     public_key = release_public_key.read_text(encoding="ascii")
     source = public_key_module_source(public_key)
     descriptor, generated_name = tempfile.mkstemp(prefix="kb-release-signing-public-")
@@ -38,10 +42,18 @@ def install_root_validators(release_public_key: Path, run=subprocess.run) -> Non
             output.write(source)
         generated.chmod(0o400)
         deploy_root = Path(__file__).resolve().parent
-        run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/usr/local/lib/kb"], check=True)
-        run(["install", "-o", "root", "-g", "root", "-m", "0555", str(deploy_root / "activate_release.py"), "/usr/local/lib/kb/activate_release.py"], check=True)
-        run(["install", "-o", "root", "-g", "root", "-m", "0555", str(deploy_root / "validate_vm_runtime.py"), "/usr/local/lib/kb/validate_vm_runtime.py"], check=True)
-        run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), "/usr/local/lib/kb/release_signing_public.py"], check=True)
+        run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", str(install_root)], check=True)
+        for helper in (
+            "activate_release.py",
+            "validate_vm_runtime.py",
+            "apply_ops_reconciliation.py",
+            "export_tier0.py",
+        ):
+            run([
+                "install", "-o", "root", "-g", "root", "-m", "0555",
+                str(deploy_root / helper), str(install_root / helper),
+            ], check=True)
+        run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(install_root / "release_signing_public.py")], check=True)
         run(["install", "-o", "root", "-g", "root", "-m", "0444", str(deploy_root / "systemd/kb-dashboard.service"), "/etc/systemd/system/kb-dashboard.service"], check=True)
         run(["systemctl", "daemon-reload"], check=True)
         run(["systemctl", "enable", "kb-dashboard.service"], check=True)

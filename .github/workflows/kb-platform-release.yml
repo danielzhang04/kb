@@ -13,13 +13,15 @@ jobs:
         with: {node-version: 24.18.0, cache: npm, cache-dependency-path: dashboard/package-lock.json}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: python -m pytest -q
+      # Atlas preflight asserts its checkout IS the ops branch; CI checkouts never are.
+      - run: python -m pytest -q --deselect atlas/tests/test_preflight.py::test_ops_worktree_is_ops_branch
       - run: npm ci
         working-directory: dashboard
       - run: npm test
         working-directory: dashboard
       - run: npm run typecheck && npm run build && npm prune --omit=dev
         working-directory: dashboard
+      - run: python -m pytest -q -m slow tests/test_build_platform_release.py
       - run: python scripts/build_platform_release.py --source . --version "$GITHUB_SHA" --output "kb-platform-$GITHUB_SHA.tar.gz" --attestation "kb-platform-$GITHUB_SHA.attestation.json"
       - uses: actions/upload-artifact@v4
         with:
