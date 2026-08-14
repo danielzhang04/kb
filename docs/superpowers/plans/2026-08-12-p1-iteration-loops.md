@@ -885,3 +885,23 @@ the review's F2: the byte-progress snapshot set stays scoped to the RECIPIENT ST
 artifacts — group-level artifacts are the group's acceptance surface, verified by verdicts, and
 byte-checking another participant's artifact on a producer's turn would false-park; documented
 here so the choice is auditable.
+
+### A4 (2026-08-14, boss ruling) — demo residue drops unmintable positions; gap disclosed
+
+**Trigger:** The Task 14 implementer stopped per the stop-rule: recipe step 4 and the
+`exhaust-with-residue` group spec expect the exhaustion gate to show "producer and judge
+positions", but as built no legal outcome can INTRODUCE a position —
+`iterationOutcome.ts:482-491` restricts positions to `consensus`/`continue`, and both may only
+echo positions already in the server's current set, which itself derives exclusively from prior
+receipts. Verified against the code: the positions/dissent machinery is currently unmintable
+from any workflow definition.
+
+**Ruling:** Task 14's group-3 residue expectation and recipe step 4 drop the two position
+items; exhaustion residue is proven by the missing-source-id finding (with evidence), request
+and receipt refs, generation refs, base and canonical commits, artifact hashes, the next route,
+and the exact artifact set — which satisfies the locked rule's nothing-left-on-table clause
+(nothing legally recordable is omitted). The underlying gap is REAL and stands disclosed for
+the phase gate: mediator/debate configurations cannot function until a position-introducing
+mechanism exists (a `position`-kind turn whose outcome mints a new position, or equivalent).
+That mechanism is a prerequisite for the first real mediator definition, deferred past P1 with
+Daniel's visibility — not silently.
