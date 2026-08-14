@@ -535,6 +535,9 @@ function AppShell(): React.JSX.Element {
   const view = current.view;
   const [rail, setRail] = useState(false);
   const { session, requireSession } = useSession();
+  // Keep the established locked-shell render while no session exists. Once authenticated, capability
+  // discovery is fail-closed: a Linux daemon that does not expose PTY routes must never get a socket.
+  const [ptyEnabled, setPtyEnabled] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The [+ New ▾] menu opens the Composer surface over the current view; `composerKind` pre-seeds its
   // type chip (`idea` for the idea-first entry, a concrete kind for the entity pickers).
@@ -555,6 +558,30 @@ function AppShell(): React.JSX.Element {
   const terminalVisible = view === 'terminal' && activeComposerRef === null;
 
   useEffect(() => persistOpenComposerRefs(openComposerRefs), [openComposerRefs]);
+
+  useEffect(() => {
+    if (!session?.token) {
+      setPtyEnabled(true);
+      return;
+    }
+    let alive = true;
+    void fetch('/api/runtime/capabilities', {
+      headers: { authorization: `Bearer ${session.token}` },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('runtime capabilities unavailable');
+        return response.json() as Promise<{ pty?: unknown }>;
+      })
+      .then((capabilities) => {
+        if (alive) setPtyEnabled(capabilities.pty === true);
+      })
+      .catch(() => {
+        if (alive) setPtyEnabled(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [session?.token]);
 
   useEffect(() => {
     if (!session?.token) return;
@@ -784,6 +811,7 @@ function AppShell(): React.JSX.Element {
           data-testid="persistent-terminal-surface"
         >
           <Terminal
+            ptyEnabled={ptyEnabled}
             visible={terminalVisible}
             agentTarget={runAgentId}
             onAgentTargetConsumed={() => setRunAgentId(null)}

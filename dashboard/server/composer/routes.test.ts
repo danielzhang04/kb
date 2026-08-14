@@ -14,6 +14,7 @@ import type { VibeProcess, VibeSpawner } from '../vibe/session.ts';
 import { createProviderIdProtector } from './protector.ts';
 import { createInMemoryComposerStore } from './store.ts';
 import { lockout, rateLimit } from '../security/ratelimit.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
 const PROVIDER_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 const SECRET = Buffer.from('composer-routes-test-secret-0123456789');
@@ -113,6 +114,17 @@ afterEach(async () => {
 });
 
 describe('Composer workspace catalog routes', () => {
+  it('refuses a Linux Composer turn before constructing a Vibe child', async () => {
+    const spawn = vi.fn(() => { throw new Error('must not spawn'); });
+    ({ app } = buildApp({ runtimeCapabilities: runtimeCapabilities('linux'), spawn }));
+    const response = await app.inject({
+      method: 'POST', url: '/api/composer/sessions/any/turns', headers: headers(), payload: { prompt: 'hello' },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ error: 'capability-unavailable', capability: 'vibe' });
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it('refuses recognizable credential content in titles before persistence', async () => {
     ({ app } = buildApp());
     const response = await app.inject({

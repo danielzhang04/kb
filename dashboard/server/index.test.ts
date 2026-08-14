@@ -4,6 +4,7 @@ import type { SurfaceContext } from './http/context.ts';
 import { makeSurfaceContext } from './http/surface.ts';
 import { mintSession } from './auth/session.ts';
 import type { SessionConfig } from './auth/session.ts';
+import { runtimeCapabilities } from './runtime/capabilities.ts';
 
 const serviceCgroupChildCount = vi.hoisted(() => vi.fn(() => 0));
 const quiescenceSpy = vi.hoisted(() => vi.fn());
@@ -51,6 +52,21 @@ afterEach(async () => {
 });
 
 describe('server', () => {
+  it('omits PTY routes on Linux and reports the governed bridge capability', async () => {
+    const createPty = vi.fn(() => { throw new Error('must not construct'); });
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      runtimeCapabilities: runtimeCapabilities('linux'), createPtyHost: createPty,
+    });
+    const capabilities = await app.inject({
+      method: 'GET', url: '/api/runtime/capabilities', headers: sessionHeaders(),
+    });
+    expect(capabilities.statusCode).toBe(200);
+    expect(capabilities.json()).toMatchObject({ pty: false, runnerTrigger: false, vibe: false, dashboardBridge: true });
+    expect((await app.inject({ method: 'GET', url: '/api/pty/sessions', headers: sessionHeaders() })).statusCode).toBe(404);
+    expect(createPty).not.toHaveBeenCalled();
+  });
+
   it.each([
     '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
     '/api/registry', '/api/registry/skills', '/api/registry/connections',

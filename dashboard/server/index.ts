@@ -24,6 +24,9 @@ import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
 import type { SurfaceContext } from './http/context.ts';
+import type { RuntimeCapabilities } from './runtime/capabilities.ts';
+import type { VibeSpawner } from './vibe/session.ts';
+import { createPtyHost } from './pty/host.ts';
 
 /** Loopback-only bind. Network location is never a trust boundary (ordering law 4). */
 export const HOST = '127.0.0.1';
@@ -123,6 +126,9 @@ export interface BuildAppOptions {
   readiness?: SurfaceContext['readiness'];
   allowedOrigins?: SurfaceContext['allowedOrigins'];
   sessionConfig?: SurfaceContext['sessionConfig'];
+  runtimeCapabilities?: RuntimeCapabilities;
+  spawn?: VibeSpawner;
+  createPtyHost?: typeof createPtyHost;
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -136,7 +142,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     readiness: options.readiness,
     allowedOrigins: options.allowedOrigins,
     sessionConfig: options.sessionConfig,
-  });
+    runtimeCapabilities: options.runtimeCapabilities,
+    spawn: options.spawn,
+  }, { createPtyHost: options.createPtyHost });
 
   app.get('/healthz', async () => {
     return { ok: true };
@@ -169,6 +177,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     originPlugin(scope, { allowedOrigins: surfaceCtx.allowedOrigins });
     scope.addHook('onRequest', surfaceRateLimitHook(surfaceCtx.readRateGuard, surfaceCtx.rateGuard));
     scope.addHook('preHandler', requireSession(surfaceCtx.sessionConfig));
+    scope.get('/api/runtime/capabilities', async () => surfaceCtx.runtimeCapabilities);
     scope.register(kbBrowserRoutes, { repoRoot });
     registerRegistry(scope, repoRoot);
     registerPlaneA(scope, repoRoot);
@@ -188,7 +197,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // enforces the max-concurrent cap, and writes exactly one audit row per allowed-origin attempt. Its child
   // env is credential-filtered, but the shell currently runs as the dashboard daemon's OS user; the retired
   // cross-user host/Factor-C path is a future hardening milestone, not an active control.
-  {
+  if (surfaceCtx.runtimeCapabilities.pty) {
     // ONE pty host + session registry for the whole daemon, resolved on the surface context. Manual
     // Terminal sessions persist across browser reconnects without coupling them to worker execution.
     // N4 (fail-closed host, 2026-08-03): the host is passed UNCONDITIONALLY. `makeSurfaceContext` always

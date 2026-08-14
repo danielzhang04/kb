@@ -27,6 +27,7 @@ import type { EventBus } from '../hub/bus.ts';
 import type { AttemptIoAppend } from '../control/attemptIo.ts';
 import type { OwnedCard, QueueBridgeOptions } from '../control/queueBridge.ts';
 import { admit } from '../control/admission.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const SECRET = Buffer.from('u2-surface-test-secret-0123456789');
@@ -121,6 +122,16 @@ afterEach(async () => {
 });
 
 describe('write surface — composition chain', () => {
+  it('does not construct the PTY host on Linux', () => {
+    const createPty = vi.fn(() => { throw new Error('must not construct'); });
+    const ctx = makeSurfaceContext(
+      { runtimeCapabilities: runtimeCapabilities('linux') },
+      { createPtyHost: createPty },
+    );
+    expect(createPty).not.toHaveBeenCalled();
+    expect(ctx.ptyHost).toBeUndefined();
+  });
+
   it('resolves outbox publication once and recovers the anchor before readiness', async () => {
     const calls: string[][] = [];
     const anchor = 'a'.repeat(40);

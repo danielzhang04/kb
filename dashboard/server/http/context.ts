@@ -47,6 +47,7 @@ import type { activateManagedRootCards } from '../write/workflowRun.ts';
 import type { EventBus } from '../hub/bus.ts';
 import type { quiescence } from '../release/quiescence.ts';
 import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
+import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -56,6 +57,8 @@ export type AppendAuditFn = (repoRoot: string, event: AuditEvent, options?: Appe
 export type AppendAuditLocalFn = (repoRoot: string, event: AuditEvent, now?: () => Date) => AuditRow;
 
 export interface SurfaceContext {
+  /** Host capabilities resolved once at the composition root. */
+  runtimeCapabilities: RuntimeCapabilities;
   /** Canonical ops worktree used for live reads and coordination writes. */
   repoRoot: string;
   /** Coordination publication is resolved once at the HTTP composition root. */

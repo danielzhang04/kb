@@ -250,6 +250,28 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(within(view).getByTestId('terminal-locked')).toBeTruthy();
   });
 
+  it('reads the authenticated runtime capability and disables Terminal when PTY is unavailable', async () => {
+    window.sessionStorage.setItem(
+      'kb-dashboard-session-v1',
+      JSON.stringify({ token: 'restored-token', expiresAt: Date.now() + 60_000 }),
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/runtime/capabilities') {
+        expect(init?.headers).toEqual(expect.objectContaining({ authorization: 'Bearer restored-token' }));
+        return new Response(JSON.stringify({ pty: false }), { status: 200 });
+      }
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Terminal/ }));
+    expect(await screen.findByText('Terminal is disabled on this host.')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith('/api/runtime/capabilities', expect.objectContaining({
+      headers: expect.objectContaining({ authorization: 'Bearer restored-token' }),
+    }));
+  });
+
   it('keeps the Terminal workspace mounted across navigation', () => {
     render(<App />);
     const terminalButton = screen.getByRole('button', { name: /^Terminal/ });

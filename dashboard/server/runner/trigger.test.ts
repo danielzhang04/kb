@@ -28,6 +28,12 @@ describe('runner trigger', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('does not invoke schtasks off Windows', () => {
+    const run = vi.fn();
+    expect(triggerRunner('codex-worker', { platform: 'linux', env: {}, run })).toMatchObject({ status: 'unavailable' });
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it('reports scheduler failure without pretending execution started', () => {
     const run = vi.fn(() => {
       throw new Error('scheduler denied');
