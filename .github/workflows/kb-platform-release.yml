@@ -1,8 +1,7 @@
 name: kb-platform-release
 on:
   push:
-    # claude/boss-2026-08-11c entry is TEMPORARY: proves this workflow green pre-merge; remove after.
-    branches: [main, claude/boss-2026-08-11c]
+    branches: [main]
 permissions:
   contents: read
 jobs:
