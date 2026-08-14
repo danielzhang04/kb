@@ -733,13 +733,14 @@ these four groups:
    `$proofSlug = 'p1-iteration-proof-' + (Get-Date).ToUniversalTime().ToString('yyyyMMdd-HHmmss'); $proofSlug`.
    In Workflows, open `iteration-loop-demo`, paste that exact output into `slug`, and launch once. Record
    the returned `runRef`.
-3. Watch the graph. Expect `pair-fix-accept` to show `1/1`, receipts `rework`, `fulfilled`, `accept`,
-   one supersession, and state `passed`. Expect `judge-rework-pass` to show `2/2`, receipts `fail`,
-   `fulfilled`, `pass`, and the accepted successor generation. Neither group may visit a human gate.
+3. Watch the graph. Expect `pair-fix-accept` to show `2/2` (per the A5 addendum), receipts `rework`,
+   `fulfilled`, `accept`, one supersession, and state `passed`. Expect `judge-rework-pass` to show
+   `2/2`, receipts `fail`, `fulfilled`, `pass`, and the accepted successor generation. Neither group
+   may visit a human gate.
 4. While another group is mid-cycle, expect `exhaust-with-residue` to stop at `1/1` in
    `awaiting-park-gate` with `iteration-park` reason `exhausted`. Confirm the gate shows the missing
-   source-id finding, producer and judge positions, request and receipt refs, generation refs, base and
-   canonical commits, artifact hashes, the next route, and the exact artifact set. Confirm the run is not
+   source-id finding, request and receipt refs, generation refs, base and canonical commits, the next
+   route, and the exact artifact set. Confirm the run is not
    successful, then confirm the sibling group continues and completes while this gate remains open.
 5. Approve that exact artifact set. Expect the exhaustion group to become `passed` without cycle 2.
    Then expect `no-progress-park` to write its required output byte-identically and stop before canonical
@@ -938,3 +939,10 @@ Review F5: the producer mandate in `no-progress-park` explicitly dominates confl
 text (byte-identical output regardless of the rework request), and the checker's request text
 stops instructing a byte change. Review F6: the queueBridge registered-definition test uses the
 REAL demo def per Task 10's acceptance sentence.
+
+**A5 addendum (2026-08-14, review F7):** with the check step correctly marked as the
+`cycle: 'next'` boundary, a rework round-trip necessarily opens cycle 2 — so
+`pair-fix-accept` declares `maxCycles: 2`, and recipe step 3 expects `2/2` (receipts
+`rework`, `fulfilled`, `accept`, state `passed`, still no human gate). Task 14's original
+`maxCycles: 1` for group 1 was unsatisfiable under the built boundary semantics; the
+feedback/response/check cycle unit is unchanged.

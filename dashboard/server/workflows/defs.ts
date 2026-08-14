@@ -274,6 +274,8 @@ export interface WorkflowDef {
    * Omitted keeps the normal production-workflow behaviour.
    */
   executionMode?: 'validation-slice';
+  /** Requested per-run worker concurrency. The activated executor retains the server-owned ceiling. */
+  maxConcurrency?: number;
   /** Existing workflow tool profile; distinct from the optional execution-profile assignment below. */
   profile: string;
   /** Durable workflow governor. Distinct from the optional executable manager assignment. */
@@ -385,6 +387,30 @@ function validateIterationText(raw: unknown, label: string, max = MAX_WORK_ORDER
     return { ok: false, detail: `${label} must be a non-empty bounded string` };
   }
   return { ok: true, value: raw };
+}
+
+function hasNextFreeScheduleCycle(schedule: readonly WorkflowIterationScheduleStepDef[]): boolean {
+  const currentSuccessors = new Map<string, string[]>();
+  for (const step of schedule) {
+    if (!step.after || step.cycle === 'next') continue;
+    const successors = currentSuccessors.get(step.after.stepId) ?? [];
+    successors.push(step.stepId);
+    currentSuccessors.set(step.after.stepId, successors);
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (stepId: string): boolean => {
+    if (visiting.has(stepId)) return true;
+    if (visited.has(stepId)) return false;
+    visiting.add(stepId);
+    for (const successor of currentSuccessors.get(stepId) ?? []) {
+      if (visit(successor)) return true;
+    }
+    visiting.delete(stepId);
+    visited.add(stepId);
+    return false;
+  };
+  return schedule.some((step) => visit(step.stepId));
 }
 
 function validateIterationGroups(
@@ -701,6 +727,9 @@ function validateIterationGroups(
       }
     }
     if (visited.size !== schedule.length) return { ok: false, detail: `${label}.schedule contains an unreachable step` };
+    if (hasNextFreeScheduleCycle(schedule)) {
+      return { ok: false, detail: `${label} reachable schedule cycle must include a cycle: next boundary` };
+    }
     const danglingParticipant = participants.find((participant) => !enteredParticipants.has(participant.participantId));
     if (danglingParticipant) {
       return { ok: false, detail: `${label} participant '${danglingParticipant.participantId}' is not the recipient of a reachable schedule step` };
@@ -1076,7 +1105,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['id', 'project', 'title', 'executionMode', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages', 'iterationGroups']);
+  const allowed = new Set(['id', 'project', 'title', 'executionMode', 'maxConcurrency', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages', 'iterationGroups']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -1094,6 +1123,14 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
       return { ok: false, detail: "executionMode must be 'validation-slice' when present" };
     }
     executionMode = 'validation-slice';
+  }
+  let maxConcurrency: number | undefined;
+  if (hasOwn(frontmatter, 'maxConcurrency')) {
+    if (typeof frontmatter.maxConcurrency !== 'number' || !Number.isSafeInteger(frontmatter.maxConcurrency)
+      || frontmatter.maxConcurrency <= 0) {
+      return { ok: false, detail: 'maxConcurrency must be a positive safe integer' };
+    }
+    maxConcurrency = frontmatter.maxConcurrency;
   }
   const profile = asString(frontmatter.profile);
   if (profile === null || profile.trim() === '' || profile.length > MAX_PROFILE_CHARS) {
@@ -1226,7 +1263,8 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   return {
     ok: true,
     value: {
-      id, project, title, ...(executionMode ? { executionMode } : {}), profile, readScope: readScope.value, parameters: [...parameters],
+      id, project, title, ...(executionMode ? { executionMode } : {}), ...(maxConcurrency ? { maxConcurrency } : {}),
+      profile, readScope: readScope.value, parameters: [...parameters],
       ...(governedBy ? { governedBy } : {}), ...(manager ? { manager } : {}), description, stages,
       ...(parsedIterationGroups.value.length > 0 ? { iterationGroups: parsedIterationGroups.value } : {}),
     },

@@ -138,7 +138,7 @@ describe('AgentWorkPanel', () => {
           requestRefs: ['iteration-request-1'], receiptRefs: ['receipt-1'], activeGenerationRefs: ['generation-2'], acceptedGenerationRefs: [],
           nextRouteId: 'review', cycleUnit: 'judge verdicts', cyclesUsed: 2, maxCycles: 3,
           attemptedRequestRef: 'iteration-request-2', attemptedRequestCycle: 3,
-          artifactSnapshots: [{ path: 'draft.md', regularFile: true, size: 120, sha256: 'before', afterRegularFile: true, afterSize: 120, afterSha256: 'before', byteIdentical: true }],
+          artifactSnapshots: [{ path: 'draft.md', regularFile: true, size: 120, sha256: 'snapshot-sha', afterRegularFile: true, afterSize: 120, afterSha256: 'snapshot-sha', byteIdentical: true }],
           failureReason: 'The required artifact did not change.',
         },
         version: 7, createdAt: '', updatedAt: '',
@@ -176,6 +176,9 @@ describe('AgentWorkPanel', () => {
     expect(participant.textContent).toContain('The source is in the appendix.');
     expect(participant.textContent).toContain('The required artifact did not change.');
     expect(participant.textContent).toContain('draft.md');
+    expect(participant.textContent).toContain('next route: review');
+    expect(participant.textContent).toContain('before SHA-256 snapshot-sha');
+    expect(participant.textContent).toContain('after SHA-256 snapshot-sha');
     expect(within(participant).getByTestId('iteration-approval-artifacts').textContent).toBe('generation-2');
     expect(participant.querySelector('input, textarea, select')).toBeNull();
     expect(screen.queryByTestId('agent-work-participant-participant-stage:alpha-step:draft-loop:judge')).toBeNull();

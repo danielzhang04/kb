@@ -542,6 +542,44 @@ it('rejects browser-supplied iteration fields that differ from the compiler-owne
   });
 });
 
+it('rejects a compiler-owned reachable schedule cycle with no cycle next boundary', () => {
+  const compiled: PlanProposal = {
+    ...proposal,
+    stages: [proposal.stages[0], { ...proposal.stages[1], dependsOn: ['compile'] }],
+    iterationGroups: [{
+      iterationGroupId: 'next-free-cycle', goal: 'Produce an accepted compiler.',
+      participants: [
+        { participantId: 'producer', stageRef: 'compile', role: 'manager', perspective: 'Own the compiler.', mandate: 'Produce and revise the compiler.' },
+        { participantId: 'judge', stageRef: 'review', role: 'judge', perspective: 'Apply the criterion.', mandate: 'Pass only a complete compiler.' },
+      ],
+      routes: [{
+        routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge',
+        requestKinds: ['review'], baseResolutionStageIds: ['compile'],
+      }, {
+        routeId: 'to-producer', senderParticipantId: 'judge', recipientParticipantId: 'producer',
+        requestKinds: ['rework'], baseResolutionStageIds: ['review'],
+      }],
+      activation: { seedParticipantId: 'producer', seedArtifactIds: ['compiler'] },
+      initialStepId: 'review',
+      schedule: [{
+        stepId: 'review', routeId: 'to-judge',
+        after: { stepId: 'rework', participantId: 'producer', verdict: 'fulfilled' }, cycle: 'current',
+      }, {
+        stepId: 'rework', routeId: 'to-producer',
+        after: { stepId: 'review', participantId: 'judge', verdict: 'fail' }, cycle: 'current',
+      }],
+      artifacts: ['compiler'], criteria: [{ id: 'quality', description: 'Compiler is complete.' }],
+      maxCycles: 3, cycleUnit: 'One revision and judge verdict.',
+      terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+    }],
+  };
+
+  expect(validateServerCompiledPlanProposal(compiled, REGISTRY)).toMatchObject({
+    ok: false,
+    detail: expect.stringMatching(/reachable schedule cycle.*cycle.*next boundary/i),
+  });
+});
+
 it('rejects artifact-producing routes whose recipient stage declares no artifacts before launch', () => {
   const compiled: PlanProposal = {
     ...proposal,

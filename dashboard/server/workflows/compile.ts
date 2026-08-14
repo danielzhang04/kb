@@ -72,6 +72,7 @@ function deriveProposalId(
     // validation mode is explicitly committed, so weakening/removing its publication prohibition
     // always forces a fresh approval.
     ...(def.executionMode === 'validation-slice' ? { executionMode: def.executionMode } : {}),
+    ...(def.maxConcurrency === undefined ? {} : { maxConcurrency: def.maxConcurrency }),
     profile: def.profile,
     // The effective read scope is part of the approved proposal identity: a changed read scope changes
     // the proposalId, forcing re-approval. Without this the scan roots would be tamper-silent. (§4.2)
@@ -511,6 +512,7 @@ export function compileWorkflowDef(def: WorkflowDef, env: CompileWorkflowEnviron
     governanceRefs,
     stages,
     ...(iterationCompilation.groups.length > 0 ? { iterationGroups: iterationCompilation.groups } : {}),
+    ...(def.maxConcurrency === undefined ? {} : { maxConcurrency: def.maxConcurrency }),
     // Carry the profile as DATA, not merely as hash preimage. Without this line the declared
     // profile reaches deriveProposalId and nothing else, so the worker spawns with NO
     // --allowedTools at all — a capability cap that reads as enforced while capping nothing.

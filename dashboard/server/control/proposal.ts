@@ -217,6 +217,8 @@ export interface PlanProposal {
   stages: ProposalStage[];
   /** Compiler-owned iteration contract. Browser proposals cannot carry this field. */
   iterationGroups?: ProposalIterationGroup[];
+  /** Compiler-owned per-run worker concurrency, bounded by the activated executor's server ceiling. */
+  maxConcurrency?: number;
   /**
    * The workflow tool-allowlist profile this proposal executes under, as DATA (not merely as a
    * proposal-id hash input). The worker adapter resolves `--allowedTools` from it; an absent or
@@ -274,7 +276,7 @@ const TOP_REQUIRED_FIELDS = [
 ] as const;
 const TOP_FIELDS = new Set<string>([...TOP_REQUIRED_FIELDS, 'profile']);
 /** `parameters` is compiler-only: an assistant/browser proposal that declares it is refused. */
-const COMPILED_TOP_FIELDS = new Set<string>([...TOP_FIELDS, 'parameters', 'iterationGroups']);
+const COMPILED_TOP_FIELDS = new Set<string>([...TOP_FIELDS, 'parameters', 'iterationGroups', 'maxConcurrency']);
 const MAX_PARAMETERS = 16;
 const MANAGER_FIELDS = new Set(['runtime', 'model', 'requiredSkills']);
 const COMPILED_MANAGER_FIELDS = new Set([...MANAGER_FIELDS, 'assignment']);
@@ -730,6 +732,30 @@ const PROPOSAL_ITERATION_VERDICTS = new Set<ProposalIterationVerdict>([
 ]);
 const PROPOSAL_TERMINAL_VERDICTS = new Set<ProposalIterationTerminalVerdict>(['accept', 'pass', 'consensus', 'complete']);
 
+function hasNextFreeScheduleCycle(schedule: readonly ProposalIterationScheduleStep[]): boolean {
+  const currentSuccessors = new Map<string, string[]>();
+  for (const step of schedule) {
+    if (!step.after || step.cycle === 'next') continue;
+    const successors = currentSuccessors.get(step.after.stepId) ?? [];
+    successors.push(step.stepId);
+    currentSuccessors.set(step.after.stepId, successors);
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (stepId: string): boolean => {
+    if (visiting.has(stepId)) return true;
+    if (visited.has(stepId)) return false;
+    visiting.add(stepId);
+    for (const successor of currentSuccessors.get(stepId) ?? []) {
+      if (visit(successor)) return true;
+    }
+    visiting.delete(stepId);
+    visited.add(stepId);
+    return false;
+  };
+  return schedule.some((step) => visit(step.stepId));
+}
+
 function validateProposalIterationGroups(
   raw: unknown,
   stages: readonly ProposalStage[],
@@ -1064,6 +1090,9 @@ function validateProposalIterationGroups(
       }
     }
     if (visited.size !== schedule.length) return { ok: false, detail: `${label}.schedule contains an unreachable step` };
+    if (hasNextFreeScheduleCycle(schedule)) {
+      return { ok: false, detail: `${label} reachable schedule cycle must include a cycle: next boundary` };
+    }
     const danglingParticipant = participants.find((participant) => !enteredParticipants.has(participant.participantId));
     if (danglingParticipant) {
       return { ok: false, detail: `${label} participant '${danglingParticipant.participantId}' is not the recipient of a reachable schedule step` };
@@ -1159,6 +1188,15 @@ function validatePlanProposalInternal(
       return { ok: false, detail: `profile '${parsed.value}' is not a server-owned workflow execution profile` };
     }
     profile = parsed.value;
+  }
+  let maxConcurrency: number | undefined;
+  if (Object.prototype.hasOwnProperty.call(input, 'maxConcurrency')) {
+    if (!allowResolvedAssignments) return { ok: false, detail: 'maxConcurrency is a compiler-only field' };
+    if (typeof input.maxConcurrency !== 'number' || !Number.isSafeInteger(input.maxConcurrency)
+      || input.maxConcurrency <= 0) {
+      return { ok: false, detail: 'maxConcurrency must be a positive safe integer' };
+    }
+    maxConcurrency = input.maxConcurrency;
   }
   // Compiler-only launch parameters. Keys are safe ids; values must be the SAME safe path segment the
   // launch route validated before substitution, so nothing here can widen a path later derived from them.
@@ -1308,6 +1346,7 @@ function validatePlanProposalInternal(
   // Emit the key ONLY when declared. `profile: undefined` would both break canonical JSON and change the
   // content hash of every pre-existing profile-less proposal. Same rule for `parameters`.
   if (profile !== undefined) value.profile = profile;
+  if (maxConcurrency !== undefined) value.maxConcurrency = maxConcurrency;
   if (parameters !== undefined) value.parameters = parameters;
   if (iterationGroups !== undefined) value.iterationGroups = iterationGroups;
   return { ok: true, value };

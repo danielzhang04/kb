@@ -71,9 +71,12 @@ function ParticipantIterationDetail({ participant }: { participant: IterationPar
         {residue.unresolvedFindings.map((finding) => <p key={finding.findingId}>{finding.severity}: {finding.summary} · {refs(finding.evidencePaths)}</p>)}
         <p>requests: <span className="mc-mono">{refs(residue.requestRefs)}</span></p>
         <p>receipts: <span className="mc-mono">{refs(residue.receiptRefs)}</span></p>
+        <p>next route: <span className="mc-mono">{residue.nextRouteId}</span></p>
         {residue.attemptedRequestRef ? <p>attempted request: <span className="mc-mono">{residue.attemptedRequestRef}</span></p> : null}
         {(residue.artifactSnapshots ?? []).map((snapshot) => <p key={snapshot.path}>
           <span className="mc-mono">{snapshot.path}</span> · {snapshot.byteIdentical ? 'byte-identical' : 'changed'} · {snapshot.afterSize ?? 'missing'} bytes
+          {' · '}before SHA-256 <span className="mc-mono">{snapshot.sha256}</span>
+          {' · '}after SHA-256 <span className="mc-mono">{snapshot.afterSha256 ?? 'missing'}</span>
         </p>)}
       </section> : null}
     </article>

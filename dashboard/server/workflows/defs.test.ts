@@ -980,6 +980,23 @@ describe('iteration group definitions', () => {
     });
   });
 
+  it('rejects a reachable schedule cycle with no cycle next boundary', () => {
+    const nextFreeCycle = iterationWorkflow()
+      .replace(
+        '        requestKinds: [review]',
+        '        requestKinds: [review]\n      - routeId: revision-to-producer\n        senderParticipantId: judge\n        recipientParticipantId: producer\n        requestKinds: [rework]',
+      )
+      .replace(
+        '      - stepId: revision-review\n        routeId: revision-to-judge\n        cycle: current',
+        '      - stepId: revision-review\n        routeId: revision-to-judge\n        after:\n          stepId: revision-rework\n          participantId: producer\n          verdict: fulfilled\n        cycle: current\n      - stepId: revision-rework\n        routeId: revision-to-producer\n        after:\n          stepId: revision-review\n          participantId: judge\n          verdict: fail\n        cycle: current',
+      );
+
+    expect(parseWorkflowDef(nextFreeCycle, { knownProfiles: KNOWN })).toMatchObject({
+      ok: false,
+      detail: expect.stringMatching(/reachable schedule cycle.*cycle.*next boundary/i),
+    });
+  });
+
   it('preserves declared cycle markers and rejects a next-cycle initial activation without a predecessor', () => {
     const judge = parseWorkflowDef(iterationWorkflow(), { knownProfiles: KNOWN });
     expect(judge).toMatchObject({ ok: true, value: { iterationGroups: [{ schedule: [

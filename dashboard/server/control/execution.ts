@@ -262,7 +262,10 @@ export interface AutomaticExecutionOptions {
   /** Required only for assigned compiler snapshots; legacy unassigned runs never invoke it. */
   assignedAgents?: AssignedAgentResolver;
   worktreeRoot: string;
+  /** Server-owned ceiling shared by every active run. */
   maxConcurrency: number;
+  /** Per-run fallback when the compiler did not declare maxConcurrency. Defaults to the ceiling. */
+  defaultRunConcurrency?: number;
   /** WINDOW ceiling for the whole accounting window; also the automatic retry cap (`maxAttempts`). */
   budget: ExecutionBudget;
   /**
@@ -786,8 +789,23 @@ function acceptedBoundary(request: RunDetail['humanRequests'][number]): boolean 
   return request.response.decision === 'approved' || request.response.decision === 'responded';
 }
 
-function runBoundariesAccepted(detail: RunDetail): boolean {
-  return detail.humanRequests.every(acceptedBoundary);
+function isGroupScopedIterationBoundary(
+  detail: RunDetail,
+  request: RunDetail['humanRequests'][number],
+): boolean {
+  return detail.iterationLoops.some((loop) => request.gateKind === 'iteration-park'
+    ? loop.interventionRef === request.requestRef
+    : loop.completionGateRef === request.requestRef);
+}
+
+function hasRunWideBlockingBoundary(detail: RunDetail): boolean {
+  return detail.humanRequests.some((request) => !acceptedBoundary(request)
+    && !isGroupScopedIterationBoundary(detail, request));
+}
+
+function hasGroupScopedIterationBoundary(detail: RunDetail): boolean {
+  return detail.humanRequests.some((request) => !acceptedBoundary(request)
+    && isGroupScopedIterationBoundary(detail, request));
 }
 
 export class AutomaticExecutionEngine {
@@ -800,6 +818,12 @@ export class AutomaticExecutionEngine {
   constructor(options: AutomaticExecutionOptions) {
     this.options = options;
     requireSafeInteger(options.maxConcurrency, 'maxConcurrency', 1);
+    if (options.defaultRunConcurrency !== undefined) {
+      requireSafeInteger(options.defaultRunConcurrency, 'defaultRunConcurrency', 1);
+      if (options.defaultRunConcurrency > options.maxConcurrency) {
+        throw new AutomaticExecutionError('defaultRunConcurrency exceeds maxConcurrency');
+      }
+    }
     requireSafeInteger(options.budget.maxAttempts, 'budget.maxAttempts', 1);
     requireSafeInteger(options.budget.maxInputTokens, 'budget.maxInputTokens', 0);
     requireSafeInteger(options.budget.maxOutputTokens, 'budget.maxOutputTokens', 0);
@@ -827,7 +851,10 @@ export class AutomaticExecutionEngine {
       const resolvedAgents = this.resolveRunAssignments(input, policy);
       const initialIterationWait = await this.reconcileIterationRuntime(input);
       if (initialIterationWait.length > 0) {
-        return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds: initialIterationWait };
+        waitingStageIds.push(...initialIterationWait);
+        if (hasRunWideBlockingBoundary(this.detail(input))) {
+          return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+        }
       }
       if (!(await this.ensureManager(input, policy, resolvedAgents.manager))) {
         return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
@@ -854,11 +881,16 @@ export class AutomaticExecutionEngine {
         const iterationWait = await this.reconcileIterationRuntime(input);
         if (iterationWait.length > 0) {
           for (const stageId of iterationWait) if (!waitingStageIds.includes(stageId)) waitingStageIds.push(stageId);
-          return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+          if (hasRunWideBlockingBoundary(this.detail(input))) {
+            return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+          }
         }
         this.releaseDependents(input, this.detail(input));
         await this.scheduleIterationTurns(input);
         const refreshed = this.detail(input);
+        if (hasRunWideBlockingBoundary(refreshed)) {
+          return { state: refreshed.run.state, startedStageIds, completedStageIds, waitingStageIds };
+        }
         if (refreshed.stages.some((stage) => stage.state === 'failed' || stage.state === 'stopped')) {
           const state = this.transitionRun(input, 'failed').state;
           return { state, startedStageIds, completedStageIds, waitingStageIds };
@@ -870,15 +902,25 @@ export class AutomaticExecutionEngine {
           const boundary = this.stageBoundary(input, refreshed, stage, proposalStage, policy);
           if (boundary === 'waiting') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
+            if (hasRunWideBlockingBoundary(this.detail(input))) {
+              return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+            }
             continue;
           }
           if (boundary === 'refused') {
             if (!waitingStageIds.includes(stage.stageId)) waitingStageIds.push(stage.stageId);
+            if (hasRunWideBlockingBoundary(this.detail(input))) {
+              return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
+            }
             continue;
           }
           candidates.push({ stage: this.detail(input).stages.find((candidate) => candidate.stageRef === stage.stageRef) as Stage, proposalStage });
         }
-        const available = Math.max(0, this.options.maxConcurrency - this.activeWorkers);
+        const runConcurrency = Math.min(
+          this.options.maxConcurrency,
+          input.proposal.maxConcurrency ?? this.options.defaultRunConcurrency ?? this.options.maxConcurrency,
+        );
+        const available = Math.min(runConcurrency, Math.max(0, this.options.maxConcurrency - this.activeWorkers));
         if (candidates.length > 0 && available === 0) {
           await this.waitForCapacity();
           pass -= 1n;
@@ -907,7 +949,9 @@ export class AutomaticExecutionEngine {
           if (result.state === 'succeeded' && !completedStageIds.includes(result.stageId)) completedStageIds.push(result.stageId);
           if (result.state === 'waiting-human' && !waitingStageIds.includes(result.stageId)) waitingStageIds.push(result.stageId);
         }
-        if (results.some((result) => result.state === 'waiting-human') && this.detail(input).run.state === 'waiting-human') {
+        if (results.some((result) => result.state === 'waiting-human')
+          && this.detail(input).run.state === 'waiting-human'
+          && hasRunWideBlockingBoundary(this.detail(input))) {
           return { state: this.detail(input).run.state, startedStageIds, completedStageIds, waitingStageIds };
         }
       }
@@ -1100,7 +1144,7 @@ export class AutomaticExecutionEngine {
     assignedAgent: ResolvedAssignedAgent | null,
   ): Promise<boolean> {
     let detail = this.detail(input);
-    if ((detail.run.state === 'waiting-human' || detail.run.state === 'interrupted') && !runBoundariesAccepted(detail)) {
+    if ((detail.run.state === 'waiting-human' || detail.run.state === 'interrupted') && hasRunWideBlockingBoundary(detail)) {
       return false;
     }
     const requested = input.proposal.manager;
@@ -1166,8 +1210,9 @@ export class AutomaticExecutionEngine {
       }
     }
     detail = this.detail(input);
-    if (detail.run.state === 'waiting-human' && !runBoundariesAccepted(detail)) return false;
-    if (detail.run.state === 'planned' || detail.run.state === 'interrupted' || detail.run.state === 'recovering' || detail.run.state === 'waiting-human') {
+    if (detail.run.state === 'waiting-human' && hasRunWideBlockingBoundary(detail)) return false;
+    if (detail.run.state === 'planned' || detail.run.state === 'interrupted' || detail.run.state === 'recovering'
+      || (detail.run.state === 'waiting-human' && !hasGroupScopedIterationBoundary(detail))) {
       this.transitionRun(input, 'running');
     }
     input.onManagerStarted?.();
@@ -1282,7 +1327,7 @@ export class AutomaticExecutionEngine {
         if (session && ['pending', 'starting', 'running'].includes(session.state)) {
           this.transitionSession(input, session.sessionRef, 'interrupted');
         }
-        continue;
+        return;
       }
       detail = this.detail(input);
       const currentLoop = detail.iterationLoops.find((candidate) => candidate.iterationLoopRef === loop.iterationLoopRef);
@@ -2425,6 +2470,7 @@ export class AutomaticExecutionEngine {
     if (detail.iterationLoops.some((loop) => loop.state === 'declined')) return this.transitionRun(input, 'failed');
     if (detail.stages.some((stage) => stage.state === 'failed' || stage.state === 'stopped')) return this.transitionRun(input, 'failed');
     if (detail.stages.some((stage) => stage.state === 'waiting-human')) return this.transitionRun(input, 'waiting-human');
+    if (hasGroupScopedIterationBoundary(detail)) return this.transitionRun(input, 'waiting-human');
     return detail.run;
   }
 

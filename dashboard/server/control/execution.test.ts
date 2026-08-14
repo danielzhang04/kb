@@ -363,12 +363,21 @@ function siblingIterationPlan(): PlanProposal {
     routes: [{
       routeId: `${prefix}-to-judge`, senderParticipantId: `${prefix}-producer`, recipientParticipantId: `${prefix}-judge`,
       requestKinds: ['review'], baseResolutionStageIds: [`${prefix}-producer`],
+    }, {
+      routeId: `${prefix}-to-producer`, senderParticipantId: `${prefix}-judge`, recipientParticipantId: `${prefix}-producer`,
+      requestKinds: ['rework'], baseResolutionStageIds: [`${prefix}-judge`],
     }],
     activation: { seedParticipantId: `${prefix}-producer`, seedArtifactIds: [`${prefix}-draft`] },
     initialStepId: `${prefix}-review`,
-    schedule: [{ stepId: `${prefix}-review`, routeId: `${prefix}-to-judge`, cycle: 'current' }],
+    schedule: [{
+      stepId: `${prefix}-review`, routeId: `${prefix}-to-judge`,
+      after: { stepId: `${prefix}-rework`, participantId: `${prefix}-producer`, verdict: 'fulfilled' }, cycle: 'next',
+    }, {
+      stepId: `${prefix}-rework`, routeId: `${prefix}-to-producer`,
+      after: { stepId: `${prefix}-review`, participantId: `${prefix}-judge`, verdict: 'fail' }, cycle: 'current',
+    }],
     artifacts: [`${prefix}-draft`], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
-    maxCycles: 1, cycleUnit: 'One producer generation and judge verdict.',
+    maxCycles: prefix === 'a' ? 1 : 2, cycleUnit: 'One producer generation and judge verdict.',
     terminalAuthorities: [{ participantId: `${prefix}-judge`, verdict: 'pass' }],
   });
   const aProducer = stage('a-producer');
@@ -378,7 +387,11 @@ function siblingIterationPlan(): PlanProposal {
   bProducer.artifacts = [{ id: 'b-draft', path: 'dashboard/server/b-producer.txt', description: 'B draft.' }];
   const bJudge = stage('b-judge', ['b-producer']); bJudge.artifacts = []; bJudge.checkpoints = [];
   const release = stage('release', ['a-producer', 'b-producer']);
-  return { ...proposal([aProducer, aJudge, bProducer, bJudge, release]), iterationGroups: [iterationGroup('a'), iterationGroup('b')] };
+  return {
+    ...proposal([aProducer, aJudge, bProducer, bJudge, release]),
+    maxConcurrency: 2,
+    iterationGroups: [iterationGroup('a'), iterationGroup('b')],
+  };
 }
 
 function coordinatorCrewIterationPlan(): PlanProposal {
@@ -477,7 +490,7 @@ function genericIterationFixture(input: {
   stopBeforeJudgeTurn?: number;
   crashAfterIntegrationStage?: string;
   plan?: PlanProposal;
-  turnVerdicts?: Record<string, 'fail' | 'pass' | 'fulfilled' | 'complete'>;
+  turnVerdicts?: Record<string, 'fail' | 'pass' | 'fulfilled' | 'complete' | Array<'fail' | 'pass' | 'fulfilled' | 'complete'>>;
   artifactFailure?: 'missing' | 'empty' | 'irregular' | 'byte-identical';
   resolveBaseMissStage?: string;
   reservationRefusalAt?: number;
@@ -511,6 +524,9 @@ function genericIterationFixture(input: {
   const baseResolutions: Parameters<NonNullable<ResultIntegrator['resolveBase']>>[0][] = [];
   const ensuredBases: Array<{ path: string; baseCommit?: string }> = [];
   const verdicts = [...(input.judgeVerdicts ?? ['pass'])];
+  const turnVerdicts = Object.fromEntries(Object.entries(input.turnVerdicts ?? {}).map(([stepId, verdict]) => [
+    stepId, Array.isArray(verdict) ? [...verdict] : verdict,
+  ])) as NonNullable<typeof input.turnVerdicts>;
   let judgeTurns = 0;
   let crashed = false;
   let canonicalHead: string | null = null;
@@ -576,7 +592,8 @@ function genericIterationFixture(input: {
         };
       }
       const stepId = value.iterationContract.request.stepId;
-      const declaredVerdict = stepId === undefined ? undefined : input.turnVerdicts?.[stepId];
+      const declared = stepId === undefined ? undefined : turnVerdicts[stepId];
+      const declaredVerdict = Array.isArray(declared) ? declared.shift() : declared;
       if (declaredVerdict) {
         const iterationOutcome = genericOutcome(value.iterationContract, declaredVerdict);
         return {
@@ -791,6 +808,38 @@ describe('AutomaticExecutionEngine', () => {
     expect(detail.value.humanRequests.filter((request) => request.gateKind === 'iteration-park')).toHaveLength(1);
   });
 
+  it('keeps scheduling an unblocked sibling group after one group parks and settles after that gate resolves', async () => {
+    const item = genericIterationFixture({
+      plan: siblingIterationPlan(),
+      turnVerdicts: {
+        'a-review': 'fail', 'a-rework': 'fulfilled',
+        'b-review': ['fail', 'pass'], 'b-rework': 'fulfilled',
+      },
+    });
+    const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
+
+    await expect(item.engine.runToBoundary(input)).resolves.toMatchObject({ state: 'waiting-human' });
+    const parked = item.store.getRun('operator', item.run.runRef);
+    if (!parked.ok) throw new Error(parked.detail);
+    const aLoop = parked.value.iterationLoops.find((loop) => loop.iterationGroupId === 'a-loop')!;
+    const bLoop = parked.value.iterationLoops.find((loop) => loop.iterationGroupId === 'b-loop')!;
+    const gate = parked.value.humanRequests.find((request) => request.requestRef === aLoop.interventionRef)!;
+    const receipt = parked.value.iterationReceipts.find((candidate) => candidate.receiptRef === aLoop.lastReceiptRef)!;
+
+    expect(aLoop).toMatchObject({ state: 'awaiting-park-gate', parkReason: 'exhausted', cyclesUsed: 1 });
+    expect(gate).toMatchObject({ gateKind: 'iteration-park', state: 'open' });
+    expect(bLoop).toMatchObject({ state: 'passed', cyclesUsed: 2 });
+    expect(parked.value.iterationReceipts.filter((candidate) => candidate.iterationLoopRef === bLoop.iterationLoopRef)
+      .map((candidate) => candidate.verdict)).toEqual(['fail', 'fulfilled', 'pass']);
+
+    const resolved = item.store.resolveIterationGate('operator', gate.requestRef, {
+      expectedRequestRevision: gate.revision, expectedLoopVersion: aLoop.version,
+      expectedReceiptVersion: receipt.version, decision: 'approved', operationKey: 'approve-a-exhaustion',
+    });
+    expect(resolved).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
+    await expect(item.engine.runToBoundary(input)).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
   it('parks before integration when any required rework artifact is missing empty irregular or byte-identical', async () => {
     for (const artifactFailure of ['missing', 'empty', 'irregular', 'byte-identical'] as const) {
       const item = genericIterationFixture({ judgeVerdicts: ['fail'], artifactFailure });
@@ -884,7 +933,7 @@ describe('AutomaticExecutionEngine', () => {
     expect(detail.value.humanRequests.some((request) => request.gateKind === 'iteration-park')).toBe(false);
   });
 
-  it('continues scheduling sibling groups when one group has a transient base-resolution miss', async () => {
+  it('halts sibling groups when a transient base-resolution miss opens a run-wide intervention', async () => {
     const item = genericIterationFixture({
       plan: siblingIterationPlan(), resolveBaseMissStage: 'a-judge', maxConcurrency: 2,
       turnVerdicts: { 'b-review': 'pass' },
@@ -896,8 +945,8 @@ describe('AutomaticExecutionEngine', () => {
     expect(detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'a-loop'))
       .toMatchObject({ state: 'awaiting-turn', currentStepId: 'a-review' });
     expect(detail.value.iterationLoops.find((loop) => loop.iterationGroupId === 'b-loop'))
-      .toMatchObject({ state: 'passed', cyclesUsed: 1 });
-    expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'b-judge')).toHaveLength(1);
+      .toMatchObject({ state: 'awaiting-turn', currentStepId: 'b-review', cyclesUsed: 1 });
+    expect(item.workerInputs.filter((turn) => turn.iterationContract?.request.recipientParticipantId === 'b-judge')).toHaveLength(0);
     expect(item.workerInputs.some((turn) => turn.iterationContract?.request.recipientParticipantId === 'a-judge')).toBe(false);
     expect(detail.value.humanRequests).toContainEqual(expect.objectContaining({
       kind: 'intervention', prompt: expect.stringContaining('committed iteration dependency lineage is unavailable'),
@@ -1143,12 +1192,20 @@ describe('AutomaticExecutionEngine', () => {
     tempDirs.push(stateRoot);
     let ids = 0;
     const store = createFileControlPlaneStore(stateRoot, { newId: () => `persistent-${++ids}` });
-    const item = genericIterationFixture({ judgeVerdicts: ['fail'], maxCycles: 1, store });
+    const item = genericIterationFixture({
+      plan: siblingIterationPlan(), store,
+      turnVerdicts: {
+        'a-review': 'fail', 'a-rework': 'fulfilled',
+        'b-review': ['fail', 'pass'], 'b-rework': 'fulfilled',
+      },
+    });
     const input = { subject: 'operator', runRef: item.run.runRef, proposal: item.plan };
     await expect(item.engine.runToBoundary(input)).resolves.toMatchObject({ state: 'waiting-human' });
     const parked = store.getRun('operator', item.run.runRef);
     if (!parked.ok) throw new Error(parked.detail);
-    const loop = parked.value.iterationLoops[0]!;
+    const loop = parked.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'a-loop')!;
+    expect(parked.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'b-loop'))
+      .toMatchObject({ state: 'passed', cyclesUsed: 2 });
     const workerCalls = item.workerInputs.length;
     const receiptCount = parked.value.iterationReceipts.length;
     const supersessions = parked.value.generationSupersessions.length;
@@ -1159,7 +1216,10 @@ describe('AutomaticExecutionEngine', () => {
     const recovered = restartedStore.getRun('operator', item.run.runRef);
     if (!recovered.ok) throw new Error(recovered.detail);
     expect(recovered.value.run.state).toBe('waiting-human');
-    expect(recovered.value.iterationLoops[0]).toMatchObject({ state: 'awaiting-park-gate', version: loop.version });
+    expect(recovered.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'a-loop'))
+      .toMatchObject({ state: 'awaiting-park-gate', version: loop.version });
+    expect(recovered.value.iterationLoops.find((candidate) => candidate.iterationGroupId === 'b-loop'))
+      .toMatchObject({ state: 'passed', cyclesUsed: 2 });
     expect(recovered.value.humanRequests.filter((request) => request.gateKind === 'iteration-park' && request.state === 'open')).toHaveLength(1);
     expect(recovered.value.iterationReceipts).toHaveLength(receiptCount);
     expect(recovered.value.generationSupersessions).toHaveLength(supersessions);
@@ -1920,6 +1980,34 @@ describe('AutomaticExecutionEngine', () => {
     expect(completed.state).toBe('succeeded');
     expect(fake.executionOrder).toEqual(['review']);
     expect(store.getRun('operator', run.runRef)).toMatchObject({ ok: true, value: { humanRequests: [{ state: 'resolved' }] } });
+  });
+
+  it('halts the whole run when a generic gate opens even if an independent sibling stage is ready', async () => {
+    const store = createStore();
+    const gated = stage('a-gated');
+    gated.humanGates = [{ id: 'approval', kind: 'approval', prompt: 'Approve the gated stage.' }];
+    const sibling = stage('b-sibling');
+    const plan = proposal([gated, sibling]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.maxConcurrency = 2;
+    const engine = new AutomaticExecutionEngine(options);
+
+    await expect(engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan }))
+      .resolves.toMatchObject({ state: 'waiting-human' });
+
+    expect(fake.executionOrder).toEqual([]);
+    expect(store.getRun('operator', run.runRef)).toMatchObject({ ok: true, value: {
+      run: { state: 'waiting-human' },
+      stages: expect.arrayContaining([
+        expect.objectContaining({ stageId: 'a-gated', state: 'waiting-human' }),
+        expect.objectContaining({ stageId: 'b-sibling', state: 'ready' }),
+      ]),
+      humanRequests: [expect.objectContaining({ kind: 'approval', state: 'open' })],
+    } });
+    const detail = store.getRun('operator', run.runRef);
+    expect(detail.ok && detail.value.humanRequests[0]).not.toHaveProperty('gateKind');
   });
 
   it('does not claim run success when the Manager shutdown is unacknowledged', async () => {

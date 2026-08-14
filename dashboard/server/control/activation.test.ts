@@ -198,6 +198,16 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ globalBudget: DEFAULT_BUDGET }));
   });
 
+  it('keeps legacy runs at one worker while reserving two slots for an explicit definition concurrency', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ maxConcurrency: 2 }));
+    expect(deps.createEngine).toHaveBeenCalledWith(expect.objectContaining({
+      maxConcurrency: 2,
+      defaultRunConcurrency: 1,
+    }));
+  });
+
   it('refuses at construction when a per-attempt budget exceeds the window ceiling on any field', () => {
     for (const field of ['maxAttempts', 'maxInputTokens', 'maxOutputTokens', 'maxCostUsdMicros'] as const) {
       const deps = spyDeps();
