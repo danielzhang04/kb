@@ -12,7 +12,7 @@ import type {
   ProposalReviewCriterion,
   ResolvedAgentAssignment,
 } from './proposal.ts';
-import type { IterationOutcome, ReviewOutcome } from './reviewOutcome.ts';
+import type { IterationOutcome } from './iterationOutcome.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -175,8 +175,6 @@ export interface GenerationSupersession {
   predecessorGenerationRef: string;
   successorGenerationRef: string;
   triggerReceiptRef: string;
-  /** @deprecated Temporary Task-13 compatibility projection. Never persisted. */
-  failedReviewReceiptRef?: string;
   operationKey: string;
   createdAt: string;
 }
@@ -273,6 +271,8 @@ export interface IterationReceipt extends Omit<IterationOutcome, 'schema'> {
   outputGenerationRefs: string[];
   baseCommit: string;
   canonicalCommit: string;
+  /** Exact participant attempt that produced this outcome. */
+  participantAttemptRef: string;
   createdAt: string;
   /** Public compare-and-swap version for the iteration gate route. */
   version: number;
@@ -384,43 +384,6 @@ export interface IterationGateResult extends IterationParkResult {
   interventionRequest: HumanRequest | null;
 }
 
-export interface ReviewLoop {
-  reviewLoopRef: string;
-  runRef: string;
-  reviewStageRef: string;
-  subjectStageRef: string;
-  maxCreatorReworks: number;
-  reviewDefinitionHash: string;
-  reworksUsed: number;
-  state: 'awaiting-subject' | 'checking' | 'rework-queued' | 'failed' | 'parked' | 'awaiting-gate' | 'passed';
-  activeGenerationRef: string | null;
-  acceptedGenerationRef: string | null;
-  activeReceiptRef: string | null;
-  interventionRequestRef: string | null;
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ReviewReceipt {
-  reviewReceiptRef: string;
-  runRef: string;
-  reviewStageRef: string;
-  subjectStageRef: string;
-  subjectGenerationRef: string;
-  subjectResultHash: string;
-  checkerAttemptRef: string;
-  outcome: ReviewOutcome;
-  outcomeHash: string;
-  operationKey: string;
-  state: 'passed' | 'awaiting-completion-gate' | 'failed' | 'parked';
-  completionRequestRef: string | null;
-  interventionRequestRef: string | null;
-  version: number;
-  createdAt: string;
-  finalizedAt: string | null;
-}
-
 export interface Attempt {
   attemptRef: string;
   runRef: string;
@@ -432,10 +395,6 @@ export interface Attempt {
   state: AttemptState;
   version: number;
   managedSessionRef: string | null;
-  /** Immutable checker base; null for ordinary and legacy attempts. */
-  reviewSubjectGenerationRef: string | null;
-  reviewSubjectResultHash: string | null;
-  reviewSubjectCanonicalCommit: string | null;
   /** Logical creator-generation lineage; null for ordinary/legacy attempts. */
   logicalGeneration: number | null;
   baseGenerationRef: string | null;
@@ -557,10 +516,6 @@ export interface RunDetail {
   iterationLoops: IterationLoop[];
   iterationRequests: IterationRequest[];
   iterationReceipts: IterationReceipt[];
-  /** @deprecated Temporary Task-13 compatibility projections. */
-  reviewLoops: ReviewLoop[];
-  /** @deprecated Temporary Task-13 compatibility projections. */
-  reviewReceipts: ReviewReceipt[];
 }
 
 /** HTTP-only residue fields derived from the authoritative request collection. */

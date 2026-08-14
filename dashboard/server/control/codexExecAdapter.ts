@@ -17,7 +17,7 @@ import {
 } from './claudeWorkerAdapter.ts';
 import type { AttemptIoSink } from './attemptIo.ts';
 import type { WorkerAdapter, WorkerExecutionResult, ExecutionUsage } from './execution.ts';
-import { parseIterationOutcome } from './reviewOutcome.ts';
+import { parseIterationOutcome } from './iterationOutcome.ts';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
@@ -246,9 +246,6 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
       if (input.expectsIterationOutcome && !input.iterationContract) {
         throw new CodexExecAdapterError('codex iteration turn requires an immutable iteration contract');
       }
-      if (input.iterationContract && input.reviewContract) {
-        throw new CodexExecAdapterError('codex worker accepts one iteration contract family');
-      }
       if ((input.assignment === undefined) !== (input.instructionMarkdown === undefined)) {
         throw new Error('codex worker requires assignment and declaration instructions together');
       }
@@ -274,7 +271,6 @@ export function createCodexExecAdapter(options: CodexExecAdapterOptions = {}): W
         writeScope: input.writeScope,
         ...(!threadId && input.instructionMarkdown !== undefined ? { agentDeclarationMarkdown: input.instructionMarkdown } : {}),
         ...(input.iterationContract ? { iterationContract: input.iterationContract, proposalStage: input.proposalStage } : {}),
-        ...(input.reviewContract ? { reviewContract: input.reviewContract } : {}),
       });
 
       const start = (queuedMessages: string[]): Promise<WorkerExecutionResult> => {

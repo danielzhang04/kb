@@ -1411,10 +1411,6 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         resolveUrl: `/api/control/iteration-gates/${requestRef}/resolve`,
       });
     }
-    if (existing.kind !== 'intervention' && requestRun.value.reviewReceipts.some((receipt) =>
-      receipt.completionRequestRef === requestRef || receipt.interventionRequestRef === requestRef)) {
-      return reply.code(409).send({ error: 'review-completion-gate-reserved' });
-    }
     if (existing.state === 'open') {
       if (existing.revision !== integer(body.expectedRevision)) return reply.code(409).send({ error: 'request-revision-changed' });
       try {
@@ -1465,7 +1461,6 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   const resolveIterationGateRoute = async (
     req: FastifyRequest,
     reply: FastifyReply,
-    options: { allowIterationPark: boolean; legacyCompletionAlias: boolean },
   ) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -1488,13 +1483,6 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       ? null
       : loop.lastReceiptRef === undefined ? null
         : run.value.iterationReceipts.find((candidate) => candidate.receiptRef === loop.lastReceiptRef) ?? null;
-    if (parkGate && !options.allowIterationPark) {
-      return reply.code(409).send({
-        error: 'iteration-park-requires-iteration-endpoint',
-        resolveUrl: `/api/control/iteration-gates/${requestRef}/resolve`,
-        continuation: { kind: 'separate-relaunch', detail: 'More work requires a separate operator relaunch with new run lineage.' },
-      });
-    }
     if (parkGate && !['exhausted', 'no-progress', 'parked'].includes(loop.parkReason ?? '')) {
       return reply.code(409).send({ error: 'iteration-gate-reason-mismatch' });
     }
@@ -1518,14 +1506,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const suppliedGenerationRefs = Array.isArray(body.expectedGenerationRefs)
       && body.expectedGenerationRefs.every((value) => typeof value === 'string')
       ? body.expectedGenerationRefs as string[] : null;
-    const expectedGateKind = options.legacyCompletionAlias ? null : body.expectedGateKind;
-    const expectedParkReason = options.legacyCompletionAlias ? null : body.expectedParkReason;
-    const expectedGateRef = options.legacyCompletionAlias ? requestRef : string(body.expectedGateRef);
-    const suppliedLoopVersion = options.legacyCompletionAlias ? expectedLoopVersion : integer(body.expectedLoopVersion);
+    const expectedGateKind = body.expectedGateKind;
+    const expectedParkReason = body.expectedParkReason;
+    const expectedGateRef = string(body.expectedGateRef);
+    const suppliedLoopVersion = integer(body.expectedLoopVersion);
     // Receipt version is exposed read-only for audit. This adapter derives the receipt CAS from that
     // authoritative read while the caller binds the gate, reason, loop version, and exact generation set.
     const suppliedReceiptVersion = expectedReceiptVersion;
-    const expectedGenerations = options.legacyCompletionAlias ? loop.activeGenerationRefs : suppliedGenerationRefs;
+    const expectedGenerations = suppliedGenerationRefs;
     const exactGenerationSet = expectedGenerations !== null
       && expectedGenerations.length === loop.activeGenerationRefs.length
       && expectedGenerations.every((value, index) => value === loop.activeGenerationRefs[index]);
@@ -1550,63 +1538,6 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       } catch {
         return reply.code(500).send({ error: 'iteration-gate-audit-required' });
       }
-    }
-    const legacyReceipts = run.value.reviewReceipts.filter((candidate) => candidate.completionRequestRef === requestRef);
-    const legacyReceipt = legacyReceipts.length === 1 ? legacyReceipts[0] : undefined;
-    const legacyLoops = legacyReceipt ? run.value.reviewLoops.filter((candidate) =>
-      candidate.reviewStageRef === legacyReceipt.reviewStageRef
-      && candidate.subjectStageRef === legacyReceipt.subjectStageRef
-      && candidate.activeReceiptRef === legacyReceipt.reviewReceiptRef) : [];
-    const legacyReviewStages = legacyReceipt
-      ? run.value.stages.filter((candidate) => candidate.stageRef === legacyReceipt.reviewStageRef) : [];
-    const legacySubjectStages = legacyReceipt
-      ? run.value.stages.filter((candidate) => candidate.stageRef === legacyReceipt.subjectStageRef) : [];
-    if (!parkGate && (options.legacyCompletionAlias || legacyReceipts.length > 0)
-      && (legacyReceipts.length !== 1 || legacyLoops.length !== 1
-        || legacyReviewStages.length !== 1 || legacySubjectStages.length !== 1
-        || request.value.stageRef !== legacyReviewStages[0]?.stageRef || request.value.runRef !== legacyReceipt?.runRef)) {
-      return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
-    }
-    const legacyLoop = legacyLoops[0];
-    const legacyReviewStage = legacyReviewStages[0];
-    const legacySubjectStage = legacySubjectStages[0];
-    if (!parkGate && legacyReceipt && legacyLoop && legacyReviewStage && legacySubjectStage) {
-      if (replay && (legacyReceipt.version < 2 || legacyLoop.version < 2 || legacySubjectStage.version < 2)) {
-        return reply.code(409).send({ error: 'review-completion-gate-replay-lineage-invalid' });
-      }
-      // Pre-Task-13 compatibility body; deleted at cutover. Legacy-projected completions deliberately
-      // retain this delegation because it performs the subject-stage version bump the generic transition omits.
-      const legacyResolved = ctx.controlStore.resolveReviewCompletionGate(sub, requestRef, {
-        expectedRequestRevision: request.value.revision,
-        expectedReceiptVersion: replay ? legacyReceipt.version - 1 : legacyReceipt.version,
-        expectedLoopVersion: replay ? legacyLoop.version - 1 : legacyLoop.version,
-        expectedReviewStageVersion: legacyReviewStage.version,
-        expectedSubjectStageVersion: replay ? legacySubjectStage.version - 1 : legacySubjectStage.version,
-        decision: decision as 'approved' | 'rejected' | 'changes-requested',
-        idempotencyKey: string(body.idempotencyKey),
-        response: body.response == null ? null : string(body.response),
-      }, runScope);
-      if (!legacyResolved.ok) return sendResult(reply, legacyResolved);
-      if (!legacyResolved.replayed) {
-        ctx.controlStore.appendEvent(run.value.ownerSubject, request.value.runRef, {
-          kind: 'governance', source: 'human', stageRef: request.value.stageRef,
-          status: decision === 'approved' ? 'success' : 'waiting',
-          summary: `Iteration completion gate ${decision}; participant scheduling remains stopped`,
-        }, runScope);
-        if (decision === 'approved') resumeRunAfterBoundaryAccepted(ctx, {
-          actorSubject: sub, runRef: request.value.runRef, answeredTitle: request.value.title, scope: runScope,
-        });
-      }
-      const refreshed = ctx.controlStore.getRun(sub, request.value.runRef, runScope);
-      const refreshedLoop = refreshed.ok
-        ? refreshed.value.iterationLoops.find((candidate) => candidate.iterationLoopRef === loop.iterationLoopRef) ?? loop
-        : loop;
-      return reply.send({ ok: true, value: {
-        loop: refreshedLoop, receipt: null, receiptVersion: legacyResolved.value.receipt.version,
-        // Task 11 retypes the SPA to `gate`; preserve `request` until then. Task 13 deletes this alias.
-        request: legacyResolved.value.request, gate: legacyResolved.value.request,
-        interventionRequest: legacyResolved.value.interventionRequest,
-      }, replayed: legacyResolved.replayed ?? false });
     }
     const resolved = ctx.controlStore.resolveIterationGate(sub, requestRef, {
       expectedRequestRevision: request.value.revision,
@@ -1650,11 +1581,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   };
 
   scope.post('/api/control/iteration-gates/:requestRef/resolve', { preHandler }, async (req, reply) =>
-    resolveIterationGateRoute(req, reply, { allowIterationPark: true, legacyCompletionAlias: false }));
-
-  /** @deprecated Task 13 deletes this completion-only alias after the SPA moves to iteration-gates. */
-  scope.post('/api/control/review-completion-gates/:requestRef/resolve', { preHandler }, async (req, reply) =>
-    resolveIterationGateRoute(req, reply, { allowIterationPark: false, legacyCompletionAlias: true }));
+    resolveIterationGateRoute(req, reply));
 
   // ── RETENTION ──────────────────────────────────────────────────────────────────────────────────────
   // All four routes carry the operator's scope (ruling 3). RunDetail's "Stored data" → "Review archiving"

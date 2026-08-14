@@ -7,7 +7,7 @@ import {
 } from './codexExecAdapter.ts';
 import type { ExecutionProfile } from './policy.ts';
 import type { ProposalStage } from './proposal.ts';
-import type { IterationOutcomeContract } from './reviewOutcome.ts';
+import type { IterationOutcomeContract } from './iterationOutcome.ts';
 
 const CODEX_PROFILE: ExecutionProfile = {
   id: 'worker-codex',

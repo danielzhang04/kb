@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   activateRun,
@@ -70,6 +71,12 @@ const PASSKEY_EXECUTION = {
 };
 
 describe('control client execution unlock ceremony', () => {
+  it('uses no review DTO or review gate client surface after cutover', () => {
+    const source = readFileSync(new URL('./controlClient.ts', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/\b(?:ReviewLoopDto|ReviewReceiptDto|resolveReviewCompletionGate|failedReviewReceiptRef)\b/);
+    expect(source).not.toContain('/review-completion-gates/');
+  });
+
   it('reads the authenticated execution posture with the bearer', async () => {
     const fetchImpl = recordedFetch({ execution: LOCKED_EXECUTION });
     await expect(getExecutionPosture('bearer', fetchImpl)).resolves.toEqual(LOCKED_EXECUTION);

@@ -130,6 +130,7 @@ export interface ProposalCompletionGate { id: string; kind: 'approval'; prompt: 
 
 export type ProposalIterationRole = 'peer' | 'judge' | 'mediator' | 'manager' | 'coordinator' | 'contributor';
 export type ProposalIterationRequestKind = 'review' | 'rework' | 'position' | 'reply' | 'delegate' | 'check';
+export const ARTIFACT_PRODUCING_REQUEST_KINDS: ReadonlySet<ProposalIterationRequestKind> = new Set(['rework', 'delegate']);
 export type ProposalIterationVerdict =
   | 'fulfilled'
   | 'accept' | 'rework'
@@ -825,7 +826,7 @@ function validateProposalIterationGroups(
         || entry.requestKinds.some((kind) => typeof kind !== 'string' || !PROPOSAL_ITERATION_REQUEST_KINDS.has(kind as ProposalIterationRequestKind))) {
         return { ok: false, detail: `${itemLabel}.requestKinds must contain unique declared kinds` };
       }
-      if (entry.requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
+      if (entry.requestKinds.some((kind) => ARTIFACT_PRODUCING_REQUEST_KINDS.has(kind))) {
         const recipientStage = stageById.get(recipient.stageRef) as ProposalStage;
         if (recipientStage.artifacts.length === 0) {
           return {
@@ -1035,7 +1036,7 @@ function validateProposalIterationGroups(
       successors.set(`${step.after.stepId}\0${step.after.participantId}\0${step.after.verdict}`, step);
     }
     for (const route of routes) {
-      if (route.requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
+      if (route.requestKinds.some((kind) => ARTIFACT_PRODUCING_REQUEST_KINDS.has(kind))) {
         participantVocabulary.get(route.recipientParticipantId)?.add('fulfilled');
       }
       if (!referencedRouteIds.has(route.routeId)) {

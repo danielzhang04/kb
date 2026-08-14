@@ -11,6 +11,7 @@
 import { createHash } from 'node:crypto';
 import type { RuntimeSkillRegistry } from '../control/environment.ts';
 import {
+  ARTIFACT_PRODUCING_REQUEST_KINDS,
   PLAN_PROPOSAL_SCHEMA,
   type PlanProposal,
   type ProposalIterationGroup,
@@ -110,46 +111,17 @@ type IterationCompilation =
   | { ok: true; groups: ProposalIterationGroup[]; dependsOn: Map<string, string[]> }
   | { ok: false; reason: string; detail: string };
 
-function compileIterationGroups(def: WorkflowDef): IterationCompilation {
-  const stageById = new Map(def.stages.map((stage) => [stage.id, stage]));
+type LegacyReviewDefinitionMigration =
+  | { ok: true; groups: ProposalIterationGroup[] }
+  | { ok: false; reason: string; detail: string };
+
+/** Isolated compiler migration: accepts legacy `review` inputs and emits generic iteration groups only. */
+function migrateLegacyReviewDefinitions(
+  def: WorkflowDef,
+  stageById: ReadonlyMap<string, WorkflowDef['stages'][number]>,
+  occupiedStages: Set<string>,
+): LegacyReviewDefinitionMigration {
   const groups: ProposalIterationGroup[] = [];
-  const occupiedStages = new Set<string>();
-  const authored = def.iterationGroups ?? [];
-  for (const group of authored) {
-    for (const participant of group.participants) {
-      if (!stageById.has(participant.stageRef)) {
-        return { ok: false, reason: 'iteration-stage-reference-invalid', detail: `iteration group '${group.iterationGroupId}' names missing stage '${participant.stageRef}'` };
-      }
-      if (occupiedStages.has(participant.stageRef)) {
-        return { ok: false, reason: 'iteration-stage-shared', detail: `stage '${participant.stageRef}' belongs to more than one iteration group` };
-      }
-      occupiedStages.add(participant.stageRef);
-    }
-    const routes: ProposalIterationGroup['routes'] = [];
-    for (const route of group.routes) {
-      const sender = group.participants.find((participant) => participant.participantId === route.senderParticipantId);
-      const recipient = group.participants.find((participant) => participant.participantId === route.recipientParticipantId);
-      if (!sender || !recipient) {
-        return { ok: false, reason: 'iteration-route-reference-invalid', detail: `iteration route '${route.routeId}' names an unknown participant` };
-      }
-      if (route.requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
-        const recipientStage = stageById.get(recipient.stageRef);
-        if (!recipientStage?.artifacts || recipientStage.artifacts.length === 0) {
-          return {
-            ok: false,
-            reason: 'iteration-route-artifacts-required',
-            detail: `artifact-producing iteration route '${route.routeId}' targets recipient '${recipient.participantId}' stage '${recipient.stageRef}', which must declare at least one artifact`,
-          };
-        }
-      }
-      const baseResolutionStageIds = group.routes
-        .filter((candidate) => candidate.recipientParticipantId === recipient.participantId)
-        .map((candidate) => group.participants.find((participant) => participant.participantId === candidate.senderParticipantId)?.stageRef)
-        .filter((stageRef): stageRef is string => stageRef !== undefined);
-      routes.push({ ...structuredClone(route), baseResolutionStageIds: [...new Set(baseResolutionStageIds)] });
-    }
-    groups.push({ ...structuredClone(group), routes });
-  }
   for (const reviewStage of def.stages.filter((stage) => stage.review !== undefined)) {
     const review = reviewStage.review!;
     if (!Number.isSafeInteger(review.maxCreatorReworks) || review.maxCreatorReworks < 0
@@ -242,6 +214,52 @@ function compileIterationGroups(def: WorkflowDef): IterationCompilation {
       ...(reviewStage.completionGate ? { completionGate: structuredClone(reviewStage.completionGate) } : {}),
     });
   }
+  return { ok: true, groups };
+}
+
+function compileIterationGroups(def: WorkflowDef): IterationCompilation {
+  const stageById = new Map(def.stages.map((stage) => [stage.id, stage]));
+  const groups: ProposalIterationGroup[] = [];
+  const occupiedStages = new Set<string>();
+  const authored = def.iterationGroups ?? [];
+  for (const group of authored) {
+    for (const participant of group.participants) {
+      if (!stageById.has(participant.stageRef)) {
+        return { ok: false, reason: 'iteration-stage-reference-invalid', detail: `iteration group '${group.iterationGroupId}' names missing stage '${participant.stageRef}'` };
+      }
+      if (occupiedStages.has(participant.stageRef)) {
+        return { ok: false, reason: 'iteration-stage-shared', detail: `stage '${participant.stageRef}' belongs to more than one iteration group` };
+      }
+      occupiedStages.add(participant.stageRef);
+    }
+    const routes: ProposalIterationGroup['routes'] = [];
+    for (const route of group.routes) {
+      const sender = group.participants.find((participant) => participant.participantId === route.senderParticipantId);
+      const recipient = group.participants.find((participant) => participant.participantId === route.recipientParticipantId);
+      if (!sender || !recipient) {
+        return { ok: false, reason: 'iteration-route-reference-invalid', detail: `iteration route '${route.routeId}' names an unknown participant` };
+      }
+      if (route.requestKinds.some((kind) => ARTIFACT_PRODUCING_REQUEST_KINDS.has(kind))) {
+        const recipientStage = stageById.get(recipient.stageRef);
+        if (!recipientStage?.artifacts || recipientStage.artifacts.length === 0) {
+          return {
+            ok: false,
+            reason: 'iteration-route-artifacts-required',
+            detail: `artifact-producing iteration route '${route.routeId}' targets recipient '${recipient.participantId}' stage '${recipient.stageRef}', which must declare at least one artifact`,
+          };
+        }
+      }
+      const baseResolutionStageIds = group.routes
+        .filter((candidate) => candidate.recipientParticipantId === recipient.participantId)
+        .map((candidate) => group.participants.find((participant) => participant.participantId === candidate.senderParticipantId)?.stageRef)
+        .filter((stageRef): stageRef is string => stageRef !== undefined);
+      routes.push({ ...structuredClone(route), baseResolutionStageIds: [...new Set(baseResolutionStageIds)] });
+    }
+    groups.push({ ...structuredClone(group), routes });
+  }
+  const migratedLegacyDefinitions = migrateLegacyReviewDefinitions(def, stageById, occupiedStages);
+  if (!migratedLegacyDefinitions.ok) return migratedLegacyDefinitions;
+  groups.push(...migratedLegacyDefinitions.groups);
   const dependsOn = new Map(def.stages.map((stage) => [stage.id, [...stage.dependsOn]]));
   for (const group of groups) {
     const seed = group.participants.find((participant) => participant.participantId === group.activation.seedParticipantId);

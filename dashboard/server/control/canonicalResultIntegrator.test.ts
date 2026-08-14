@@ -34,6 +34,16 @@ function fingerprint(value: unknown): string {
   return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
 }
 
+function legacyNonIterationResultHash(result: Parameters<typeof canonicalStageResultHash>[0]): string {
+  const payload = {
+    summary: result.summary,
+    artifacts: [...result.artifacts].map(({ path, digest }) => ({ path, digest })).sort((a, b) => a.path.localeCompare(b.path)),
+    changed: [...result.changed].map(({ path, digest }) => ({ path, digest })).sort((a, b) => a.path.localeCompare(b.path)),
+    checkpoints: [...result.checkpoints].sort(),
+  };
+  return createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex');
+}
+
 afterEach(() => {
   for (const value of roots.splice(0)) rmSync(value, { recursive: true, force: true });
 });
@@ -90,25 +100,39 @@ function fixture(options: {
     writeFileSync(changedAbs, content);
   }
   const digest = createHash('sha256').update(content).digest('hex');
-  const reviewOutcome = {
-    schema: 'kb.review-outcome/v1' as const,
-    decision: 'pass' as const,
-    summary: 'checker passed',
+  const request = {
+    schema: 'kb.iteration-request/v1' as const, requestRef: 'request-1', iterationLoopRef: 'loop-1',
+    stepId: 'review', routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge',
+    kind: 'review' as const, cycle: 1, inputGenerationRefs: ['generation-1'], baseCommit: 'a'.repeat(40),
+    artifactHashes: { draft: 'd'.repeat(64) }, criteria: [{ id: 'criterion-1', description: 'must pass' }],
+    unresolvedFindingRefs: [], preservedInvariants: [], nextAcceptanceCheck: 'Apply criterion-1.', instructions: 'Review the draft.',
+  };
+  const iterationContract = {
+    request,
+    iterationGroup: {
+      iterationGroupId: 'draft-loop', goal: 'Accept the draft.', participants: [
+        { participantId: 'producer', stageRef: 'subject', role: 'contributor' as const, perspective: 'Create.', mandate: 'Create.' },
+        { participantId: 'judge', stageRef: stageId, role: 'judge' as const, perspective: 'Judge.', mandate: 'Judge.' },
+      ],
+      routes: [{ routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review' as const], baseResolutionStageIds: ['subject'] }],
+      activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+      schedule: [{ stepId: 'review', routeId: 'to-judge', cycle: 'current' as const }], artifacts: ['draft'],
+      criteria: request.criteria, maxCycles: 2, cycleUnit: 'One verdict.',
+      terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' as const }],
+    },
+  };
+  const iterationOutcome = {
+    schema: 'kb.iteration-outcome/v1' as const, requestRef: request.requestRef, iterationLoopRef: request.iterationLoopRef,
+    participantId: 'judge', cycle: 1, verdict: 'pass' as const, inputGenerationRefs: [...request.inputGenerationRefs],
     criteria: [{ criterionId: 'criterion-1', verdict: 'pass' as const, findingIds: [] }],
-    findings: [],
+    findings: [], positions: [], recordedDissent: [], summary: 'checker passed',
   };
   const canonical = {
     summary: 'stage complete',
     artifacts: [{ path: changedPath, digest }],
     changed: [{ path: changedPath, digest }],
     checkpoints: ['verified'],
-    ...(options.nonReview ? {} : { reviewOutcome }),
-  };
-  const reviewContract = {
-    review: {
-      subjectStageId: 'subject', maxCreatorReworks: 1,
-      criteria: [{ id: 'criterion-1', description: 'must pass' }],
-    },
+    ...(options.nonReview ? {} : { iterationOutcome }),
   };
   const input: Parameters<ResultIntegrator['integrate']>[0] = {
     operationKey: `result:${runRef}:${stageId}`,
@@ -120,7 +144,7 @@ function fixture(options: {
     canonicalCardRef: cardRef,
     worktreePath: attemptPath,
     ...canonical,
-    ...(options.nonReview ? {} : { reviewContract }),
+    ...(options.nonReview ? {} : { iterationContract }),
     resultHash: canonicalStageResultHash(canonical),
   };
 
@@ -334,6 +358,50 @@ function fixture(options: {
   };
 }
 
+function rewriteJournalAsLegacyReview(item: ReturnType<typeof fixture>): void {
+  const journalPath = join(item.stateRoot, 'control/canonical-integration.json');
+  const stored = JSON.parse(readFileSync(journalPath, 'utf8')) as {
+    records: Array<Record<string, unknown> & { fingerprint: string; result: Record<string, unknown> }>;
+  };
+  const record = stored.records[0]!;
+  delete record.iterationContract;
+  delete record.result.iterationOutcome;
+  const reviewContract = {
+    review: {
+      subjectStageId: 'subject', maxCreatorReworks: 1,
+      criteria: [{ id: 'criterion-1', description: 'must pass' }],
+    },
+  };
+  const reviewOutcome = {
+    schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'checker passed',
+    criteria: [{ criterionId: 'criterion-1', verdict: 'pass', findingIds: [] }], findings: [],
+  };
+  record.reviewContract = reviewContract;
+  record.result.reviewOutcome = reviewOutcome;
+  const payload = {
+    summary: record.result.summary,
+    artifacts: record.result.artifacts,
+    changed: record.result.changed,
+    checkpoints: record.result.checkpoints,
+    reviewOutcome,
+  };
+  record.result.resultHash = createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex');
+  record.fingerprint = fingerprint({
+    operationKey: record.operationKey, subject: record.subject, runRef: record.runRef,
+    stageRef: record.stageRef, stageId: record.stageId, attemptRef: record.attemptRef,
+    canonicalCardRef: record.cardRef, reviewContract, result: record.result,
+  });
+  writeFileSync(journalPath, `${JSON.stringify(stored)}\n`, 'utf8');
+  const donePath = join(item.coordinationRoot, ...item.doneRel.split('/'));
+  const cardText = readFileSync(donePath, 'utf8');
+  const marker = '```kb.canonical-stage-result/v1\n';
+  const start = cardText.indexOf(marker) + marker.length;
+  const end = cardText.indexOf('\n```', start);
+  const legacyWire = { ...JSON.parse(cardText.slice(start, end)), ...record.result } as Record<string, unknown>;
+  delete legacyWire.iterationOutcome;
+  writeFileSync(donePath, `${cardText.slice(0, start)}${JSON.stringify(legacyWire)}${cardText.slice(end)}`, 'utf8');
+}
+
 describe('canonical Git result integrator', () => {
   it('commits bounded attempt changes into lineage before the exact canonical card commit and replay', async () => {
     const item = fixture();
@@ -345,7 +413,7 @@ describe('canonical Git result integrator', () => {
     expect(await item.integrator.lookup(item.input)).toMatchObject({
       resultHash: item.input.resultHash,
       summary: 'stage complete',
-      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: item.input.reviewOutcome!.decision }),
+      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: item.input.iterationOutcome!.verdict }),
       attemptBaseCommit: 'a'.repeat(40),
       integrationCommit: 'd'.repeat(40),
     });
@@ -403,7 +471,7 @@ describe('canonical Git result integrator', () => {
       criteria: [{ criterionId: 'criterion-1', verdict: 'pass' as const, findingIds: [] }], findings: [],
       positions: [], recordedDissent: [], summary: 'checker passed',
     };
-    const { reviewOutcome: _reviewOutcome, reviewContract: _reviewContract, resultHash: _resultHash, ...base } = item.input;
+    const { iterationOutcome: _iterationOutcome, iterationContract: _iterationContract, resultHash: _resultHash, ...base } = item.input;
     const canonical = {
       summary: base.summary, artifacts: base.artifacts, changed: base.changed, checkpoints: base.checkpoints, iterationOutcome,
     };
@@ -429,7 +497,7 @@ describe('canonical Git result integrator', () => {
         artifacts: item.input.artifacts,
         changed: [{ ...item.input.changed[0], digest: 'd'.repeat(64) }],
         checkpoints: item.input.checkpoints,
-        reviewOutcome: item.input.reviewOutcome,
+        iterationOutcome: item.input.iterationOutcome,
       }),
     })).rejects.toThrow('artifact digest changed');
     expect(item.gitCalls.some((call) => call.args[0] === 'cherry-pick')).toBe(false);
@@ -624,22 +692,22 @@ describe('canonical Git result integrator', () => {
     expect(JSON.parse(readFileSync(path, 'utf8')).records[0].state).toBe('canonical-intent');
   });
 
-  it('rejects a direct caller that supplies a malformed review outcome before journaling', async () => {
+  it('rejects a direct caller that supplies a malformed iteration outcome before journaling', async () => {
     const item = fixture();
     await expect(item.integrator.integrate({
       ...item.input,
-      reviewOutcome: { ...item.input.reviewOutcome!, summary: 'sk-abcdefghijklmnopqrstuvwxyz1234567890' },
-    })).rejects.toThrow('invalid review outcome');
+      iterationOutcome: { ...item.input.iterationOutcome!, summary: 'sk-abcdefghijklmnopqrstuvwxyz1234567890' },
+    })).rejects.toThrow('invalid iteration outcome');
     expect(item.gitCalls).toHaveLength(0);
     expect(item.cardMutations()).toBe(0);
   });
 
-  it('fails closed when a persisted review outcome no longer validates against its journaled contract', async () => {
+  it('fails closed when a persisted iteration outcome no longer validates against its journaled contract', async () => {
     const item = fixture();
     await item.integrator.integrate(item.input);
     const path = join(item.stateRoot, 'control/canonical-integration.json');
-    const stored = JSON.parse(readFileSync(path, 'utf8')) as { records: Array<{ result: { reviewOutcome: { summary: string } } }> };
-    stored.records[0].result.reviewOutcome.summary = 'sk-abcdefghijklmnopqrstuvwxyz1234567890';
+    const stored = JSON.parse(readFileSync(path, 'utf8')) as { records: Array<{ result: { iterationOutcome: { summary: string } } }> };
+    stored.records[0].result.iterationOutcome.summary = 'sk-abcdefghijklmnopqrstuvwxyz1234567890';
     writeFileSync(path, JSON.stringify(stored), 'utf8');
     await expect(item.integrator.lookup(item.input)).rejects.toThrow('canonical integration state is invalid');
   });
@@ -655,9 +723,8 @@ describe('canonical Git result integrator', () => {
     const record = stored.records[0];
     delete record.reviewContract;
     const currentResultHash = String(record.result.resultHash);
-    record.result.resultHash = canonicalStageResultHash(
+    record.result.resultHash = legacyNonIterationResultHash(
       record.result as unknown as Parameters<typeof canonicalStageResultHash>[0],
-      'legacy-non-review',
     );
     record.fingerprint = fingerprint({
       operationKey: item.input.operationKey,
@@ -679,7 +746,7 @@ describe('canonical Git result integrator', () => {
 
     await expect(item.integrator.lookup(item.input)).resolves.toMatchObject({
       summary: item.input.summary,
-      resultHash: record.result.resultHash,
+      resultHash: currentResultHash,
     });
     await expect(item.integrator.resolveBase?.({
       operationKey: 'base:run-1:stage-2',
@@ -690,7 +757,7 @@ describe('canonical Git result integrator', () => {
     })).resolves.toBe('d'.repeat(40));
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({
       status: 'replayed',
-      resultHash: record.result.resultHash,
+      resultHash: currentResultHash,
     });
     const replayed = JSON.parse(readFileSync(path, 'utf8')) as { records: Array<{ reviewContract?: unknown }> };
     expect(replayed.records[0]).not.toHaveProperty('reviewContract');
@@ -705,9 +772,9 @@ describe('canonical Git result integrator', () => {
     };
     const record = stored.records[0];
     delete record.reviewContract;
-    record.result.resultHash = canonicalStageResultHash(
+    const currentResultHash = String(record.result.resultHash);
+    record.result.resultHash = legacyNonIterationResultHash(
       record.result as unknown as Parameters<typeof canonicalStageResultHash>[0],
-      'legacy-non-review',
     );
     record.fingerprint = fingerprint({
       operationKey: item.input.operationKey,
@@ -723,7 +790,7 @@ describe('canonical Git result integrator', () => {
 
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({
       status: 'integrated',
-      resultHash: record.result.resultHash,
+      resultHash: currentResultHash,
     });
   });
 
@@ -738,9 +805,8 @@ describe('canonical Git result integrator', () => {
     expect(record.state).toBe('canonical-intent');
     delete record.reviewContract;
     const currentResultHash = String(record.result.resultHash);
-    record.result.resultHash = canonicalStageResultHash(
+    record.result.resultHash = legacyNonIterationResultHash(
       record.result as unknown as Parameters<typeof canonicalStageResultHash>[0],
-      'legacy-non-review',
     );
     record.fingerprint = fingerprint({
       operationKey: item.input.operationKey,
@@ -762,7 +828,7 @@ describe('canonical Git result integrator', () => {
 
     await expect(item.integrator.integrate(item.input)).resolves.toMatchObject({
       status: 'integrated',
-      resultHash: record.result.resultHash,
+      resultHash: currentResultHash,
     });
     const replayed = JSON.parse(readFileSync(path, 'utf8')) as {
       records: Array<{ state: string; reviewContract?: unknown; result: { resultHash: string } }>;
@@ -777,17 +843,19 @@ describe('canonical Git result integrator', () => {
   it('rejects a legacy review outcome whose immutable review contract is absent', async () => {
     const item = fixture();
     await item.integrator.integrate(item.input);
+    rewriteJournalAsLegacyReview(item);
     const path = join(item.stateRoot, 'control/canonical-integration.json');
     const stored = JSON.parse(readFileSync(path, 'utf8')) as { records: Array<Record<string, unknown>> };
     delete stored.records[0].reviewContract;
     writeFileSync(path, JSON.stringify(stored), 'utf8');
 
-    await expect(item.integrator.lookup(item.input)).rejects.toThrow('canonical integration review contract is absent');
+    await expect(item.integrator.lookup(item.input)).rejects.toThrow(/legacy canonical journal outcome lacks its immutable contract/);
   });
 
-  it('reads a byte-stable legacy review journal and exposes only a generic outcome to callers', async () => {
+  it('leaves a legacy journal byte-stable while exposing no review fields to callers', async () => {
     const item = fixture();
     await item.integrator.integrate(item.input);
+    rewriteJournalAsLegacyReview(item);
     const journalPath = join(item.stateRoot, 'control/canonical-integration.json');
     const donePath = join(item.coordinationRoot, ...item.doneRel.split('/'));
     const beforeJournal = readFileSync(journalPath);
@@ -814,7 +882,7 @@ describe('canonical Git result integrator', () => {
       attemptBaseCommit: 'a'.repeat(40), integrationCommit: 'd'.repeat(40),
     });
     expect(await item.integrator.lookup(input)).toMatchObject({
-      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: input.reviewOutcome!.decision }),
+      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: input.iterationOutcome!.verdict }),
     });
     expect(item.cardMutations()).toBe(0);
     expect(item.gitCalls.some((call) => call.args[0] === 'fetch')).toBe(true);

@@ -18,7 +18,7 @@ import {
 } from './claudeWorkerAdapter.ts';
 import { DENIED_ENV_FRAGMENTS } from '../pty/host.ts';
 import type { ExecutionProfile } from './policy.ts';
-import type { IterationOutcomeContract } from './reviewOutcome.ts';
+import type { IterationOutcomeContract } from './iterationOutcome.ts';
 
 const WORKER_PROFILE: ExecutionProfile = {
   id: 'worker-claude-sonnet',
@@ -29,13 +29,6 @@ const WORKER_PROFILE: ExecutionProfile = {
 };
 
 const TOOL_POLICY: ClaudeToolPolicy = { allowedTools: ['Read', 'Write', 'WebSearch'], permissionMode: 'default' };
-const CHECKER_TOOL_POLICY: ClaudeToolPolicy = { allowedTools: ['Read', 'Glob', 'Grep'], permissionMode: 'default' };
-const REVIEW_CONTRACT = {
-  review: {
-    subjectStageId: 'create', maxCreatorReworks: 1,
-    criteria: [{ id: 'safety', description: 'No unsafe changes.' }],
-  },
-};
 
 function iterationContract(role: 'judge' | 'peer' = 'judge'): IterationOutcomeContract {
   const verdict = role === 'judge' ? 'pass' : 'accept';
@@ -327,15 +320,6 @@ describe('buildWorkerPrompt', () => {
     expect(prompt).not.toContain('Evidence');
   });
 
-  it('adds server-owned exact-JSON checker instructions only for a review contract', () => {
-    const prompt = buildWorkerPrompt({
-      workOrder: 'Inspect the committed result.', readScope: ['dashboard'], writeScope: [], reviewContract: REVIEW_CONTRACT,
-    });
-    expect(prompt).toContain('SERVER-OWNED CHECKER REVIEW CONTRACT');
-    expect(prompt).toContain('Return ONLY one UTF-8 JSON object in your final result.');
-    expect(prompt).toContain('kb.review-outcome/v1');
-    expect(prompt).toContain('AUTHORED REVIEW CRITERIA (immutable): [{"id":"safety","description":"No unsafe changes."}]');
-  });
 
   it('places the structured iteration request inside the inert input boundary', () => {
     const contract = iterationContract();
@@ -627,15 +611,6 @@ describe('parseWorkerStream — mapping matrix', () => {
     expect(result.summary).toBe('WAITING-HUMAN: need a decision on scope');
   });
 
-  it('fails closed for a review contract when the final result is malformed or WAITING-HUMAN', () => {
-    const malformed = parseWorkerStream(successLine('not json'), '', 0, { reviewContract: REVIEW_CONTRACT });
-    expect(malformed.state).toBe('failed');
-    expect(malformed).not.toHaveProperty('reviewOutcome');
-    expect(malformed.summary).toContain('invalid review outcome');
-    const waiting = parseWorkerStream(successLine('WAITING-HUMAN: decide'), '', 0, { reviewContract: REVIEW_CONTRACT });
-    expect(waiting.state).toBe('failed');
-    expect(waiting).not.toHaveProperty('reviewOutcome');
-  });
 
   it('requires exactly one closed iteration outcome for a verdict-producing turn', () => {
     const contract = iterationContract();
@@ -880,46 +855,8 @@ describe('createClaudeWorkerAdapter.execute', () => {
     expect(messages[0]).not.toContain('SERVER-VERIFIED AGENT DECLARATION');
   });
 
-  it('directly executes a checker only with readonly contract inputs and returns a structured review outcome', async () => {
-    const fake = fakeProcess();
-    const spawn = vi.fn(() => fake.proc);
-    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => CHECKER_TOOL_POLICY, spawn });
-    const promise = adapter.execute(executeInput({
-      workflowProfile: 'checker-readonly', writeScope: [], checkpoints: [], reviewContract: REVIEW_CONTRACT,
-    }));
-    fake.emitStdout(successLine(JSON.stringify({
-      schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'All criteria pass.',
-      criteria: [{ criterionId: 'safety', verdict: 'pass', findingIds: [] }], findings: [],
-    })));
-    fake.emitExit(0);
-    await expect(promise).resolves.toMatchObject({
-      state: 'succeeded', summary: 'All criteria pass.', reviewOutcome: { decision: 'pass' },
-    });
-    expect(JSON.parse(fake.stdin.join('').trim()).message.content[0].text).toContain('SERVER-OWNED CHECKER REVIEW CONTRACT');
-  });
 
-  it('refuses invalid direct checker contract inputs before spawning', () => {
-    const fake = fakeProcess();
-    const spawn = vi.fn(() => fake.proc);
-    const adapter = createClaudeWorkerAdapter({ resolveToolPolicy: () => TOOL_POLICY, spawn });
-    expect(() => adapter.execute(executeInput({ reviewContract: REVIEW_CONTRACT }))).toThrow(/checker-readonly/);
-    expect(() => adapter.execute(executeInput({ workflowProfile: 'checker-readonly', reviewContract: REVIEW_CONTRACT }))).toThrow(/empty writeScope/);
-    expect(() => adapter.execute(executeInput({ workflowProfile: 'checker-readonly', writeScope: [], checkpoints: ['requested'], reviewContract: REVIEW_CONTRACT }))).toThrow(/no requested checkpoints/);
-    expect(spawn).not.toHaveBeenCalled();
-  });
 
-  it('refuses a malicious checker-readonly tool policy that grants a write capability before spawning', () => {
-    const fake = fakeProcess();
-    const spawn = vi.fn(() => fake.proc);
-    const adapter = createClaudeWorkerAdapter({
-      resolveToolPolicy: () => ({ allowedTools: ['Read', 'Write'], permissionMode: 'default' }),
-      spawn,
-    });
-    expect(() => adapter.execute(executeInput({
-      workflowProfile: 'checker-readonly', writeScope: [], checkpoints: [], reviewContract: REVIEW_CONTRACT,
-    }))).toThrow(ToolPolicyRefusal);
-    expect(spawn).not.toHaveBeenCalled();
-  });
 
   it('allows artifact writes only when the recipient stage profile allows them', async () => {
     const writable = fakeProcess();

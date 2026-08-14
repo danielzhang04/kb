@@ -8,22 +8,29 @@ import { resolveCheckedOutBranch, withOpsTransaction } from '../write/asyncGit.t
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
 import { workflowCardId } from '../write/workflowRun.ts';
 import type { CanonicalStageResult, CanonicalStageResultPayload, ResultIntegrator, WorkerArtifactResult } from './execution.ts';
-import { canonicalResultOperationKey, canonicalStageResultHash, iterationResultOperationKey, planAttemptWorktreePath } from './execution.ts';
+import {
+  canonicalResultOperationKey,
+  canonicalStageResultHash,
+  iterationResultOperationKey,
+  planAttemptWorktreePath,
+} from './execution.ts';
 import { createLocalGitCommandRunner, type GitCommandRunner } from './adapters.ts';
-import { isSafeRepoRelativePath } from './proposal.ts';
+import { isSafeRepoRelativePath, type ProposalIterationGroup, type ProposalReview } from './proposal.ts';
 import {
   parseIterationOutcome,
-  parseReviewOutcome,
   type IterationOutcome,
   type IterationOutcomeContract,
-  type ReviewContract,
-  type ReviewOutcome,
-} from './reviewOutcome.ts';
+} from './iterationOutcome.ts';
 
 const SHA = /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/;
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_STATE_BYTES = 32 * 1024 * 1024;
 const MAX_RESULT_BYTES = 256 * 1024;
+const INTEGRATION_INPUT_KEYS = new Set([
+  'operationKey', 'subject', 'runRef', 'stageRef', 'stageId', 'attemptRef', 'canonicalCardRef',
+  'summary', 'artifacts', 'changed', 'checkpoints', 'iterationOutcome', 'iterationContract',
+  'resultHash', 'worktreePath',
+]);
 /** The one branch a coordination write may ever run git against (CLAUDE.md's Branch rules). */
 const COORDINATION_BRANCH = 'ops';
 /** Named, greppable refusal so every guarded coordination call is findable in the daemon log. */
@@ -39,9 +46,6 @@ interface IntegrationRecord {
   stageId: string;
   attemptRef: string;
   cardRef: string | null;
-  /** Absent only on legacy non-review v1 records written before review contracts were journaled. */
-  reviewContract?: ReviewContract | null;
-  /** Present only on generic iteration operations written after the Task-6 cutover. */
   iterationContract?: IterationOutcomeContract;
   integrationBranch: string;
   attemptBaseCommit: string;
@@ -295,7 +299,7 @@ function hash(value: unknown): string {
   return createHash('sha256').update(canonical(value), 'utf8').digest('hex');
 }
 
-/** g1 owns the immutable stage card; later review generations remain durable in the journal/lineage only. */
+/** g1 owns the immutable stage card; later iteration generations remain durable in the journal/lineage only. */
 function expectedCardRef(operationKey: string, runRef: string, stageId: string): string | null {
   const firstGeneration = canonicalResultOperationKey(runRef, stageId);
   if (operationKey === firstGeneration) return workflowCardId(runRef, stageId);
@@ -317,31 +321,155 @@ function expectedCardRef(operationKey: string, runRef: string, stageId: string):
 
 function publicResult(record: IntegrationRecord): CanonicalStageResult {
   if (!record.integrationCommit) throw new CanonicalResultIntegrationError('canonical integration commit is unavailable');
-  const raw = record.result;
-  const result = raw.reviewOutcome && record.reviewContract
-    ? (() => {
-        const { reviewOutcome, ...plain } = raw;
-        return { ...plain, iterationOutcome: legacyReviewIterationOutcome(reviewOutcome) };
-      })()
-    : raw;
+  const migrated = decodeLegacyCanonicalJournalRecord(record);
+  const result = migrated?.publicResult ?? record.result;
   return structuredClone({
     ...result,
+    resultHash: canonicalStageResultHash(result),
     durability: 'canonical',
     attemptBaseCommit: record.attemptBaseCommit,
     integrationCommit: record.integrationCommit,
   });
 }
 
-function legacyReviewIterationOutcome(outcome: ReviewOutcome): IterationOutcome {
-  return {
-    schema: 'kb.iteration-outcome/v1', requestRef: 'legacy-review-request', iterationLoopRef: 'legacy-review-loop',
-    participantId: 'legacy-reviewer', cycle: 1, verdict: outcome.decision,
-    inputGenerationRefs: ['legacy-generation'], criteria: structuredClone(outcome.criteria),
+/*
+ * Canonical-journal migration reader. Historical records are immutable evidence: their field names,
+ * result hash, fingerprint, and published wire cannot be rewritten. This decoder validates that old
+ * shape in place and projects a generic outcome only at the read boundary. New writes never enter it.
+ */
+interface LegacyJournalOutcome {
+  schema: 'kb.review-outcome/v1';
+  decision: 'pass' | 'fail' | 'parked';
+  summary: string;
+  criteria: Array<{ criterionId: string; verdict: 'pass' | 'fail' | 'unverified'; findingIds: string[] }>;
+  findings: Array<{
+    id: string; criterionId: string; severity: 'blocking' | 'advisory'; summary: string; evidencePaths: string[];
+  }>;
+}
+
+interface LegacyCanonicalJournalRecord extends IntegrationRecord {
+  reviewContract?: { review: ProposalReview } | null;
+  result: IntegrationRecord['result'] & { reviewOutcome?: LegacyJournalOutcome };
+}
+
+interface LegacyCanonicalJournalDecode {
+  publicResult: CanonicalStageResultPayload & { resultHash: string };
+  expectedResultHash: string;
+}
+
+function objectRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function legacyCanonicalJournalResultHash(
+  result: IntegrationRecord['result'],
+  outcome: LegacyJournalOutcome | null,
+): string {
+  const payload = {
+    summary: result.summary,
+    artifacts: [...result.artifacts].map((item) => ({ path: item.path, digest: item.digest })).sort((a, b) => a.path.localeCompare(b.path)),
+    changed: [...result.changed].map((item) => ({ path: item.path, digest: item.digest })).sort((a, b) => a.path.localeCompare(b.path)),
+    checkpoints: [...result.checkpoints].sort(),
+  };
+  const normalized = outcome === null ? null : {
+    schema: outcome.schema,
+    decision: outcome.decision,
+    summary: outcome.summary,
+    criteria: outcome.criteria.map((criterion) => ({
+      criterionId: criterion.criterionId, verdict: criterion.verdict, findingIds: [...criterion.findingIds],
+    })),
     findings: outcome.findings.map((finding) => ({
-      findingId: finding.id, criterionId: finding.criterionId, severity: finding.severity,
+      id: finding.id, criterionId: finding.criterionId, severity: finding.severity,
       summary: finding.summary, evidencePaths: [...finding.evidencePaths],
     })),
+  };
+  return createHash('sha256').update(JSON.stringify({ ...payload, reviewOutcome: normalized }), 'utf8').digest('hex');
+}
+
+function legacyNonIterationJournalResultHash(result: IntegrationRecord['result']): string {
+  const payload = {
+    summary: result.summary,
+    artifacts: [...result.artifacts].map((item) => ({ path: item.path, digest: item.digest })).sort((a, b) => a.path.localeCompare(b.path)),
+    changed: [...result.changed].map((item) => ({ path: item.path, digest: item.digest })).sort((a, b) => a.path.localeCompare(b.path)),
+    checkpoints: [...result.checkpoints].sort(),
+  };
+  return createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex');
+}
+
+function decodeLegacyCanonicalJournalRecord(record: IntegrationRecord): LegacyCanonicalJournalDecode | null {
+  const legacy = record as LegacyCanonicalJournalRecord;
+  const hasContract = Object.prototype.hasOwnProperty.call(legacy, 'reviewContract');
+  const hasOutcome = Object.prototype.hasOwnProperty.call(legacy.result ?? {}, 'reviewOutcome');
+  if (!hasContract) {
+    if (hasOutcome) throw new CanonicalResultIntegrationError('legacy canonical journal outcome lacks its immutable contract');
+    return null;
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'iterationContract')
+    || Object.prototype.hasOwnProperty.call(record.result ?? {}, 'iterationOutcome')) {
+    throw new CanonicalResultIntegrationError('canonical integration mixes current and migration fields');
+  }
+  if (legacy.reviewContract === null) {
+    if (hasOutcome) throw new CanonicalResultIntegrationError('legacy canonical journal contract is empty');
+    return { publicResult: record.result, expectedResultHash: legacyCanonicalJournalResultHash(record.result, null) };
+  }
+  if (!objectRecord(legacy.reviewContract) || !objectRecord(legacy.reviewContract.review) || !hasOutcome
+    || !objectRecord(legacy.result.reviewOutcome)) {
+    throw new CanonicalResultIntegrationError('legacy canonical journal record is incomplete');
+  }
+  const review = legacy.reviewContract.review;
+  const outcome = legacy.result.reviewOutcome;
+  if (!Array.isArray(review.criteria) || typeof review.subjectStageId !== 'string'
+    || !Number.isSafeInteger(review.maxCreatorReworks)
+    || Object.keys(outcome).some((key) => !['schema', 'decision', 'summary', 'criteria', 'findings'].includes(key))) {
+    throw new CanonicalResultIntegrationError('legacy canonical journal record is invalid');
+  }
+  const participantId = 'legacy-reviewer';
+  const request = {
+    schema: 'kb.iteration-request/v1' as const,
+    requestRef: 'legacy-review-request', iterationLoopRef: 'legacy-review-loop', routeId: 'legacy-review-route',
+    senderParticipantId: 'legacy-subject', recipientParticipantId: participantId, kind: 'review' as const, cycle: 1,
+    inputGenerationRefs: ['legacy-generation'], baseCommit: 'legacy-server-owned', artifactHashes: {},
+    criteria: review.criteria, unresolvedFindingRefs: [], preservedInvariants: [],
+    nextAcceptanceCheck: 'Apply the authored review criteria.', instructions: 'Return the closed review outcome.',
+  };
+  const iterationGroup: ProposalIterationGroup = {
+    iterationGroupId: 'legacy-review-group',
+    participants: [
+      { participantId: 'legacy-subject', stageRef: review.subjectStageId, role: 'contributor', perspective: 'Subject', mandate: 'Produce the reviewed artifact.' },
+      { participantId, stageRef: 'legacy-review-stage', role: 'judge', perspective: 'Checker', mandate: 'Apply the authored review criteria.' },
+    ],
+    routes: [{
+      routeId: request.routeId, senderParticipantId: request.senderParticipantId,
+      recipientParticipantId: request.recipientParticipantId, requestKinds: ['review'],
+      baseResolutionStageIds: [review.subjectStageId],
+    }],
+    activation: { seedParticipantId: 'legacy-subject', seedArtifactIds: ['legacy-artifact'] },
+    initialStepId: 'legacy-review-step',
+    schedule: [
+      { stepId: 'legacy-review-step', routeId: request.routeId, cycle: 'current' },
+      { stepId: 'legacy-review-rework', routeId: request.routeId,
+        after: { stepId: 'legacy-review-step', participantId, verdict: 'fail' }, cycle: 'next' },
+    ],
+    artifacts: ['legacy-artifact'], criteria: review.criteria, maxCycles: review.maxCreatorReworks + 1,
+    cycleUnit: 'one legacy creator generation and checker verdict',
+    terminalAuthorities: [{ participantId, verdict: 'pass' }],
+  };
+  const parsed = parseIterationOutcome(JSON.stringify({
+    schema: 'kb.iteration-outcome/v1', requestRef: request.requestRef,
+    iterationLoopRef: request.iterationLoopRef, participantId, cycle: request.cycle,
+    verdict: outcome.decision, inputGenerationRefs: request.inputGenerationRefs, criteria: outcome.criteria,
+    findings: Array.isArray(outcome.findings) ? outcome.findings.map((finding) => {
+      if (!objectRecord(finding)) return finding;
+      const { id, ...rest } = finding;
+      return { ...rest, findingId: id };
+    }) : outcome.findings,
     positions: [], recordedDissent: [], summary: outcome.summary,
+  }), { iterationGroup, request });
+  if (!parsed.ok) throw new CanonicalResultIntegrationError(`legacy canonical journal outcome is invalid: ${parsed.detail}`);
+  const { reviewOutcome: _legacyOutcome, ...plain } = legacy.result;
+  return {
+    publicResult: { ...plain, iterationOutcome: parsed.value },
+    expectedResultHash: legacyCanonicalJournalResultHash(record.result, outcome),
   };
 }
 
@@ -362,24 +490,6 @@ function canonicalWire(record: IntegrationRecord): CanonicalStageResultPayload &
     stageId: record.stageId,
     attemptRef: record.attemptRef,
   };
-}
-
-function validatedReviewOutcome(value: unknown, contract: unknown): ReviewOutcome | undefined {
-  if (value === undefined) {
-    if (contract !== null && contract !== undefined) throw new CanonicalResultIntegrationError('canonical result has a review contract without an outcome');
-    return undefined;
-  }
-  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) {
-    throw new CanonicalResultIntegrationError('canonical review outcome lacks an immutable review contract');
-  }
-  try {
-    const parsed = parseReviewOutcome(JSON.stringify(value), contract as ReviewContract);
-    if (!parsed.ok) throw new CanonicalResultIntegrationError(parsed.detail);
-    return parsed.value;
-  } catch (error) {
-    if (error instanceof CanonicalResultIntegrationError) throw error;
-    throw new CanonicalResultIntegrationError('canonical review outcome is invalid');
-  }
 }
 
 function validatedIterationOutcome(value: unknown, contract: unknown): IterationOutcome | undefined {
@@ -433,19 +543,12 @@ function readState(path: string): IntegrationState {
   }
   const operations = new Set<string>();
   for (const record of value.records) {
-    const hasReviewContract = Object.prototype.hasOwnProperty.call(record, 'reviewContract');
     const hasIterationContract = Object.prototype.hasOwnProperty.call(record, 'iterationContract');
     const hasIterationOutcome = Object.prototype.hasOwnProperty.call(record.result ?? {}, 'iterationOutcome');
-    if ((hasIterationContract && (!record.iterationContract || !hasIterationOutcome || hasReviewContract
-      || Object.prototype.hasOwnProperty.call(record.result ?? {}, 'reviewOutcome')))
-      || (!hasIterationContract && hasIterationOutcome)) {
-      throw new CanonicalResultIntegrationError('canonical integration mixes generic and legacy iteration fields');
-    }
-    // reviewContract was added to the v1 journal after non-review results were already durable.
-    // Preserve that legacy wire shape because its omission is part of the immutable fingerprint.
-    if (!hasReviewContract && record.result && typeof record.result === 'object'
-      && Object.prototype.hasOwnProperty.call(record.result, 'reviewOutcome')) {
-      throw new CanonicalResultIntegrationError('canonical integration review contract is absent');
+    const migrated = decodeLegacyCanonicalJournalRecord(record);
+    if (!migrated && ((hasIterationContract && (!record.iterationContract || !hasIterationOutcome))
+      || (!hasIterationContract && hasIterationOutcome))) {
+      throw new CanonicalResultIntegrationError('canonical integration has incomplete iteration fields');
     }
     const branch = `codex/managed-${createHash('sha256').update(record.runRef ?? '').digest('hex').slice(0, 24)}`;
     if (typeof record.operationKey !== 'string' || record.operationKey.length === 0 || record.operationKey.length > 512
@@ -461,15 +564,15 @@ function readState(path: string): IntegrationState {
       || !record.result || typeof record.result.summary !== 'string' || !Array.isArray(record.result.artifacts)
       || !Array.isArray(record.result.changed) || !Array.isArray(record.result.checkpoints)
       || !/^[a-f0-9]{64}$/.test(record.result.resultHash)
-      || canonicalStageResultHash(
-        record.result,
-        hasIterationContract || hasReviewContract ? 'current' : 'legacy-non-review',
-      ) !== record.result.resultHash
+      || (migrated
+        ? migrated.expectedResultHash !== record.result.resultHash
+        : canonicalStageResultHash(record.result) !== record.result.resultHash
+          && (hasIterationContract || hasIterationOutcome
+            || legacyNonIterationJournalResultHash(record.result) !== record.result.resultHash))
       || operations.has(record.operationKey)) {
       throw new CanonicalResultIntegrationError('canonical integration state is invalid');
     }
     if (hasIterationContract) validatedIterationOutcome(record.result.iterationOutcome, record.iterationContract);
-    else validatedReviewOutcome(record.result.reviewOutcome, hasReviewContract ? record.reviewContract : undefined);
     normalizeArtifacts(record.result.artifacts);
     normalizeArtifacts(record.result.changed);
     normalizeCheckpoints(record.result.checkpoints);
@@ -673,7 +776,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     // A concurrent writer may have finished this record between the state read and this call.
     if (record.state === 'canonical-committed') {
       await verifyCanonical(record);
-      return { status: 'replayed', resultHash: record.result.resultHash,
+      return { status: 'replayed', resultHash: publicResult(record).resultHash,
         durability: 'canonical', attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
     }
     const attemptPath = planAttemptWorktreePath(worktreeRoot, record.runRef, record.attemptRef);
@@ -866,7 +969,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     await verifyCanonical(record);
     record.state = 'canonical-committed';
     saveState(statePath, state);
-    return { status: 'integrated' as const, resultHash: record.result.resultHash,
+    return { status: 'integrated' as const, resultHash: publicResult(record).resultHash,
       durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit };
   };
 
@@ -960,7 +1063,8 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
 
     async integrate(input) {
       return serialize(async () => {
-        if (!input.operationKey || input.operationKey.length > 512 || input.operationKey.includes('\0')
+        if (Object.keys(input).some((key) => !INTEGRATION_INPUT_KEYS.has(key))
+          || !input.operationKey || input.operationKey.length > 512 || input.operationKey.includes('\0')
           || !input.subject || input.subject.length > 256 || input.subject.includes('\0')
           || !SAFE_REF.test(input.stageRef) || !SAFE_REF.test(input.attemptRef)
           || !input.summary || input.summary.includes('\0') || redactSensitiveText(input.summary) !== input.summary
@@ -968,19 +1072,13 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           || !SAFE_REF.test(input.stageId) || input.canonicalCardRef !== expectedCardRef(input.operationKey, input.runRef, input.stageId)) {
           throw new CanonicalResultIntegrationError('canonical result input is invalid');
         }
-        if ((input.iterationOutcome !== undefined || input.iterationContract !== undefined)
-          && (input.reviewOutcome !== undefined || input.reviewContract !== undefined)) {
-          throw new CanonicalResultIntegrationError('canonical result mixes generic and legacy iteration fields');
-        }
         const iterationOutcome = validatedIterationOutcome(input.iterationOutcome, input.iterationContract);
-        const reviewOutcome = validatedReviewOutcome(input.reviewOutcome, input.reviewContract);
         const result: CanonicalStageResultPayload & { resultHash: string } = {
           summary: input.summary,
           artifacts: normalizeArtifacts(input.artifacts),
           changed: normalizeArtifacts(input.changed),
           checkpoints: normalizeCheckpoints(input.checkpoints),
           ...(iterationOutcome ? { iterationOutcome } : {}),
-          ...(reviewOutcome ? { reviewOutcome } : {}),
           resultHash: input.resultHash,
         };
         if (canonicalStageResultHash(result) !== input.resultHash) throw new CanonicalResultIntegrationError('result hash differs');
@@ -988,9 +1086,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           operationKey: input.operationKey, subject: input.subject, runRef: input.runRef,
           stageRef: input.stageRef, stageId: input.stageId, attemptRef: input.attemptRef,
           canonicalCardRef: input.canonicalCardRef,
-          ...(iterationOutcome
-            ? { iterationContract: structuredClone(input.iterationContract as IterationOutcomeContract) }
-            : { reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null }),
+          ...(iterationOutcome ? { iterationContract: structuredClone(input.iterationContract as IterationOutcomeContract) } : {}),
           result,
         };
         const fingerprint = hash(fingerprintInput);
@@ -998,15 +1094,17 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         let record = state.records.find((item) => item.operationKey === input.operationKey);
         if (record) {
           let expectedFingerprint = fingerprint;
-          if (!Object.prototype.hasOwnProperty.call(record, 'reviewContract')
-            && !Object.prototype.hasOwnProperty.call(record, 'iterationContract')) {
+          if (decodeLegacyCanonicalJournalRecord(record)) {
+            throw new CanonicalResultIntegrationError('result replay payload differs');
+          }
+          if (!Object.prototype.hasOwnProperty.call(record, 'iterationContract')
+            && record.result.resultHash === legacyNonIterationJournalResultHash(record.result)) {
             const legacyFingerprintInput: Record<string, unknown> = { ...fingerprintInput };
-            delete legacyFingerprintInput.reviewContract;
             expectedFingerprint = hash({
               ...legacyFingerprintInput,
               result: {
                 ...result,
-                resultHash: canonicalStageResultHash(result, 'legacy-non-review'),
+                resultHash: legacyNonIterationJournalResultHash(result),
               },
             });
           }
@@ -1016,7 +1114,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         }
         if (record?.state === 'canonical-committed') {
           await verifyCanonical(record);
-          return { status: 'replayed' as const, resultHash: record.result.resultHash,
+          return { status: 'replayed' as const, resultHash: publicResult(record).resultHash,
             durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
         }
         if (!record) {
@@ -1049,9 +1147,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           record = {
             operationKey: input.operationKey, fingerprint, subject: input.subject, runRef: input.runRef,
             stageId: input.stageId, attemptRef: input.attemptRef, cardRef: input.canonicalCardRef, integrationBranch: lineage.branch,
-            ...(iterationOutcome
-              ? { iterationContract: structuredClone(input.iterationContract as IterationOutcomeContract) }
-              : { reviewContract: reviewOutcome ? structuredClone(input.reviewContract as ReviewContract) : null }),
+            ...(iterationOutcome ? { iterationContract: structuredClone(input.iterationContract as IterationOutcomeContract) } : {}),
             attemptBaseCommit, attemptCommit: null, integrationBaseCommit, integrationCommit: null, result, state: 'intent',
           };
           state.records.push(record);

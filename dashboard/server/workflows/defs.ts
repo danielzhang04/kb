@@ -15,7 +15,7 @@
  * the text here.
  */
 import { classifyActionRisk } from '../control/policy.ts';
-import { isSafeRepoRelativePath, type ProposalRiskTier } from '../control/proposal.ts';
+import { ARTIFACT_PRODUCING_REQUEST_KINDS, isSafeRepoRelativePath, type ProposalRiskTier } from '../control/proposal.ts';
 import { parseYaml } from '../routing/yaml.ts';
 
 // Bounds mirror dashboard/server/control/proposal.ts so a definition can never compile to an
@@ -373,7 +373,7 @@ Record<string, WorkflowIterationVerdict[]> {
     if (step.after) vocabulary.get(step.after.participantId)?.add(step.after.verdict);
   }
   for (const route of group.routes) {
-    if (route.requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
+    if (route.requestKinds.some((kind) => ARTIFACT_PRODUCING_REQUEST_KINDS.has(kind))) {
       vocabulary.get(route.recipientParticipantId)?.add('fulfilled');
     }
   }
@@ -495,7 +495,7 @@ function validateIterationGroups(
         requestKindSet.add(rawKind);
         requestKinds.push(rawKind as WorkflowIterationRequestKind);
       }
-      if (requestKinds.some((kind) => kind === 'rework' || kind === 'delegate')) {
+      if (requestKinds.some((kind) => ARTIFACT_PRODUCING_REQUEST_KINDS.has(kind))) {
         const recipient = participantsById.get(recipientParticipantId) as WorkflowIterationParticipantDef;
         const recipientStage = stageById.get(recipient.stageRef) as WorkflowStageDef;
         if (!recipientStage.artifacts || recipientStage.artifacts.length === 0) {

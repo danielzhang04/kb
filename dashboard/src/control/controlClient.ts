@@ -419,8 +419,6 @@ export interface GenerationSupersessionDto {
   predecessorGenerationRef: string;
   successorGenerationRef: string;
   triggerReceiptRef: string;
-  /** Temporary server compatibility projection; never used to derive iteration state. */
-  failedReviewReceiptRef?: string;
   operationKey: string;
   createdAt: string;
 }
