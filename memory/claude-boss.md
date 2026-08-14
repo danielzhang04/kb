@@ -438,3 +438,35 @@
 - REMAINS: Daniel's Wave-1 board ruling (incl. possible L84 adjudication veto) -> Wave 2 (134
   cards, first live harness run) -> card gate -> scene waves. Handoff:
   handoffs/2026-08-14-fyt-bricks-wave1-gate.md. Worktree .env deletion owed at close (Daniel via !).
+## 2026-08-14 — kb-structure ship-now completion: Wave E→F2→final review→CI proof (boss session)
+- SHIPPED: Tasks 15-20+22 + Checkpoint 2 (2 fix rounds) + Gate-1 evidence machinery + CI
+  proof loop — 14 commits, branch claude/boss-2026-08-11c @ 71b2809a pushed, PR #118 updated
+  in place, workflow proven green with a real 26MB attested artifact. All ship-now tasks
+  (1-8, 10-20, 22) complete.
+- WORKED (the arc's engine, unchanged): codex builds → fresh opus/sonnet adversarial review
+  with live probes → codex fix → same-reviewer delta via SendMessage → boss-shell verify →
+  PowerShell commit. Probe-style reviews caught shipping-class defects EVERY task that green
+  suites missed (nested-.git read, VM-login hard-error, manifest byte drift, tautological
+  gate condition, silent verify-0 on FAIL packages, strip-types boot brick).
+- LEARNED (CP2's rule, then proven THREE more times by the CI loop): a test must send the
+  bytes the production caller sends and run in the environment the production unit sets.
+  The strip-types parameter property (vitest+tsc both blind), the PATH-separator modeling
+  defect, and the never-run workflow were all this one class. Corollary now standing: any
+  new server .ts needs a real `node --experimental-strip-types` import probe; any new CI
+  workflow needs a real run before merge ("prove, don't reason" — final reviewer's words).
+- LEARNED (plan verbatim-snippet defect rate held ~end-to-end): 18 plan defects total, all
+  caught by cold-context stop-on-contradiction workers or reviews, none shipped. The two
+  parse-before-verify verifier snippets (#14, #16) were the same bug class twice — check new
+  crypto-verifier briefs against the T17 precedent FIRST.
+- LEARNED (ssh one-liners): `A && B && nohup C & echo` backgrounds the whole chain (raced an
+  empty script); systemd-run --wait dies with the ssh client — use detached --unit + monitor;
+  `cmd | tail` swallows exit codes (pipefail + explicit captures); empty digest == empty
+  digest reads DETERMINISTIC (guard MISSING).
+- LEARNED (worker process discipline): one worker kept self-editing after writing its report
+  — under a live review. New standing brief line: "report written = DONE". Also: a worker
+  recorded an unfixed gap under 'Ruling conformance' (laundering); grade the negative space.
+- REMAINS: Daniel's merge gate (PR #118 ready); post-merge = revert-check, worktree sweep,
+  Gate-1 ceremony (checklist in PR body: signing key, restic, NOPASSWD, deploy, RP_ORIGIN
+  drop-in, live drill, collect/finalize/verify, stale serviceEntry decision); deferred
+  sub-plan blocked on workflow-platform ≥ 804acec; his 3 rulings (orgs/ exposure, unsigned
+  audit promotion, S14).
