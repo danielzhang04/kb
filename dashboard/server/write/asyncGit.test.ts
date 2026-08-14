@@ -72,6 +72,25 @@ describe('withOpsTransaction — single-writer ops discipline', () => {
     expect(result).toBe('nested');
   });
 
+  it('keeps Git single-concurrent while a nested transaction re-enters without deadlocking', async () => {
+    const events: string[] = [];
+    let releaseFirst!: () => void;
+    const firstMayFinish = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const first = withOpsTransaction(async () => {
+      events.push('first:start');
+      await withOpsTransaction(async () => { events.push('first:nested'); });
+      await firstMayFinish;
+      events.push('first:end');
+    });
+    const second = withOpsTransaction(async () => { events.push('second:start'); });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(events).toEqual(['first:start', 'first:nested']);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(events).toEqual(['first:start', 'first:nested', 'first:end', 'second:start']);
+  });
+
   it('releases the lock when a transaction throws', async () => {
     await expect(withOpsTransaction(async () => { throw new Error('boom'); })).rejects.toThrow('boom');
     expect(await withOpsTransaction(async () => 'after')).toBe('after');

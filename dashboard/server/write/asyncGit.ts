@@ -27,6 +27,7 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { runtimeResourceLimiter } from '../control/resourceLimits.ts';
 
 /**
  * The single-writer discipline the synchronous runners provided BY ACCIDENT: `execFileSync` blocked the
@@ -42,21 +43,10 @@ import { AsyncLocalStorage } from 'node:async_hooks';
  * push rejections, which the existing pull-reconcile-retry loops already handle.
  */
 const opsTransactionContext = new AsyncLocalStorage<true>();
-let opsTransactionQueue: Promise<void> = Promise.resolve();
 
 export function withOpsTransaction<T>(fn: () => Promise<T>): Promise<T> {
   if (opsTransactionContext.getStore()) return fn();
-  let release!: () => void;
-  const previous = opsTransactionQueue;
-  opsTransactionQueue = new Promise<void>((resolve) => { release = resolve; });
-  return (async () => {
-    await previous;
-    try {
-      return await opsTransactionContext.run(true, fn);
-    } finally {
-      release();
-    }
-  })();
+  return runtimeResourceLimiter.run('git', () => opsTransactionContext.run(true, fn));
 }
 
 /** True while the caller is inside a {@link withOpsTransaction} span. */
