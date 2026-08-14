@@ -905,3 +905,36 @@ the phase gate: mediator/debate configurations cannot function until a position-
 mechanism exists (a `position`-kind turn whose outcome mints a new position, or equivalent).
 That mechanism is a prerequisite for the first real mediator definition, deferred past P1 with
 Daniel's visibility — not silently.
+
+### A5 (2026-08-14, boss ruling) — engine-level sibling scheduling and bounded-schedule validation
+
+**Trigger:** The Task 14 adversarial review proved two recipe expectations unproducible at the
+ENGINE level (the store transitions were correct all along): (1) `runToBoundary` returns whenever
+the run is `waiting-human`, and the demo's default `maxConcurrency: 1` makes the parked stage the
+whole batch — so "the sibling group continues and completes while this gate remains open" (the
+locked rule's group-scoped blocking) cannot happen live; (2) a schedule whose cycle of steps
+contains no `cycle: 'next'` boundary never advances the counter, so a `maxCycles` bound is
+unenforceable — the demo's `pair-fix-accept` (both steps `cycle: current`) would spin to the
+deterministic pass-bound engine error instead of parking, and no validator rejects that shape.
+
+**Ruling — three narrow authorizations beyond Task 14's file list:**
+1. `execution.ts` (+ tests): while a run's only blocking requests are group-scoped iteration
+   gates (`iteration-park`, and the iteration completion gate for ITS group), `runToBoundary`
+   continues scheduling stages and loop turns not blocked by those gates; the run settles into
+   `waiting-human` only when no unblocked work remains. Generic gates and interventions keep
+   their existing run-wide wait semantics. This implements the already-locked group-scoped
+   blocking at the engine layer; store semantics unchanged.
+2. Task-1 validation layer (defs/proposal): reject any schedule in which a reachable cycle of
+   steps contains no `cycle: 'next'` boundary — a declared `maxCycles` must be enforceable.
+   Fixtures adjusted accordingly.
+3. The demo def declares `maxConcurrency` ≥ 2 so sibling overlap is physically schedulable, and
+   `pair-fix-accept`'s check step becomes the `cycle: 'next'` boundary per its own spec text.
+
+**Also ruled (recipe/UI alignment, review F3):** `AgentWorkPanel` renders `residue.nextRouteId`
+and artifact-snapshot SHA-256s where present (Task-12 surface, minimal); recipe step 4's
+EXHAUSTION expectations drop "artifact hashes" (exhaustion parks before the next turn — no
+snapshot set exists; no-progress in step 5 keeps them); the park card keeps ask/prompt/refs.
+Review F5: the producer mandate in `no-progress-park` explicitly dominates conflicting request
+text (byte-identical output regardless of the rework request), and the checker's request text
+stops instructing a byte change. Review F6: the queueBridge registered-definition test uses the
+REAL demo def per Task 10's acceptance sentence.
