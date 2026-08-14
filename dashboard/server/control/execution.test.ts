@@ -267,7 +267,7 @@ function engineOptions(store: ControlPlaneStore, fake: Fakes, root = join(tmpdir
     store,
     policy,
     worktreeRoot: root,
-    maxConcurrency: 1,
+    maxConcurrency: 2,
     budget: { maxAttempts: 3, maxInputTokens: 1_000, maxOutputTokens: 1_000, maxCostUsdMicros: 10_000 },
     // Deliberately distinct from the window budget above so a reservation can only match one of them.
     attemptBudget: { maxAttempts: 1, maxInputTokens: 400, maxOutputTokens: 400, maxCostUsdMicros: 4_000 },
@@ -426,6 +426,79 @@ function coordinatorCrewIterationPlan(): PlanProposal {
   return { ...proposal([coordinator, specialist, release]), iterationGroups: [group] };
 }
 
+function parallelIterationMixPlan(): PlanProposal {
+  const pairProducer = stage('pair-producer');
+  pairProducer.artifacts = [{ id: 'pair-draft', path: 'dashboard/server/pair-producer.txt', description: 'Pair draft.' }];
+  const pairPeer = stage('pair-peer', ['pair-producer']);
+  pairPeer.artifacts = []; pairPeer.checkpoints = []; pairPeer.scope = { read: ['dashboard'], write: [] };
+  const judgeProducer = stage('judge-producer');
+  judgeProducer.artifacts = [{ id: 'judge-draft', path: 'dashboard/server/judge-producer.txt', description: 'Judge draft.' }];
+  const judge = stage('mix-judge', ['judge-producer']);
+  judge.artifacts = []; judge.checkpoints = []; judge.scope = { read: ['dashboard'], write: [] };
+  const coordinator = stage('mix-coordinator');
+  coordinator.artifacts = [{ id: 'crew-draft', path: 'dashboard/server/mix-coordinator.txt', description: 'Crew draft.' }];
+  const specialist = stage('mix-specialist', ['mix-coordinator']);
+  const release = stage('release', ['pair-producer', 'judge-producer', 'mix-coordinator']);
+  const pair: ProposalIterationGroup = {
+    iterationGroupId: 'pair-loop', goal: 'Accept the pair draft.',
+    participants: [
+      { participantId: 'pair-producer', stageRef: 'pair-producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce the draft.' },
+      { participantId: 'pair-peer', stageRef: 'pair-peer', role: 'peer', perspective: 'Check the draft.', mandate: 'Accept a complete draft.' },
+    ],
+    routes: [{
+      routeId: 'pair-review', senderParticipantId: 'pair-producer', recipientParticipantId: 'pair-peer',
+      requestKinds: ['review'], baseResolutionStageIds: ['pair-producer'],
+    }],
+    activation: { seedParticipantId: 'pair-producer', seedArtifactIds: ['pair-draft'] },
+    initialStepId: 'pair-review', schedule: [{ stepId: 'pair-review', routeId: 'pair-review', cycle: 'next' }],
+    artifacts: ['pair-draft'], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles: 1, cycleUnit: 'One peer review.', terminalAuthorities: [{ participantId: 'pair-peer', verdict: 'accept' }],
+  };
+  const judged: ProposalIterationGroup = {
+    iterationGroupId: 'judge-loop', goal: 'Pass the judged draft.',
+    participants: [
+      { participantId: 'judge-producer', stageRef: 'judge-producer', role: 'contributor', perspective: 'Own the draft.', mandate: 'Produce and revise the draft.' },
+      { participantId: 'mix-judge', stageRef: 'mix-judge', role: 'judge', perspective: 'Apply quality.', mandate: 'Pass only a complete draft.' },
+    ],
+    routes: [
+      { routeId: 'judge-review', senderParticipantId: 'judge-producer', recipientParticipantId: 'mix-judge', requestKinds: ['review'], baseResolutionStageIds: ['judge-producer'] },
+      { routeId: 'judge-rework', senderParticipantId: 'mix-judge', recipientParticipantId: 'judge-producer', requestKinds: ['rework'], baseResolutionStageIds: ['mix-judge'] },
+    ],
+    activation: { seedParticipantId: 'judge-producer', seedArtifactIds: ['judge-draft'] }, initialStepId: 'judge-review',
+    schedule: [
+      { stepId: 'judge-review', routeId: 'judge-review', after: { stepId: 'judge-rework', participantId: 'judge-producer', verdict: 'fulfilled' }, cycle: 'next' },
+      { stepId: 'judge-rework', routeId: 'judge-rework', after: { stepId: 'judge-review', participantId: 'mix-judge', verdict: 'fail' }, cycle: 'current' },
+    ],
+    artifacts: ['judge-draft'], criteria: [{ id: 'quality', description: 'The draft is complete.' }],
+    maxCycles: 2, cycleUnit: 'One producer generation and judge verdict.',
+    terminalAuthorities: [{ participantId: 'mix-judge', verdict: 'pass' }],
+  };
+  const coordinated: ProposalIterationGroup = {
+    iterationGroupId: 'coordinator-loop', goal: 'Complete the coordinated assignment.',
+    participants: [
+      { participantId: 'mix-coordinator', stageRef: 'mix-coordinator', role: 'coordinator', perspective: 'Own the goal.', mandate: 'Coordinate the specialist.' },
+      { participantId: 'mix-specialist', stageRef: 'mix-specialist', role: 'contributor', perspective: 'Execute the task.', mandate: 'Fulfill the delegated work.' },
+    ],
+    routes: [
+      { routeId: 'coordinator-delegate', senderParticipantId: 'mix-coordinator', recipientParticipantId: 'mix-specialist', requestKinds: ['delegate'], baseResolutionStageIds: ['mix-coordinator'] },
+      { routeId: 'coordinator-review', senderParticipantId: 'mix-specialist', recipientParticipantId: 'mix-coordinator', requestKinds: ['review'], baseResolutionStageIds: ['mix-specialist'] },
+    ],
+    activation: { seedParticipantId: 'mix-coordinator', seedArtifactIds: ['crew-draft'] }, initialStepId: 'coordinator-delegate',
+    schedule: [
+      { stepId: 'coordinator-delegate', routeId: 'coordinator-delegate', cycle: 'current' },
+      { stepId: 'coordinator-review', routeId: 'coordinator-review', after: { stepId: 'coordinator-delegate', participantId: 'mix-specialist', verdict: 'fulfilled' }, cycle: 'next' },
+    ],
+    artifacts: ['crew-draft'], criteria: [{ id: 'quality', description: 'The coordinated result is complete.' }],
+    maxCycles: 2, cycleUnit: 'One delegate and coordinator review.',
+    terminalAuthorities: [{ participantId: 'mix-coordinator', verdict: 'complete' }],
+  };
+  return {
+    ...proposal([pairProducer, pairPeer, judgeProducer, judge, coordinator, specialist, release]),
+    maxConcurrency: 2,
+    iterationGroups: [pair, judged, coordinated],
+  };
+}
+
 function mixedKindIterationPlan(): PlanProposal {
   const producer = stage('producer');
   producer.artifacts = [{ id: 'draft', path: 'dashboard/server/producer.txt', description: 'Draft.' }];
@@ -458,7 +531,7 @@ function mixedKindIterationPlan(): PlanProposal {
 
 function genericOutcome(
   contract: NonNullable<Parameters<WorkerAdapter['execute']>[0]['iterationContract']>,
-  verdict: 'fail' | 'pass' | 'fulfilled' | 'complete',
+  verdict: 'accept' | 'fail' | 'pass' | 'fulfilled' | 'complete',
 ) {
   const findingId = `finding-${contract.request.cycle}`;
   return {
@@ -470,7 +543,7 @@ function genericOutcome(
     verdict,
     inputGenerationRefs: [...contract.request.inputGenerationRefs],
     criteria: verdict === 'fulfilled' ? [] : [{
-      criterionId: 'quality', verdict: verdict === 'pass' || verdict === 'complete' ? 'pass' as const : 'fail' as const,
+      criterionId: 'quality', verdict: verdict === 'accept' || verdict === 'pass' || verdict === 'complete' ? 'pass' as const : 'fail' as const,
       findingIds: verdict === 'fail' ? [findingId] : [],
     }],
     findings: verdict === 'fail' ? [{
@@ -480,7 +553,8 @@ function genericOutcome(
     ...(verdict === 'complete' ? { resolvedFindingRefs: [...contract.request.unresolvedFindingRefs] } : {}),
     positions: [], recordedDissent: [],
     summary: verdict === 'fulfilled' ? 'The successor draft is committed.'
-      : verdict === 'complete' ? 'The crew result is complete.' : `The draft ${verdict === 'pass' ? 'passes' : 'fails'}.`,
+      : verdict === 'complete' ? 'The crew result is complete.'
+        : verdict === 'accept' ? 'The peer accepts the draft.' : `The draft ${verdict === 'pass' ? 'passes' : 'fails'}.`,
   };
 }
 
@@ -490,9 +564,11 @@ function genericIterationFixture(input: {
   stopBeforeJudgeTurn?: number;
   crashAfterIntegrationStage?: string;
   plan?: PlanProposal;
-  turnVerdicts?: Record<string, 'fail' | 'pass' | 'fulfilled' | 'complete' | Array<'fail' | 'pass' | 'fulfilled' | 'complete'>>;
+  turnVerdicts?: Record<string, 'accept' | 'fail' | 'pass' | 'fulfilled' | 'complete'
+    | Array<'accept' | 'fail' | 'pass' | 'fulfilled' | 'complete'>>;
   artifactFailure?: 'missing' | 'empty' | 'irregular' | 'byte-identical';
   resolveBaseMissStage?: string;
+  resolvedBaseCommit?: string;
   reservationRefusalAt?: number;
   maxConcurrency?: number;
   crashAfterIterationRequest?: boolean;
@@ -633,7 +709,7 @@ function genericIterationFixture(input: {
         || value.dependencyResultOperationKeys.length !== value.dependencyStageIds.length) return null;
       const records = value.dependencyResultOperationKeys.map((dependency) => results.get(dependency.operationKey));
       if (records.some((record) => record?.durability !== 'canonical')) return null;
-      return canonicalHead;
+      return input.resolvedBaseCommit ?? canonicalHead;
     },
     async integrate(value) {
       integrations.push(value);
@@ -831,6 +907,8 @@ describe('AutomaticExecutionEngine', () => {
     expect(bLoop).toMatchObject({ state: 'passed', cyclesUsed: 2 });
     expect(parked.value.iterationReceipts.filter((candidate) => candidate.iterationLoopRef === bLoop.iterationLoopRef)
       .map((candidate) => candidate.verdict)).toEqual(['fail', 'fulfilled', 'pass']);
+    expect(parked.value.humanRequests.some((request) => request.kind === 'intervention'
+      && request.gateKind === undefined)).toBe(false);
 
     const resolved = item.store.resolveIterationGate('operator', gate.requestRef, {
       expectedRequestRevision: gate.revision, expectedLoopVersion: aLoop.version,
@@ -838,6 +916,34 @@ describe('AutomaticExecutionEngine', () => {
     });
     expect(resolved).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
     await expect(item.engine.runToBoundary(input)).resolves.toMatchObject({ state: 'succeeded' });
+  });
+
+  it('runs pair judge and coordinator groups to their composite terminal state at concurrency two', async () => {
+    const item = genericIterationFixture({
+      plan: parallelIterationMixPlan(), maxConcurrency: 2,
+      turnVerdicts: {
+        'pair-review': 'accept',
+        'judge-review': ['fail', 'pass'], 'judge-rework': 'fulfilled',
+        'coordinator-delegate': 'fulfilled', 'coordinator-review': 'complete',
+      },
+    });
+    await expect(item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan }))
+      .resolves.toMatchObject({ state: 'succeeded' });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(detail.value.iterationLoops.map((loop) => [loop.iterationGroupId, loop.state, loop.cyclesUsed]))
+      .toEqual([
+        ['pair-loop', 'passed', 1],
+        ['judge-loop', 'passed', 2],
+        ['coordinator-loop', 'passed', 2],
+      ]);
+    expect(detail.value.humanRequests).toEqual([]);
+    for (const receipt of detail.value.iterationReceipts.filter((candidate) => candidate.verdict !== 'fulfilled')) {
+      const request = detail.value.iterationRequests.find((candidate) => candidate.requestRef === receipt.requestRef)!;
+      const pinnedRef = request.inputGenerationRefs[0]!;
+      const pinned = detail.value.stageGenerations.find((generation) => generation.generationRef === pinnedRef)!;
+      expect(receipt).toMatchObject({ baseCommit: pinned.baseCommit, canonicalCommit: pinned.canonicalCommit });
+    }
   });
 
   it('parks before integration when any required rework artifact is missing empty irregular or byte-identical', async () => {
@@ -968,6 +1074,25 @@ describe('AutomaticExecutionEngine', () => {
       expect(request.baseCommit).toMatch(/^[a-f0-9]{40}$/);
       expect(request.artifactHashes).toEqual({ draft: 'b'.repeat(64) });
     }
+  });
+
+  it('records verdict lineage from pinned generation identity after the shared base advances', async () => {
+    const advancedBase = 'f'.repeat(40);
+    const item = genericIterationFixture({ judgeVerdicts: ['pass'], resolvedBaseCommit: advancedBase });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    const detail = item.store.getRun('operator', item.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    expect(outcome, JSON.stringify(detail.value.humanRequests)).toMatchObject({ state: 'succeeded' });
+    const request = detail.value.iterationRequests[0]!;
+    const generation = detail.value.stageGenerations.find((candidate) =>
+      request.inputGenerationRefs.includes(candidate.generationRef) && candidate.logicalStageId === 'producer')!;
+    expect(request.baseCommit).toBe(advancedBase);
+    expect(detail.value.iterationReceipts[0]).toMatchObject({
+      inputGenerationRefs: [generation.generationRef],
+      baseCommit: generation.baseCommit,
+      canonicalCommit: generation.canonicalCommit,
+    });
+    expect(detail.value.humanRequests).toEqual([]);
   });
 
   it('resolves a verified canonical base for every fenced participant turn instead of the null unverified path', async () => {
@@ -1945,7 +2070,11 @@ describe('AutomaticExecutionEngine', () => {
     const plan = proposal([stage('b'), stage('a'), stage('c', ['a'])]);
     const run = createApprovedRun(store, plan);
     const fake = fakes();
-    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+    const options = engineOptions(store, fake);
+    // This assertion is deliberately about a total release order, and the basic fake correlates
+    // inspection with the most recently entered worker. Keep this one scheduling-order probe serial.
+    options.maxConcurrency = 1;
+    const engine = new AutomaticExecutionEngine(options);
 
     await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
 

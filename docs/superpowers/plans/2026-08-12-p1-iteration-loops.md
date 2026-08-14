@@ -737,14 +737,16 @@ these four groups:
    `fulfilled`, `accept`, one supersession, and state `passed`. Expect `judge-rework-pass` to show
    `2/2`, receipts `fail`, `fulfilled`, `pass`, and the accepted successor generation. Neither group
    may visit a human gate.
-4. While another group is mid-cycle, expect `exhaust-with-residue` to stop at `1/1` in
-   `awaiting-park-gate` with `iteration-park` reason `exhausted`. Confirm the gate shows the missing
+4. With either iteration-park gate open (both may be open concurrently), observe
+   `exhaust-with-residue` at `1/1` in `awaiting-park-gate` with `iteration-park` reason `exhausted`.
+   Confirm the exhaustion gate shows the missing
    source-id finding, request and receipt refs, generation refs, base and canonical commits, the next
    route, and the exact artifact set. Confirm the run is not
-   successful, then confirm the sibling group continues and completes while this gate remains open.
+   successful, then confirm unblocked sibling work continues and completes while either gate remains open.
 5. Approve that exact artifact set. Expect the exhaustion group to become `passed` without cycle 2.
-   Then expect `no-progress-park` to write its required output byte-identically and stop before canonical
-   integration in `awaiting-park-gate` with reason `no-progress`. Confirm it shows the same residue fields
+   Then observe `no-progress-park` (which may already be waiting at its concurrently opened gate): it
+   writes its required output byte-identically and stops before canonical integration in
+   `awaiting-park-gate` with reason `no-progress`. Confirm it shows the same residue fields
    and approve-or-decline controls as exhaustion, with no successor generation or supersession. Approve
    the displayed set and expect the run to settle successfully.
 6. Launch the same immutable definition again with a new timestamped slug. Confirm a new `runRef` and
@@ -771,7 +773,7 @@ From `dashboard/`, run the focused suites covering every changed seam:
 
 ```text
 npm test -- server/workflows/defs.test.ts server/workflows/compile.test.ts server/workflows/compile.iterationLoopDemo.test.ts
-npm test -- server/control/proposal.test.ts server/control/compiler.test.ts server/control/reviewOutcome.test.ts
+npm test -- server/control/proposal.test.ts server/control/compiler.test.ts server/control/iterationOutcome.test.ts
 npm test -- server/control/store.test.ts server/control/execution.test.ts server/control/claudeWorkerAdapter.test.ts
 npm test -- server/control/adapters.test.ts server/control/codexExecAdapter.test.ts server/control/canonicalResultIntegrator.test.ts
 npm test -- server/control/routes.test.ts server/control/queueBridge.test.ts

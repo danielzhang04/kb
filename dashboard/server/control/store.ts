@@ -2482,7 +2482,8 @@ function legacyGroupForStages(
     && group.participants.some((participant) => participant.stageRef === subjectStage.stageId)
     && group.participants.some((participant) => participant.stageRef === reviewStage.stageId));
   if (approved) return clone(approved);
-  // Transitional legacy inputs have no approved generic definition to hash until this adapter is removed in Task 13.
+  // Sanctioned legacy store migration reader. Persisted review stages without an approved generic
+  // definition are projected here at the read boundary; new writes never enter this path.
   const review = reviewStage.review as ProposalReview;
   const snapshotStages = snapshot && Array.isArray(snapshot.stages) ? snapshot.stages as unknown as Array<Record<string, unknown>> : [];
   const source = snapshotStages.find((stage) => stage.id === subjectStage.stageId);
@@ -2976,7 +2977,7 @@ function validateIterationDurability(
     const outputGenerations = receipt.outputGenerationRefs.map((ref) => generationByRef.get(ref));
     const fulfilled = receipt.verdict === 'fulfilled';
     const primaryGeneration = fulfilled ? outputGenerations[0]
-      : inputGenerations.find((generation) => generation?.canonicalCommit === request?.baseCommit);
+      : inputGenerations[0];
     const recipientStageId = loop?.participants.find((participant) =>
       participant.participantId === request?.recipientParticipantId)?.stageRef;
     const participantStage = recipientStageId === undefined ? undefined
@@ -3001,7 +3002,7 @@ function validateIterationDurability(
         || generation.baseCommit !== receipt.baseCommit || generation.canonicalCommit !== receipt.canonicalCommit
         || generation.logicalStageId !== recipientStageId || generation.attemptRef !== receipt.participantAttemptRef))
       || (!fulfilled && (primaryGeneration.baseCommit !== receipt.baseCommit
-        || primaryGeneration.canonicalCommit !== receipt.canonicalCommit || primaryGeneration.canonicalCommit !== request.baseCommit))
+        || primaryGeneration.canonicalCommit !== receipt.canonicalCommit))
       || (fulfilled && (receipt.outputGenerationRefs.length !== 1
         || new Set(receipt.outputGenerationRefs).size !== receipt.outputGenerationRefs.length))
       || (!fulfilled && receipt.outputGenerationRefs.length !== 0)
@@ -4736,8 +4737,11 @@ function makeStore(load: () => StoreDocument, save: (document: StoreDocument) =>
       const fulfilled = outcome.verdict === 'fulfilled';
       const outputGenerations = input.outputGenerationRefs.map((generationRef) => document.stageGenerations.find((candidate) =>
         candidate.subject === subject && candidate.runRef === loop.runRef && candidate.generationRef === generationRef));
+      // request.baseCommit records the worker's shared-lineage base and may include sibling commits;
+      // durable generation refs, not that moving commit, identify verdict receipt lineage.
+      const activeGenerationRefs = new Set(loop.activeGenerationRefs);
       const primary = fulfilled ? outputGenerations[0]
-        : generations.find((generation) => generation?.canonicalCommit === request.baseCommit);
+        : generations.find((generation) => generation !== undefined && activeGenerationRefs.has(generation.generationRef));
       const recipientStageId = loop.participants.find((participant) =>
         participant.participantId === request.recipientParticipantId)?.stageRef;
       const expectedActiveGenerationRefs = fulfilled ? request.inputGenerationRefs.reduce<string[]>((refs, generationRef) => {

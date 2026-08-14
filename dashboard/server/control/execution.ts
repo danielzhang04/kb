@@ -1580,8 +1580,12 @@ export class AutomaticExecutionEngine {
       const outputGenerations = integrated.iterationOutcome.verdict === 'fulfilled'
         ? detail.stageGenerations.filter((generation) => generation.attemptRef === attemptRef && generation.state === 'committed')
         : [];
-      const inputGeneration = request.inputGenerationRefs.map((ref) => detail.stageGenerations.find((generation) =>
-        generation.generationRef === ref)).find((generation) => generation?.canonicalCommit === request.baseCommit);
+      // The worker base can include sibling integrations. It remains request provenance, but the
+      // receipt lineage belongs to the first still-active generation pinned by durable ref.
+      const activeGenerationRefs = new Set(currentLoop.activeGenerationRefs);
+      const inputGenerationRef = request.inputGenerationRefs.find((ref) => activeGenerationRefs.has(ref));
+      const inputGeneration = inputGenerationRef === undefined ? undefined : detail.stageGenerations.find((generation) =>
+        generation.generationRef === inputGenerationRef && generation.state === 'committed');
       const receiptBase = integrated.iterationOutcome.verdict === 'fulfilled'
         ? integrated.attemptBaseCommit : inputGeneration?.baseCommit;
       const receiptCommit = integrated.iterationOutcome.verdict === 'fulfilled'
