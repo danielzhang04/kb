@@ -411,3 +411,30 @@
 - HAZARD: fix-worktree green ≠ arc-tip green — an assert that passes only in a plate-less checkout (environment-dependent staging state) shipped from the isolated fix worktree and failed on the arc tip. Boss re-verifies the full suite on the MERGED arc state before push, every time.
 - LEARNED: comparison baselines must pin their spec revision — the VPW re-author silently turned "match the baseline" and "render the spec" into different goals; P10's faithful renders scored WORSE against stale baselines (L50 dM1 −20 from obeying the new green-palette text). Before any match study, diff the current still_prompts against the ones that minted the baselines.
 - MECHANICS that held all session: detached Start-Process dispatch + marker Monitors (zero external kills); harvest cross-worktree fixes via detached-HEAD commit + cherry-pick (PowerShell `>` corrupts patches to UTF-16); boss-only real gens; per-round boards with lightbox on one stable artifact URL.
+
+## 2026-08-13/14 — Bricks Wave 1: wave doctrine executed to the gate (boss session)
+- SHIPPED: Daniel's wave doctrine locked (W1 asset gate -> W2 all-cards gate -> parallel scene
+  waves; auto-memory fyt-image-gen-wave-doctrine.md) and Wave 1 fully executed through a 3-round
+  plate feedback cycle: 7 plates under the new PLATE_COMPOSITION forge law, 4 core-primitive
+  re-mints + 3 deletions + sweep, hr-officer + handshake re-runs, crowd seeded-restyle, harness
+  (K=2) built+reviewed SHIP. Branch @ 8b47b35c, $1.209 session gen spend, board v3 published.
+- LEARNED (clause vs payload precedence): a generated policy clause CANNOT beat authored payload
+  text that explicitly allocates the plane ("desk across the midground") — 3 plates proved it at
+  15/16/8% zones. The working fix class is payload re-authoring (relocate furniture in the prose,
+  author the open zone positively). Never re-roll against a payload conflict.
+- LEARNED (counts are a generator lottery): repeated set-dressing objects rendered 10/7/10
+  against an authored "eight" over 3 gens. Don't author numerals unless story-bearing; when one
+  fails repeatedly, adjudicate story-bearing vs dressing (L198 "twelve jurors" = keep exact and
+  it held; L84 chairs = drop the numeral, promote with provenance overrule).
+- WORKED (quantitative verifier gates): grid zone %, rig-silhouette overlay, leg-span gridlines
+  vs seed anatomy, macro pixel scans. B3 caught hair-inflated head-width masking a ratio "pass";
+  w21-B caught a 37% cavern overshoot. Demand MEASUREMENT in verifier briefs, not adjectives.
+- WORKED: ~15 detached codex workers (Start-Process Hidden + pending-marker Monitor), zero
+  external kills all session; worker deviations were consistently good when briefed to flag them
+  (lint-refused negation clause converted to positive; skip-exists overwrite surfaced).
+- FAILED (agent infra): a sonnet verifier PAIR died to the 600s stream watchdog with NO
+  transcript — SendMessage resume returns "No transcript found"; only a fresh respawn works. If
+  a pair dies twice, move verification to cold codex sessions.
+- REMAINS: Daniel's Wave-1 board ruling (incl. possible L84 adjudication veto) -> Wave 2 (134
+  cards, first live harness run) -> card gate -> scene waves. Handoff:
+  handoffs/2026-08-14-fyt-bricks-wave1-gate.md. Worktree .env deletion owed at close (Daniel via !).
