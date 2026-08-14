@@ -648,7 +648,8 @@ async def entrypoint(ctx: JobContext) -> None:
     # daemon thread: blocking mic read + onnx wake scoring, off the event loop
     threading.Thread(target=wakeword.listen, args=(_on_wake, cfg["wake_model"]),
                      kwargs={"device": cfg.get("wake_input_device"),
-                             "threshold": cfg.get("wake_threshold", wakeword.THRESHOLD)},
+                             "threshold": cfg.get("wake_threshold", wakeword.THRESHOLD),
+                             "patience": cfg.get("wake_patience", wakeword.PATIENCE)},
                      daemon=True).start()
     silence_task = asyncio.create_task(_silence_watcher())
     _BG_TASKS.add(silence_task)                # retain handle so the watcher can't be GC'd

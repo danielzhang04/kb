@@ -38,6 +38,8 @@ ATLAS = Path(__file__).resolve().parents[1]  # same root convention as worker/ap
 FRAME_SAMPLES = 1280   # 80 ms @ 16 kHz — openwakeword's expected chunk
 SAMPLE_RATE = 16000
 THRESHOLD = 0.5
+PATIENCE = 3           # consecutive frames above threshold before a wake fires (240 ms @ 80 ms/frame)
+REFRACTORY_S = 3.0     # one wake per phrase, not one per 80ms frame while scores stay high
 
 # Set by app.py's shutdown callback so the wake thread's error path stays quiet on Ctrl+C.
 # A mic/model failure MID-RUN still logs CRITICAL (Atlas going silently DEAF is the real
@@ -79,6 +81,50 @@ def load_model(model_name: str):
     model_arg, predict_key = _resolve_model(model_name)
     model = Model(wakeword_models=[model_arg], inference_framework="onnx")
     return model, predict_key
+
+
+class WakeGate:
+    """Debounce for the wake score stream (2026-08-12 ghost-wake fix).
+
+    The old trigger fired on ANY single 80 ms frame crossing threshold — one glitchy frame
+    (mic buffer overflow under CPU starvation, an ambient-audio spike) woke Atlas, and the desk
+    heard "Hey boss" / auto-sleep cycles with nobody speaking. A real "hey atlas" utterance holds
+    the score above threshold for many consecutive frames (that fact is why the refractory window
+    existed at all), so requiring `patience` consecutive frames kills one-frame spikes without
+    delaying a real wake by more than patience*80 ms.
+
+    Pure state machine, no audio imports: feed one score per frame to update() and it returns
+    "wake"  — patience reached outside the refractory window; fire on_wake now
+    "spike" — a run above threshold ended BEFORE reaching patience (the ghost-wake signature;
+              logged so false-trigger pressure stays visible in the pm2 log)
+    None    — nothing to act on this frame
+    `peak` and `run` expose the just-ended/just-fired run's max score and length for logging."""
+
+    def __init__(self, threshold: float = THRESHOLD, patience: int = PATIENCE,
+                 refractory_s: float = REFRACTORY_S) -> None:
+        self.threshold = threshold
+        self.patience = max(1, int(patience))
+        self.refractory_s = refractory_s
+        self.peak = 0.0        # max score of the current/just-reported run
+        self.run = 0           # consecutive frames above threshold in the current run
+        self.spike_frames = 0  # length of the last run that ended below patience (for logging)
+        self._last_trigger = None  # monotonic time of the last fired wake
+
+    def update(self, score: float, now: float):
+        if score > self.threshold:
+            self.peak = score if self.run == 0 else max(self.peak, score)
+            self.run += 1
+            if self.run == self.patience and (
+                    self._last_trigger is None or now - self._last_trigger > self.refractory_s):
+                self._last_trigger = now
+                return "wake"
+            return None
+        ended_early = 0 < self.run < self.patience
+        if ended_early:
+            self.spike_frames = self.run   # length of the run that just ended, for the caller's log
+        self.run = 0
+        # peak intentionally survives until the next run starts so the caller can log it.
+        return "spike" if ended_early else None
 
 
 def resolve_input_device(substring: str | None, devices=None):
@@ -123,10 +169,13 @@ def resolve_output_device(substring: str | None, devices=None):
 
 
 def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
-           device: str | None = None, threshold: float = THRESHOLD) -> None:
+           device: str | None = None, threshold: float = THRESHOLD,
+           patience: int = PATIENCE) -> None:
     """Blocking mic loop: read 1280-sample int16 frames at 16 kHz, score each with the wake
-    model, and call on_wake() whenever the score crosses `threshold`. Runs until interrupted.
-    `device` is a name substring pinned via config (wake_input_device), resolved above.
+    model, and call on_wake() when `patience` CONSECUTIVE frames cross `threshold` (WakeGate —
+    single-frame spikes are the 2026-08-12 ghost-wake source and are logged, not fired).
+    Runs until interrupted. `device` is a name substring pinned via config (wake_input_device),
+    resolved above.
 
     Any failure here (mic busy/exclusive-mode conflict, model load error) would otherwise kill
     the daemon thread silently and leave Atlas permanently ASLEEP — so log it LOUDLY (review
@@ -141,15 +190,19 @@ def listen(on_wake: Callable[[], None], model_name: str = "hey_jarvis",
         import time as _time
         with sd.InputStream(device=dev, samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                             blocksize=FRAME_SAMPLES) as stream:
-            last_trigger = 0.0
+            gate = WakeGate(threshold=threshold, patience=patience)
             while True:
                 frame, _ = stream.read(FRAME_SAMPLES)
                 scores = model.predict(frame[:, 0])
-                if scores.get(predict_key, 0.0) > threshold:
-                    now = _time.monotonic()
-                    if now - last_trigger > 3.0:   # refractory window: one wake per phrase,
-                        last_trigger = now          # not one per 80ms frame while scores stay high
-                        on_wake()
+                event = gate.update(scores.get(predict_key, 0.0), _time.monotonic())
+                if event == "wake":
+                    logger.info("wake fired (peak score %.2f over %d frames)", gate.peak, gate.run)
+                    on_wake()
+                elif event == "spike":
+                    # The ghost-wake signature: threshold crossed but not sustained. Keep these
+                    # visible so false-trigger pressure can be tuned from the pm2 log.
+                    logger.info("wake spike suppressed (peak score %.2f, %d frame(s) < patience %d)",
+                                gate.peak, gate.spike_frames, gate.patience)
     except Exception:
         if shutting_down.is_set():
             logger.info("wake listener stopped during shutdown")
