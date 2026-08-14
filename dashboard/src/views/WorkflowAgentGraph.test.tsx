@@ -21,6 +21,7 @@ import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { WorkflowDefEntry } from './WorkflowDetail';
+import { participantStageKey, type IterationParticipantOverlay } from '../control/runGraph';
 import {
   AGENT_GRID_COLUMNS,
   AGENT_NODE_GAP_X,
@@ -192,6 +193,19 @@ const groupsByKey = (workflow: WorkflowDefEntry) =>
   Object.fromEntries(agentGroups(workflow).map((group) => [group.key, group.stages.map((stage) => stage.id)]));
 
 describe('grouping steps under the agent that governs them', () => {
+  it('derives a distinct participant-stage row for each loop role when one agent owns multiple stages', () => {
+    const rows = [
+      { key: participantStageKey('research', 'draft-loop', 'producer'), stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer', role: 'contributor' },
+      { key: participantStageKey('review', 'review-loop', 'judge'), stageId: 'review', iterationGroupId: 'review-loop', participantId: 'judge', role: 'judge' },
+    ] as IterationParticipantOverlay[];
+    const groups = agentGroups(entry(), rows);
+    expect(groups.filter((group) => group.key === 'alpha')).toHaveLength(1);
+    expect(groups.find((group) => group.key === 'alpha')?.participantStages.map((row) => [row.key, row.role])).toEqual([
+      [participantStageKey('research', 'draft-loop', 'producer'), 'contributor'],
+      [participantStageKey('review', 'review-loop', 'judge'), 'judge'],
+    ]);
+  });
+
   /** THE PIN for "show each AGENT, not each SKILL": fourteen steps become four cards. */
   it('collapses the fourteen-step pipeline into one card per agent, steps in pipeline order', () => {
     const groups = agentGroups(videoRun());
@@ -513,10 +527,11 @@ describe('the running overlay', () => {
       entry={entry()}
       runOverlay={{
         runRef: 'run-1',
+        iterationEdges: [],
         sse: { last: null, count: 0 },
         overlays: {
-          alpha: { state: 'running', openGate: true, attemptRef: 'attempt-alpha' },
-          beta: { state: 'blocked', openGate: false, attemptRef: null },
+          alpha: { state: 'running', openGate: true, attemptRef: 'attempt-alpha', participantStages: [] },
+          beta: { state: 'blocked', openGate: false, attemptRef: null, participantStages: [] },
         },
         onOpenPanel,
       }}

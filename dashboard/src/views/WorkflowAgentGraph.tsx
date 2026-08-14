@@ -48,7 +48,7 @@ import {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { AttemptMiniTail } from '../components/AttemptMiniTail';
-import type { AgentRunOverlay } from '../control/runGraph';
+import type { AgentRunOverlay, IterationGraphEdge, IterationParticipantOverlay } from '../control/runGraph';
 import type { UseSseResult } from '../lib/sseClient';
 import type { WorkflowDefEntry } from './WorkflowDetail';
 
@@ -209,6 +209,8 @@ export interface AgentGroup {
   isManager: boolean;
   /** The steps this agent governs, in pipeline order (dependency rank, then declaration order). */
   stages: WorkflowStage[];
+  /** Stage-scoped loop rows; values from different stages are never folded into agent-level state. */
+  participantStages: IterationParticipantOverlay[];
   /** The rank of this agent's earliest step; the manager sorts ahead of everything regardless. */
   rank: number;
 }
@@ -225,7 +227,10 @@ export interface AgentGroup {
  *     declaration order to break ties. The unresolved group takes its place by the same rule; it is
  *     not special-cased to the end.
  */
-export function agentGroups(entry: WorkflowDefEntry): AgentGroup[] {
+export function agentGroups(
+  entry: WorkflowDefEntry,
+  participantStages: readonly IterationParticipantOverlay[] = [],
+): AgentGroup[] {
   const ranks = stageRanks(entry);
   const order = new Map(entry.stages.map((stage, index) => [stage.id, index]));
   const sortKey = (stage: WorkflowStage): [number, number] => [ranks.get(stage.id) ?? 0, order.get(stage.id) ?? 0];
@@ -249,6 +254,7 @@ export function agentGroups(entry: WorkflowDefEntry): AgentGroup[] {
       isDefault: slot?.isDefault ?? false,
       isManager: false,
       stages: [stage],
+      participantStages: [],
       rank: 0,
     });
   }
@@ -268,9 +274,18 @@ export function agentGroups(entry: WorkflowDefEntry): AgentGroup[] {
         isDefault: manager.isDefault,
         isManager: true,
         stages: [],
+        participantStages: [],
         rank: 0,
       });
     }
+  }
+
+  const groupByStageId = new Map<string, AgentGroup>();
+  for (const group of groups.values()) {
+    for (const stage of group.stages) groupByStageId.set(stage.id, group);
+  }
+  for (const participant of participantStages) {
+    groupByStageId.get(participant.stageId)?.participantStages.push(participant);
   }
 
   const ordered = [...groups.values()];
@@ -602,11 +617,15 @@ export function WorkflowAgentGraph({
   runOverlay?: {
     runRef: string;
     overlays: Record<string, AgentRunOverlay>;
+    /** Separate from DAG handoffs; Task 12 owns rendering these declared route edges. */
+    iterationEdges: IterationGraphEdge[];
     sse: UseSseResult;
     onOpenPanel?: (agentId: string) => void;
   };
 }): React.JSX.Element {
-  const groups = useMemo(() => agentGroups(entry), [entry]);
+  const participantStages = useMemo(() => Object.values(runOverlay?.overlays ?? {})
+    .flatMap((overlay) => overlay.participantStages), [runOverlay?.overlays]);
+  const groups = useMemo(() => agentGroups(entry, participantStages), [entry, participantStages]);
   const defaultPositions = useMemo(() => agentNodePositions(entry), [entry]);
   const handoffs = useMemo(() => agentEdges(entry), [entry]);
   const positions = useRef(new Map<string, XYPosition>());

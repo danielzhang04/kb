@@ -48,7 +48,7 @@ import {
   quarantineRuns,
   reconcileAuthorizedFailedRun,
   rerouteManagedStage,
-  resolveReviewCompletionGate,
+  resolveIterationGate,
   respondToHumanRequest,
   resumeRunAfterHumanResponse,
   sendManagerMessage,
@@ -82,7 +82,7 @@ import {
   timestampLabel,
 } from '../control/runEvents';
 import { loadRunEventWindow, type RunEventWindow } from '../control/runEventWindow';
-import { entryFromRun, overlaysFromRun } from '../control/runGraph';
+import { entryFromRun, iterationEdgesFromRun, overlaysFromRun } from '../control/runGraph';
 import { agentIdsForRun, cardOwnerIndex, agentLink, cardLink, workflowLink } from '../control/entityLinks';
 import { EntityName } from '../components/EntityName';
 import { AgentWorkPanel } from '../components/AgentWorkPanel';
@@ -892,7 +892,7 @@ export function RunDetail({
     }
   }, [busy, loadRun, requireSession, runRef]);
   const runGraph = useMemo(() => detail
-    ? { entry: entryFromRun(detail), overlays: overlaysFromRun(detail) }
+    ? { entry: entryFromRun(detail), overlays: overlaysFromRun(detail), iterationEdges: iterationEdgesFromRun(detail) }
     : null, [detail]);
 
   useEffect(() => {
@@ -940,9 +940,9 @@ export function RunDetail({
 
   const openRequests = detail.humanRequests.filter((request) => request.state === 'open');
   const resolvedRequests = detail.humanRequests.filter((request) => request.state !== 'open');
-  const completionRequestRefs = new Set((detail.reviewReceipts ?? [])
-    .map((receipt) => receipt.completionRequestRef)
-    .filter((ref): ref is string => ref !== null));
+  const completionLoopByRequestRef = new Map((detail.iterationLoops ?? [])
+    .filter((loop) => loop.completionGateRef !== undefined)
+    .map((loop) => [loop.completionGateRef!, loop]));
   const manager = detail.sessions.find((item) => item.sessionRef === detail.run.managerSessionRef);
   const managerRunning = manager?.state === 'running';
   const resumeAvailable = canResumePublishedRun(detail);
@@ -976,11 +976,16 @@ export function RunDetail({
   })();
 
   const respond = (request: HumanRequestDto, decision: HumanRequestDecision, response: string): void => {
-    const completionGate = completionRequestRefs.has(request.requestRef);
+    const iterationLoop = completionLoopByRequestRef.get(request.requestRef);
     void govern('your answer', async (active) => {
-      if (completionGate) {
-        await resolveReviewCompletionGate(request.requestRef, {
+      if (iterationLoop) {
+        await resolveIterationGate(request.requestRef, {
+          expectedGateRef: request.requestRef,
+          expectedGateKind: null,
+          expectedParkReason: null,
           expectedRequestRevision: request.revision,
+          expectedLoopVersion: iterationLoop.version,
+          expectedGenerationRefs: iterationLoop.activeGenerationRefs,
           decision: decision as Extract<HumanRequestDecision, 'approved' | 'rejected' | 'changes-requested'>,
           idempotencyKey: humanIdempotencyKey(request, decision),
           response: response || null,
@@ -991,7 +996,7 @@ export function RunDetail({
           idempotencyKey: humanIdempotencyKey(request, decision), response: response || null,
         }, active, fetchImpl);
       }
-      if ((!completionGate && (decision === 'approved' || decision === 'responded')) || (completionGate && decision === 'approved')) {
+      if ((!iterationLoop && (decision === 'approved' || decision === 'responded')) || (iterationLoop && decision === 'approved')) {
         await resumeRunAfterHumanResponse(request.runRef, active, fetchImpl);
       }
     });
@@ -1112,7 +1117,7 @@ export function RunDetail({
         <WorkflowAgentGraph
           entry={runGraph!.entry}
           readOnly
-          runOverlay={{ runRef: detail.run.runRef, overlays: runGraph!.overlays, sse, onOpenPanel: setSelectedAgentId }}
+          runOverlay={{ runRef: detail.run.runRef, overlays: runGraph!.overlays, iterationEdges: runGraph!.iterationEdges, sse, onOpenPanel: setSelectedAgentId }}
         />
         {selectedAgentId !== null ? (
           <AgentWorkPanel runRef={detail.run.runRef} agentId={selectedAgentId} run={detail}
@@ -1141,7 +1146,7 @@ export function RunDetail({
           {openRequests.map((request) => (
             <HumanRequestCard key={request.requestRef} request={request} busy={busy}
               onRespond={(decision, response) => respond(request, decision, response)}
-              showPrompt={completionRequestRefs.has(request.requestRef)} />
+              showPrompt={completionLoopByRequestRef.has(request.requestRef)} />
           ))}
         </section>
       ) : null}

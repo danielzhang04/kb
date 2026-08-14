@@ -38,7 +38,7 @@ const detail: RunDetailDto = {
     { requestRef: 'request-alpha', runRef: 'run-1', displayName: 'Run', shortRef: 1, stageRef: 'stage-alpha', kind: 'approval', revision: 1, state: 'open', title: 'Alpha gate', prompt: 'Approve alpha', ask: 'Approve alpha.', technicalDetail: null, response: null, createdAt: '', updatedAt: '' },
     { requestRef: 'request-beta', runRef: 'run-1', displayName: 'Run', shortRef: 1, stageRef: 'stage-beta', kind: 'approval', revision: 1, state: 'open', title: 'Beta gate', prompt: 'Approve beta', ask: 'Approve beta.', technicalDetail: null, response: null, createdAt: '', updatedAt: '' },
   ],
-  reviewLoops: [], reviewReceipts: [],
+  stageGenerations: [], generationSupersessions: [], iterationLoops: [], iterationRequests: [], iterationReceipts: [],
 };
 
 const sse: UseSseResult = { last: null, count: 0 };
@@ -50,7 +50,7 @@ describe('AgentWorkPanel', () => {
     const onRespondRequest = vi.fn();
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ delivery: 'queued' }), { status: 202 })));
     render(unlocked(<AgentWorkPanel runRef="run-1" agentId="alpha" run={detail}
-      overlay={{ state: 'running', openGate: true, attemptRef: 'attempt-alpha' }} sse={sse} onClose={vi.fn()}
+      overlay={{ state: 'running', openGate: true, attemptRef: 'attempt-alpha', participantStages: [] }} sse={sse} onClose={vi.fn()}
       onRespondRequest={onRespondRequest} />));
 
     expect(screen.getByTestId('agent-work-panel-stream').textContent).toContain('› operator input');
@@ -71,32 +71,44 @@ describe('AgentWorkPanel', () => {
   it('disables the composer when locked or its overlay is terminal, and hides it for unresolved groups', () => {
     const props = {
       runRef: 'run-1', agentId: 'alpha', run: detail, sse, onClose: vi.fn(), onRespondRequest: vi.fn(),
-      overlay: { state: 'succeeded' as const, openGate: false, attemptRef: 'attempt-alpha' },
+      overlay: { state: 'succeeded' as const, openGate: false, attemptRef: 'attempt-alpha', participantStages: [] },
     };
     const view = render(unlocked(<AgentWorkPanel {...props} />));
     expect((screen.getByLabelText('Message alpha') as HTMLTextAreaElement).disabled).toBe(true);
     expect(screen.getByTestId('agent-work-panel-composer-hint').textContent).toMatch(/no longer accepting/i);
     view.unmount();
     clearStoredSession();
-    const locked = render(<SessionProvider><AgentWorkPanel {...props} overlay={{ state: 'running', openGate: false, attemptRef: 'attempt-alpha' }} /></SessionProvider>);
+    const locked = render(<SessionProvider><AgentWorkPanel {...props} overlay={{ state: 'running', openGate: false, attemptRef: 'attempt-alpha', participantStages: [] }} /></SessionProvider>);
     expect((screen.getByLabelText('Message alpha') as HTMLTextAreaElement).disabled).toBe(true);
     expect(screen.getByTestId('agent-work-panel-composer-hint').textContent).toMatch(/unlock/i);
     locked.rerender(unlocked(<AgentWorkPanel {...props} agentId="" />));
     expect(screen.queryByTestId('agent-work-panel-composer')).toBeNull();
   });
 
-  it('excludes reason-coded iteration-park gates from generic human response controls', () => {
+  it('excludes specialized iteration gates from the generic human response controls', () => {
     const parked = {
       ...detail,
-      humanRequests: [{
-        ...detail.humanRequests[0], requestRef: 'request-iteration-park', gateKind: 'iteration-park',
-        title: 'Iteration parked', prompt: 'Approve this exact set or decline and relaunch separately.',
+      humanRequests: [
+        { ...detail.humanRequests[0], requestRef: 'request-generic' },
+        {
+          ...detail.humanRequests[0], requestRef: 'request-iteration-completion',
+          title: 'Iteration complete', prompt: 'Approve the accepted generation.',
+        },
+        {
+          ...detail.humanRequests[0], requestRef: 'request-iteration-park', gateKind: 'iteration-park',
+          title: 'Iteration parked', prompt: 'Approve this exact set or decline and relaunch separately.',
+        },
+      ],
+      iterationLoops: [{
+        iterationLoopRef: 'loop-1', iterationGroupId: 'group-1', completionGateRef: 'request-iteration-completion',
+        interventionRef: 'request-iteration-park',
       }],
     } as unknown as RunDetailDto;
     render(unlocked(<AgentWorkPanel runRef="run-1" agentId="alpha" run={parked}
-      overlay={{ state: 'waiting-human', openGate: true, attemptRef: 'attempt-alpha' }} sse={sse} onClose={vi.fn()}
+      overlay={{ state: 'waiting-human', openGate: true, attemptRef: 'attempt-alpha', participantStages: [] }} sse={sse} onClose={vi.fn()}
       onRespondRequest={vi.fn()} />));
     expect(screen.queryByTestId('run-gate-request-iteration-park')).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull();
+    expect(screen.queryByTestId('run-gate-request-iteration-completion')).toBeNull();
+    expect(screen.getByTestId('run-gate-request-generic')).toBeTruthy();
   });
 });

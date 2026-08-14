@@ -39,12 +39,11 @@ export function AgentWorkPanel({
   const stageRefs = new Set(run.stages
     .filter((stage) => (stage.assignment?.agentId ?? '') === agentId)
     .map((stage) => stage.stageRef));
+  const iterationGateRefs = new Set((run.iterationLoops ?? []).flatMap((loop) =>
+    [loop.completionGateRef, loop.interventionRef].filter((ref): ref is string => ref !== undefined)));
   const requests = run.humanRequests.filter((request) => request.state === 'open'
-    && (request as HumanRequestDto & { gateKind?: string }).gateKind !== 'iteration-park'
+    && request.gateKind !== 'iteration-park' && !iterationGateRefs.has(request.requestRef)
     && request.stageRef !== null && stageRefs.has(request.stageRef));
-  const completionRequestRefs = new Set((run.reviewReceipts ?? [])
-    .map((receipt) => receipt.completionRequestRef)
-    .filter((ref): ref is string => ref !== null));
   const acceptsInput = agentId !== '' && !!session && !!overlay && !terminalStates.has(overlay.state);
   const composerHint = !session
     ? 'Unlock the dashboard to message this agent.'
@@ -113,7 +112,6 @@ export function AgentWorkPanel({
           <h4>Waiting on you</h4>
           {requests.map((request) => (
             <HumanRequestCard key={request.requestRef} request={request} busy={busy}
-              showPrompt={completionRequestRefs.has(request.requestRef)}
               onRespond={(decision, response) => onRespondRequest(request, decision, response)} />
           ))}
         </section>

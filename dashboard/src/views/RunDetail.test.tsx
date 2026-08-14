@@ -114,7 +114,9 @@ function makeDetail(over: Partial<RunDetailDto> = {}): RunDetailDto {
     },
     stages: over.stages ?? [makeStage('idea', 'fyt-story'), makeStage('visual-plan', 'fyt-visuals', { dependsOn: ['idea'] })],
     attempts: over.attempts ?? [], sessions: over.sessions ?? [], humanRequests: over.humanRequests ?? [],
-    reviewLoops: [], reviewReceipts: over.reviewReceipts ?? [],
+    stageGenerations: over.stageGenerations ?? [], generationSupersessions: over.generationSupersessions ?? [],
+    iterationLoops: over.iterationLoops ?? [], iterationRequests: over.iterationRequests ?? [],
+    iterationReceipts: over.iterationReceipts ?? [],
   };
 }
 
@@ -267,6 +269,50 @@ describe('the run surface', () => {
     const strip = screen.getByTestId('run-strip');
     expect(screen.getByTestId('workflow-agent-node-fyt-story').textContent).toContain('running');
     expect(graph.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('uses the rendered completion loop version and generations for the iteration gate CAS', async () => {
+    const completionGate = {
+      requestRef: 'request-completion', runRef: 'run-1', displayName: 'headless run', shortRef: 1,
+      stageRef: 'ref-idea', kind: 'approval', revision: 6, state: 'open', title: 'Accept the iteration',
+      prompt: 'Approve the accepted generation.', ask: 'Approve the accepted generation.', technicalDetail: null,
+      response: null, createdAt: '', updatedAt: '',
+    } as RunDetailDto['humanRequests'][number];
+    const detail = makeDetail({
+      humanRequests: [completionGate],
+      iterationLoops: [{
+        iterationLoopRef: 'loop-accept', runRef: 'run-1', definitionHash: 'definition', iterationGroupId: 'accept-loop',
+        goal: 'Accept the draft.', participants: [
+          { participantId: 'producer', stageRef: 'idea', role: 'contributor', perspective: 'Produce.', mandate: 'Draft.' },
+          { participantId: 'judge', stageRef: 'visual-plan', role: 'judge', perspective: 'Judge.', mandate: 'Accept.' },
+        ], routes: [{ routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['idea'] }],
+        activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review-step',
+        schedule: [{ stepId: 'review-step', routeId: 'review', cycle: 'current' }], artifacts: ['draft'], criteria: [], maxCycles: 3,
+        cycleUnit: 'judge verdicts', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }], cyclesUsed: 2,
+        state: 'awaiting-completion-gate', activeGenerationRefs: ['generation-7', 'generation-8'], completionGateRef: 'request-completion',
+        version: 13, createdAt: '', updatedAt: '',
+      }],
+    });
+    const resolve = vi.spyOn(controlClient, 'resolveIterationGate').mockResolvedValue({} as controlClient.IterationGateResultDto);
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+    fireEvent.click(within(screen.getByTestId('run-gate-request-completion')).getByRole('button', { name: 'Approved' }));
+    await waitFor(() => expect(resolve).toHaveBeenCalledWith('request-completion', expect.objectContaining({
+      expectedLoopVersion: 13, expectedGenerationRefs: ['generation-7', 'generation-8'],
+    }), 'tok', fetchImpl));
+  });
+
+  it('renders and opens an agent panel when an older run payload has no iteration collections', () => {
+    const detail = makeDetail();
+    delete (detail as Partial<RunDetailDto>).iterationLoops;
+    delete (detail as Partial<RunDetailDto>).iterationRequests;
+    delete (detail as Partial<RunDetailDto>).iterationReceipts;
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} />));
+    fireEvent.click(screen.getByTestId('workflow-agent-node-fyt-story').querySelector('header')!);
+    expect(screen.getByTestId('agent-work-panel-fyt-story')).toBeTruthy();
   });
 
   it('opens one selected agent panel from the graph, swaps it, closes it, and delegates its gate response', async () => {
