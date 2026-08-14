@@ -1,0 +1,61 @@
+{
+  "L65": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Judged against today's re-authored still_prompt (`... In the back third by the tall window, a big desk carries a black telephone and one closed folder, with an empty high-backed leather swivel chair pushed back behind it. The tall window fills the back wall with a flat pale sky and the tops of two palms; a potted palm stands stage-left and a blank cream wall stands stage-right ... foreground depth from a cropped visitor chair back at the lower-left edge.`). All load-bearing elements verified present at their authored positions: desk with black rotary telephone and one closed folder/notebook on its surface; empty high-backed brown leather swivel chair pushed back behind the desk; full-height window filling the back wall showing a flat pale-blue sky with two palm crowns visible through the glass; a separate potted palm standing stage-left; a bare cream wall stage-right with nothing hung on it; cropped dark visitor-chair back at the lower-left foreground edge. Cream-amber-charcoal palette with a hard sun slab across the desk/floor matches the authored light description.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere in the frame -- the folder on the desk is blank, the telephone dial carries no legible characters, and the bare wall stage-right has no signage.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": ""
+  },
+  "L84": {
+    "axes": {
+      "place_fidelity": "fail",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Judged against today's re-authored still_prompt (`... a long table runs stage-right with eight stacking chairs pushed in and two closed grey steel document boxes squared up on its near end; a coat stand stands by the door stage-left, and a window at the back looks onto the frosted car park ...`). Counted the chairs via zoom crop (see <scratch>/w21-crops/L84-chairs-full.png and L84-chairs-left.png): the long table carries only SEVEN stacking chairs total -- six in a row along the far side plus one angled chair pushed in at the rounded near-end of the table -- not the authored eight. Confirmed via a separate crop of the near/left end of the table (L84-chairs-left.png) that no chair is hidden behind or beneath the document boxes; the count of seven is exhaustive. All other authored elements are present and correctly positioned: the long table itself, the two closed grey steel document boxes squared up at its near end, the coat stand by the door stage-left (empty, holding nothing), and the window at the back showing the frosted/snowy car park with parked cars matching the L83 winter-arrival continuity.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "Document boxes carry only blank label-slot rectangles (dark tab + lighter panel), no legible text; no other signage anywhere in frame.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": "Chair count is a hard miss: exactly seven stacking chairs rendered against an authored eight. This is a genuine undercount of a deliberately authored, exactly-specified furniture count (not the ~10 cosmetic-drift overcount noted for a prior generation of this shot in round w8) -- verdict is place_fidelity FAIL."
+  },
+  "L86": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Judged against today's re-authored still_prompt (`... steel pallet racking four bays high running away on both sides, pallets of flat cartons filling the lower two tiers ... a concrete floor with yellow lane paint, roof lights in a row overhead ... Painted across the end panel of the racking that closes the aisle: 'MINISCRIBE'.`). Steel pallet racking runs away on both sides of the aisle; zoom crop of the near bay (<scratch>/w21-crops/L86-racking.png) confirms the lower two tiers are loaded with shrink-wrapped pallets of flat cartons while the structure continues upward toward the ceiling for additional empty tiers, consistent with 'four bays high, pallets filling the lower two tiers.' Concrete floor with yellow lane paint present; a row of pendant strip lights runs overhead; foreground depth delivered by a cropped rack upright at the right edge; end panel closing the aisle carries the required lettering.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "'MINISCRIBE' painted across the end panel closing the aisle, verified letter-by-letter via zoom crop (<scratch>/w21-crops/L86-lettering.png): M-I-N-I-S-C-R-I-B-E -- exact match, no stray characters, no extra words.",
+      "act_text": "n/a -- not authored for this shot; the place_owner lettering is covered under the lettering axis."
+    },
+    "notes": ""
+  },
+  "L198": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Judged against today's re-authored still_prompt (`... At the back, a raised timber bench holds an empty high-backed chair behind it; stage-left, an empty jury box has exactly twelve seats in two rows of six. Two counsel tables sit to the sides of the well, and gallery pews flank the well behind them. Panelled walls with tall plain windows ...`). Raised timber bench at the back with an empty high-backed chair behind it: present. Two counsel tables in the well: present. Gallery pews flanking the well, running toward the viewer: present, multiple rows both sides. Panelled walls with tall plain windows: present. Foreground depth from a cropped pew back at the lower-right: present. Jury box seat count: counted via multiple zoom-crop passes (<scratch>/w21-crops/L198-jury-grid.png, L198-jury-left.png, L198-jury-right.png, L198-final.png, plus an edge-detected line-art rendering L198-edges-left.png/-right.png built specifically to cut through the fabric-color ambiguity of tightly packed seats). The box reads as two stadium-offset rows -- a back row set against the rail and a front row set forward/lower -- spanning the box's full width from the podium corner to the far wall corner, with the seat count in each row landing at six once the near-corner (confirmed no seat hidden behind/beside the podium, see L198-jury-farleft.png) and far-corner (rail terminates cleanly at the wall, see L198-jury-farright.png) boundaries are accounted for. Total of twelve is the most consistent read across every crop method used; no method surfaced a count clearly outside 11-13, and none is clearly short of or over twelve the way L84's chair count was.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere in the frame."
+    },
+    "notes": "Jury seat count PASSED at twelve, but flagged for transparency: the seats are drawn tightly packed/overlapping under perspective, and pixel-level segmentation (color-mask connected components, edge-map contour counting) could not independently certify twelve to full pixel certainty -- every method converged on 11-13 with 12 as the best-supported single value and the row structure (two offset rows, box corners clean at both ends) matching the authored 'two rows of six.' Recommend a second-verifier cross-check on this specific count given the round's explicit hard-gate framing."
+  }
+}

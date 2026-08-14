@@ -633,7 +633,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; promoted from _staging/L84.png (sha256 208ca72c2d06c0563fd17ebfbef3a81bd2b2b6ddfdf58b5d3204bc3a747c6ecf, verified match on copy: True); verify record scratchpad/taste-forensics/w8-verdicts-A.json + w8-verdicts-B.json (both all-pass)"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; W24 re-promotion supersedes the prior scene bytes; promoted from _staging/L84-w22.png (sha256 3ec6ff9fadbd66eb63d1e52573bb2073185830dda6235b0dbe916f7b244b62cd, verified match on copy: True); verify record scratchpad/taste-forensics/w23-verdicts-A.json + w23-verdicts-B.json (boss-adjudicated clean)"
   },
   {
    "shot_id": "L114",
@@ -676,12 +676,12 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; promoted from _staging/L198.png (sha256 8b77fadcab2081f41a8452d2ededd5b53425c3961435e4ee5b6bca7ceeb9bb1b, verified match on copy: True); verify record scratchpad/taste-forensics/w8-verdicts-A.json + w8-verdicts-B.json (both all-pass)"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; W22 re-promotion supersedes the prior scene bytes; promoted from _staging/L198-w20.png (sha256 5999ae3e3a99e847fa447a70167026768a47c90ea8b4624915a77627c9d1966e, verified match on copy: True); verify record scratchpad/taste-forensics/w21-verdicts-A.json + w21-verdicts-B.json (both all-pass)"
   },
   {
    "shot_id": "L65",
    "file": "assets/scenes/L65.png",
-   "technique": "(c) Character-free scene â€” cast-free composition",
+   "technique": "(c) Character-free scene — cast-free composition",
    "seeds": [
     {
      "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
@@ -695,7 +695,7 @@
    "retry_cause": null,
    "parent_depth": 0,
    "lineage": 0,
-   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; promoted from _staging/L65-w11-retry.png (sha256 b806f022747a93062b9a22dbc0383536a2708dc28865782fe07d4aeddc8a80ec, verified match on copy: True); verify record scratchpad/taste-forensics/w12-verdicts-A.json + w12-verdicts-B.json (both all-pass)"
+   "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; W22 re-promotion supersedes the prior scene bytes; promoted from _staging/L65-w20.png (sha256 678f8f54649e9bc68ac7aa1721ec5a97d0562b033fec18ebeaac5103399c185c, verified match on copy: True); verify record scratchpad/taste-forensics/w21-verdicts-A.json + w21-verdicts-B.json (both all-pass)"
   },
   {
    "shot_id": "L112",
@@ -715,6 +715,30 @@
    "parent_depth": 0,
    "lineage": 0,
    "notes": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor; promoted from _staging/L112-w11-retry.png (sha256 fe59c67d23ca1c359e1a4c12dae281a51475fe23035d447289b68346807de495, verified match on copy: True); verify record scratchpad/taste-forensics/w12-verdicts-A.json + w12-verdicts-B.json (both all-pass)"
+  },
+  {
+   "shot_id": "L86",
+   "file": "assets/scenes/L86.png",
+   "technique": "(c) Character-free scene — cast-free composition",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+     "role": "environment",
+     "character": "lettering-marker-italic"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); W22 first promotion; promoted from _staging/L86-w20.png (sha256 0aee609d8069cabf948ac93f7b6780674e15e7ebdb6fff5166c0b513bc140c19, verified match on copy: True); verify record scratchpad/taste-forensics/w21-verdicts-A.json + w21-verdicts-B.json (both all-pass)"
   }
  ]
 }

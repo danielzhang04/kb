@@ -1,0 +1,73 @@
+{
+  "L65-w18": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Big desk across the midground carries a black rotary telephone and one closed folder; empty high-backed brown leather swivel chair pushed back behind the desk; tall floor-to-ceiling window fills the back wall on a flat pale-blue sky with the tops of two palm crowns visible through the glass; a separate potted palm stands stage-left in front of the window; bare cream wall stage-right with nothing hung on it; foreground depth delivered by a cropped orange/brown visitor chair back at the lower-left. All load-bearing elements named in the current still_prompt are present and correctly placed.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere in the frame -- folder cover is blank, no signage on the bare wall.",
+      "act_text": "n/a -- no act_text field authored for this shot in shots.json (unauthored place plate)."
+    },
+    "notes": ""
+  },
+  "L84-w18": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Long table across the midground with stacking chairs pushed in around it (counted 10 distinct chairs -- back row of 4 plus a near-side row of 5 plus one pulled-in chair at the near-left end -- against the authored 'eight stacking chairs'; a headcount overage on the same single chair type/layout, not a missing or substituted element); two closed grey steel document boxes with pull handles squared up at the near-left end of the table; an empty coat stand by the door stage-left holding nothing; window at the back showing a frosted car park with parked cars. Foreground depth delivered by a cropped grey visitor chair back at the lower-right. All named furniture pieces present.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "Document boxes carry no legible text (plain pull-handle boxes); no other signage anywhere in frame.",
+      "act_text": "n/a -- no act_text field authored for this shot in shots.json (unauthored place plate)."
+    },
+    "notes": "Chair count reads 10 rather than the authored 'eight stacking chairs' -- an overage (extra chairs of the same type/layout), not a missing element, so it does not trigger the redistribution law's 'missing is a FAIL' clause. Ruled cosmetic drift, non-blocking."
+  },
+  "L86-w18": {
+    "axes": {
+      "place_fidelity": "pass",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Steel pallet racking (four bays high) runs away on both sides of the aisle; pallets of flat cartons fill the lower two tiers on each side; concrete floor with yellow lane paint; row of pendant roof lights overhead; foreground depth from a cropped rack upright at the right edge. Checked the NEW shrink-wrap wording directly against tight zoom crops of individual pallet faces: each face shows exactly one flat pale/white vertical cel band, plus a small set (2-3) of thin dark curved hard-edged contour lines running across the carton seams -- matching the current still_prompt's 'one flat pale cel band and two or three crisp hard-edged contour lines per pallet face' wording. No busy wrinkle texture or extra bands beyond that count.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "'MINISCRIBE' painted across the end panel closing the aisle, verified letter-by-letter via zoom crop: M-I-N-I-S-C-R-I-B-E -- exact match, no stray characters or extra words.",
+      "act_text": "n/a -- not authored as act_text; the place_owner lettering is covered under the lettering axis."
+    },
+    "notes": ""
+  },
+  "L198-w18": {
+    "axes": {
+      "place_fidelity": "fail",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "FAIL on jury box seat count. Zoomed on the jury box (fully visible in this render, left edge terminating at a clean wood corner post with no occlusion from the near counsel table or pews this time): counted exactly 10 seats total -- a back row of 5 and a front row of 5 -- against the current still_prompt's explicit 'an empty jury box of twelve seats.' This is a clean, unambiguous undercount of 2 seats with the whole box in unobstructed view, not the earlier round's occlusion-driven uncertainty. Under the furniture-redistribution law's explicit 'moved is fine, MISSING is a FAIL' rule, 2 of 12 named jury seats are absent from the box rather than merely repositioned, so this fails place_fidelity. All other named elements are present and correctly placed: raised timber bench at the far end with an empty high-backed chair behind it, two counsel tables squared up in the midground, multiple rows of gallery pews running toward the viewer, panelled walls with tall plain windows, foreground depth from a cropped pew back across the bottom of the frame.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes.",
+      "lettering": "No readable text anywhere in the frame.",
+      "act_text": "n/a -- no act_text field authored for this shot in shots.json (unauthored place plate)."
+    },
+    "notes": "Jury box is fully in frame with a clean unoccluded left edge, unlike the prior round's verdict on the pre-w18 render which could not fully confirm the count due to occlusion. This render removes that ambiguity and the count is definitively short (10 of 12)."
+  },
+  "handshake-w16-rerun-candidate": {
+    "axes": {
+      "primitive_semantics": "pass",
+      "base_identity": "pass"
+    },
+    "evidence": {
+      "primitive_semantics": "Two base figures stand facing each other with their right hands clasped together in a clear handshake grip at chest/waist height, near-center of frame. Matches refs/base/handshake-pre-rerun-2026-08-13.png's same two-figure clasped-hands slot meaning and comparable inter-figure spacing (figures stand at a similar close conversational distance, arms reaching to a shared center point). Reads unambiguously as a handshake.",
+      "base_identity": "Both figures are the bald cream-head base rig on a plain grey background: heavy lowered eyelids, thin level brows, small closed near-neutral mouth -- matches the current refs/base/base.png template exactly (this is the current resting-face standard, distinct from the rounder/more-open eye style in the older pre-rerun reference, which is expected since that ref predates the base rig's current template). Correct resting body geometry outside the expressed handshake arm change: brown hoodie with drawstrings, brown pants, brown shoes on both figures, non-clasping arm hanging naturally at the side."
+    },
+    "notes": "base_identity judged against the CURRENT base.png template (heavy lowered eyelids) rather than the older pre-rerun ref's more open-eyed style, per the task's framing of that ref as being for slot-meaning/spacing comparison, not a facial-style anchor."
+  }
+}

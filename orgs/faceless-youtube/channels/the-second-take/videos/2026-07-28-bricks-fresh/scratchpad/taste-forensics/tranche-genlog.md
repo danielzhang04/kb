@@ -214,3 +214,164 @@ Four 1K calls completed: 0 provider errors, 0 429s, 0 503s, 0 stalls, and 0 re-i
 | hr-officer | The long tweed skirt is one single flat solid colour fill in flat cel shading - no crosshatch, no lattice, no weave, no herringbone, no fabric texture of any kind; flat like a paper cut-out; the only shading is the style's simple two-tone cel shadow.  | OK | 32.7s | $0.039 | `channels/the-second-take/visual-kit/_staging/hr-officer-w11-retry-candidate.png` |
 
 **Total:** $0.156 across 4 successful 1K calls; cap remaining $0.094.
+
+## Wave 1 fix cycle — 2026-08-13/14
+
+### w16-genlog
+
+# W16 — handshake re-roll — generation log
+
+- Date: 2026-08-13
+- Scope: one stage-only candidate. No promotion, stamping, registry, manifest, or `refs/base/` mutation.
+- Route: `forge.py gen --mode identity --aspect 2:3 --seed refs/base/base.png`, 1K default, per `image-generation/SKILL.md` interaction-primitive recipe.
+- Spend cap: $0.100. Historical 1K rate: $0.039.
+- Failure policy: 4-minute stall → one re-issue; two `FreeTier limit=0` 429s → halt and report `BILLING`.
+
+## Exact delta prompt
+
+TWO blank bald base mannequins, both in the base costume and base RESTING face, full-body on a plain soft light-grey studio ground. Both heads are EXACTLY the reference image's head — same large round slightly-wide bald skull shape, same proportion of head to body (3 to 3.5 head-widths tall, squat, short legs), same eyes copied exactly (heavy lowered upper eyelids, small pupils set high against the lid, thin level brows) — no almond eyes, no smaller heads, no lankier bodies than the reference. A genuine right-to-right handshake: the LEFT mannequin reaches ACROSS its own body with its right arm; the RIGHT mannequin reaches with its right arm; their hands clasp cleanly at chest height, each hand a classic four-digit cartoon hand. Each free left hand hangs at that figure's outer side. Keep both heads front-facing with no turn: only their pupils look toward the other figure. Medium 3/4 two-shot, both figures on the same plane, no props, no text.
+
+## Exact Forge-assembled provider prompt
+
+Keep this the SAME single character as the reference — INVARIANTS that never change: SAME perfectly bald ROUND head (a soft near-circle, only slightly taller than wide — NOT an egg or oval); the SAME flat head colour AS THE REFERENCE character (the base default is #f5ead6, but a named cast member keeps ITS OWN head tone — never forced to cream); SAME dark warm brown-black outline (#241a12); SAME simple cartoon eyes + thin brows, NO nose, NO ears; SAME simple hands — a classic cartoon hand with exactly THREE fingers plus ONE thumb (four digits total, like a Mickey Mouse / Simpsons hand), NEVER four fingers, NEVER five digits; SAME clean FLAT cel cartoon style, even medium-thick line. Reads unmistakably as the same guy. No text, plain soft light-grey studio background.
+
+TWO blank bald base mannequins, both in the base costume and base RESTING face, full-body on a plain soft light-grey studio ground. Both heads are EXACTLY the reference image's head — same large round slightly-wide bald skull shape, same proportion of head to body (3 to 3.5 head-widths tall, squat, short legs), same eyes copied exactly (heavy lowered upper eyelids, small pupils set high against the lid, thin level brows) — no almond eyes, no smaller heads, no lankier bodies than the reference. A genuine right-to-right handshake: the LEFT mannequin reaches ACROSS its own body with its right arm; the RIGHT mannequin reaches with its right arm; their hands clasp cleanly at chest height, each hand a classic four-digit cartoon hand. Each free left hand hangs at that figure's outer side. Keep both heads front-facing with no turn: only their pupils look toward the other figure. Medium 3/4 two-shot, both figures on the same plane, no props, no text.
+
+## Ledger
+
+| Step | API calls | Spend | Result |
+| --- | ---: | ---: | --- |
+| preflight | 0 | $0.000 | clean: 1 prompt assembled; output target and base seed resolved; 0 API calls and 0 files written |
+| handshake-w16-rerun-candidate | 1 | $0.039 | OK → `visual-kit/_staging/handshake-w16-rerun-candidate.png` (completed within the 4-minute ceiling; no re-issue) |
+
+**Total: $0.039 / $0.100.** No provider errors, 429s, stalls, re-issues, promotion, stamping, or mutation under `refs/base/`.
+
+## Deviation
+
+The first attempt to start a background monitor failed before `forge.py` launched because this Windows shell exposed duplicate `Path` / `PATH` entries to `Start-Process`. It made no provider call and created no candidate. The direct Forge invocation then completed normally.
+
+### w18-genlog
+
+# W18 plate re-gen log — 2026-08-13
+
+Cap: $0.30. Tier: Forge 1K (nominal $0.039 per provider call).
+
+| Plate | Spec / provider target | Result | Staged W18 candidate | Nominal spend |
+| --- | --- | --- | --- | --- |
+| L198 | `w18-L198.spec.json` / `L198` | first call OK (46.2s) | `_staging/L198-w18.png` | $0.039 |
+| L65 | `w18-L65.spec.json` / `L65-w18` | first call OK (114.2s) | `_staging/L65-w18.png` | $0.039 |
+| L84 | `w18-L84.spec.json` / `L84` | first live attempt skipped because `_staging/L84.png` existed ($0); forced first call OK (46.9s) | `_staging/L84-w18.png` | $0.039 |
+| L86 | `w18-L86.spec.json` / `L86` | forced first call OK (48.9s) | `_staging/L86-w18.png` | $0.039 |
+
+Total: 4 provider calls, nominal $0.156. No stall (4-minute threshold), 503, or 429. No re-issue.
+
+All four specs were rebuilt from canonical `shots.json` after the PLATE COMPOSITION law and L86 payload splice. L65 alone uses the sanctioned one-span `forge-retry-overlay@2` replacement to retain W11's flat-floor clause. No promotion, review stamp, or scene-manifest mutation was performed.
+
+### w20-genlog
+
+# W20 promote, payload, and plate re-gen log — 2026-08-14
+
+## Handshake promotion ($0)
+
+- Promoted `_staging/handshake-w16-rerun-candidate.png` to `refs/base/handshake.png`.
+- New canonical SHA-256: `842bfa0f09b6dd166c3dfda30662d301495e039b2ed55e48cfefee09a851fb0c`.
+- W19-A + W19-B axes were merged as all-pass under `refs/base/handshake.png`; reviewer: `sonnet verifier pair w19, Daniel head/proportion/eye re-run ruling 2026-08-13`.
+- The original backup `refs/base/handshake-pre-rerun-2026-08-13.png` remains present.
+- P12 records (`refs/base/expr-pleading.png`, `refs/base/expr-shock.png`) had canonical serialized bytes SHA-256 `b077ce35de84f0dd6f17721e815b32dddf35401a0102a9b43fa74df798d9acf2` before and after the stamp: PASS.
+
+Stored row:
+
+```json
+{"canonical_sha256":"842bfa0f09b6dd166c3dfda30662d301495e039b2ed55e48cfefee09a851fb0c","expression_sha256":null,"verdicts":{"primitive_semantics":"pass","base_identity":"pass","head_shape":"pass","no_nose_no_ears":"pass","four_digit_hands":"pass","proportion":"pass","flat_cel_render":"pass","outline_consistency":"pass"},"reviewer":"sonnet verifier pair w19, Daniel head/proportion/eye re-run ruling 2026-08-13","date":"2026-08-13"}
+```
+
+## Payload rewrites
+
+### L65 — wiles-office
+
+Before:
+
+> A wide sun-bleached office seen head-on and entirely empty of people: a big desk across the midground carrying a black telephone and one closed folder, an empty high-backed leather swivel chair pushed back behind it, a tall window filling the back wall on a flat pale sky and the tops of two palms. A potted palm stage-left, a bare cream wall stage-right with nothing hung on it. Cream-amber-charcoal palette, hard afternoon sun laid in one bright slab across the desk and carpet, foreground depth from a cropped visitor chair back at the lower-left.
+
+After:
+
+> A wide sun-bleached cast-free office seen head-on: an open stretch of cream carpet runs from the foreground into the midground. In the back third by the tall window, a big desk carries a black telephone and one closed folder, with an empty high-backed leather swivel chair pushed back behind it. The tall window fills the back wall with a flat pale sky and the tops of two palms; a potted palm stands stage-left and a blank cream wall stands stage-right. Cream-amber-charcoal palette, hard afternoon sun laid in one bright slab across the desk and carpet, foreground depth from a cropped visitor chair back at the lower-left edge.
+
+### L84 — audit-room
+
+Before:
+
+> A plain meeting room seen wide and entirely empty of people: a long table across the midground with eight stacking chairs pushed in, two closed grey steel document boxes squared up at the near end of it, a coat stand by the door stage-left holding nothing, a window at the back onto the frosted car park. Cool grey-cream-teal palette, flat overcast daylight with one strip fitting on, foreground depth from a cropped chair back at the lower-right.
+
+After:
+
+> A plain cast-free meeting room seen wide: an open floor zone runs from the foreground into the midground. Along the back wall, a long table runs stage-right with eight stacking chairs pushed in and two closed grey steel document boxes squared up on its near end; a coat stand stands by the door stage-left, and a window at the back looks onto the frosted car park. Cool grey-cream-teal palette, flat overcast daylight with one strip fitting on, foreground depth from a cropped chair back at the lower-right edge.
+
+### L86 — miniscribe-warehouse
+
+Before:
+
+> A wide warehouse aisle seen head-on and entirely empty of people: steel pallet racking four bays high running away on both sides, pallets of flat cartons filling the lower two tiers, the shrink wrap represented only by one flat pale cel band and two or three crisp hard-edged contour lines per pallet face, a concrete floor with yellow lane paint, roof lights in a row overhead. Cool grey-teal-cream palette, flat industrial light, foreground depth from a cropped rack upright at the right edge. Painted across the end panel of the racking that closes the aisle: 'MINISCRIBE'.
+
+After:
+
+> A wide warehouse aisle seen head-on and entirely empty of people: steel pallet racking four bays high running away on both sides, pallets of flat cartons filling the lower two tiers, their wrap surfaces matte flat colour with only one flat pale cel band and two or three crisp hard-edged contour lines per pallet face, a concrete floor with yellow lane paint, roof lights in a row overhead. Cool grey-teal-cream palette, flat industrial light, foreground depth from a cropped rack upright at the right edge. Painted across the end panel of the racking that closes the aisle: 'MINISCRIBE'.
+
+### L198 — jury-courtroom
+
+Before:
+
+> A courtroom seen wide from the back of the well and entirely empty of people: a raised timber bench across the far end with an empty high-backed chair behind it, an empty jury box of twelve seats stage-left, two counsel tables squared up in the midground, rows of gallery pews running toward the viewer. Panelled walls with tall plain windows, cream-oak-teal palette, cold daylight from stage-left across the empty pews, foreground depth from a cropped pew back across the bottom of the frame.
+
+After:
+
+> A cast-free courtroom seen wide from the well: an open courtroom-well floor runs from the foreground into the midground. At the back, a raised timber bench holds an empty high-backed chair behind it; stage-left, an empty jury box has exactly twelve seats in two rows of six. Two counsel tables sit to the sides of the well, and gallery pews flank the well behind them. Panelled walls with tall plain windows, cream-oak-teal palette, cold daylight from stage-left across the gallery pews, foreground depth from a cropped pew end at one lower corner.
+
+## Validation ($0)
+
+- Lint: `0 HARD` violations; its tail is in `w20-lint.txt` (37 pre-existing heads-up rows remain).
+- Scoped dry: 4/4 assembled at 1K, each payload matches `shots.json` and appears exactly once in its assembled delta; `w20-dryrun.txt` ends `4 prompts assembled, 0 API calls, 0 files written`.
+- The scoped slate reports 17 seeding-law violations outside the four-shot scope; none was acted on.
+
+## Live generation (cap $0.25)
+
+Tier: Forge 1K, nominal $0.039 per provider call.
+
+| Plate | W20 spec | Result | Staged candidate | SHA-256 | Nominal spend |
+| --- | --- | --- | --- | --- | --- |
+| L65 | `w20-L65.spec.json` | first call OK | `_staging/L65-w20.png` | `678f8f54649e9bc68ac7aa1721ec5a97d0562b033fec18ebeaac5103399c185c` | $0.039 |
+| L84 | `w20-L84.spec.json` | first call OK | `_staging/L84-w20.png` | `b48f9b1d6953686c9f68759665a9e6734e606ed104fd74c2681c0c2b747b532b` | $0.039 |
+| L86 | `w20-L86.spec.json` | first call OK | `_staging/L86-w20.png` | `0aee609d8069cabf948ac93f7b6780674e15e7ebdb6fff5166c0b513bc140c19` | $0.039 |
+| L198 | `w20-L198.spec.json` | first call OK | `_staging/L198-w20.png` | `5999ae3e3a99e847fa447a70167026768a47c90ea8b4624915a77627c9d1966e` | $0.039 |
+
+Total: 4 provider calls, nominal $0.156 / $0.25 cap. No stall, reissue, 503, 429, billing halt, promotion, scene-manifest write, or review stamp for the four plates.
+
+## Deviations
+
+- Two zero-cost command-construction errors occurred before live generation: the first omitted Forge's positional subcommand; the second used a relative `--out`, creating one W20 spec under a duplicated project prefix. Neither called the provider. The accidental file was removed, then the absolute in-scope output was used.
+- PowerShell background launching initially rejected duplicate `Path`/`PATH` process entries. Removing the duplicate `PATH` entry only from the launcher process allowed monitoring; `.env` was not read or modified.
+
+### w22-genlog
+
+# W22 L84 targeted retry
+
+## Scope and preflight ($0)
+
+- L84 `still_prompt` only: chair geometry is now explicit (EXACTLY eight: six far-side plus one at each rounded end); the open teal floor is limited to the near third; two closed grey steel document boxes remain squared on the table; every chair cushion is a single-colour, crisp-edge, unblended matte fill.
+- `lint_shots.py`: `HARD violations: none`; 37 pre-existing heads-up rows remain.
+- Scoped Forge batch: L84 only; 17 seeding-law violations remained outside this scope and were not acted on.
+- Scoped dry: one `L84-w22` request assembled at 1K, the revised payload appeared once, and the tail reported `1 prompts assembled, 0 API calls, 0 files written`.
+
+## Live generation (cap $0.10)
+
+| Request | Result | Staged candidate | SHA-256 | Nominal spend |
+| --- | --- | --- | --- | --- |
+| L84-w22 | first provider call OK | `_staging/L84-w22.png` | `3ec6ff9fadbd66eb63d1e52573bb2073185830dda6235b0dbe916f7b244b62cd` | $0.039 |
+
+Total: 1 provider call, nominal $0.039 / $0.10 cap. The call completed in about 25 seconds, so the four-minute stall threshold and one permitted re-issue were not triggered. No 503, billing event, promotion, scene-manifest write, or review stamp was performed for L84.
+
+## Deviation
+
+The literal negative phrase `no gradient, no soft highlight` caused the prompt linter's only hard violation because `gradient` is a banned render-technique term. It was replaced, without changing the requested surface constraint, by `single-colour fill with a crisp hard edge and an unblended matte surface`; the subsequent lint had 0 HARD violations.
+
+**Cycle total (w16+w18+w20+w22): $0.390. Wave-1 running total: $0.975.**

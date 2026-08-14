@@ -874,7 +874,7 @@
         "source": "ai-gen",
         "place": "wiles-office",
         "owner_ambiguity": true,
-        "still_prompt": "A wide sun-bleached office seen head-on and entirely empty of people: a big desk across the midground carrying a black telephone and one closed folder, an empty high-backed leather swivel chair pushed back behind it, a tall window filling the back wall on a flat pale sky and the tops of two palms. A potted palm stage-left, a bare cream wall stage-right with nothing hung on it. Cream-amber-charcoal palette, hard afternoon sun laid in one bright slab across the desk and carpet, foreground depth from a cropped visitor chair back at the lower-left.",
+        "still_prompt": "A wide sun-bleached cast-free office seen head-on: an open stretch of cream carpet runs from the foreground into the midground. In the back third by the tall window, a big desk carries a black telephone and one closed folder, with an empty high-backed leather swivel chair pushed back behind it. The tall window fills the back wall with a flat pale sky and the tops of two palms; a potted palm stands stage-left and a blank cream wall stands stage-right. Cream-amber-charcoal palette, hard afternoon sun laid in one bright slab across the desk and carpet, foreground depth from a cropped visitor chair back at the lower-left edge.",
         "notes": "Place plate, cast-free. Ownership deliberately unmarked: the script establishes a remote office with no branding, so ambiguity is the honest read. [F-03]"
       },
       {
@@ -1123,7 +1123,7 @@
         "source": "ai-gen",
         "place": "audit-room",
         "owner_ambiguity": true,
-        "still_prompt": "A plain meeting room seen wide and entirely empty of people: a long table across the midground with eight stacking chairs pushed in, two closed grey steel document boxes squared up at the near end of it, a coat stand by the door stage-left holding nothing, a window at the back onto the frosted car park. Cool grey-cream-teal palette, flat overcast daylight with one strip fitting on, foreground depth from a cropped chair back at the lower-right.",
+        "still_prompt": "A plain cast-free meeting room seen wide: an open stretch of teal floor across the near third of the room. Along the right wall, a long table runs stage-right with stacking chairs pushed in along its far side and one at each rounded end, and two closed grey steel document boxes squared up on its near end; a coat stand stands by the door stage-left, and a window at the back looks onto the frosted car park. Every chair cushion is one flat single-colour fill with a crisp hard edge and an unblended matte surface. Cool grey-cream-teal palette, flat overcast daylight with one strip fitting on, foreground depth from a cropped chair back at the lower-right edge.",
         "notes": "Place plate, cast-free. Ownership deliberately unmarked: a borrowed room inside somebody else's building is the honest read, and the script establishes no branding on it. [F-11]"
       },
       {
@@ -1147,7 +1147,7 @@
         "source": "ai-gen",
         "place": "miniscribe-warehouse",
         "place_owner": "MINISCRIBE",
-        "still_prompt": "A wide warehouse aisle seen head-on and entirely empty of people: steel pallet racking four bays high running away on both sides, shrink-wrapped pallets of flat cartons filling the lower two tiers, a concrete floor with yellow lane paint, roof lights in a row overhead. Cool grey-teal-cream palette, flat industrial light, foreground depth from a cropped rack upright at the right edge. Painted across the end panel of the racking that closes the aisle: 'MINISCRIBE'.",
+        "still_prompt": "A wide warehouse aisle seen head-on and entirely empty of people: steel pallet racking four bays high running away on both sides, pallets of flat cartons filling the lower two tiers, their wrap surfaces matte flat colour with only one flat pale cel band and two or three crisp hard-edged contour lines per pallet face, a concrete floor with yellow lane paint, roof lights in a row overhead. Cool grey-teal-cream palette, flat industrial light, foreground depth from a cropped rack upright at the right edge. Painted across the end panel of the racking that closes the aisle: 'MINISCRIBE'.",
         "notes": "Place plate, cast-free, and the ownership cue is drawn because the script establishes whose stock this is. [F-11]"
       },
       {
@@ -2678,7 +2678,7 @@
         "source": "ai-gen",
         "place": "jury-courtroom",
         "owner_ambiguity": true,
-        "still_prompt": "A courtroom seen wide from the back of the well and entirely empty of people: a raised timber bench across the far end with an empty high-backed chair behind it, an empty jury box of twelve seats stage-left, two counsel tables squared up in the midground, rows of gallery pews running toward the viewer. Panelled walls with tall plain windows, cream-oak-teal palette, cold daylight from stage-left across the empty pews, foreground depth from a cropped pew back across the bottom of the frame.",
+        "still_prompt": "A cast-free courtroom seen wide from the well: an open courtroom-well floor runs from the foreground into the midground. At the back, a raised timber bench holds an empty high-backed chair behind it; stage-left, an empty jury box has exactly twelve seats in two rows of six. Two counsel tables sit to the sides of the well, and gallery pews flank the well behind them. Panelled walls with tall plain windows, cream-oak-teal palette, cold daylight from stage-left across the gallery pews, foreground depth from a cropped pew end at one lower corner.",
         "notes": "Place plate, cast-free. Ownership deliberately unmarked: a public courtroom belongs to nobody in this story and the script establishes no signage on it. [F-18]"
       },
       {

@@ -1,0 +1,17 @@
+{
+  "L84": {
+    "axes": {
+      "place_fidelity": "fail",
+      "no_figures": "pass",
+      "lettering": "pass",
+      "act_text": "n/a"
+    },
+    "evidence": {
+      "place_fidelity": "Chair count FAILS the exactly-eight requirement. Method 1 (continuous single-pass back-apex count across a 1.6x wide crop, orig x590-1376/y280-768): near/front row (full legs visible, facing camera) = 4 distinct chairs at approx orig-x 637, 731, 831, 937; far/wall-side row (backs only, legs occluded by tabletop) = 6 distinct chairs at approx orig-x 690, 859, 962, 1074, 1218, 1306. That is 10 chairs pushed at the table. Method 2 (independent cross-check: non-overlapping vertical strip tiling of the table+chairs region into 4 strips, x590-830/830-1000/1000-1180/1180-1376, each re-zoomed 3x, tallying new chairs per strip and discarding boundary duplicates by position-continuity, plus a dedicated 3x zoom of the full near-row span x600-1050/y300-660 with gridlines to confirm floor gaps between leg-clusters) independently reproduced the same 4 near-row + 6 far-side = 10 chairs at the table. Both methods agree: 10 chairs pushed in at the table (not 8), plus 1 additional oversized cropped chair in the immediate foreground at lower-right (separate compositional element per the still_prompt's own 'foreground depth from a cropped chair back' clause) = 11 chairs total visible in frame. The still_prompt demands 'EXACTLY eight stacking chairs -- six along the far side and one at each rounded end' (6+1+1=8) with the near/front long edge left bare; the render instead seated the entire near/front long edge too (4 extra chairs), producing 10 at the table. This is a hard count failure, well outside the 7/9 fail band. Other place elements are correct: two closed grey steel document boxes squared on the table's near end with blank label-slot rectangles (verified via 5x zoom crop, no legible text); coat stand present by the door stage-left; window at the back shows the frosted/snowy car park with parked cars, matching continuity.",
+      "no_figures": "Frame is entirely empty of people, body parts, or silhouettes -- confirmed across the full frame and all zoom crops used for the chair count.",
+      "lettering": "No readable text anywhere in the frame. The two document boxes carry only blank label-slot rectangles (dark tab + lighter panel, no characters), verified via a 5x zoom crop; no other signage anywhere.",
+      "act_text": "n/a -- not authored for this shot (unauthored place plate)."
+    },
+    "notes": "FAIL on place_fidelity: chair count is 10 at the table (not 8) plus 1 separate foreground chair = 11 total in frame. The amended payload's 'six along the far side and one at each rounded end, near/front edge left bare' geometry was not followed -- the render seated both long edges of the table. Prior round (w8, pre-amendment generation) had already flagged a ~10-chair drift on an earlier still and ruled it cosmetic/pass; this round treats the same magnitude of drift as blocking per this round's explicit exactly-eight / 7-or-9-fail instruction, since the whole point of today's amended payload + regen was to fix that exact defect and it was not fixed."
+  }
+}
