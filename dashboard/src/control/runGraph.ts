@@ -49,6 +49,8 @@ export interface IterationParticipantOverlay {
   currentStepId?: string;
   lastVerdict?: IterationVerdictDto;
   loopState: IterationLoopDto['state'];
+  /** Live UI state only; durable park evidence may remain after this becomes false. */
+  parked: boolean;
   parkReason?: IterationLoopDto['parkReason'];
   completionGateRef?: string;
   interventionRef?: string;
@@ -214,6 +216,9 @@ export function overlaysFromRun(detail: RunDetailDto): Record<string, AgentRunOv
     // An intervention blocks the loop, so it takes precedence while a completion gate also exists.
     const gateRef = loop.interventionRef ?? loop.completionGateRef;
     const gate = gateRef === undefined ? undefined : requestByRef.get(gateRef);
+    const parked = loop.state === 'awaiting-park-gate'
+      && gate?.gateKind === 'iteration-park'
+      && gate.state === 'open';
     for (const participant of loop.participants) {
       const stage = stageById.get(participant.stageRef);
       if (!stage) continue;
@@ -239,6 +244,7 @@ export function overlaysFromRun(detail: RunDetailDto): Record<string, AgentRunOv
         ...(loop.currentStepId === undefined ? {} : { currentStepId: loop.currentStepId }),
         ...(lastReceipt === undefined ? {} : { lastVerdict: lastReceipt.verdict }),
         loopState: loop.state,
+        parked,
         ...(loop.parkReason === undefined ? {} : { parkReason: loop.parkReason }),
         ...(loop.completionGateRef === undefined ? {} : { completionGateRef: loop.completionGateRef }),
         ...(loop.interventionRef === undefined ? {} : { interventionRef: loop.interventionRef }),

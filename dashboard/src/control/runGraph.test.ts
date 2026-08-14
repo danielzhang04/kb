@@ -147,9 +147,31 @@ describe('run graph selectors', () => {
     expect(overlays.alpha.participantStages[0]).toMatchObject({
       role: 'contributor', perspectiveSummary: 'Own the source.', cyclesUsed: 2, maxCycles: 3,
       turnOwner: true, lastVerdict: 'fail', loopState: 'awaiting-park-gate', parkReason: 'no-progress',
-      gateState: 'open',
+      gateState: 'open', parked: true,
     });
     expect(overlays.beta.participantStages[0]).toMatchObject({ role: 'judge', turnOwner: false, lastVerdict: 'fail' });
+  });
+
+  it('derives live parked state from the open park gate, not retained park evidence', () => {
+    const detail = iterationRunDetail();
+    const loop = detail.iterationLoops[0]!;
+    const gate = detail.humanRequests.find((request) => request.requestRef === loop.interventionRef)!;
+    loop.state = 'passed';
+    gate.state = 'resolved';
+    gate.response = {
+      requestRevision: gate.revision, decision: 'approved', response: null, respondedAt: '',
+    };
+
+    const resolved = overlaysFromRun(detail).alpha.participantStages[0]!;
+    expect(resolved).toMatchObject({
+      loopState: 'passed', parked: false, parkReason: 'no-progress', gateState: 'resolved',
+      unresolvedResidue: expect.objectContaining({ failureReason: 'required output was byte-identical' }),
+    });
+
+    loop.state = 'awaiting-park-gate';
+    gate.state = 'open';
+    gate.response = null;
+    expect(overlaysFromRun(detail).alpha.participantStages[0]!.parked).toBe(true);
   });
 
   it('keeps two stages using one agent as distinct participant overlays keyed by stage group and participant', () => {

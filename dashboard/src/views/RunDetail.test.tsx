@@ -120,6 +120,22 @@ function makeDetail(over: Partial<RunDetailDto> = {}): RunDetailDto {
   };
 }
 
+function makeIterationLoop(over: Partial<RunDetailDto['iterationLoops'][number]> = {}): RunDetailDto['iterationLoops'][number] {
+  const iterationGroupId = over.iterationGroupId ?? 'draft-loop';
+  return {
+    iterationLoopRef: over.iterationLoopRef ?? `loop-${iterationGroupId}`, runRef: 'run-1', definitionHash: 'definition', iterationGroupId,
+    goal: 'Accept the draft.', participants: [
+      { participantId: 'producer', stageRef: 'idea', role: 'contributor', perspective: 'Produce.', mandate: 'Draft.' },
+      { participantId: 'judge', stageRef: 'visual-plan', role: 'judge', perspective: 'Judge.', mandate: 'Accept.' },
+    ], routes: [{ routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['idea'] }],
+    activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review-step',
+    schedule: [{ stepId: 'review-step', routeId: 'review', cycle: 'current' }], artifacts: ['draft'], criteria: [], maxCycles: 3,
+    cycleUnit: 'judge verdicts', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }], cyclesUsed: 2,
+    state: 'awaiting-turn', activeGenerationRefs: ['generation-7', 'generation-8'], version: 13, createdAt: '', updatedAt: '',
+    ...over,
+  };
+}
+
 function event(overrides: Partial<OperationalEventDto> = {}): OperationalEventDto {
   return {
     cursor: 1, runRef: 'run-1', kind: 'message', source: 'worker', stageRef: 'ref-idea', attemptRef: 'attempt-1',
@@ -271,7 +287,62 @@ describe('the run surface', () => {
     expect(graph.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it('uses the rendered completion loop version and generations for the iteration gate CAS', async () => {
+  it('approves or declines either iteration-park reason with the displayed loop version and generation set', async () => {
+    const gate = (suffix: string) => ({
+      requestRef: `request-${suffix}`, runRef: 'run-1', displayName: 'headless run', shortRef: 1,
+      stageRef: 'ref-idea', kind: 'approval' as const, gateKind: 'iteration-park' as const, revision: suffix === 'exhausted' ? 4 : 9,
+      state: 'open' as const, title: 'Iteration parked', prompt: `Resolve ${suffix}.`, ask: `The loop parked after ${suffix}.`,
+      technicalDetail: null, response: null, createdAt: '', updatedAt: '',
+    });
+    const detail = makeDetail({
+      humanRequests: [gate('exhausted'), gate('no-progress')],
+      iterationLoops: [
+        makeIterationLoop({
+          iterationLoopRef: 'loop-exhausted', iterationGroupId: 'exhausted-loop', state: 'awaiting-park-gate',
+          interventionRef: 'request-exhausted', parkReason: 'exhausted', version: 14, activeGenerationRefs: ['generation-exhausted'],
+        }),
+        makeIterationLoop({
+          iterationLoopRef: 'loop-no-progress', iterationGroupId: 'no-progress-loop', state: 'awaiting-park-gate',
+          interventionRef: 'request-no-progress', parkReason: 'no-progress', version: 21, activeGenerationRefs: ['generation-no-progress-a', 'generation-no-progress-b'],
+        }),
+      ],
+    });
+    const resolveGate = vi.spyOn(controlClient, 'resolveIterationGate').mockResolvedValue({} as controlClient.IterationGateResultDto);
+    const genericRespond = vi.spyOn(controlClient, 'respondToHumanRequest');
+    const resume = vi.spyOn(controlClient, 'resumeRunAfterHumanResponse');
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
+    });
+    render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
+
+    const exhausted = within(screen.getByTestId('run-gate-request-exhausted'));
+    expect(exhausted.getAllByRole('button').map((button) => button.textContent)).toEqual(['Approve', 'Decline']);
+    expect(within(exhausted.getByTestId('run-gate-generation-refs-request-exhausted'))
+      .getAllByRole('listitem').map((item) => item.textContent)).toEqual(['generation-exhausted']);
+    fireEvent.click(exhausted.getByRole('button', { name: 'Approve' }));
+    const noProgress = within(screen.getByTestId('run-gate-request-no-progress'));
+    expect(noProgress.getAllByRole('button').map((button) => button.textContent)).toEqual(['Approve', 'Decline']);
+    expect(within(noProgress.getByTestId('run-gate-generation-refs-request-no-progress'))
+      .getAllByRole('listitem').map((item) => item.textContent))
+      .toEqual(['generation-no-progress-a', 'generation-no-progress-b']);
+    await waitFor(() => expect((noProgress.getByRole('button', { name: 'Decline' }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(noProgress.getByRole('button', { name: 'Decline' }));
+
+    await waitFor(() => expect(resolveGate).toHaveBeenCalledTimes(2));
+    expect(resolveGate).toHaveBeenNthCalledWith(1, 'request-exhausted', expect.objectContaining({
+      expectedGateKind: 'iteration-park', expectedParkReason: 'exhausted', expectedRequestRevision: 4,
+      expectedLoopVersion: 14, expectedGenerationRefs: ['generation-exhausted'], decision: 'approved',
+    }), 'tok', fetchImpl);
+    expect(resolveGate).toHaveBeenNthCalledWith(2, 'request-no-progress', expect.objectContaining({
+      expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress', expectedRequestRevision: 9,
+      expectedLoopVersion: 21, expectedGenerationRefs: ['generation-no-progress-a', 'generation-no-progress-b'], decision: 'declined',
+    }), 'tok', fetchImpl);
+    expect(genericRespond).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
+  });
+
+  it('submits the optional post-acceptance completion gate without reopening a turn', async () => {
     const completionGate = {
       requestRef: 'request-completion', runRef: 'run-1', displayName: 'headless run', shortRef: 1,
       stageRef: 'ref-idea', kind: 'approval', revision: 6, state: 'open', title: 'Accept the iteration',
@@ -280,29 +351,30 @@ describe('the run surface', () => {
     } as RunDetailDto['humanRequests'][number];
     const detail = makeDetail({
       humanRequests: [completionGate],
-      iterationLoops: [{
-        iterationLoopRef: 'loop-accept', runRef: 'run-1', definitionHash: 'definition', iterationGroupId: 'accept-loop',
-        goal: 'Accept the draft.', participants: [
-          { participantId: 'producer', stageRef: 'idea', role: 'contributor', perspective: 'Produce.', mandate: 'Draft.' },
-          { participantId: 'judge', stageRef: 'visual-plan', role: 'judge', perspective: 'Judge.', mandate: 'Accept.' },
-        ], routes: [{ routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['idea'] }],
-        activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review-step',
-        schedule: [{ stepId: 'review-step', routeId: 'review', cycle: 'current' }], artifacts: ['draft'], criteria: [], maxCycles: 3,
-        cycleUnit: 'judge verdicts', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }], cyclesUsed: 2,
+      iterationLoops: [makeIterationLoop({
+        iterationLoopRef: 'loop-accept', iterationGroupId: 'accept-loop',
         state: 'awaiting-completion-gate', activeGenerationRefs: ['generation-7', 'generation-8'], completionGateRef: 'request-completion',
         version: 13, createdAt: '', updatedAt: '',
-      }],
+      })],
     });
     const resolve = vi.spyOn(controlClient, 'resolveIterationGate').mockResolvedValue({} as controlClient.IterationGateResultDto);
+    const genericRespond = vi.spyOn(controlClient, 'respondToHumanRequest');
+    const resume = vi.spyOn(controlClient, 'resumeRunAfterHumanResponse');
     const fetchImpl = vi.fn(async (url: string) => {
       if (url.includes('/events?')) return new Response(JSON.stringify({ ok: true, value: [] }), { status: 200 });
       return new Response(JSON.stringify({ ok: true, value: detail }), { status: 200 });
     });
     render(unlocked(<RunDetail runRef="run-1" detail={detail} events={[]} dag={{ nodes: [], edges: [] }} fetchImpl={fetchImpl as typeof fetch} />));
-    fireEvent.click(within(screen.getByTestId('run-gate-request-completion')).getByRole('button', { name: 'Approved' }));
+    const completion = within(screen.getByTestId('run-gate-request-completion'));
+    expect(completion.getAllByRole('button').map((button) => button.textContent)).toEqual(['Approved', 'Rejected', 'Request changes']);
+    fireEvent.click(completion.getByRole('button', { name: 'Approved' }));
     await waitFor(() => expect(resolve).toHaveBeenCalledWith('request-completion', expect.objectContaining({
-      expectedLoopVersion: 13, expectedGenerationRefs: ['generation-7', 'generation-8'],
+      expectedGateKind: null, expectedParkReason: null, expectedLoopVersion: 13,
+      expectedGenerationRefs: ['generation-7', 'generation-8'], decision: 'approved',
     }), 'tok', fetchImpl));
+    expect(completion.getByRole('button', { name: 'Request changes' })).toBeTruthy();
+    expect(genericRespond).not.toHaveBeenCalled();
+    expect(resume).not.toHaveBeenCalled();
   });
 
   it('renders and opens an agent panel when an older run payload has no iteration collections', () => {
