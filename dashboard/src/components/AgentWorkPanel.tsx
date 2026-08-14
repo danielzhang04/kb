@@ -39,7 +39,9 @@ export function AgentWorkPanel({
   const stageRefs = new Set(run.stages
     .filter((stage) => (stage.assignment?.agentId ?? '') === agentId)
     .map((stage) => stage.stageRef));
-  const requests = run.humanRequests.filter((request) => request.state === 'open' && request.stageRef !== null && stageRefs.has(request.stageRef));
+  const requests = run.humanRequests.filter((request) => request.state === 'open'
+    && (request as HumanRequestDto & { gateKind?: string }).gateKind !== 'iteration-park'
+    && request.stageRef !== null && stageRefs.has(request.stageRef));
   const completionRequestRefs = new Set((run.reviewReceipts ?? [])
     .map((receipt) => receipt.completionRequestRef)
     .filter((ref): ref is string => ref !== null));

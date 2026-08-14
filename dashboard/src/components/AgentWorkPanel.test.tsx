@@ -84,4 +84,19 @@ describe('AgentWorkPanel', () => {
     locked.rerender(unlocked(<AgentWorkPanel {...props} agentId="" />));
     expect(screen.queryByTestId('agent-work-panel-composer')).toBeNull();
   });
+
+  it('excludes reason-coded iteration-park gates from generic human response controls', () => {
+    const parked = {
+      ...detail,
+      humanRequests: [{
+        ...detail.humanRequests[0], requestRef: 'request-iteration-park', gateKind: 'iteration-park',
+        title: 'Iteration parked', prompt: 'Approve this exact set or decline and relaunch separately.',
+      }],
+    } as unknown as RunDetailDto;
+    render(unlocked(<AgentWorkPanel runRef="run-1" agentId="alpha" run={parked}
+      overlay={{ state: 'waiting-human', openGate: true, attemptRef: 'attempt-alpha' }} sse={sse} onClose={vi.fn()}
+      onRespondRequest={vi.fn()} />));
+    expect(screen.queryByTestId('run-gate-request-iteration-park')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull();
+  });
 });

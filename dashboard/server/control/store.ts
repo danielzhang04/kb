@@ -1372,14 +1372,16 @@ function publicRequest(value: StoredHumanRequest): HumanRequest {
 }
 
 /**
- * A request whose resolution is RESERVED to the review gate resolver.
+ * A request whose resolution is RESERVED to a specialized iteration gate resolver.
  *
- * The review lineage validated on every load pins these: a completion gate's resolution is
- * fingerprint-bound to its receipt/loop/stage CAS tuple, and a review intervention must stay `open`.
- * Resolving either through a generic path would make the document fail its own invariants on reload,
- * so both the generic responder and the archive path ask this question first.
+ * Completion and iteration-park gates are fingerprint-bound to their receipt/loop CAS tuple. A
+ * rejection-minted intervention is a separate ordinary Human Request and remains generically answerable.
+ * The generic responder and archive path both ask this question before mutating a specialized gate.
  */
 function isReviewLinkedRequest(document: StoreDocument, requestRef: string): boolean {
+  // Completion and iteration-park gates keep their specialized CAS resolver. A completion rejection's
+  // linked intervention is intentionally answered through the ordinary Human Request responder.
+  if (document.humanRequests.find((request) => request.requestRef === requestRef)?.kind === 'intervention') return false;
   return document.iterationReceipts.some((receipt) =>
     receipt.completionRequestRef === requestRef || receipt.interventionRequestRef === requestRef);
 }
@@ -1517,7 +1519,7 @@ function publicIterationReceipt(value: StoredIterationReceipt): IterationReceipt
     subject: _subject, runRef: _runRef, routeId: _routeId, operationKey: _operationKey,
     operationFingerprint: _operationFingerprint, state: _state,
     completionRequestRef: _completionRequestRef, interventionRequestRef: _interventionRequestRef,
-    version: _version, finalizedAt: _finalizedAt, checkerAttemptRef: _checkerAttemptRef,
+    finalizedAt: _finalizedAt, checkerAttemptRef: _checkerAttemptRef,
     subjectResultHash: _subjectResultHash, ...receipt
   } = value;
   return clone(receipt);

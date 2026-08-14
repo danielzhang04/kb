@@ -274,6 +274,8 @@ export interface IterationReceipt extends Omit<IterationOutcome, 'schema'> {
   baseCommit: string;
   canonicalCommit: string;
   createdAt: string;
+  /** Public compare-and-swap version for the iteration gate route. */
+  version: number;
 }
 
 export interface IterationLoop extends ProposalIterationGroup {
@@ -559,6 +561,22 @@ export interface RunDetail {
   reviewLoops: ReviewLoop[];
   /** @deprecated Temporary Task-13 compatibility projections. */
   reviewReceipts: ReviewReceipt[];
+}
+
+/** HTTP-only residue fields derived from the authoritative request collection. */
+export interface IterationResidueDto extends IterationResidue {
+  /** May exceed cyclesUsed because a no-progress attempt rolls cycle accounting back before parking. */
+  attemptedRequestCycle?: number;
+}
+
+/** HTTP representation of an iteration loop; persisted loop state remains unchanged. */
+export interface IterationLoopDto extends Omit<IterationLoop, 'unresolvedResidue'> {
+  unresolvedResidue?: IterationResidueDto;
+}
+
+/** Authoritative run-detail response shape exposed by the control API. */
+export interface RunDetailDto extends Omit<RunDetail, 'iterationLoops'> {
+  iterationLoops: IterationLoopDto[];
 }
 
 export interface StorageInventoryItem {
