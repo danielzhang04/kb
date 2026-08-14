@@ -19,6 +19,22 @@ Environment=GIT_CONFIG_GLOBAL=/dev/null
 """
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://dashboard.example",
+        "https://dashboard.example/",
+        "https://user@dashboard.example",
+        "https://Dashboard.example",
+        "https://dashboard.example:8443",
+    ],
+)
+def test_effective_unit_rejects_invalid_rp_origins(value):
+    text = VALID_UNIT_TEXT + f"Environment=DASHBOARD_RP_ORIGIN={value}\n"
+    with pytest.raises(RuntimeError, match="RP origin"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
 def valid_static_unit():
     return {
         "Id": "kb-dashboard.service",
@@ -140,6 +156,17 @@ def test_static_phase_accepts_inactive_unit_without_a_control_group():
     show = valid_static_unit()
     assert "ControlGroup" not in show
     validate_vm_runtime.validate_static_unit(show, VALID_UNIT_TEXT)
+
+
+def test_static_phase_accepts_an_optional_valid_rp_origin():
+    text = VALID_UNIT_TEXT + "Environment=DASHBOARD_RP_ORIGIN=https://dashboard.example\n"
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_effective_unit_still_refuses_a_ninth_unknown_environment_name():
+    text = VALID_UNIT_TEXT + "Environment=UNSANCTIONED_NINTH_NAME=1\n"
+    with pytest.raises(RuntimeError, match="assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
 def test_live_phase_requires_service_cgroup_and_current_release_cwd(tmp_path):
