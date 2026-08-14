@@ -1,35 +1,49 @@
 # Executive Dashboard
-_Generated: 2026-08-13 06:12 UTC by dispatcher-cloud_
+_Generated: 2026-08-14T06:53Z by dispatcher-cloud_
 
 ## Action required
-- **queue/approvals/**: None (0 cards).
-- Awaiting Daniel at the desk (sitting in inbox):
-  - `wake:human-decision` engagement-fold (faceless-youtube) — blocks 6 `eng-fold-*` draft cards.
-  - `decide:budget-gate-measures-nothing` (kb-ops) — decision owed.
-  - `flip delivery-gate warn->block after clean soak` (kb-ops) — decision owed.
-  - Daemon-dir drift + missing sync script (kb-ops) — a desktop `python scripts/sync_daemon_dirs.py --sync` (from the dashboard-ops worktree) is owed; see Anomalies.
+- **Daemon-dir drift is standing (no new card filed).** The main→ops mirror is drifted, but the
+  set is UNCHANGED from 2026-08-12 and is already covered by four standing inbox cards
+  (`6a605ebb`, `6a6c3d8e`, `6a718533`, `6a7c0ebf`) — per the dedupe rule, no 5th card was filed.
+  Owed at the desk: `python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops worktree,
+  plus a back-port-or-prune decision on the ops-only `orgs/kb-ops/workflows/acceptance-run.md`.
+- No cards in `queue/approvals/`.
 
 ## Queue
 | state | count |
 |-------|-------|
-| inbox | 25 (15 inbox + 10 blocked) |
-| working | 2 (1 active nightly-review, 1 halted) |
-| done | 437 |
+| inbox | 25 |
+| working | 2 (1 = this run's cadence card; 1 = halted/terminal record) |
+| done | 520 |
 | approvals | 0 |
 | archived | 1 |
 
 ## Last 24h
-- **Cadences**: `nightly-review` dispatched today (this run, card 6a7d5f9e) and yesterday (card 6a7c0e28).
-- **Cost**: $0.00 of $30.00 daily budget — every step subscription-billed. Today 15 model steps (codex gpt-5.6 sol×6 / terra×8 / luna×1); yesterday 84 steps (incl. claude-sonnet-5×4).
-- **Health**: `sync_skills --check` = in sync. `sync_daemon_dirs --check` ran in refs-fallback from the `main` copy (script absent on ops) → drift unchanged since 08-12; no new card filed.
+- **Cadences run:** nightly-review dispatched today (card `6a7ebb0f-d6486103`, project kb) and
+  yesterday (`6a7d5f9e-05862610`).
+- **Cost vs budget:** structured cost ledger today = **$0.00 / $30.00** daily cap (14 rows, all
+  subscription-billed codex steps: gpt-5.6-terra ×7, gpt-5.6-sol ×7). Yesterday: 85 rows, all
+  subscription-billed in the usd column; a narrative row records ~**$1.05** of gemini-3-pro-image
+  generation (bricks taste-forensics G4 slice, under its $5.00 slice cap — not charged to the
+  daily USD guard).
+- **Notable:** codex worker fleet active (sol/terra/luna models), all logged exit 0.
 
 ## Projects
-- **atlas** — V1 "Hands" wave COMPLETE + PROD LIVE (PR #44 merged 07-21); Atlas view live on 127.0.0.1:5317 with worker passthrough verified. V2 "Trust" planning awaits Daniel's go/no-go.
-- **faceless-youtube** — Active run **bricks-fresh** (branch `claude/bricks-doctrine-reset`); Phase 6B first tenth 18/25 slots verified, PAUSED at the P1-P5 human gate. Poyais published; wells-fargo parked.
-- **kb-ops** — Wave A complete; governed executor proven live. Daily `self-lint-report` cadence exists but is DORMANT (no scheduler; manual launch via dashboard Workflows UI while the gate is held in a watched session).
+- **atlas** — V1 "Hands" wave COMPLETE (2026-07-21): all three gates passed, PR #44 merged
+  (aa35b00), prod rolled out; Atlas view live on 127.0.0.1:5317. V2 "Trust" awaits Daniel's go/no-go.
+- **faceless-youtube** — Active run **bricks-fresh** on `claude/bricks-doctrine-reset`; Phase 6B
+  first tenth 18/25 slots verified, PAUSED at the P1–P5 human gate (shot board artifact).
+  Poyais published; wells-fargo parked.
+- **kb-ops** — Wave A complete; governed executor proven live. `self-lint-report` cadence exists
+  but is DORMANT (no scheduler enabled; launches are manual via the dashboard Workflows UI while
+  the gate is held in a watched session).
 
 ## Anomalies
-- `scripts/sync_daemon_dirs.py` is absent from `ops` (present only on `main`); the nightly check runs the `main` copy in refs-fallback mode. Tracked by card `6a605ebb`.
-- main→ops daemon-dir drift: 11 files (5 main-only + 5 content-differs + 1 ops-only `acceptance-run.md`), **unchanged since 08-12**. Desktop `--sync` owed; tracked by cards `6a6c3d8e`, `6a718533`, `6a7c0ebf`.
-- Halted card `6a6bc3dd` (codex-worker, `iter-smoke-t2`) lingering in queue/working/ (state=halted, terminal).
-- 10 blocked cards in inbox: 6 `eng-fold-*` drafts (faceless-youtube, waiting on the engagement-fold human decision) + 4 `acceptance-p0` reports (kb-ops).
+- **Daemon-dir drift** (main→ops), standing/unchanged since 2026-08-12: 5 main-only files,
+  5 content-differ, 1 ops-only extra. Reported, not auto-fixed (this gate never blocks dispatch);
+  already tracked by standing cards `6a605ebb`/`6a6c3d8e`/`6a718533`/`6a7c0ebf`.
+- **`scripts/sync_daemon_dirs.py` absent on `ops`** — routine step 2b fell back to main's copy
+  (tracked by card `6a605ebb`).
+- `queue/working/6a6bc3dd-5494006b.md` sits in working/ but is state `halted` (terminal, resolved
+  by operator — known codex resume defect fixed in PR #103); not an active stall.
+- preamble: OK. sync_skills --check: in sync (no drift).

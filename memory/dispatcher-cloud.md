@@ -462,3 +462,23 @@
   working 2 (6a6bc3dd halted codex + this card), done 437, approvals 0, archived 1. 15 codex cost
   rows today, all $0.00 subscription; budget $0/$30.
 - Push path: recorded in the run summary.
+
+## 2026-08-14 nightly (cloud)
+- Dispatch emitted 1 card (6a7ebb0f nightly-review, kb, T1, acts-alone); self-executed
+  inbox->working, dashboards regenerated, Result written, ->done.
+- sync_daemon_dirs.py STILL absent on ops (recurring; card 6a605ebb). Ran origin/main copy in
+  refs-fallback per precedent. Drift set UNCHANGED since 2026-08-12: 5 main-only + 5 content-differs
+  (same fyt files) + 1 ops-only orgs/kb-ops/workflows/acceptance-run.md = 11 total, identical to
+  the set documented in standing card 6a7c0ebf.
+- PROCESS SLIP caught & corrected this run: I initially wrote a fresh wake-me drift card
+  (routine step 2b reads "nonzero => write a card") BEFORE reading memory. Reading memory surfaced
+  the established dedupe rule ("no new card when the drift set is UNCHANGED; four standing cards
+  6a605ebb/6a6c3d8e/6a718533/6a7c0ebf already cover it"). Deleted the duplicate before commit and
+  fixed the dashboards (which had briefly claimed a card was filed + wrong inbox count).
+  LESSON, reinforced: READ memory/dispatcher-cloud.md BEFORE acting on the step-2b drift branch —
+  the routine's literal "write a card" is superseded by the dedupe rule the reviewer developed;
+  only file when the drift set CHANGED vs the newest standing drift card.
+- sync_skills --check in sync (exit 0). preamble + pyyaml OK. Queue: inbox 25, working 2
+  (6a6bc3dd halted codex + this card), done 520, approvals 0, archived 1. 14 codex cost rows today,
+  all $0.00 subscription; budget $0/$30. Yesterday: narrative row ~$1.05 gemini image (bricks G4).
+- Push path: recorded in the run summary.

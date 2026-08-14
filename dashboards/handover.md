@@ -1,10 +1,24 @@
 # System Handover
-_Generated: 2026-08-13 06:12 UTC_
+_Generated: 2026-08-14T06:53Z_
 
-**What happened overnight.** The nightly dispatcher ran clean: preamble passed, pyyaml present, skills in sync. It emitted one `nightly-review` cadence card and executed it (regenerating these dashboards). Spend stayed at $0.00 against the $30 daily ceiling — everything ran on subscription billing. No errors, no budget pressure.
+**What happened overnight.** The nightly dispatcher-cloud run completed. Preamble and the skills
+mirror check both passed clean. The dispatcher emitted one cadence card (nightly-review), which
+this run executed: dashboards regenerated, memory updated, coordination writes pushed to `ops`.
+The codex worker fleet kept turning over during the day — all steps subscription-billed, $0.00
+against the $30/day cap. Yesterday's gemini image work for the bricks video slice spent about
+$1.05, well under its own $5 slice cap.
 
-**What's waiting on you.** Nothing is stuck in the approvals queue, but a few decisions sit in the inbox with your name on them. The biggest is the **engagement-fold** call in faceless-youtube — one `wake:human-decision` card is holding back six `eng-fold-*` draft cards until you decide. Two kb-ops policy decisions are also parked: whether to flip the delivery-gate from warn to block after its clean soak, and what to do about the budget-gate that "measures nothing." Separately, the faceless-youtube **bricks-fresh** production run is paused at its P1-P5 human gate (Phase 6B, 18 of 25 shots verified) awaiting your board review.
+**What is waiting on you.** One standing item still needs a human hand (already covered by four
+inbox wake-me cards, so this run filed no new one): the main→ops daemon-directory mirror has
+drifted (a handful of fyt agent/workflow files differ or are missing on `ops`, plus one extra),
+unchanged since 2026-08-12. The fix is a desktop `python scripts/sync_daemon_dirs.py --sync` run
+from the dashboard-ops worktree — the cloud routine can only report it, not fix it. While looking,
+note that the sync script itself is missing from the `ops` branch and should be reconciled there
+too. Separately, two projects are parked at your gates: **atlas V2 "Trust"**
+awaits your go/no-go (V1 shipped and is live), and the **faceless-youtube bricks-fresh** video is
+paused at the P1–P5 shot-board review gate.
 
-**A standing chore, not an emergency.** The main→ops daemon-dir mirror is still drifted (11 files) and the `sync_daemon_dirs.py` script only lives on `main`, not `ops`. This is unchanged from the 08-12 report and already carded — the cloud routine can only report it, not fix it. When convenient, run `python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops worktree at the desk to reconcile it (one ops-only file, `acceptance-run.md`, is legitimate — back-port it to main rather than prune).
-
-**What the system does next unattended.** The dispatcher will fire again tomorrow night, regenerate these dashboards, and re-report drift. No cadence will merge, publish, or spend money on its own; the `self-lint-report` cadence stays dormant until you launch it in a watched session. Everything above will wait quietly for you.
+**What the system will do next unattended.** The dispatcher will fire again on its next nightly
+beat and repeat this cycle. No autonomous work advances the paused atlas or bricks gates — those
+wait for you. The `self-lint-report` cadence stays dormant (manual launch only). Nothing will
+touch protected branches without a human.
