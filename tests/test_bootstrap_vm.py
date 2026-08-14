@@ -40,6 +40,25 @@ def test_bootstrap_stops_old_service_before_clone_and_disables_remotes(tmp_path,
     assert not any(command[:6] == ["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard"] and command[-1] == "/opt/kb-releases" for command in commands)
 
 
+def test_bootstrap_clones_before_transferring_ops_ownership(tmp_path, monkeypatch):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, run=run)
+
+    root_ops = ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/var/lib/kb/ops"]
+    clone_index = commands.index(["git", "clone", "--branch", "ops", "--no-checkout", str(tmp_path / "ops.bundle"), "/var/lib/kb/ops"])
+    assert commands.index(root_ops) < clone_index
+    assert clone_index < commands.index(["git", "-C", "/var/lib/kb/ops", "sparse-checkout", "set", "--no-cone", *bootstrap_vm.DATA_PATTERNS])
+    assert commands.index(["git", "-C", "/var/lib/kb/ops", "update-ref", "refs/kb-outbox/spooled", "HEAD"]) < commands.index(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", "/var/lib/kb/state"])
+
+
 def test_data_patterns_are_closed_to_data_only_paths():
     assert "/dashboard/" not in bootstrap_vm.DATA_PATTERNS
     assert "/scripts/" not in bootstrap_vm.DATA_PATTERNS
@@ -67,15 +86,33 @@ def test_public_key_module_contains_exact_public_key_and_no_private_key(tmp_path
     assert "PRIVATE KEY" not in source
 
 
+def test_public_key_module_accepts_and_discards_standard_trailing_comment(tmp_path):
+    public_key = generated_public_key(tmp_path)
+    source = bootstrap_vm.public_key_module_source(public_key + " workstation key\n")
+    assert source == f"RELEASE_PUBLIC_KEY = {public_key!r}\n"
+
+
+def test_public_key_module_rejects_options_multiline_and_private_key(tmp_path):
+    public_key = generated_public_key(tmp_path)
+    for value in (
+        f'command="echo unsafe" {public_key}',
+        public_key + "\nsecond line",
+        "-----BEGIN OPENSSH PRIVATE KEY-----",
+    ):
+        with pytest.raises(ValueError, match="public key"):
+            bootstrap_vm.public_key_module_source(value)
+
+
 @pytest.mark.parametrize(
     "value",
     [
         "ssh-rsa AAAA",
         "ssh-ed25519  AAAA",
         "ssh-ed25519 AAAA",
-        "ssh-ed25519 AAAA comment",
+        "command=\"echo unsafe\" ssh-ed25519 AAAA",
         "-----BEGIN OPENSSH PRIVATE KEY-----",
         "ssh-ed25519 AAAA\n",
+        "ssh-ed25519 AAAA comment\nsecond line",
     ],
 )
 def test_public_key_validation_rejects_wrong_type_extra_whitespace_and_private_markers(value):

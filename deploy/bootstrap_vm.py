@@ -11,13 +11,17 @@ from pathlib import Path, PurePosixPath
 
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
-PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 [A-Za-z0-9+/]+={0,3}")
+PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
 
 
 def public_key_module_source(public_key: str) -> str:
-    if "PRIVATE KEY" in public_key or PUBLIC_KEY_PATTERN.fullmatch(public_key) is None:
+    lines = public_key.splitlines()
+    if "PRIVATE KEY" in public_key or len(lines) != 1:
         raise ValueError("release public key must be one unadorned ssh-ed25519 public key")
-    encoded = public_key.split(" ", 1)[1]
+    match = PUBLIC_KEY_PATTERN.fullmatch(lines[0])
+    if match is None:
+        raise ValueError("release public key must be one unadorned ssh-ed25519 public key")
+    encoded = match.group(1)
     try:
         blob = base64.b64decode(encoded, validate=True)
     except binascii.Error as error:
@@ -25,7 +29,7 @@ def public_key_module_source(public_key: str) -> str:
     expected_prefix = len(b"ssh-ed25519").to_bytes(4, "big") + b"ssh-ed25519" + (32).to_bytes(4, "big")
     if len(blob) != len(expected_prefix) + 32 or not blob.startswith(expected_prefix):
         raise ValueError("release public key must be one unadorned ssh-ed25519 public key")
-    return f"RELEASE_PUBLIC_KEY = {public_key!r}\n"
+    return f"RELEASE_PUBLIC_KEY = {f'ssh-ed25519 {encoded}'!r}\n"
 
 
 def install_root_validators(
@@ -67,9 +71,10 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run) ->
     run(["systemctl", "disable", "--now", "kb-dashboard.service"], check=False)
     run(["useradd", "--system", "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin", "kb-dashboard"], check=False)
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/opt/kb-releases"], check=True)
-    for path in ("/var/lib/kb/ops", "/var/lib/kb/state", "/var/lib/kb/state/outbox/ready", "/var/lib/kb/state/outbox/receipts", "/var/lib/kb/state/outbox/incoming"):
+    for path in ("/var/lib/kb/state", "/var/lib/kb/state/outbox/ready", "/var/lib/kb/state/outbox/receipts", "/var/lib/kb/state/outbox/incoming"):
         run(["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard", path], check=True)
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0700", "/var/lib/kb-release-staging"], check=True)
+    run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/var/lib/kb/ops"], check=True)
     run(["git", "clone", "--branch", "ops", "--no-checkout", str(ops_bundle), "/var/lib/kb/ops"], check=True)
     run(["git", "-C", "/var/lib/kb/ops", "sparse-checkout", "set", "--no-cone", *DATA_PATTERNS], check=True)
     run(["git", "-C", "/var/lib/kb/ops", "checkout", "ops"], check=True)
