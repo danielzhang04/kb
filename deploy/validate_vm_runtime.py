@@ -12,6 +12,8 @@ from pathlib import Path
 FORBIDDEN_ENV = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK", "DASHBOARD_SESSION_SECRET", "KB_CANARY_SESSION"})
 CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTIAL|API_KEY|ACCESS_KEY|AUTH_SOCK|ASKPASS|COOKIE|SESSION)")
 EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL"}
+OPTIONAL_UNIT_ENV = {"DASHBOARD_RP_ORIGIN"}
+RP_ORIGIN_PATTERN = re.compile(r"^https://[a-z0-9][a-z0-9.-]*$")
 STATIC_SHOW = {"Id", "Names", "Slice", "FragmentPath", "DropInPaths", "User", "Group", "ExecStart", "WorkingDirectory", "EnvironmentFiles", "UnsetEnvironment", "KillMode", "ReadOnlyPaths", "ReadWritePaths"}
 LIVE_SHOW = {"ControlGroup", "MainPID"}
 COMMAND_TIMEOUT = 30
@@ -105,8 +107,10 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
     forbidden = sorted(name for name in assigned if name in FORBIDDEN_ENV or CREDENTIAL_ENV_NAME.search(name))
     if forbidden:
         raise RuntimeError("dashboard unit assigns a forbidden credential name: " + ",".join(forbidden))
-    if assigned != EXPECTED_UNIT_ENV:
+    if not EXPECTED_UNIT_ENV.issubset(assigned) or not assigned.difference(EXPECTED_UNIT_ENV).issubset(OPTIONAL_UNIT_ENV):
         raise RuntimeError("dashboard unit environment assignment set is not closed")
+    if "DASHBOARD_RP_ORIGIN" in environment and RP_ORIGIN_PATTERN.fullmatch(environment["DASHBOARD_RP_ORIGIN"]) is None:
+        raise RuntimeError("dashboard unit RP origin is invalid")
     unset = set(show["UnsetEnvironment"].split())
     missing = sorted(FORBIDDEN_ENV.difference(unset))
     if missing:

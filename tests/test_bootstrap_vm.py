@@ -1,10 +1,14 @@
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from deploy import bootstrap_vm
+
+
+RP_ORIGIN = "https://dashboard.example"
 
 
 def generated_public_key(tmp_path: Path) -> str:
@@ -140,3 +144,72 @@ def test_install_root_validators_uses_root_owned_immutable_modes(tmp_path, monke
         )
     assert any(command[:7] == ["install", "-o", "root", "-g", "root", "-m", "0444"] and command[-1] == "/usr/local/lib/kb/release_signing_public.py" for command in commands)
     assert any(command[-1] == "/etc/systemd/system/kb-dashboard.service" for command in commands)
+
+
+def test_bootstrap_optional_rp_origin_installs_one_extra_root_owned_immutable_environment_line(tmp_path):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    installed_unit = None
+
+    def run(argv, **kwargs):
+        nonlocal installed_unit
+        if argv[-1] == "/etc/systemd/system/kb-dashboard.service":
+            installed_unit = Path(argv[-2]).read_bytes()
+            assert argv[:7] == ["install", "-o", "root", "-g", "root", "-m", "0444"]
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, rp_origin=RP_ORIGIN, run=run)
+
+    source = (Path(bootstrap_vm.__file__).parent / "systemd/kb-dashboard.service").read_bytes()
+    expected = source.replace(
+        b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n",
+        b"Environment=GIT_CONFIG_GLOBAL=/dev/null\nEnvironment=DASHBOARD_RP_ORIGIN=https://dashboard.example\n",
+    )
+    assert installed_unit == expected
+
+
+def test_bootstrap_without_rp_origin_installs_the_current_fragment_byte_for_byte(tmp_path):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    installed_unit = None
+
+    def run(argv, **kwargs):
+        nonlocal installed_unit
+        if argv[-1] == "/etc/systemd/system/kb-dashboard.service":
+            installed_unit = Path(argv[-2]).read_bytes()
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, run=run)
+
+    assert installed_unit == (Path(bootstrap_vm.__file__).parent / "systemd/kb-dashboard.service").read_bytes()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://dashboard.example",
+        "https://dashboard.example/",
+        "https://user@dashboard.example",
+        "https://Dashboard.example",
+        "https://dashboard.example:8443",
+    ],
+)
+def test_bootstrap_refuses_invalid_rp_origins_before_running_commands(tmp_path, value):
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    with pytest.raises(ValueError, match="RP origin"):
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "unread.pub", rp_origin=value, run=run)
+    assert commands == []
+
+
+def test_main_passes_optional_rp_origin_to_bootstrap(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, rp_origin=None: seen.append((ops_bundle, release_public_key, rp_origin)))
+    monkeypatch.setattr(sys, "argv", ["bootstrap_vm.py", "--ops-bundle", "ops.bundle", "--release-public-key", "release.pub", "--rp-origin", RP_ORIGIN])
+
+    assert bootstrap_vm.main() == 0
+    assert seen == [(Path("ops.bundle"), Path("release.pub"), RP_ORIGIN)]

@@ -12,6 +12,23 @@ from pathlib import Path, PurePosixPath
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
 PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
+RP_ORIGIN_PATTERN = re.compile(r"^https://[a-z0-9][a-z0-9.-]*$")
+
+
+def validate_rp_origin(value: str) -> None:
+    if RP_ORIGIN_PATTERN.fullmatch(value) is None:
+        raise ValueError("dashboard RP origin is invalid")
+
+
+def unit_fragment_source(rp_origin: str | None) -> bytes:
+    source = (Path(__file__).resolve().parent / "systemd/kb-dashboard.service").read_bytes()
+    if rp_origin is None:
+        return source
+    validate_rp_origin(rp_origin)
+    return source.replace(
+        b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n",
+        f"Environment=GIT_CONFIG_GLOBAL=/dev/null\nEnvironment=DASHBOARD_RP_ORIGIN={rp_origin}\n".encode("ascii"),
+    )
 
 
 def public_key_module_source(public_key: str) -> str:
@@ -36,7 +53,10 @@ def install_root_validators(
     release_public_key: Path,
     run=subprocess.run,
     install_root: PurePosixPath = PurePosixPath("/usr/local/lib/kb"),
+    rp_origin: str | None = None,
 ) -> None:
+    if rp_origin is not None:
+        validate_rp_origin(rp_origin)
     public_key = release_public_key.read_text(encoding="ascii")
     source = public_key_module_source(public_key)
     descriptor, generated_name = tempfile.mkstemp(prefix="kb-release-signing-public-")
@@ -58,7 +78,22 @@ def install_root_validators(
                 str(deploy_root / helper), str(install_root / helper),
             ], check=True)
         run(["install", "-o", "root", "-g", "root", "-m", "0444", str(generated), str(install_root / "release_signing_public.py")], check=True)
-        run(["install", "-o", "root", "-g", "root", "-m", "0444", str(deploy_root / "systemd/kb-dashboard.service"), "/etc/systemd/system/kb-dashboard.service"], check=True)
+        unit_source = deploy_root / "systemd/kb-dashboard.service"
+        unit_descriptor: int | None = None
+        unit_generated: Path | None = None
+        if rp_origin is not None:
+            unit_descriptor, unit_generated_name = tempfile.mkstemp(prefix="kb-dashboard-service-")
+            unit_generated = Path(unit_generated_name)
+            with os.fdopen(unit_descriptor, "wb") as output:
+                output.write(unit_fragment_source(rp_origin))
+            unit_generated.chmod(0o400)
+            unit_source = unit_generated
+        try:
+            run(["install", "-o", "root", "-g", "root", "-m", "0444", str(unit_source), "/etc/systemd/system/kb-dashboard.service"], check=True)
+        finally:
+            if unit_generated is not None:
+                unit_generated.chmod(0o600)
+                unit_generated.unlink(missing_ok=True)
         run(["systemctl", "daemon-reload"], check=True)
         run(["systemctl", "enable", "kb-dashboard.service"], check=True)
     finally:
@@ -67,7 +102,9 @@ def install_root_validators(
         generated.unlink(missing_ok=True)
 
 
-def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run) -> None:
+def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run, rp_origin: str | None = None) -> None:
+    if rp_origin is not None:
+        validate_rp_origin(rp_origin)
     run(["systemctl", "disable", "--now", "kb-dashboard.service"], check=False)
     run(["useradd", "--system", "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin", "kb-dashboard"], check=False)
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/opt/kb-releases"], check=True)
@@ -82,15 +119,19 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run) ->
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "--push", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", "/var/lib/kb/state"], check=True)
-    install_root_validators(release_public_key, run=run)
+    if rp_origin is None:
+        install_root_validators(release_public_key, run=run)
+    else:
+        install_root_validators(release_public_key, run=run, rp_origin=rp_origin)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Perform the one-time kb VM bootstrap")
     parser.add_argument("--ops-bundle", type=Path, required=True)
     parser.add_argument("--release-public-key", type=Path, required=True)
+    parser.add_argument("--rp-origin")
     args = parser.parse_args()
-    bootstrap(args.ops_bundle, args.release_public_key)
+    bootstrap(args.ops_bundle, args.release_public_key, rp_origin=args.rp_origin)
     return 0
 
 
