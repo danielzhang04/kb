@@ -1,24 +1,10 @@
 # System Handover
-_Generated: 2026-08-14T06:53Z_
+_Generated: 2026-08-15 06:11 UTC_
 
-**What happened overnight.** The nightly dispatcher-cloud run completed. Preamble and the skills
-mirror check both passed clean. The dispatcher emitted one cadence card (nightly-review), which
-this run executed: dashboards regenerated, memory updated, coordination writes pushed to `ops`.
-The codex worker fleet kept turning over during the day — all steps subscription-billed, $0.00
-against the $30/day cap. Yesterday's gemini image work for the bricks video slice spent about
-$1.05, well under its own $5 slice cap.
+**What happened overnight.** The nightly cloud dispatcher ran clean: preamble, pyyaml, and skill-sync checks all passed. It dispatched two cadence cards for today — nightly-review and weekly-audit — and regenerated these dashboards. Yesterday's work was mostly the bricks image bake-off on faceless-youtube: a gemini engine A/B duel plus a billing rate correction, together about $3.98 against the $30/day ceiling. Everything else was subscription-billed codex steps at $0.
 
-**What is waiting on you.** One standing item still needs a human hand (already covered by four
-inbox wake-me cards, so this run filed no new one): the main→ops daemon-directory mirror has
-drifted (a handful of fyt agent/workflow files differ or are missing on `ops`, plus one extra),
-unchanged since 2026-08-12. The fix is a desktop `python scripts/sync_daemon_dirs.py --sync` run
-from the dashboard-ops worktree — the cloud routine can only report it, not fix it. While looking,
-note that the sync script itself is missing from the `ops` branch and should be reconciled there
-too. Separately, two projects are parked at your gates: **atlas V2 "Trust"**
-awaits your go/no-go (V1 shipped and is live), and the **faceless-youtube bricks-fresh** video is
-paused at the P1–P5 shot-board review gate.
+**One thing needs a hand at the desk.** The routine's daemon-dir drift check couldn't run because `scripts/sync_daemon_dirs.py` is missing from the repo. This gate only reports, so the run continued, but the main→ops mirror for `agents/` and `orgs/*/workflows/` went unverified tonight. A wake-me card is in `queue/inbox/`. Restoring or re-adding that script (and running `--sync` from the dashboard-ops worktree) is a desktop task.
 
-**What the system will do next unattended.** The dispatcher will fire again on its next nightly
-beat and repeat this cycle. No autonomous work advances the paused atlas or bricks gates — those
-wait for you. The `self-lint-report` cadence stays dormant (manual launch only). Nothing will
-touch protected branches without a human.
+**What's waiting on you.** Nothing in the approvals queue. Two standing decisions from prior runs remain yours: atlas V2 "Trust" go/no-go (V1 is merged and live), and the bricks-fresh run paused at its P1–P5 shot-board gate. The engagement-fold wake card is also still parked for a human decision.
+
+**What the system will do next, unattended.** The nightly and weekly cadences will keep firing on schedule. The weekly-audit card is being worked this run — it will file any cadence-coverage gaps as unowned inbox cards for later dispatch. No autonomous execution of governed worker cards happens without a watched session holding the gate open, so the six staged `eng-fold-*` cards remain inert until someone launches them.
