@@ -482,3 +482,19 @@
   (6a6bc3dd halted codex + this card), done 520, approvals 0, archived 1. 14 codex cost rows today,
   all $0.00 subscription; budget $0/$30. Yesterday: narrative row ~$1.05 gemini image (bricks G4).
 - Push path: recorded in the run summary.
+
+## 2026-08-15 nightly + weekly-audit (cloud)
+- Ran clean: preamble OK, pyyaml OK, sync_skills --check exit 0 (no drift). Dispatched 2 cards
+  (nightly-review 6a8002dc-9cc4137d, weekly-audit 6a8002dc-99084e9a); both executed → done.
+- **Missing script:** routine step 2b `scripts/sync_daemon_dirs.py` is GONE on ops HEAD (exit 2
+  file-not-found). Same script also powers the desktop `daemon-dirs-sync` cadence. Filed wake card
+  wake-daniel-2026-08-15-sync-daemon-dirs-missing. Lesson: step 2b's "nonzero=drift" wording
+  doesn't cover "script absent" — treated as report-only per the gate's intent, continued the run.
+- **Weekly-audit finding:** desktop-tier cadences (grades-reconcile weekly:sat, daemon-dirs-sync
+  daily) had ZERO dispatch rows all week 08-09→08-15 — desktop dispatcher looks dormant; cloud run
+  can't cover desktop tier. Cloud cadences healthy (nightly-review 7/7). Grades+activity ledgers
+  both 0 rows this week → reconcile trivially consistent, no FROZEN. Filed unowned gap card
+  6a80039d-c4e53a26. No approval card (no authorization-gated action found).
+- Queue snapshot: inbox 25→27 (added 2 audit cards), working 3 (2 cadence + 1 halted 6a6bc3dd),
+  done 539→541, approvals 0. Budget $0 API-billed today / $30 (codex steps subscription $0).
+- Push path: recorded in the run summary.
