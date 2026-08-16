@@ -498,3 +498,19 @@
 - Queue snapshot: inbox 25→27 (added 2 audit cards), working 3 (2 cadence + 1 halted 6a6bc3dd),
   done 539→541, approvals 0. Budget $0 API-billed today / $30 (codex steps subscription $0).
 - Push path: recorded in the run summary.
+
+## 2026-08-16 nightly (cloud)
+- Ran clean: preamble OK, pyyaml OK, sync_skills --check exit 0 (no drift). Dispatched 1 card
+  (nightly-review 6a81540b-dbe16453); weekly-audit not due today. Executed the work order:
+  preamble/sync_skills re-checked green, regenerated both dashboards, this memory line.
+- **Missing script persists:** routine step 2b `scripts/sync_daemon_dirs.py` still GONE (exit 2).
+  Wake card wake-daniel-2026-08-15-sync-daemon-dirs-missing from last night is still in inbox →
+  did NOT file a duplicate; noted the gate as unrun in the health line and continued. Lesson:
+  when a report-only gate's wake card already sits unactioned in inbox, don't re-file — surface
+  it in the dashboard anomaly list instead so the pile-up is visible.
+- **Anomaly worth a human pass:** daemon-dir-drift wake cards are accumulating (6a605ebb, 6a6c3d8e,
+  6a718533, 6a7c0ebf human-operator + 2 wake-daniel) — recurring because no one owns the drift/
+  script fix. Flagged in executive.md Anomalies + handover.
+- Queue snapshot: inbox 28, working 1 (only the halted 6a6bc3dd; yesterday's 2 cadence cards
+  completed → done 539→541), approvals 0. Budget $0 API-billed today + yesterday / $30.
+- Push path: recorded in the run summary.
