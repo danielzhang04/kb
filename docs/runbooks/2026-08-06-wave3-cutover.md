@@ -233,6 +233,8 @@ that metadata is host-specific.
    ssh $VM 'cd ~/kb/dashboard && npm ci && npm run build && mkdir -p ~/.config/systemd/user && install -m 644 ~/kb/deploy/systemd/kb-dashboard.service ~/.config/systemd/user/ && install -m 644 ~/kb/deploy/systemd/kb-codex-runner.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now kb-dashboard.service && systemctl --user status kb-dashboard.service --no-pager'
    ```
 
+   The unit uses `/usr/bin/env node` with a PATH beginning at `%h/.local/share/fnm/aliases/default/bin`; during cutover, confirm it resolves the intended fnm-managed node rather than `/usr/bin/node`.
+
 4. **[AGENT]** Confirm the VM's `kb` user is lingering and the service owns the
    loopback listener before any browser acceptance.
 

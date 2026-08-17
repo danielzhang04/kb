@@ -21,6 +21,15 @@ timed() {
   timeout 120 "$@"
 }
 
+if ! command -v claude >/dev/null 2>&1 && [[ -d $HOME/.local/share/fnm ]]; then
+  export PATH="$HOME/.local/share/fnm:$PATH"
+  eval "$(fnm env)"
+fi
+
+version_at_least() {
+  [[ -n $1 && $(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n 1) == "$2" ]]
+}
+
 # API keys override subscription authentication. Check their *presence*, including
 # an exported empty value, before invoking either client and never print a value.
 if [[ ${ANTHROPIC_API_KEY+x} || ${OPENAI_API_KEY+x} ]]; then
@@ -57,12 +66,13 @@ fi
 
 node_version="$(node --version 2>/dev/null || true)"
 npm_version="$(npm --version 2>/dev/null || true)"
-python_version="$(python3 --version 2>&1 || true)"
-if [[ $node_version == 'v24.18.0' && $npm_version == '11.16.0' ]] \
-  && python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1; then
-  pass "Runtime versions: node $node_version; npm $npm_version; $python_version"
+node_number="${node_version#v}"
+python_number="$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || true)"
+if version_at_least "$node_number" '24.18' && version_at_least "$npm_version" '11.16' \
+  && version_at_least "$python_number" '3.12'; then
+  pass "Runtime versions: found node $node_version; npm $npm_version; python $python_number; required floors node >= 24.18, npm >= 11.16, python >= 3.12"
 else
-  fail "Runtime versions: require node v24.18.0, npm 11.16.0, python >= 3.12 (found node ${node_version:-missing}; npm ${npm_version:-missing}; ${python_version:-python3 missing})"
+  fail "Runtime versions: found node ${node_version:-missing}; npm ${npm_version:-missing}; python ${python_number:-missing}; required floors node >= 24.18, npm >= 11.16, python >= 3.12"
 fi
 
 tailscale_json=''
