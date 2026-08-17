@@ -109,3 +109,22 @@ not independently selectable:** its current parent is L197, which must be merged
 final word-sync tranche. The final block is therefore L02, L03, L197, and dependent L198. This
 accounts for the full original target set: 27 tranche-A shots + 3 free frames + 28 tranche-B shots
 + 80 C/D/E-now shots + 4 final-block shots = 142.
+
+## 2026-08-03 addendum — Daniel scope corrections (R1/R2)
+
+- **R1 — retain verified pulled-in parents.** L05 and L06 are kept as their existing verified
+  canonical originals, not regenerated. L07 now seeds from `assets/scenes/L06.png` with its
+  SHA-256 pinned; L08 follows the newly staged, digest-pinned L07. The already-produced
+  `L05-candidate-1` / `L05-candidate-2` pair is discarded, not picked.
+- **R2 — one plate per place going forward.** Tranche-B remainder and C/D/E use one 2K plate
+  generation per place; no two-candidate taste batches remain in the forward plan. The 19
+  remaining recurring C/D/E place heads therefore avoid 19 former second candidates:
+  `19 × $0.134 = $2.546` saved.
+- **C/D/E R1 pool sweep.** L13, L14, L80, L86, L98, L152, and L180 were each confirmed in
+  `chain_parents_added.json`, manifest `review_status: verified`, absent from the 107-shot
+  condemned source (`report_data.json` / `wave-plan.md` §1), and absent from the parked set.
+  All seven are removed from C/D/E as kept verified originals; none failed the check. The nominal
+  C/D/E pool is now **74** (73 selectable before final word-sync). This avoids seven one-per-place
+  2K gens: `7 × $0.134 = $0.938`. Keeping L05/L06 also avoids their formerly planned three 2K
+  gens: `3 × $0.134 = $0.402`. The discarded L05 pair's already-spent `$0.268` is not counted as
+  a saving.

@@ -13,41 +13,40 @@
   },
   "selection": {
     "selected_ids": [
-      "L05", "L06", "L07", "L08", "L09", "L17", "L18", "L25", "L31", "L32", "L33", "L36", "L46", "L47", "L51", "L52", "L53", "L54", "L63", "L70", "L71", "L72", "L73", "L83", "L102", "L112", "L114", "L196"
+      "L07", "L08", "L09", "L17", "L18", "L25", "L31", "L32", "L33", "L36", "L46", "L47", "L51", "L52", "L53", "L54", "L63", "L70", "L71", "L72", "L73", "L83", "L102", "L112", "L114", "L196"
     ],
-    "count": 28,
+    "count": 26,
+    "r1_kept_verified_originals": [
+      {
+        "id": "L05",
+        "disposition": "kept verified original per R1; do not regenerate",
+        "reason": "mechanically pulled-in chain parent; manifest-verified; neither condemned nor parked"
+      },
+      {
+        "id": "L06",
+        "disposition": "kept verified original per R1; do not regenerate",
+        "reason": "mechanically pulled-in chain parent; manifest-verified; neither condemned nor parked"
+      }
+    ],
     "strata": {
-      "recurring_place_heads": 6,
+      "recurring_place_heads": 5,
       "standalone_plates": 8,
-      "delta_or_composite_shots": 14,
+      "delta_or_composite_shots": 13,
       "vpw_repairs": 6
     },
     "items": [
       {
-        "id": "L05",
-        "class": ["recurring_place_candidate", "as_authored"],
-        "stage": "pc-store-1983",
-        "parent_edges": [],
-        "gen_plan": [{"kind": "plate_candidate", "count": 2, "tier": "2K", "seeds": ["prop-beige-pc", "lettering-marker-italic"]}]
-      },
-      {
-        "id": "L06",
-        "class": ["delta_composite", "as_authored"],
-        "parent_edges": ["L05"],
-        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["_staging/L05.png", "lettering-marker-italic"]}]
-      },
-      {
         "id": "L07",
         "class": ["delta_composite", "as_authored"],
-        "parent_edges": ["L06"],
-        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["_staging/L06.png", "crowd-exemplar", "lettering-marker-italic"]}]
+        "parent_edges": ["L06 (existing verified canonical frame per R1)"],
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["assets/scenes/L06.png", "crowd-exemplar", "lettering-marker-italic"], "parent_seed": {"path": "assets/scenes/L06.png", "expected_sha256": "0cbe6cc19d843721032f67873ed40519d79085447aef6db573aaeb1939e914e1"}}]
       },
       {
         "id": "L08",
         "class": ["delta_composite", "vpw_anon_foreground_to_crowd"],
-        "parent_edges": ["L07"],
+        "parent_edges": ["L07 (new staged output; name and digest pin at gen time)"],
         "vpw_scope": "Replace the large anonymous counter shopper with a small crowd-tier counter-side participant; retain the handbag-and-banknotes beat, but do not introduce a named cast or a prose-only individual rig.",
-        "gen_plan": [{"kind": "composite_after_vpw", "count": 1, "tier": "2K", "seeds": ["_staging/L07.png", "crowd-exemplar", "lettering-marker-italic"]}]
+        "gen_plan": [{"kind": "composite_after_vpw", "count": 1, "tier": "2K", "seeds": ["_staging/L07.png", "crowd-exemplar", "lettering-marker-italic"], "parent_seed": {"path": "_staging/L07.png", "expected_sha256": "SET-AT-GEN-TIME from the selected new staged L07 bytes"}}]
       },
       {
         "id": "L09",
@@ -57,11 +56,11 @@
       },
       {
         "id": "L17",
-        "class": ["recurring_place_candidate", "vpw_anon_foreground_to_crowd"],
+        "class": ["recurring_place_single", "vpw_anon_foreground_to_crowd"],
         "stage": "storefront-brawl",
         "parent_edges": [],
         "vpw_scope": "Restage the two anonymous large foreground rivals as a small crowd-tier tug tableau around the unbranded computer. Remove the separate anonymous body descriptions and their individual rig claim; no named cast is needed for this analogy beat.",
-        "gen_plan": [{"kind": "plate_candidate_after_vpw", "count": 2, "tier": "2K", "seeds": ["crowd-exemplar", "prop-beige-pc"]}]
+        "gen_plan": [{"kind": "plate_after_vpw", "count": 1, "tier": "2K", "seeds": ["crowd-exemplar", "prop-beige-pc"]}]
       },
       {
         "id": "L18",
@@ -78,10 +77,10 @@
       },
       {
         "id": "L31",
-        "class": ["recurring_place_candidate", "as_authored"],
+        "class": ["recurring_place_single", "as_authored"],
         "stage": "cash-stack",
         "parent_edges": [],
-        "gen_plan": [{"kind": "plate_candidate", "count": 2, "tier": "2K", "seeds": ["fig-miniscribe-rep--action-powerstance--expr-smug (REUSED from tranche A)"]}]
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["fig-miniscribe-rep--action-powerstance--expr-smug (REUSED from tranche A)"]}]
       },
       {
         "id": "L32",
@@ -121,13 +120,13 @@
       },
       {
         "id": "L52",
-        "class": ["recurring_place_candidate", "as_authored"],
+        "class": ["recurring_place_single", "as_authored"],
         "stage": "doctor-fixit-clinic",
         "parent_edges": [],
         "gen_plan": [
           {"kind": "step1_figure", "name": "fig-qt-wiles--hold-paper-by-sides--expr-smug", "count": 1, "tier": "1K", "seeds": ["qt-wiles", "expr-smug", "hold-paper-by-sides"]},
           {"kind": "step1_figure", "name": "fig-miniscribe-rep--expr-worried", "count": 1, "tier": "1K", "seeds": ["miniscribe-rep", "expr-worried"]},
-          {"kind": "plate_candidate", "count": 2, "tier": "2K", "seeds": ["_staging/fig-qt-wiles--hold-paper-by-sides--expr-smug.png", "_staging/fig-miniscribe-rep--expr-worried.png"]}
+          {"kind": "plate", "count": 1, "tier": "2K", "seeds": ["_staging/fig-qt-wiles--hold-paper-by-sides--expr-smug.png", "_staging/fig-miniscribe-rep--expr-worried.png"]}
         ]
       },
       {
@@ -146,16 +145,18 @@
       },
       {
         "id": "L63",
-        "class": ["delta_composite", "as_authored"],
-        "parent_edges": ["L61 (verified tranche-A frame)"],
-        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["qt-wiles", "brick-foreman", "_staging/L61.png", "expr-deadpan"]}]
+        "class": ["delta_composite", "as_authored", "BLOCKED-ON-RULING"],
+        "status": "BLOCKED-ON-RULING",
+        "parent_edges": ["L61 (conditional: existing verified frame if L60 ruling rejects; this leg's regenerated L61 if new L60 ships)"],
+        "ruling_dependency": "Pending L60 ruling. If new L60 ships, regenerate L61 and L62 from it, then seed L63 from the new L61. If rejected, keep the old L60/L61/L62 chain and seed L63 from the existing verified L61. Do not resolve this plan until the ruling.",
+        "gen_plan": [{"kind": "composite", "count": 1, "tier": "2K", "seeds": ["qt-wiles", "brick-foreman", "_staging/L61.png", "expr-deadpan"], "parent_seed": {"path": "_staging/L61.png", "expected_sha256": "SET-AT-GEN-TIME from the ruling-selected L61 bytes"}}]
       },
       {
         "id": "L70",
-        "class": ["recurring_place_candidate", "as_authored"],
+        "class": ["recurring_place_single", "as_authored"],
         "stage": "quota-room",
         "parent_edges": [],
-        "gen_plan": [{"kind": "plate_candidate", "count": 2, "tier": "2K", "seeds": ["PLATE"]}]
+        "gen_plan": [{"kind": "plate", "count": 1, "tier": "2K", "seeds": ["PLATE"]}]
       },
       {
         "id": "L71",
@@ -201,16 +202,20 @@
       },
       {
         "id": "L196",
-        "class": ["recurring_place_candidate", "vpw_prose_vs_seed_cut"],
+        "class": ["recurring_place_single", "vpw_prose_vs_seed_cut"],
         "stage": "defense-vs-testimony",
         "parent_edges": [],
-        "vpw_scope": "Keep the `surrender` pose seed and delete the competing prose that specifies both palms raised/open. The later word-sync edit changes L197/L198, not this stage-head candidate batch.",
+        "vpw_scope": "Keep the `surrender` pose seed and delete the competing prose that specifies both palms raised/open. The later word-sync edit changes L197/L198, not this single stage-head plate.",
         "gen_plan": [
           {"kind": "step1_figure", "name": "fig-qt-wiles--surrender--expr-pleading", "count": 1, "tier": "1K", "seeds": ["qt-wiles", "expr-pleading", "surrender"]},
-          {"kind": "plate_candidate_after_vpw", "count": 2, "tier": "2K", "seeds": ["_staging/fig-qt-wiles--surrender--expr-pleading.png"]}
+          {"kind": "plate_after_vpw", "count": 1, "tier": "2K", "seeds": ["_staging/fig-qt-wiles--surrender--expr-pleading.png"]}
         ]
       }
     ]
+  },
+  "leg_4_ordering": {
+    "ordered_ids": ["L07", "L08"],
+    "note": "R1 chain correction: generate and inspect the L07 delta from the verified canonical L06 before naming, digest-pinning, and generating the L08 delta from the new staged L07."
   },
   "leg_0_tranche_a_parked_repairs": [
     {
@@ -250,6 +255,16 @@
       "repair": "Chain directly from repaired L108; retain the crowd-tier treatment and no invented text."
     },
     {
+      "id": "L110",
+      "kind": "retry_overlay_composite",
+      "count": 1,
+      "tier": "2K",
+      "status": "BLOCKED-UPSTREAM",
+      "parent_edges": ["L109 (this leg's repaired output)"],
+      "seeds": ["_staging/L109.png"],
+      "repair": "After repaired L109 passes, regenerate L110 as its delta; do not retain the existing verified L110 under the old L107→L109 look."
+    },
+    {
       "id": "L161",
       "kind": "retry_overlay_composite",
       "count": 1,
@@ -279,8 +294,9 @@
   ],
   "closure": {
     "method": "Parsed every forge seed slate token named _staging/Lnn.png as a parent edge. A selected parent is either selected in this tranche or an explicitly verified frame.",
-    "selected_parent_edges": ["L05->L06", "L06->L07", "L07->L08", "L17->L18", "L31->L32", "L32->L33", "L45(verified)->L46", "L46->L47", "L52->L53", "L53->L54", "L61(verified tranche A)->L63", "L70->L71", "L71->L72", "L72->L73"],
-    "closure_missing": 0
+    "selected_parent_edges": ["L06(verified canonical, SHA-256 pinned)->L07", "L07(new staged, digest pinned at gen time)->L08", "L17->L18", "L31->L32", "L32->L33", "L45(verified)->L46", "L46->L47", "L52->L53", "L53->L54", "L61(ruling-selected)->L63", "L70->L71", "L71->L72", "L72->L73", "L107->L108->L109->L110"],
+    "closure_missing": 0,
+    "blocked_on_ruling": ["L63 depends on the pending L60 ruling; see its item annotation before any leg-4 execution."]
   },
   "vpw_workload": {
     "not_yet_repaired_before_word_sync_exclusion": 26,
@@ -295,25 +311,27 @@
     "rates_usd": {"step1_figure_1k": 0.039, "plate_or_composite_2k": 0.134, "contingency_rate": 0.15},
     "line_items": [
       {"line": "STEP-1 figures", "count": 3, "rate": 0.039, "subtotal": 0.117},
-      {"line": "Recurring-place candidates (6 places x 2)", "count": 12, "rate": 0.134, "subtotal": 1.608},
+      {"line": "Recurring-place single plates (5 places x 1; R2)", "count": 5, "rate": 0.134, "subtotal": 0.67},
       {"line": "Standalone plates", "count": 8, "rate": 0.134, "subtotal": 1.072},
-      {"line": "Selected deltas/composites", "count": 14, "rate": 0.134, "subtotal": 1.876},
-      {"line": "Leg 0 parked-repair gens", "count": 7, "rate": 0.134, "subtotal": 0.938}
+      {"line": "Selected deltas/composites", "count": 13, "rate": 0.134, "subtotal": 1.742},
+      {"line": "Leg 0 parked-repair gens (includes L110 cascade tail)", "count": 8, "rate": 0.134, "subtotal": 1.072}
     ],
-    "total_gens": 44,
-    "subtotal": 5.611,
-    "contingency_15pct": 0.84165,
-    "total_with_contingency": 6.45265,
-    "recommended_sub_cap": 6.5,
+    "total_gens": 37,
+    "subtotal": 4.673,
+    "contingency_15pct": 0.70095,
+    "total_with_contingency": 5.37395,
+    "recommended_sub_cap": 5.4,
     "remainder_budget_b_to_e": 25.0,
-    "remainder_after_recommended_b": 18.5,
+    "remainder_after_recommended_b": 19.6,
     "crowds_remainder_budget": false
   },
   "left_for_c_d_e": {
-    "nominal_eligible_pool_count": 81,
-    "sequencable_before_final_word_sync_count": 80,
-    "ids": ["L01", "L12", "L13", "L14", "L15", "L16", "L19", "L20", "L21", "L22", "L34", "L35", "L39", "L40", "L64", "L65", "L80", "L81", "L82", "L85", "L86", "L87", "L88", "L89", "L90", "L93", "L97", "L98", "L99", "L103", "L104", "L105", "L115", "L117", "L118", "L119", "L122", "L123", "L126", "L127", "L128", "L129", "L130", "L131", "L133", "L136", "L137", "L138", "L144", "L146", "L147", "L148", "L152", "L153", "L154", "L155", "L156", "L157", "L158", "L163", "L169", "L170", "L171", "L172", "L173", "L174", "L175", "L179", "L180", "L181", "L182", "L192", "L193", "L194", "L199", "L200", "L201", "L206", "L207", "L208"],
+    "nominal_eligible_pool_count": 74,
+    "sequencable_before_final_word_sync_count": 73,
+    "ids": ["L01", "L12", "L15", "L16", "L19", "L20", "L21", "L22", "L34", "L35", "L39", "L40", "L64", "L65", "L81", "L82", "L85", "L87", "L88", "L89", "L90", "L93", "L97", "L99", "L103", "L104", "L105", "L115", "L117", "L118", "L119", "L122", "L123", "L126", "L127", "L128", "L129", "L130", "L131", "L133", "L136", "L137", "L138", "L144", "L146", "L147", "L148", "L153", "L154", "L155", "L156", "L157", "L158", "L163", "L169", "L170", "L171", "L172", "L173", "L174", "L175", "L179", "L181", "L182", "L192", "L193", "L194", "L199", "L200", "L201", "L206", "L207", "L208"],
     "defer_to_final_word_sync": ["L02", "L03", "L197", "L198"],
-    "note": "L198 is nominally eligible, but its current forge parent is L197. Keep it with the three word-sync edits so no C/D/E tranche relies on an unverified reserved parent."
+    "removed_kept_verified_originals": ["L13", "L14", "L80", "L86", "L98", "L152", "L180"],
+    "r2_place_policy": "C/D/E planning uses one 2K generation per place; no two-candidate plate batches remain in this wave.",
+    "note": "L198 is nominally eligible, but its current forge parent is L197. Keep it with the three word-sync edits so no C/D/E tranche relies on an unverified reserved parent. The seven removed ids are manifest-verified mechanical chain parents that are neither condemned nor parked, kept per R1."
   }
 }
