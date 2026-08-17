@@ -33,6 +33,7 @@ export const defaultPreambleRunner: PreambleRunner = (repoRoot) => {
     const stdout = execFileSync('py', ['-3', 'scripts/preamble.py'], {
       cwd: repoRoot,
       encoding: 'utf-8',
+      windowsHide: true,
     });
     return { exitCode: 0, stdout, stderr: '' };
   } catch (err) {

@@ -112,6 +112,7 @@ export const defaultGitRunner: GitRunner = (repoRoot, args) =>
     cwd: repoRoot,
     encoding: 'utf-8',
     maxBuffer: 64 * 1024 * 1024,
+    windowsHide: true,
   });
 
 // %H hash, %an author name, %ad date, %s subject — tab (%x09) separated, one line per commit.
