@@ -396,3 +396,48 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 - 2026-08-05: The governed Poyais L24 four-wing test stopped all providers at STEP1 after one retry each: Codex retained gradients/outline drift, Qwen collapsed multi-reference routing to the generic template, FLUX traded expression hold against canonical identity/costume, and HiDream added forbidden anatomy and ignored pose. Do not infer scene quality from this run; no provider legally received the place plate.
 - 2026-08-05: HiDream Full 8B setup on an L40S is fast when the venv/repo live on the pod's ephemeral `/root` and only the 33 GB Hugging Face cache lives on `/workspace`: PyTorch 2.10 + dependencies installed in under two minutes and weights downloaded in ~41 seconds. Its official pipeline snapped 688×1024 to 1664×2496, so record requested and actual dimensions separately.
 - 2026-08-05: A frozen provider contract built from `kit.prompt_for()` can miss later live-gen prompt injections. In the L24 fixture, STEP1 matched the live dry run but the unused STEP2 record omitted `HARDENED SCENE STYLE`; freeze at the final provider boundary or diff every frozen prompt against `forge gen --dry-run` before spending.
+
+## Durable schedule evidence must outrank projected generation counters
+
+### Context
+- While completing a generic iteration state machine, generation numbers appeared to be convenient cycle evidence but advanced at a different boundary than the compiled schedule.
+- Tightening the generic validator exposed that the temporary legacy projection still increments one transition before its synthetic next request exists.
+- A later termination task exposed the same boundary mismatch more sharply: the producer transition persisted a queued successor and supersession before the turn, while the locked no-progress rule required a post-turn park with neither record and the scoped park API could only act on the prior failed receipt.
+
+### Root Cause / Core Insight
+- A counter is trustworthy only when its increment boundary matches the domain definition; compatibility projections can preserve an older boundary without making it valid evidence for the new model.
+- A transition cannot safely pre-materialize an effect that a later mandatory backstop may need to prove never existed; the backstop and the effect must share an atomic commit boundary or the plan must explicitly authorize rollback semantics.
+
+### The Pattern (transferable)
+- Next time a migration unifies old and new state machines, I will derive generic progress from the authoritative event graph and isolate any legacy timing allowance behind an explicit projection check.
+- Before landing an earlier task's transition shape, I will trace every later fail-closed rule through that transition and stop for an amendment when the later rule needs state the exposed API cannot represent.
+- Signal to recognize: a validator accepts normal flows only when unrelated identifiers such as generation ordinals are treated as proof of a semantic transition.
+- Signal to recognize: a required "zero successor" failure state is checked only after an API has already durably created the successor.
+
+## Group presentation containers without grouping semantic state
+
+### Context
+- A run graph needed one outer card per agent while one agent could own several stages with different loop roles, cycles, verdicts, and gates.
+
+### Root Cause / Core Insight
+- Presentation identity and state identity can have different cardinalities: grouping by agent is safe for the card shell, but not for participant-stage state or route endpoints.
+
+### The Pattern (transferable)
+- Next time a UI groups several domain records into one visual container, I will keep a separately keyed child projection for every state-bearing record and derive cross-links from authoritative declared relationships only.
+- Signal to recognize: a reducer or map keyed by display owner starts selecting a single role, verdict, generation, or gate from records that have distinct stage or group identifiers.
+
+## Durable evidence fields are not live-state booleans
+
+### Context
+- A resolved iteration retained its park reason and unresolved residue for audit durability, while the rendering layer treated either field as proof that the loop was still parked.
+
+### Root Cause / Core Insight
+- Historical evidence and present lifecycle state have different semantics even when they coexist on one DTO; components that infer current state from retained evidence will make resolved work look permanently active.
+
+### The Pattern (transferable)
+- Next time a projection contains both lifecycle state and durable evidence, I will derive one authoritative presentation boolean at the projection boundary and require every consumer to use it.
+- Signal to recognize: a terminal record still carries cause, residue, gate links, or prior-decision fields and UI code tests those fields directly to choose a live-state label.
+
+## Test-strengthening note (2026-08-14)
+
+- A “no generated cards” test must assert the launch response's canonical card collection, not the absence of an unrelated temp directory; a temporary injected turn-card proved the exact-set assertion fails as intended.
