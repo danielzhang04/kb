@@ -108,3 +108,12 @@ Two commits landed on `claude/bricks-taste-forensics` AFTER this handoff was wri
 Worktree `C:/Users/danie/kb-worktrees/boss-taste-forensics` additionally holds UNCOMMITTED A/B round-1 working state: modified `orgs/faceless-youtube/.claude/skills/image-generation/scripts/test_forge_style_tile.py`, `assets/_review/merged.json`, `scratchpad/taste-forensics/seed-board.html`; untracked `scratchpad/taste-forensics/ab-board.html`. Do not sweep that worktree.
 
 Gate unchanged: Daniel's Wave-1 seed-board ruling (artifact 34a61c91).
+
+### Main-checkout residue from the doctrine-reset terminal (recorded 2026-08-17)
+
+The uncommitted tracked edits relative to `2495d8c1` were `scratchpad/tranche-b-notes.md` (+19) and `scratchpad/tranche-b.json` (+68/-50; +87/-50 total). The notes add Daniel’s R1/R2 corrections; the JSON updates kept-verified originals, one-plate-per-place planning, parent/status dependencies, and reduced the B/C–D–E generation pool and budget.
+
+Untracked 6c2-session working state remains under the video directory: archived asset trees, `vo.txt`, manifests/JSON reports, and a large `scratchpad/` tree of build scripts, dogfood files, boards, crops, and related artifacts. It was never committed.
+
+The arc is superseded by `taste-forensics`; Wave 2 regenerates under the new doctrine. Treat this residue as reference-only—do not build on it. It is safe to archive or delete once Daniel confirms Wave-2 GO.
+
