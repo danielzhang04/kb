@@ -1,0 +1,86 @@
+note	requested_model	responding_model	task	usd
+No image generation; merge, stamp, verify, record	gpt-5	gpt-5	Apply Daniel 2026-08-03 tranche-A rulings	0.0
+Round-1 Lane A L04 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L04	0.134
+Round-1 lane C: fig-miniscribe-rep--expr-surprised	gemini-3-pro-image	gemini-3-pro-image	Bricks STEP-1 figure	0.039
+Round-1 Lane F L108 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L108	0.134
+Round-1 Lane A L14 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L14	0.134
+Round-1 lane C: fig-ibm-suit--sit--expr-deadpan	gemini-3-pro-image	gemini-3-pro-image	Bricks STEP-1 figure	0.039
+Round-1 Lane F L161 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L161	0.134
+Round-1 lane C: fig-miniscribe-rep--action-offering--expr-smug	gemini-3-pro-image	gemini-3-pro-image	Bricks STEP-1 figure	0.039
+Round-1 Lane B L17 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L17	0.134
+Round-1 Lane B L28 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L28	0.134
+Round-1 Lane E L61 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L61	0.134
+Round-1 Lane E L62 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L62	0.134
+Round-1 Lane F L196 Step-1 figure generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-qt-wiles--action-shrug--expr-deadpan	0.039
+Round-1 lane C: fig-miniscribe-rep--3q-turn-right--expr-fear (content flagged)	gemini-3-pro-image	gemini-3-pro-image	Bricks STEP-1 figure	0.039
+Round-1 Lane A L15 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L15	0.134
+Round-1 lane C: L31 cash-stack base	gemini-3-pro-image	gemini-3-pro-image	Bricks 2K scene	0.134
+Round-1 lane C: L32 cash-stack delta (content flagged)	gemini-3-pro-image	gemini-3-pro-image	Bricks 2K scene	0.134
+Round-1 lane C: L30 (rig/content flagged)	gemini-3-pro-image	gemini-3-pro-image	Bricks 2K scene	0.134
+L45-round1-D	gemini-3-pro-image	gemini-3-pro-image	L45 video-local HQ-office base	0.134
+L46-round1-D	gemini-3-pro-image	gemini-3-pro-image	L46 delta from L45-round1-D	0.134
+L47-round1-D	gemini-3-pro-image	gemini-3-pro-image	L47 delta from L46-round1-D	0.134
+fig-qt-wiles--action-powerstance--expr-smug	gemini-3-pro-image	gemini-3-pro-image	L48 STEP-1 qt-wiles	0.039
+fig-hq-banker--expr-deadpan	gemini-3-pro-image	gemini-3-pro-image	L48 STEP-1 hq-banker	0.039
+L48-round1-D	gemini-3-pro-image	gemini-3-pro-image	L48 two-figure composite	0.134
+L51-round1-D	gemini-3-pro-image	gemini-3-pro-image	L51 reusing staged Wiles arms-crossed STEP-1	0.134
+Round-1 lane C: L34 (content flagged)	gemini-3-pro-image	gemini-3-pro-image	Bricks 2K scene	0.134
+Round-1 Lane F boss-sanctioned L196 Step-1 face retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-qt-wiles--action-shrug--expr-deadpan retry	0.039
+Round-1 Lane B L28 sanctioned retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L28 retry	0.134
+Round-1 Lane B L17 crowd plate probe	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L17 crowd probe	0.134
+L46-round1-D-content-retry	gemini-3-pro-image	gemini-3-pro-image	L46 boss-sanctioned content retry	0.134
+L47-round1-D-content-retry	gemini-3-pro-image	gemini-3-pro-image	L47 regenerated delta from corrected L46	0.134
+Round-1 lane C follow-up: L32-laneC-r1	gemini-3-pro-image	gemini-3-pro-image	Bricks 2K retry scene	0.134
+Round-1 lane C follow-up: L33-laneC-r1	gemini-3-pro-image	gemini-3-pro-image	Bricks 2K scene continuation	0.134
+Round-1 lane C follow-up: L34-laneC-r1 (flagged)	gemini-3-pro-image	gemini-3-pro-image	Bricks 2K retry scene	0.134
+Round-1 lane C follow-up: fig-miniscribe-rep--3q-turn-right--expr-fear remint	gemini-3-pro-image	gemini-3-pro-image	Bricks STEP-1 figure remint	0.039
+Round-1 lane C follow-up: L40 (rig flagged)	gemini-3-pro-image	gemini-3-pro-image	Bricks 2K scene	0.134
+Round-2 Lane I L66 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L66	0.134
+	gemini-3-pro-image	gemini-3-pro-image		0.039
+	gemini-3-pro-image	gemini-3-pro-image		0.039
+Round-2 Lane I STEP-1 foreman sit deadpan	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-brick-foreman--sit--expr-deadpan	0.039
+Round-2 Lane J L70 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L70-round2-J	0.134
+Round-2 Lane I L69 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L69	0.134
+	gemini-3-pro-image	gemini-3-pro-image		0.039
+Round-2 Lane J L71 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L71-round2-J	0.134
+Round-2 Lane I L74 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L74	0.134
+Round-2 Lane J L72 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L72-round2-J	0.134
+Round-2 Lane I L75 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L75	0.134
+	gemini-3-pro-image	gemini-3-pro-image		0.134
+Round-2 Lane J L73 image generation (content flagged)	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L73-round2-J	0.134
+	gemini-3-pro-image	gemini-3-pro-image		0.134
+Round-2 Lane I STEP-1 auditor powerstance deadpan	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-auditor-rep--action-powerstance--expr-deadpan	0.039
+	gemini-3-pro-image	gemini-3-pro-image		0.134
+	gemini-3-pro-image	gemini-3-pro-image		0.134
+Round-2 Lane G L17 storefront plate	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L17	0.134
+Round-2 Lane G L18 canonical-parent issue	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L18 issue 1	0.134
+Round-2 Lane G L18 SHA-pinned reissue	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L18 reissue	0.134
+Round-2 Lane G MiniScribe armscrossed smug STEP-1	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-miniscribe-rep--action-armscrossed--expr-smug	0.039
+Round-2 Lane G L29 furnace-belt composite	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L29	0.134
+Round-2 Lane G MiniScribe recoil fear STEP-1	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-miniscribe-rep--action-recoil--expr-fear	0.039
+Round-2 Lane G L40 mesa composite	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L40	0.134
+Round-2 Lane G L53 timeout issue 1 — no image, reconciled	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L53 issue 1	0.000
+Round-2 Lane G L53 timeout reissue — no image, reconciled	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L53 reissue	0.000
+Round-2 Lane G L55 timeout issue 1 — no image, reconciled	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L55 issue 1	0.000
+Round-2 Lane G L53 resumed image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L53 resumed	0.134
+Round-2 Lane G L54 resumed image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L54 resumed	0.134
+Round-2 Lane G L55 resumed image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L55 resumed	0.134
+Round-2 Lane G L56 resumed image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L56 resumed	0.134
+Round-2 Lane G L57 resumed image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L57 resumed	0.134
+Round-2 Lane J L78 image generation timeout issue 1	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L78-round2-J timeout issue 1	0.134
+Round-2 Lane J L78 image generation timeout issue 2	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L78-round2-J timeout issue 2	0.134
+Round-2 Lane J L79 image generation timeout issue 1	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L79-round2-J timeout issue 1	0.134
+Round-2 Lane M L91 boss-authorized reattempt	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L91-round2-M	0.134
+Round-2 Lane M L92 sanctioned STEP-1 retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-auditor-rep--sign-with-pen--expr-deadpan-r2M	0.039
+Round-2 Lane M L92 scene	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L92-round2-M	0.134
+Round-2 Lane I sanctioned auditor STEP-1 retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-auditor-rep--action-powerstance--expr-deadpan-r2i	0.039
+Round-2 Lane J L78 resumed image generation (content flagged)	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L78-round2-J resume issue 3	0.134
+Round-2 Lane M L94 reattempt	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L94-round2-M	0.134
+Round-2 Lane M L95 delta	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L95-round2-M	0.134
+Round-2 Lane M L96 delta	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L96-round2-M	0.134
+Round-2 Lane M L97 base	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L97-round2-M	0.134
+Round-2 Lane M L98 delta	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L98-round2-M	0.134
+Round-2 Lane M L99 flagged delta	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L99-round2-M	0.134
+Round-2 Lane M L100 flagged crowd base	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L100-round2-M	0.134
+Round-2 Lane J L83 resumed image generation (fidelity flagged)	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L83-round2-J resume	0.134
+Round-3 Lane P L73 provider quota rejection	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L73-round3-P HTTP 429; no PNG	0.000

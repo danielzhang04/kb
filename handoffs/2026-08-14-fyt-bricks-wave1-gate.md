@@ -98,3 +98,13 @@ blocks agents); sweep verifier crop strays (cand_*/seed_*/w21-crops) from scratc
 - .../taste-forensics/t18-tranche-plan.md (acts 2-7 + card lists + concurrency evidence)
 - memory/claude-boss.md 2026-08-14 section; boss auto-memory fyt-image-gen-wave-doctrine.md
 - Skills: dispatch-codex, save-session
+
+## Post-handoff update (2026-08-17 boss reconciliation)
+
+Two commits landed on `claude/bricks-taste-forensics` AFTER this handoff was written, both pushed (remote == local @ f1d0071e):
+- 4eacbdfa — SPEND-LAW CORRECTION: engine is gemini-3-pro-image at $0.134/gen (1K/2K); the $0.039 figure was the flash rate carried in error. Protocol invariant 0.8 added; genlog audit addendum; ledger delta rows on ops.
+- f1d0071e — engine A/B test round 1: pro 5/5, flash 4/5 (repro no-image on 3-seed card), codex arm L27/L28; driver+spec+genlog; board artifact e166d707.
+
+Worktree `C:/Users/danie/kb-worktrees/boss-taste-forensics` additionally holds UNCOMMITTED A/B round-1 working state: modified `orgs/faceless-youtube/.claude/skills/image-generation/scripts/test_forge_style_tile.py`, `assets/_review/merged.json`, `scratchpad/taste-forensics/seed-board.html`; untracked `scratchpad/taste-forensics/ab-board.html`. Do not sweep that worktree.
+
+Gate unchanged: Daniel's Wave-1 seed-board ruling (artifact 34a61c91).

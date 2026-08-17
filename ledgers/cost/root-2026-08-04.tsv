@@ -1,0 +1,10 @@
+note	requested_model	responding_model	task	usd
+Round-3 Lane Q resumption: 7 published 2K frames selected/flagged as documented; 2 L93 1K calls returned no image.	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh Round-3 Lane Q resumption	0.938
+Boss-authorized Round-3 Lane Q L93 mechanical retry: published passing deadpan STEP-1 and selected crowd-scene precision retry.	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh Round-3 Lane Q L93 boss retry	0.173
+Round-4 Lane R: six published 2K frames; L28 and L60 each used their one precision retry, L100 and L101 preliminary pass.	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh Round-4 Lane R	0.804
+Round-5 Lane X L75 surgical mechanism retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L75-b5X	0.134
+Round-5 Lane X forced L85 caught-expression STEP-1 remint	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-brick-foreman--expr-caught-b5X	0.039
+Round-5 Lane X L87 surgical duplicate-removal retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L87-b5X	0.134
+Round-5 Lane X L88 digest-pinned L87 delta	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L88-b5X	0.134
+Round-5 Lane X L96 canonical-L94 digest-pinned content retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L96-b5X	0.134
+Eight 2K B5 visual-generation provider submissions; genlog round5-genlog-V.md	gemini-3-pro-image	gemini-3-pro-image		1.072

@@ -1,0 +1,37 @@
+note	requested_model	responding_model	task	usd
+Round-3 Lane P L73 resumed image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L73-round3-P	0.134
+Round-3 Lane P L76 fresh STEP-1 reissue	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh fig-auditor-rep--action-powerstance--expr-deadpan-round3-P	0.039
+Round-3 Lane P L76 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L76-round3-P	0.134
+Round-3 Lane P L77 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L77-round3-P	0.134
+Round-3 Lane P L78 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L78-round3-P	0.134
+Round-3 Lane P L79 image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L79-round3-P	0.134
+Channel style-card candidate 1	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh style-card-candidate-1	0.039
+Channel style-card candidate 2	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh style-card-candidate-2	0.039
+Channel style-card candidate 3	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh style-card-candidate-3	0.039
+Style-card probe A neutral baseline	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh probe-card-A	0.134
+Style-card probe B candidate 1	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh probe-card-B	0.134
+Style-card probe C candidate 2	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh probe-card-C	0.134
+Style-card probe D candidate 3	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh probe-card-D	0.134
+Style-card probe E verified-scene anchor	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh probe-card-E	0.134
+Style-card probe F hardened text	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh probe-card-F	0.134
+Style-card probe G anchor plus hardened text	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh probe-card-G	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L74-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L75-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L77-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L81-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L82-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L84-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L85-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L89-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L90-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L91-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L92-b4T	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L85-b4T-retry	0.134
+Round-4 Lane T image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L92-b4T-retry	0.134
+Round-5 Lane W image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L66-b5W	0.134
+Round-5 Lane W L66 surgical content retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L66-b5W-retry	0.134
+Round-5 Lane W image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L67-b5W	0.134
+Round-5 Lane W image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L68-b5W	0.134
+Round-5 Lane W image generation	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L70-b5W	0.134
+Round-5 Lane W L70 retry first provider call timed out before a PNG published	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L70-b5W-retry mechanical reissue	0.000
+Round-5 Lane W L70 surgical content retry	gemini-3-pro-image	gemini-3-pro-image	bricks-fresh L70-b5W-retry	0.134
