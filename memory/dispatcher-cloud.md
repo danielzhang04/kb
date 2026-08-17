@@ -514,3 +514,19 @@
 - Queue snapshot: inbox 28, working 1 (only the halted 6a6bc3dd; yesterday's 2 cadence cards
   completed → done 539→541), approvals 0. Budget $0 API-billed today + yesterday / $30.
 - Push path: recorded in the run summary.
+
+## 2026-08-17 nightly (dispatcher-cloud, cloud tier)
+- Clean run: preamble/pyyaml/sync_skills all green; dispatched + self-executed the nightly-review
+  cadence card (6a82ac7b); regenerated both dashboards.
+- **Dedupe win:** the daemon-dir drift (11 files: 5 main-only, 5 content-differs, 1 ops-only
+  acceptance-run.md) is byte-identical to already-filed card 6a7c0ebf (2026-08-12). Confirmed by
+  diffing the live `--check` output against that card's Evidence BEFORE deciding — do NOT file a
+  new wake card just because step 2b exited nonzero. The ops-only acceptance-run.md that looked
+  "new" vs the 08-04 baseline was already captured on 08-12; always compare to the LATEST filed
+  drift card, not an older one, or you'll double-file.
+- **Queue hygiene:** yesterday's nightly card (6a81540b) was left `state: done` inside inbox/ —
+  prior run marked done in-place without moving the file, inflating the inbox count. Moved it to
+  done/. Watch for this: a done card in inbox/ is a filing miss, safe to relocate (own-agent card).
+- Queue snapshot post-hygiene: inbox 27, working 2 (this card in-flight + halted 6a6bc3dd),
+  done 542, approvals 0, archived 1. Budget $0 API-billed today+yesterday / $30.
+- Push path: recorded in the run summary.
