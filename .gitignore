@@ -10,6 +10,7 @@ _data/
 _private/
 
 # python
+.brain-index/
 __pycache__/
 *.pyc
 .pytest_cache/
