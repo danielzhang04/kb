@@ -24,6 +24,7 @@
  *              --error / --warning / --success
  *              --status-running / --status-done / --status-blocked / --status-idle
  *              --tier-t1 / --tier-t2 / --tier-t3   (escalating warmth = risk)
+ *              --model-cheap / --model-standard / --model-deep  (aliases of the tier ramp — see MODEL below)
  *   Spacing    --space-0 (2px) / --space-1 (4px) .. --space-12 (48px), --gap (alias = --space-3)
  *   Type       --font-sans / --font-mono (system stacks only, no external fonts)
  *              --text-xs 11 / --text-sm 12 / --text-base 13 / --text-md 14 / --text-lg 16 / --text-xl 20
@@ -34,6 +35,30 @@
  *   Accent     --mc-accent / --mc-accent-fg (the single accent slot; warm parchment, landed 2026-08-05)
  *   Elevation  --shadow-elevated / --shadow-overlay / --shadow-sunken (panels are border-only)
  *   Layout     --sidebar-w / --sidebar-w-rail / --topbar-h
+ *
+ * THE LEGEND RULE (U16). The semantic/status/tier/model groups above encode DATA — they are the
+ * instrument's legend, not decoration — so each of those colours is held to >=4.5:1 against
+ * --bg-elevated, the badge fill and the hardest surface any of them lands on. A legend colour that
+ * can't be read is a bug, not a taste question. The U16 pass lifted the ones that fell short (dark
+ * --tier-t3 sat at 3.01:1, light --fg-faint at 2.63:1) by moving lightness only — every hue family is
+ * unchanged, and tokens already over the bar were left exactly as they were. The risk ramp is now told
+ * apart by HUE at comparable luminance (warm grey -> amber -> burnt orange) rather than by lightness,
+ * so no tier reads as "quieter" than another and the highest risk is no longer the faintest chip.
+ * When adding a legend colour: measure it on --bg-elevated in BOTH themes first.
+ *
+ * STATUS: --status-running and --status-done share one green ON PURPOSE. "Currently fine" and
+ * "finished fine" are one signal to an operator scanning a fleet; splitting them is a product
+ * decision, not a palette one, and is deliberately NOT taken here.
+ *
+ * MODEL (U16): the routing legend, mapping governance/model-routing.yaml's aliases onto the tier ramp
+ * so cost weight reads on the gradient the eye already learned for risk:
+ *      haiku,  codex-cheap  -> cheap    (--model-cheap    = --tier-t1)
+ *      sonnet, codex        -> standard (--model-standard = --tier-t2)
+ *      opus,   codex-deep   -> deep     (--model-deep     = --tier-t3)
+ *   Rendered by src/components/ModelBadge.tsx as `.mc-badge .mc-mono .mc-badge--model-<weight>`; an
+ *   unrecognised or absent tier degrades to a plain `.mc-badge .mc-mono` rather than guessing a weight.
+ *   These three are var() aliases, so they follow the theme WITHOUT being mirrored into the theme
+ *   blocks (same mechanism as --mc-accent-fg). Do not paste literals for them.
  *
  * ACTIVE / SELECTED LANGUAGE (learned once, reused everywhere) — see .mc-nav-item--active:
  *   a 2px LEFT-border in --accent-strong is the single marker for the active/selected element.
@@ -67,7 +92,7 @@
    * genuinely raised over the shell instead of muddy mid-grays sitting on top of each other. The white
    * hairline (below) then defines every surface edge Claude-style — on this deeper base the thin line
    * finally reads. ---- */
-  --bg-sunken: #131210; /* code gutters / inputs / terminal — deepest well */
+  --bg-sunken: #0e0d0b; /* code gutters / inputs / terminal — deepest well */
   --bg-base: #1a1815; /* app shell — warm near-black */
   --bg-panel: #232120; /* cards / sidebar / panes — workhorse (clear step above the shell) */
   --bg-elevated: #2d2b27; /* popovers / palette / hover — crisply raised surface */
@@ -75,7 +100,7 @@
   /* ---- Color: foreground (warm off-white / warm gray) ---- */
   --fg-primary: #f5f4ef;
   --fg-dim: #b8b5ad;
-  --fg-faint: #82807a;
+  --fg-faint: #9a9790;
 
   /* ---- Color: accent — NEUTRAL white/opacity hierarchy (Daniel override 2026-07-17: no decorative
    * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
@@ -96,21 +121,41 @@
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  /* ---- Color: semantic (KEPT — these encode data, not decoration) ---- */
-  --error: #e0554a;
-  --warning: #e0a040;
-  --success: #5cae7e;
+  /* ---- Color: semantic (KEPT — these encode data, not decoration).
+   * LEGEND-LEGIBILITY pass (U16): these tokens are the app's data legend, and a legend that can't be
+   * read is a broken instrument, not a style preference. Every colour below is now measured against
+   * --bg-elevated (the badge/pill fill — the hardest surface any of them lands on) and lifted to >=4.5:1
+   * where it fell short. Hue families are unchanged; only lightness moved. Untouched values were already
+   * over the bar. ---- */
+  --error: #ec7264; /* was #e0554a — 3.75:1 on --bg-elevated, now 4.82:1 */
+  --warning: #e0a040; /* 6.24:1 — already legible, unchanged */
+  --success: #5cae7e; /* 5.25:1 — already legible, unchanged */
 
   /* ---- Color: status (fleet card state — semantic, kept) ---- */
   --status-running: #5cae7e;
-  --status-done: #5cae7e;
-  --status-blocked: #e0554a;
-  --status-idle: #82807a;
+  --status-done: #5cae7e; /* deliberately the SAME green as --status-running — see the STATUS note below */
+  --status-blocked: #ec7264; /* mirrors --error */
+  --status-idle: #9a9790; /* mirrors --fg-faint */
 
-  /* ---- Color: risk tier (semantic, kept — escalating warmth = risk) ---- */
-  --tier-t1: #8a8175;
-  --tier-t2: #c9922e;
-  --tier-t3: #c1503a;
+  /* ---- Color: risk tier (semantic, kept — escalating warmth = risk). The three now sit at comparable
+   * luminance (4.5-5.2:1) and are told apart by HUE, not by lightness: warm grey -> amber -> burnt
+   * orange-red. Before this pass t3 (the highest risk) was the LEAST readable chip in the app at
+   * 3.01:1 — the legend was inverted against its own meaning. t3 also moved a few degrees toward
+   * orange (hue 10deg -> 16deg) so a risk chip stays distinguishable from an --error chip (hue 6deg). ---- */
+  --tier-t1: #9a9184; /* was #8a8175 — 3.69:1 on --bg-elevated, now 4.55:1 */
+  --tier-t2: #c9922e; /* 5.14:1 — already legible, unchanged */
+  --tier-t3: #e2764f; /* was #c1503a — 3.01:1 on --bg-elevated, now 4.67:1 */
+
+  /* ---- Color: model weight (U16 — the routing legend). These are ALIASES of the risk-tier ramp, not a
+   * new hue family: "which model is this costing us" reads on the same cheap->expensive gradient the eye
+   * already learned for risk, so the dashboard gains a legend without gaining a palette. Deliberately
+   * separate NAMES so a future pass can decouple them from risk by editing three lines here and nothing
+   * else. Aliases resolve per-theme automatically (--tier-* is redefined in each theme block, and a
+   * custom property's var() is substituted at use time), so unlike every literal in this file these three
+   * are defined ONCE and must NOT be mirrored into the theme blocks. ---- */
+  --model-cheap: var(--tier-t1);
+  --model-standard: var(--tier-t2);
+  --model-deep: var(--tier-t3);
 
   /* ---- Spacing (4px atomic) ---- */
   --space-0: 2px; /* the ONE sub-atomic step: tight list stacks (nav items, home rows, panel headers) */
@@ -199,8 +244,8 @@
     --bg-elevated: #f3efe7;
 
     --fg-primary: #262421;
-    --fg-dim: #6b6558;
-    --fg-faint: #9a9488;
+    --fg-dim: #5c5749; /* was #6b6558 — deepened to keep a visible 3-rung ladder after --fg-faint lifted */
+    --fg-faint: #726c5a; /* was #9a9488 — 2.63:1 on --bg-elevated (failed even 3:1), now 4.57:1 */
 
     --accent-strong: #2b2925;
     --accent: #6b6558;
@@ -214,18 +259,19 @@
     --border: var(--hairline);
     --border-strong: var(--hairline-strong);
 
-    --error: #c4322a;
-    --warning: #b67a1e;
-    --success: #2f8f5b;
+    /* Legend-legibility pass (U16), measured on light's --bg-elevated #f3efe7 — same rule as dark. */
+    --error: #c4322a; /* 4.77:1 — already legible, unchanged */
+    --warning: #946115; /* was #b67a1e — 3.16:1, now 4.60:1 */
+    --success: #25794c; /* was #2f8f5b — 3.52:1, now 4.67:1 */
 
-    --status-running: #2f8f5b;
-    --status-done: #2f8f5b;
-    --status-blocked: #c4322a;
-    --status-idle: #9a9488;
+    --status-running: #25794c;
+    --status-done: #25794c; /* deliberately the SAME green as --status-running — see the STATUS note above */
+    --status-blocked: #c4322a; /* mirrors --error */
+    --status-idle: #726c5a; /* mirrors --fg-faint */
 
-    --tier-t1: #7a7266;
-    --tier-t2: #a97423;
-    --tier-t3: #b03d28;
+    --tier-t1: #6d6559; /* was #7a7266 — 4.14:1, now 5.01:1 */
+    --tier-t2: #8f611b; /* was #a97423 — 3.52:1, now 4.70:1 */
+    --tier-t3: #b03d28; /* 5.17:1 — already legible, unchanged */
 
     --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
     --shadow-overlay: 0 8px 32px rgba(60, 50, 40, 0.18), 0 2px 6px rgba(60, 50, 40, 0.12);
@@ -241,8 +287,8 @@
   --bg-elevated: #f3efe7;
 
   --fg-primary: #262421;
-  --fg-dim: #6b6558;
-  --fg-faint: #9a9488;
+  --fg-dim: #5c5749;
+  --fg-faint: #726c5a;
 
   --accent-strong: #2b2925;
   --accent: #6b6558;
@@ -255,16 +301,16 @@
   --border-strong: var(--hairline-strong);
 
   --error: #c4322a;
-  --warning: #b67a1e;
-  --success: #2f8f5b;
+  --warning: #946115;
+  --success: #25794c;
 
-  --status-running: #2f8f5b;
-  --status-done: #2f8f5b;
+  --status-running: #25794c;
+  --status-done: #25794c;
   --status-blocked: #c4322a;
-  --status-idle: #9a9488;
+  --status-idle: #726c5a;
 
-  --tier-t1: #7a7266;
-  --tier-t2: #a97423;
+  --tier-t1: #6d6559;
+  --tier-t2: #8f611b;
   --tier-t3: #b03d28;
 
   --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
@@ -273,14 +319,14 @@
 }
 
 :root[data-theme='dark'] {
-  --bg-sunken: #131210;
+  --bg-sunken: #0e0d0b;
   --bg-base: #1a1815;
   --bg-panel: #232120;
   --bg-elevated: #2d2b27;
 
   --fg-primary: #f5f4ef;
   --fg-dim: #b8b5ad;
-  --fg-faint: #82807a;
+  --fg-faint: #9a9790;
 
   --accent-strong: #ededea;
   --accent: #a3a099;
@@ -292,18 +338,18 @@
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
-  --error: #e0554a;
+  --error: #ec7264;
   --warning: #e0a040;
   --success: #5cae7e;
 
   --status-running: #5cae7e;
   --status-done: #5cae7e;
-  --status-blocked: #e0554a;
-  --status-idle: #82807a;
+  --status-blocked: #ec7264;
+  --status-idle: #9a9790;
 
-  --tier-t1: #8a8175;
+  --tier-t1: #9a9184;
   --tier-t2: #c9922e;
-  --tier-t3: #c1503a;
+  --tier-t3: #e2764f;
 
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.24);
   --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
@@ -892,6 +938,24 @@ button {
 .mc-badge--t3 {
   color: var(--tier-t3);
   border-color: var(--tier-t3);
+}
+
+/* Model-weight chips (U16). Same pill geometry as the tier chips — only the token differs — so a row
+ * that shows both "T2" and "sonnet" reads as one legend at two altitudes rather than two competing
+ * systems. Consumed by src/components/ModelBadge.tsx; U4 adopts it at the call sites. */
+.mc-badge--model-cheap {
+  color: var(--model-cheap);
+  border-color: var(--model-cheap);
+}
+
+.mc-badge--model-standard {
+  color: var(--model-standard);
+  border-color: var(--model-standard);
+}
+
+.mc-badge--model-deep {
+  color: var(--model-deep);
+  border-color: var(--model-deep);
 }
 
 .mc-badge--running {
