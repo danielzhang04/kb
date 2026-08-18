@@ -13,7 +13,7 @@
  *   ── (divider, below the [+ New] menu) ──
  *   Home · Approvals(n) · Activity · Atlas(live — Atlas V1) · Terminal(live — D3.2)
  *   ── (divider) ──
- *   Workflows · Agents · Tasks · Projects · Files
+ *   Workflows · Agents · Tasks · Projects · Files · Agent Platform(live — Wave-1 U0)
  *   ── (divider) ──
  *   Connectors · Ledgers · Sentinel
  *
@@ -47,6 +47,7 @@ export type DestinationId =
   | 'tasks'
   | 'projects'
   | 'files'
+  | 'agentPlatform'
   | 'connectors'
   | 'ledgers'
   | 'sentinel';
@@ -97,6 +98,9 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'tasks', label: 'Tasks', icon: '☰', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },
       { id: 'files', label: 'Files', icon: '🗀', status: 'live' },
+      // Wave-1 U0 — the Agent Platform section. Its panels are auto-discovered from
+      // `views/agentPlatform/panels/*.panel.tsx`, so this stays the ONLY nav entry the platform needs.
+      { id: 'agentPlatform', label: 'Agent Platform', icon: '⬡', status: 'live' },
     ],
   },
   {

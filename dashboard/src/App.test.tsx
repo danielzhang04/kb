@@ -53,6 +53,7 @@ describe('App shell — entity-first sidebar navigation', () => {
       'Tasks',
       'Projects',
       'Files',
+      'Agent Platform',
       'Connectors',
       'Ledgers',
       'Sentinel',
@@ -228,6 +229,17 @@ describe('App shell — entity-first sidebar navigation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
     expect(screen.getByLabelText('Home view')).toBeTruthy();
+  });
+
+  it('routes the Agent Platform destination to its section (Wave-1 U0)', () => {
+    render(<App />);
+    const btn = screen.getByRole('button', { name: 'Agent Platform' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-current')).toBe('page');
+    // The real section mounts (with its auto-discovered demo tile), not the U3 placeholder.
+    const view = screen.getByLabelText('Agent Platform view');
+    expect(within(view).getByText('Demo Panel')).toBeTruthy();
   });
 
   it('routes the U3 entity destinations (Agents/Tasks/Projects/Ledgers) to their real views', () => {
