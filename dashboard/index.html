@@ -4,9 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>kb Mission Control</title>
-    <!-- PWA (D0.10): installable standalone shell. theme-color matches --bg-base (Claude-dark). -->
+    <!-- PWA (D0.10): installable standalone shell. theme-color matches --bg-base, which the field-guide
+         restyle (2026-08-18) moved from warm #1a1815 to neutral #151512. public/manifest.test.ts reads
+         the token out of app.css and asserts both this meta and the manifest agree with it. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#1a1815" />
+    <meta name="theme-color" content="#151512" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <!-- iOS Add-to-Home-Screen (no auto-install prompt): standalone + home-screen icon + title. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

@@ -1,6 +1,7 @@
 /*
- * Command palette (U4). Raycast-style centered overlay. Solid bg-elevated panel, hairline border, one
- * overlay shadow — NO backdrop blur, NO glass/gradient/glow (brief §F). The active row uses the shared
+ * Command palette (U4). Raycast-style centered overlay. Solid bg-elevated panel, one overlay shadow —
+ * NO backdrop blur, NO glass/gradient/glow (brief §F). Its border was a hairline until the field-guide
+ * restyle (2026-08-18) gave every floating surface a strong near-fg edge. The active row uses the shared
  * left-border accent selection language. Motion stays within the 150–200ms ease-out band.
  */
 .mc-palette__backdrop {
@@ -22,7 +23,11 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
+  /* OVERLAYS GET A STRONG EDGE (field-guide restyle 2026-08-18) — a floating surface is outlined with a
+   * definite near-foreground line, not the hairline used for surfaces that sit in the page. Value swap
+   * only; the twin of the rule on .mc-new__menu in app.css. */
+  /* Overlay edge uses --fg-faint (not --border-strong) per the field-guide direction: overlays get a strong near-fg edge; resting surfaces get hairlines. */
+  border: 1px solid var(--fg-faint);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-overlay);
   overflow: hidden;

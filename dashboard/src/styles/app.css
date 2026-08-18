@@ -2,11 +2,16 @@
  * ============================================================================
  * MISSION CONTROL DESIGN SYSTEM (U1 — reconciled to docs/design-brief.md)
  * ============================================================================
- * Desktop-first / desktop-only. Aesthetic = warm Claude-desktop dark: warm
- * near-black surfaces (never pure black, never blue-gray), a NEUTRAL white/opacity
- * hierarchy for all chrome (NO decorative accent colour — Daniel override 2026-07-17;
- * terracotta retired, semantic status colours only), hairline borders doing most of
- * the work, shadows almost nowhere. Sleek/calm/refined, not a cold terminal. Monospace (tabular figures)
+ * Desktop-first / desktop-only. Aesthetic = FIELD GUIDE (Daniel restyle 2026-08-18 — supersedes the
+ * "warm near-black / warm cream" vocabulary this header carried from 2026-07-17). The surfaces are now
+ * NEUTRAL editorial greys: an achromatic near-black dark and an achromatic paper light, with the warm
+ * hue bias dropped from every surface and foreground rung. Corners are SQUARE (--radius-sm/md 0; only
+ * the shadowed overlay surfaces keep a 2px nick so a floating panel doesn't read as broken). Borders
+ * are hairlines doing most of the work, shadows almost nowhere, and overlays get one soft large shadow
+ * plus a strong edge. The single accent stays warm parchment on purpose (--mc-accent, Daniel's ruling):
+ * a neutral instrument with one warm interactive highlight. Sleek/calm/refined, not a cold terminal.
+ * NOTE: this pass is TOKENS + SHARED CLASSES ONLY — the structural section reframe is ON HOLD, so no
+ * layout, nav, or view was restructured and no heading was retargeted onto the new serif. Monospace (tabular figures)
  * is reserved for anything identifier-shaped (ids/hashes/tiers/counts/
  * timestamps); sans for everything else — that sans/mono contrast is a
  * signature ("engineered").
@@ -26,11 +31,11 @@
  *              --tier-t1 / --tier-t2 / --tier-t3   (escalating warmth = risk)
  *              --model-cheap / --model-standard / --model-deep  (aliases of the tier ramp — see MODEL below)
  *   Spacing    --space-0 (2px) / --space-1 (4px) .. --space-12 (48px), --gap (alias = --space-3)
- *   Type       --font-sans / --font-mono (system stacks only, no external fonts)
+ *   Type       --font-sans / --font-mono / --font-serif (system stacks only, no external fonts)
  *              --text-xs 11 / --text-sm 12 / --text-base 13 / --text-md 14 / --text-lg 16 / --text-xl 20
  *   Type ROLES --type-title / --type-section / --type-body / --type-meta / --type-metric (-size/-weight)
  *              + --tracking-eyebrow.  A VIEW STYLES BY ROLE, never by raw --text-* or a px literal.
- *   Radius     --radius-sm 6 / --radius-md 8 / --radius-lg 12
+ *   Radius     --radius-sm 0 / --radius-md 0 / --radius-lg 2  (square — field-guide restyle 2026-08-18)
  *   Motion     --transition (the ONE duration+easing for every hover / state change)
  *   Accent     --mc-accent / --mc-accent-fg (the single accent slot; warm parchment, landed 2026-08-05)
  *   Elevation  --shadow-elevated / --shadow-overlay / --shadow-sunken (panels are border-only)
@@ -86,21 +91,22 @@
  */
 
 :root {
-  /* ---- Color: surfaces (warm near-black — Claude-desktop-dark family; never pure black / never blue-gray)
-   * SHARPEN pass (Daniel 2026-07-17 "colors/contrast are bleh"): the base is pulled toward a true warm
-   * near-black and each rung of the ladder gets a crisper, slightly larger delta so panels read as
-   * genuinely raised over the shell instead of muddy mid-grays sitting on top of each other. The white
-   * hairline (below) then defines every surface edge Claude-style — on this deeper base the thin line
-   * finally reads. ---- */
-  --bg-sunken: #0e0d0b; /* code gutters / inputs / terminal — deepest well */
-  --bg-base: #1a1815; /* app shell — warm near-black */
-  --bg-panel: #232120; /* cards / sidebar / panes — workhorse (clear step above the shell) */
-  --bg-elevated: #2d2b27; /* popovers / palette / hover — crisply raised surface */
+  /* ---- Color: surfaces (NEUTRAL near-black — field-guide restyle 2026-08-18; never pure black)
+   * The 2026-07-17 SHARPEN pass built a WARM near-black ladder (#1a1815 -> #2d2b27). Daniel's
+   * field-guide ruling drops the warm hue bias from the surfaces themselves: these are the reference's
+   * achromatic editorial greys, and the ladder is deliberately TIGHTER than before (adjacent rungs sit
+   * at ~1.02-1.09:1 rather than ~1.10-1.14:1). That is the point — the reference separates surfaces with
+   * the EDGE, not with a lightness step, so the hairline alpha below is lifted (0.10 -> 0.12) to carry
+   * the work the background delta used to do. The one surviving warmth in the app is --mc-accent. ---- */
+  --bg-sunken: #100f0d; /* code gutters / inputs / terminal — deepest well */
+  --bg-base: #151512; /* app shell — neutral near-black */
+  --bg-panel: #181715; /* cards / sidebar / panes — workhorse */
+  --bg-elevated: #201f1c; /* popovers / palette / hover — raised surface (the legend's measuring stick) */
 
-  /* ---- Color: foreground (warm off-white / warm gray) ---- */
-  --fg-primary: #f5f4ef;
-  --fg-dim: #b8b5ad;
-  --fg-faint: #9a9790;
+  /* ---- Color: foreground (neutral off-white / neutral gray) ---- */
+  --fg-primary: #efeee8;
+  --fg-dim: #b4b4ac;
+  --fg-faint: #8d8d85; /* 4.93:1 on the NEW darker --bg-elevated #201f1c (was 4.85:1 at #9a9790/#2d2b27) */
 
   /* ---- Color: accent — NEUTRAL white/opacity hierarchy (Daniel override 2026-07-17: no decorative
    * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
@@ -115,9 +121,11 @@
    * surface/separator edge (cards, panels, rail, table rows, dividers); --hairline-strong is the
    * interactive/hovered/focused edge (inputs, buttons, badges, modals, focus rings). Tuned a touch
    * higher on the deeper base so the outline is unmistakable without becoming a visible grey rule.
-   * --border / --border-strong are kept as aliases so every existing consumer inherits at once. ---- */
-  --hairline: rgba(255, 255, 255, 0.1);
-  --hairline-strong: rgba(255, 255, 255, 0.16);
+   * --border / --border-strong are kept as aliases so every existing consumer inherits at once.
+   * Field-guide restyle 2026-08-18: both alphas step up (0.10 -> 0.12, 0.16 -> 0.18) because the surface
+   * ladder flattened — the edge is now the primary separator, not a secondary one. ---- */
+  --hairline: rgba(255, 255, 255, 0.12);
+  --hairline-strong: rgba(255, 255, 255, 0.18);
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -126,25 +134,31 @@
    * read is a broken instrument, not a style preference. Every colour below is now measured against
    * --bg-elevated (the badge/pill fill — the hardest surface any of them lands on) and lifted to >=4.5:1
    * where it fell short. Hue families are unchanged; only lightness moved. Untouched values were already
-   * over the bar. ---- */
-  --error: #ec7264; /* was #e0554a — 3.75:1 on --bg-elevated, now 4.82:1 */
-  --warning: #e0a040; /* 6.24:1 — already legible, unchanged */
-  --success: #5cae7e; /* 5.25:1 — already legible, unchanged */
+   * over the bar.
+   * FIELD-GUIDE RESTYLE (2026-08-18): not one legend VALUE changed, but --bg-elevated did (#2d2b27 ->
+   * #201f1c), so every ratio below was re-measured against the new surface. All moved UP — the darker
+   * elevated surface is strictly kinder to this palette. The quoted numbers are the new ones. ---- */
+  --error: #ec7264; /* was 4.82:1 on the old --bg-elevated, now 5.62:1 */
+  --warning: #e0a040; /* was 6.24:1, now 7.28:1 */
+  --success: #5cae7e; /* was 5.25:1, now 6.13:1 */
 
   /* ---- Color: status (fleet card state — semantic, kept) ---- */
   --status-running: #5cae7e;
   --status-done: #5cae7e; /* deliberately the SAME green as --status-running — see the STATUS note below */
   --status-blocked: #ec7264; /* mirrors --error */
-  --status-idle: #9a9790; /* mirrors --fg-faint */
+  --status-idle: #9a9790; /* was the twin of --fg-faint; --fg-faint moved to #8d8d85 in the field-guide
+                           * restyle and the status legend is explicitly OUT of scope for that pass, so
+                           * this now holds the old value on purpose. 5.65:1 on --bg-elevated — over the
+                           * bar. Re-twinning it is a legend decision for a future U-pass, not a restyle. */
 
   /* ---- Color: risk tier (semantic, kept — escalating warmth = risk). The three now sit at comparable
    * luminance (4.5-5.2:1) and are told apart by HUE, not by lightness: warm grey -> amber -> burnt
    * orange-red. Before this pass t3 (the highest risk) was the LEAST readable chip in the app at
    * 3.01:1 — the legend was inverted against its own meaning. t3 also moved a few degrees toward
    * orange (hue 10deg -> 16deg) so a risk chip stays distinguishable from an --error chip (hue 6deg). ---- */
-  --tier-t1: #9a9184; /* was #8a8175 — 3.69:1 on --bg-elevated, now 4.55:1 */
-  --tier-t2: #c9922e; /* 5.14:1 — already legible, unchanged */
-  --tier-t3: #e2764f; /* was #c1503a — 3.01:1 on --bg-elevated, now 4.67:1 */
+  --tier-t1: #9a9184; /* was 4.55:1 on the old --bg-elevated, now 5.30:1 */
+  --tier-t2: #c9922e; /* was 5.14:1, now 5.99:1 */
+  --tier-t3: #e2764f; /* was 4.67:1, now 5.45:1 */
 
   /* ---- Color: model weight (U16 — the routing legend). These are ALIASES of the risk-tier ramp, not a
    * new hue family: "which model is this costing us" reads on the same cheap->expensive gradient the eye
@@ -171,6 +185,12 @@
   /* ---- Type (system stacks only — self-contained, no external fonts) ---- */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+  /* Field-guide restyle 2026-08-18 — GROUNDWORK ONLY. The reference sets its display headings in an old-
+   * style serif; this token makes that available without spending it, because the structural section
+   * reframe that would consume it is ON HOLD. Nothing in the app resolves to it today except the opt-in
+   * .mc-title--display class below, which no view applies yet. Do NOT retarget an existing heading class
+   * onto this until the reframe lands. System stacks only, same rule as the other two. */
+  --font-serif: 'Iowan Old Style', Georgia, Palatino, 'Book Antiqua', 'Times New Roman', serif;
   --text-xs: 11px; /* eyebrow / badge / col-headers */
   --text-sm: 12px; /* secondary / timestamps / nav labels */
   --text-base: 13px; /* body / table cell — dense tool */
@@ -201,10 +221,17 @@
   /* ONE tracking for every uppercase section heading (was 0.02/0.04/0.05/0.06em scattered). */
   --tracking-eyebrow: 0.05em;
 
-  /* ---- Radius ---- */
-  --radius-sm: 6px; /* buttons / inputs / badges */
-  --radius-md: 8px; /* cards / panels */
-  --radius-lg: 12px; /* modals / palette */
+  /* ---- Radius — SQUARE (field-guide restyle 2026-08-18, Daniel's ruling). The reference has no rounded
+   * corner anywhere: every button, input, badge, card, panel, and nav surface is a sharp rectangle, and
+   * that squareness is most of what makes it read as a printed field guide rather than a web app. The
+   * two workhorse rungs go to a literal 0. --radius-lg keeps a 2px nick — NOT a compromise on the look
+   * but a fix for one artifact: the overlay surfaces (palette, modal, dropdown menu) are the only things
+   * carrying a large soft shadow, and a shadow cast off a mathematically perfect 0px corner reads as a
+   * rendering bug rather than a design choice. The tokens keep their names and their three-rung shape so
+   * every consumer inherits at once and a future pass can restore radii by editing three lines. ---- */
+  --radius-sm: 0; /* buttons / inputs / badges */
+  --radius-md: 0; /* cards / panels */
+  --radius-lg: 2px; /* modals / palette — the shadowed overlay surfaces only */
 
   /* ---- Motion: ONE duration + easing for every hover / state transition in the app. A hover is a
    * quiet acknowledgement, never an animation — nothing here moves, only colour and border shift. ---- */
@@ -219,9 +246,13 @@
   --mc-accent-fg: var(--bg-base);
 
   /* ---- Elevation (hairline borders do most of the work; shadows reserved for floating,
-   * neutral black low-opacity, never colored/glow) ---- */
+   * neutral black low-opacity, never colored/glow).
+   * --shadow-overlay restyled 2026-08-18: the reference floats an overlay on ONE soft, very large,
+   * low-opacity shadow — no tight contact shadow underneath it. The old two-layer stack (a 2px contact
+   * shadow + a 32px ambient) read as a Material card; a single 80px blur reads as paper lifted off a
+   * page. --shadow-elevated / --shadow-sunken are deliberately UNCHANGED. ---- */
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.24);
-  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.35);
   --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 
   /* ---- Layout ---- */
@@ -232,62 +263,70 @@
 
 /* Light remap — applies on OS light preference ONLY when no explicit theme is pinned. The
  * [data-theme=...] blocks below have higher specificity (0,2,0 vs 0,1,0) and win regardless. */
-/* Light theme — warm cream, but the accent is NEUTRALISED to warm near-black for coherence with the
- * dark-first neutral direction (Daniel override 2026-07-17). Surfaces stay warm cream; semantic status
- * hues are kept. NOTE: dark is the app default — main.tsx pins [data-theme=dark] explicitly so this
- * media query only takes effect for an OS-light user who has NOT chosen a theme; the toggle always wins. */
+/* Light theme — NEUTRAL PAPER (field-guide restyle 2026-08-18, superseding the "warm cream" surfaces
+ * this block carried since 2026-07-17). Same ruling as dark: the surface hue bias is dropped for the
+ * reference's achromatic paper greys, while the accent stays warm parchment (--mc-accent) as the single
+ * interactive highlight. Semantic status hues are kept untouched. NOTE: dark is the app default —
+ * main.tsx pins [data-theme=dark] explicitly so this media query only takes effect for an OS-light user
+ * who has NOT chosen a theme; the toggle always wins. */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-sunken: #ece7dd;
-    --bg-base: #faf8f3;
-    --bg-panel: #ffffff;
-    --bg-elevated: #f3efe7;
+    --bg-sunken: #eceae4;
+    --bg-base: #fbfbf8;
+    --bg-panel: #f8f7f2;
+    --bg-elevated: #f2f2ee;
 
-    --fg-primary: #262421;
-    --fg-dim: #5c5749; /* was #6b6558 — deepened to keep a visible 3-rung ladder after --fg-faint lifted */
-    --fg-faint: #726c5a; /* was #9a9488 — 2.63:1 on --bg-elevated (failed even 3:1), now 4.57:1 */
+    --fg-primary: #11110f;
+    /* Neutralised from #5c5749 after MEASURING it: 5.00:1 on the new --bg-elevated #f2f2ee, so it clears
+     * the 4.5:1 bar and the reference's value can be taken as-is. (It is a lighter grey than the value it
+     * replaces — the new elevated surface being lighter than the old #f3efe7 is what pays for it.) */
+    --fg-dim: #686862;
+    /* KEPT at the U16 value on purpose. The reference's own faint grey fails 4.5:1 outright, so it is NOT
+     * imported — the legend rule outranks fidelity to the reference. 4.67:1 here (was 4.57:1). */
+    --fg-faint: #726c5a;
 
     --accent-strong: #2b2925;
     --accent: #6b6558;
     --accent-quiet: rgba(0, 0, 0, 0.05);
     --mc-accent: #6b5b41;
 
-    /* Light hairline is a dark low-alpha line (structure requires the token; value unchanged from the
-     * prior --border/--border-strong so light is visually identical to before this sharpen pass). */
-    --hairline: rgba(0, 0, 0, 0.1);
+    /* Light hairline is a dark low-alpha line. Both alphas step up with dark's (0.10 -> 0.11,
+     * 0.16 -> 0.16 unchanged in shape) because the light surface ladder flattened too. */
+    --hairline: rgba(0, 0, 0, 0.11);
     --hairline-strong: rgba(0, 0, 0, 0.16);
     --border: var(--hairline);
     --border-strong: var(--hairline-strong);
 
-    /* Legend-legibility pass (U16), measured on light's --bg-elevated #f3efe7 — same rule as dark. */
-    --error: #c4322a; /* 4.77:1 — already legible, unchanged */
-    --warning: #946115; /* was #b67a1e — 3.16:1, now 4.60:1 */
-    --success: #25794c; /* was #2f8f5b — 3.52:1, now 4.67:1 */
+    /* Legend-legibility pass (U16), re-measured 2026-08-18 on light's NEW --bg-elevated #f2f2ee (was
+     * #f3efe7). No legend VALUE changed; every ratio moved up because the new surface is lighter. */
+    --error: #c4322a; /* was 4.77:1, now 4.88:1 */
+    --warning: #946115; /* was 4.60:1, now 4.70:1 */
+    --success: #25794c; /* was 4.67:1, now 4.78:1 */
 
     --status-running: #25794c;
     --status-done: #25794c; /* deliberately the SAME green as --status-running — see the STATUS note above */
     --status-blocked: #c4322a; /* mirrors --error */
-    --status-idle: #726c5a; /* mirrors --fg-faint */
+    --status-idle: #726c5a; /* mirrors --fg-faint (still true in light — light's faint was kept) */
 
-    --tier-t1: #6d6559; /* was #7a7266 — 4.14:1, now 5.01:1 */
-    --tier-t2: #8f611b; /* was #a97423 — 3.52:1, now 4.70:1 */
-    --tier-t3: #b03d28; /* 5.17:1 — already legible, unchanged */
+    --tier-t1: #6d6559; /* was 5.01:1, now 5.12:1 */
+    --tier-t2: #8f611b; /* was 4.70:1, now 4.81:1 */
+    --tier-t3: #b03d28; /* was 5.17:1, now 5.28:1 */
 
     --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
-    --shadow-overlay: 0 8px 32px rgba(60, 50, 40, 0.18), 0 2px 6px rgba(60, 50, 40, 0.12);
+    --shadow-overlay: 0 25px 80px rgba(30, 25, 20, 0.16);
     --shadow-sunken: inset 0 1px 2px rgba(60, 50, 40, 0.12);
   }
 }
 
 /* Explicit theme pin — wins over the media query above. */
 :root[data-theme='light'] {
-  --bg-sunken: #ece7dd;
-  --bg-base: #faf8f3;
-  --bg-panel: #ffffff;
-  --bg-elevated: #f3efe7;
+  --bg-sunken: #eceae4;
+  --bg-base: #fbfbf8;
+  --bg-panel: #f8f7f2;
+  --bg-elevated: #f2f2ee;
 
-  --fg-primary: #262421;
-  --fg-dim: #5c5749;
+  --fg-primary: #11110f;
+  --fg-dim: #686862;
   --fg-faint: #726c5a;
 
   --accent-strong: #2b2925;
@@ -295,7 +334,7 @@
   --accent-quiet: rgba(0, 0, 0, 0.05);
   --mc-accent: #6b5b41;
 
-  --hairline: rgba(0, 0, 0, 0.1);
+  --hairline: rgba(0, 0, 0, 0.11);
   --hairline-strong: rgba(0, 0, 0, 0.16);
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
@@ -314,27 +353,27 @@
   --tier-t3: #b03d28;
 
   --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
-  --shadow-overlay: 0 8px 32px rgba(60, 50, 40, 0.18), 0 2px 6px rgba(60, 50, 40, 0.12);
+  --shadow-overlay: 0 25px 80px rgba(30, 25, 20, 0.16);
   --shadow-sunken: inset 0 1px 2px rgba(60, 50, 40, 0.12);
 }
 
 :root[data-theme='dark'] {
-  --bg-sunken: #0e0d0b;
-  --bg-base: #1a1815;
-  --bg-panel: #232120;
-  --bg-elevated: #2d2b27;
+  --bg-sunken: #100f0d;
+  --bg-base: #151512;
+  --bg-panel: #181715;
+  --bg-elevated: #201f1c;
 
-  --fg-primary: #f5f4ef;
-  --fg-dim: #b8b5ad;
-  --fg-faint: #9a9790;
+  --fg-primary: #efeee8;
+  --fg-dim: #b4b4ac;
+  --fg-faint: #8d8d85;
 
   --accent-strong: #ededea;
   --accent: #a3a099;
   --accent-quiet: rgba(245, 244, 239, 0.06);
   --mc-accent: #d9c7a8;
 
-  --hairline: rgba(255, 255, 255, 0.1);
-  --hairline-strong: rgba(255, 255, 255, 0.16);
+  --hairline: rgba(255, 255, 255, 0.12);
+  --hairline-strong: rgba(255, 255, 255, 0.18);
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -352,7 +391,7 @@
   --tier-t3: #e2764f;
 
   --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.28), 0 4px 12px rgba(0, 0, 0, 0.24);
-  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.35);
   --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
@@ -382,6 +421,19 @@ button {
 /* Sans numbers that still need to align (KPI values, live counts, ledger figures). */
 .mc-num {
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- Display title (field-guide restyle 2026-08-18) — ADDITIVE + OPT-IN, applied by nothing yet.
+ * The reference sets its display headings in an old-style serif at a slightly negative tracking and a
+ * medium weight. This is that treatment, parked as a class so the structural section reframe (ON HOLD)
+ * can adopt it in one line per surface when it lands. It deliberately does NOT set a size: it composes
+ * with whatever type ROLE the element already carries (--type-title-size etc.), so applying it changes
+ * the FACE and not the scale, and kb stays dense. Do not fold this into .mc-topbar__title or any other
+ * existing heading class — that retarget is the reframe's call, not this pass's. ---- */
+.mc-title--display {
+  font-family: var(--font-serif);
+  letter-spacing: -0.02em;
+  font-weight: 500;
 }
 
 /* ============================================================================
@@ -533,8 +585,16 @@ button {
   margin: 0;
   padding: var(--space-1);
   background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  /* OVERLAYS GET A STRONG EDGE (field-guide restyle 2026-08-18). A hairline is how a surface that sits
+   * IN the page is defined; a surface floating OVER it gets a definite near-foreground line instead, so
+   * the menu reads as a separate object rather than a lighter patch of the panel underneath. This is a
+   * value swap only — --border-strong keeps its meaning (the interactive/hovered edge) everywhere else.
+   * The same rule is applied to the command palette in palette.css. */
+  /* Overlay edge uses --fg-faint (not --border-strong) per the field-guide direction: overlays get a strong near-fg edge; resting surfaces get hairlines. */
+  border: 1px solid var(--fg-faint);
+  /* --radius-lg, not --radius-md: this menu is a SHADOWED overlay, and --radius-lg is the rung that
+   * keeps a 2px nick exactly for those (see the Radius note above). Same rung as the palette. */
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-overlay);
   display: flex;
   flex-direction: column;
