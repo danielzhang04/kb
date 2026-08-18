@@ -27,6 +27,7 @@ import type { ParsedCard } from '../../server/planeA/cards';
 import { projectHumanInbox } from '../../server/approvals/humanInbox';
 import type { DestinationId } from '../nav/config';
 import { useSse } from '../lib/sseClient';
+import { invalidateSessionOnGovernedAuthFailure } from '../lib/authClient';
 import { ExecutionUnlock, type ExecutionUnlockClient } from '../control/ExecutionUnlock';
 import { EntityName } from '../components/EntityName';
 import { entityRowProps } from '../components/entityRow';
@@ -428,9 +429,17 @@ export function Home({
     if (snapshot) return;
     let cancelled = false;
     fetch('/api/index')
-      .then((r) => r.json() as Promise<PlaneAIndex>)
+      .then(async (r) => {
+        if (!r.ok) {
+          await invalidateSessionOnGovernedAuthFailure(r);
+          throw new Error(`GET /api/index failed: ${r.status}`);
+        }
+        return r.json() as Promise<PlaneAIndex>;
+      })
       .then((d) => {
-        if (!cancelled) setFetched(d);
+        // HTTP/JSON is untrusted at this boundary. A refusal body is not a Plane-A projection.
+        if (!cancelled && d?.cards && d.ledgers && Array.isArray(d.ledgers.activity?.rows)
+          && d.ledgers.cost && Array.isArray(d.orgStates)) setFetched(d);
       })
       .catch(() => {
         /* read-only board: on failure keep the empty-safe scaffold, never crash the shell */

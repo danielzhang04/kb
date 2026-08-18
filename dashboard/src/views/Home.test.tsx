@@ -9,7 +9,7 @@
  * `LaunchControls` itself is still covered by launchControls.test.tsx + Control.test.tsx.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { Home } from './Home';
 import type { PlaneAIndex } from '../../server/planeA/indexer';
 import type { CardProjection } from '../../server/planeA/cards';
@@ -115,6 +115,38 @@ describe('Home view — KPI tiles', () => {
 });
 
 describe('Home view — running / resume hero', () => {
+  it('rejects a non-OK index response and retains the empty-safe scaffold', async () => {
+    let resolveFetch!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(() => render0(<Home />)).not.toThrow();
+    await act(async () => {
+      resolveFetch(new Response(JSON.stringify(SNAPSHOT), { status: 401 }));
+    });
+
+    // Reverting the non-OK guard accepts this otherwise-valid snapshot, changing running from 0 to 2.
+    expect(fetchMock).toHaveBeenCalledWith('/api/index');
+    expect(screen.getByTestId('kpi-running').textContent).toContain('0');
+    expect(screen.getByTestId('home-resume').textContent).toMatch(/Nothing running/i);
+  });
+
+  it('rejects a 200 index response whose ledgers cannot satisfy Home dereferences', async () => {
+    let resolveFetch!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(() => render0(<Home />)).not.toThrow();
+    await act(async () => {
+      resolveFetch(new Response(JSON.stringify({ cards: {}, ledgers: {}, orgStates: [] }), { status: 200 }));
+    });
+
+    // Reverting the ledger guard sets this malformed value, then `activity.rows` throws on rerender.
+    expect(fetchMock).toHaveBeenCalledWith('/api/index');
+    expect(screen.getByTestId('kpi-running').textContent).toContain('0');
+    expect(screen.getByTestId('home-resume').textContent).toMatch(/Nothing running/i);
+  });
+
   it('lists working cards and the pending-approval in the resume panel', () => {
     render0(<Home snapshot={SNAPSHOT} />);
     const resume = screen.getByTestId('home-resume');
