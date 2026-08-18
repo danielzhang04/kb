@@ -1,3 +1,5 @@
+import json
+import shlex
 import subprocess
 from types import SimpleNamespace
 from pathlib import Path
@@ -17,6 +19,7 @@ Environment=KB_COORDINATION_PUBLICATION=outbox
 Environment=KB_VM_RUNTIME=1
 Environment=GIT_CONFIG_GLOBAL=/dev/null
 """
+WEBAUTHN_CREDENTIALS = json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "counter": 0, "transports": ["usb", "internal"]}], separators=(",", ":"))
 
 
 @pytest.mark.parametrize(
@@ -54,7 +57,7 @@ def valid_static_unit():
     }
 
 
-@pytest.mark.parametrize("name", ["GITHUB_TOKEN", "GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK", "DASHBOARD_SESSION_SECRET", "KB_CANARY_SESSION", "OPENAI_API_KEY", "AWS_ACCESS_KEY_ID"])
+@pytest.mark.parametrize("name", ["GITHUB_TOKEN", "GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK", "DASHBOARD_SESSION_SECRET", "KB_CANARY_SESSION", "OPENAI_API_KEY", "AWS_ACCESS_KEY_ID", "MY_TOKEN"])
 def test_vm_validation_rejects_credential_channels(name, tmp_path):
     with pytest.raises(RuntimeError, match=name):
         validate_vm_runtime.validate_environment({name: "present"})
@@ -161,6 +164,47 @@ def test_static_phase_accepts_inactive_unit_without_a_control_group():
 def test_static_phase_accepts_an_optional_valid_rp_origin():
     text = VALID_UNIT_TEXT + "Environment=DASHBOARD_RP_ORIGIN=https://dashboard.example\n"
     validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_static_phase_accepts_sanctioned_webauthn_credentials():
+    text = VALID_UNIT_TEXT + f"Environment={shlex.quote(f'DASHBOARD_WEBAUTHN_CREDENTIALS={WEBAUTHN_CREDENTIALS}')}\n"
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_static_phase_rejects_other_credential_named_unit_environment():
+    for name in ("DASHBOARD_SESSION_SECRET", "MY_TOKEN"):
+        text = VALID_UNIT_TEXT + f"Environment={name}=present\n"
+        with pytest.raises(RuntimeError, match=name):
+            validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize(
+    ("value", "defect"),
+    [
+        ("not-json", "valid JSON"),
+        ("{}", "JSON array"),
+        (json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "privateKey": "not-allowed"}]), "unsupported keys"),
+        (json.dumps([{"id": "!" * 16, "publicKey": "b" * 32}]), "base64url"),
+        (json.dumps([{"id": "a" * 257, "publicKey": "b" * 32}]), "256-character"),
+        (json.dumps([{"id": "a" * 16, "publicKey": "b" * 513}]), "512-character"),
+        (json.dumps([{"id": "a" * 15 + "=", "publicKey": "b" * 32}]), "padding is not allowed"),
+        (json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "transports": ["USB"]}]), "short strings"),
+        (json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "transports": ["a" * 33]}]), "short strings"),
+    ],
+)
+def test_static_phase_rejects_malformed_webauthn_credentials(value, defect):
+    text = VALID_UNIT_TEXT + f"Environment={shlex.quote(f'DASHBOARD_WEBAUTHN_CREDENTIALS={value}')}\n"
+    with pytest.raises(RuntimeError, match=defect):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_environment_allows_only_the_sanctioned_public_key_channel():
+    validate_vm_runtime.validate_environment({"DASHBOARD_WEBAUTHN_CREDENTIALS": WEBAUTHN_CREDENTIALS})
+
+
+def test_environment_rejects_malformed_sanctioned_public_key_channel():
+    with pytest.raises(RuntimeError, match="valid JSON"):
+        validate_vm_runtime.validate_environment({"DASHBOARD_WEBAUTHN_CREDENTIALS": "secret-looking-value"})
 
 
 def test_effective_unit_still_refuses_a_ninth_unknown_environment_name():

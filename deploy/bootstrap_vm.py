@@ -6,9 +6,15 @@ import binascii
 import json
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path, PurePosixPath
+
+try:
+    from .validate_vm_runtime import validate_webauthn_credentials
+except ImportError:
+    from validate_vm_runtime import validate_webauthn_credentials
 
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
@@ -71,15 +77,28 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def unit_fragment_source(rp_origin: str | None) -> bytes:
+def unit_fragment_source(rp_origin: str | None, webauthn_credentials: str | None = None) -> bytes:
     source = (Path(__file__).resolve().parent / "systemd/kb-dashboard.service").read_bytes()
-    if rp_origin is None:
+    if rp_origin is None and webauthn_credentials is None:
         return source
-    validate_rp_origin(rp_origin)
-    return source.replace(
+    if rp_origin is not None:
+        validate_rp_origin(rp_origin)
+    if webauthn_credentials is not None:
+        validate_webauthn_credentials(webauthn_credentials)
+    extra = b""
+    if rp_origin is not None:
+        extra += f"Environment=DASHBOARD_RP_ORIGIN={rp_origin}\n".encode("ascii")
+    if webauthn_credentials is not None:
+        canonical_credentials = json.dumps(json.loads(webauthn_credentials), separators=(",", ":"))
+        assignment = shlex.quote(f"DASHBOARD_WEBAUTHN_CREDENTIALS={canonical_credentials}")
+        extra += f"Environment={assignment}\n".encode("ascii")
+    result = source.replace(
         b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n",
-        f"Environment=GIT_CONFIG_GLOBAL=/dev/null\nEnvironment=DASHBOARD_RP_ORIGIN={rp_origin}\n".encode("ascii"),
+        b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n" + extra,
     )
+    if result == source:
+        raise RuntimeError("kb-dashboard.service is missing the GIT_CONFIG_GLOBAL environment anchor")
+    return result
 
 
 def public_key_module_source(public_key: str) -> str:
@@ -105,9 +124,12 @@ def install_root_validators(
     run=subprocess.run,
     install_root: PurePosixPath = PurePosixPath("/usr/local/lib/kb"),
     rp_origin: str | None = None,
+    webauthn_credentials: str | None = None,
 ) -> None:
     if rp_origin is not None:
         validate_rp_origin(rp_origin)
+    if webauthn_credentials is not None:
+        validate_webauthn_credentials(webauthn_credentials)
     public_key = release_public_key.read_text(encoding="ascii")
     source = public_key_module_source(public_key)
     descriptor, generated_name = tempfile.mkstemp(prefix="kb-release-signing-public-")
@@ -132,11 +154,11 @@ def install_root_validators(
         unit_source = deploy_root / "systemd/kb-dashboard.service"
         unit_descriptor: int | None = None
         unit_generated: Path | None = None
-        if rp_origin is not None:
+        if rp_origin is not None or webauthn_credentials is not None:
             unit_descriptor, unit_generated_name = tempfile.mkstemp(prefix="kb-dashboard-service-")
             unit_generated = Path(unit_generated_name)
             with os.fdopen(unit_descriptor, "wb") as output:
-                output.write(unit_fragment_source(rp_origin))
+                output.write(unit_fragment_source(rp_origin, webauthn_credentials))
             unit_generated.chmod(0o400)
             unit_source = unit_generated
         try:
@@ -153,9 +175,11 @@ def install_root_validators(
         generated.unlink(missing_ok=True)
 
 
-def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run, rp_origin: str | None = None) -> None:
+def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run, rp_origin: str | None = None, webauthn_credentials: str | None = None) -> None:
     if rp_origin is not None:
         validate_rp_origin(rp_origin)
+    if webauthn_credentials is not None:
+        validate_webauthn_credentials(webauthn_credentials)
     run(["systemctl", "disable", "--now", "kb-dashboard.service"], check=False)
     run(["useradd", "--system", "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin", "kb-dashboard"], check=False)
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/opt/kb-releases"], check=True)
@@ -176,10 +200,10 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run, rp
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "--push", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", STATE_ROOT], check=True)
-    if rp_origin is None:
+    if rp_origin is None and webauthn_credentials is None:
         install_root_validators(release_public_key, run=run)
     else:
-        install_root_validators(release_public_key, run=run, rp_origin=rp_origin)
+        install_root_validators(release_public_key, run=run, rp_origin=rp_origin, webauthn_credentials=webauthn_credentials)
 
 
 def main() -> int:
@@ -187,8 +211,9 @@ def main() -> int:
     parser.add_argument("--ops-bundle", type=Path, required=True)
     parser.add_argument("--release-public-key", type=Path, required=True)
     parser.add_argument("--rp-origin")
+    parser.add_argument("--webauthn-credentials")
     args = parser.parse_args()
-    bootstrap(args.ops_bundle, args.release_public_key, rp_origin=args.rp_origin)
+    bootstrap(args.ops_bundle, args.release_public_key, rp_origin=args.rp_origin, webauthn_credentials=args.webauthn_credentials)
     return 0
 
 
