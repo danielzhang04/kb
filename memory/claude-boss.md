@@ -497,3 +497,20 @@
 - LEARNED (IG grid): the saved grid VIRTUALIZES (offscreen tiles drop from DOM); a full-scroll accumulate reorders. For reliable save-order (recency), capture at fresh `scrollTo(0,0)` in small steps and keep FIRST-seen order; the fresh-load top band is authoritative for "most recently saved." Return compact fields (id + 80-char alt) — a full a11y/JSON dump of ~300 tiles overflows the tool-result token cap.
 - HAZARD (real, cost me the lesson once): an external process (ops cadence / sync) REVERTED my uncommitted working-tree edit to `memory/claude-boss.md` in the main checkout before I could route it to ops — the append silently vanished. memory/ is an ops-branch coordination write; do NOT stage a memory append on the work branch and assume it survives. Write memory changes straight onto the ops flow (temp branch from origin/ops → append → push), or they get clobbered.
 - Artifacts: `docs/research/2026-08-17-ig-saved-ai-build-ideas.md` (deliverable, committed on claude/boss-2026-08-17 @465eb05c) + `docs/research/_ig-saved/{manifest.json,audit-log.md,notes/*.md (37),candidates-A/B/C.md,review-findings.md}`; readable artifact https://claude.ai/code/artifact/7e2a6ef4-3c81-4315-b665-2e00f334ff7a; handoff `handoffs/2026-08-17-kb-ig-saved-build-ideas.md`. 45 mp4s in scratchpad (37 analyzed + 8 deep unanalyzed), uncommitted.
+
+## 2026-08-18 — bricks W2-slice engine duel (session terminated by Daniel)
+- **Confirm test design BEFORE spend.** Three paid rounds each re-guessed Daniel's intent (ab5
+  hand-authored list; run-1 pro-only + self-verified worker; duel finally right) — he terminated
+  the session furious. Rule: any Daniel-facing comparison gets a <=2-line design statement
+  (items source, arms, pipeline, verifier, cost) and his YES before the first provider call.
+- **W6 harness live-proven** (first use): coordinator plan K=2 + wave_worker ran both arms clean.
+  Keep run ids/dirs SHORT — `w2slice-flash` + deep dirs blew Windows MAX_PATH mid-run.
+- **Generator never self-verifies.** Run-1's codex worker genned AND verified — forge itself then
+  refused those cards as seeds (unreviewed staged STEP-1). Verification = separate fresh-eyes
+  agents (protocol pair), always.
+- **Registry engine flips:** edit the `engine` key only, restore via `git checkout --` (a
+  json.dump rewrite churned 654 lines). Archive staging slots before any arm/re-mint — forge
+  skip-if-exists silently no-ops.
+- **Forge mechanism findings (engine-independent, verbatim prompt in bricks w2-partial/report.md):**
+  STEP-1 beat clause names the scene object then fences it — object wins; ground line lost 14/20;
+  retry enum lacks clean_card. Proposed surgical fixes NOT approved — do not dispatch without ruling.
