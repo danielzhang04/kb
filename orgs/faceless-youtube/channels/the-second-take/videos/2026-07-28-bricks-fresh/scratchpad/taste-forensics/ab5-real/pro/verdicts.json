@@ -1,0 +1,287 @@
+{
+  "engine": "gemini-3-pro-image",
+  "image_size": "1K",
+  "covered": "10/10",
+  "cards": {
+    "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e": {
+      "source_shot": "L19",
+      "cast": "drive-maker",
+      "attempts": 1,
+      "final_verdict": "PASS",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold.",
+        "head_shape": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold.",
+        "no_nose_no_ears": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold.",
+        "four_digit_hands": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold.",
+        "proportion": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold.",
+        "flat_cel_render": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold.",
+        "outline_consistency": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold.",
+        "palette": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold.",
+        "clean_studio_backdrop": "PASS \u2014 Canonical identity, round earless/no-nose face, four-digit hands, flat palette, and empty studio card hold."
+      }
+    },
+    "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1": {
+      "source_shot": "L23",
+      "cast": "brick-foreman",
+      "attempts": 1,
+      "final_verdict": "PASS",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty.",
+        "head_shape": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty.",
+        "no_nose_no_ears": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty.",
+        "four_digit_hands": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty.",
+        "proportion": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty.",
+        "flat_cel_render": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty.",
+        "outline_consistency": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty.",
+        "palette": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty.",
+        "clean_studio_backdrop": "PASS \u2014 Canonical identity and deadpan shrug hold; both open hands read four-digit and the studio is otherwise empty."
+      }
+    },
+    "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b": {
+      "source_shot": "L35",
+      "cast": "miniscribe-rep",
+      "attempts": 2,
+      "final_verdict": "PASS",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field.",
+        "head_shape": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field.",
+        "no_nose_no_ears": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field.",
+        "four_digit_hands": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field.",
+        "proportion": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field.",
+        "flat_cel_render": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field.",
+        "outline_consistency": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field.",
+        "palette": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field.",
+        "clean_studio_backdrop": "PASS \u2014 Attempt 1 added pallets and roof trusses; attempt 2 is the character-only celebratory card on the neutral studio field."
+      }
+    },
+    "fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60": {
+      "source_shot": "L47",
+      "cast": "terry-johnson",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig.",
+        "head_shape": "PASS \u2014 Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig.",
+        "no_nose_no_ears": "PASS \u2014 Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig.",
+        "four_digit_hands": "PASS \u2014 Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig.",
+        "proportion": "PASS \u2014 Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig.",
+        "flat_cel_render": "PASS \u2014 Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig.",
+        "outline_consistency": "PASS \u2014 Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig.",
+        "palette": "PASS \u2014 Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig.",
+        "clean_studio_backdrop": "Both attempts retain a blank document case; attempt 2 otherwise holds the canonical face and flat rig."
+      }
+    },
+    "fig-tv-chef--hold-both-hands--expr-worried--56a59b22": {
+      "source_shot": "L60",
+      "cast": "tv-chef",
+      "attempts": 2,
+      "final_verdict": "PASS",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face.",
+        "head_shape": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face.",
+        "no_nose_no_ears": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face.",
+        "four_digit_hands": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face.",
+        "proportion": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face.",
+        "flat_cel_render": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face.",
+        "outline_consistency": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face.",
+        "palette": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face.",
+        "clean_studio_backdrop": "PASS \u2014 Attempt 1 retained a risotto bowl; attempt 2 is figure-only, matches the canonical chef palette/costume, and holds the worried face."
+      }
+    },
+    "fig-qt-wiles--expr-smug--5d92f2c3": {
+      "source_shot": "L69",
+      "cast": "qt-wiles",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "fail",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment.",
+        "head_shape": "PASS \u2014 Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment.",
+        "no_nose_no_ears": "Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment.",
+        "four_digit_hands": "PASS \u2014 Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment.",
+        "proportion": "PASS \u2014 Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment.",
+        "flat_cel_render": "PASS \u2014 Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment.",
+        "outline_consistency": "PASS \u2014 Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment.",
+        "palette": "PASS \u2014 Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment.",
+        "clean_studio_backdrop": "PASS \u2014 Both attempts show a distinct exposed right ear below the silver hair despite otherwise clean studio treatment."
+      }
+    },
+    "fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d": {
+      "source_shot": "L100",
+      "cast": "auditor-rep",
+      "attempts": 1,
+      "final_verdict": "PASS",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold.",
+        "head_shape": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold.",
+        "no_nose_no_ears": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold.",
+        "four_digit_hands": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold.",
+        "proportion": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold.",
+        "flat_cel_render": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold.",
+        "outline_consistency": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold.",
+        "palette": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold.",
+        "clean_studio_backdrop": "PASS \u2014 Identity, winter costume, neutral face, thumb-up hand, outline and uncluttered studio card hold."
+      }
+    },
+    "fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6": {
+      "source_shot": "L173",
+      "cast": "line-worker",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract.",
+        "head_shape": "PASS \u2014 Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract.",
+        "no_nose_no_ears": "PASS \u2014 Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract.",
+        "four_digit_hands": "PASS \u2014 Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract.",
+        "proportion": "PASS \u2014 Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract.",
+        "flat_cel_render": "PASS \u2014 Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract.",
+        "outline_consistency": "PASS \u2014 Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract.",
+        "palette": "PASS \u2014 Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract.",
+        "clean_studio_backdrop": "Attempt 1 holds a telephone handset; attempt 2 substitutes a carried carton. Both violate the no-props card contract."
+      }
+    },
+    "fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800": {
+      "source_shot": "L180",
+      "cast": "rifenburgh-ceo",
+      "attempts": 1,
+      "final_verdict": "PASS",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold.",
+        "head_shape": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold.",
+        "no_nose_no_ears": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold.",
+        "four_digit_hands": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold.",
+        "proportion": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold.",
+        "flat_cel_render": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold.",
+        "outline_consistency": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold.",
+        "palette": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold.",
+        "clean_studio_backdrop": "PASS \u2014 Canonical identity, thinking face, compact proportion, clean outline and figure-only studio card hold."
+      }
+    },
+    "fig-hq-banker--expr-deadpan--55bd2c0a": {
+      "source_shot": "L213",
+      "cast": "hq-banker",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "fail",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts retain a shaped exposed right ear below the silver hair.",
+        "head_shape": "PASS \u2014 Both attempts retain a shaped exposed right ear below the silver hair.",
+        "no_nose_no_ears": "Both attempts retain a shaped exposed right ear below the silver hair.",
+        "four_digit_hands": "PASS \u2014 Both attempts retain a shaped exposed right ear below the silver hair.",
+        "proportion": "PASS \u2014 Both attempts retain a shaped exposed right ear below the silver hair.",
+        "flat_cel_render": "PASS \u2014 Both attempts retain a shaped exposed right ear below the silver hair.",
+        "outline_consistency": "PASS \u2014 Both attempts retain a shaped exposed right ear below the silver hair.",
+        "palette": "PASS \u2014 Both attempts retain a shaped exposed right ear below the silver hair.",
+        "clean_studio_backdrop": "PASS \u2014 Both attempts retain a shaped exposed right ear below the silver hair."
+      }
+    }
+  }
+}

@@ -1,0 +1,287 @@
+{
+  "engine": "gemini-2.5-flash-image",
+  "image_size": "1K",
+  "covered": "10/10",
+  "cards": {
+    "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e": {
+      "source_shot": "L19",
+      "cast": "drive-maker",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts retain rake and banknotes.",
+        "head_shape": "PASS \u2014 Both attempts retain rake and banknotes.",
+        "no_nose_no_ears": "PASS \u2014 Both attempts retain rake and banknotes.",
+        "four_digit_hands": "PASS \u2014 Both attempts retain rake and banknotes.",
+        "proportion": "PASS \u2014 Both attempts retain rake and banknotes.",
+        "flat_cel_render": "PASS \u2014 Both attempts retain rake and banknotes.",
+        "outline_consistency": "PASS \u2014 Both attempts retain rake and banknotes.",
+        "palette": "PASS \u2014 Both attempts retain rake and banknotes.",
+        "clean_studio_backdrop": "Both attempts retain rake and banknotes."
+      }
+    },
+    "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1": {
+      "source_shot": "L23",
+      "cast": "brick-foreman",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts retain cartons/pallet material behind the figure.",
+        "head_shape": "PASS \u2014 Both attempts retain cartons/pallet material behind the figure.",
+        "no_nose_no_ears": "PASS \u2014 Both attempts retain cartons/pallet material behind the figure.",
+        "four_digit_hands": "PASS \u2014 Both attempts retain cartons/pallet material behind the figure.",
+        "proportion": "PASS \u2014 Both attempts retain cartons/pallet material behind the figure.",
+        "flat_cel_render": "PASS \u2014 Both attempts retain cartons/pallet material behind the figure.",
+        "outline_consistency": "PASS \u2014 Both attempts retain cartons/pallet material behind the figure.",
+        "palette": "PASS \u2014 Both attempts retain cartons/pallet material behind the figure.",
+        "clean_studio_backdrop": "Both attempts retain cartons/pallet material behind the figure."
+      }
+    },
+    "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b": {
+      "source_shot": "L35",
+      "cast": "miniscribe-rep",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses.",
+        "head_shape": "PASS \u2014 Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses.",
+        "no_nose_no_ears": "PASS \u2014 Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses.",
+        "four_digit_hands": "PASS \u2014 Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses.",
+        "proportion": "PASS \u2014 Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses.",
+        "flat_cel_render": "PASS \u2014 Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses.",
+        "outline_consistency": "PASS \u2014 Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses.",
+        "palette": "PASS \u2014 Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses.",
+        "clean_studio_backdrop": "Both attempts place the figure on stacked pallets; attempt 1 also includes roof trusses."
+      }
+    },
+    "fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60": {
+      "source_shot": "L47",
+      "cast": "terry-johnson",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "fail",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Attempt 2 still has a rendered nose and document case.",
+        "head_shape": "PASS \u2014 Attempt 2 still has a rendered nose and document case.",
+        "no_nose_no_ears": "Attempt 2 still has a rendered nose and document case.",
+        "four_digit_hands": "PASS \u2014 Attempt 2 still has a rendered nose and document case.",
+        "proportion": "PASS \u2014 Attempt 2 still has a rendered nose and document case.",
+        "flat_cel_render": "PASS \u2014 Attempt 2 still has a rendered nose and document case.",
+        "outline_consistency": "PASS \u2014 Attempt 2 still has a rendered nose and document case.",
+        "palette": "PASS \u2014 Attempt 2 still has a rendered nose and document case.",
+        "clean_studio_backdrop": "Attempt 2 still has a rendered nose and document case."
+      }
+    },
+    "fig-tv-chef--hold-both-hands--expr-worried--56a59b22": {
+      "source_shot": "L60",
+      "cast": "tv-chef",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "fail",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms.",
+        "head_shape": "PASS \u2014 Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms.",
+        "no_nose_no_ears": "PASS \u2014 Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms.",
+        "four_digit_hands": "Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms.",
+        "proportion": "PASS \u2014 Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms.",
+        "flat_cel_render": "PASS \u2014 Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms.",
+        "outline_consistency": "PASS \u2014 Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms.",
+        "palette": "PASS \u2014 Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms.",
+        "clean_studio_backdrop": "Attempt 2 retains the bowl and renders an extra hanging arm in addition to the two bowl-holding arms."
+      }
+    },
+    "fig-qt-wiles--expr-smug--5d92f2c3": {
+      "source_shot": "L69",
+      "cast": "qt-wiles",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "fail",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts retain an exposed right ear.",
+        "head_shape": "PASS \u2014 Both attempts retain an exposed right ear.",
+        "no_nose_no_ears": "Both attempts retain an exposed right ear.",
+        "four_digit_hands": "PASS \u2014 Both attempts retain an exposed right ear.",
+        "proportion": "PASS \u2014 Both attempts retain an exposed right ear.",
+        "flat_cel_render": "PASS \u2014 Both attempts retain an exposed right ear.",
+        "outline_consistency": "PASS \u2014 Both attempts retain an exposed right ear.",
+        "palette": "PASS \u2014 Both attempts retain an exposed right ear.",
+        "clean_studio_backdrop": "PASS \u2014 Both attempts retain an exposed right ear."
+      }
+    },
+    "fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d": {
+      "source_shot": "L100",
+      "cast": "auditor-rep",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts carry a document case.",
+        "head_shape": "PASS \u2014 Both attempts carry a document case.",
+        "no_nose_no_ears": "PASS \u2014 Both attempts carry a document case.",
+        "four_digit_hands": "PASS \u2014 Both attempts carry a document case.",
+        "proportion": "PASS \u2014 Both attempts carry a document case.",
+        "flat_cel_render": "PASS \u2014 Both attempts carry a document case.",
+        "outline_consistency": "PASS \u2014 Both attempts carry a document case.",
+        "palette": "PASS \u2014 Both attempts carry a document case.",
+        "clean_studio_backdrop": "Both attempts carry a document case."
+      }
+    },
+    "fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6": {
+      "source_shot": "L173",
+      "cast": "line-worker",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts retain the telephone handset.",
+        "head_shape": "PASS \u2014 Both attempts retain the telephone handset.",
+        "no_nose_no_ears": "PASS \u2014 Both attempts retain the telephone handset.",
+        "four_digit_hands": "PASS \u2014 Both attempts retain the telephone handset.",
+        "proportion": "PASS \u2014 Both attempts retain the telephone handset.",
+        "flat_cel_render": "PASS \u2014 Both attempts retain the telephone handset.",
+        "outline_consistency": "PASS \u2014 Both attempts retain the telephone handset.",
+        "palette": "PASS \u2014 Both attempts retain the telephone handset.",
+        "clean_studio_backdrop": "Both attempts retain the telephone handset."
+      }
+    },
+    "fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800": {
+      "source_shot": "L180",
+      "cast": "rifenburgh-ceo",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "pass",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "fail"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts retain the lit torch.",
+        "head_shape": "PASS \u2014 Both attempts retain the lit torch.",
+        "no_nose_no_ears": "PASS \u2014 Both attempts retain the lit torch.",
+        "four_digit_hands": "PASS \u2014 Both attempts retain the lit torch.",
+        "proportion": "PASS \u2014 Both attempts retain the lit torch.",
+        "flat_cel_render": "PASS \u2014 Both attempts retain the lit torch.",
+        "outline_consistency": "PASS \u2014 Both attempts retain the lit torch.",
+        "palette": "PASS \u2014 Both attempts retain the lit torch.",
+        "clean_studio_backdrop": "Both attempts retain the lit torch."
+      }
+    },
+    "fig-hq-banker--expr-deadpan--55bd2c0a": {
+      "source_shot": "L213",
+      "cast": "hq-banker",
+      "attempts": 2,
+      "final_verdict": "PARK",
+      "axes": {
+        "identity_match": "pass",
+        "head_shape": "pass",
+        "no_nose_no_ears": "fail",
+        "four_digit_hands": "pass",
+        "proportion": "pass",
+        "flat_cel_render": "pass",
+        "outline_consistency": "pass",
+        "palette": "pass",
+        "clean_studio_backdrop": "pass"
+      },
+      "evidence": {
+        "identity_match": "PASS \u2014 Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan.",
+        "head_shape": "PASS \u2014 Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan.",
+        "no_nose_no_ears": "Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan.",
+        "four_digit_hands": "PASS \u2014 Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan.",
+        "proportion": "PASS \u2014 Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan.",
+        "flat_cel_render": "PASS \u2014 Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan.",
+        "outline_consistency": "PASS \u2014 Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan.",
+        "palette": "PASS \u2014 Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan.",
+        "clean_studio_backdrop": "PASS \u2014 Both attempts retain an exposed right ear; attempt 2 also drifts sad rather than deadpan."
+      }
+    }
+  }
+}
