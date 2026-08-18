@@ -89,8 +89,10 @@ function parseTsv(path: string): Record<string, string>[] {
   });
 }
 
-/** Read every `*.tsv` under `ledgers/<kind>/` and concatenate their rows. Missing dir → []. */
-function readKindRows(repoRoot: string, kind: string): Record<string, string>[] {
+/** Read every `*.tsv` under `ledgers/<kind>/` and concatenate their rows. Missing dir → [].
+ *  Exported (read-only) so other read projections — e.g. `panels/autonomyLadder.ts` reading
+ *  `ledgers/grades/**` — reuse this one reader instead of re-implementing TSV parsing. */
+export function readKindRows(repoRoot: string, kind: string): Record<string, string>[] {
   const dir = join(repoRoot, 'ledgers', kind);
   if (!existsSync(dir)) return [];
   const rows: Record<string, string>[] = [];

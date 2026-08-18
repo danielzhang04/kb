@@ -10,6 +10,7 @@ import { loadPolicy, loadOverride } from '../routing/policy.ts';
 import { buildHealthPanel } from './health.ts';
 import { buildUsagePanel } from './usage.ts';
 import { buildAtlasPanel } from './atlas.ts';
+import { buildAutonomyLadderPanel } from './autonomyLadder.ts';
 import type { AtlasWorkerOptions } from './atlas.ts';
 
 /** dashboard/server/panels/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
@@ -24,6 +25,13 @@ export function registerPanels(app: FastifyInstance, repoRoot: string = resolveR
     const policy = loadPolicy(repoRoot);
     const override = loadOverride(repoRoot);
     return buildHealthPanel(repoRoot, policy, override);
+  });
+  // Autonomy ladder — earned autonomy RECOMPUTED from trusted grade rows (never stored), beside the
+  // advisory `autonomy-tier` each agent file declares. GET only; the panel has no write surface at all.
+  app.get('/api/panels/autonomy-ladder', async () => {
+    const policy = loadPolicy(repoRoot);
+    const override = loadOverride(repoRoot);
+    return buildAutonomyLadderPanel(repoRoot, policy, override);
   });
   // Quartermaster — usage rollup (per-model steps, model mix, card/dispatch counts). USD suppressed.
   app.get('/api/panels/usage', async () => buildUsagePanel(repoRoot));

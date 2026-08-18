@@ -1,0 +1,147 @@
+/*
+ * Autonomy Ladder panel (Agent Platform, Wave-1 U5) — the panel's OWN stylesheet, imported only by
+ * `views/agentPlatform/panels/AutonomyLadder.panel.tsx`. Per the registry house rules: one CSS file
+ * per panel, a panel-specific class prefix (`.ap-ladder…`), and NO edit to `agentPlatform.css`,
+ * which belongs to the section shell alone.
+ *
+ * Existing tokens only (src/styles/app.css) — no literal colours, no new custom properties.
+ *
+ * The one visual job here is the DECLARED / EARNED split: the declared ceiling is advisory metadata
+ * (faint, mono, quiet chip) and the earned verdict is recomputed fact (full-contrast, tier-coloured),
+ * so the two can never be mistaken for one another at a glance.
+ */
+
+.ap-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ap-ladder__note {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+/* ── Frozen banner ───────────────────────────────────────────────────────────────────────────── */
+
+.ap-ladder__frozen {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--fg-primary);
+  font-size: var(--text-sm);
+}
+
+/* ── Worker table ────────────────────────────────────────────────────────────────────────────── */
+
+.ap-ladder__worker {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+
+.ap-ladder__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.ap-ladder__id {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: var(--fg-primary);
+}
+
+/* Declared ceiling — ADVISORY. Deliberately quiet: it is a claim, not an earned fact. */
+.ap-ladder__declared {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin-left: auto;
+  padding: 1px var(--space-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+.ap-ladder__declared-value {
+  font-family: var(--font-mono);
+  color: var(--fg-dim);
+}
+
+.ap-ladder__earned-label {
+  padding: var(--space-2) var(--space-3) 0;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  font-weight: var(--type-section-weight);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.ap-ladder__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+
+.ap-ladder__table th {
+  padding: var(--space-1) var(--space-3);
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  font-weight: var(--type-section-weight);
+  text-align: left;
+}
+
+.ap-ladder__table td {
+  padding: var(--space-1) var(--space-3);
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+
+.ap-ladder__task {
+  font-family: var(--font-mono);
+  color: var(--fg-primary);
+}
+
+.ap-ladder__tier--T1 {
+  color: var(--tier-t1);
+}
+
+.ap-ladder__tier--T2 {
+  color: var(--tier-t2);
+}
+
+.ap-ladder__tier--T3 {
+  color: var(--tier-t3);
+}
+
+/* Earned verdict — FACT. Full contrast, the opposite weight of the declared chip. */
+.ap-ladder__verdict {
+  font-weight: 600;
+}
+
+.ap-ladder__verdict--autonomous {
+  color: var(--success);
+}
+
+.ap-ladder__verdict--queues-for-me {
+  color: var(--fg-primary);
+}
+
+.ap-ladder__demote {
+  color: var(--error);
+}
+
+.ap-ladder__empty {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+}
