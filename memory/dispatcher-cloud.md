@@ -530,3 +530,19 @@
 - Queue snapshot post-hygiene: inbox 27, working 2 (this card in-flight + halted 6a6bc3dd),
   done 542, approvals 0, archived 1. Budget $0 API-billed today+yesterday / $30.
 - Push path: recorded in the run summary.
+
+### 2026-08-18 nightly-review
+- Clean checks: preamble, pyyaml, sync_skills --check all pass (no drift).
+- **Drift card GREW, don't dup — refresh the umbrella.** sync_daemon_dirs (main copy, ops still
+  missing the script) now reports 11-file drift (5 main-only + 5 content-differs fyt-*/workflows,
+  1 ops-only acceptance-run) vs the 1-file (self-lint-report) snapshot on umbrella card 6a605ebb.
+  There are already 4 daemon-dir wake cards (6a605ebb/6a6c3d8e/6a718533/6a7c0ebf) — filing a 5th
+  is noise. I UPDATED 6a605ebb's Evidence+Result with the current 11-file report instead. Lesson:
+  when the recurring drift changes shape, refresh the broadest existing card, never add another.
+- **Cost is NOT $0 this run.** Boss-session bricks A/B image gen logged real API spend to
+  ledgers/cost/claude-boss-2026-08-18.tsv: 1.876+1.730+1.730 = ~$5.34 (of $30). read_day mis-sums
+  these rows (drops col-1); trust the raw TSV last column for USD, not read_day's numeric scrape.
+- Codex: 8 cards today, 7 exit 0, one exit 1 (6a83ea2f) — subscription $0, part of the A/B batch.
+- Queue by state: inbox 17, blocked 10, working 1 (this card), halted 1 (6a6bc3dd still parked in
+  working/), done 586, approvals 0, archived 1. No stranded-in-inbox done card this run (clean).
+- Push path: recorded in the run summary.
