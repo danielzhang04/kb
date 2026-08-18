@@ -514,3 +514,28 @@
 - **Forge mechanism findings (engine-independent, verbatim prompt in bricks w2-partial/report.md):**
   STEP-1 beat clause names the scene object then fences it — object wins; ground line lost 14/20;
   retry enum lacks clean_card. Proposed surgical fixes NOT approved — do not dispatch without ruling.
+
+## 2026-08-18 — Gate-1 ceremony driven to signed close (boss session, 5 live defects)
+- WORKED: ceremony-as-debugger — the first live run of a never-exercised platform path surfaced 5
+  REAL defects (quiescence proof, control-plane seed, unauth boot crash, credential channel,
+  collector Host port), each closed same-session via codex build → opus adversarial review (FIX
+  rounds until SHIP, every finding mutation-checked) → PR → deploy. Budget ~5 PRs in any "first
+  live ceremony" estimate; none of these were findable by tests that mock the seam.
+- LESSON (cost of theorizing): 5 rounds burned on token-copy integrity theories when the REAL
+  cause was the daemon crashing 60s after every login (missing git identity in /var/lib/kb/ops →
+  audit commit fatal). The fix-rate went vertical the moment a diagnostic runner printed the
+  SERVER'S rejection reason (`bad-signature`) instead of a silent exit. Rule: when a human-loop
+  step fails twice, stop iterating the human and ship a probe that surfaces the machine's reason.
+- LESSON (fail-closed cascades): three separate guards (origin Host compare, credential-name env
+  ban, ControlGroup emptiness) each correctly failed closed AND each made the system impossible to
+  operate — fail-closed guards need a live-fire pass before a gate depends on them.
+- OPERATIONAL (VM): deploys don't refresh /usr/local/lib/kb helpers (manual sudo install needed);
+  outbox DirtyIndexError clears only via STOP → git reset → START (live reset races the daemon);
+  Windows curl strips default :443 but python urllib doesn't (origin guard rejects explicit
+  default port — fixed collector-side in #127); WebAuthn is impossible from automated browsers —
+  Daniel's console + prompt()-dialog + `(Get-Clipboard -Raw).Trim() | ssh` is the reliable
+  token transport; DevTools console needs `allow pasting` typed once.
+- PROCESS: single opus reviewer resumed via SendMessage across 5 review legs kept full context and
+  caught cross-PR patterns (same fail-silent writer bug in two paths); grades model-grepped
+  claude-opus-5 throughout. Classifier blocks on signing-key/sudo-unit commands are correctly
+  Daniel's moments — pre-stage everything so his command is one paste.
