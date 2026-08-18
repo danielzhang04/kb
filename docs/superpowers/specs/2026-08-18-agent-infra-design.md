@@ -25,6 +25,8 @@ isolated display dashboard, with zero API spend.
 - An LLM memory reconciler (deterministic `scripts/dream.py` already owns consolidation; extraction stays in `session_miner.py` / Loop B).
 - Per-block *token* accounting (no tokenizer in-repo; `count_tokens` is metered). Budgets are bytes.
 - Config-fork A/B infrastructure, full Temporal policy matrix, paid external tools.
+- Catch-up/replay of missed schedule occurrences and any calendar DSL beyond 5-field cron
+  (Claude routines ship without them; Codex Automations' attempt is their open-bug farm).
 
 ## Grounding
 
@@ -148,15 +150,21 @@ never into the grades ledger.
 - **Mechanism layer stays:** `HEARTBEAT.md` cadence blocks + `scripts/dispatch.py` `due()` as
   the single clock; overlap-skip (per-day dedup), `queue/paused/<name>` sentinels, retry/
   dead-letter all exist — extended, not shadowed.
-- **New in `due()`:** richer calendar forms encoded INSIDE the existing `schedule:` string
-  (`schedule: "days=mon,thu at=07:00"`, `schedule: "every=2w"`) — never as sibling YAML keys.
-  This matters for authorization: `promotion._cadence_matches` byte-compares the pinned
-  cadence fields (`name, schedule, tier, risk-tier, prompt`); keeping timing inside
-  `schedule:` means ANY re-timing voids standing authorization automatically. Guarded by a
-  canary (a re-timed cadence must drop to `queues-for-me`). Back-compatible: all SIX live
-  blocks (root HEARTBEAT.md ×4, `orgs/atlas-prep` ×1, `orgs/kb-ops` ×1) parse byte-unchanged,
-  including the assertion that bare `schedule: weekly` stays NON-firing as today. Bounded
-  catch-up: at most one missed occurrence, only within a declared window; default = skip.
+- **New in `due()` — copied from Claude Code routines, deliberately that simple:** the
+  `schedule:` string additionally accepts standard 5-field cron (`schedule: "3 7 * * mon,thu"`,
+  local timezone) alongside the existing `daily|weekly:<day>` forms. No calendar DSL, no
+  catch-up-window machinery: the fire rule is the routines rule verbatim — when the
+  dispatcher ticks, a cadence fires AT MOST ONCE if an occurrence has passed since its last
+  fire; missed occurrences are skipped, never replayed. (Codex Automations' undocumented
+  catch-up/overlap semantics are their open-bug farm — evidence this is the part NOT to
+  build.) Dedup key = last-fired occurrence, generalizing the existing per-day dedup.
+  Timing stays INSIDE `schedule:` — never sibling YAML keys — because
+  `promotion._cadence_matches` byte-compares the pinned cadence fields
+  (`name, schedule, tier, risk-tier, prompt`): ANY re-timing voids standing authorization
+  automatically. Guarded by a canary (a re-timed cadence must drop to `queues-for-me`).
+  Back-compatible: all SIX live blocks (root HEARTBEAT.md ×4, `orgs/atlas-prep` ×1,
+  `orgs/kb-ops` ×1) parse byte-unchanged, including the assertion that bare
+  `schedule: weekly` stays NON-firing as today.
 - **Stamps:** every dispatched card records `scheduled_for` AND `dispatched_at` (a catch-up
   run knows which occurrence it is).
 - **Dashboard = editor, never owner:** a Schedules panel that (a) renders every declared
@@ -209,6 +217,6 @@ P3's kit-renderer unit rather than running separately.)
 2. Kit render artifact carries `## North star` + `## Invariants`; U7's extractor consumes it with zero U7 edits (existing test extended, not weakened); U7/U8/U9 remain INERT — arming is Daniel's separate ceremony, not an arc deliverable.
 3. `agent_factory.py new demo-agent` yields def (canonical live shape) + memory + suite + tests green; governance card queued only if an override/grader entry is genuinely needed; roster loader lossless.
 4. Demo agent eval suite runs (deterministic runner + one model-judged task via `claude -p` outside the hermetic runner); grades land through unchanged `grade.py` in the reserved eval namespace; a canary proves NO eval row can move `promotion.status()` toward `acts-alone`; extra-field rejection canary still green.
-5. `due()` parses the new schedule-string forms AND all SIX live blocks (three HEARTBEAT files) byte-unchanged, bare `weekly` still non-firing; `scheduled_for`/`dispatched_at` stamped; a canary proves re-timing ANY schedule-bearing field voids standing authorization (drops to `queues-for-me`).
+5. `due()` parses 5-field cron in `schedule:` AND all SIX live blocks (three HEARTBEAT files) byte-unchanged, bare `weekly` still non-firing; missed occurrences skip (never replay — test proves a 2-day gap fires exactly once); `scheduled_for`/`dispatched_at` stamped; a canary proves re-timing ANY schedule-bearing field voids standing authorization (drops to `queues-for-me`).
 6. Schedules panel renders all cadences; edits route through `governedSave` (work branch → PR, never auto-merged, never writes HEARTBEAT directly); panel can create pause sentinels but cannot delete them; `loopStatus.ts` read-only tripwire still green; narration feed shows the demo agent's scheduled run.
 7. $0 API spend; no writes to `governance/**` or the grades schema by any worker; all reviews model-verified.
