@@ -6,6 +6,9 @@
 /.claude/skills/** text=auto eol=lf
 /.agents/skills/** text=auto eol=lf
 
+# Systemd units are templated byte-for-byte during VM bootstrap.
+/deploy/systemd/*.service text eol=lf
+
 # The golden canary suite is hashed byte-for-byte by scripts/canary.py
 # (evals/MANIFEST.sha256 — the immutability/tamper guard). Pin the canary cards
 # and the manifest to LF so the sha256 manifest is identical on Windows and the

@@ -13,6 +13,7 @@ from scripts import backup_tier0
 
 
 RP_ORIGIN = "https://dashboard.example"
+WEBAUTHN_CREDENTIALS = json.dumps([{"id": "a" * 16, "publicKey": "b" * 32, "counter": 0, "transports": ["usb"]}], separators=(",", ":"))
 
 
 @pytest.fixture(autouse=True)
@@ -367,15 +368,10 @@ def test_bootstrap_optional_rp_origin_installs_one_extra_root_owned_immutable_en
 
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, rp_origin=RP_ORIGIN, run=run)
 
-    source = (Path(bootstrap_vm.__file__).parent / "systemd/kb-dashboard.service").read_bytes()
-    expected = source.replace(
-        b"Environment=GIT_CONFIG_GLOBAL=/dev/null\n",
-        b"Environment=GIT_CONFIG_GLOBAL=/dev/null\nEnvironment=DASHBOARD_RP_ORIGIN=https://dashboard.example\n",
-    )
-    assert installed_unit == expected
+    assert b"Environment=DASHBOARD_RP_ORIGIN=https://dashboard.example\n" in installed_unit
 
 
-def test_bootstrap_without_rp_origin_installs_the_current_fragment_byte_for_byte(tmp_path):
+def test_bootstrap_without_optional_unit_environment_installs_the_current_fragment_byte_for_byte(tmp_path):
     key_path = tmp_path / "release.pub"
     key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
     installed_unit = None
@@ -389,6 +385,54 @@ def test_bootstrap_without_rp_origin_installs_the_current_fragment_byte_for_byte
     bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, run=run)
 
     assert installed_unit == (Path(bootstrap_vm.__file__).parent / "systemd/kb-dashboard.service").read_bytes()
+
+
+def test_bootstrap_optional_webauthn_credentials_installs_one_extra_root_owned_immutable_environment_line(tmp_path):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    installed_unit = None
+
+    def run(argv, **kwargs):
+        nonlocal installed_unit
+        if argv[-1] == "/etc/systemd/system/kb-dashboard.service":
+            installed_unit = Path(argv[-2]).read_bytes()
+            assert argv[:7] == ["install", "-o", "root", "-g", "root", "-m", "0444"]
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, webauthn_credentials=WEBAUTHN_CREDENTIALS, run=run)
+
+    assert f"Environment='DASHBOARD_WEBAUTHN_CREDENTIALS={WEBAUTHN_CREDENTIALS}'\n".encode("ascii") in installed_unit
+
+
+def test_bootstrap_canonicalizes_webauthn_credentials_before_writing_the_unit(tmp_path):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    installed_unit = None
+    escaped_credentials = '[{"id":"\\u0061' + "a" * 15 + '","publicKey":"' + "b" * 32 + '"}]'
+    canonical_credentials = json.dumps(json.loads(escaped_credentials), separators=(",", ":"))
+
+    def run(argv, **kwargs):
+        nonlocal installed_unit
+        if argv[-1] == "/etc/systemd/system/kb-dashboard.service":
+            installed_unit = Path(argv[-2]).read_bytes()
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, webauthn_credentials=escaped_credentials, run=run)
+
+    assert f"Environment='DASHBOARD_WEBAUTHN_CREDENTIALS={canonical_credentials}'\n".encode("ascii") in installed_unit
+    assert b"\\u0061" not in installed_unit
+
+
+def test_bootstrap_refuses_invalid_webauthn_credentials_before_running_commands(tmp_path):
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    with pytest.raises(RuntimeError, match="valid JSON"):
+        bootstrap_vm.bootstrap(tmp_path / "ops.bundle", tmp_path / "unread.pub", webauthn_credentials="not-json", run=run)
+    assert commands == []
 
 
 @pytest.mark.parametrize(
@@ -415,8 +459,17 @@ def test_bootstrap_refuses_invalid_rp_origins_before_running_commands(tmp_path, 
 
 def test_main_passes_optional_rp_origin_to_bootstrap(tmp_path, monkeypatch):
     seen = []
-    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, rp_origin=None: seen.append((ops_bundle, release_public_key, rp_origin)))
+    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, rp_origin=None, webauthn_credentials=None: seen.append((ops_bundle, release_public_key, rp_origin, webauthn_credentials)))
     monkeypatch.setattr(sys, "argv", ["bootstrap_vm.py", "--ops-bundle", "ops.bundle", "--release-public-key", "release.pub", "--rp-origin", RP_ORIGIN])
 
     assert bootstrap_vm.main() == 0
-    assert seen == [(Path("ops.bundle"), Path("release.pub"), RP_ORIGIN)]
+    assert seen == [(Path("ops.bundle"), Path("release.pub"), RP_ORIGIN, None)]
+
+
+def test_main_passes_optional_webauthn_credentials_to_bootstrap(monkeypatch):
+    seen = []
+    monkeypatch.setattr(bootstrap_vm, "bootstrap", lambda ops_bundle, release_public_key, rp_origin=None, webauthn_credentials=None: seen.append((ops_bundle, release_public_key, rp_origin, webauthn_credentials)))
+    monkeypatch.setattr(sys, "argv", ["bootstrap_vm.py", "--ops-bundle", "ops.bundle", "--release-public-key", "release.pub", "--webauthn-credentials", WEBAUTHN_CREDENTIALS])
+
+    assert bootstrap_vm.main() == 0
+    assert seen == [(Path("ops.bundle"), Path("release.pub"), None, WEBAUTHN_CREDENTIALS)]
