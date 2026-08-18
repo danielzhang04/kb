@@ -1,0 +1,114 @@
+{
+ "figures": {
+  "_staging/fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333.png": {
+   "canonical_sha256": "f7bb5b75d4757014f42611ed0097c06b8471ec8327cccfa581b676e076d75a94",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-drive-maker--hold-both-hands--expr-greedy--12637e2e.png": {
+   "canonical_sha256": "836540cf4091a23a2ad6b4917311d4aa3014abb0e69dd35609d3b5dffcca2828",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-drive-maker--action-present--expr-smug--5e51ec13.png": {
+   "canonical_sha256": "d15f4df4e2f9163cfa348d0061ee630c73ab60b9f45282987427d7823d36d571",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--back-to-viewer--7a3b93be.png": {
+   "canonical_sha256": "09831c267de46e34d0d470c7c90326fe87c1e75c6613f25851eebf686a9a7175",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1.png": {
+   "canonical_sha256": "ee2b00efdbd41a87a6c1bcaa380784caeeccc3b74866cf2294ad3dd729468a09",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92.png": {
+   "canonical_sha256": "81987f87f5c8b322367ac1ef3fa54943043130d1effa2fff00dae29e63a76e75",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75.png": {
+   "canonical_sha256": "3433bfb7374e813eb3e8c33f3fe93120b69b1c7b5f3189e5212a85cbcca501e6",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153.png": {
+   "canonical_sha256": "5de94d612d426de9169c2d22625b11665757bc78593c3cfdacd6807c893ff7c3",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9.png": {
+   "canonical_sha256": "7f1d7e0956fc760f8235b9b6dacdd012195ce5e1089226ac33406f8882c3707f",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b.png": {
+   "canonical_sha256": "be51b09f43123fe173f32377b768a45852b81e5e005021fb41eeb907e76b8aaa",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  }
+ }
+}

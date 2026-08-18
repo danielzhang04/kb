@@ -1,0 +1,77 @@
+{
+  "run": "w2-partial",
+  "reviewer": "machine-tier vision review",
+  "date": "2026-08-18",
+  "cards": {
+    "L18": {
+      "card": "_staging/fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333.png",
+      "attempts": 2,
+      "verdict": "PARKED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"fail","expression":"pass","clean_card":"pass"},
+      "evidence": {"pose":"Attempt 2 repeats an arms-at-sides standing pose; the seeded carry-by-handle primitive has one hand carrying a case at the side."}
+    },
+    "L19": {
+      "card": "_staging/fig-drive-maker--hold-both-hands--expr-greedy--12637e2e.png",
+      "attempts": 2,
+      "verdict": "VERIFIED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"pass","expression":"pass","clean_card":"pass"},
+      "evidence": {"retry":"Attempt 2 holds both hands in the seeded chest-height geometry and contains only the figure, ground line, contact shadow, and pale-grey backdrop."}
+    },
+    "L20": {
+      "card": "_staging/fig-drive-maker--action-present--expr-smug--5e51ec13.png",
+      "attempts": 1,
+      "verdict": "VERIFIED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"pass","expression":"pass","clean_card":"pass"},
+      "evidence": {"review":"Canonical hair, cap, tone, coat and smug expression hold; the one open present hand has the four-digit family shape and no extra object is drawn."}
+    },
+    "L22": {
+      "card": "_staging/fig-brick-foreman--back-to-viewer--7a3b93be.png",
+      "attempts": 1,
+      "verdict": "VERIFIED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"not_applicable","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"pass","expression":"not_applicable","clean_card":"pass"},
+      "evidence": {"review":"The rear-view pose is held with canonical hair, shirt, trousers and compact rig; no expression primitive applies to this back-facing card."}
+    },
+    "L23": {
+      "card": "_staging/fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1.png",
+      "attempts": 1,
+      "verdict": "VERIFIED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"pass","expression":"pass","clean_card":"pass"},
+      "evidence": {"review":"Both raised palms follow the shrug primitive; deadpan eye/brow/mouth register, costume and clean card field hold."}
+    },
+    "L24": {
+      "card": "_staging/fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92.png",
+      "attempts": 2,
+      "verdict": "PARKED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"pass","expression":"pass","clean_card":"fail"},
+      "evidence": {"clean_card":"Attempt 2 still contains a large grey box held at the figure's side. The clean-card law permits no props or background objects."}
+    },
+    "L27": {
+      "card": "_staging/fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75.png",
+      "attempts": 2,
+      "verdict": "PARKED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"fail","expression":"pass","clean_card":"pass"},
+      "evidence": {"pose":"Attempt 2 remains a neutral arms-down stance with one fist, not the seeded one-hand carry geometry."}
+    },
+    "L30": {
+      "card": "_staging/fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153.png",
+      "attempts": 1,
+      "verdict": "VERIFIED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"pass","expression":"pass","clean_card":"pass"},
+      "evidence": {"review":"Terry Johnson's pale tone, swept light hair, moustache, shirt/tie and dark trousers match canonical; folded-arm pose and restrained thinking register hold."}
+    },
+    "L32": {
+      "card": "_staging/fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9.png",
+      "attempts": 1,
+      "verdict": "VERIFIED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"pass","expression":"pass","clean_card":"pass"},
+      "evidence": {"review":"The recoil primitive, wide-eyed surprised frame, canonical dark hair and tan jacket all hold; hands retain the primitive's simplified four-digit treatment."}
+    },
+    "L35": {
+      "card": "_staging/fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b.png",
+      "attempts": 1,
+      "verdict": "VERIFIED",
+      "axes": {"identity_vs_canonical":"pass","head_face":"pass","hands":"pass","outline":"pass","flat_cel_palette":"pass","pose":"pass","expression":"pass","clean_card":"pass"},
+      "evidence": {"review":"Raised-fist celebration and delighted eye/mouth frame match the routed references at their intended readable intensity; no added object or scenery."}
+    }
+  }
+}

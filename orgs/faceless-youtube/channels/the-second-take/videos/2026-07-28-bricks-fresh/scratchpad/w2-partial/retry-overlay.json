@@ -1,0 +1,34 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L18",
+      "character": "drive-maker",
+      "name": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+      "defect": "pose"
+    },
+    {
+      "kind": "step1",
+      "shot": "L19",
+      "character": "drive-maker",
+      "name": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L24",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L27",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+      "defect": "pose"
+    }
+  ]
+}
