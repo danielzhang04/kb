@@ -56,24 +56,29 @@ cohere, or fragment? File follow-ups as decision-notes, don't rework endlessly.
 - **TDD.** Test first; a unit is not done without passing tests + a runnable demo.
 - **Collision avoidance.** Parallel workers touch **disjoint file sets**. Anything on a
   shared file (SPA nav/routing, `.gitignore`, package manifests) routes through the
-  serial UI-shell (U0) / integration (U12) steps, or an isolated worktree + a serial merge.
+  serial UI-shell (U0) / theme (U16) / integration (U12) steps, or an isolated worktree +
+  a serial merge.
+- **UI: inspired, not copied.** The 4 reference dashboards are DIRECTION, not a spec to
+  clone. Adapt their DNA (dark functional-color shell, agents-as-a-graph, live run
+  telemetry, model badges) to kb's own dashboard and data — never reproduce their layouts
+  or branding.
 
 ## 4. Parallelization map
-- **U0 (UI shell + panel-registration) runs FIRST, serial.** It creates the "Agent
-  Platform" dashboard section + a registration mechanism so every feature panel is a
-  self-contained component added WITHOUT editing shared nav/routing. This unblocks
-  parallel panel work and is the key collision-avoidance move.
-- Then five **parallel lanes** (disjoint backend files + self-contained panels):
+- **U0 (section + panel-registration) and U16 (design/theme upgrade) run FIRST, serial.**
+  U0 creates the "Agent Platform" section + a registration mechanism so every feature panel
+  is a self-contained component added WITHOUT editing shared nav/routing; U16 lands the
+  centralized theme tokens so feature panels inherit the upgraded look. Key
+  collision-avoidance move.
+- Then **parallel lanes** (disjoint backend files + self-contained panels):
   - **BRAIN:** U1 → U2
-  - **AGENT-PLATFORM:** U3 → U4
-  - **SURFACE-EXISTING:** U5, U6 (read-mostly)
-  - **CONTEXT/HOOKS:** U7 → U8 → U9 (serialize *within* the lane — shared hook area)
+  - **AGENT-PLATFORM:** U3 → U4 → U14 (fleet/agent-connection graph)
+  - **SURFACE-EXISTING:** U5, U6, U15 (watch-agents-run) — read-mostly
+  - **CONTEXT/HOOKS:** U7 → U8 (ECC-adapt) → U9 (serialize *within* the lane — shared hook area)
   - **HYGIENE:** U10, U11 ; plus **U13** docs (anytime)
-- **U12 (integration + design pass) runs LAST, serial** — wires all built panels into the
-  shell, applies the design language (dark shell, functional color legend, model badges),
-  runs the full dashboard build + tests.
-- Concurrency is capped by the harness; the boss keeps ~all lanes in flight. If the night
-  is short, priority order: **U0 → U3,U4 → U1,U2 → U5 → U6 → U7,U8,U9 → U10,U11 → U12 →
+- **U12 (integration) runs LAST, serial** — wires all built panels into the shell, verifies
+  design coherence, runs the full dashboard build + tests.
+- Concurrency is capped by the harness; the boss keeps ~all lanes in flight. If the night is
+  short, priority: **U0,U16 → U3,U4,U14 → U15 → U1,U2 → U5,U6 → U7,U8,U9 → U10,U11 → U12 →
   U13, keep-on.**
 
 ## 5. The units (each = function + UI + authored acceptance)
@@ -127,10 +132,16 @@ cohere, or fragment? File follow-ups as decision-notes, don't rework endlessly.
   snippet under `docs/proposals/` — NOT wired into live settings.
 - Accept: emits valid `additionalContext` for a mock event; tests; snippet documented.
 
-**U8 · Per-terminal context object + panel** (sonnet)
-- Function/UI: a per-session context object (schema + read/write lib + tests) that U7 reads
-  and subagents can read; a "Context Lifecycle" panel showing the current object.
-- Accept: lib round-trips the object; panel shows a live object. Deps: U0.
+**U8 · Context persistence via adapted ECC** (opus)
+- Function: study the DISABLED ECC plugin's context stack (per-session store, SessionStart
+  injector, PreCompact summarizer, read/activity tracker). Extract + ADAPT the
+  context-persistence parts into kb-native scripts — DROP ECC's intrusive GateGuard (the
+  reason ECC was killed). Serves the "persistent shortened context store, shareable to
+  subagents, re-accessible after compaction" goal. Ship INERT + a PROPOSED wiring under
+  `docs/proposals/` + a decision-note on reclaim scope; do NOT auto-wire live settings.
+- UI: a "Context Lifecycle" panel showing the adapted store's current contents.
+- Accept: kb-native adapted module + tests; a proposed settings snippet; a decision-note;
+  ZERO live-settings edits; no GateGuard. Deps: U0.
 
 **U9 · Spawn context-load + model-verify hooks (inert)** (opus)
 - Function: a `SubagentStart` context-injection hook + a two-stage model-verify
@@ -161,6 +172,29 @@ cohere, or fragment? File follow-ups as decision-notes, don't rework endlessly.
 **U13 · Guideline docs** (sonnet, anytime)
 - `docs/proposals/file-editing-guidelines.md` + `docs/proposals/subagent-governance.md`
   generalizing BOSS.md dispatch discipline. Accept: both written, coherent.
+
+**U14 · Agent-connection / fleet graph** (opus)
+- Function/UI: build OVER the existing `WorkflowAgentGraph` — a fleet view rendering agents
+  as nodes with edges (dispatch / coordination relationships), color-coded by role/status,
+  click-to-inspect a node. Inspired by the videos' org-chart/radial graph — kb-native, NOT a
+  copy — over real registry (U3) + run data.
+- Accept: renders real agents + edges; clicking a node opens its detail; existing graph tests
+  still pass. Deps: U0, U3.
+
+**U15 · Watch-agents-run (live) view** (opus)
+- Function/UI: surface + upgrade the EXISTING live-run-graph (live mini-tails): live agent
+  status, model badge, "working Ns · called N tools", running/idle/done states, live tails.
+- Accept: shows live/recent runs with live status against real run data; existing live-run
+  tests pass. Deps: U0.
+
+**U16 · Dashboard-wide design/color upgrade** (opus, serial-early)
+- Function/UI: a CENTRALIZED theme-token + shared-component pass (improved dark palette as a
+  functional color legend, spacing, cards, status pills, model badges) that propagates across
+  the dashboard WITHOUT per-screen rewrites — the "better colors + elements across the
+  dashboard." Adapts the inspiration's DNA to kb; NOT a copy of any layout/branding.
+- Accept: theme tokens + shared components updated; ALL existing dashboard tests + screens
+  still pass (boundary: break nothing); a before/after note. If a broad restyle can't keep
+  tests green, scope down + write a decision-note.
 
 **keep-on (lowest priority)** (opus) — build the `Stop`-hook forced-continuation +
 closing-file loop DISABLED behind a flag, with a HARD numeric cap + off-switch + tests. DO
