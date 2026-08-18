@@ -292,7 +292,68 @@ def test_step1_retry_still_refuses_a_defect_outside_the_enum():
     except SystemExit as error:
         assert "defect" in str(error), str(error)
     else:
-        assert False, "a STEP-1 retry must refuse a defect outside {expression, rig, pose}"
+        assert False, "a STEP-1 retry must refuse a defect outside {expression, rig, pose, clean_card}"
+
+
+# taste-forensics P1 (2026-08-18) — the OLD act clause named the scene's object then negated it in
+# the same breath ("...empty-handed and alone, the object or person it acts on left out"), which the
+# forensics report diagnosed as an unwinnable positive-then-negate pattern behind w2-partial's
+# `clean_card` failures (L19 rendered the rake and banknotes, L24 rendered the brick, then a box).
+# The fix keeps the gesture/action language (it is still "this beat's card, not a neutral stance")
+# but never repeats the scene's object noun in forge's OWN authored instruction — the noun occurs
+# only once, inside the quoted scene sentence exactly as the shot author wrote it.
+def test_p8_double_bind_fixed_action_survives_object_noun_not_repeated():
+    clause = ("stage-left, lowering one red clay brick in one hand toward an open flat carton set "
+              "square on the trestle in front of him.")
+    payload = forge.figure_card_payload("action-point", clause)
+    assert "bodily ACT" in payload and "GESTURE" in payload, payload
+    assert "empty-handed" in payload, payload
+    assert "acts on left out" not in payload, payload      # the old self-contradicting fence is gone
+    assert payload.count("brick") == 1, payload             # named once — inside the quoted clause only
+    assert payload.count("carton") == 1, payload
+
+
+# taste-forensics P4(A) (2026-08-18) — Daniel's ruling: the ground-line requirement is DELETED,
+# shadow-only contact grounding is the accepted look. The clause was unchanged since 2026-07-30,
+# absent from `style-bible.md` §3 (the review's only rulebook per `SKILL.md`), and failed 15/20
+# cards in the 08-18 duel on a law the rulebook never wrote down.
+def test_ground_line_clause_removed_shadow_only_grounding():
+    posed = forge.figure_card_payload("action-point", "In a brown work coat, at the loading gate.")
+    poseless = forge.figure_card_payload(None)
+    for payload in (posed, poseless):
+        assert "ground line" not in payload.lower(), payload
+        assert "soft contact shadow" in payload, payload
+
+
+# taste-forensics P3 (2026-08-18) — `clean_card` joins the STEP-1 retry enum. w2-partial had no
+# sanctioned route for a leaked prop/scenery card and filed L19/L24 under `rig` "with no
+# instruction, solely to obtain the sanctioned re-mint" (its own deviation note), which lied about
+# why the cards were re-minted. This route drops the derived beat clause entirely for the retry
+# attempt — the proven leak mechanism — falling back to the Era-A payload shape, and fires a default
+# overlay instruction when the operator supplies none.
+def test_step1_retry_accepts_a_clean_card_defect_and_drops_the_derived_clause():
+    reg = {
+        "characters": {"hq-banker": {"base": "refs/hq-banker.png"}},
+        "assets": [
+            {"name": "expr-fear", "kind": "expression", "file": "refs/expr-fear.png"},
+            {"name": "action-point", "kind": "action", "file": "refs/action-point.png"},
+        ],
+    }
+    source = {"still_prompt": "`hq-banker`, `expr-fear`, `action-point`, hoists a heavy iron "
+                              "strongbox onto the counter at the factory gate.", "assets": {}}
+    out = forge._retry_step1(
+        {"kind": "step1", "shot": "T01", "character": "hq-banker",
+         "name": forge.figure_frame_name(
+             "hq-banker", "action-point", "expr-fear",
+             forge.beat_clause(source["still_prompt"], "hq-banker")),
+         "defect": "clean_card"},
+        source, SimpleNamespace(reg=reg), "retry entry 1")
+    assert out["retry_authority"]["defect"] == "clean_card", out["retry_authority"]
+    assert out["retry_authority"]["kind"] == "step1-remint", out["retry_authority"]
+    assert "minted for reads" not in out["payload"], out["payload"]   # derived clause dropped
+    assert "strongbox" not in out["payload"], out["payload"]
+    assert "no held object, no prop, no scenery" in out["payload"], out["payload"]  # default overlay
+    assert out["seed"] == ["refs/hq-banker.png", "refs/expr-fear.png", "refs/action-point.png"]
 
 
 if __name__ == "__main__":
@@ -305,5 +366,5 @@ if __name__ == "__main__":
             except BaseException as error:  # SystemExit is a useful red-TDD failure too.
                 failures.append((name, error))
                 print(f"FAIL {name}: {type(error).__name__}: {error}")
-    print(f"{13 - len(failures)}/13 passed")
+    print(f"{16 - len(failures)}/16 passed")
     sys.exit(bool(failures))

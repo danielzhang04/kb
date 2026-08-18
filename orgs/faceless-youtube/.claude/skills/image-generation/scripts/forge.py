@@ -1544,9 +1544,24 @@ def figure_card_payload(pose=None, clause=""):
     stance = ("standing or seated exactly as the pose reference shows" if pose
               else "standing squarely at rest, arms relaxed at the sides, facing the viewer")
     clause = strip_micro_pattern_texture(clause)
-    act = ("; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN "
-           "the stance the pose reference holds, empty-handed and alone, the object or person it "
-           "acts on left out" if pose else
+    # P8 DOUBLE BIND, FIXED (taste-forensics P1/P2, 2026-08-18). The old `act` clause told the
+    # figure to PERFORM the beat's act — which names its object one sentence earlier in `clause` —
+    # and then negated that same object in the next breath ("empty-handed and alone, the object or
+    # person it acts on left out"). A positive instruction to depict an interaction, immediately
+    # followed by a negation of the interaction's object while the object is still named on the
+    # page, is unwinnable: the model drew the rake, the brick, the carton (w2-partial `clean_card`
+    # failures). The fix is NOT a code-side noun strip on `clause` (rejected by design — see the
+    # module docstring above on quoted literals; a regex would mangle the clothing half sharing the
+    # sentence). It stays Era-B shaped instead: a positive "take ONLY this" extraction, mirroring
+    # how the clothing half already asks the model to read its own quoted prose and keep only the
+    # garment words. The ACT survives as a GESTURE — the empty-handed shape of the act, not the act
+    # done TO the object — so a card still reads a grip, a lean, a reach; the object itself is
+    # never the thing being drawn, only the scene's, stated as fact rather than an argued-with
+    # negation of a preceding positive instruction.
+    act = ("; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies — draw "
+           "the figure performing that gesture empty-handed, WITHIN the stance the pose reference "
+           "holds; the object, person, prop or setting its sentence names belongs to the scene, "
+           "not to this reference card" if pose else
            ", and nothing else from it: with no pose reference seeded, its action is not this "
            "card's to draw")
     derived = (f"The scene this card is minted for reads: {clause} Where that description AUTHORS "
@@ -1554,10 +1569,14 @@ def figure_card_payload(pose=None, clause=""):
                "work and setting; where it authors none, the costume the canonical seed pins "
                f"governs unchanged, and never the rig template's default hoodie{act}. Draw none "
                "of its setting, props, lettering or other people. " if clause else "")
-    return (f"The whole figure is in frame head to feet, {stance}, on a thin visible ground line "
-            "with one soft contact shadow directly "
-            f"beneath it. {derived}Flat solid pale-grey studio backdrop, no scenery, no props, no "
-            "furniture. "
+    # Ground line REMOVED (Daniel ruling, taste-forensics P4(A), 2026-08-18): the clause was
+    # unchanged since 2026-07-30, absent from `style-bible.md` §3 (the review's only rulebook per
+    # SKILL.md), and never reliably obeyed — a latent trap that fails cards on a law nobody wrote
+    # down. Shadow-only contact grounding is the accepted look; the contact-shadow clause alone
+    # states it.
+    return (f"The whole figure is in frame head to feet, {stance}, with one soft contact shadow "
+            f"directly beneath it. {derived}Flat solid pale-grey studio backdrop, no scenery, no "
+            "props, no furniture. "
             "This is a reference sheet: the character alone, fully resolved, ready to be placed "
             "into a separate scene.")
 
@@ -2733,8 +2752,14 @@ def _retry_step1(entry, source, k, label):
     # sanctioned repair — scene prose was the only lever, and prose that re-poses a figure redraws
     # the head sitting on that body. The re-mint path below already rebuilds the card from its own
     # recipe (pose primitive re-seeded, P8 clause re-derived), so nothing else changes.
-    if entry.get("defect") not in ("expression", "rig", "pose"):
-        raise SystemExit(f"{label}: STEP-1 retry `defect` must be `expression`, `rig` or `pose`.")
+    # `clean_card` (taste-forensics P3, 2026-08-18): a leaked prop/scenery object. Before this, the
+    # w2-partial operator had no sanctioned route and filed real clean-card defects under `rig`
+    # "with no instruction, solely to obtain the sanctioned re-mint" — the retry ledger was lying
+    # about why cards were re-minted. See its route below (drops the derived beat clause entirely
+    # for this one attempt, since that clause is the proven leak mechanism).
+    if entry.get("defect") not in ("expression", "rig", "pose", "clean_card"):
+        raise SystemExit(f"{label}: STEP-1 retry `defect` must be `expression`, `rig`, `pose` or "
+                         "`clean_card`.")
     character = entry.get("character")
     if not isinstance(character, str) or not character.strip():
         raise SystemExit(f"{label}: STEP-1 `character` must be a non-empty string.")
@@ -2768,7 +2793,16 @@ def _retry_step1(entry, source, k, label):
             f"`{expected}`. A card's name carries its derived-clause digest (P8), so a hand-typed "
             f"name lands a frame the next `batch` never looks up — it re-mints instead, without "
             f"this retry's instruction. Copy the name from the review board.")
-    payload = figure_card_payload(pose, clause)
+    # `clean_card` drops the derived clause for this attempt — the Era-A payload shape (seed
+    # roles + stance + backdrop, no beat text at all), so the object that leaked has nowhere left
+    # to be quoted from. A default overlay instruction fires when the operator supplied none, so a
+    # `clean_card` retry is never a silent no-op re-roll.
+    is_clean_card = entry["defect"] == "clean_card"
+    payload = figure_card_payload(pose, "" if is_clean_card else clause)
+    if is_clean_card and not instruction:
+        instruction = ("The previous attempt drew a held object, prop or scenery fragment on this "
+                       "card. Draw the figure alone against the flat pale-grey backdrop: no held "
+                       "object, no prop, no scenery, no other person.")
     if instruction:
         payload += "\n\n" + instruction.strip()
     delta = placement_delta(payload, seed_roles)
