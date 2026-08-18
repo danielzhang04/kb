@@ -1,0 +1,60 @@
+[
+  {
+    "name": "L112",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION and TEMPERATURE \u2014 match how strongly its flat fills are coloured and how warm or cool they are; lay THIS frame's own hues down at that same strength and temperature; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA wide rented warehouse unit seen head-on and entirely empty of people: a bare concrete slab scarred with old pallet marks, corrugated side walls, one roller shutter half up at the far end letting in a slab of daylight, an empty steel mezzanine stair stage-left. Every wall panel is plain and unmarked from floor to eaves. Cool grey-cream palette, one daylight shaft against a row of dead ceiling fittings, foreground depth from a cropped stanchion at the right edge.",
+    "payload": "A wide rented warehouse unit seen head-on and entirely empty of people: a bare concrete slab scarred with old pallet marks, corrugated side walls, one roller shutter half up at the far end letting in a slab of daylight, an empty steel mezzanine stair stage-left. Every wall panel is plain and unmarked from floor to eaves. Cool grey-cream palette, one daylight shaft against a row of dead ceiling fittings, foreground depth from a cropped stanchion at the right edge.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor",
+    "plate_composition": true
+  },
+  {
+    "name": "L198",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION and TEMPERATURE \u2014 match how strongly its flat fills are coloured and how warm or cool they are; lay THIS frame's own hues down at that same strength and temperature; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA cast-free courtroom seen wide from the well: an open courtroom-well floor runs from the foreground into the midground. At the back, a raised timber bench holds an empty high-backed chair behind it; stage-left, an empty jury box has exactly twelve seats in two rows of six. Two counsel tables sit to the sides of the well, and gallery pews flank the well behind them. Panelled walls with tall plain windows, cream-oak-teal palette, cold daylight from stage-left across the gallery pews, foreground depth from a cropped pew end at one lower corner.",
+    "payload": "A cast-free courtroom seen wide from the well: an open courtroom-well floor runs from the foreground into the midground. At the back, a raised timber bench holds an empty high-backed chair behind it; stage-left, an empty jury box has exactly twelve seats in two rows of six. Two counsel tables sit to the sides of the well, and gallery pews flank the well behind them. Panelled walls with tall plain windows, cream-oak-teal palette, cold daylight from stage-left across the gallery pews, foreground depth from a cropped pew end at one lower corner.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": true,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette + temperature); PLATE \u2014 place-first frame, bible descriptor + style suffix, no content anchor",
+    "plate_composition": true
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L28",
+      "name": "L28-warmretry",
+      "defect": "content",
+      "replace": {
+        "from": "Cool grey-teal-cream palette, flat even industrial light, foreground depth from a cropped bench end cutting the lower-right corner.",
+        "to": "Warm grey-cream palette (steel benches, walls and concrete kept warm-toned, never draining to cool grey or teal), flat industrial light carrying a cool blue-white cast, foreground depth from a cropped bench end cutting the lower-right corner."
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L84",
+      "name": "L84-warmretry",
+      "defect": "content",
+      "replace": {
+        "from": "Cool grey-cream-teal palette, flat overcast daylight with one strip fitting on, foreground depth from a cropped chair back at the lower-right edge.",
+        "to": "Warm cream-grey palette (walls and neutrals kept warm-toned even as the light reads cold; the teal floor and chair cushions stay as the one deliberate cool accent), flat overcast daylight carrying a cool blue-grey cast, with one strip fitting on, foreground depth from a cropped chair back at the lower-right edge."
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L86",
+      "name": "L86-warmretry",
+      "defect": "content",
+      "replace": {
+        "from": "Cool grey-teal-cream palette, flat industrial light, foreground depth from a cropped rack upright at the right edge.",
+        "to": "Warm grey-cream palette (steel racking, concrete floor and walls kept warm-toned, never draining to cool grey or teal), flat industrial light carrying a cool blue-white cast, foreground depth from a cropped rack upright at the right edge."
+      }
+    }
+  ]
+}

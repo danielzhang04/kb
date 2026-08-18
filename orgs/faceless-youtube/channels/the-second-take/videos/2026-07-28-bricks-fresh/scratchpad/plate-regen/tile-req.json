@@ -1,0 +1,11 @@
+[
+  {
+    "name": "scene-style-tile",
+    "character": "base",
+    "mode": "environment",
+    "delta": "A modest 1980s home-electronics retail shop interior, eye-level view. Foreground: a wood-topped sales counter with a cash register and a stack of catalogs, cropped at the frame's bottom edge. Midground: open wooden shelving stocked with boxed appliances and cassette players, a rolling ladder leaning against it. Background: a wide storefront window with hand-lettered price signs and a doorway to a stockroom beyond. Warm sunlit mid-afternoon light crossing the floor in one soft shaft. Committed warm palette: golden oak wood tones, cream walls, warm amber signage.",
+    "aspect": "16:9",
+    "image_size": "1K",
+    "plate": true
+  }
+]

@@ -1,0 +1,14 @@
+{
+ "figures": {
+  "refs/env/scene-style-tile.png": {
+   "canonical_sha256": "79f0ea020e23d657baa5b5ba217a4a0cc4a6b38705352db5c34f50e0972ec772",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  }
+ }
+}

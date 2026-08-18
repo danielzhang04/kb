@@ -1,315 +1,315 @@
 [
-  {
-    "id": "L28",
-    "worst": "clean",
-    "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L29",
-    "worst": "clean",
-    "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L33",
-    "worst": "clean",
-    "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L38",
-    "worst": "clean",
-    "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L44",
-    "worst": "clean",
-    "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L46",
-    "worst": "clean",
-    "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L169",
-    "worst": "clean",
-    "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L34",
-    "worst": "HIGH",
-    "why": "delta_discipline: canonical-expression leak PERSISTS on `miniscribe-rep` after P9 - on a beat whose prose authors NO expression change (\"everything else exactly as established\"), his eyes went from closed happy-squint to wide open with pupils and his mouth from open grin to small closed smile; `ibm-suit` resolved the identical spec correctly. Measured vs the verified parent L33: miniscribe-rep face interior 43.70% changed, ibm-suit head 10.21%, place regions 3.28-3.82%, authored roller-door delta 50.67%. P9 DID fix the hair half of the 6c2 leak (hair core 37.58% -> 6.51%) but not the expression half (face interior 29.79% -> 43.70%). Candidate frame left at visual-kit/_staging/L34.png, NOT promoted. Not re-rolled: the 6c2 record's standing diagnosis is that place, ibm-suit and the authored delta are all correct and a fresh roll risks all three to fix one face, and P9's seed-role expression-authority prose is already present in the assembled prompt, so the gap is spec-side, not a generator lottery."
-  },
-  {
-    "id": "L39",
-    "worst": "HIGH",
-    "why": "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
-  },
-  {
-    "id": "L48",
-    "worst": "HIGH",
-    "why": "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--action-slump--expr-worried--def769f5` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
-  },
-  {
-    "id": "L84",
-    "worst": "clean",
-    "why": "W24 boss adjudication 2026-08-14: chair count is non-story-bearing set dressing; the authored numeral was dropped. All other authored place elements pass w23-A; no_figures and lettering pass w23-A; composition/register axes pass w23-B.",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L114",
-    "worst": "clean",
-    "why": "W8: sonnet verifier pair (A place-fidelity/lettering, B rig/render), merged any-fail-fails; all applicable axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L198",
-    "worst": "clean",
-    "why": "W21: sonnet verifier pair (A fidelity incl. 12-seat multi-method count, B composition pixel-gate), merged any-fail-fails; all applicable axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L65",
-    "worst": "clean",
-    "why": "W21: sonnet verifier pair (A fidelity incl. 12-seat multi-method count, B composition pixel-gate), merged any-fail-fails; all applicable axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L112",
-    "worst": "clean",
-    "why": "W12: sonnet verifier pair (A place-fidelity/lettering, B rig/render), merged any-fail-fails; all applicable axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L86",
-    "worst": "clean",
-    "why": "W21: sonnet verifier pair (A fidelity incl. 12-seat multi-method count, B composition pixel-gate), merged any-fail-fails; all applicable axes pass",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L01",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean",
-    "worst": "clean",
-    "why": "pc-boxy correctly shows the CRT-monitor screen-face head with delighted screen expression, planted on the coffee table with arms out; lava lamp stage-left, boombox stage-right, blank picture-rail wall, mustard shag carpet and cropped couch-arm foreground all present as specified. Cleanest read of pc-boxy's canonical design in the batch."
-  },
-  {
-    "id": "L02",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean",
-    "worst": "clean",
-    "why": "Crowd rig holds: dot eyes, simple shouting mouth, no noses/ears, only 2 repeating hair tones and 3 repeating skin tones, era jumpsuits/hi-tops throughout. Hairdos stack into a hedge across the upper third with one dead-centre blonde tower, chrome rail, chequer floor, cropped ticket booth all match."
-  },
-  {
-    "id": "L06",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean",
-    "worst": "clean",
-    "why": "pc-boxy's head tone/screen-face design and delighted expression match L01's canonical rendering closely. Crowd pressed against the plate-glass window is dense and hungry-reading, palette and plinth lighting match, foreground riser cropped lower-left as specified."
-  },
-  {
-    "id": "L09",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean",
-    "worst": "clean",
-    "why": "Queue reads as period 1980s bulky coats/parkas and hoods with no modern tech/clothing tells. Hooded silhouettes keep headwear variety tight. Sodium streetlamp, rubbish-bin foreground crop, night-blue palette match; folding stools and a sleeping bag present as specified."
-  },
-  {
-    "id": "L18",
-    "worst": "clean",
-    "why": "wave-C fresh-eyes sonnet pass (independent, no generator context): rig/fidelity/style all clean; minor non-blocking note: cropped lower-right prop reads as a pipe/rail rather than a bollard shape",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L19",
-    "worst": "clean",
-    "why": "wave-C fresh-eyes sonnet pass (independent, no generator context): rig/fidelity/style all clean; minor non-blocking note: palette reads mostly brown/amber, weaker hit on the prompt's stated green than ideal",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L20",
-    "worst": "clean",
-    "why": "wave-C RETRY (content, crowd-rig reinforcement appended after 'reaches up for the tools.'): mini-pass fresh-eyes CONFIRMS the crowd now carries dot eyes, simple closed/open mouths with no rendered iris/pupil and no visible teeth, 2-3 repeating hair/headwear silhouettes, head tones within the allowed set, matching the crowd exemplar. drive-maker clean against canonical. CLEAN.",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L21",
-    "worst": "clean",
-    "why": "wave-C RETRY (content, same crowd-rig fix as L20 + money-box clause replaced with an explicit plain-iron-strongbox description banning wood/jewels/banding/sparkle): mini-pass fresh-eyes CONFIRMS crowd rig now clean AND the money box now reads as a plain flat grey-black metal strongbox with plain flat coins, no sparkle/glow/wood/jewels/ornate banding. Held-set continuity vs L20 holds. CLEAN.",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L23",
-    "worst": "clean",
-    "why": "wave-C fresh-eyes sonnet pass (independent, no generator context): rig/fidelity/style all clean",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L24",
-    "worst": "clean",
-    "why": "wave-C fresh-eyes sonnet pass (independent, no generator context): rig/fidelity/style all clean",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean"
-  },
-  {
-    "id": "L25",
-    "worst": "LOW",
-    "why": "wave-C RETRY (content, 'the stencilled words' -> hand-marker-register phrasing banning stencil/print typeface): mini-pass fresh-eyes DSG-lite re-confirms spelling intact (H-A-R-D / D-R-I-V-E, correct). Typeface register STILL NOT FIXED: renders bold/upright/uniform-stroke with a level baseline, no lean, no baseline bounce vs the locked hand-marker exemplar. This shot already used its one sanctioned retry (content defect, exact-replace) with no improvement on this axis -- per doctrine, STOPPING here rather than re-rolling an unchanged mechanism. PARKED, surfaced as a possible systemic issue: engine/mechanism may not reliably render lean+baseline-bounce from prose alone even when the stencil word is removed; worth flagging to the orchestrator for a channel-level look (other lettering shots may share this risk).",
-    "dsg": [
-      {
-        "id": "L25-carton-text-retry",
-        "parent": "L25",
-        "q": "HARD DRIVE",
-        "verdict": "pass",
-        "note": "spelled correctly, both words, all caps, confirmed intact after retry"
-      }
-    ],
-    "r": "clean",
-    "f": "clean",
-    "s": "LOW"
-  },
-  {
-    "id": "L10",
-    "f": "clean",
-    "s": "clean",
-    "r": "clean",
-    "worst": "clean",
-    "why": "Fresh-eyes review: no-hands pc-boxy on-model (expr-talking register correct), panel/drive/desk props all present and placed correctly, cream-teal-charcoal palette locked, no stray text. Clean on all 3 axes."
-  },
-  {
-    "id": "L11",
-    "f": "clean",
-    "s": "clean",
-    "r": "clean",
-    "worst": "clean",
-    "why": "Fresh-eyes review: pc-boxy on-model with correct expr-delighted register, drive hugged to chest per spec, bedroom staging (bed/blank headboard wall/curtained window/cropped bedpost) matches exactly, blue-amber-cream palette correct. Clean on all 3 axes."
-  },
-  {
-    "id": "L13",
-    "f": "clean",
-    "s": "clean",
-    "r": "clean",
-    "worst": "clean",
-    "why": "Fresh-eyes review: character-free prop-drive scale-up shot, all 3 named drawer contents (folders/photo tin/cassette stack) present, cream-buff-teal palette correct, no stray character or text. Clean on all 3 axes."
-  },
-  {
-    "id": "L15",
-    "f": "clean",
-    "s": "clean",
-    "r": "crowd figures on adult proportions + one individuated headwear silhouette (rig)",
-    "worst": "rig",
-    "why": "Fresh-eyes review FAIL (rig only; fidelity/style clean): crowd figures read with normal adult body proportions instead of the locked squat crowd-rig proportion, and one figure wears a distinct dark full head/shoulder covering not shared by the rest of the group (violates the 2-3-repeating-silhouette crowd rule). No retry attempted: the defect traces to the forge-derived §2d crowd-rig policy clause's effectiveness, not to any authored still_prompt text — no legitimate single-clause authored-payload retry lever exists for this shot. Flagged for human/root-cause review rather than a guessed re-roll."
-  },
-  {
-    "id": "L03",
-    "r": "MED",
-    "f": "clean",
-    "s": "clean",
-    "worst": "MED",
-    "why": "RETRY-1 (final round, no further retry per one-retry rule): partial fix — individuated brow/mouth linework is gone, every crowd face now reads as flat dot-eyes + one simple curved smile, consistent across the group. But hair/headwear silhouette variety is still over cap: roughly 4-5 repeating types (bald/skin-tone dome, blonde wavy shoulder-length, dark side-part, dark curly/afro-textured, pulled-back dark updo) against the mandated 2-3. Dais board genuinely blank, lectern empty, spotlight framing intact. STILL PARKED — surfaced for human escalation, not re-rolled again."
-  },
-  {
-    "id": "L04",
-    "r": "LOW",
-    "f": "clean",
-    "s": "clean",
-    "worst": "LOW",
-    "why": "RETRY-1 (final round, no further retry per one-retry rule): fix did not land — the shutter still shows roughly 8-9 closely-spaced thin horizontal ridge lines rather than 'a small number of THICK bands', visibly finer than the outline weight on the car body/window frame/awning edge. No other fine/thin linework elsewhere in frame. DSG '1983' still passes cleanly. STILL PARKED — surfaced for human escalation, not re-rolled again.",
-    "dsg": [
-      {
-        "id": "txt1",
-        "parent": "chalk-board",
-        "q": "does the sandwich board read exactly '1983'?",
-        "verdict": "pass",
-        "note": "Board reads exactly '1983' in chalk-style lettering, nothing else on the board."
-      }
-    ]
-  },
-  {
-    "id": "L05",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean",
-    "worst": "clean",
-    "why": "RETRY-1 fix landed: the figure is unmistakably pc-boxy — a beige CRT-monitor-box head with a green screen bearing screen-drawn round eyes, raised eyebrows and an open surprised mouth, not the prior generic round humanoid. Stubby arms rest over the crate rim, red tape strip visible, grey shelving and bulb match brief."
-  },
-  {
-    "id": "L07",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean",
-    "worst": "clean",
-    "why": "RETRY-1 fix landed: crowd faces now hold to dot-eyes + one simple mouth with no drawn eyebrows or scowl-furrow lines anywhere. pc-boxy's smug identity correct (box head, green screen, smug screen-drawn expression), banknotes stay clustered at counter level without overlapping the machine."
-  },
-  {
-    "id": "L08",
-    "r": "clean",
-    "f": "clean",
-    "s": "clean",
-    "worst": "clean",
-    "why": "RETRY-1 fix landed: ducking crowd shows about 3 repeating flat head tones (pale cream, tan, dark brown) within cap, no eyebrows drawn on any face — just dot eyes and simple mouths. Exactly four beige PC units still airborne, consistent design, trailing debris, unchanged as expected."
-  },
-  {
-    "id": "L12",
-    "f": "clean",
-    "s": "clean",
-    "r": "clean",
-    "worst": "clean",
-    "why": "RETRY round 1 (L12-fix), fresh-eyes review: lamp fixture now reads as a dark unlit silhouette in the exact same position/crop as approved L11, room goes convincingly deep blue while the drive keeps its own warm glow, everything else held pixel-identical to the parent. Clean on all 3 axes."
-  },
-  {
-    "id": "L14",
-    "f": "arms cross/stack at two different heights rather than pressing side-by-side flat together at hip height",
-    "s": "clean",
-    "r": "pc-boxy drawn with articulated fingered hands gripping the drawer instead of its established stubby, handless arms (no_hands rig break)",
-    "worst": "rig",
-    "why": "RETRY round 1 (L14-fix), fresh-eyes review: the prop-drive redesign (cream-buff body, teal trim) is fixed and on-model, and both arms now reach the same drawer (up from one arm on/one arm off), but the retry introduced a NEW rig-identity defect -- pc-boxy is drawn with human-style fingered hands, which its established design explicitly does not have (stub arms only). This was the ONE sanctioned retry; it is now exhausted -- kept as the best attempt (fixes 2 of 3 original defects) but PARKED, not verified. suspected_mechanism_layer: vpw_authoring -- the shot's own action verb (\"shoving\" a drawer shut) inherently pulls the render toward hand-based manipulation, in tension with pc-boxy's no-hands canon; a future re-author should replace the shoving/pressing verb with a stub-arm-compatible action (e.g. pc-boxy body-checking or leaning its whole side against the drawer) rather than a third prompt-only retry on the same mechanism."
-  }
+ {
+  "id": "L28",
+  "worst": "clean",
+  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L29",
+  "worst": "clean",
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L33",
+  "worst": "clean",
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L38",
+  "worst": "clean",
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L44",
+  "worst": "clean",
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L46",
+  "worst": "clean",
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L169",
+  "worst": "clean",
+  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L34",
+  "worst": "HIGH",
+  "why": "delta_discipline: canonical-expression leak PERSISTS on `miniscribe-rep` after P9 - on a beat whose prose authors NO expression change (\"everything else exactly as established\"), his eyes went from closed happy-squint to wide open with pupils and his mouth from open grin to small closed smile; `ibm-suit` resolved the identical spec correctly. Measured vs the verified parent L33: miniscribe-rep face interior 43.70% changed, ibm-suit head 10.21%, place regions 3.28-3.82%, authored roller-door delta 50.67%. P9 DID fix the hair half of the 6c2 leak (hair core 37.58% -> 6.51%) but not the expression half (face interior 29.79% -> 43.70%). Candidate frame left at visual-kit/_staging/L34.png, NOT promoted. Not re-rolled: the 6c2 record's standing diagnosis is that place, ibm-suit and the authored delta are all correct and a fresh roll risks all three to fix one face, and P9's seed-role expression-authority prose is already present in the assembled prompt, so the gap is spec-side, not a generator lottery."
+ },
+ {
+  "id": "L39",
+  "worst": "HIGH",
+  "why": "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
+ },
+ {
+  "id": "L48",
+  "worst": "HIGH",
+  "why": "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--action-slump--expr-worried--def769f5` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
+ },
+ {
+  "id": "L84",
+  "worst": "clean",
+  "why": "W24 boss adjudication 2026-08-14: chair count is non-story-bearing set dressing; the authored numeral was dropped. All other authored place elements pass w23-A; no_figures and lettering pass w23-A; composition/register axes pass w23-B.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L114",
+  "worst": "clean",
+  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L198",
+  "worst": "clean",
+  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L65",
+  "worst": "clean",
+  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L112",
+  "worst": "clean",
+  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L86",
+  "worst": "clean",
+  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421), after one sanctioned retry: identity/rig n/a (cast-free); fidelity matches every authored place fact (racking, pallets, lane paint, roof lights, MINISCRIBE lettering verbatim in locked ink -- confirmed by Pillow colour-distance sampling, not by eye); style/taste clean -- warm-biased palette (measured R-B +40.2, up from -1.4 pre-retry), fore/mid/background depth read, no grey-teal drift on the dominant surfaces. See scratchpad/plate-regen/progress.md.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L01",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "pc-boxy correctly shows the CRT-monitor screen-face head with delighted screen expression, planted on the coffee table with arms out; lava lamp stage-left, boombox stage-right, blank picture-rail wall, mustard shag carpet and cropped couch-arm foreground all present as specified. Cleanest read of pc-boxy's canonical design in the batch."
+ },
+ {
+  "id": "L02",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "Crowd rig holds: dot eyes, simple shouting mouth, no noses/ears, only 2 repeating hair tones and 3 repeating skin tones, era jumpsuits/hi-tops throughout. Hairdos stack into a hedge across the upper third with one dead-centre blonde tower, chrome rail, chequer floor, cropped ticket booth all match."
+ },
+ {
+  "id": "L06",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "pc-boxy's head tone/screen-face design and delighted expression match L01's canonical rendering closely. Crowd pressed against the plate-glass window is dense and hungry-reading, palette and plinth lighting match, foreground riser cropped lower-left as specified."
+ },
+ {
+  "id": "L09",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "Queue reads as period 1980s bulky coats/parkas and hoods with no modern tech/clothing tells. Hooded silhouettes keep headwear variety tight. Sodium streetlamp, rubbish-bin foreground crop, night-blue palette match; folding stools and a sleeping bag present as specified."
+ },
+ {
+  "id": "L18",
+  "worst": "clean",
+  "why": "wave-C fresh-eyes sonnet pass (independent, no generator context): rig/fidelity/style all clean; minor non-blocking note: cropped lower-right prop reads as a pipe/rail rather than a bollard shape",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L19",
+  "worst": "clean",
+  "why": "wave-C fresh-eyes sonnet pass (independent, no generator context): rig/fidelity/style all clean; minor non-blocking note: palette reads mostly brown/amber, weaker hit on the prompt's stated green than ideal",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L20",
+  "worst": "clean",
+  "why": "wave-C RETRY (content, crowd-rig reinforcement appended after 'reaches up for the tools.'): mini-pass fresh-eyes CONFIRMS the crowd now carries dot eyes, simple closed/open mouths with no rendered iris/pupil and no visible teeth, 2-3 repeating hair/headwear silhouettes, head tones within the allowed set, matching the crowd exemplar. drive-maker clean against canonical. CLEAN.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L21",
+  "worst": "clean",
+  "why": "wave-C RETRY (content, same crowd-rig fix as L20 + money-box clause replaced with an explicit plain-iron-strongbox description banning wood/jewels/banding/sparkle): mini-pass fresh-eyes CONFIRMS crowd rig now clean AND the money box now reads as a plain flat grey-black metal strongbox with plain flat coins, no sparkle/glow/wood/jewels/ornate banding. Held-set continuity vs L20 holds. CLEAN.",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L23",
+  "worst": "clean",
+  "why": "wave-C fresh-eyes sonnet pass (independent, no generator context): rig/fidelity/style all clean",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L24",
+  "worst": "clean",
+  "why": "wave-C fresh-eyes sonnet pass (independent, no generator context): rig/fidelity/style all clean",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean"
+ },
+ {
+  "id": "L25",
+  "worst": "LOW",
+  "why": "wave-C RETRY (content, 'the stencilled words' -> hand-marker-register phrasing banning stencil/print typeface): mini-pass fresh-eyes DSG-lite re-confirms spelling intact (H-A-R-D / D-R-I-V-E, correct). Typeface register STILL NOT FIXED: renders bold/upright/uniform-stroke with a level baseline, no lean, no baseline bounce vs the locked hand-marker exemplar. This shot already used its one sanctioned retry (content defect, exact-replace) with no improvement on this axis -- per doctrine, STOPPING here rather than re-rolling an unchanged mechanism. PARKED, surfaced as a possible systemic issue: engine/mechanism may not reliably render lean+baseline-bounce from prose alone even when the stencil word is removed; worth flagging to the orchestrator for a channel-level look (other lettering shots may share this risk).",
+  "dsg": [
+   {
+    "id": "L25-carton-text-retry",
+    "parent": "L25",
+    "q": "HARD DRIVE",
+    "verdict": "pass",
+    "note": "spelled correctly, both words, all caps, confirmed intact after retry"
+   }
+  ],
+  "r": "clean",
+  "f": "clean",
+  "s": "LOW"
+ },
+ {
+  "id": "L10",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "Fresh-eyes review: no-hands pc-boxy on-model (expr-talking register correct), panel/drive/desk props all present and placed correctly, cream-teal-charcoal palette locked, no stray text. Clean on all 3 axes."
+ },
+ {
+  "id": "L11",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "Fresh-eyes review: pc-boxy on-model with correct expr-delighted register, drive hugged to chest per spec, bedroom staging (bed/blank headboard wall/curtained window/cropped bedpost) matches exactly, blue-amber-cream palette correct. Clean on all 3 axes."
+ },
+ {
+  "id": "L13",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "Fresh-eyes review: character-free prop-drive scale-up shot, all 3 named drawer contents (folders/photo tin/cassette stack) present, cream-buff-teal palette correct, no stray character or text. Clean on all 3 axes."
+ },
+ {
+  "id": "L15",
+  "f": "clean",
+  "s": "clean",
+  "r": "crowd figures on adult proportions + one individuated headwear silhouette (rig)",
+  "worst": "rig",
+  "why": "Fresh-eyes review FAIL (rig only; fidelity/style clean): crowd figures read with normal adult body proportions instead of the locked squat crowd-rig proportion, and one figure wears a distinct dark full head/shoulder covering not shared by the rest of the group (violates the 2-3-repeating-silhouette crowd rule). No retry attempted: the defect traces to the forge-derived §2d crowd-rig policy clause's effectiveness, not to any authored still_prompt text — no legitimate single-clause authored-payload retry lever exists for this shot. Flagged for human/root-cause review rather than a guessed re-roll."
+ },
+ {
+  "id": "L03",
+  "r": "MED",
+  "f": "clean",
+  "s": "clean",
+  "worst": "MED",
+  "why": "RETRY-1 (final round, no further retry per one-retry rule): partial fix — individuated brow/mouth linework is gone, every crowd face now reads as flat dot-eyes + one simple curved smile, consistent across the group. But hair/headwear silhouette variety is still over cap: roughly 4-5 repeating types (bald/skin-tone dome, blonde wavy shoulder-length, dark side-part, dark curly/afro-textured, pulled-back dark updo) against the mandated 2-3. Dais board genuinely blank, lectern empty, spotlight framing intact. STILL PARKED — surfaced for human escalation, not re-rolled again."
+ },
+ {
+  "id": "L04",
+  "r": "LOW",
+  "f": "clean",
+  "s": "clean",
+  "worst": "LOW",
+  "why": "RETRY-1 (final round, no further retry per one-retry rule): fix did not land — the shutter still shows roughly 8-9 closely-spaced thin horizontal ridge lines rather than 'a small number of THICK bands', visibly finer than the outline weight on the car body/window frame/awning edge. No other fine/thin linework elsewhere in frame. DSG '1983' still passes cleanly. STILL PARKED — surfaced for human escalation, not re-rolled again.",
+  "dsg": [
+   {
+    "id": "txt1",
+    "parent": "chalk-board",
+    "q": "does the sandwich board read exactly '1983'?",
+    "verdict": "pass",
+    "note": "Board reads exactly '1983' in chalk-style lettering, nothing else on the board."
+   }
+  ]
+ },
+ {
+  "id": "L05",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "RETRY-1 fix landed: the figure is unmistakably pc-boxy — a beige CRT-monitor-box head with a green screen bearing screen-drawn round eyes, raised eyebrows and an open surprised mouth, not the prior generic round humanoid. Stubby arms rest over the crate rim, red tape strip visible, grey shelving and bulb match brief."
+ },
+ {
+  "id": "L07",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "RETRY-1 fix landed: crowd faces now hold to dot-eyes + one simple mouth with no drawn eyebrows or scowl-furrow lines anywhere. pc-boxy's smug identity correct (box head, green screen, smug screen-drawn expression), banknotes stay clustered at counter level without overlapping the machine."
+ },
+ {
+  "id": "L08",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "RETRY-1 fix landed: ducking crowd shows about 3 repeating flat head tones (pale cream, tan, dark brown) within cap, no eyebrows drawn on any face — just dot eyes and simple mouths. Exactly four beige PC units still airborne, consistent design, trailing debris, unchanged as expected."
+ },
+ {
+  "id": "L12",
+  "f": "clean",
+  "s": "clean",
+  "r": "clean",
+  "worst": "clean",
+  "why": "RETRY round 1 (L12-fix), fresh-eyes review: lamp fixture now reads as a dark unlit silhouette in the exact same position/crop as approved L11, room goes convincingly deep blue while the drive keeps its own warm glow, everything else held pixel-identical to the parent. Clean on all 3 axes."
+ },
+ {
+  "id": "L14",
+  "f": "arms cross/stack at two different heights rather than pressing side-by-side flat together at hip height",
+  "s": "clean",
+  "r": "pc-boxy drawn with articulated fingered hands gripping the drawer instead of its established stubby, handless arms (no_hands rig break)",
+  "worst": "rig",
+  "why": "RETRY round 1 (L14-fix), fresh-eyes review: the prop-drive redesign (cream-buff body, teal trim) is fixed and on-model, and both arms now reach the same drawer (up from one arm on/one arm off), but the retry introduced a NEW rig-identity defect -- pc-boxy is drawn with human-style fingered hands, which its established design explicitly does not have (stub arms only). This was the ONE sanctioned retry; it is now exhausted -- kept as the best attempt (fixes 2 of 3 original defects) but PARKED, not verified. suspected_mechanism_layer: vpw_authoring -- the shot's own action verb (\"shoving\" a drawer shut) inherently pulls the render toward hand-based manipulation, in tension with pc-boxy's no-hands canon; a future re-author should replace the shoving/pressing verb with a stub-arm-compatible action (e.g. pc-boxy body-checking or leaning its whole side against the drawer) rather than a third prompt-only retry on the same mechanism."
+ }
 ]
