@@ -1,4 +1,4 @@
-# Proposal: spawn context-load + model-verify hooks — SubagentStart + PreToolUse-on-Task + SubagentStop (for Daniel to arm, if ever)
+# Proposal: spawn context-load + model-verify hooks — SubagentStart + PreToolUse-on-dispatch (Agent|Task) + SubagentStop (for Daniel to arm, if ever)
 
 **Status:** PROPOSAL — inert, NOT wired into any live settings file.
 **Built:** 2026-08-18, Agent Platform Wave 1, unit U9. Code:
@@ -29,8 +29,8 @@ It deliberately does **not** inject `## Recent activity` (the redacted tool ring
 radius than the parent's own store: the activity trail is best-effort redacted, not provably clean,
 and the parent's last turns are noise to a child with a specific brief. Governing frame, nothing else.
 
-**2. Every dispatch's model is written down, requested and observed** (`PreToolUse` on `Task`, then
-`SubagentStop`).
+**2. Every dispatch's model is written down, requested and observed** (`PreToolUse`
+on-dispatch — matching `Agent` or its alias `Task` — then `SubagentStop`).
 BOSS.md already requires this: *"The model of EVERY subagent you deploy is verified at GRADING, never
 assumed from the dispatch arg … an ungrepped grade is invalid."* That check is manual, easy to skip,
 and only ever happens after the fact — and the requested half of the comparison lives only in a
@@ -50,10 +50,13 @@ this task."* The session guard says "context this session already has", which is
 freshly spawned child — telling a subagent it already holds context it has never seen is the exact
 confusion a guard exists to prevent.
 
-**Also in this unit: `scripts/hooks/lib/hook_io.js`.** Five hooks each carried a byte-identical ~30-line
-block of stdin/stdout boilerplate; two reviews called it out. It is now one file, and the five existing
+**Also in this unit: `scripts/hooks/lib/hook_io.js`.** Four hooks each carried a byte-identical ~30-line
+block of stdin/stdout boilerplate; two reviews called it out. It is now one file: those four existing
 hooks (`regrounding_hook.js` plus the three `context_lifecycle_*.js`) were refactored onto it with
-**zero changes to their tests** — their suites are the regression gate and pass unmodified. The same
+**zero changes to their tests** — their suites are the regression gate and pass unmodified — and this
+unit's own three new hooks (`subagent_context_load.js`, `model_verify_pretooluse.js`,
+`model_verify_subagentstop.js`) were written directly against it instead of repeating the block a
+fifth, sixth, and seventh time. Seven consumers share the library today. The same
 extraction also absorbed the other duplicated pieces now that every consumer is in-unit: `truncateTo` +
 `ELLIPSIS` (was 3 copies), the stale-replay `GUARD_LINE` (was 2, in `regrounding_hook.js` and
 `lib/context_store.js` — both now re-export it, so `store.GUARD_LINE` is unchanged for callers), and
@@ -176,15 +179,24 @@ exit 0 and empty stderr — fail open, silent, same as `delivery_gate.js` and `r
 2. **U8 first, if you want the SubagentStart hook to do anything.** It reads the U8 context store, and
    nothing writes `## North star` / `## Invariants` / `## Current gate` today — see the decision-note
    below. Armed on its own it is a correctly-working no-op.
-3. **Do the two arm-time empirical checks below** (they take one spawn each).
-4. Append the snippet to `.claude/settings.json` — merging into the existing `PreToolUse` array, not
+3. **Do the three arm-time empirical checks below** (they take one spawn each).
+4. **Arming inverts the inert-guard tests — retarget them in the same edit.** These
+   currently-green assertions exist to prove this family is NOT armed, and go red the moment
+   any of it is: `tests/test_context_lifecycle_inert.py::test_no_hook_is_registered_in_any_settings_file`,
+   `tests/test_context_lifecycle_inert.py::test_no_live_settings_were_touched`, and
+   `tests/test_model_verify.py::test_the_u9_hook_family_is_inert`. That is correct — they
+   are inert guards, not general regression tests — but leaving them red afterward is not:
+   retarget each one, in the same edit that changes `.claude/settings.json`, to assert the
+   relevant hooks are registered **exactly once, at the committed path**, rather than not
+   registered at all.
+5. Append the snippet to `.claude/settings.json` — merging into the existing `PreToolUse` array, not
    replacing it. (Human edit: hooks config is Daniel's to change.)
-5. Restart the Claude Code session. Hooks load at session start.
-6. Confirm: dispatch one subagent, then check that
+6. Restart the Claude Code session. Hooks load at session start.
+7. Confirm: dispatch one subagent, then check that
    `%LOCALAPPDATA%\kb-context-lifecycle\model-audit.jsonl` has a `PreToolUse` row and a `SubagentStop`
    row for it. The **Model Audit** panel in the dashboard's Agent Platform section shows the same thing.
 
-### The two arm-time checks
+### The three arm-time checks
 
 Both questions below were answered by reading the installed harness's own code (evidence in the
 decision-notes). Reading a binary is strong evidence but it is not a live run, and both answers are
@@ -224,7 +236,7 @@ Do these in a **scratch profile / throwaway store dir**, not against live sessio
 3. Optionally delete `model-audit.jsonl` (or whatever `KB_MODEL_AUDIT_PATH` pointed at). It is the only
    state this family creates; nothing lives in the repo.
 
-Deleting the scripts while they are still registered would leave `node` failing on every Task call, so
+Deleting the scripts while they are still registered would leave `node` failing on every dispatch call, so
 remove the settings entries first.
 
 ## Verification

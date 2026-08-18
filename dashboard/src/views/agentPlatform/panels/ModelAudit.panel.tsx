@@ -3,9 +3,9 @@
  *
  * ── What it is ──
  * The visible half of the INERT model-verify hook pair. `model_verify_pretooluse.js` records which
- * model each Task dispatch ASKED for; `model_verify_subagentstop.js` reads the finished subagent's own
- * transcript and records which model it actually RAN on. This panel is where an operator reads the
- * resulting log.
+ * model each dispatch (the `Agent` tool, matched under its own name or its `Task` alias) ASKED for;
+ * `model_verify_subagentstop.js` reads the finished subagent's own transcript and records which model
+ * it actually RAN on. This panel is where an operator reads the resulting log.
  *
  * ── Why it exists ──
  * BOSS.md requires the model of every dispatched subagent to be verified at grading time by grepping

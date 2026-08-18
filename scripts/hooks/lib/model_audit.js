@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /*
  * kb model-verify AUDIT — the shared append-only log and the governance/model-routing.yaml reader
- * used by the two INERT model-verify hooks (PreToolUse-on-Task and SubagentStop).
+ * used by the two INERT model-verify hooks (PreToolUse-on-dispatch, matching Agent or its alias
+ * Task, and SubagentStop).
  *
  * Status:
  *   INERT. Nothing in .claude/settings*.json references the hooks that use this module. Arming

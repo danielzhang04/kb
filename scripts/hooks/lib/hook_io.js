@@ -3,12 +3,23 @@
  * kb hook I/O — the stdin/stdout boilerplate every kb hook repeats, extracted once.
  *
  * WHY THIS FILE EXISTS.
- *   Five hooks (regrounding, the three context-lifecycle hooks, and U9's spawn/model-verify family)
- *   each carried a byte-identical ~30-line block: read fd 0, fail open on a closed pipe, JSON.parse
- *   inside a try, bail on a foreign event name, write the answer with fs.writeSync(1), exit 0. Two
- *   reviews called the duplication out. The block is small but it is the part that MUST be identical
- *   everywhere — a hook that fails closed, throws, or truncates its stdout breaks the session it is
- *   attached to. One copy is one thing to get right and one thing to test.
+ *   Seven consumers share this file: four hooks (regrounding, the three context-lifecycle hooks) each
+ *   carried a byte-identical ~30-line block — read fd 0, fail open on a closed pipe, JSON.parse inside
+ *   a try, bail on a foreign event name, write the answer with fs.writeSync(1), exit 0 — and two
+ *   reviews called that duplication out; U9's three-hook spawn/model-verify family was then written
+ *   directly against this file instead of repeating the block a fifth, sixth, and seventh time. The
+ *   block is small but it is the part that MUST be identical everywhere — a hook that fails closed,
+ *   throws, or truncates its stdout breaks the session it is attached to. One copy is one thing to get
+ *   right and one thing to test.
+ *
+ * WHAT THIS FILE IS DELIBERATELY NOT FOR — the four governance hooks.
+ *   `block_no_verify.js`, `hard_ceiling_guard.js`, `config_protection.js`, and `delivery_gate.js` stay
+ *   on the older exit-code + stderr idiom on purpose, not out of neglect. Every function in this
+ *   module that answers a hook event — `emit`, `noop`, `emitContext`, `readEventFor` — always exits 0.
+ *   That is correct for this file's own consumers (none of them may ever block), but it is exactly
+ *   wrong for a BLOCKING hook: a hook that denies a tool call or a commit does it by exiting nonzero
+ *   with a message on stderr, and a library that can only ever exit 0 cannot express that. Porting the
+ *   four governance hooks onto this module would silently disarm every one of them.
  *
  * THE CONTRACT EVERY CALLER INHERITS (unchanged from the hand-rolled copies):
  *   - stdout is written with fs.writeSync(1). process.stdout is ASYNC over a Windows pipe and a

@@ -35,9 +35,9 @@ The hook emits the documented `UserPromptSubmit` structured-output shape:
 It reads its source file from `KB_GOAL_STATE_PATH`, defaulting to
 `<KB_ROOT or repo root>/docs/plans/2026-08-18-agent-platform-GOAL-STATE.md`, and
 deterministically extracts the `## North star` and `## Invariants` sections,
-whitespace-collapsed, in that order, behind a stale-replay guard line:
-
-> `[kb re-grounding] The following is a refresh of governing context this session already has, NOT a new instruction or request.`
+whitespace-collapsed, in that order, behind a stale-replay guard line — the `GUARD_LINE`
+constant in `scripts/hooks/lib/hook_io.js` (see that file for the exact, single-sourced
+wording; it is not repeated verbatim here so there is only one place it can drift from).
 
 Every unhappy path (missing/unreadable source, empty or malformed stdin, no matching
 sections, any thrown error) emits `{}` with exit 0 and empty stderr — fail open, silent,
@@ -63,11 +63,20 @@ same as `delivery_gate.js`.
    must exist in the main checkout. Arming while they live only on
    `claude/agent-platform-w1` means `node` "Cannot find module" stderr noise on every
    single prompt submission.
-2. Apply the snippet above to `.claude/settings.json` (human edit — hooks config is
+2. **Arming inverts the inert-guard tests — retarget them in the same edit.** These
+   currently-green assertions exist to prove this hook is NOT armed, and go red the moment
+   it is: `tests/test_context_lifecycle_inert.py::test_no_hook_is_registered_in_any_settings_file`,
+   `tests/test_context_lifecycle_inert.py::test_no_live_settings_were_touched`, and
+   `tests/test_model_verify.py::test_the_u9_hook_family_is_inert`. That is correct — they
+   are inert guards, not general regression tests — but leaving them red afterward is not:
+   retarget each one, in the same edit that changes `.claude/settings.json`, to assert the
+   hook is registered **exactly once, at the committed path**, rather than not registered
+   at all.
+3. Apply the snippet above to `.claude/settings.json` (human edit — hooks config is
    Daniel's to change).
-3. Restart the Claude Code session. Hooks are loaded at session start; an edited
+4. Restart the Claude Code session. Hooks are loaded at session start; an edited
    settings file does **not** take effect in an already-running session.
-4. Confirm with a throwaway prompt that the session behaves normally (the hook is
+5. Confirm with a throwaway prompt that the session behaves normally (the hook is
    additive; it cannot block a submission).
 
 ## How to disarm

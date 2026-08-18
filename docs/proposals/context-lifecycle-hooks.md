@@ -26,8 +26,16 @@ order:
 
 - **PreCompact** runs at the moment a compaction is about to throw the recent turns away, and writes
   a deterministic summary of the last N turns into `## Resumed-session summary`.
-- **SessionStart** reads that section back on the next session and injects it as `additionalContext`,
-  behind the stale-replay guard.
+- **SessionStart** reads that section back the next time it fires for the same session — after a
+  compaction (`source: "compact"`) or a resumed session (`source: "resume"`) — and injects it as
+  `additionalContext`, behind the stale-replay guard. **This rests on an unverified assumption:**
+  that `SessionStart` firing after a compaction carries the SAME `session_id` the `PreCompact` hook
+  saw. Unlike U9's two arm-time checks (resolved against the installed harness's own bundled
+  strings — see `docs/proposals/spawn-model-verify-hooks.md`), this has not been confirmed the same
+  way. If compaction instead assigns a new `session_id`, the store PreCompact wrote is orphaned:
+  SessionStart just finds no store under the id it was given and emits `{}`, which is
+  indistinguishable from "nothing written yet" — the loop would fail silently rather than
+  visibly. See the arm-time check in "How to arm" below.
 - **PostToolUse** appends one redacted line per tool call to a 20-entry ring buffer in
   `## Recent activity`.
 
@@ -46,8 +54,14 @@ store contains a summary and an activity buffer, and re-grounding one against U7
 What this unit proves is that the format works end to end; deciding what should author a north star,
 and when, is a separate call.
 
-**Sharing context between agents is out of scope.** These stores are strictly per-session and
-same-session-only; the subagent/fleet sharing question belongs to U9, not here.
+**Sharing context between agents is out of scope.** These stores are strictly per-session, keyed
+only by `session_id` — nothing here matches on working directory, timestamp, or any other signal.
+**The correct claim is narrower than "same session" suggests:** re-injection works if and only if
+the `session_id` a `SessionStart` payload carries is the same one the preceding `PreCompact` wrote
+its store under — a compaction or a resume that keeps the id intact, not a genuinely new session
+and not a different agent. Whether the harness actually preserves the id across compaction is the
+open question flagged above, not something this proposal asserts. The subagent/fleet sharing
+question belongs to U9, not here.
 
 ## The change
 
@@ -129,12 +143,27 @@ fail open, silent, same as `delivery_gate.js` and `regrounding_hook.js`.
    below). It is a best-effort denylist and the PostToolUse tracker writes on every tool call.
 3. Decide the store location (decision-note below) and, if it is not the default, add
    `KB_CONTEXT_STORE_DIR` to the settings `env` block.
-4. Apply the snippet above to `.claude/settings.json` (human edit — hooks config is Daniel's to change).
-5. Restart the Claude Code session. Hooks load at session start; an edited settings file does not take
+4. **Arming inverts the inert-guard tests — retarget them in the same edit.** These
+   currently-green assertions exist to prove this family is NOT armed, and go red the moment
+   any of it is: `tests/test_context_lifecycle_inert.py::test_no_hook_is_registered_in_any_settings_file`,
+   `tests/test_context_lifecycle_inert.py::test_no_live_settings_were_touched`, and
+   `tests/test_model_verify.py::test_the_u9_hook_family_is_inert` (U9's inert guard also
+   watches `.claude/**` generically, so it trips too). That is correct — they are inert
+   guards, not general regression tests — but leaving them red afterward is not: retarget
+   each one, in the same edit that changes `.claude/settings.json`, to assert the relevant
+   hooks are registered **exactly once, at the committed path**, rather than not registered
+   at all.
+5. Apply the snippet above to `.claude/settings.json` (human edit — hooks config is Daniel's to change).
+6. Restart the Claude Code session. Hooks load at session start; an edited settings file does not take
    effect in an already-running session.
-6. Confirm: run a couple of tool calls, then check that
+7. Confirm: run a couple of tool calls, then check that
    `%LOCALAPPDATA%\kb-context-lifecycle\<session>.ctx.md` exists and holds a `## Recent activity`
    section. The Context Lifecycle panel in the dashboard's Agent Platform section shows the same thing.
+8. **The arm-time check — session-id continuity across compaction** (see the decision-note below).
+   Seed or let PreCompact write a store for the live session, force a compaction, then confirm
+   SessionStart's `additionalContext` actually contains the summary. This mirrors U9's arm-time-check
+   style: the assumption it verifies has not been confirmed against the installed harness the way
+   U9's checks were, so confirm it once, on the machine, before trusting the loop.
 
 ## How to disarm
 
@@ -277,6 +306,35 @@ long time, but the privacy surface is not: an unbounded directory of redacted-bu
 accumulates. Before arming fleet-wide, decide an aging policy (delete stores older than N days on
 SessionStart? cap the directory at M files?) and where it runs — a hook that also sweeps is a hook
 that can delete, which is a materially bigger blast radius than one that appends.
+
+### Concurrent writers to one store — a PRE-ARMING decision-note, not solved here
+
+U9 verified (against the installed harness's own bundled schema, not documentation) that a
+dispatched subagent shares its **parent's** `session_id` — see
+`docs/proposals/spawn-model-verify-hooks.md`. That was the right read for U9's own seam, but it has
+a consequence for this unit's writer that U9 did not need to absorb: with one or more subagents in
+flight, the PostToolUse activity tracker for the parent and every child dispatched from it are all
+writing to the **same store file**, keyed by the same `session_id`, concurrently.
+
+The store's write path (write-then-rename) prevents a **torn** file — a reader never sees a
+half-written store — but it does nothing about a **lost update**. Two concurrent writers each read
+the current `## Recent activity` ring buffer, append their own line in memory, and rename their own
+copy over the file; whichever rename lands second wins outright, and the other writer's activity
+line is silently dropped rather than merged. This machine routinely runs several subagents at once,
+so this is not a corner case — it is the common case the moment `SubagentStart`/`PostToolUse` are
+armed together with any concurrent dispatch pattern.
+
+**Decide before arming**, not after: this is a race, not a bug to fix reactively once a line goes
+missing. Candidate fixes, neither built here:
+
+1. **Serialize writes** — a lock (advisory file lock, or a single-writer queue) around the
+   read-modify-write, so concurrent appends interleave safely instead of racing. Simple to reason
+   about; adds latency and a lock-file failure mode to every tool call.
+2. **Per-writer files** — the parent and each subagent append to their own file (e.g. keyed by
+   `session_id` + `agent_id`), merged only at read time (`SessionStart`, or the dashboard panel).
+   No lock needed, but a reader now has to fan out across N files per session instead of one.
+
+Neither option is implemented; today's tracker is correct only for the no-concurrent-subagent case.
 
 ### The `KB_GOAL_STATE_PATH` "latest pointer" question
 

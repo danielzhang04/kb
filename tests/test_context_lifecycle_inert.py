@@ -18,6 +18,10 @@ FAMILY = [
     HOOKS / "context_lifecycle_session_start.js",
     HOOKS / "context_lifecycle_pre_compact.js",
     HOOKS / "context_lifecycle_activity_tracker.js",
+    # U7's re-grounding hook shares this file's guard, its seam is documented in the U8 proposal, and
+    # it deserves the same no-GateGuard / declares-itself-inert coverage every other hook here gets —
+    # so it belongs in the family even though it predates this unit.
+    HOOKS / "regrounding_hook.js",
 ]
 
 
@@ -38,6 +42,10 @@ def test_no_hook_is_registered_in_any_settings_file():
         text = settings.read_text(encoding="utf-8")
         assert "context_lifecycle" not in text, settings
         assert "context_store" not in text, settings
+        # Driven off FAMILY (not a hand-picked substring list) so every member — including U7's
+        # regrounding_hook.js — trips this guard on arming, the same way the other four do.
+        for path in FAMILY:
+            assert path.stem not in text, (settings, path.stem)
 
 
 def test_no_gateguard_reached_scripts_hooks_through_this_unit():
