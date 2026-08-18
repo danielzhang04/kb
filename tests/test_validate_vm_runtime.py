@@ -2,7 +2,7 @@ import json
 import shlex
 import subprocess
 from types import SimpleNamespace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -87,6 +87,44 @@ def test_ops_checkout_requires_disabled_push_remote(tmp_path, monkeypatch):
         validate_vm_runtime.validate_ops_root(tmp_path)
     assert calls[0][0][:3] == ["git", "-c", "safe.directory=/var/lib/kb/ops"]
     assert calls[0][1]["timeout"] > 0
+
+
+def test_ops_git_identity_is_present():
+    calls = []
+    root = PurePosixPath("/var/lib/kb/ops")
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        values = {"user.email": "kb-dashboard@agents.local\n", "user.name": "kb-dashboard\n"}
+        return subprocess.CompletedProcess(argv, 0, stdout=values[argv[-1]])
+
+    validate_vm_runtime.validate_ops_git_identity(root, run=run)
+
+    assert calls == [
+        (["git", "-C", "/var/lib/kb/ops", "config", "--get", "user.email"], {"check": True, "text": True, "capture_output": True, "timeout": validate_vm_runtime.COMMAND_TIMEOUT}),
+        (["git", "-C", "/var/lib/kb/ops", "config", "--get", "user.name"], {"check": True, "text": True, "capture_output": True, "timeout": validate_vm_runtime.COMMAND_TIMEOUT}),
+    ]
+
+
+@pytest.mark.parametrize("key", ["user.email", "user.name"])
+def test_ops_git_identity_rejects_empty_values(key):
+    def run(argv, **kwargs):
+        value = " \n" if argv[-1] == key else "kb-dashboard@agents.local\n"
+        return subprocess.CompletedProcess(argv, 0, stdout=value)
+
+    with pytest.raises(RuntimeError, match=key):
+        validate_vm_runtime.validate_ops_git_identity(PurePosixPath("/var/lib/kb/ops"), run=run)
+
+
+@pytest.mark.parametrize("key", ["user.email", "user.name"])
+def test_ops_git_identity_rejects_missing_values(key):
+    def run(argv, **kwargs):
+        if argv[-1] == key:
+            raise subprocess.CalledProcessError(1, argv)
+        return subprocess.CompletedProcess(argv, 0, stdout="kb-dashboard@agents.local\n")
+
+    with pytest.raises(RuntimeError, match=key):
+        validate_vm_runtime.validate_ops_git_identity(PurePosixPath("/var/lib/kb/ops"), run=run)
 
 
 def test_outbox_mode_requires_initialized_anchor(tmp_path):

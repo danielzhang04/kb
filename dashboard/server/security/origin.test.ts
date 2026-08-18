@@ -124,6 +124,61 @@ describe('assertOrigin (unit)', () => {
     );
     expect(res.ok).toBe(false);
   });
+
+  it('accepts an explicit HTTPS default port in Host', () => {
+    const res = assertOrigin(
+      { headers: { host: 'box.example.ts.net:443' } },
+      ['https://box.example.ts.net'],
+    );
+    expect(res).toEqual({ ok: true });
+  });
+
+  it('rejects a non-default HTTPS port against a default-port allowlist entry', () => {
+    const res = assertOrigin(
+      { headers: { host: 'box.example.ts.net:8443' } },
+      ['https://box.example.ts.net'],
+    );
+    expect(res).toEqual({ ok: false, reason: 'host-not-allowed' });
+  });
+
+  it('requires the exact non-default port configured in the allowlist', () => {
+    expect(
+      assertOrigin(
+        { headers: { host: 'box.example.ts.net:8443' } },
+        ['https://box.example.ts.net:8443'],
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      assertOrigin(
+        { headers: { host: 'box.example.ts.net' } },
+        ['https://box.example.ts.net:8443'],
+      ),
+    ).toEqual({ ok: false, reason: 'host-not-allowed' });
+  });
+
+  it('accepts an explicit HTTPS default port in Origin', () => {
+    const res = assertOrigin(
+      { headers: { origin: 'https://box.example.ts.net:443', host: 'box.example.ts.net' } },
+      ['https://box.example.ts.net'],
+    );
+    expect(res).toEqual({ ok: true });
+  });
+
+  it('keeps bracketed IPv6 Hosts intact', () => {
+    const res = assertOrigin(
+      { headers: { host: '[2001:db8::1]' } },
+      ['https://[2001:db8::1]'],
+    );
+    expect(res).toEqual({ ok: true });
+  });
+
+  it('fails closed on malformed Host authorities', () => {
+    const res = assertOrigin(
+      { headers: { host: 'box.example.ts.net:443:1' } },
+      ['https://box.example.ts.net'],
+    );
+    expect(res).toEqual({ ok: false, reason: 'host-not-allowed' });
+  });
 });
 
 describe('originPlugin over HTTP', () => {

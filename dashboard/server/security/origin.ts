@@ -41,13 +41,60 @@ function canonicalOrigin(value: string): string | null {
   }
 }
 
-/** The host:port authority of an origin string. */
-function originHost(value: string): string | null {
+interface AllowedHost {
+  host: string;
+  protocol: string;
+}
+
+/** Read the normalized authority and scheme of an allowlisted origin. */
+function allowedHost(value: string): AllowedHost | null {
   try {
-    return new URL(value).host;
+    const url = new URL(value);
+    return url.host ? { host: url.host, protocol: url.protocol } : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse an HTTP Host authority without canonicalizing its hostname. This deliberately accepts only
+ * a bare hostname (optionally followed by a numeric port) or a bracketed IPv6 literal.
+ */
+function parseHost(value: string): { hostname: string; port?: string } | null {
+  if (value.length === 0 || /[\s/@?#\\]/.test(value)) return null;
+
+  if (value.startsWith('[')) {
+    const close = value.indexOf(']');
+    if (close === -1) return null;
+    const hostname = value.slice(0, close + 1);
+    const suffix = value.slice(close + 1);
+    if (suffix === '') return { hostname };
+    if (!/^:\d+$/.test(suffix)) return null;
+    try {
+      new URL(`http://${hostname}`);
+    } catch {
+      return null;
+    }
+    return { hostname, port: suffix.slice(1) };
+  }
+
+  const colon = value.indexOf(':');
+  if (colon === -1) return { hostname: value };
+  if (value.indexOf(':', colon + 1) !== -1) return null;
+  const hostname = value.slice(0, colon);
+  const port = value.slice(colon + 1);
+  if (hostname === '' || !/^\d+$/.test(port)) return null;
+  return { hostname, port };
+}
+
+/** Match a request Host exactly, except for an explicit default port for this allowed scheme. */
+function matchesAllowedHost(requestHost: string, allowed: AllowedHost): boolean {
+  const parsed = parseHost(requestHost);
+  if (!parsed) return false;
+  if (requestHost === allowed.host) return true;
+
+  const defaultPort = allowed.protocol === 'https:' ? '443' : allowed.protocol === 'http:' ? '80' : undefined;
+  return parsed.port === defaultPort && parsed.hostname === allowed.host;
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {
@@ -69,12 +116,12 @@ export function assertOrigin(req: OriginRequestLike, expectedOrigin: AllowedOrig
   if (list.length === 0) return { ok: false, reason: 'no-allowlist' };
 
   const allowedOrigins = new Set<string>();
-  const allowedHosts = new Set<string>();
+  const allowedHosts: AllowedHost[] = [];
   for (const entry of list) {
     const o = canonicalOrigin(entry);
-    const h = originHost(entry);
+    const h = allowedHost(entry);
     if (o) allowedOrigins.add(o);
-    if (h) allowedHosts.add(h);
+    if (h) allowedHosts.push(h);
   }
 
   const origin = firstHeader(req.headers.origin);
@@ -84,7 +131,9 @@ export function assertOrigin(req: OriginRequestLike, expectedOrigin: AllowedOrig
   }
 
   const host = firstHeader(req.headers.host);
-  if (host === undefined || !allowedHosts.has(host)) return { ok: false, reason: 'host-not-allowed' };
+  if (host === undefined || !allowedHosts.some((allowed) => matchesAllowedHost(host, allowed))) {
+    return { ok: false, reason: 'host-not-allowed' };
+  }
 
   return { ok: true };
 }
