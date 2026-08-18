@@ -24,28 +24,15 @@
  */
 "use strict";
 
-const fs = require("fs");
+const io = require("./lib/hook_io.js");
 const store = require("./lib/context_store.js");
+
+// Shared stdin/stdout/fail-open boilerplate — see lib/hook_io.js. Same contract as before:
+// fs.writeSync(1), always exit 0, never stderr.
+const emitNoop = io.noop;
 
 /** Only these tool_input keys are ever read — a bounded, low-secret-density set. */
 const DETAIL_KEYS = ["file_path", "path", "pattern", "command", "description", "query"];
-
-function emitNoop() {
-  try {
-    fs.writeSync(1, "{}");
-  } catch (_err) {
-    /* nothing useful to do; still exit 0 */
-  }
-  process.exit(0);
-}
-
-function readStdin() {
-  try {
-    return fs.readFileSync(0, "utf8");
-  } catch (_err) {
-    return null;
-  }
-}
 
 /** `<Tool> <one detail>` — the detail is redacted downstream by store.appendActivity. */
 function describe(toolName, toolInput) {
@@ -62,25 +49,9 @@ function describe(toolName, toolInput) {
 }
 
 function main() {
-  const raw = readStdin();
-  if (raw === null || !raw.trim()) {
-    emitNoop();
-  }
-
-  let event;
-  try {
-    event = JSON.parse(raw);
-  } catch (_err) {
-    emitNoop();
-  }
-  if (!event || typeof event !== "object") {
-    emitNoop();
-  }
-
-  const eventName = event.hook_event_name;
-  if (typeof eventName === "string" && eventName && eventName !== "PostToolUse") {
-    emitNoop();
-  }
+  // Empty/closed stdin, malformed JSON, or a payload naming a different event all no-op inside this
+  // call ("{}", exit 0).
+  const event = io.readEventFor("PostToolUse");
 
   const sessionId = event.session_id;
   const toolName = typeof event.tool_name === "string" ? event.tool_name.trim() : "";
@@ -92,9 +63,5 @@ function main() {
   emitNoop();
 }
 
-try {
-  main();
-} catch (_err) {
-  // Belt and braces: this hook never breaks a tool call.
-  emitNoop();
-}
+// Belt and braces: this hook never breaks a tool call — any escaped throw becomes "{}".
+io.run(main);

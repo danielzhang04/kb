@@ -33,34 +33,19 @@
  */
 "use strict";
 
-const fs = require("fs");
+const io = require("./lib/hook_io.js");
 const store = require("./lib/context_store.js");
+
+// Shared stdin/stdout/fail-open boilerplate — see lib/hook_io.js. Same contract as before:
+// fs.writeSync(1), always exit 0, never stderr. That library makes no subprocess call either, which
+// is what keeps the zero-spend guarantee below true through the extraction.
+const emitNoop = io.noop;
 
 /** How many trailing transcript turns the summary keeps. */
 const DEFAULT_TURNS = 12;
 
 /** Per-turn line cap. Short on purpose: this is a recall cue, not a transcript replay. */
 const TURN_MAX_CHARS = 200;
-
-/** Refuse to read an absurd transcript into memory. 32 MiB is far above a real session JSONL. */
-const MAX_TRANSCRIPT_BYTES = 32 * 1024 * 1024;
-
-function emitNoop() {
-  try {
-    fs.writeSync(1, "{}");
-  } catch (_err) {
-    /* nothing useful to do; still exit 0 */
-  }
-  process.exit(0);
-}
-
-function readStdin() {
-  try {
-    return fs.readFileSync(0, "utf8");
-  } catch (_err) {
-    return null;
-  }
-}
 
 function turnCount() {
   const parsed = Number(process.env.KB_PRECOMPACT_TURNS);
@@ -119,25 +104,9 @@ function summariseTranscript(text, turns) {
 }
 
 function main() {
-  const raw = readStdin();
-  if (raw === null || !raw.trim()) {
-    emitNoop();
-  }
-
-  let event;
-  try {
-    event = JSON.parse(raw);
-  } catch (_err) {
-    emitNoop();
-  }
-  if (!event || typeof event !== "object") {
-    emitNoop();
-  }
-
-  const eventName = event.hook_event_name;
-  if (typeof eventName === "string" && eventName && eventName !== "PreCompact") {
-    emitNoop();
-  }
+  // Empty/closed stdin, malformed JSON, or a payload naming a different event all no-op inside this
+  // call ("{}", exit 0).
+  const event = io.readEventFor("PreCompact");
 
   const sessionId = event.session_id;
   const transcriptPath = event.transcript_path;
@@ -148,14 +117,12 @@ function main() {
     emitNoop();
   }
 
-  let text = null;
-  try {
-    if (fs.statSync(transcriptPath).size > MAX_TRANSCRIPT_BYTES) {
-      emitNoop();
-    }
-    text = fs.readFileSync(transcriptPath, "utf8");
-  } catch (_err) {
-    emitNoop(); // missing or unreadable transcript -> no-op
+  // Missing, unreadable, or absurdly large transcript -> null -> no-op. The size cap
+  // (io.MAX_TRANSCRIPT_BYTES) and the guarded read live in lib/hook_io.js, shared with the
+  // SubagentStop model-verify hook.
+  const text = io.readCappedFile(transcriptPath);
+  if (text === null) {
+    emitNoop();
   }
 
   const summary = summariseTranscript(text, turnCount());
@@ -168,9 +135,5 @@ function main() {
   emitNoop();
 }
 
-try {
-  main();
-} catch (_err) {
-  // Belt and braces: this hook never blocks a compaction.
-  emitNoop();
-}
+// Belt and braces: this hook never blocks a compaction — any escaped throw becomes "{}".
+io.run(main);

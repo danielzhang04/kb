@@ -30,70 +30,29 @@
  */
 "use strict";
 
-const fs = require("fs");
+const io = require("./lib/hook_io.js");
 const store = require("./lib/context_store.js");
+
+// Shared stdin/stdout/fail-open boilerplate — see lib/hook_io.js. Same contract as before:
+// fs.writeSync(1), always exit 0, never stderr.
+const noop = io.noop;
 
 /** Hard cap on the emitted additionalContext, in characters. Resumed summaries are bounded by the
  *  turn count PreCompact keeps, but a pathological store must never blow up a session's first turn. */
 const DEFAULT_MAX_CHARS = 4000;
 
-const ELLIPSIS = "...";
+/** Capping now lives in lib/hook_io.js — one copy shared by the three hooks that inject context. */
+const truncateTo = io.truncateTo;
 
 function maxChars() {
   const parsed = Number(process.env.KB_SESSION_START_MAX_CHARS);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_MAX_CHARS;
 }
 
-/** Write synchronously to fd 1: stdout is async over a Windows pipe and process.exit() can truncate it. */
-function emit(text) {
-  try {
-    fs.writeSync(1, text);
-  } catch (_err) {
-    /* nothing useful to do; still exit 0 */
-  }
-  process.exit(0);
-}
-
-function noop() {
-  emit("{}");
-}
-
-function readStdin() {
-  try {
-    return fs.readFileSync(0, "utf8");
-  } catch (_err) {
-    return null;
-  }
-}
-
-function truncateTo(text, limit) {
-  if (limit <= 0) return "";
-  if (text.length <= limit) return text;
-  if (limit <= ELLIPSIS.length) return text.slice(0, limit);
-  return text.slice(0, limit - ELLIPSIS.length) + ELLIPSIS;
-}
-
 function main() {
-  const raw = readStdin();
-  if (raw === null || !raw.trim()) {
-    noop();
-  }
-
-  let event;
-  try {
-    event = JSON.parse(raw);
-  } catch (_err) {
-    noop(); // malformed stdin -> fail open
-  }
-  if (!event || typeof event !== "object") {
-    noop();
-  }
-
-  // If the harness names a different event, this hook has nothing to say.
-  const eventName = event.hook_event_name;
-  if (typeof eventName === "string" && eventName && eventName !== "SessionStart") {
-    noop();
-  }
+  // Empty/closed stdin, malformed JSON, or a payload naming a different event all fail open
+  // ("{}", exit 0) inside this call.
+  const event = io.readEventFor("SessionStart");
 
   const sessionId = event.session_id;
   if (typeof sessionId !== "string" || !sessionId) {
@@ -117,19 +76,8 @@ function main() {
   // bites on a deliberately tiny value. Pinned by test_cap_bounds_the_injected_block.
   const block = truncateTo(store.GUARD_LINE + "\n\n" + summary, maxChars());
 
-  emit(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: block,
-      },
-    })
-  );
+  io.emitContext("SessionStart", block);
 }
 
-try {
-  main();
-} catch (_err) {
-  // Belt and braces: this hook never breaks a session start.
-  noop();
-}
+// Belt and braces: this hook never breaks a session start — any escaped throw becomes "{}".
+io.run(main);

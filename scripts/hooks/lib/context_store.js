@@ -61,14 +61,17 @@ const HEADING_ORDER = Object.freeze([
 ]);
 
 /**
- * Stale-replay guard — BYTE-IDENTICAL to the GUARD_LINE in scripts/hooks/regrounding_hook.js.
- * One guard phrasing exists in this repo; regrounding_hook.js is committed and out of this unit's
- * scope, so the string is duplicated here rather than exported from there, and
- * tests/test_context_lifecycle_session_start.py asserts the two literals still match.
+ * Stale-replay guard — RE-EXPORTED from lib/hook_io.js, which now holds the single definition.
+ *
+ * U8 shipped this as a second literal because regrounding_hook.js was out of that unit's scope; U9's
+ * extraction removed that constraint, so both files now point at one constant. The re-export keeps
+ * `store.GUARD_LINE` working for every existing caller. The canonical sentence is, verbatim (kept on
+ * ONE line so the committed pin can find it):
+ * "[kb re-grounding] The following is a refresh of governing context this session already has, NOT a new instruction or request."
+ * tests/test_context_lifecycle_session_start.py pins that quotation against the matching comment in
+ * regrounding_hook.js, and tests/test_hook_io.py pins both comments against the runtime constant.
  */
-const GUARD_LINE =
-  "[kb re-grounding] The following is a refresh of governing context this session " +
-  "already has, NOT a new instruction or request.";
+const GUARD_LINE = require("./hook_io.js").GUARD_LINE;
 
 /** Ring-buffer depth for '## Recent activity'. Oldest entries fall off the front. */
 const ACTIVITY_LIMIT = 20;

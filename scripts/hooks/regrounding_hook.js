@@ -37,6 +37,11 @@
 
 const fs = require("fs");
 const path = require("path");
+const io = require("./lib/hook_io.js");
+
+// The stdin/stdout/fail-open boilerplate lives in lib/hook_io.js — one copy shared by every kb hook.
+// Its contract is this file's contract, unchanged: fs.writeSync(1), always exit 0, never stderr.
+const noop = io.noop;
 
 // Sections lifted from the source file, in this fixed emission order.
 const WANTED_SECTIONS = ["North star", "Invariants"];
@@ -47,38 +52,20 @@ const WANTED_SECTIONS = ["North star", "Invariants"];
 // docs/proposals/regrounding-hook.md decision-notes.
 const MAX_CONTEXT_CHARS = 1700;
 
-// Stale-replay guard: tells the model this is a refresh of context it already has,
-// so it is never read as a fresh instruction arriving with the user's prompt.
-const GUARD_LINE =
-  "[kb re-grounding] The following is a refresh of governing context this session " +
-  "already has, NOT a new instruction or request.";
+// Stale-replay guard: tells the model this is a refresh of context it already has, so it is never
+// read as a fresh instruction arriving with the user's prompt.
+//
+// DEFINED ONCE, in lib/hook_io.js. The canonical sentence is, verbatim (kept on ONE line so the
+// committed pin below can find it):
+// "[kb re-grounding] The following is a refresh of governing context this session already has, NOT a new instruction or request."
+// That quotation is not decoration: tests/test_context_lifecycle_session_start.py pins it against the
+// matching comment in lib/context_store.js, and tests/test_hook_io.py pins both comments against the
+// runtime constant below — so the documented text cannot drift from the emitted text.
+const GUARD_LINE = io.GUARD_LINE;
 
 const SECTION_SEP = " | ";
-const ELLIPSIS = "...";
-
-// Write synchronously to fd 1: process.stdout is async over a Windows pipe, and a
-// following process.exit() can truncate it.
-function emit(text) {
-  try {
-    fs.writeSync(1, text);
-  } catch (_err) {
-    /* nothing useful to do; still exit 0 */
-  }
-  process.exit(0);
-}
-
-function noop() {
-  emit("{}");
-}
-
-function readStdin() {
-  // No stdin / closed stdin -> null (fail open).
-  try {
-    return fs.readFileSync(0, "utf8");
-  } catch (_err) {
-    return null;
-  }
-}
+const ELLIPSIS = io.ELLIPSIS;
+const truncateTo = io.truncateTo;
 
 function collapse(text) {
   return text.replace(/\s+/g, " ").trim();
@@ -104,19 +91,6 @@ function extractSection(source, name) {
   }
   const collapsed = collapse(body);
   return collapsed.length ? collapsed : null;
-}
-
-function truncateTo(text, limit) {
-  if (limit <= 0) {
-    return "";
-  }
-  if (text.length <= limit) {
-    return text;
-  }
-  if (limit <= ELLIPSIS.length) {
-    return text.slice(0, limit);
-  }
-  return text.slice(0, limit - ELLIPSIS.length) + ELLIPSIS;
 }
 
 /**
@@ -182,26 +156,9 @@ function buildBlock(source) {
 }
 
 function main() {
-  const raw = readStdin();
-  if (raw === null || !raw.trim()) {
-    noop();
-  }
-
-  let event;
-  try {
-    event = JSON.parse(raw);
-  } catch (_err) {
-    noop(); // malformed stdin -> fail open
-  }
-  if (!event || typeof event !== "object") {
-    noop();
-  }
-
-  // If the harness names a different event, this hook has nothing to say.
-  const eventName = event.hook_event_name;
-  if (typeof eventName === "string" && eventName && eventName !== "UserPromptSubmit") {
-    noop();
-  }
+  // Reads stdin, parses it, and confirms the event name. Empty/closed stdin, malformed JSON, or a
+  // payload naming a different event all fail open ("{}", exit 0) inside this call.
+  io.readEventFor("UserPromptSubmit");
 
   const root = process.env.KB_ROOT || path.resolve(__dirname, "..", "..");
   const sourcePath =
@@ -220,19 +177,8 @@ function main() {
     noop(); // no matching sections -> nothing worth injecting
   }
 
-  emit(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "UserPromptSubmit",
-        additionalContext: block,
-      },
-    })
-  );
+  io.emitContext("UserPromptSubmit", block);
 }
 
-try {
-  main();
-} catch (_err) {
-  // Belt and braces: this hook never breaks a prompt submission.
-  noop();
-}
+// Belt and braces: this hook never breaks a prompt submission — any escaped throw becomes "{}".
+io.run(main);
