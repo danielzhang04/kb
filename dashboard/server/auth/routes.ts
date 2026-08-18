@@ -113,6 +113,7 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
             id: info.credential.id,
             publicKey: Buffer.from(info.credential.publicKey).toString('base64url'),
             counter: info.credential.counter,
+            ...(info.credential.transports !== undefined ? { transports: info.credential.transports } : {}),
           }
         : undefined,
     });
