@@ -1,0 +1,207 @@
+/*
+ * Agent Management panel (Agent Platform, Wave-1 U4) — the panel's OWN stylesheet, imported only by
+ * `views/agentPlatform/panels/AgentManagement.panel.tsx`. Per the registry house rules: one CSS file
+ * per panel, a panel-specific class prefix (`.ap-agentmgmt…`), and NO edit to `agentPlatform.css`,
+ * which belongs to the section shell alone.
+ *
+ * Existing tokens only (src/styles/app.css) — no literal colours, no new custom properties, so the
+ * panel follows the warm Claude-dark palette and its light-mode counterpart for free.
+ */
+
+.ap-agentmgmt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ap-agentmgmt__note {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+/* ── Roster list ─────────────────────────────────────────────────────────────────────────────── */
+
+.ap-agentmgmt__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+}
+
+/* A row is a button so keyboard and pointer open the detail through the same one affordance. */
+.ap-agentmgmt__row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg-primary);
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Static (observed) rows never light up — the hover would promise a detail they cannot open. */
+.ap-agentmgmt__row:not(.ap-agentmgmt__row--static):hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.ap-agentmgmt__id {
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The roster's own one-liner: what the agent is FOR, which the id alone never says. */
+.ap-agentmgmt__desc {
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ap-agentmgmt__state {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+/* Observed identities are NOT openable — no hover affordance, no pointer, no border promise. */
+.ap-agentmgmt__row--static {
+  cursor: default;
+  background: var(--bg-sunken);
+}
+
+.ap-agentmgmt__observed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.ap-agentmgmt__observed-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+
+/* ── Detail card ─────────────────────────────────────────────────────────────────────────────── */
+
+.ap-agentmgmt__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+}
+
+.ap-agentmgmt__detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ap-agentmgmt__detail-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-family: var(--font-mono);
+}
+
+.ap-agentmgmt__back {
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.ap-agentmgmt__back:hover {
+  color: var(--fg-primary);
+  border-color: var(--border-strong);
+}
+
+.ap-agentmgmt__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.ap-agentmgmt__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+}
+
+.ap-agentmgmt__label {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ap-agentmgmt__value {
+  margin: 0;
+  font-size: var(--text-base);
+  overflow-wrap: anywhere;
+}
+
+.ap-agentmgmt__value--mono {
+  font-family: var(--font-mono);
+}
+
+/* The honest empty answer — dimmed so a populated field always outranks it visually. */
+.ap-agentmgmt__none {
+  color: var(--fg-faint);
+  font-style: italic;
+}
+
+/* Says why the six schema fields read empty — softer than a field, louder than a footnote. */
+.ap-agentmgmt__schema-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--border-strong);
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+
+.ap-agentmgmt__deeplink {
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+/* ── Degraded states ─────────────────────────────────────────────────────────────────────────── */
+
+.ap-agentmgmt__status {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+}
+
+.ap-agentmgmt__status--error {
+  color: var(--status-blocked);
+}
