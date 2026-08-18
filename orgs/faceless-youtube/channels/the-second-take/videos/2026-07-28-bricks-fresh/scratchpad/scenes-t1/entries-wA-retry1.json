@@ -1,0 +1,122 @@
+[
+ {
+  "shot_id": "L03",
+  "file": "assets/scenes/L03.png",
+  "technique": "(c) Character-free scene — cast-free composition",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": "r1 defect fixed by exact replace — from: \"Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applaudin\" -> to: \"Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming, every crowd figure drawn \"",
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "; RETRY overlay from `L03` (worker A round 1 retry); promoted from _staging/L03-fix.png (sha256 03adbe226ae660eb5f93451cbe2871a1b0d9db871d171fa23336696fc2acf3c8) to canonical assets/scenes/L03.png"
+ },
+ {
+  "shot_id": "L04",
+  "file": "assets/scenes/L04.png",
+  "technique": "(c) Character-free scene — cast-free composition",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "role": "environment",
+    "character": "lettering-marker-italic"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+    "role": "style-anchor",
+    "character": "scene-style-tile"
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": "r1 defect fixed by exact replace — from: \"its shutter half raised over a window stacked with beige computer cartons\" -> to: \"its shutter half raised over a window stacked with beige computer cartons, the shutter's slats drawn as a small number of THICK bands at the same medium-thick rig outline weight as\"",
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); RETRY overlay from `L04` (worker A round 1 retry); promoted from _staging/L04-fix.png (sha256 33b285be64e3c225fb7df1f953b09cc5fc901a5105294f5cf2a3cef969c41dae) to canonical assets/scenes/L04.png"
+ },
+ {
+  "shot_id": "L05",
+  "file": "assets/scenes/L05.png",
+  "technique": "(b) Seeded composition — locked character(s) in composed environment",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "role": "canonical",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png",
+    "role": "expression",
+    "character": "pc-boxy"
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": "r1 defect fixed by exact replace — from: \"small and centred, standing inside an open cardboard shipping crate packed with pale straw, stubby arms over the crate r\" -> to: \"small and centred, standing inside an open cardboard shipping crate packed with pale straw, stubby arms over the crate rim, pc-boxy rendered exactly as its own reference sheet draw\"",
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "`pc-boxy` character canonical seeded directly (fresh regen off canonical, not off the flagged r1 frame); RETRY overlay from `L05` (worker A round 1 retry); promoted from _staging/L05-fix.png (sha256 827c501f70e422627e06457600e71ff44da6ad762058d221cf473d344c23e1e4) to canonical assets/scenes/L05.png"
+ },
+ {
+  "shot_id": "L07",
+  "file": "assets/scenes/L07.png",
+  "technique": "(b) Seeded composition — locked character(s) in composed environment",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "role": "canonical",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+    "role": "expression",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": "r1 defect fixed by exact replace — from: \"customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the ma\" -> to: \"customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient, every one of them drawn on\"",
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "`pc-boxy` character canonical seeded directly (fresh regen off canonical, not off the flagged r1 frame); RETRY overlay from `L07` (worker A round 1 retry); promoted from _staging/L07-fix.png (sha256 17932220f9450f9af2d8bd4da08fdbc02a47b93492e16436fdb6b79d7c0b2fb4) to canonical assets/scenes/L07.png"
+ },
+ {
+  "shot_id": "L08",
+  "file": "assets/scenes/L08.png",
+  "technique": "(c) Character-free scene — cast-free composition",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+    "role": "prop",
+    "character": "prop-beige-pc"
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": "r1 defect fixed by exact replace — from: \"over a rear-zone press of shoppers who have ducked in behind the slat shelving with their arms up and their eyes wide\" -> to: \"over a rear-zone press of shoppers who have ducked in behind the slat shelving with their arms up and their eyes wide, every one of them drawn on the flat CROWD RIG only - dot eyes\"",
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "`prop-beige-pc` match-prop canonical seeded; RETRY overlay from `L08` (worker A round 1 retry); promoted from _staging/L08-fix.png (sha256 d678813751e58767b871fc0096283bf44f926944d33c0d3e7030d97f26cd831e) to canonical assets/scenes/L08.png"
+ }
+]

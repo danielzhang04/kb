@@ -1,0 +1,14 @@
+  [1/9] L18: skip (exists in staging)
+  [2/9] L19: skip (exists in staging)
+  [3/9] L20: skip (exists in staging)
+  [4/9] L21: skip (exists in staging)
+  [5/9] fig-brick-foreman--back-to-viewer--7a3b93be: START provider call
+  [5/9] fig-brick-foreman--back-to-viewer--7a3b93be: OK -> _staging/fig-brick-foreman--back-to-viewer--7a3b93be.png
+  [6/9] L22: skip (seed awaits review) — L22: figure `fig-brick-foreman--back-to-viewer--7a3b93be` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS rig. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+  [7/9] L23: START provider call
+  [7/9] L23: OK -> _staging/L23.png
+  [8/9] L24: START provider call
+  [8/9] L24: OK -> _staging/L24.png
+  [9/9] L25: START provider call
+  [9/9] L25: OK -> _staging/L25.png
+  == 4 generated, 0 failed, 4 skipped, 1 held for review ==

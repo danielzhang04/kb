@@ -1,0 +1,314 @@
+[
+  {
+    "name": "L01",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-delighted` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `pc-boxy` holds in the parent scene, and no other figure's.\n\n`pc-boxy`, `expr-delighted`, planted centre on a low walnut-veneer table, stubby arms out to the sides. A 1980s suburban living room: mustard shag carpet, a brown corduroy couch across the midground, a fat orange lava lamp on a side table stage-left and a chunky silver boombox stage-right, the picture rail above running along a wall left completely blank. Warm lamp amber from a domed table lamp, mustard-brown-cream palette, the single red accent on the machine's power stud. Foreground depth from the near couch arm cropping the lower-left corner.",
+    "payload": "`pc-boxy`, `expr-delighted`, planted centre on a low walnut-veneer table, stubby arms out to the sides. A 1980s suburban living room: mustard shag carpet, a brown corduroy couch across the midground, a fat orange lava lamp on a side table stage-left and a chunky silver boombox stage-right, the picture rail above running along a wall left completely blank. Warm lamp amber from a domed table lamp, mustard-brown-cream palette, the single red accent on the machine's power stud. Foreground depth from the near couch arm cropping the lower-left corner.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical"
+  },
+  {
+    "name": "L02",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nBeyond a chrome rail running across the midground, a roller-rink lobby packed shoulder to shoulder with 1980s skaters in shoulder-padded jumpsuits and white hi-tops, every one of them grinning and shouting over the music, their teased blonde and copper hairdos stacked so high they fill the entire upper third of the frame like a hedge, thickest dead centre where one enormous blonde tower rises over the rest. Chequer-tile floor, glowing pink and teal wall panels beyond them, teal-pink-cream palette, flat even rink light, foreground depth from a cropped ticket-booth corner stage-left.",
+    "payload": "Beyond a chrome rail running across the midground, a roller-rink lobby packed shoulder to shoulder with 1980s skaters in shoulder-padded jumpsuits and white hi-tops, every one of them grinning and shouting over the music, their teased blonde and copper hairdos stacked so high they fill the entire upper third of the frame like a hedge, thickest dead centre where one enormous blonde tower rises over the rest. Chequer-tile floor, glowing pink and teal wall panels beyond them, teal-pink-cream palette, flat even rink light, foreground depth from a cropped ticket-booth corner stage-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L03",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nA hotel function room seen from the floor: a low awards dais stage-right stands empty under one hard overhead spot, an oversized display board angled on it with its face completely blank and unlettered, a lectern stage-left with nobody behind it. Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming. Pleated gold curtain wall behind them, banquet tables running back through the depth, gold-cream-charcoal palette, dim room light against the one hot spot, foreground depth from a cropped banquet chair back at the lower-left.",
+    "payload": "A hotel function room seen from the floor: a low awards dais stage-right stands empty under one hard overhead spot, an oversized display board angled on it with its face completely blank and unlettered, a lectern stage-left with nobody behind it. Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming. Pleated gold curtain wall behind them, banquet tables running back through the depth, gold-cream-charcoal palette, dim room light against the one hot spot, foreground depth from a cropped banquet chair back at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L04",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the `lettering-marker-italic` environment reference \u2014 preserve its authored place facts. The SECOND image is the channel's SCENE STYLE TILE \u2014 a register sample ONLY. It pins LINE WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE SATURATION \u2014 match how strongly its flat fills are coloured and lay THIS frame's own hues, warm or cool, down at that same strength; a frame drained to neutral grey has failed to take the register. Take NOTHING else from it \u2014 not its content, not its objects, not its layout or camera, and NOT the place it depicts. This image is not a location and never appears in the frame you draw.\n\nA suburban high-street electronics shop at dawn, its shutter half raised over a window stacked with beige computer cartons, a striped awning above, a parked hatchback at the kerb stage-right, the wet pavement empty end to end. Cool blue dawn with one warm amber shop-glow spilling out from under the shutter, blue-grey-amber palette, foreground depth from a cropped lamp post at the right edge. Propped on the pavement in that doorway light, a chalk sandwich board carrying the single chalked line '1983'.",
+    "payload": "A suburban high-street electronics shop at dawn, its shutter half raised over a window stacked with beige computer cartons, a striped awning above, a parked hatchback at the kerb stage-right, the wet pavement empty end to end. Cool blue dawn with one warm amber shop-glow spilling out from under the shutter, blue-grey-amber palette, foreground depth from a cropped lamp post at the right edge. Propped on the pavement in that doorway light, a chalk sandwich board carrying the single chalked line '1983'.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+      "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+        "role": "environment",
+        "character": "lettering-marker-italic"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+        "role": "style-anchor",
+        "character": "scene-style-tile"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "LETTERING \u2014 text-bearing prompt; \u00a75 exemplar `lettering-marker-italic` derived; STYLE TILE \u2014 cast-free frame; \u00a75 anchor `scene-style-tile` derived (line register + palette only)"
+  },
+  {
+    "name": "L05",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-surprised` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `pc-boxy` holds in the parent scene, and no other figure's.\n\n`pc-boxy`, `expr-surprised`, small and centred, standing inside an open cardboard shipping crate packed with pale straw, stubby arms over the crate rim. A dim stockroom: grey steel shelving receding stage-left, a leaning stack of flat cartons stage-right, a bare bulb on a flex directly overhead throwing one hard pool of light onto the crate. Grey-cream-amber palette, the single red accent on a tape strip across the crate lip. Foreground depth from a cropped pallet edge running across the bottom of the frame.",
+    "payload": "`pc-boxy`, `expr-surprised`, small and centred, standing inside an open cardboard shipping crate packed with pale straw, stubby arms over the crate rim. A dim stockroom: grey steel shelving receding stage-left, a leaning stack of flat cartons stage-right, a bare bulb on a flex directly overhead throwing one hard pool of light onto the crate. Grey-cream-amber palette, the single red accent on a tape strip across the crate lip. Foreground depth from a cropped pallet edge running across the bottom of the frame.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-surprised.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical"
+  },
+  {
+    "name": "L06",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-delighted` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `pc-boxy` holds in the parent scene, and no other figure's. The THIRD image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\n`pc-boxy`, `expr-delighted`, alone on a lit turntable plinth centre frame, front panel to the viewer. The view is from inside a shop display: a full-height plate window across the midground, and beyond the glass a packed crowd presses shoulder to shoulder with palms flat on the pane, faces open and hungry. Cream-teal-amber palette, warm display light on the plinth against flat grey daylight outside, foreground depth from a cropped display riser at the lower-left.",
+    "payload": "`pc-boxy`, `expr-delighted`, alone on a lit turntable plinth centre frame, front panel to the viewer. The view is from inside a shop display: a full-height plate window across the midground, and beyond the glass a packed crowd presses shoulder to shoulder with palms flat on the pane, faces open and hungry. Cream-teal-amber palette, warm display light on the plinth against flat grey daylight outside, foreground depth from a cropped display riser at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical"
+  },
+  {
+    "name": "L07",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `pc-boxy` holds in the parent scene, and no other figure's. The THIRD image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\n`pc-boxy`, `expr-smug`, standing on a shop counter top centre frame, front panel turned to the far side. Beyond the counter, customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient, the notes never overlapping it. A carpeted showroom: pegboard wall of coiled cables behind them, a queue rope running back stage-left. Cream-brown-teal palette, even shop light, foreground depth from a cropped till corner at the lower-right.",
+    "payload": "`pc-boxy`, `expr-smug`, standing on a shop counter top centre frame, front panel turned to the far side. Beyond the counter, customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient, the notes never overlapping it. A carpeted showroom: pegboard wall of coiled cables behind them, a queue rope running back stage-left. Cream-brown-teal palette, even shop light, foreground depth from a cropped till corner at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical"
+  },
+  {
+    "name": "L08",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself. The SECOND image is the `prop-beige-pc` prop canonical \u2014 preserve that object's design.\n\nA shop aisle head-on: four `prop-beige-pc` units sail through the air across the top of the frame trailing loose polystyrene chunks, over a rear-zone press of shoppers who have ducked in behind the slat shelving with their arms up and their eyes wide. White slat shelving stage-right with one whole shelf swept bare, a wire basket tipped over on the floor. Cream-grey-amber palette, flat strip light, foreground depth from a cropped end-cap unit cutting the lower-right corner.",
+    "payload": "A shop aisle head-on: four `prop-beige-pc` units sail through the air across the top of the frame trailing loose polystyrene chunks, over a rear-zone press of shoppers who have ducked in behind the slat shelving with their arms up and their eyes wide. White slat shelving stage-right with one whole shelf swept bare, a wire basket tipped over on the floor. Cream-grey-amber palette, flat strip light, foreground depth from a cropped end-cap unit cutting the lower-right corner.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+        "role": "prop",
+        "character": "prop-beige-pc"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  },
+  {
+    "name": "L09",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nA shuttered shop door stage-right at night, and running back from it along the pavement behind a rope barrier and around the far corner, a dense queue of grinning figures in bulky 1980s coats and padded ski jackets, camped on folding stools and in sleeping bags with their hoods up against the cold, the nearest of them craning at the shutter. Night-blue palette with one warm sodium street lamp overhead, foreground depth from a cropped rubbish bin at the lower-left.",
+    "payload": "A shuttered shop door stage-right at night, and running back from it along the pavement behind a rope barrier and around the far corner, a dense queue of grinning figures in bulky 1980s coats and padded ski jackets, camped on folding stools and in sleeping bags with their hoods up against the cold, the nearest of them craning at the shutter. Night-blue palette with one warm sodium street lamp overhead, foreground depth from a cropped rubbish bin at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place"
+  }
+]

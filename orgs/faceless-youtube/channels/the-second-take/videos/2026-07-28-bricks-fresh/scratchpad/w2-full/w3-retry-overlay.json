@@ -1,0 +1,38 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L220",
+      "character": "qt-wiles",
+      "name": "fig-qt-wiles--back-to-viewer--dfb3cd97",
+      "defect": "rig",
+      "instruction": "The character must have NO ear of any kind, on either side of the head -- absolutely no flesh-toned curved fold shape at ear-height under or beside the hair. Flat round head, hair only, no ear detail anywhere, per the style rig law."
+    },
+    {
+      "kind": "step1",
+      "shot": "L236",
+      "character": "qt-wiles",
+      "name": "fig-qt-wiles--sit--expr-deadpan--b503fbae",
+      "defect": "clean_card",
+      "instruction": "Dress the figure in a plain grey prison uniform for this beat (replacing the character's normal grey suit), keeping the character's own head, build and identity from the canonical seed. Draw the figure alone against a flat solid pale-grey studio backdrop: no bench, no table, no furniture, no scenery, no prop, no other person."
+    },
+    {
+      "kind": "step1",
+      "shot": "L182",
+      "character": "rifenburgh-ceo",
+      "name": "fig-rifenburgh-ceo--action-walk--expr-worried--2046fb04",
+      "defect": "clean_card",
+      "instruction": "The previous attempt drew scattered paper covering the ground under the figure. Draw the figure alone against the flat pale-grey backdrop: no paper, no floor scenery, no prop, no other person."
+    },
+    {
+      "kind": "step1",
+      "shot": "L180",
+      "character": "rifenburgh-ceo",
+      "name": "fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800",
+      "defect": "expression",
+      "instruction": "The `thinking` expression must read as clearly distinct from this character's neutral/deadpan resting face: render a visibly raised or knitted brow, a pursed or off-centre mouth, and eyes looking up or aside in a pondering gaze -- not the character's default expression."
+    }
+  ]
+}

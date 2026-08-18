@@ -1,0 +1,27 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L221",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--action-shrug--expr-eyeroll--2a4cea9b",
+      "defect": "expression"
+    },
+    {
+      "kind": "step1",
+      "shot": "L233",
+      "character": "drive-maker",
+      "name": "fig-drive-maker--action-powerstance--expr-smug--21372a75",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L185",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--action-offering--expr-worried--65ad5c3a",
+      "defect": "clean_card"
+    }
+  ]
+}

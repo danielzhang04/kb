@@ -1,0 +1,16 @@
+{
+ "schema": "faceless-youtube/forge-retry-overlay@2",
+ "video_slug": "2026-07-28-bricks-fresh",
+ "entries": [
+  {
+   "kind": "scene",
+   "shot": "L08",
+   "name": "L08-fix",
+   "defect": "content",
+   "replace": {
+    "from": "over a rear-zone press of shoppers who have ducked in behind the slat shelving with their arms up and their eyes wide",
+    "to": "over a rear-zone press of shoppers who have ducked in behind the slat shelving with their arms up and their eyes wide, every one of them drawn on the flat CROWD RIG only - dot eyes and one simple mouth with no eyebrows, head tones limited to at most 2-3 repeating flat shades shared across the whole group"
+   }
+  }
+ ]
+}

@@ -1,0 +1,77 @@
+[
+ {
+  "id": "L01",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "pc-boxy correctly shows the CRT-monitor screen-face head with delighted screen expression, planted on the coffee table with arms out; lava lamp stage-left, boombox stage-right, blank picture-rail wall, mustard shag carpet and cropped couch-arm foreground all present as specified. Cleanest read of pc-boxy's canonical design in the batch."
+ },
+ {
+  "id": "L02",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "Crowd rig holds: dot eyes, simple shouting mouth, no noses/ears, only 2 repeating hair tones and 3 repeating skin tones, era jumpsuits/hi-tops throughout. Hairdos stack into a hedge across the upper third with one dead-centre blonde tower, chrome rail, chequer floor, cropped ticket booth all match."
+ },
+ {
+  "id": "L03",
+  "r": "HIGH",
+  "f": "clean",
+  "s": "clean",
+  "worst": "HIGH",
+  "why": "r: crowd rig invariant broken — well over the allowed 2-3 repeating hair/headwear silhouettes (bald, brown bob, blonde updo, brown updo, flat cap, fedora all in front rows), and several front-row faces carry individuated eyebrow/smile detail beyond the flat dot-eye crowd exemplar — a single individuated crowd face is a stated FAIL and this shot has several. f/s clean: dais/board/lectern genuinely empty and unlettered, gold-curtain/spotlight staging reads well as ironic-counterpoint."
+ },
+ {
+  "id": "L04",
+  "r": "LOW",
+  "f": "clean",
+  "s": "clean",
+  "worst": "LOW",
+  "why": "r: the roller-shutter's horizontal slat lines render noticeably finer/thinner than the main rig outline weight — line-register drift (grilles/shutters are the named drift point). f/s clean: awning, cartons, hatchback, wet pavement, cool-blue/amber palette all match.",
+  "dsg": [
+   {"id": "txt1", "parent": "chalk-board", "q": "does the sandwich board read exactly '1983'?", "verdict": "pass", "note": "Board reads '1983' in chalk-white numerals, four digits, simple underline squiggle beneath, no other text anywhere in frame."}
+  ]
+ },
+ {
+  "id": "L05",
+  "r": "HIGH",
+  "f": "HIGH",
+  "s": "clean",
+  "worst": "HIGH",
+  "why": "Identity break: the figure in the crate is a plain round-headed cream humanoid with big white oval eyes and open mouth — none of pc-boxy's canonical CRT-monitor box head or green screen-face seen in L01/L06/L07. This is the named/seeded figure for the shot and the wrong character rendered, failing identity-match and the load-bearing fact that pc-boxy occupies the crate. Background (shelving, carton stack, bare bulb, red tape strip, pallet edge) otherwise matches."
+ },
+ {
+  "id": "L06",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "pc-boxy's head tone/screen-face design and delighted expression match L01's canonical rendering closely. Crowd pressed against the plate-glass window is dense and hungry-reading, palette and plinth lighting match, foreground riser cropped lower-left as specified."
+ },
+ {
+  "id": "L07",
+  "r": "MED",
+  "f": "clean",
+  "s": "clean",
+  "worst": "MED",
+  "why": "r: crowd faces carry drawn furrowed-eyebrow/scowl lines on top of the dot-eye + simple-mouth crowd rig — an added expressive feature not in the crowd-rig spec, individuating every face toward an angry look. f: pc-boxy's smug expression identity-consistent with L01/L06, banknotes thrust toward the machine without overlapping its panel. s: pegboard cables, queue rope, counter staging read well."
+ },
+ {
+  "id": "L08",
+  "r": "LOW",
+  "f": "clean",
+  "s": "clean",
+  "worst": "LOW",
+  "why": "r: ducking crowd uses more than the allowed 2-3 repeating skin tones (roughly four distinct shades) alongside the same faint raised-eyebrow embellishment seen in L07. f: exactly four `prop-beige-pc` units airborne, consistent design, trailing polystyrene chunks, bare-swept shelf and tipped basket present — every load-bearing count/fact holds. s: strong kinetic energy, good foreground/background separation."
+ },
+ {
+  "id": "L09",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "Queue reads as period 1980s bulky coats/parkas and hoods with no modern tech/clothing tells. Hooded silhouettes keep headwear variety tight. Sodium streetlamp, rubbish-bin foreground crop, night-blue palette match; folding stools and a sleeping bag present as specified."
+ }
+]

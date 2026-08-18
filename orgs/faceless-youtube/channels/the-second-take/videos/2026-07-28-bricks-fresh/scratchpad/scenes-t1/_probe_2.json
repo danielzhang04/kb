@@ -1,0 +1,16 @@
+{
+ "schema": "faceless-youtube/forge-retry-overlay@2",
+ "video_slug": "2026-07-28-bricks-fresh",
+ "entries": [
+  {
+   "kind": "scene",
+   "shot": "L05",
+   "name": "L05-fix",
+   "defect": "content",
+   "replace": {
+    "from": "small and centred, standing inside an open cardboard shipping crate packed with pale straw, stubby arms over the crate rim.",
+    "to": "small and centred, standing inside an open cardboard shipping crate packed with pale straw, stubby arms over the crate rim, pc-boxy rendered exactly as its own reference sheet draws it - the same beige CRT-monitor box head with a green screen and screen-drawn eyes/brows/mouth, never a generic round humanoid head."
+   }
+  }
+ ]
+}

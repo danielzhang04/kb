@@ -1,0 +1,56 @@
+{
+ "schema": "faceless-youtube/forge-retry-overlay@2",
+ "video_slug": "2026-07-28-bricks-fresh",
+ "entries": [
+  {
+   "kind": "scene",
+   "shot": "L03",
+   "name": "L03-fix",
+   "defect": "content",
+   "replace": {
+    "from": "Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming.",
+    "to": "Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming, every crowd figure drawn on the flat CROWD RIG only - dot eyes, one simple mouth, no individuated eyebrow or mouth linework on any face beyond that flat rig, hair and headwear repeating across at most 2-3 shared silhouettes for the whole group and never a distinct style invented per figure."
+   }
+  },
+  {
+   "kind": "scene",
+   "shot": "L04",
+   "name": "L04-fix",
+   "defect": "content",
+   "replace": {
+    "from": "its shutter half raised over a window stacked with beige computer cartons",
+    "to": "its shutter half raised over a window stacked with beige computer cartons, the shutter's slats drawn as a small number of THICK bands at the same medium-thick rig outline weight as every other line in the frame, never thin parallel hairlines"
+   }
+  },
+  {
+   "kind": "scene",
+   "shot": "L05",
+   "name": "L05-fix",
+   "defect": "content",
+   "replace": {
+    "from": "small and centred, standing inside an open cardboard shipping crate packed with pale straw, stubby arms over the crate rim.",
+    "to": "small and centred, standing inside an open cardboard shipping crate packed with pale straw, stubby arms over the crate rim, pc-boxy rendered exactly as its own reference sheet draws it - the same beige CRT-monitor box head with a green screen and screen-drawn eyes/brows/mouth, never a generic round humanoid head."
+   }
+  },
+  {
+   "kind": "scene",
+   "shot": "L07",
+   "name": "L07-fix",
+   "defect": "content",
+   "replace": {
+    "from": "customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient",
+    "to": "customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient, every one of them drawn on the flat CROWD RIG only - dot eyes and one simple mouth, no eyebrows or scowl lines drawn on any face"
+   }
+  },
+  {
+   "kind": "scene",
+   "shot": "L08",
+   "name": "L08-fix",
+   "defect": "content",
+   "replace": {
+    "from": "over a rear-zone press of shoppers who have ducked in behind the slat shelving with their arms up and their eyes wide",
+    "to": "over a rear-zone press of shoppers who have ducked in behind the slat shelving with their arms up and their eyes wide, every one of them drawn on the flat CROWD RIG only - dot eyes and one simple mouth with no eyebrows, head tones limited to at most 2-3 repeating flat shades shared across the whole group"
+   }
+  }
+ ]
+}

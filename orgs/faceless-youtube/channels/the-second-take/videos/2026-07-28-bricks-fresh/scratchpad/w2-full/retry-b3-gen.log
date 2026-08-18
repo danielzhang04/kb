@@ -1,0 +1,21 @@
+  [1/10] fig-auditor-rep--carry-by-handle--expr-deadpan--828ba23f: START provider call
+  [1/10] fig-auditor-rep--carry-by-handle--expr-deadpan--828ba23f: OK -> _staging/fig-auditor-rep--carry-by-handle--expr-deadpan--828ba23f.png
+  [2/10] fig-auditor-rep--point-at-thing--expr-thinking--33e29079: START provider call
+  [2/10] fig-auditor-rep--point-at-thing--expr-thinking--33e29079: OK -> _staging/fig-auditor-rep--point-at-thing--expr-thinking--33e29079.png
+  [3/10] fig-brick-foreman--surrender--expr-fear--9b76c8c6: START provider call
+  [3/10] fig-brick-foreman--surrender--expr-fear--9b76c8c6: OK -> _staging/fig-brick-foreman--surrender--expr-fear--9b76c8c6.png
+  [4/10] fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d: START provider call
+  [4/10] fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d: OK -> _staging/fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d.png
+  [5/10] fig-brick-foreman--hold-one-hand--expr-worried--4ae94432: START provider call
+  [5/10] fig-brick-foreman--hold-one-hand--expr-worried--4ae94432: OK -> _staging/fig-brick-foreman--hold-one-hand--expr-worried--4ae94432.png
+  [6/10] fig-auditor-rep--action-powerstance--expr-delighted--4a73160d: START provider call
+  [6/10] fig-auditor-rep--action-powerstance--expr-delighted--4a73160d: OK -> _staging/fig-auditor-rep--action-powerstance--expr-delighted--4a73160d.png
+  [7/10] fig-auditor-rep--point-at-thing--expr-deadpan--a79d034c: START provider call
+  [7/10] fig-auditor-rep--point-at-thing--expr-deadpan--a79d034c: OK -> _staging/fig-auditor-rep--point-at-thing--expr-deadpan--a79d034c.png
+  [8/10] fig-brick-foreman--hold-both-hands--expr-thinking--6a62e404: START provider call
+  [8/10] fig-brick-foreman--hold-both-hands--expr-thinking--6a62e404: OK -> _staging/fig-brick-foreman--hold-both-hands--expr-thinking--6a62e404.png
+  [9/10] fig-brick-foreman--hold-both-hands--expr-deadpan--4c5d84a5: START provider call
+  [9/10] fig-brick-foreman--hold-both-hands--expr-deadpan--4c5d84a5: OK -> _staging/fig-brick-foreman--hold-both-hands--expr-deadpan--4c5d84a5.png
+  [10/10] fig-brick-foreman--action-powerstance--expr-smug--7bf607c1: START provider call
+  [10/10] fig-brick-foreman--action-powerstance--expr-smug--7bf607c1: OK -> _staging/fig-brick-foreman--action-powerstance--expr-smug--7bf607c1.png
+  == 10 generated, 0 failed, 0 skipped, 0 held for review ==

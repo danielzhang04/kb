@@ -1,0 +1,213 @@
+[
+ {
+  "shot_id": "L01",
+  "file": "assets/scenes/L01.png",
+  "technique": "(b) Seeded composition — locked character(s) in composed environment",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "role": "canonical",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+    "role": "expression",
+    "character": "pc-boxy"
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "`pc-boxy` character canonical seeded directly (no pose primitive; STEP-1 not required); generated to _staging/L01.png (sha256 e3ad40bbc39e741986d254a086ee5fd50f910cdbf5386414c420ec0904a85183), worker A round 1"
+ },
+ {
+  "shot_id": "L02",
+  "file": "assets/scenes/L02.png",
+  "technique": "(c) Character-free scene — cast-free composition",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "; generated to _staging/L02.png (sha256 757e7b6d9f033e85529fe12663c3e7eb407a64a703d08595215283506b724324), worker A round 1"
+ },
+ {
+  "shot_id": "L03",
+  "file": "assets/scenes/L03.png",
+  "technique": "(c) Character-free scene — cast-free composition",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "; generated to _staging/L03.png (sha256 e7cf04fbdcd025564c81c57b63fc5e36e30bd9fbd8456b7a23a9d21ab84e041a), worker A round 1"
+ },
+ {
+  "shot_id": "L04",
+  "file": "assets/scenes/L04.png",
+  "technique": "(c) Character-free scene — cast-free composition",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+    "role": "environment",
+    "character": "lettering-marker-italic"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+    "role": "style-anchor",
+    "character": "scene-style-tile"
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); generated to _staging/L04.png (sha256 87c6b4f562e8f2f226fc72a487550b4f9deea7bb8e5dd96a50321fab6e25d894), worker A round 1"
+ },
+ {
+  "shot_id": "L05",
+  "file": "assets/scenes/L05.png",
+  "technique": "(b) Seeded composition — locked character(s) in composed environment",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "role": "canonical",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png",
+    "role": "expression",
+    "character": "pc-boxy"
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "`pc-boxy` character canonical seeded directly (no pose primitive; STEP-1 not required); generated to _staging/L05.png (sha256 d700b60b3fb9e77b696753b3651d55ec49ac2feec8c9ce4cd003c9f8bbd97a18), worker A round 1"
+ },
+ {
+  "shot_id": "L06",
+  "file": "assets/scenes/L06.png",
+  "technique": "(b) Seeded composition — locked character(s) in composed environment",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "role": "canonical",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+    "role": "expression",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "`pc-boxy` character canonical seeded directly (no pose primitive; STEP-1 not required); generated to _staging/L06.png (sha256 294b7db8ac232561ba6d56b48e43bb247b84d9ae4473f6aaaa3d661a3a357272), worker A round 1"
+ },
+ {
+  "shot_id": "L07",
+  "file": "assets/scenes/L07.png",
+  "technique": "(b) Seeded composition — locked character(s) in composed environment",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+    "role": "canonical",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+    "role": "expression",
+    "character": "pc-boxy"
+   },
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "`pc-boxy` character canonical seeded directly (no pose primitive; STEP-1 not required); generated to _staging/L07.png (sha256 315544c80a08c0e66b98b455a1537f2417b1e40b71775879e5297d1482d579da), worker A round 1"
+ },
+ {
+  "shot_id": "L08",
+  "file": "assets/scenes/L08.png",
+  "technique": "(c) Character-free scene — cast-free composition",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+    "role": "prop",
+    "character": "prop-beige-pc"
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "`prop-beige-pc` match-prop canonical seeded; generated to _staging/L08.png (sha256 f2d3c687d4abada698b0151eea18273bb06435b318068181106205b68053e725), worker A round 1"
+ },
+ {
+  "shot_id": "L09",
+  "file": "assets/scenes/L09.png",
+  "technique": "(c) Character-free scene — cast-free composition",
+  "seeds": [
+   {
+    "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+    "role": "crowd",
+    "character": null
+   }
+  ],
+  "flagged": false,
+  "review_status": "unreviewed",
+  "parked_reasons": [],
+  "retry_cause": null,
+  "parent_depth": 0,
+  "lineage": 0,
+  "notes": "; generated to _staging/L09.png (sha256 ed0cf232135a9d9322b9586aafaf8dd37f0d151b40a56f6976b8430ae3af50ab), worker A round 1"
+ }
+]

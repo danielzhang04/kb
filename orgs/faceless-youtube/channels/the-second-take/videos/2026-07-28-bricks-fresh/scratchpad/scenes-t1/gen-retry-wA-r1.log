@@ -1,0 +1,11 @@
+  [1/5] L03-fix: START provider call
+  [1/5] L03-fix: OK -> _staging/L03-fix.png
+  [2/5] L04-fix: START provider call
+  [2/5] L04-fix: OK -> _staging/L04-fix.png
+  [3/5] L05-fix: START provider call
+  [3/5] L05-fix: OK -> _staging/L05-fix.png
+  [4/5] L07-fix: START provider call
+  [4/5] L07-fix: OK -> _staging/L07-fix.png
+  [5/5] L08-fix: START provider call
+  [5/5] L08-fix: OK -> _staging/L08-fix.png
+  == 5 generated, 0 failed, 0 skipped, 0 held for review ==

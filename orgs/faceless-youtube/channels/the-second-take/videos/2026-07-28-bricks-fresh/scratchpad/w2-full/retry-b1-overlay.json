@@ -1,0 +1,62 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L22",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--back-to-viewer--7a3b93be",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L24",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L27",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L32",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L45",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--action-recoil--expr-surprised--0487471a",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L39",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--hold-both-hands--expr-greedy--e0099a9a",
+      "defect": "pose"
+    },
+    {
+      "kind": "step1",
+      "shot": "L18",
+      "character": "drive-maker",
+      "name": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L47",
+      "character": "terry-johnson",
+      "name": "fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60",
+      "defect": "clean_card"
+    }
+  ]
+}

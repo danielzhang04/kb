@@ -1,0 +1,26 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L12",
+      "name": "L12-fix",
+      "defect": "content",
+      "replace": {
+        "from": "the bedside lamp is out and the whole room has gone deep blue dark",
+        "to": "the bedside lamp is switched off, its shade and stand still visible as a dark unlit silhouette exactly where established in the held set, and the whole room has gone deep blue dark, held at the exact same framing and crop as before"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L14",
+      "name": "L14-fix",
+      "defect": "content",
+      "replace": {
+        "from": "the oversized `prop-drive` body, which stands stage-left with its first drawer still fully out, folders and photographs on show. Flat cream backdrop, cream-buff-maroon palette, even frontal light, foreground depth from a cropped rug edge across the bottom. Both its stubby arms are flat against a second drawer that has just slid open at hip height, shoving it back so whatever is in it stays hidden behind the drawer front.",
+        "to": "the oversized `prop-drive` body — its same cream-buff body, teal trim and rounded drive-shaped top exactly as established, not a plain metal filing cabinet — which stands stage-left with its first drawer still fully out, folders and photographs on show. Flat cream backdrop, cream-buff-maroon palette, even frontal light, foreground depth from a cropped rug edge across the bottom. Both its stubby arms, side by side, are pressed flat together against that SAME second drawer at hip height, shoving it back so whatever is in it stays hidden behind the drawer front."
+      }
+    }
+  ]
+}

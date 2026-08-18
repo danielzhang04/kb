@@ -1,0 +1,125 @@
+{
+ "figures": {
+  "_staging/fig-auditor-rep--55bd2c0a.png": {
+   "canonical_sha256": "e282859d6ea4fbb8ab2b57f3c631198963da3509a0d53f82af6de33317bda84c",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--action-armscrossed--expr-deadpan--91d33eed.png": {
+   "canonical_sha256": "95dc4129299f92548bafcac1f691cced3361b544eeec02d8459c0aead0dc9aed",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--action-slump--expr-crestfallen--f5da9312.png": {
+   "canonical_sha256": "949296dc5b5453fb238fa0726db7766c47be45b4f1cd0bbf5970ac23286a71e8",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--sign-with-pen--expr-caught--27f8ee3d.png": {
+   "canonical_sha256": "bcb3cef85bfbf1833564be2fa23f5d0ffb7e3d6bcc86ab3def50e50816ca8510",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--action-armscrossed--expr-annoyed--234e661f.png": {
+   "canonical_sha256": "1978e82fe1d65354d5ae6b5bb6b308ff365bd0aa7e278b1af3fdcdcd33675dd4",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--action-shrug--expr-deadpan--c6a91793.png": {
+   "canonical_sha256": "f3bff3425f4d612618236be904b016e585f98c4b9ba5c6f19fe836520425e7a7",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--carry-by-handle--expr-deadpan--2a3df20f.png": {
+   "canonical_sha256": "e20cb73def7e4f414efddd8227fdda514f8cba2e594f97fecd8f86222d5c8d57",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--hold-both-hands--expr-crestfallen--0e665224.png": {
+   "canonical_sha256": "840061c33f78a998f8d293bbedb960275dd95b1f83073745046dc4ed6b2c8fad",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--hold-both-hands--expr-crestfallen--18426408.png": {
+   "canonical_sha256": "1e6264782dfa2c822afcaa8a50c804508106cf1721a4589bb95dabc8af37a78b",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--hold-both-hands--expr-delighted--610638ea.png": {
+   "canonical_sha256": "ac156390fe9c75a762dbf9b737a5f615beaa5d29a2fca298d3c133d663bc7fc2",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-line-worker--sit--expr-smug--58cc68b6.png": {
+   "canonical_sha256": "d1b7c974a6f39b856bb4ae8f83b6464e6244ec302cd113febdb116d8e22fa270",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  }
+ }
+}

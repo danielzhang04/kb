@@ -1,0 +1,618 @@
+[
+  {
+    "name": "fig-return-customer--sign-with-pen--expr-deadpan--0856a20c",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/sign-with-pen.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png",
+        "role": "canonical",
+        "character": "return-customer"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "return-customer"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/sign-with-pen.png",
+        "role": "pose",
+        "character": "return-customer"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right at a receiving bay, signing a docket on a clipboard beside a wrapped pallet still on the tail lift: a navy delivery coat with a company-less breast patch left plain, dark trousers, heavy boots, a navy beanie pushed back, dark beard, broad build. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `return-customer`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `return-customer` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `return-customer` holds in the parent scene, and no other figure's. The THIRD image is the `sign-with-pen` pose reference for `return-customer` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right at a receiving bay, signing a docket on a clipboard beside a wrapped pallet still on the tail lift: a navy delivery coat with a company-less breast patch left plain, dark trousers, heavy boots, a navy beanie pushed back, dark beard, broad build. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `return-customer` (sign-with-pen / expr-deadpan)"
+  },
+  {
+    "name": "fig-miniscribe-rep--expr-smug--105ba6bf",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and, stage-right, joined in across the top of a wrapped pallet, their near hands clasped over it, both holding the same plane at a matching eye line and an equal relative head scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and, stage-right, joined in across the top of a wrapped pallet, their near hands clasped over it, both holding the same plane at a matching eye line and an equal relative head scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (no pose / expr-smug)"
+  },
+  {
+    "name": "fig-return-customer--expr-skeptical--105ba6bf",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png",
+        "role": "canonical",
+        "character": "return-customer"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+        "role": "expression",
+        "character": "return-customer"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and, stage-right, joined in across the top of a wrapped pallet, their near hands clasped over it, both holding the same plane at a matching eye line and an equal relative head scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `return-customer`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-skeptical` expression reference for `return-customer` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `return-customer` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and, stage-right, joined in across the top of a wrapped pallet, their near hands clasped over it, both holding the same plane at a matching eye line and an equal relative head scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `return-customer` (no pose / expr-skeptical)"
+  },
+  {
+    "name": "fig-return-customer--action-shrug--expr-deadpan--5037a50d",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-shrug.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png",
+        "role": "canonical",
+        "character": "return-customer"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "return-customer"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-shrug.png",
+        "role": "pose",
+        "character": "return-customer"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left at the edge of an empty road, shrugging as a box truck drives away from the viewer with the same wrapped pallet visible through its open tail, still sealed and never opened. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `return-customer`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `return-customer` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `return-customer` holds in the parent scene, and no other figure's. The THIRD image is the `action-shrug` pose reference for `return-customer` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left at the edge of an empty road, shrugging as a box truck drives away from the viewer with the same wrapped pallet visible through its open tail, still sealed and never opened. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `return-customer` (action-shrug / expr-deadpan)"
+  },
+  {
+    "name": "fig-qt-wiles--action-present--expr-delighted--816f6f2a",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/action-present.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+        "role": "canonical",
+        "character": "qt-wiles"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "qt-wiles"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-present.png",
+        "role": "pose",
+        "character": "qt-wiles"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre under one warm overhead spot, arms opened wide to the viewer as though welcoming a room. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `qt-wiles`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-delighted` expression reference for `qt-wiles` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `qt-wiles` holds in the parent scene, and no other figure's. The THIRD image is the `action-present` pose reference for `qt-wiles` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre under one warm overhead spot, arms opened wide to the viewer as though welcoming a room. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `qt-wiles` (action-present / expr-delighted)"
+  },
+  {
+    "name": "fig-miniscribe-rep--expr-deadpan--705b0cc1",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and, stage-right, the two of them side-on to the viewer and facing each other across a small bare cafe table on a thin metal pedestal, its top wiped clean and the whole open space beneath it clear to the camera at body scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and, stage-right, the two of them side-on to the viewer and facing each other across a small bare cafe table on a thin metal pedestal, its top wiped clean and the whole open space beneath it clear to the camera at body scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (no pose / expr-deadpan)"
+  },
+  {
+    "name": "fig-return-customer--expr-smug--705b0cc1",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/return-customer/return-customer.png",
+        "role": "canonical",
+        "character": "return-customer"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "return-customer"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and, stage-right, the two of them side-on to the viewer and facing each other across a small bare cafe table on a thin metal pedestal, its top wiped clean and the whole open space beneath it clear to the camera at body scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `return-customer`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `return-customer` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `return-customer` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and, stage-right, the two of them side-on to the viewer and facing each other across a small bare cafe table on a thin metal pedestal, its top wiped clean and the whole open space beneath it clear to the camera at body scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `return-customer` (no pose / expr-smug)"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-present--expr-smug--d63b7b3c",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/action-present.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-present.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left presenting one wrapped pallet that stands centre frame wearing a salesman's snap-brim hat perched on its near top corner. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-present` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left presenting one wrapped pallet that stands centre frame wearing a salesman's snap-brim hat perched on its near top corner. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-present / expr-smug)"
+  },
+  {
+    "name": "fig-auditor-rep--action-armscrossed--expr-deadpan--53d22335",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+        "role": "canonical",
+        "character": "auditor-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "auditor-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+        "role": "pose",
+        "character": "auditor-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre in the marble lobby with a document case at his feet. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `auditor-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `auditor-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `auditor-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-armscrossed` pose reference for `auditor-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre in the marble lobby with a document case at his feet. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `auditor-rep` (action-armscrossed / expr-deadpan)"
+  },
+  {
+    "name": "fig-auditor-rep--action-armscrossed--expr-deadpan--7fce9668",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+        "role": "canonical",
+        "character": "auditor-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "auditor-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+        "role": "pose",
+        "character": "auditor-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing colossal and dominant across the centre of the frame with his shoulders above the skyline, a row of ordinary office blocks reaching only to his knees on a flat cream ground. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `auditor-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `auditor-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `auditor-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-armscrossed` pose reference for `auditor-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing colossal and dominant across the centre of the frame with his shoulders above the skyline, a row of ordinary office blocks reaching only to his knees on a flat cream ground. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `auditor-rep` (action-armscrossed / expr-deadpan)"
+  },
+  {
+    "name": "fig-auditor-rep--hold-one-hand--expr-deadpan--7a7051c3",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+        "role": "canonical",
+        "character": "auditor-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "auditor-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+        "role": "pose",
+        "character": "auditor-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: seen from behind and above his shoulder at the top of a set of steel mezzanine steps, looking down over a rail at the sealed cartons filling the floor of the unit below him in long parallel rows out to the far wall. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `auditor-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `auditor-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `auditor-rep` holds in the parent scene, and no other figure's. The THIRD image is the `hold-one-hand` pose reference for `auditor-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: seen from behind and above his shoulder at the top of a set of steel mezzanine steps, looking down over a rail at the sealed cartons filling the floor of the unit below him in long parallel rows out to the far wall. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `auditor-rep` (hold-one-hand / expr-deadpan)"
+  },
+  {
+    "name": "fig-brick-foreman--point-at-thing--expr-thinking--5be86de6",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+      "channels/the-second-take/visual-kit/refs/base/point-at-thing.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+        "role": "expression",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/point-at-thing.png",
+        "role": "pose",
+        "character": "brick-foreman"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left pointing at a wheeled flipchart pad whose sheet carries three crude thick-ink sketches in a row and no words at all. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-thinking` expression reference for `brick-foreman` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `brick-foreman` holds in the parent scene, and no other figure's. The THIRD image is the `point-at-thing` pose reference for `brick-foreman` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left pointing at a wheeled flipchart pad whose sheet carries three crude thick-ink sketches in a row and no words at all. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `brick-foreman` (point-at-thing / expr-thinking)"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-present--expr-delighted--1fbbd999",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+      "channels/the-second-take/visual-kit/refs/base/action-present.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-present.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing centre on the low lit dais of the hotel function room and holding a flat award plate up in front of him. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-present` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing centre on the low lit dais of the hotel function room and holding a flat award plate up in front of him. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `miniscribe-rep` (action-present / expr-delighted)"
+  },
+  {
+    "name": "fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+        "role": "pose",
+        "character": "brick-foreman"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right at a banquet table and turned square to the viewer, arms folded and not applauding, the rented dinner jacket on again. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `brick-foreman` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `brick-foreman` holds in the parent scene, and no other figure's. The THIRD image is the `action-armscrossed` pose reference for `brick-foreman` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right at a banquet table and turned square to the viewer, arms folded and not applauding, the rented dinner jacket on again. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `brick-foreman` (action-armscrossed / expr-deadpan)"
+  },
+  {
+    "name": "fig-auditor-rep--action-shrug--expr-deadpan--7e4e0ab5",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/action-shrug.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+        "role": "canonical",
+        "character": "auditor-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "auditor-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-shrug.png",
+        "role": "pose",
+        "character": "auditor-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing stage-right beside an untouched shrink-wrapped pallet in an empty concrete bay, shrugging squarely at the viewer with his document case still shut at his feet. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `auditor-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `auditor-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `auditor-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-shrug` pose reference for `auditor-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing stage-right beside an untouched shrink-wrapped pallet in an empty concrete bay, shrugging squarely at the viewer with his document case still shut at his feet. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `auditor-rep` (action-shrug / expr-deadpan)"
+  },
+  {
+    "name": "fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+        "role": "canonical",
+        "character": "line-worker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+        "role": "expression",
+        "character": "line-worker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+        "role": "pose",
+        "character": "line-worker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing stage-centre in a doorway of hard daylight holding a single pink sheet down at his side in one hand, shoulders dropped. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `line-worker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-crestfallen` expression reference for `line-worker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `line-worker` holds in the parent scene, and no other figure's. The THIRD image is the `hold-one-hand` pose reference for `line-worker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing stage-centre in a doorway of hard daylight holding a single pink sheet down at his side in one hand, shoulders dropped. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `line-worker` (hold-one-hand / expr-crestfallen)"
+  },
+  {
+    "name": "fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+        "role": "canonical",
+        "character": "line-worker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+        "role": "expression",
+        "character": "line-worker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-paper-by-sides.png",
+        "role": "pose",
+        "character": "line-worker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right at the head of the queue holding a pink sheet in front of him by its sides. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `line-worker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-crestfallen` expression reference for `line-worker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `line-worker` holds in the parent scene, and no other figure's. The THIRD image is the `hold-paper-by-sides` pose reference for `line-worker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right at the head of the queue holding a pink sheet in front of him by its sides. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `line-worker` (hold-paper-by-sides / expr-crestfallen)"
+  },
+  {
+    "name": "fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+      "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+        "role": "canonical",
+        "character": "line-worker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+        "role": "expression",
+        "character": "line-worker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+        "role": "pose",
+        "character": "line-worker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left in a small suburban kitchen at night, lifting a wall telephone handset off its cradle in one hand, his outdoor coat still on over his work clothes. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `line-worker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-annoyed` expression reference for `line-worker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `line-worker` holds in the parent scene, and no other figure's. The THIRD image is the `hold-one-hand` pose reference for `line-worker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left in a small suburban kitchen at night, lifting a wall telephone handset off its cradle in one hand, his outdoor coat still on over his work clothes. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `line-worker` (hold-one-hand / expr-annoyed)"
+  },
+  {
+    "name": "fig-line-worker--sit--expr-smug--58cc68b6",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/sit.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+        "role": "canonical",
+        "character": "line-worker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "line-worker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/sit.png",
+        "role": "pose",
+        "character": "line-worker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: on an upholstered chair drawn up to a personnel desk with his elbow resting on its arm, stage-left, sliding a thick unmarked folder across the desktop toward an empty chair opposite. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `line-worker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `line-worker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `line-worker` holds in the parent scene, and no other figure's. The THIRD image is the `sit` pose reference for `line-worker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: on an upholstered chair drawn up to a personnel desk with his elbow resting on its arm, stage-left, sliding a thick unmarked folder across the desktop toward an empty chair opposite. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `line-worker` (sit / expr-smug)"
+  },
+  {
+    "name": "fig-rifenburgh-ceo--action-armscrossed--expr-thinking--15c18100",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/rifenburgh-ceo/rifenburgh-ceo.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+      "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/rifenburgh-ceo/rifenburgh-ceo.png",
+        "role": "canonical",
+        "character": "rifenburgh-ceo"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+        "role": "expression",
+        "character": "rifenburgh-ceo"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+        "role": "pose",
+        "character": "rifenburgh-ceo"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre in the corridor mouth with the crowd gone ahead of him, appraising the empty office beyond. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `rifenburgh-ceo`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-thinking` expression reference for `rifenburgh-ceo` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `rifenburgh-ceo` holds in the parent scene, and no other figure's. The THIRD image is the `action-armscrossed` pose reference for `rifenburgh-ceo` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre in the corridor mouth with the crowd gone ahead of him, appraising the empty office beyond. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "why": "STEP 1 for `rifenburgh-ceo` (action-armscrossed / expr-thinking)"
+  }
+]

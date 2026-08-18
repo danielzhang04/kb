@@ -1,0 +1,76 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L83",
+      "character": "auditor-rep",
+      "name": "fig-auditor-rep--carry-by-handle--expr-deadpan--828ba23f",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L85",
+      "character": "auditor-rep",
+      "name": "fig-auditor-rep--point-at-thing--expr-thinking--33e29079",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L94",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--surrender--expr-fear--9b76c8c6",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L100",
+      "character": "auditor-rep",
+      "name": "fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L105",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--hold-one-hand--expr-worried--4ae94432",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L108",
+      "character": "auditor-rep",
+      "name": "fig-auditor-rep--action-powerstance--expr-delighted--4a73160d",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L109",
+      "character": "auditor-rep",
+      "name": "fig-auditor-rep--point-at-thing--expr-deadpan--a79d034c",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L113",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--hold-both-hands--expr-thinking--6a62e404",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L120",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--hold-both-hands--expr-deadpan--4c5d84a5",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L127",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--action-powerstance--expr-smug--7bf607c1",
+      "defect": "rig"
+    }
+  ]
+}

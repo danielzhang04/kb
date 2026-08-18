@@ -1,0 +1,116 @@
+[
+  {
+    "name": "fig-brick-foreman--action-shrug--expr-eyeroll--2a4cea9b",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-eyeroll.png",
+      "channels/the-second-take/visual-kit/refs/base/action-shrug.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+        "role": "canonical",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-eyeroll.png",
+        "role": "expression",
+        "character": "brick-foreman"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-shrug.png",
+        "role": "pose",
+        "character": "brick-foreman"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right on a flight of wide stone courthouse steps, turned square to the viewer with the columned entrance behind him. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "delta": "SEED ROLES. The FIRST image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-eyeroll` expression reference for `brick-foreman` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `brick-foreman` holds in the parent scene, and no other figure's. The THIRD image is the `action-shrug` pose reference for `brick-foreman` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right on a flight of wide stone courthouse steps, turned square to the viewer with the columned entrance behind him. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and, of the bodily ACT it gives this figure, take ONLY the GESTURE it implies \u2014 draw the figure performing that gesture empty-handed, WITHIN the stance the pose reference holds; the object, person, prop or setting its sentence names belongs to the scene, not to this reference card. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+    "retry_authority": {
+      "kind": "step1-remint",
+      "changed_spans": 1,
+      "defect": "expression",
+      "character": "brick-foreman"
+    },
+    "why": "STEP-1-only retry for `brick-foreman` from `L221`"
+  },
+  {
+    "name": "fig-drive-maker--action-powerstance--expr-smug--21372a75",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/visual-kit/refs/base/action-powerstance.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+        "role": "canonical",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-powerstance.png",
+        "role": "pose",
+        "character": "drive-maker"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew a held object, prop or scenery fragment on this card. Draw the figure alone against the flat pale-grey backdrop: no held object, no prop, no scenery, no other person.",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `drive-maker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `drive-maker` holds in the parent scene, and no other figure's. The THIRD image is the `action-powerstance` pose reference for `drive-maker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew a held object, prop or scenery fragment on this card. Draw the figure alone against the flat pale-grey backdrop: no held object, no prop, no scenery, no other person.",
+    "retry_authority": {
+      "kind": "step1-remint",
+      "changed_spans": 1,
+      "defect": "clean_card",
+      "character": "drive-maker"
+    },
+    "why": "STEP-1-only retry for `drive-maker` from `L233`"
+  },
+  {
+    "name": "fig-miniscribe-rep--action-offering--expr-worried--65ad5c3a",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+      "channels/the-second-take/visual-kit/refs/base/action-offering.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+        "role": "canonical",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+        "role": "expression",
+        "character": "miniscribe-rep"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/action-offering.png",
+        "role": "pose",
+        "character": "miniscribe-rep"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew a held object, prop or scenery fragment on this card. Draw the figure alone against the flat pale-grey backdrop: no held object, no prop, no scenery, no other person.",
+    "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-worried` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-offering` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew a held object, prop or scenery fragment on this card. Draw the figure alone against the flat pale-grey backdrop: no held object, no prop, no scenery, no other person.",
+    "retry_authority": {
+      "kind": "step1-remint",
+      "changed_spans": 1,
+      "defect": "clean_card",
+      "character": "miniscribe-rep"
+    },
+    "why": "STEP-1-only retry for `miniscribe-rep` from `L185`"
+  }
+]

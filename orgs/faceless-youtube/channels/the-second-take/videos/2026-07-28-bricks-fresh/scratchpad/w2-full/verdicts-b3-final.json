@@ -1,0 +1,227 @@
+{
+  "figures": {
+    "_staging/fig-auditor-rep--action-powerstance--expr-delighted--4a73160d.png": {
+      "canonical_sha256": "a44772bb5456da20b4e446042c080966803f21db9bf5b7fa698578c636c94297",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "fail",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18",
+      "note": "clean_card retry fixed the leaked clipboard + suit color + backdrop tint, but the re-roll now shows glasses worn over the eyes instead of pushed up on the forehead (canonical pin); ONE retry already used."
+    },
+    "_staging/fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d.png": {
+      "canonical_sha256": "d8c3b0232ea6910b4df639405ea6b337fd280131e814290b49f9100ce0fa7156",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "fail",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18",
+      "note": "retry (rig, glasses position) fixed the glasses but the re-roll introduced a fresh leaked document-case prop; ONE retry already used, surfaced not re-rolled."
+    },
+    "_staging/fig-auditor-rep--carry-by-handle--expr-deadpan--828ba23f.png": {
+      "canonical_sha256": "9b56f0873953b9bd2ca97991f66c0db524530caccae17ba38c4456a2d33026da",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-auditor-rep--point-at-thing--expr-deadpan--a79d034c.png": {
+      "canonical_sha256": "00cc15723a05932e3ca94c43f4f6d57ce7b7ff41a2ba8c27022c3e3d9ff553c9",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-auditor-rep--point-at-thing--expr-thinking--33e29079.png": {
+      "canonical_sha256": "229478ae4b058d33cb5a7ea4a0b3b3b4989c18a2332c5bd9095188e220b774c5",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--action-armscrossed--expr-confused--bcec381e.png": {
+      "canonical_sha256": "ad3fbd29c7e345adc6482a68bb95fa5151625d37416c244536d0e890fec701e3",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--action-armscrossed--expr-thinking--065f9f1e.png": {
+      "canonical_sha256": "48bd28b756601588e9c7f9a6eba4e40cf27e058d5d24dc5dfff035cb7fa36a4c",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--action-powerstance--expr-smug--7bf607c1.png": {
+      "canonical_sha256": "b61a7aa64fcbe123d5fb9cb028b9de301fc9e3a820719f9afd79f342cadebe05",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--action-present--expr-delighted--6f31db28.png": {
+      "canonical_sha256": "7f113af93bd2564f1a24eaeca3f29bb2a50d8cbc6aa079071d819f15c0dc8ae6",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--action-present--expr-smug--9e7e0fb2.png": {
+      "canonical_sha256": "109a8e33563f12cb8689d4673f0b52a6c1898d3095ca881df724e0560a23ff35",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--action-shrug--expr-caught--1f399397.png": {
+      "canonical_sha256": "ef882a0cb8bf05e5768950cf53244bb06c14b51e64fcde8a1f59ca549290a9ba",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--back-to-viewer--e88f3bf3.png": {
+      "canonical_sha256": "c3a5e411215cdbfc73a48ccc07f56b7456820ade03510dc5629308e307f82619",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--hold-both-hands--expr-deadpan--4c5d84a5.png": {
+      "canonical_sha256": "d1afa201b5b0933a1681882bc8926421985bb869f3936e1c78bb40f9b7b305bc",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--hold-both-hands--expr-fear--d3048916.png": {
+      "canonical_sha256": "a0175325cd02b916d5dc21e9fa36cb5b43666c987117d4d3de3b5611baedddcf",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--hold-both-hands--expr-thinking--6a62e404.png": {
+      "canonical_sha256": "bbbdf9504c56f3b2f6bd2379c959349cb33c2440ecff2e810e7c5dc8816753bb",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--hold-one-hand--expr-worried--4ae94432.png": {
+      "canonical_sha256": "626bf8ac50944c746de0634c3f783da365fa8b24a50f81bfe5a20b6f1bb04ed7",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--sign-with-pen--expr-caught--0c7070ad.png": {
+      "canonical_sha256": "9f09143ac12f72063a89281942abe94572b8646d8ca455a32996f1939eefd085",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--sit--expr-caught--6376f6be.png": {
+      "canonical_sha256": "ea795673e831c69a51b8a482ede99b896624460fe8a6b87192e1819d7c18fdf6",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    },
+    "_staging/fig-brick-foreman--surrender--expr-fear--9b76c8c6.png": {
+      "canonical_sha256": "d2edcb2084f8f7265d45373a9782a1c734ae8bd30a18e55d199a5494cb57476e",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "fail",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18",
+      "note": "same shared CHANNEL-LEVEL base-asset digit defect as action-recoil.png (refs/base/surrender.png itself renders 5 digits on both raised hands); confirmed on retry, un-fixable at STEP-1 level."
+    },
+    "_staging/fig-qt-wiles--hold-one-hand--expr-smug--0d39a50f.png": {
+      "canonical_sha256": "a4af2fc9615c0d93f6778a9857b7a4ae43cd725c720694a3347ae7a172a30705",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "expression-register": "pass",
+        "flat-cel-hazard": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-18"
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L132",
+      "character": "return-customer",
+      "name": "fig-return-customer--sign-with-pen--expr-deadpan--0856a20c",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L137",
+      "character": "miniscribe-rep",
+      "name": "fig-miniscribe-rep--action-present--expr-smug--d63b7b3c",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L165",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L168",
+      "character": "line-worker",
+      "name": "fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L171",
+      "character": "line-worker",
+      "name": "fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa",
+      "defect": "clean_card"
+    }
+  ]
+}

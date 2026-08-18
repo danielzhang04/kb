@@ -1,0 +1,59 @@
+{
+ "figures": {
+  "_staging/fig-auditor-rep--55bd2c0a.png": {
+   "canonical_sha256": "17455882384c0d5c51f9e5a819a5493a19ccf93643e175672324bb22704dabf7",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--sign-with-pen--expr-caught--27f8ee3d.png": {
+   "canonical_sha256": "0a17ea45096075a4453d505cba0ebcc49460a6a90233169b84ca9d311829b0f1",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--carry-by-handle--expr-deadpan--2a3df20f.png": {
+   "canonical_sha256": "a441eba9b2303a0a83a9c4cf4b320656ba1cb33155dc5c404f2233e777e88e24",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--hold-both-hands--expr-crestfallen--18426408.png": {
+   "canonical_sha256": "6d584a9d7527f9b5c822b8b6e9893287e27606a81cd1f55be2a1da41ab6eefef",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--hold-both-hands--expr-delighted--610638ea.png": {
+   "canonical_sha256": "292a25e9e68af1e94ba7d52ecc5a22131b187e3c67e4bda3d8003b3bf12e8c51",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  }
+ }
+}

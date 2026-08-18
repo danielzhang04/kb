@@ -1,0 +1,11 @@
+  [1/5] fig-return-customer--sign-with-pen--expr-deadpan--0856a20c: START provider call
+  [1/5] fig-return-customer--sign-with-pen--expr-deadpan--0856a20c: OK -> _staging/fig-return-customer--sign-with-pen--expr-deadpan--0856a20c.png
+  [2/5] fig-miniscribe-rep--action-present--expr-smug--d63b7b3c: START provider call
+  [2/5] fig-miniscribe-rep--action-present--expr-smug--d63b7b3c: OK -> _staging/fig-miniscribe-rep--action-present--expr-smug--d63b7b3c.png
+  [3/5] fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42: START provider call
+  [3/5] fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42: OK -> _staging/fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42.png
+  [4/5] fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546: START provider call
+  [4/5] fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546: OK -> _staging/fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546.png
+  [5/5] fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa: START provider call
+  [5/5] fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa: OK -> _staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa.png
+  == 5 generated, 0 failed, 0 skipped, 0 held for review ==

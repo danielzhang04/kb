@@ -1,0 +1,16 @@
+{
+ "schema": "faceless-youtube/forge-retry-overlay@2",
+ "video_slug": "2026-07-28-bricks-fresh",
+ "entries": [
+  {
+   "kind": "scene",
+   "shot": "L04",
+   "name": "L04-fix",
+   "defect": "content",
+   "replace": {
+    "from": "its shutter half raised over a window stacked with beige computer cartons",
+    "to": "its shutter half raised over a window stacked with beige computer cartons, the shutter's slats drawn as a small number of THICK bands at the same medium-thick rig outline weight as every other line in the frame, never thin parallel hairlines"
+   }
+  }
+ ]
+}

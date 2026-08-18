@@ -1,0 +1,19 @@
+  [1/9] fig-bond-investor--sit--expr-worried--25000481: START provider call
+  [1/9] fig-bond-investor--sit--expr-worried--25000481: OK -> _staging/fig-bond-investor--sit--expr-worried--25000481.png
+  [2/9] fig-brick-foreman--action-shrug--expr-eyeroll--2a4cea9b: START provider call
+  [2/9] fig-brick-foreman--action-shrug--expr-eyeroll--2a4cea9b: ERR no image in response
+  [3/9] fig-drive-maker--action-powerstance--expr-smug--21372a75: START provider call
+  [3/9] fig-drive-maker--action-powerstance--expr-smug--21372a75: OK -> _staging/fig-drive-maker--action-powerstance--expr-smug--21372a75.png
+  [4/9] fig-hq-banker--action-recoil--expr-surprised--a7350ff7: START provider call
+  [4/9] fig-hq-banker--action-recoil--expr-surprised--a7350ff7: OK -> _staging/fig-hq-banker--action-recoil--expr-surprised--a7350ff7.png
+  [5/9] fig-hq-banker--expr-deadpan--55bd2c0a: START provider call
+  [5/9] fig-hq-banker--expr-deadpan--55bd2c0a: OK -> _staging/fig-hq-banker--expr-deadpan--55bd2c0a.png
+  [6/9] fig-hr-officer--hold-one-hand--expr-deadpan--f718fa83: START provider call
+  [6/9] fig-hr-officer--hold-one-hand--expr-deadpan--f718fa83: OK -> _staging/fig-hr-officer--hold-one-hand--expr-deadpan--f718fa83.png
+  [7/9] fig-miniscribe-rep--action-offering--expr-worried--65ad5c3a: START provider call
+  [7/9] fig-miniscribe-rep--action-offering--expr-worried--65ad5c3a: OK -> _staging/fig-miniscribe-rep--action-offering--expr-worried--65ad5c3a.png
+  [8/9] fig-miniscribe-rep--action-present--expr-worried--dd9ef203: START provider call
+  [8/9] fig-miniscribe-rep--action-present--expr-worried--dd9ef203: OK -> _staging/fig-miniscribe-rep--action-present--expr-worried--dd9ef203.png
+  [9/9] fig-miniscribe-rep--action-slump--expr-crestfallen--13eb9136: START provider call
+  [9/9] fig-miniscribe-rep--action-slump--expr-crestfallen--13eb9136: OK -> _staging/fig-miniscribe-rep--action-slump--expr-crestfallen--13eb9136.png
+  == 8 generated, 1 failed, 0 skipped, 0 held for review ==

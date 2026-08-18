@@ -1,0 +1,248 @@
+{
+ "figures": {
+  "_staging/fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1.png": {
+   "canonical_sha256": "1135808b8c78db57362bd2f0c0bb514656188d66e153a4fd3a32c06195ac23ea",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--back-to-viewer--7a3b93be.png": {
+   "canonical_sha256": "7217b784e858e3726f43b1401125685cba9ff462a467a568b684b73920d16677",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92.png": {
+   "canonical_sha256": "085284e0ef3c419766d07e6294a8196dc65b4c3bff6ff663ae8eda8564f0d4e6",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75.png": {
+   "canonical_sha256": "e77fcf1e304c678456f8e40e96779da3f2ecf7402416f400878f9680b329d3e9",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-drive-maker--action-present--expr-smug--5e51ec13.png": {
+   "canonical_sha256": "df12180f8dc347bbba638369e61a39cd24b25737018d51bcdefc5116ba06450e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333.png": {
+   "canonical_sha256": "637b6d270610e2e1a8dae7782fd13705d6945514f982ebb7cfa5fa0a0cc8cdc2",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-drive-maker--hold-both-hands--expr-greedy--12637e2e.png": {
+   "canonical_sha256": "7e2f9696e7cb1e5c0d71c0e5017f008a703e3c4a88d896bca4f0ecaf9f1cd7cf",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-hq-banker--action-armscrossed--expr-skeptical--2fcb84cb.png": {
+   "canonical_sha256": "4c8c36b38d0ba651f047952b4208ff6e795b2ece6712280eecbaa77567912473",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-hq-banker--action-offering--expr-deadpan--3890f623.png": {
+   "canonical_sha256": "80eb3cee46cd3b2062ddacd7792623c169cd9272726221465d5fe3d8391f1646",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-hq-banker--point-at-thing--expr-smug--9c885731.png": {
+   "canonical_sha256": "e7bf6fe4eeef3d9d38f0842f674610b0b213a8afa436affdcef2673c5d51213f",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b.png": {
+   "canonical_sha256": "9aaeb3fc7f7f3346c180afec997824283146daf2566f30462406feb4bfd3ddd3",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-powerstance--expr-greedy--db213695.png": {
+   "canonical_sha256": "c53770cb2d16ededbd5cffb77f8b34932e972a90d142800c92c63c0dc4ba4ca9",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-recoil--expr-surprised--0487471a.png": {
+   "canonical_sha256": "9bfd9af442c5749d5822d911f5fc99718a3278fc79a3df1e5b377f6f23ef80f2",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9.png": {
+   "canonical_sha256": "f1afbcbb4be5a24fd2894ce1c80973adf6d32386ea6ffc15b0e8a29f6332564c",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-salute--expr-delighted--cac432e8.png": {
+   "canonical_sha256": "79073fc745e589b4e1ca4ec63736d360eab798bf864ad789bb772abbbde50707",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-slump--expr-worried--c5adffd7.png": {
+   "canonical_sha256": "2d3375d2b83009f24f1dfac2c2f06a3b17da97ecf892343329a9b59c3e933d91",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-slump--expr-worried--def769f5.png": {
+   "canonical_sha256": "466b11a812ab98e36992162687ddd021298c57749ec725c81edc9a937837025e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "fail",
+    "flat-cel-hazard": "fail",
+    "pose": "fail"
+   },
+   "reviewer": "parked on pose - P10 defect:pose retry did not move the body, fresh verifier pair confirmed the second fail (provenance: assets/scenes/manifest.json L48/L39 + assets/_review/merged.json). Row RECONSTRUCTED 2026-08-13 by task-14 after its grandfather skeleton blanked the verdicts; no axis set to pass, park stands.",
+   "date": "2026-08-13"
+  },
+  "_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27.png": {
+   "canonical_sha256": "dfd1816ca4593ed2719d69580b1df420aa2d66697aee0002f1061782ab09a805",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "fail",
+    "flat-cel-hazard": "fail",
+    "pose": "fail"
+   },
+   "reviewer": "parked on pose - P10 defect:pose retry did not move the body, fresh verifier pair confirmed the second fail (provenance: assets/scenes/manifest.json L48/L39 + assets/_review/merged.json). Row RECONSTRUCTED 2026-08-13 by task-14 after its grandfather skeleton blanked the verdicts; no axis set to pass, park stands.",
+   "date": "2026-08-13"
+  },
+  "_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy--e0099a9a.png": {
+   "canonical_sha256": "373f84fb02f3a0ce5eeaa26a0d57dc8ba6beefc1fd8d4d820e1d29af9bf2d22a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-powerstance--expr-smug--018b2602.png": {
+   "canonical_sha256": "ff0269ac1774b0005d6ca34a8ebd0786f347e15f9feb2a123c375e9f5087c903",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153.png": {
+   "canonical_sha256": "a9097c511430cb917822e668a74d4f72d2fcd040e1da32f95bd0ab28d9092d76",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60.png": {
+   "canonical_sha256": "9e30f3c84e7366cd15e0276f390bfd988fd17615bfa5501e935f7feb29a87b8b",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  }
+ }
+}

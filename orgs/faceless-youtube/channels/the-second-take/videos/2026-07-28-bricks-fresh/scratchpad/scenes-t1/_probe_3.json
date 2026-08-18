@@ -1,0 +1,16 @@
+{
+ "schema": "faceless-youtube/forge-retry-overlay@2",
+ "video_slug": "2026-07-28-bricks-fresh",
+ "entries": [
+  {
+   "kind": "scene",
+   "shot": "L07",
+   "name": "L07-fix",
+   "defect": "content",
+   "replace": {
+    "from": "customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient",
+    "to": "customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient, every one of them drawn on the flat CROWD RIG only - dot eyes and one simple mouth, no eyebrows or scowl lines drawn on any face"
+   }
+  }
+ ]
+}

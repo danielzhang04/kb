@@ -1,0 +1,40 @@
+[
+  {
+    "name": "fig-bond-investor--carry-by-handle--expr-deadpan--2a3df20f",
+    "mode": "environment",
+    "aspect": "2:3",
+    "image_size": "1K",
+    "stage_role": "base",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/bond-investor/bond-investor.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+      "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/bond-investor/bond-investor.png",
+        "role": "canonical",
+        "character": "bond-investor"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+        "role": "expression",
+        "character": "bond-investor"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
+        "role": "pose",
+        "character": "bond-investor"
+      }
+    ],
+    "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew a held object, prop or scenery fragment on this card. Draw the figure alone against the flat pale-grey backdrop: no held object, no prop, no scenery, no other person.",
+    "delta": "SEED ROLES. The FIRST image is `bond-investor`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `bond-investor` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `bond-investor` holds in the parent scene, and no other figure's. The THIRD image is the `carry-by-handle` pose reference for `bond-investor` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, with one soft contact shadow directly beneath it. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.\n\nThe previous attempt drew a held object, prop or scenery fragment on this card. Draw the figure alone against the flat pale-grey backdrop: no held object, no prop, no scenery, no other person.",
+    "retry_authority": {
+      "kind": "step1-remint",
+      "changed_spans": 1,
+      "defect": "clean_card",
+      "character": "bond-investor"
+    },
+    "why": "STEP-1-only retry for `bond-investor` from `L197`"
+  }
+]

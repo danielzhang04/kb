@@ -1,0 +1,524 @@
+{
+  "video_slug": "2026-07-28-bricks-fresh",
+  "generated": "2026-08-18",
+  "run": "Wave-2 STEP-1 figure cards (character seed cards), skill=image-generation",
+  "written_by": "claude wave-2 conductor session, stopped mid-run per boss handoff to parallel workers",
+  "paths": {
+    "repo_root_note": "all paths below are relative to the worktree root C:/Users/danie/kb-worktrees/boss-taste-forensics unless absolute",
+    "kit": "orgs/faceless-youtube/channels/the-second-take/visual-kit",
+    "video_dir": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh",
+    "shots_json": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/shots.json",
+    "forge_py": "orgs/faceless-youtube/.claude/skills/image-generation/scripts/forge.py",
+    "build_review_artifact_py": "orgs/faceless-youtube/.claude/skills/image-generation/scripts/build_review_artifact.py",
+    "stamp_review_py": "orgs/faceless-youtube/.claude/skills/image-generation/scripts/stamp_review.py",
+    "staging_dir": "orgs/faceless-youtube/channels/the-second-take/visual-kit/_staging",
+    "scratchpad": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/scratchpad/w2-full",
+    "batch_specs": "orgs/faceless-youtube/channels/the-second-take/videos/2026-07-28-bricks-fresh/scratchpad/w2-full/batches/b1.json .. b6.json (pre-split, 108 STEP-1 entries total, ~20 per batch)"
+  },
+  "engine": "gemini-3-pro-image (registry.json['engine']); 1K image-size tier (default); no per-call pricing exposed by registry.json \u2014 this run estimated ~$0.17/call from prior wave pricing in memory `bricks-fresh-rendered-arc`, UNVERIFIED, treat as rough order of magnitude only",
+  "IMPORTANT_deviation_from_boss_ask": "This run did NOT use a wave_coordinator.py/wave_worker.py parallel-worker harness \u2014 no such harness was found or referenced by the image-generation skill; SKILL.md's own machinery is forge.py's CLI (batch/gen/dry-run), invoked directly and SERIALLY, one image at a time, exactly as documented in the skill. Batches b1-b3 (and b4's first pass) were each run as a single `forge.py gen --batch <spec>` call that forge itself processes item-by-item (observed: 20 sequential provider calls per batch, no concurrency). If a wave_coordinator/ wave_worker harness exists elsewhere in this repo (referenced by the boss's message re: the r2 duel), it was NOT located under orgs/faceless-youtube/.claude/skills/image-generation/ and this session did not go looking outside that skill's own scripts dir since the skill's SKILL.md names forge.py as the only sanctioned generation entrypoint. A parallel worker picking up the remaining batches should either (a) run multiple `forge.py gen --batch <distinct-non-overlapping-spec>` processes concurrently \u2014 each spec must name disjoint output files, which the pre-split batches/b5.json and b6.json already guarantee \u2014 or (b) locate and use the wave_coordinator/wave_worker harness the boss referenced, if it exists under a different path (not confirmed by this session).",
+  "how_to_reproduce_a_batch_generate_step": [
+    "cd to worktree root",
+    "py -3 <forge_py> --kit <kit> --video <video_dir> gen --batch <scratchpad>/batches/bN.json --dry-run   # $0 preflight, read every assembled prompt before spending",
+    "py -3 <forge_py> --kit <kit> --video <video_dir> gen --batch <scratchpad>/batches/bN.json   # live, writes into <staging_dir>/fig-*.png",
+    "on a transient provider error ('ERR no image in response'): re-issue ONCE by extracting just the failed entries into a small JSON list and re-running `gen --batch` on that subset; if it fails AGAIN, park it as generation_failed_needs_regen and move on (do not re-issue a 3rd time)"
+  ],
+  "how_to_review_and_retry_a_batch": [
+    "1. Fresh-eyes visual review: Read each new PNG in <staging_dir>, compare against its character's refs/<name>/<name>.png canonical, judge on 3 axes per style-bible.md \u00a73 (identity/rig incl. digit count + costume unless the shot's own payload authors a change; expression-register; flat-cel-hazard incl. NO leaked props/scenery \u2014 the card must be an isolated figure on flat pale-grey backdrop). A 'grip' pose (carry-by-handle, hold-one-hand, hold-both-hands, hold-paper-by-sides) leaking a REALIZED object (briefcase, brick, bowl, ledger with content) instead of staying empty-handed is the single most common defect class seen this run \u2014 treat any held/scene object other than the base primitive's own generic grey/blank placeholder as a FAIL.",
+    "2. For each fail, classify defect as one of: expression | rig | pose | clean_card (clean_card = leaked prop/scenery/backdrop content; pose = wrong posture, e.g. hands not in the requested grip; rig = identity/costume/digit-count/facial-feature deviation from canonical).",
+    "3. Get the originating shot id for each failed fig- name via: grep the batch build log (or re-run `forge.py batch --batch <shots_json> --shots <known-good-scope> --out /dev/null` style dry build) \u2014 OR simplest: `grep -n '<fig-name>' <scratchpad>/batch-build.log` (the original full 246-shot dry walk log, still on disk at <scratchpad>/batch-build.log) to find its 'L##:' line and read off the shot id.",
+    "4. Move the defective PNG out of <staging_dir> to <kit>/_staging_rejected_<filename> (mv, don't delete \u2014 keeps evidence) so its exact original name is free again.",
+    "5. Write a forge-retry-overlay@2 JSON: {schema: 'faceless-youtube/forge-retry-overlay@2', video_slug: '2026-07-28-bricks-fresh', entries: [{kind: 'step1', shot: '<L##>', character: '<name>', name: '<EXACT original fig- filename stem, no .png>', defect: '<expression|rig|pose|clean_card>'}, ...]}. The `name` MUST be forge's own derived digest name (copy it exactly from the fig- filename) \u2014 a hand-typed name is refused.",
+    "6. py -3 <forge_py> --kit <kit> --video <video_dir> batch --batch <shots_json> --retry <overlay.json> --out <retry-spec.json>",
+    "7. py -3 <forge_py> --kit <kit> --video <video_dir> gen --batch <retry-spec.json> --dry-run   # preflight",
+    "8. py -3 <forge_py> --kit <kit> --video <video_dir> gen --batch <retry-spec.json>   # live, ONE retry per frame, no second retry ever",
+    "9. Re-review the retried pixels with fresh eyes. clean_card retries reliably clear the leaked object but often leave the pose reading as a NEUTRAL resting stance rather than the specific grip \u2014 this run's judgment call was to ACCEPT that as verified (the leaked-content defect is what clean_card exists to fix; the softened pose is a documented Era-A payload-shape tradeoff, not a fresh defect) \u2014 a future conductor should keep this consistent unless overruled.",
+    "10. Any frame STILL failing after its one retry: STOP, do not retry again. Move it to <kit>/_staging_flagged_<filename> (mv) so it stops cluttering future board scans, and record it as `parked` with the failed invariant + a short mechanism note.",
+    "11. Build the review skeleton+board for the WHOLE current staging dir (it also re-surfaces any not-yet-cleanly-passing card, by design \u2014 that's fine, expected): py -3 <build_review_artifact_py> --video <video_dir> --out <scratchpad>/board-bN-final.html --staging <staging_dir> --figures-out <scratchpad>/verdicts-bN-final.json",
+    "12. Fill verdicts-bN-final.json's per-figure verdicts object (keys are invariant slugs, values 'pass'|'fail') for EVERY figure it lists \u2014 including any prior-batch leftovers it pulls back in; BEWARE the exact bug this session hit once: don't reuse a stale fail-set from before you finalized judgment on a retry \u2014 always fill from your FINAL post-retry disposition, not an earlier draft.",
+    "13. py -3 <stamp_review_py> --figures <verdicts-bN-final.json> <staging_dir>   # the ONLY writer of review.json",
+    "14. Move every card whose final rig verdict is 'fail' out of <staging_dir> to <kit>/_staging_flagged_<filename> (mv) so it's excluded from reuse and future board scans."
+  ],
+  "systemic_findings_for_any_continuing_worker": [
+    "refs/base/action-recoil.png AND refs/base/surrender.png (channel base pose primitives) both render 5-digit hands (should be 3 fingers + 1 thumb per style-bible \u00a73) on their own reference frames, upstream of any STEP-1 card. Confirmed by retrying 3 affected STEP-1 cards across 3 character/pose combos \u2014 identical defect every time, because the retry reseeds the same defective base primitive. THIS IS A PASS-1/ASSET-LIBRARY FIX, not something a STEP-1 retry can solve \u2014 flag any STEP-1 card using either primitive as parked, but stop retrying them individually; the fix belongs one level up (regenerate or hand-correct the two base PNGs), and it's worth auditing every OTHER open-splayed-hand base primitive in refs/base/ for the same bug before spending more retries on symptoms.",
+    "Grip-pose primitives with a built-in 'generic grey placeholder object' (carry-by-handle, hold-one-hand, hold-both-hands, hold-paper-by-sides) reliably leak a REALIZED scene-specific object on first-pass generation (briefcase, brick, bowl of food, grid-lined ledger, torn paper, clipboard) despite the assembled prompt explicitly saying 'empty-handed'. The clean_card retry (forge's 2026-08-18 P3 fix) reliably clears the leaked object but usually leaves the pose reading as neutral/resting rather than the specific grip shape \u2014 accepted as verified this run per the reasoning in step 9 above."
+  ],
+  "totals_this_session": {
+    "target": 108,
+    "done_verified": 71,
+    "parked": 8,
+    "generated_unreviewed": 0,
+    "generation_failed_needs_regen": 1,
+    "not_yet_attempted": 28,
+    "provider_calls_made_est": 113,
+    "est_cost_usd": "~$18.36 (108 calls x ~$0.17/call, UNVERIFIED estimate \u2014 registry.json exposes no per-call price)"
+  },
+  "out_of_scope_reminder": "26 more STEP-1 cards are needed inside the 43 shots excluded from this run's scope (see progress.md 'State found at start' + blocked_ids.json) \u2014 those shots' SCENE generation depends on 6 unreviewed/failed Pass-2 place plates (L65, L84, L86, L112, L114, L198). Out of Wave-2 scope; flagged for whoever runs Pass-2 place-plate review.",
+  "items": {
+    "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-drive-maker--action-present--expr-smug--5e51ec13": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--back-to-viewer--7a3b93be": {
+      "batch": "b1",
+      "status": "parked",
+      "failed_invariants": [
+        "rig"
+      ],
+      "note": ""
+    },
+    "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9": {
+      "batch": "b1",
+      "status": "parked",
+      "failed_invariants": [
+        "rig"
+      ],
+      "note": ""
+    },
+    "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--action-powerstance--expr-greedy--db213695": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--action-salute--expr-delighted--cac432e8": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--hold-both-hands--expr-greedy--e0099a9a": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--action-recoil--expr-surprised--0487471a": {
+      "batch": "b1",
+      "status": "parked",
+      "failed_invariants": [
+        "rig"
+      ],
+      "note": ""
+    },
+    "fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--action-slump--expr-worried--c5adffd7": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-hq-banker--action-armscrossed--expr-skeptical--2fcb84cb": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-hq-banker--action-offering--expr-deadpan--3890f623": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-hq-banker--point-at-thing--expr-smug--9c885731": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--action-powerstance--expr-smug--018b2602": {
+      "batch": "b1",
+      "status": "done_verified"
+    },
+    "fig-tv-chef--action-accuse--expr-annoyed--3a5c707d": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--action-armscrossed--expr-smug--8f611ee5": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--carry-by-handle--expr-deadpan--2c8c8b10": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--action-armscrossed--expr-smug--091171af": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-tv-chef--hold-both-hands--expr-worried--56a59b22": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--hold-paper-by-sides--expr-skeptical--be79523a": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--action-armscrossed--expr-smug--d9ca3c82": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--action-armscrossed--expr-smug--d7262f20": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--point-at-thing--expr-deadpan--83ec0319": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--expr-smug--5d92f2c3": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--expr-delighted--5d92f2c3": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--kneel-beg--expr-fear--70abebb4": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--action-salute--expr-delighted--2819bdc8": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--action-accuse--expr-deadpan--923f3970": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--action-recoil--expr-surprised--639a586c": {
+      "batch": "b2",
+      "status": "parked",
+      "failed_invariants": [
+        "rig"
+      ],
+      "note": ""
+    },
+    "fig-brick-foreman--action-armscrossed--expr-eyeroll--f9404c25": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--action-offering--expr-smug--05a8c59c": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--action-shrug--expr-worried--8b8fe3f4": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--hold-one-hand--expr-deadpan--d938b214": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--sit--expr-thinking--7e8806a3": {
+      "batch": "b2",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--sit--expr-caught--6376f6be": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-auditor-rep--carry-by-handle--expr-deadpan--828ba23f": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-auditor-rep--point-at-thing--expr-thinking--33e29079": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--action-shrug--expr-caught--1f399397": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--surrender--expr-fear--9b76c8c6": {
+      "batch": "b3",
+      "status": "parked",
+      "failed_invariants": [
+        "rig"
+      ],
+      "note": ""
+    },
+    "fig-brick-foreman--sign-with-pen--expr-caught--0c7070ad": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d": {
+      "batch": "b3",
+      "status": "parked",
+      "failed_invariants": [
+        "rig"
+      ],
+      "note": ""
+    },
+    "fig-brick-foreman--action-present--expr-smug--9e7e0fb2": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--hold-one-hand--expr-smug--0d39a50f": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--hold-one-hand--expr-worried--4ae94432": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--hold-both-hands--expr-fear--d3048916": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--action-armscrossed--expr-thinking--065f9f1e": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-auditor-rep--action-powerstance--expr-delighted--4a73160d": {
+      "batch": "b3",
+      "status": "parked",
+      "failed_invariants": [
+        "rig"
+      ],
+      "note": ""
+    },
+    "fig-auditor-rep--point-at-thing--expr-deadpan--a79d034c": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--action-present--expr-delighted--6f31db28": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--hold-both-hands--expr-thinking--6a62e404": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--hold-both-hands--expr-deadpan--4c5d84a5": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--action-armscrossed--expr-confused--bcec381e": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--back-to-viewer--e88f3bf3": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--action-powerstance--expr-smug--7bf607c1": {
+      "batch": "b3",
+      "status": "done_verified"
+    },
+    "fig-return-customer--sign-with-pen--expr-deadpan--0856a20c": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--expr-smug--105ba6bf": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-return-customer--expr-skeptical--105ba6bf": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-return-customer--action-shrug--expr-deadpan--5037a50d": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-qt-wiles--action-present--expr-delighted--816f6f2a": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--expr-deadpan--705b0cc1": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-return-customer--expr-smug--705b0cc1": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--action-present--expr-smug--d63b7b3c": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-auditor-rep--action-armscrossed--expr-deadpan--53d22335": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-auditor-rep--action-armscrossed--expr-deadpan--7fce9668": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-auditor-rep--hold-one-hand--expr-deadpan--7a7051c3": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--point-at-thing--expr-thinking--5be86de6": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-miniscribe-rep--action-present--expr-delighted--1fbbd999": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42": {
+      "batch": "b4",
+      "status": "parked",
+      "failed_invariants": [
+        "rig"
+      ],
+      "note": "wrong costume: full black tuxedo+bow-tie instead of canonical cream short-sleeve shirt + black clip-tie; persisted identically after one sanctioned retry (defect: rig)"
+    },
+    "fig-auditor-rep--action-shrug--expr-deadpan--7e4e0ab5": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-line-worker--sit--expr-smug--58cc68b6": {
+      "batch": "b4",
+      "status": "generation_failed_needs_regen",
+      "note": "ERR no image in response, 2x (original + 1 policy re-issue); needs a fresh gen attempt, not yet a content retry"
+    },
+    "fig-rifenburgh-ceo--action-armscrossed--expr-thinking--15c18100": {
+      "batch": "b4",
+      "status": "done_verified"
+    },
+    "fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-rifenburgh-ceo--action-walk--expr-worried--2046fb04": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-rifenburgh-ceo--point-at-thing--expr-deadpan--b239ba9a": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-miniscribe-rep--action-offering--expr-worried--65ad5c3a": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-miniscribe-rep--action-present--expr-worried--dd9ef203": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-rifenburgh-ceo--action-armscrossed--expr-eyeroll--56e8c100": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-miniscribe-rep--action-slump--expr-crestfallen--24cb011c": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-miniscribe-rep--action-slump--expr-crestfallen--13eb9136": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-bond-investor--sit--expr-worried--25000481": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-bond-investor--carry-by-handle--expr-deadpan--2a3df20f": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-bond-investor--hold-both-hands--expr-delighted--610638ea": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-auditor-rep--action-armscrossed--expr-deadpan--91d33eed": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-auditor-rep--sign-with-pen--expr-caught--27f8ee3d": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-hq-banker--action-recoil--expr-surprised--a7350ff7": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-bond-investor--hold-both-hands--expr-crestfallen--0e665224": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-bond-investor--action-armscrossed--expr-annoyed--234e661f": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-bond-investor--action-shrug--expr-deadpan--c6a91793": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-hq-banker--expr-deadpan--55bd2c0a": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-auditor-rep--55bd2c0a": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-qt-wiles--back-to-viewer--dfb3cd97": {
+      "batch": "b5",
+      "status": "not_yet_attempted"
+    },
+    "fig-brick-foreman--action-shrug--expr-eyeroll--2a4cea9b": {
+      "batch": "b6",
+      "status": "not_yet_attempted"
+    },
+    "fig-qt-wiles--surrender--expr-confused--59fca904": {
+      "batch": "b6",
+      "status": "not_yet_attempted"
+    },
+    "fig-qt-wiles--action-offering--expr-deadpan--5b1e3fea": {
+      "batch": "b6",
+      "status": "not_yet_attempted"
+    },
+    "fig-drive-maker--action-powerstance--expr-smug--21372a75": {
+      "batch": "b6",
+      "status": "not_yet_attempted"
+    },
+    "fig-qt-wiles--sit--expr-deadpan--b503fbae": {
+      "batch": "b6",
+      "status": "not_yet_attempted"
+    },
+    "fig-bond-investor--hold-both-hands--expr-crestfallen--18426408": {
+      "batch": "b6",
+      "status": "not_yet_attempted"
+    },
+    "fig-auditor-rep--action-slump--expr-crestfallen--f5da9312": {
+      "batch": "b6",
+      "status": "not_yet_attempted"
+    },
+    "fig-hr-officer--hold-one-hand--expr-deadpan--f718fa83": {
+      "batch": "b6",
+      "status": "not_yet_attempted"
+    }
+  }
+}

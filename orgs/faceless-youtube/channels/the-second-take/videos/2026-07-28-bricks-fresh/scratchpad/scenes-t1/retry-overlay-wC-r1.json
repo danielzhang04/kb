@@ -1,0 +1,44 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L22",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--back-to-viewer--7a3b93be",
+      "defect": "rig",
+      "instruction": "HAIR/EAR FIX, absolute: the hair fully and seamlessly covers the ear gap on both sides of the head with NO ear-shaped notch, hole, dent or crescent cut into the hairline silhouette anywhere. The hair silhouette reads as one smooth continuous outline from crown to nape on both sides - no interruption, no gap, no separate shape suggesting an ear underneath."
+    },
+    {
+      "kind": "scene",
+      "shot": "L20",
+      "name": "L20-fix",
+      "defect": "content",
+      "replace": {
+        "from": "reaches up for the tools.",
+        "to": "reaches up for the tools; every figure in this crowd carries only two dot-shaped eye marks and one short flat closed mouth line, no other linework anywhere on any face, no individuated brow shapes, matching the crowd exemplar's simplified rendering exactly; hair and headwear repeat across at most 2-3 shared silhouettes for the whole group."
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L21",
+      "name": "L21-fix",
+      "defect": "content",
+      "replace": {
+        "from": "prospectors still pressing in on the far side of the counter, ochre-brown-cream palette under hard high sun. Only this changes: a heavy iron money box now stands open on the counter at his elbow, packed to the brim with coin; everything else exactly as established.",
+        "to": "prospectors still pressing in on the far side of the counter, every figure in this crowd carries only two dot-shaped eye marks and one short flat closed mouth line, no other linework anywhere on any face, no individuated brow shapes, matching the crowd exemplar's simplified rendering exactly; hair and headwear repeat across at most 2-3 shared silhouettes for the whole group, ochre-brown-cream palette under hard high sun. Only this changes: a heavy iron money box now stands open on the counter at his elbow, packed to the brim with coin - a plain flat-sided iron strongbox with a hinged flat lid propped open, dull grey-black metal, no wood, no carving, no jewels, no metal banding, no sparkle or glow of any kind on the coins; everything else exactly as established."
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L25",
+      "name": "L25-fix",
+      "defect": "content",
+      "replace": {
+        "from": "its top face now carries the stencilled words 'HARD DRIVE'",
+        "to": "its top face now carries the words 'HARD DRIVE' painted on in the same loose hand-marker lettering register as every other piece of in-world text in this channel - a slight lean and baseline bounce, NOT a rigid stencil or printed block typeface"
+      }
+    }
+  ]
+}

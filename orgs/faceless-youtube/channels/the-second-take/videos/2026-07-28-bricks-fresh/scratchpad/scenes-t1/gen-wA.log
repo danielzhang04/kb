@@ -1,0 +1,19 @@
+  [1/9] L01: START provider call
+  [1/9] L01: OK -> _staging/L01.png
+  [2/9] L02: START provider call
+  [2/9] L02: OK -> _staging/L02.png
+  [3/9] L03: START provider call
+  [3/9] L03: OK -> _staging/L03.png
+  [4/9] L04: START provider call
+  [4/9] L04: OK -> _staging/L04.png
+  [5/9] L05: START provider call
+  [5/9] L05: OK -> _staging/L05.png
+  [6/9] L06: START provider call
+  [6/9] L06: OK -> _staging/L06.png
+  [7/9] L07: START provider call
+  [7/9] L07: OK -> _staging/L07.png
+  [8/9] L08: START provider call
+  [8/9] L08: OK -> _staging/L08.png
+  [9/9] L09: START provider call
+  [9/9] L09: OK -> _staging/L09.png
+  == 9 generated, 0 failed, 0 skipped, 0 held for review ==

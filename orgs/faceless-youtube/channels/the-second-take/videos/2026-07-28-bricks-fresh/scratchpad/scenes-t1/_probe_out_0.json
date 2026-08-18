@@ -1,0 +1,38 @@
+[
+  {
+    "name": "L03-fix",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nA hotel function room seen from the floor: a low awards dais stage-right stands empty under one hard overhead spot, an oversized display board angled on it with its face completely blank and unlettered, a lectern stage-left with nobody behind it. Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming, every crowd figure drawn on the flat CROWD RIG only - dot eyes, one simple mouth, no individuated eyebrow or mouth linework on any face beyond that flat rig, hair and headwear repeating across at most 2-3 shared silhouettes for the whole group and never a distinct style invented per figure. Pleated gold curtain wall behind them, banquet tables running back through the depth, gold-cream-charcoal palette, dim room light against the one hot spot, foreground depth from a cropped banquet chair back at the lower-left.",
+    "payload": "A hotel function room seen from the floor: a low awards dais stage-right stands empty under one hard overhead spot, an oversized display board angled on it with its face completely blank and unlettered, a lectern stage-left with nobody behind it. Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming, every crowd figure drawn on the flat CROWD RIG only - dot eyes, one simple mouth, no individuated eyebrow or mouth linework on any face beyond that flat rig, hair and headwear repeating across at most 2-3 shared silhouettes for the whole group and never a distinct style invented per figure. Pleated gold curtain wall behind them, banquet tables running back through the depth, gold-cream-charcoal palette, dim room light against the one hot spot, foreground depth from a cropped banquet chair back at the lower-left.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "no cast \u2014 the scene composes from the place; RETRY overlay from `L03`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming.",
+      "to": "Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming, every crowd figure drawn on the flat CROWD RIG only - dot eyes, one simple mouth, no individuated eyebrow or mouth linework on any face beyond that flat rig, hair and headwear repeating across at most 2-3 shared silhouettes for the whole group and never a distinct style invented per figure."
+    }
+  }
+]

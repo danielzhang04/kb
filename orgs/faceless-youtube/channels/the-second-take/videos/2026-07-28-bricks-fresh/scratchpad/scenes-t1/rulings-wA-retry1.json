@@ -1,0 +1,45 @@
+[
+ {
+  "id": "L03",
+  "r": "MED",
+  "f": "clean",
+  "s": "clean",
+  "worst": "MED",
+  "why": "RETRY-1 (final round, no further retry per one-retry rule): partial fix — individuated brow/mouth linework is gone, every crowd face now reads as flat dot-eyes + one simple curved smile, consistent across the group. But hair/headwear silhouette variety is still over cap: roughly 4-5 repeating types (bald/skin-tone dome, blonde wavy shoulder-length, dark side-part, dark curly/afro-textured, pulled-back dark updo) against the mandated 2-3. Dais board genuinely blank, lectern empty, spotlight framing intact. STILL PARKED — surfaced for human escalation, not re-rolled again."
+ },
+ {
+  "id": "L04",
+  "r": "LOW",
+  "f": "clean",
+  "s": "clean",
+  "worst": "LOW",
+  "why": "RETRY-1 (final round, no further retry per one-retry rule): fix did not land — the shutter still shows roughly 8-9 closely-spaced thin horizontal ridge lines rather than 'a small number of THICK bands', visibly finer than the outline weight on the car body/window frame/awning edge. No other fine/thin linework elsewhere in frame. DSG '1983' still passes cleanly. STILL PARKED — surfaced for human escalation, not re-rolled again.",
+  "dsg": [
+   {"id": "txt1", "parent": "chalk-board", "q": "does the sandwich board read exactly '1983'?", "verdict": "pass", "note": "Board reads exactly '1983' in chalk-style lettering, nothing else on the board."}
+  ]
+ },
+ {
+  "id": "L05",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "RETRY-1 fix landed: the figure is unmistakably pc-boxy — a beige CRT-monitor-box head with a green screen bearing screen-drawn round eyes, raised eyebrows and an open surprised mouth, not the prior generic round humanoid. Stubby arms rest over the crate rim, red tape strip visible, grey shelving and bulb match brief."
+ },
+ {
+  "id": "L07",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "RETRY-1 fix landed: crowd faces now hold to dot-eyes + one simple mouth with no drawn eyebrows or scowl-furrow lines anywhere. pc-boxy's smug identity correct (box head, green screen, smug screen-drawn expression), banknotes stay clustered at counter level without overlapping the machine."
+ },
+ {
+  "id": "L08",
+  "r": "clean",
+  "f": "clean",
+  "s": "clean",
+  "worst": "clean",
+  "why": "RETRY-1 fix landed: ducking crowd shows about 3 repeating flat head tones (pale cream, tan, dark brown) within cap, no eyebrows drawn on any face — just dot eyes and simple mouths. Exactly four beige PC units still airborne, consistent design, trailing debris, unchanged as expected."
+ }
+]

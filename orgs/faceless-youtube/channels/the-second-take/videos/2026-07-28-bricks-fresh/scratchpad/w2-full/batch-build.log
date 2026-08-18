@@ -1,0 +1,334 @@
+  L01: [pc-boxy, expr-delighted] (`pc-boxy` no_hands -> canonical)
+  L02: [crowd-exemplar] (no cast — the scene composes from the place)
+  L03: [crowd-exemplar] (no cast — the scene composes from the place)
+  L04: [lettering-marker-italic, scene-style-tile] (LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L05: [pc-boxy, expr-surprised] (`pc-boxy` no_hands -> canonical)
+  L06: [pc-boxy, expr-delighted, crowd-exemplar] (`pc-boxy` no_hands -> canonical)
+  L07: [pc-boxy, expr-smug, crowd-exemplar] (`pc-boxy` no_hands -> canonical)
+  L08: [crowd-exemplar, prop-beige-pc] (no cast — the scene composes from the place)
+  L09: [crowd-exemplar] (no cast — the scene composes from the place)
+  L10: [pc-boxy, expr-talking, prop-drive] (`pc-boxy` no_hands -> canonical)
+  L11: [pc-boxy, expr-delighted, prop-drive] (`pc-boxy` no_hands -> canonical)
+  L12: [L11, pc-boxy, prop-drive] (`pc-boxy` no_hands -> canonical)
+  L13: [prop-drive, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L14: [pc-boxy, expr-caught, prop-drive] (`pc-boxy` no_hands -> canonical)
+  L15: [crowd-exemplar, prop-beige-pc, prop-drive] (no cast — the scene composes from the place)
+  L16: [pc-boxy, expr-annoyed, crowd-exemplar] (`pc-boxy` no_hands -> canonical)
+  L17: [L16, pc-boxy, crowd-exemplar] (`pc-boxy` no_hands -> canonical)
+  L18: [fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333] (`drive-maker` STEP-1 fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333 GENERATE)
+  L19: [fig-drive-maker--hold-both-hands--expr-greedy--12637e2e] (`drive-maker` STEP-1 fig-drive-maker--hold-both-hands--expr-greedy--12637e2e GENERATE)
+  L20: [fig-drive-maker--action-present--expr-smug--5e51ec13, crowd-exemplar] (`drive-maker` STEP-1 fig-drive-maker--action-present--expr-smug--5e51ec13 GENERATE)
+  L21: [L20, drive-maker, crowd-exemplar] (`drive-maker` delta -> parent + canonical)
+  L22: [fig-brick-foreman--back-to-viewer--7a3b93be] (`brick-foreman` STEP-1 fig-brick-foreman--back-to-viewer--7a3b93be GENERATE)
+  L23: [fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1] (`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1 GENERATE)
+  L24: [fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92] (`brick-foreman` STEP-1 fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92 GENERATE)
+  L25: [L24, brick-foreman, lettering-marker-italic] (`brick-foreman` delta -> parent + canonical; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L26: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L27: [fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75] (`brick-foreman` STEP-1 fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75 GENERATE)
+  L28: [lettering-marker-italic, scene-style-tile] (LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L29: [fig-miniscribe-rep--action-powerstance--expr-delighted--2ca9a597, L28, lettering-marker-italic] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-delighted--2ca9a597 REUSED; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L30: [fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153] (`terry-johnson` STEP-1 fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153 GENERATE)
+  L31: [L30, terry-johnson, prop-drive] (`terry-johnson` delta -> parent + canonical)
+  L32: [fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9, prop-drive] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9 GENERATE)
+  L33: [fig-ibm-suit--expr-smug--13275cca, fig-miniscribe-rep--expr-delighted--13275cca, handshake, L28] (`ibm-suit` STEP-1 fig-ibm-suit--expr-smug--13275cca REUSED; `miniscribe-rep` STEP-1 fig-miniscribe-rep--expr-delighted--13275cca REUSED)
+  L34: [L33, ibm-suit, miniscribe-rep] (`ibm-suit` delta -> parent + canonical; `miniscribe-rep` delta -> parent + canonical)
+  L35: [fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b GENERATE)
+  L36: [fig-miniscribe-rep--action-powerstance--expr-greedy--db213695, lettering-marker-italic] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-powerstance--expr-greedy--db213695 GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L37: [fig-miniscribe-rep--action-salute--expr-delighted--cac432e8] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-salute--expr-delighted--cac432e8 GENERATE)
+  L38: [fig-ibm-suit--action-armscrossed--expr-deadpan--7d403f11, fig-miniscribe-rep--action-offering--expr-worried--24a6dfcf] (`ibm-suit` STEP-1 fig-ibm-suit--action-armscrossed--expr-deadpan--7d403f11 REUSED; `miniscribe-rep` STEP-1 fig-miniscribe-rep--action-offering--expr-worried--24a6dfcf REUSED)
+  L39: [fig-miniscribe-rep--hold-both-hands--expr-greedy--e0099a9a, lettering-marker-italic] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--hold-both-hands--expr-greedy--e0099a9a GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L40: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L41: [L40, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L42: [L41, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L43: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L44: [fig-ibm-suit--action-thumbsdown--expr-annoyed--a8e7e3a3, L28] (`ibm-suit` STEP-1 fig-ibm-suit--action-thumbsdown--expr-annoyed--a8e7e3a3 REUSED)
+  L45: [fig-miniscribe-rep--action-recoil--expr-surprised--0487471a] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-recoil--expr-surprised--0487471a GENERATE)
+  L46: [fig-line-worker--hold-both-hands--expr-crestfallen--1d776b7a, L28, crowd-exemplar] (`line-worker` STEP-1 fig-line-worker--hold-both-hands--expr-crestfallen--1d776b7a REUSED)
+  L47: [fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60, L28] (`terry-johnson` STEP-1 fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60 GENERATE)
+  L48: [fig-miniscribe-rep--action-slump--expr-worried--c5adffd7, L28] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-slump--expr-worried--c5adffd7 GENERATE)
+  L49: [fig-hq-banker--action-armscrossed--expr-skeptical--2fcb84cb] (`hq-banker` STEP-1 fig-hq-banker--action-armscrossed--expr-skeptical--2fcb84cb GENERATE)
+  L50: [fig-hq-banker--action-offering--expr-deadpan--3890f623, lettering-marker-italic] (`hq-banker` STEP-1 fig-hq-banker--action-offering--expr-deadpan--3890f623 GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L51: [fig-hq-banker--point-at-thing--expr-smug--9c885731] (`hq-banker` STEP-1 fig-hq-banker--point-at-thing--expr-smug--9c885731 GENERATE)
+  L52: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L53: [crowd-exemplar] (no cast — the scene composes from the place)
+  L54: [fig-qt-wiles--action-powerstance--expr-smug--018b2602, crowd-exemplar] (`qt-wiles` STEP-1 fig-qt-wiles--action-powerstance--expr-smug--018b2602 GENERATE)
+  L55: [fig-tv-chef--action-accuse--expr-annoyed--3a5c707d, crowd-exemplar] (`tv-chef` STEP-1 fig-tv-chef--action-accuse--expr-annoyed--3a5c707d GENERATE)
+  L56: [L55, tv-chef, crowd-exemplar] (`tv-chef` delta -> parent + canonical)
+  L57: [fig-qt-wiles--action-armscrossed--expr-smug--8f611ee5, crowd-exemplar] (`qt-wiles` STEP-1 fig-qt-wiles--action-armscrossed--expr-smug--8f611ee5 GENERATE)
+  L58: [fig-qt-wiles--carry-by-handle--expr-deadpan--2c8c8b10] (`qt-wiles` STEP-1 fig-qt-wiles--carry-by-handle--expr-deadpan--2c8c8b10 GENERATE)
+  L59: [fig-qt-wiles--action-armscrossed--expr-smug--091171af, lettering-marker-italic] (`qt-wiles` STEP-1 fig-qt-wiles--action-armscrossed--expr-smug--091171af GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L60: [fig-tv-chef--hold-both-hands--expr-worried--56a59b22] (`tv-chef` STEP-1 fig-tv-chef--hold-both-hands--expr-worried--56a59b22 GENERATE)
+  L61: [fig-qt-wiles--hold-paper-by-sides--expr-skeptical--be79523a] (`qt-wiles` STEP-1 fig-qt-wiles--hold-paper-by-sides--expr-skeptical--be79523a GENERATE)
+  L62: [fig-qt-wiles--action-armscrossed--expr-smug--d9ca3c82] (`qt-wiles` STEP-1 fig-qt-wiles--action-armscrossed--expr-smug--d9ca3c82 GENERATE)
+  L63: [L62, qt-wiles] (`qt-wiles` delta -> parent + canonical)
+  L64: [L63, qt-wiles] (`qt-wiles` delta -> parent + canonical)
+  L65: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L66: [fig-qt-wiles--sit--expr-smug--3b1a0c8b, L65] (`qt-wiles` STEP-1 fig-qt-wiles--sit--expr-smug--3b1a0c8b GENERATE)
+  L67: [fig-qt-wiles--action-armscrossed--expr-smug--d7262f20, crowd-exemplar] (`qt-wiles` STEP-1 fig-qt-wiles--action-armscrossed--expr-smug--d7262f20 GENERATE)
+  L68: [fig-qt-wiles--point-at-thing--expr-deadpan--83ec0319] (`qt-wiles` STEP-1 fig-qt-wiles--point-at-thing--expr-deadpan--83ec0319 GENERATE)
+  L69: [fig-qt-wiles--expr-smug--5d92f2c3, fig-brick-foreman--expr-delighted--5d92f2c3, handoff] (`qt-wiles` STEP-1 fig-qt-wiles--expr-smug--5d92f2c3 GENERATE; `brick-foreman` STEP-1 fig-brick-foreman--expr-delighted--5d92f2c3 GENERATE)
+  L70: [fig-brick-foreman--kneel-beg--expr-fear--70abebb4] (`brick-foreman` STEP-1 fig-brick-foreman--kneel-beg--expr-fear--70abebb4 GENERATE)
+  L71: [fig-brick-foreman--action-salute--expr-delighted--2819bdc8] (`brick-foreman` STEP-1 fig-brick-foreman--action-salute--expr-delighted--2819bdc8 GENERATE)
+  L72: [L71, brick-foreman] (`brick-foreman` delta -> parent + canonical)
+  L73: [crowd-exemplar] (no cast — the scene composes from the place)
+  L74: [fig-qt-wiles--action-accuse--expr-deadpan--923f3970, fig-brick-foreman--action-recoil--expr-surprised--639a586c, crowd-exemplar] (`qt-wiles` STEP-1 fig-qt-wiles--action-accuse--expr-deadpan--923f3970 GENERATE; `brick-foreman` STEP-1 fig-brick-foreman--action-recoil--expr-surprised--639a586c GENERATE)
+  L75: [crowd-exemplar] (no cast — the scene composes from the place)
+  L76: [fig-brick-foreman--action-armscrossed--expr-eyeroll--f9404c25] (`brick-foreman` STEP-1 fig-brick-foreman--action-armscrossed--expr-eyeroll--f9404c25 GENERATE)
+  L77: [fig-qt-wiles--action-offering--expr-smug--05a8c59c, crowd-exemplar] (`qt-wiles` STEP-1 fig-qt-wiles--action-offering--expr-smug--05a8c59c GENERATE)
+  L78: [fig-miniscribe-rep--action-shrug--expr-worried--8b8fe3f4] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-shrug--expr-worried--8b8fe3f4 GENERATE)
+  L79: [fig-brick-foreman--hold-one-hand--expr-deadpan--d938b214] (`brick-foreman` STEP-1 fig-brick-foreman--hold-one-hand--expr-deadpan--d938b214 GENERATE)
+  L80: [crowd-exemplar] (no cast — the scene composes from the place)
+  L81: [fig-brick-foreman--sit--expr-thinking--7e8806a3] (`brick-foreman` STEP-1 fig-brick-foreman--sit--expr-thinking--7e8806a3 GENERATE)
+  L82: [fig-brick-foreman--sit--expr-caught--6376f6be] (`brick-foreman` STEP-1 fig-brick-foreman--sit--expr-caught--6376f6be GENERATE)
+  L83: [fig-auditor-rep--carry-by-handle--expr-deadpan--828ba23f] (`auditor-rep` STEP-1 fig-auditor-rep--carry-by-handle--expr-deadpan--828ba23f GENERATE)
+  L84: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L85: [fig-auditor-rep--point-at-thing--expr-thinking--33e29079] (`auditor-rep` STEP-1 fig-auditor-rep--point-at-thing--expr-thinking--33e29079 GENERATE)
+  L86: [lettering-marker-italic, scene-style-tile] (LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L87: [L84, crowd-exemplar] (no cast — the scene composes from the place)
+  L88: [L86, crowd-exemplar] (no cast — the scene composes from the place)
+  L89: [L88, crowd-exemplar] (no cast — the scene composes from the place)
+  L90: [fig-auditor-rep--hold-paper-by-sides--expr-skeptical--0839a0d6, L86] (`auditor-rep` STEP-1 fig-auditor-rep--hold-paper-by-sides--expr-skeptical--0839a0d6 GENERATE)
+  L91: [L90, auditor-rep] (`auditor-rep` delta -> parent + canonical)
+  L92: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L93: [fig-brick-foreman--action-shrug--expr-caught--1f399397] (`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-caught--1f399397 GENERATE)
+  L94: [fig-brick-foreman--surrender--expr-fear--9b76c8c6] (`brick-foreman` STEP-1 fig-brick-foreman--surrender--expr-fear--9b76c8c6 GENERATE)
+  L95: [fig-brick-foreman--sign-with-pen--expr-caught--0c7070ad] (`brick-foreman` STEP-1 fig-brick-foreman--sign-with-pen--expr-caught--0c7070ad GENERATE)
+  L96: [L84, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L97: [L96, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L98: [fig-brick-foreman--hold-both-hands--expr-caught--871ab50b, L84] (`brick-foreman` STEP-1 fig-brick-foreman--hold-both-hands--expr-caught--871ab50b GENERATE)
+  L99: [fig-brick-foreman--action-shrug--expr-smug--bafa08a4, L84] (`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-smug--bafa08a4 GENERATE)
+  L100: [fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d] (`auditor-rep` STEP-1 fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d GENERATE)
+  L101: [fig-brick-foreman--action-present--expr-smug--9e7e0fb2] (`brick-foreman` STEP-1 fig-brick-foreman--action-present--expr-smug--9e7e0fb2 GENERATE)
+  L102: [fig-qt-wiles--hold-one-hand--expr-smug--0d39a50f] (`qt-wiles` STEP-1 fig-qt-wiles--hold-one-hand--expr-smug--0d39a50f GENERATE)
+  L103: [L102, qt-wiles] (`qt-wiles` delta -> parent + canonical)
+  L104: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L105: [fig-brick-foreman--hold-one-hand--expr-worried--4ae94432] (`brick-foreman` STEP-1 fig-brick-foreman--hold-one-hand--expr-worried--4ae94432 GENERATE)
+  L106: [fig-brick-foreman--hold-both-hands--expr-fear--d3048916] (`brick-foreman` STEP-1 fig-brick-foreman--hold-both-hands--expr-fear--d3048916 GENERATE)
+  L107: [fig-brick-foreman--action-armscrossed--expr-thinking--065f9f1e] (`brick-foreman` STEP-1 fig-brick-foreman--action-armscrossed--expr-thinking--065f9f1e GENERATE)
+  L108: [fig-auditor-rep--action-powerstance--expr-delighted--4a73160d] (`auditor-rep` STEP-1 fig-auditor-rep--action-powerstance--expr-delighted--4a73160d GENERATE)
+  L109: [fig-auditor-rep--point-at-thing--expr-deadpan--a79d034c] (`auditor-rep` STEP-1 fig-auditor-rep--point-at-thing--expr-deadpan--a79d034c GENERATE)
+  L110: [crowd-exemplar] (no cast — the scene composes from the place)
+  L111: [fig-brick-foreman--action-present--expr-delighted--6f31db28, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--action-present--expr-delighted--6f31db28 GENERATE)
+  L112: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L113: [fig-brick-foreman--hold-both-hands--expr-thinking--6a62e404] (`brick-foreman` STEP-1 fig-brick-foreman--hold-both-hands--expr-thinking--6a62e404 GENERATE)
+  L114: [lettering-marker-italic, scene-style-tile] (LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L115: [fig-brick-co-seller--action-present--expr-delighted--41a3a2d6, fig-brick-foreman--hold-paper-by-sides--expr-greedy--78cf2ab4, L114, lettering-marker-italic] (`brick-co-seller` STEP-1 fig-brick-co-seller--action-present--expr-delighted--41a3a2d6 GENERATE; `brick-foreman` STEP-1 fig-brick-foreman--hold-paper-by-sides--expr-greedy--78cf2ab4 GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L116: [prop-drive, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L117: [L116, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L118: [fig-brick-foreman--hold-one-hand--expr-deadpan--7e85306e, L112, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--hold-one-hand--expr-deadpan--7e85306e GENERATE)
+  L119: [L118, brick-foreman, crowd-exemplar] (`brick-foreman` delta -> parent + canonical)
+  L120: [fig-brick-foreman--hold-both-hands--expr-deadpan--4c5d84a5, prop-drive] (`brick-foreman` STEP-1 fig-brick-foreman--hold-both-hands--expr-deadpan--4c5d84a5 GENERATE)
+  L121: [fig-brick-foreman--carry-by-handle--expr-deadpan--4ed1405e, L112, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--carry-by-handle--expr-deadpan--4ed1405e GENERATE)
+  L122: [L121, brick-foreman, crowd-exemplar] (`brick-foreman` delta -> parent + canonical)
+  L123: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L124: [fig-brick-foreman--action-armscrossed--expr-confused--bcec381e] (`brick-foreman` STEP-1 fig-brick-foreman--action-armscrossed--expr-confused--bcec381e GENERATE)
+  L125: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L126: [fig-brick-foreman--back-to-viewer--e88f3bf3] (`brick-foreman` STEP-1 fig-brick-foreman--back-to-viewer--e88f3bf3 GENERATE)
+  L127: [fig-brick-foreman--action-powerstance--expr-smug--7bf607c1] (`brick-foreman` STEP-1 fig-brick-foreman--action-powerstance--expr-smug--7bf607c1 GENERATE)
+  L128: [fig-brick-foreman--point-at-thing--expr-deadpan--414c2fb0, L112, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--point-at-thing--expr-deadpan--414c2fb0 GENERATE)
+  L129: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L130: [fig-qt-wiles--action-accuse--expr-annoyed--b7d8d31f, L65] (`qt-wiles` STEP-1 fig-qt-wiles--action-accuse--expr-annoyed--b7d8d31f GENERATE)
+  L131: [crowd-exemplar, lettering-marker-italic] (LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L132: [fig-return-customer--sign-with-pen--expr-deadpan--0856a20c, crowd-exemplar] (`return-customer` STEP-1 fig-return-customer--sign-with-pen--expr-deadpan--0856a20c GENERATE)
+  L133: [fig-miniscribe-rep--expr-smug--105ba6bf, fig-return-customer--expr-skeptical--105ba6bf, handshake] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--expr-smug--105ba6bf GENERATE; `return-customer` STEP-1 fig-return-customer--expr-skeptical--105ba6bf GENERATE)
+  L134: [fig-return-customer--action-shrug--expr-deadpan--5037a50d] (`return-customer` STEP-1 fig-return-customer--action-shrug--expr-deadpan--5037a50d GENERATE)
+  L135: [fig-qt-wiles--action-present--expr-delighted--816f6f2a] (`qt-wiles` STEP-1 fig-qt-wiles--action-present--expr-delighted--816f6f2a GENERATE)
+  L136: [fig-miniscribe-rep--expr-deadpan--705b0cc1, fig-return-customer--expr-smug--705b0cc1] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--expr-deadpan--705b0cc1 GENERATE; `return-customer` STEP-1 fig-return-customer--expr-smug--705b0cc1 GENERATE)
+  L137: [fig-miniscribe-rep--action-present--expr-smug--d63b7b3c] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-present--expr-smug--d63b7b3c GENERATE)
+  L138: [L137, miniscribe-rep] (`miniscribe-rep` delta -> parent + canonical)
+  L139: [fig-brick-foreman--action-armscrossed--expr-thinking--f8a09813, L112] (`brick-foreman` STEP-1 fig-brick-foreman--action-armscrossed--expr-thinking--f8a09813 GENERATE)
+  L140: [crowd-exemplar] (no cast — the scene composes from the place)
+  L141: [fig-auditor-rep--action-armscrossed--expr-deadpan--53d22335] (`auditor-rep` STEP-1 fig-auditor-rep--action-armscrossed--expr-deadpan--53d22335 GENERATE)
+  L142: [fig-auditor-rep--action-armscrossed--expr-deadpan--7fce9668] (`auditor-rep` STEP-1 fig-auditor-rep--action-armscrossed--expr-deadpan--7fce9668 GENERATE)
+  L143: [fig-auditor-rep--hold-one-hand--expr-deadpan--7a7051c3] (`auditor-rep` STEP-1 fig-auditor-rep--hold-one-hand--expr-deadpan--7a7051c3 GENERATE)
+  L144: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L145: [fig-auditor-rep--carry-by-handle--expr-deadpan--1fae0caf, L112] (`auditor-rep` STEP-1 fig-auditor-rep--carry-by-handle--expr-deadpan--1fae0caf GENERATE)
+  L146: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L147: [fig-auditor-rep--action-thumbsup--expr-deadpan--c2540bd6, L112] (`auditor-rep` STEP-1 fig-auditor-rep--action-thumbsup--expr-deadpan--c2540bd6 GENERATE)
+  L148: [crowd-exemplar] (no cast — the scene composes from the place)
+  L149: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L150: [L149, prop-drive, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L151: [fig-brick-foreman--carry-by-handle--expr-deadpan--0996e34f, L112] (`brick-foreman` STEP-1 fig-brick-foreman--carry-by-handle--expr-deadpan--0996e34f GENERATE)
+  L152: [fig-qt-wiles--hold-both-hands--expr-smug--f4dd6d01, L65] (`qt-wiles` STEP-1 fig-qt-wiles--hold-both-hands--expr-smug--f4dd6d01 GENERATE)
+  L153: [fig-brick-foreman--point-at-thing--expr-thinking--5be86de6, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--point-at-thing--expr-thinking--5be86de6 GENERATE)
+  L154: [fig-brick-foreman--hold-both-hands--expr-deadpan--fc243794, L112] (`brick-foreman` STEP-1 fig-brick-foreman--hold-both-hands--expr-deadpan--fc243794 GENERATE)
+  L155: [L154, brick-foreman] (`brick-foreman` delta -> parent + canonical)
+  L156: [L155, brick-foreman] (`brick-foreman` delta -> parent + canonical)
+  L157: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L158: [L157, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L159: [fig-brick-foreman--hold-both-hands--expr-worried--0a2a7ddc, L112, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--hold-both-hands--expr-worried--0a2a7ddc GENERATE)
+  L160: [L159, brick-foreman, crowd-exemplar] (`brick-foreman` delta -> parent + canonical)
+  L161: [fig-brick-foreman--action-shrug--expr-deadpan--efabfcf5, L112, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-deadpan--efabfcf5 GENERATE)
+  L162: [crowd-exemplar] (no cast — the scene composes from the place)
+  L163: [fig-miniscribe-rep--action-present--expr-delighted--1fbbd999, crowd-exemplar, lettering-marker-italic] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-present--expr-delighted--1fbbd999 GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L164: [L163, miniscribe-rep, crowd-exemplar] (`miniscribe-rep` delta -> parent + canonical)
+  L165: [fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42 GENERATE)
+  L166: [fig-auditor-rep--action-shrug--expr-deadpan--7e4e0ab5] (`auditor-rep` STEP-1 fig-auditor-rep--action-shrug--expr-deadpan--7e4e0ab5 GENERATE)
+  L167: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L168: [fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546] (`line-worker` STEP-1 fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546 GENERATE)
+  L169: [L28, crowd-exemplar] (no cast — the scene composes from the place)
+  L170: [L169, crowd-exemplar] (no cast — the scene composes from the place)
+  L171: [fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa, L28, crowd-exemplar] (`line-worker` STEP-1 fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa GENERATE)
+  L172: [L171, line-worker, crowd-exemplar] (`line-worker` delta -> parent + canonical)
+  L173: [fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6] (`line-worker` STEP-1 fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6 GENERATE)
+  L174: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L175: [fig-line-worker--sit--expr-smug--58cc68b6] (`line-worker` STEP-1 fig-line-worker--sit--expr-smug--58cc68b6 GENERATE)
+  L176: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L177: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L178: [crowd-exemplar] (no cast — the scene composes from the place)
+  L179: [fig-rifenburgh-ceo--action-armscrossed--expr-thinking--15c18100] (`rifenburgh-ceo` STEP-1 fig-rifenburgh-ceo--action-armscrossed--expr-thinking--15c18100 GENERATE)
+  L180: [fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800] (`rifenburgh-ceo` STEP-1 fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800 GENERATE)
+  L181: [fig-rifenburgh-ceo--action-recoil--expr-surprised--2904312a, L112] (`rifenburgh-ceo` STEP-1 fig-rifenburgh-ceo--action-recoil--expr-surprised--2904312a GENERATE)
+  L182: [fig-rifenburgh-ceo--action-walk--expr-worried--2046fb04] (`rifenburgh-ceo` STEP-1 fig-rifenburgh-ceo--action-walk--expr-worried--2046fb04 GENERATE)
+  L183: [crowd-exemplar] (no cast — the scene composes from the place)
+  L184: [fig-rifenburgh-ceo--point-at-thing--expr-deadpan--b239ba9a, lettering-marker-italic] (`rifenburgh-ceo` STEP-1 fig-rifenburgh-ceo--point-at-thing--expr-deadpan--b239ba9a GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L185: [fig-miniscribe-rep--action-offering--expr-worried--65ad5c3a] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-offering--expr-worried--65ad5c3a GENERATE)
+  L186: [fig-miniscribe-rep--action-present--expr-worried--dd9ef203, lettering-marker-italic] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-present--expr-worried--dd9ef203 GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L187: [L186, miniscribe-rep, lettering-marker-italic] (`miniscribe-rep` delta -> parent + canonical; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L188: [fig-rifenburgh-ceo--action-armscrossed--expr-eyeroll--56e8c100] (`rifenburgh-ceo` STEP-1 fig-rifenburgh-ceo--action-armscrossed--expr-eyeroll--56e8c100 GENERATE)
+  L189: [crowd-exemplar] (no cast — the scene composes from the place)
+  L190: [fig-miniscribe-rep--action-slump--expr-crestfallen--24cb011c] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-slump--expr-crestfallen--24cb011c GENERATE)
+  L191: [L190, miniscribe-rep, lettering-marker-italic] (`miniscribe-rep` delta -> parent + canonical; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L192: [fig-miniscribe-rep--action-slump--expr-crestfallen--13eb9136] (`miniscribe-rep` STEP-1 fig-miniscribe-rep--action-slump--expr-crestfallen--13eb9136 GENERATE)
+  L193: [crowd-exemplar] (no cast — the scene composes from the place)
+  L194: [fig-bond-investor--sit--expr-worried--25000481, crowd-exemplar] (`bond-investor` STEP-1 fig-bond-investor--sit--expr-worried--25000481 GENERATE)
+  L195: [L194, bond-investor, crowd-exemplar] (`bond-investor` delta -> parent + canonical)
+  L196: [crowd-exemplar] (no cast — the scene composes from the place)
+  L197: [fig-bond-investor--carry-by-handle--expr-deadpan--2a3df20f] (`bond-investor` STEP-1 fig-bond-investor--carry-by-handle--expr-deadpan--2a3df20f GENERATE)
+  L198: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L199: [fig-bond-investor--hold-both-hands--expr-delighted--610638ea, crowd-exemplar, lettering-marker-italic] (`bond-investor` STEP-1 fig-bond-investor--hold-both-hands--expr-delighted--610638ea GENERATE; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived)
+  L200: [crowd-exemplar] (no cast — the scene composes from the place)
+  L201: [fig-auditor-rep--action-armscrossed--expr-deadpan--91d33eed] (`auditor-rep` STEP-1 fig-auditor-rep--action-armscrossed--expr-deadpan--91d33eed GENERATE)
+  L202: [L201, auditor-rep] (`auditor-rep` delta -> parent + canonical)
+  L203: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L204: [fig-auditor-rep--sign-with-pen--expr-caught--27f8ee3d] (`auditor-rep` STEP-1 fig-auditor-rep--sign-with-pen--expr-caught--27f8ee3d GENERATE)
+  L205: [fig-hq-banker--action-recoil--expr-surprised--a7350ff7] (`hq-banker` STEP-1 fig-hq-banker--action-recoil--expr-surprised--a7350ff7 GENERATE)
+  L206: [fig-hq-banker--facepalm--expr-crestfallen--4c87380d] (`hq-banker` STEP-1 fig-hq-banker--facepalm--expr-crestfallen--4c87380d GENERATE)
+  L207: [fig-trial-judge--hold-one-hand--expr-deadpan--dd3eba9a, L198] (`trial-judge` STEP-1 fig-trial-judge--hold-one-hand--expr-deadpan--dd3eba9a GENERATE)
+  L208: [L207, trial-judge] (`trial-judge` delta -> parent + canonical)
+  L209: [fig-bond-investor--hold-both-hands--expr-crestfallen--0e665224, crowd-exemplar] (`bond-investor` STEP-1 fig-bond-investor--hold-both-hands--expr-crestfallen--0e665224 GENERATE)
+  L210: [fig-bond-investor--action-armscrossed--expr-annoyed--234e661f] (`bond-investor` STEP-1 fig-bond-investor--action-armscrossed--expr-annoyed--234e661f GENERATE)
+  L211: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L212: [fig-bond-investor--action-shrug--expr-deadpan--c6a91793] (`bond-investor` STEP-1 fig-bond-investor--action-shrug--expr-deadpan--c6a91793 GENERATE)
+  L213: [fig-hq-banker--expr-deadpan--55bd2c0a, fig-auditor-rep--55bd2c0a] (`hq-banker` STEP-1 fig-hq-banker--expr-deadpan--55bd2c0a GENERATE; `auditor-rep` STEP-1 fig-auditor-rep--55bd2c0a GENERATE)
+  L214: [lettering-marker-italic, scene-style-tile] (LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L215: [crowd-exemplar] (no cast — the scene composes from the place)
+  L216: [crowd-exemplar] (no cast — the scene composes from the place)
+  L217: [fig-qt-wiles--action-armscrossed--expr-deadpan--267a6754, L198] (`qt-wiles` STEP-1 fig-qt-wiles--action-armscrossed--expr-deadpan--267a6754 GENERATE)
+  L218: [L217, qt-wiles, crowd-exemplar] (`qt-wiles` delta -> parent + canonical)
+  L219: [L218, qt-wiles, crowd-exemplar] (`qt-wiles` delta -> parent + canonical)
+  L220: [fig-qt-wiles--back-to-viewer--dfb3cd97] (`qt-wiles` STEP-1 fig-qt-wiles--back-to-viewer--dfb3cd97 GENERATE)
+  L221: [fig-brick-foreman--action-shrug--expr-eyeroll--2a4cea9b] (`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-eyeroll--2a4cea9b GENERATE)
+  L222: [fig-qt-wiles--surrender--expr-confused--59fca904] (`qt-wiles` STEP-1 fig-qt-wiles--surrender--expr-confused--59fca904 GENERATE)
+  L223: [L222, qt-wiles, crowd-exemplar] (`qt-wiles` delta -> parent + canonical)
+  L224: [L223, qt-wiles, crowd-exemplar] (`qt-wiles` delta -> parent + canonical)
+  L225: [fig-brick-foreman--action-armscrossed--expr-deadpan--b93e3f20, L198, crowd-exemplar] (`brick-foreman` STEP-1 fig-brick-foreman--action-armscrossed--expr-deadpan--b93e3f20 GENERATE)
+  L226: [L225, brick-foreman, crowd-exemplar] (`brick-foreman` delta -> parent + canonical)
+  L227: [fig-qt-wiles--action-offering--expr-deadpan--5b1e3fea] (`qt-wiles` STEP-1 fig-qt-wiles--action-offering--expr-deadpan--5b1e3fea GENERATE)
+  L228: [L227, qt-wiles] (`qt-wiles` delta -> parent + canonical)
+  L229: [fig-brick-foreman--hold-paper-by-sides--expr-worried--0d6e384b, L86] (`brick-foreman` STEP-1 fig-brick-foreman--hold-paper-by-sides--expr-worried--0d6e384b GENERATE)
+  L230: [L198, crowd-exemplar] (no cast — the scene composes from the place)
+  L231: [L230, crowd-exemplar] (no cast — the scene composes from the place)
+  L232: [L28, scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only))
+  L233: [fig-drive-maker--action-powerstance--expr-smug--21372a75, L28] (`drive-maker` STEP-1 fig-drive-maker--action-powerstance--expr-smug--21372a75 GENERATE)
+  L234: [L233, drive-maker] (`drive-maker` delta -> parent + canonical)
+  L235: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L236: [fig-qt-wiles--sit--expr-deadpan--b503fbae] (`qt-wiles` STEP-1 fig-qt-wiles--sit--expr-deadpan--b503fbae GENERATE)
+  L237: [fig-bond-investor--hold-both-hands--expr-crestfallen--18426408, crowd-exemplar] (`bond-investor` STEP-1 fig-bond-investor--hold-both-hands--expr-crestfallen--18426408 GENERATE)
+  L238: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L239: [fig-brick-co-seller--action-celebrate--expr-delighted--3994aa92, L114] (`brick-co-seller` STEP-1 fig-brick-co-seller--action-celebrate--expr-delighted--3994aa92 GENERATE)
+  L240: [L239, brick-co-seller] (`brick-co-seller` delta -> parent + canonical)
+  L241: [scene-style-tile] (STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette only); PLATE — place-first frame, bible descriptor + style suffix, no content anchor)
+  L242: [fig-auditor-rep--action-slump--expr-crestfallen--f5da9312] (`auditor-rep` STEP-1 fig-auditor-rep--action-slump--expr-crestfallen--f5da9312 GENERATE)
+  L243: [fig-hr-officer--hold-one-hand--expr-deadpan--f718fa83] (`hr-officer` STEP-1 fig-hr-officer--hold-one-hand--expr-deadpan--f718fa83 GENERATE)
+  L244: [L28, crowd-exemplar] (no cast — the scene composes from the place)
+  L245: [L244, crowd-exemplar] (no cast — the scene composes from the place)
+  L246: [fig-brick-foreman--hold-one-hand--expr-deadpan--a4a7bd67, L112] (`brick-foreman` STEP-1 fig-brick-foreman--hold-one-hand--expr-deadpan--a4a7bd67 GENERATE)
+PRE-GEN REVIEW GATE — 29 refusal(s); nothing generated, nothing charged:
+L66: place `L65` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L65.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L87: place `L84` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L84.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L88: place `L86` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L86.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L90: place `L86` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L86.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L96: place `L84` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L84.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L98: place `L84` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L84.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L99: place `L84` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L84.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L115: place `L114` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L114.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L118: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L121: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L128: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L130: place `L65` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L65.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L139: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L145: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L147: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L151: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L152: place `L65` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L65.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L154: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L159: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L161: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L181: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L206: pose `facepalm` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/refs/base/facepalm.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L207: place `L198` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L198.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L217: place `L198` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L198.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L225: place `L198` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L198.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L229: place `L86` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L86.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L230: place `L198` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L198.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L239: place `L114` refused as a seed — its channels/the-second-take/visual-kit/_staging/review.json record FAILS act_text. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L114.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging
+L246: place `L112` refused as a seed — it has no review record in channels/the-second-take/visual-kit/_staging/review.json. Every asset whose pixels seed a scene carries a human ruling (P3); render it onto the review board and record the verdicts (the ONLY writer):
+    1. py -3 .claude/skills/image-generation/scripts/build_review_artifact.py --video <video-dir> --out <board.html> --staging channels/the-second-take/visual-kit/_staging --assets channels/the-second-take/visual-kit/_staging/L112.png --figures-out <verdicts.json>
+    2. py -3 .claude/skills/image-generation/scripts/stamp_review.py --figures <verdicts.json> channels/the-second-take/visual-kit/_staging

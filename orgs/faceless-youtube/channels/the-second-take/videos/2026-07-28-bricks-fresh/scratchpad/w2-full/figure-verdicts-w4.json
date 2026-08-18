@@ -1,0 +1,213 @@
+{
+ "figures": {
+  "_staging/fig-auditor-rep--action-armscrossed--expr-deadpan--53d22335.png": {
+   "canonical_sha256": "14e647be9b8abd98ac72771bc07ca0054cb4003e606c35d3949c2f382f2fa0ae",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--action-armscrossed--expr-deadpan--7fce9668.png": {
+   "canonical_sha256": "1742e8a38bb3ae41f7ed9a750d2552d6c4dd4572b0573768851e2636d8671e25",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--action-shrug--expr-deadpan--7e4e0ab5.png": {
+   "canonical_sha256": "8cb8db4144f84c7f6054ea7fa769b2eb8a21ae72fe027028ffbc37d589089279",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--hold-one-hand--expr-deadpan--7a7051c3.png": {
+   "canonical_sha256": "8059d1cac33b948ba350f9406cb3057cbe7fbbde0b3d1f7c9c27aaa3e95be3c7",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42.png": {
+   "canonical_sha256": "970cc2056aa146535cb23e781a2deb2883c3a39c753d8856a6172f53332d7193",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--point-at-thing--expr-thinking--5be86de6.png": {
+   "canonical_sha256": "fd2a2867e51811c7a784aa47c90d1797bfa1aa08d23011fa5ab578cdbce20908",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6.png": {
+   "canonical_sha256": "1de278778b97b9ca269b4d2db3956a5991d48292959dc06d4a03304770e7cf66",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-line-worker--hold-one-hand--expr-crestfallen--9b0f8546.png": {
+   "canonical_sha256": "d3397cf9dfa022e0722a746ca620a3e6ab51e8dde33cbea368663b196013f413",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-line-worker--hold-paper-by-sides--expr-crestfallen--877097aa.png": {
+   "canonical_sha256": "447046bb9797b8b42e587c4e6f124fab1606eb7302dc5e4f5ed3d6374f4e8652",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-present--expr-delighted--1fbbd999.png": {
+   "canonical_sha256": "74e13fe2209f506a5940565e6cf8915c978d9a5259f49fa1053e1ab4ad90fe9d",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-present--expr-smug--d63b7b3c.png": {
+   "canonical_sha256": "4a1764892c606d0a46b0bd0c691cd7f5acf61198be21443738d7e826e2b427cd",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--expr-deadpan--705b0cc1.png": {
+   "canonical_sha256": "22592f56786088276035a520687d44b39048f66818e32f7adb16a3c1ca997119",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--expr-smug--105ba6bf.png": {
+   "canonical_sha256": "96649095b9663f1f0cf6d0b09d477bb1d1abfb2857033c062e2ff64cba467b8d",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-present--expr-delighted--816f6f2a.png": {
+   "canonical_sha256": "6aa744d3c367418c1dece5778e4225f5bd1a0ea84d76cb8f9cc26e43be021cd7",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-return-customer--action-shrug--expr-deadpan--5037a50d.png": {
+   "canonical_sha256": "09553dfb2e76ac143e08c613021b5a3480133710987c3774540e672cb1308291",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-return-customer--expr-skeptical--105ba6bf.png": {
+   "canonical_sha256": "7d6b8dbd3b7ea15e6cd95db4dcbc612e5fb030283d85c535ed6657526fe8e249",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-return-customer--expr-smug--705b0cc1.png": {
+   "canonical_sha256": "a9dee84195748559c5152ee34d81c9b9a9955f89469168354ce9e257ac7390ef",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-return-customer--sign-with-pen--expr-deadpan--0856a20c.png": {
+   "canonical_sha256": "9d61771b4b03d7a873817ece6082b8e27dc80e3bf94972931407af902827e7bd",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-rifenburgh-ceo--action-armscrossed--expr-thinking--15c18100.png": {
+   "canonical_sha256": "7ef7280bfbbb8d4996312affea04a8589b91cb3a2c6ceec3952a67d4ac02e58e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  }
+ }
+}

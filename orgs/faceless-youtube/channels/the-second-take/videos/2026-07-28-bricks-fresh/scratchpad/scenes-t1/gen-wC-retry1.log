@@ -1,0 +1,9 @@
+  [1/4] fig-brick-foreman--back-to-viewer--7a3b93be: START provider call
+  [1/4] fig-brick-foreman--back-to-viewer--7a3b93be: OK -> _staging/fig-brick-foreman--back-to-viewer--7a3b93be.png
+  [2/4] L20-fix: START provider call
+  [2/4] L20-fix: OK -> _staging/L20-fix.png
+  [3/4] L21-fix: START provider call
+  [3/4] L21-fix: OK -> _staging/L21-fix.png
+  [4/4] L25-fix: START provider call
+  [4/4] L25-fix: OK -> _staging/L25-fix.png
+  == 4 generated, 0 failed, 0 skipped, 0 held for review ==

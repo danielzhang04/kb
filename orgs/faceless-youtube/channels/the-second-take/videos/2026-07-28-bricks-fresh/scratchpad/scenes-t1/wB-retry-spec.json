@@ -1,0 +1,94 @@
+[
+  {
+    "name": "L12-fix",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change. Never the pose, and never the face: the parent image owns it outright. The THIRD image is the `prop-drive` prop canonical \u2014 preserve that object's design.\n\n`pc-boxy` on the bedside table stage-right with the `prop-drive` hugged between both stubby arms, the unmade bed running back stage-left, the curtained window beyond, blue-amber-cream palette. Only this changes: the bedside lamp is switched off, its shade and stand still visible as a dark unlit silhouette exactly where established in the held set, and the whole room has gone deep blue dark, held at the exact same framing and crop as before, with the drive alone still carrying its warm amber glow; everything else exactly as established.",
+    "payload": "`pc-boxy` on the bedside table stage-right with the `prop-drive` hugged between both stubby arms, the unmade bed running back stage-left, the curtained window beyond, blue-amber-cream palette. Only this changes: the bedside lamp is switched off, its shade and stand still visible as a dark unlit silhouette exactly where established in the held set, and the whole room has gone deep blue dark, held at the exact same framing and crop as before, with the drive alone still carrying its warm amber glow; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L11.png",
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L11.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "figures": null,
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "`pc-boxy` no_hands -> canonical; RETRY overlay from `L12`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "the bedside lamp is out and the whole room has gone deep blue dark",
+      "to": "the bedside lamp is switched off, its shade and stand still visible as a dark unlit silhouette exactly where established in the held set, and the whole room has gone deep blue dark, held at the exact same framing and crop as before"
+    }
+  },
+  {
+    "name": "L14-fix",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-caught` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `pc-boxy` holds in the parent scene, and no other figure's. The THIRD image is the `prop-drive` prop canonical \u2014 preserve that object's design.\n\n`pc-boxy`, `expr-caught`, stage-right beside the oversized `prop-drive` body \u2014 its same cream-buff body, teal trim and rounded drive-shaped top exactly as established, not a plain metal filing cabinet \u2014 which stands stage-left with its first drawer still fully out, folders and photographs on show. Flat cream backdrop, cream-buff-maroon palette, even frontal light, foreground depth from a cropped rug edge across the bottom. Both its stubby arms, side by side, are pressed flat together against that SAME second drawer at hip height, shoving it back so whatever is in it stays hidden behind the drawer front.",
+    "payload": "`pc-boxy`, `expr-caught`, stage-right beside the oversized `prop-drive` body \u2014 its same cream-buff body, teal trim and rounded drive-shaped top exactly as established, not a plain metal filing cabinet \u2014 which stands stage-left with its first drawer still fully out, folders and photographs on show. Flat cream backdrop, cream-buff-maroon palette, even frontal light, foreground depth from a cropped rug edge across the bottom. Both its stubby arms, side by side, are pressed flat together against that SAME second drawer at hip height, shoving it back so whatever is in it stays hidden behind the drawer front.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-caught.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-caught.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "figures": null,
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical; RETRY overlay from `L14`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "the oversized `prop-drive` body, which stands stage-left with its first drawer still fully out, folders and photographs on show. Flat cream backdrop, cream-buff-maroon palette, even frontal light, foreground depth from a cropped rug edge across the bottom. Both its stubby arms are flat against a second drawer that has just slid open at hip height, shoving it back so whatever is in it stays hidden behind the drawer front.",
+      "to": "the oversized `prop-drive` body \u2014 its same cream-buff body, teal trim and rounded drive-shaped top exactly as established, not a plain metal filing cabinet \u2014 which stands stage-left with its first drawer still fully out, folders and photographs on show. Flat cream backdrop, cream-buff-maroon palette, even frontal light, foreground depth from a cropped rug edge across the bottom. Both its stubby arms, side by side, are pressed flat together against that SAME second drawer at hip height, shoving it back so whatever is in it stays hidden behind the drawer front."
+    }
+  }
+]

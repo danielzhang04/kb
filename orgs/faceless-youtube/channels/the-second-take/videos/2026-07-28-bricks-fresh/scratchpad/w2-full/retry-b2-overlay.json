@@ -1,0 +1,55 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L60",
+      "character": "tv-chef",
+      "name": "fig-tv-chef--hold-both-hands--expr-worried--56a59b22",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L58",
+      "character": "qt-wiles",
+      "name": "fig-qt-wiles--carry-by-handle--expr-deadpan--2c8c8b10",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L61",
+      "character": "qt-wiles",
+      "name": "fig-qt-wiles--hold-paper-by-sides--expr-skeptical--be79523a",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L69",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--expr-delighted--5d92f2c3",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L74",
+      "character": "qt-wiles",
+      "name": "fig-qt-wiles--action-accuse--expr-deadpan--923f3970",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L74",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--action-recoil--expr-surprised--639a586c",
+      "defect": "rig"
+    },
+    {
+      "kind": "step1",
+      "shot": "L79",
+      "character": "brick-foreman",
+      "name": "fig-brick-foreman--hold-one-hand--expr-deadpan--d938b214",
+      "defect": "clean_card"
+    }
+  ]
+}

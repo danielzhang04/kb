@@ -1,0 +1,103 @@
+{
+ "figures": {
+  "_staging/fig-miniscribe-rep--action-slump--expr-crestfallen--24cb011c.png": {
+   "canonical_sha256": "cc3988062c64dc522e43d713220959bbf875443410f07f282d112b81cc10477e",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-offering--expr-deadpan--5b1e3fea.png": {
+   "canonical_sha256": "4c4f075458e6aeeca8759825efdc58fb2415345fb1b4adcb5fa821aa6b8b225f",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--back-to-viewer--dfb3cd97.png": {
+   "canonical_sha256": "e940ccf9af705d26392094b23a984d5e3522023780c19bb24d470dafe651b789",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--sit--expr-deadpan--b503fbae.png": {
+   "canonical_sha256": "25ce3ef4c4e0a1b176079d6ca02f1f27498397df7857bb0847c8b2de44380f96",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--surrender--expr-confused--59fca904.png": {
+   "canonical_sha256": "e75b991e43ea36d14c7657ce87a0f950bda0318be07409ad02ea2edbe85a7a4d",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-rifenburgh-ceo--action-armscrossed--expr-eyeroll--56e8c100.png": {
+   "canonical_sha256": "d7caad07b1e91fb122006bddba62be58301f73fa0e4566da49d8789dec39b4ea",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-rifenburgh-ceo--action-walk--expr-worried--2046fb04.png": {
+   "canonical_sha256": "012e11febb1790a2792aa0e0afb269499e4d57f376692b9b8da1547387aa45a7",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800.png": {
+   "canonical_sha256": "a5e30054ffdd66a12f3461569b74a4e362bd0abb29f874719e21e2c96d506cb5",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-rifenburgh-ceo--point-at-thing--expr-deadpan--b239ba9a.png": {
+   "canonical_sha256": "cfb3e727bc782c2c0a8085a9bde3e14b8045adc33507332e6652b7cb3ffa9283",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  }
+ }
+}

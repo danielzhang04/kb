@@ -1,0 +1,41 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "step1",
+      "shot": "L213",
+      "character": "auditor-rep",
+      "name": "fig-auditor-rep--55bd2c0a",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L204",
+      "character": "auditor-rep",
+      "name": "fig-auditor-rep--sign-with-pen--expr-caught--27f8ee3d",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L197",
+      "character": "bond-investor",
+      "name": "fig-bond-investor--carry-by-handle--expr-deadpan--2a3df20f",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L237",
+      "character": "bond-investor",
+      "name": "fig-bond-investor--hold-both-hands--expr-crestfallen--18426408",
+      "defect": "clean_card"
+    },
+    {
+      "kind": "step1",
+      "shot": "L199",
+      "character": "bond-investor",
+      "name": "fig-bond-investor--hold-both-hands--expr-delighted--610638ea",
+      "defect": "pose"
+    }
+  ]
+}

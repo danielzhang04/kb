@@ -1,0 +1,16 @@
+{
+ "schema": "faceless-youtube/forge-retry-overlay@2",
+ "video_slug": "2026-07-28-bricks-fresh",
+ "entries": [
+  {
+   "kind": "scene",
+   "shot": "L03",
+   "name": "L03-fix",
+   "defect": "content",
+   "replace": {
+    "from": "Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming.",
+    "to": "Beyond a velvet rope across the midground the rear of the room is packed with a banquet crowd up on their feet applauding hard at the empty dais, beaming, every crowd figure drawn on the flat CROWD RIG only - dot eyes, one simple mouth, no individuated eyebrow or mouth linework on any face beyond that flat rig, hair and headwear repeating across at most 2-3 shared silhouettes for the whole group and never a distinct style invented per figure."
+   }
+  }
+ ]
+}

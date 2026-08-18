@@ -1,0 +1,50 @@
+[
+  {
+    "name": "L07-fix",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `pc-boxy`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `pc-boxy` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `pc-boxy` holds in the parent scene, and no other figure's. The THIRD image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\n`pc-boxy`, `expr-smug`, standing on a shop counter top centre frame, front panel turned to the far side. Beyond the counter, customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient, every one of them drawn on the flat CROWD RIG only - dot eyes and one simple mouth, no eyebrows or scowl lines drawn on any face, the notes never overlapping it. A carpeted showroom: pegboard wall of coiled cables behind them, a queue rope running back stage-left. Cream-brown-teal palette, even shop light, foreground depth from a cropped till corner at the lower-right.",
+    "payload": "`pc-boxy`, `expr-smug`, standing on a shop counter top centre frame, front panel turned to the far side. Beyond the counter, customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient, every one of them drawn on the flat CROWD RIG only - dot eyes and one simple mouth, no eyebrows or scowl lines drawn on any face, the notes never overlapping it. A carpeted showroom: pegboard wall of coiled cables behind them, a queue rope running back stage-left. Cream-brown-teal palette, even shop light, foreground depth from a cropped till corner at the lower-right.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+      "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+        "role": "canonical",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+        "role": "expression",
+        "character": "pc-boxy"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": null,
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`pc-boxy` no_hands -> canonical; RETRY overlay from `L07`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient",
+      "to": "customers crowd three deep against it with their arms over the top and fistfuls of banknotes thrust across toward the machine, faces eager and impatient, every one of them drawn on the flat CROWD RIG only - dot eyes and one simple mouth, no eyebrows or scowl lines drawn on any face"
+    }
+  }
+]
