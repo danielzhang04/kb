@@ -1290,7 +1290,7 @@ _BACKGROUND_CROWD = re.compile(
     re.IGNORECASE)
 _ANON_INDIVIDUAL = re.compile(
     r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+|a|an)\s+"
-    r"(?:anonymous\s+)?(?:managers?|workers?|person|people|(?:\w+-)?shoppers?|"
+    r"(?:anonymous\s+)?(?:(?:[\w-]+\s+)?figures?|managers?|workers?|person|people|(?:\w+-)?shoppers?|"
     r"customers?|executives?|officers?|foremen|clerks?|staff(?:ers)?)(?!\s+crowd\b)\b",
     re.IGNORECASE)
 _COMPLETION_STATE = re.compile(

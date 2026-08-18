@@ -70,11 +70,24 @@ def _read(path):
 # --------------------------------------------------------------------------- #
 # classify() — the ruling -> (status, reasons) map
 # --------------------------------------------------------------------------- #
-def test_classify_clean_ruling_is_verified():
-    # (a) a fully-clean ruling -> verified, no reasons
-    status, reasons = stamp_review.classify(_ruling("L05", "clean"))
-    assert status == "verified", status
-    assert reasons == [], reasons
+def test_classify_complete_clean_rulings_are_verified():
+    for ruling in (_ruling("L05", "clean"),
+                   {"id": "L06", "f": "clean", "s": "clean", "r": "clean"}):
+        status, reasons = stamp_review.classify(ruling)
+        assert status == "verified", status
+        assert reasons == [], reasons
+
+
+def test_classify_missing_axis_verdicts_are_parked():
+    status, reasons = stamp_review.classify({"worst": "clean"})
+    assert status == "parked", status
+    assert reasons == ["fidelity: missing verdict", "style: missing verdict", "rig: missing verdict"], reasons
+
+
+def test_classify_non_clean_rig_parks_even_when_worst_is_clean():
+    status, reasons = stamp_review.classify(_ruling("L07", "clean", r="LOW"))
+    assert status == "parked", status
+    assert "rig: LOW" in reasons, reasons
 
 
 def test_classify_defect_ruling_is_parked_with_reasons():

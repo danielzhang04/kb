@@ -382,7 +382,7 @@ def test_g9_crowd_in_a_real_rear_zone_is_silent():
 
 def test_g9_individually_counted_anonymous_people_cannot_hide_in_crowd():
     hard = _spatial({"crowd": True},
-                    "Two managers stand on the far side of the table while the crowd waits behind glass.")
+                    "Three overcoated figures work on the far side of the table while the crowd waits behind glass.")
     assert len(hard) == 1 and "individually staged anonymous" in hard[0], hard
 
 

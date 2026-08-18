@@ -206,7 +206,7 @@ def _quotes_literal(prompt, literal):
 INVARIANTS = {
     "support-contact": "Seated named figure names a support + contact phrase (C-7)",
     "relative-scale": "Two named cast: plane / eye line / relative head scale stated (C-8)",
-    "crowd": "Crowd reads as background rig, not named cast",
+    "crowd": "CROWD rig holds on every figure (§3)",
     "flat-cel-hazard": "One-voice flat-cel style holds (no gradient/gloss/bloom/etc., C-2)",
     "line-register": "Every line reads at the rig outline weight or heavier — nothing finer, no "
                      "hairline/micro-pattern field (slats, lattice, grille, fine grain); skin one "

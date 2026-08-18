@@ -1012,7 +1012,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "A head-on view down the meeting table with two chairs pushed back and empty in the near midground. On the far side of the table the seated crowd stares straight ahead past the viewer, eyes flat, one figure's hand frozen halfway to a water glass, every face carefully blank. A windowless room behind them: the blank flipchart pad stage-left, a wall clock with plain hands. Cream-teal-charcoal palette, flat fluorescent light, foreground depth from a cropped chair back cutting the lower-right.",
+        "still_prompt": "A head-on view down the meeting table with two chairs pushed back and empty in the near midground. On the far side of the table the seated crowd stares straight ahead past the viewer, eyes flat, their hands frozen halfway to water glasses, every face carefully blank. A windowless room behind them: the blank flipchart pad stage-left, a wall clock with plain hands. Cream-teal-charcoal palette, flat fluorescent light, foreground depth from a cropped chair back cutting the lower-right.",
         "notes": "The point of the theatre is the audience, so the audience is the shot; the mass carries an authored expression."
       },
       {
@@ -1161,7 +1161,7 @@
         "stage_role": "base",
         "shot_class": "literal",
         "source": "ai-gen",
-        "still_prompt": "The audit room mid-arrival: three overcoated figures work down the length of the long meeting table setting out grey steel document boxes and squaring up ledgers, collars still up, businesslike and unhurried. On the far side of the table a small knot of shirt-sleeved figures stands watching them unpack, arms folded, unenthusiastic. The room as established: stacking chairs, the coat stand by the door now loaded with coats, the window onto the frosted car park. Cool grey-cream-teal palette, flat overcast daylight, foreground depth from a cropped chair back at the lower-right.",
+        "still_prompt": "The audit room mid-arrival: an overcoated crowd works on the far side of the long meeting table, setting out grey steel document boxes and squaring up ledgers, collars still up, businesslike and unhurried. A shirt-sleeved crowd waits behind it, arms folded and unenthusiastic. The room as established: stacking chairs, the coat stand by the door now loaded with coats, the window onto the frosted car park. Cool grey-cream-teal palette, flat overcast daylight, foreground depth from a cropped chair back at the lower-right.",
         "figures": {
           "crowd": true
         },
@@ -2364,10 +2364,7 @@
         "vo_text": "and called the Denver newspapers.",
         "shot_class": "literal",
         "source": "ai-gen",
-        "still_prompt": "A newsroom seen across a low partition, its desks worked end to end by a crowd of shirt-sleeved figures, heads down over typewriters and spiked copy under a wall of pigeonholes. At one desk in the middle of them a figure has stopped with a telephone handset wedged at his ear and a pen halted over a notepad, sitting bolt upright while everyone around him carries on oblivious. Cream-teal-charcoal palette, flat overhead light with one desk lamp burning at that desk, foreground depth from a cropped desk corner at the lower-left.",
-        "figures": {
-          "crowd": true
-        },
+        "still_prompt": "A newsroom seen across a low partition, its desks worked end to end by a crowd of shirt-sleeved figures, heads down over typewriters and spiked copy under a wall of pigeonholes. At one desk in the middle, the caller has stopped with a telephone handset wedged at his ear and a pen halted over a notepad, sitting bolt upright while everyone around him carries on oblivious. Cream-teal-charcoal palette, flat overhead light with one desk lamp burning at that desk, foreground depth from a cropped desk corner at the lower-left.",
         "notes": "The other end of the call, so the beat is two rooms rather than one prop. The newspaper is the institution the line names, so the room is staged as the mass it is, with the one arrested figure authored inside it in prose. [F-14]"
       },
       {

@@ -121,6 +121,11 @@ def _dsg_failures(ruling: dict):
     return out
 
 
+def _missing_axes(ruling: dict):
+    return [key for key, _ in _AXES
+            if not isinstance(ruling.get(key), str) or not ruling[key].strip()]
+
+
 def _is_clean(ruling: dict) -> bool:
     """A ruling is clean iff it carries no defect. `worst` is authoritative when present
     (aggregate of the axes); "clean" is the no-defect sentinel. Absent `worst` -> all axes clean.
@@ -132,10 +137,10 @@ def _is_clean(ruling: dict) -> bool:
     a summary field said `clean`. The items are the evidence; the aggregate is the opinion."""
     if _dsg_failures(ruling):
         return False
-    worst = ruling.get("worst")
-    if worst is not None:
-        return worst == "clean"
-    return all(ruling.get(k, "clean") == "clean" for k, _ in _AXES)
+    if _missing_axes(ruling):
+        return False
+    return (all(ruling[key] == "clean" for key, _ in _AXES)
+            and ("worst" not in ruling or ruling["worst"] == "clean"))
 
 
 def _reasons(ruling: dict):
@@ -144,6 +149,10 @@ def _reasons(ruling: dict):
     review narrative (`why`) if any. Never empty for a defect — falls back to the worst severity so
     the render gate always has something to print."""
     reasons = []
+    missing = set(_missing_axes(ruling))
+    for key, label in _AXES:
+        if key in missing:
+            reasons.append(f"{label}: missing verdict")
     for key, label in _AXES:
         v = ruling.get(key)
         if isinstance(v, str) and v and v != "clean":
