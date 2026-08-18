@@ -1,0 +1,79 @@
+[
+  {
+    "stem": "fig-auditor-rep--action-powerstance--expr-delighted--4a73160d",
+    "character": "auditor-rep",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging_rejected_fig-auditor-rep--action-powerstance--expr-delighted--4a73160d.png",
+    "reason": "rig"
+  },
+  {
+    "stem": "fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d",
+    "character": "auditor-rep",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging_rejected_fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d.png",
+    "reason": "rig"
+  },
+  {
+    "stem": "fig-bond-investor--hold-both-hands--expr-delighted--610638ea",
+    "character": "bond-investor",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging_rejected_fig-bond-investor--hold-both-hands--expr-delighted--610638ea.png",
+    "reason": "no formal verdict record for this stem"
+  },
+  {
+    "stem": "fig-brick-foreman--back-to-viewer--7a3b93be",
+    "character": "brick-foreman",
+    "state": "parked",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\fig-brick-foreman--back-to-viewer--7a3b93be.png",
+    "reason": "rig"
+  },
+  {
+    "stem": "fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42",
+    "character": "brick-foreman",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging_rejected_fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42.png",
+    "reason": "rig"
+  },
+  {
+    "stem": "fig-brick-foreman--action-recoil--expr-surprised--639a586c",
+    "character": "brick-foreman",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging_rejected_fig-brick-foreman--action-recoil--expr-surprised--639a586c.png",
+    "reason": "rig"
+  },
+  {
+    "stem": "fig-brick-foreman--surrender--expr-fear--9b76c8c6",
+    "character": "brick-foreman",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging_rejected_fig-brick-foreman--surrender--expr-fear--9b76c8c6.png",
+    "reason": "rig"
+  },
+  {
+    "stem": "fig-miniscribe-rep--action-recoil--expr-surprised--0487471a",
+    "character": "miniscribe-rep",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging_rejected_fig-miniscribe-rep--action-recoil--expr-surprised--0487471a.png",
+    "reason": "rig"
+  },
+  {
+    "stem": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+    "character": "miniscribe-rep",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging_rejected_fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9.png",
+    "reason": "rig"
+  },
+  {
+    "stem": "fig-qt-wiles--back-to-viewer--dfb3cd97",
+    "character": "qt-wiles",
+    "state": "rejected",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\_staging_rejected_fig-qt-wiles--back-to-viewer--dfb3cd97.png",
+    "reason": "no formal verdict record for this stem"
+  },
+  {
+    "stem": "fig-qt-wiles--surrender--expr-confused--59fca904",
+    "character": "qt-wiles",
+    "state": "flagged",
+    "file": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\_staging_flagged_fig-qt-wiles--surrender--expr-confused--59fca904.png",
+    "reason": "rig"
+  }
+]

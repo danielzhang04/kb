@@ -1,0 +1,125 @@
+{
+ "figures": {
+  "_staging/fig-auditor-rep--action-powerstance--expr-delighted--4a73160d.png": {
+   "canonical_sha256": "0cb38b751fb0f664054b3b1990e213b567abb17f20b81631415f833bea3ef900",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint: closed-fist powerstance, no digit-count risk; delighted grin at correct register; flat cel clean.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d.png": {
+   "canonical_sha256": "94019fceedbbc5c9cf39229a9e764fb64b22e5eee8193d73c694651e52f8ca85",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint: thumbsup hand verified 4-digit (thumb + 3 curled fingers); deadpan droopy-eye register correct.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-bond-investor--hold-both-hands--expr-delighted--610638ea.png": {
+   "canonical_sha256": "a977480e84ab90f8b0c18355a67839a36f4467da40e27c640af7bac586623133",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint (prior state: not_yet_attempted, no formal verdict): clean generation, closed hands, delighted register correct.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--action-armscrossed--expr-deadpan--e3499d42.png": {
+   "canonical_sha256": "df2c57cf81d074d07695769dc7c261f331afc8b266f4ad259dc75819dc5bb0d7",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint: arms-crossed pose clean, no ear/nose, deadpan register correct.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--action-recoil--expr-surprised--639a586c.png": {
+   "canonical_sha256": "18c97dfc672dc478f08a69eb575e25b8d55e7ee63b852ab2a04eb22b61ee3643",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint AFTER Phase-1 action-recoil primitive fix: both hands verified 4-digit (thumb + 3 fingers); surprised register (wide eyes, open mouth) correct.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--back-to-viewer--7a3b93be-r2.png": {
+   "canonical_sha256": "365bf90fa97350c02c6f3797c740ade0af3081b79a125d9b9c04341b6160bccd",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint (renamed -r2 to avoid collision with the still-parked original 7a3b93be.png; that original is left untouched per instruction): explicit rig-correction note re: ear-notch added to the prompt. Hair renders as one solid unbroken cap, no notch/hole, no visible ear — 3x prior ear-notch failure NOT repeated. expression-register marked pass (vacuous — no-expr pose, matches this stem's own precedent record).",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--surrender--expr-fear--9b76c8c6.png": {
+   "canonical_sha256": "68355a70c906c48f46bda8937673cc0c9e221f6a8ac907fa84d53fe3d4468c20",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint AFTER Phase-1 surrender primitive fix: both raised open hands verified 4-digit (the open/spread-hand drift point bible §3 flags); fear register (wide eyes, scared open mouth) correct.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-recoil--expr-surprised--0487471a.png": {
+   "canonical_sha256": "ca0fe0bb05c354a715842a5bce0493a27193d598cab6288bb69de07f766e8d5b",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint AFTER Phase-1 action-recoil primitive fix: both hands verified 4-digit; surprised register correct.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9.png": {
+   "canonical_sha256": "72f18f3a0a7dbad0a1e21652b10ec26b78ac7afecd0fc69974379050c1f555e9",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint AFTER Phase-1 action-recoil primitive fix: both hands verified 4-digit; surprised register correct.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--back-to-viewer--dfb3cd97.png": {
+   "canonical_sha256": "dfac42b6bcce57ca2b1d70886d6ef43df6cf2a0c93a5cc9093d62c583057eb43",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint, ONE attempt per brief (do-not-retry-again card): rig-correction note added but the generation still rendered a 3/4 PROFILE view instead of true back-to-viewer — a clearly drawn EAR plus one eye/eyebrow are visible on the turned head, a direct 'NO nose, NO ears' (bible sec.1/sec.3) violation, and a different manifestation of the pose's known defect (profile leak vs. the hair-notch form seen on brick-foreman). Mechanism diagnosis: the back-to-viewer pose primitive plus this character's canonical combination is drifting the head into a 3/4 turn under this character's hairstyle/head-angle, exposing rig features the pose is supposed to hide; PARKED per brief, no further retry burned.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--surrender--expr-confused--59fca904.png": {
+   "canonical_sha256": "0d492ce3791d3ee5364a854d853faa593c532f140d04b356428f184f9f455169",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "pass",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint AFTER Phase-1 surrender primitive fix: both raised open hands verified 4-digit; confused register (furrowed brow, uncertain mouth) correct.",
+   "date": "2026-08-18"
+  }
+ }
+}

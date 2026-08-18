@@ -1,0 +1,13 @@
+  [1/6] fig-brick-foreman--action-recoil--expr-surprised--639a586c: START provider call
+  [1/6] fig-brick-foreman--action-recoil--expr-surprised--639a586c: OK -> _staging/fig-brick-foreman--action-recoil--expr-surprised--639a586c.png
+  [2/6] fig-brick-foreman--surrender--expr-fear--9b76c8c6: START provider call
+  [2/6] fig-brick-foreman--surrender--expr-fear--9b76c8c6: OK -> _staging/fig-brick-foreman--surrender--expr-fear--9b76c8c6.png
+  [3/6] fig-miniscribe-rep--action-recoil--expr-surprised--0487471a: START provider call
+  [3/6] fig-miniscribe-rep--action-recoil--expr-surprised--0487471a: OK -> _staging/fig-miniscribe-rep--action-recoil--expr-surprised--0487471a.png
+  [4/6] fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9: START provider call
+  [4/6] fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9: OK -> _staging/fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9.png
+  [5/6] fig-qt-wiles--back-to-viewer--dfb3cd97: START provider call
+  [5/6] fig-qt-wiles--back-to-viewer--dfb3cd97: OK -> _staging/fig-qt-wiles--back-to-viewer--dfb3cd97.png
+  [6/6] fig-qt-wiles--surrender--expr-confused--59fca904: START provider call
+  [6/6] fig-qt-wiles--surrender--expr-confused--59fca904: OK -> _staging/fig-qt-wiles--surrender--expr-confused--59fca904.png
+  == 6 generated, 0 failed, 0 skipped, 0 held for review ==

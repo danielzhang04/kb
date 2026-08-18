@@ -1,0 +1,26 @@
+{
+ "figures": {
+  "refs/base/action-recoil.png": {
+   "canonical_sha256": "815192676e45b1b8ccab2f9ba655032d227c49a88dce682757155ae156f930a1",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 remint P1 — visual hand-count check: both hands 4-digit Mickey/Simpsons cartoon hand, matches bible §3; flat cel shading, no gradient/gloss; outline weight matches base rig)",
+   "date": "2026-08-18"
+  },
+  "refs/base/surrender.png": {
+   "canonical_sha256": "ea72f81babd4fbb9b6de23515528353137917aef9e40c031304d38a8cbc0badc",
+   "expression_sha256": null,
+   "verdicts": {
+    "flat-cel-hazard": "pass",
+    "line-register": "pass",
+    "rig": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 remint P1 — visual hand-count check: both raised hands 4-digit Mickey/Simpsons cartoon hand, matches bible §3 despite open/spread-hand drift risk; flat cel shading, no gradient/gloss; outline weight matches base rig)",
+   "date": "2026-08-18"
+  }
+ }
+}
