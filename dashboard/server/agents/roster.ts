@@ -164,6 +164,18 @@ export interface AgentRosterEntry {
   declaredRuntime: string | null;
   /** The declared DEFAULT model from the agent file (advisory metadata), or null. */
   declaredModel: string | null;
+  /** Declared tools from the agent file (advisory metadata), or null. */
+  tools?: string[] | null;
+  /** Declared knowledge sources from the agent file (advisory metadata), or null. */
+  knowledgeSource?: string[] | null;
+  /** Declared autonomy tier from the agent file (advisory metadata), or null. */
+  autonomyTier?: string | null;
+  /** Declared skills from the agent file (advisory metadata), or null. */
+  skills?: string[] | null;
+  /** Declared replacement relationship from the agent file (advisory metadata), or null. */
+  whatItReplaces?: string | null;
+  /** Declared predecessor relationships from the agent file (advisory metadata), or null. */
+  buildsOn?: string[] | null;
   /** The declaration's default server-owned execution profile id, or null for a legacy declaration. */
   defaultProfile?: string | null;
   /** The declaration's permitted execution profile ids, or null for a legacy declaration. */
@@ -180,6 +192,12 @@ export interface DeclaredAgent {
   role: string | null;
   runtime: string | null;
   model: string | null;
+  tools?: string[] | null;
+  knowledgeSource?: string[] | null;
+  autonomyTier?: string | null;
+  skills?: string[] | null;
+  whatItReplaces?: string | null;
+  buildsOn?: string[] | null;
   /** Optional complete execution-profile contract. Legacy declarations carry null for both fields. */
   defaultProfile: string | null;
   allowedProfiles: string[] | null;
@@ -407,6 +425,28 @@ function projectIds(v: unknown): string[] {
   return [...new Set(v.filter((item): item is string => typeof item === 'string' && SAFE_PROJECT_ID.test(item)))].sort();
 }
 
+/**
+ * Advisory list fields preserve authored string order while safely dropping malformed entries
+ * (non-strings and, matching `strFieldOrNull`'s '' rejection, empty strings) and deduping repeats.
+ * Only the inline `key: [a, b]` frontmatter syntax parses here — YAML block-list syntax (`key:` on
+ * its own line followed by `- item` lines) throws in the shared frontmatter parser and marks the
+ * whole declaration malformed-frontmatter, dropping it entirely. This is a pre-existing parser
+ * constraint, not specific to this function; the six new list fields inherit it, same as
+ * `projects` / `allowed-profiles`.
+ */
+function listField(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const values: string[] = [];
+  const seen = new Set<string>();
+  for (const item of v) {
+    if (typeof item === 'string' && item !== '' && !seen.has(item)) {
+      seen.add(item);
+      values.push(item);
+    }
+  }
+  return values;
+}
+
 /** Extract display-only, repo-contained paths from the declaration body. */
 function declaredCodebasePaths(repoRoot: string, instructionMarkdown: string): string[] {
   const matcher = /(?:^|[^A-Za-z0-9._-])((?:agents|dashboard|docs|knowledge|ledgers|memory|orgs|queue|routines|scripts|workflows|\.claude)\/[A-Za-z0-9._/-]+)/g;
@@ -515,6 +555,12 @@ function scanAgentDeclarations(repoRoot: string): AgentDeclarationScan {
       role: strFieldOrNull(meta.role),
       runtime: strFieldOrNull(meta.runtime),
       model: strFieldOrNull(meta.model),
+      tools: listField(meta.tools),
+      knowledgeSource: listField(meta['knowledge-source']),
+      autonomyTier: strFieldOrNull(meta['autonomy-tier']),
+      skills: listField(meta.skills),
+      whatItReplaces: strFieldOrNull(meta['what-it-replaces']),
+      buildsOn: listField(meta['builds-on']),
       defaultProfile: profileConfig.defaultProfile,
       allowedProfiles: profileConfig.allowedProfiles,
       runnerBound: meta['runner-bound'] === true,
@@ -578,6 +624,12 @@ export function readDeclaredAgents(repoRoot: string): Map<string, DeclaredAgent>
       role: detail.role,
       runtime: detail.runtime,
       model: detail.model,
+      tools: detail.tools === null || detail.tools === undefined ? null : [...detail.tools],
+      knowledgeSource: detail.knowledgeSource === null || detail.knowledgeSource === undefined ? null : [...detail.knowledgeSource],
+      autonomyTier: detail.autonomyTier ?? null,
+      skills: detail.skills === null || detail.skills === undefined ? null : [...detail.skills],
+      whatItReplaces: detail.whatItReplaces ?? null,
+      buildsOn: detail.buildsOn === null || detail.buildsOn === undefined ? null : [...detail.buildsOn],
       defaultProfile: detail.defaultProfile,
       allowedProfiles: detail.allowedProfiles === null ? null : [...detail.allowedProfiles],
       runnerBound: detail.runnerBound,
@@ -649,6 +701,12 @@ export function buildRoster(
       runnerBound: dec?.runnerBound ?? false,
       declaredRuntime: dec?.runtime ?? null,
       declaredModel: dec?.model ?? null,
+      tools: dec?.tools === null || dec?.tools === undefined ? null : [...dec.tools],
+      knowledgeSource: dec?.knowledgeSource === null || dec?.knowledgeSource === undefined ? null : [...dec.knowledgeSource],
+      autonomyTier: dec?.autonomyTier ?? null,
+      skills: dec?.skills === null || dec?.skills === undefined ? null : [...dec.skills],
+      whatItReplaces: dec?.whatItReplaces ?? null,
+      buildsOn: dec?.buildsOn === null || dec?.buildsOn === undefined ? null : [...dec.buildsOn],
       defaultProfile: dec?.defaultProfile ?? null,
       allowedProfiles: dec?.allowedProfiles ? [...dec.allowedProfiles] : null,
       description: dec?.description ?? null,
