@@ -1,0 +1,293 @@
+{
+ "schema": "w2r2-merged-verdicts@1",
+ "strict": {
+  "pro": {
+   "verified": 0,
+   "of": 10,
+   "verified_excl_groundline": 5
+  },
+  "flash": {
+   "verified": 0,
+   "of": 10,
+   "verified_excl_groundline": 0
+  }
+ },
+ "cards": [
+  {
+   "arm": "pro",
+   "card": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "A: identity, pose (both arms raised shoulder-height, palms up, matching action-shrug) and expr-deadpan (droopy eyes, neutral mouth, correctly overriding the shrug ref's own open-mouth face) all depicted correctly.",
+    "B: Clean flat-cel card, correct shrug body language, no leaked props/setting; but no thin ground line is drawn \u2014 only a soft ellipse shadow sits under the feet, confirmed on close crop."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-brick-foreman--back-to-viewer--7a3b93be",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:rig",
+    "B:framing"
+   ],
+   "notes": [
+    "A: rig: a distinct skin-toned ear shape is visible protruding from beneath the hairline on the right side of the head; the back-to-viewer rig reference requires hair to fully cover the head from behind with no ear drawn. Costume/hair color/pose otherwise match canonical and the back-to-viewer stance.",
+    "B: Clean card, back-to-viewer pose held correctly, no scenery leaked; no ground line drawn, shadow ellipse only."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: identity, pose (one hand lowered at hip height matching hold-one-hand) and expr-deadpan all depicted correctly.",
+    "B: Figure grips a rendered red clay brick \u2014 the payload explicitly orders the object left out (\"empty-handed and alone, the object ... left out\"); this is a leaked prop and a non-empty-handed pose. No ground line drawn."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: identity, pose (one hand extended at hip height matching hold-one-hand) and expr-deadpan all depicted correctly.",
+    "B: One hand fists a rendered grey dust sheet \u2014 the payload's own object-to-leave-out. The hauling motion reads, but the forbidden object is drawn instead of an empty hand. No ground line drawn."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "A: identity, pose (arm raised in open presenting gesture matching action-present) and expr-smug all depicted correctly; correctly drawn empty-handed with no pick/shovel.",
+    "B: Clean card, empty-handed presenting gesture correctly drawn with no pick/shovel prop leaked; no ground line drawn, shadow ellipse only."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:clean_card",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: identity, pose (arm extended down/forward gripping a handle, matching carry-by-handle) and expr-deadpan all depicted correctly. Informational only, not scored: the reference sheet includes a full hand-truck of cartons rather than being empty-handed/prop-free as the card law requires \u2014 out of this axis's identity/rig/pose scope.",
+    "B: A full hand truck with two stacked cartons is rendered \u2014 a major leaked prop the payload explicitly orders left out; figure is not empty-handed. This card DOES carry a correctly drawn thin ground line plus contact shadow (framing pass, confirmed on close crop) \u2014 the only clean-card defect here is the prop."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "B:clean_card",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: pose: hold-both-hands reference shows both hands gripping symmetrically at the same height in front of the torso; card shows a staggered two-hand pole grip on the rake shaft, one hand near chest/shoulder height and the other near hip height \u2014 a materially different hand-height/arm configuration than the reference. Identity and expr-greedy (angled brows, sly smirk) match.",
+    "B: A full rake plus a drift of rendered banknotes is drawn \u2014 the payload's object-to-leave-out, rendered in full instead of an empty two-hand grip. Ground line and contact shadow ARE correctly present (framing pass)."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "A: identity, pose (both fists raised overhead matching action-celebrate) and expr-delighted (eyes closed/crescented from the grin, wide open-mouth smile, matching the reference's closed-eye register) all depicted correctly.",
+    "B: Clean card, fists-up celebrate gesture correctly drawn with no pallet-tower setting leaked; no ground line drawn, shadow ellipse only."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "A: identity, pose (both hands raised near chest/shoulder height, staggered stance leaning back, matching action-recoil) and expr-surprised (wide round eyes, open mouth) all depicted correctly.",
+    "B: Clean card, recoil/surprised body language reads clearly with no test-bench setting leaked; no ground line drawn, shadow ellipse only."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "A: identity (bald head, side-swept blond hair, mustache, shirt/tie), pose (arms crossed at chest matching action-armscrossed) and expr-thinking (off-gaze eyes) all depicted correctly.",
+    "B: Clean card, arms-crossed thinking pose correct with no unit/warehouse setting leaked; no ground line drawn, shadow ellipse only."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: pose: figure stands with both arms hanging straight down at the sides in a plain neutral stance; the action-shrug reference's raised bent-elbow arms with palms out at chest/shoulder height are entirely absent, no shrug gesture is depicted.",
+    "B: clean_card/payload_fidelity: a stack of two sealed cartons on a wooden pallet is fully rendered behind the figure, scenery the payload's own 'draw none of its setting, props... no scenery, no props' clause orders omitted. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-brick-foreman--back-to-viewer--7a3b93be",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "B:framing"
+   ],
+   "notes": [
+    "A: pose: the card is rendered as a standard front-facing view with the full face, tie and shirt front visible; the back-to-viewer reference requires the figure shown from behind with only the back of the head/body visible, which this card does not depict at all.",
+    "B: Clean neutral pale-grey backdrop, no scenery/props, whole figure in frame. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line as the payload specifies."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:rig",
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: rig/hands: the hand grips a rendered reddish-brown rectangular prop object at hip height, matching the hold-one-hand grip stance, but the card payload requires the figure empty-handed with the object left out; a concrete prop is drawn in-hand instead of an empty gripping hand.",
+    "B: clean_card/payload_fidelity: a red-brown brick is drawn gripped in the figure's hand; the payload requires the figure 'empty-handed and alone, the object... left out'. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:rig",
+    "B:framing"
+   ],
+   "notes": [
+    "A: rig/hands: same defect as the other hold-one-hand card \u2014 a visible reddish/orange box-shaped prop sits in the gripping hand where the spec calls for an empty hand with the object left out.",
+    "B: Clean neutral backdrop, hands empty, no props. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "A:expression",
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: pose: both hands are actively engaged holding a pickaxe and a shovel out over a wooden counter, rather than the action-present reference's stance of one hand extending an object near the thigh with the other arm relaxed at the side; a furniture prop (counter) also appears, which a reference-sheet card should not include. expression: brows read level/relaxed and mouth is a subtle closed line, not the smug reference's raised angled brow and sly curling smirk.",
+    "B: clean_card/payload_fidelity: a full wooden plank counter is built as scenery and a pick + shovel are held in both hands, all of which the payload's 'empty-handed and alone... no scenery, no props, no furniture' clause orders omitted. framing: counter/tools obscure the ground plane; no thin ground line visible."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "B:framing"
+   ],
+   "notes": [
+    "A: pose: both arms hang fully relaxed at the sides in a plain standing stance; the carry-by-handle reference's bent arm with a gripping hand at waist/hip height is not depicted at all.",
+    "B: Clean neutral backdrop, hands empty, no props. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:expression",
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: expression: mouth is an open, symmetric, cheerful grin and brows read level/relaxed \u2014 missing the expr-greedy reference's sharply raised/angled brow and sly asymmetric smirk.",
+    "B: clean_card/payload_fidelity: a full garden rake gripped in both hands and a large heaped pile of banknotes are fully rendered as scene props, which the payload orders left out ('empty-handed and alone... no props'). framing: the note-pile occupies the ground plane; no thin ground line visible."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:rig",
+    "A:identity",
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity",
+    "B:style"
+   ],
+   "notes": [
+    "A: identity/rig: the head renders smooth and hairless, matching the generic bald rig-template head used in the pose/expression reference sheets rather than the miniscribe-rep canonical's dark side-parted hair \u2014 the character's hair was not carried over from the canonical.",
+    "B: clean_card/payload_fidelity: a full four-tier shrink-wrapped pallet tower plus overhead roof-truss structure is built as scenery beneath/around the figure, which the payload's no-scenery clause orders omitted. framing: the figure is small at the top of a 2:3 frame dominated by the built scenery, not a whole-figure reference-sheet composition; no ground line under the figure (it stands on the pallet top, not a studio ground line). style: the shrink-wrap plastic renders with diagonal gradient/sheen highlights, a realistic-texture look outside the locked flat-cel register."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity",
+    "B:style"
+   ],
+   "notes": [
+    "A: pose: only one hand is raised, held near chest height toward the glowing prop, and the body stands largely upright; the action-recoil reference calls for both hands raised near shoulder/face height with a clear lean-back weight shift, which is not depicted.",
+    "B: clean_card/payload_fidelity: a glowing red test-bench/console with rising smoke wisps is fully rendered beside the figure \u2014 the very object the scene has the figure recoiling from \u2014 which the payload orders left out ('the object... it acts on left out... no scenery, no props'). framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line. style: the bench's red panel carries a soft glow/bloom halo and the smoke wisps render as soft gradient trails, both outside the locked flat-cel register (cf. style-bible \u00a72b/\u00a73 line-register, no gradient/airbrush)."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:identity",
+    "A:pose",
+    "A:expression",
+    "B:framing"
+   ],
+   "notes": [
+    "A: identity: costume is a casual green t-shirt, khaki cargo trousers and a belt, not the canonical's white collared dress shirt, black tie and black trousers \u2014 the scene text authors no clothing change, so the canonical costume should hold unchanged. pose: arms hang at the sides rather than crossed over the chest as action-armscrossed requires. expression: eyes look forward with only mild knit brows rather than the expr-thinking reference's single raised brow and sideways contemplative gaze.",
+    "B: Best clean_card compliance in the set: the elaborate authored 'bare rented unit' scene (breeze-block walls, trestle table, cartons, roller shutter) is correctly omitted entirely, plain neutral backdrop, hands empty. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+   ]
+  }
+ ]
+}

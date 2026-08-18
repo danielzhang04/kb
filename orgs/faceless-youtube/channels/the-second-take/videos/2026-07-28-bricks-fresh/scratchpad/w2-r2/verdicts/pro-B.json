@@ -1,0 +1,138 @@
+{
+  "verifier": "B",
+  "axis": "fidelity/style",
+  "arm": "pro",
+  "source_dir": "scratchpad/w2-r2/pro/",
+  "cards": [
+    {
+      "card": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+      "pass": false,
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "Clean flat-cel card, correct shrug body language, no leaked props/setting; but no thin ground line is drawn — only a soft ellipse shadow sits under the feet, confirmed on close crop."
+    },
+    {
+      "card": "fig-brick-foreman--back-to-viewer--7a3b93be",
+      "pass": false,
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "Clean card, back-to-viewer pose held correctly, no scenery leaked; no ground line drawn, shadow ellipse only."
+    },
+    {
+      "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+      "pass": false,
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "Figure grips a rendered red clay brick — the payload explicitly orders the object left out (\"empty-handed and alone, the object ... left out\"); this is a leaked prop and a non-empty-handed pose. No ground line drawn."
+    },
+    {
+      "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+      "pass": false,
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "One hand fists a rendered grey dust sheet — the payload's own object-to-leave-out. The hauling motion reads, but the forbidden object is drawn instead of an empty hand. No ground line drawn."
+    },
+    {
+      "card": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+      "pass": false,
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "Clean card, empty-handed presenting gesture correctly drawn with no pick/shovel prop leaked; no ground line drawn, shadow ellipse only."
+    },
+    {
+      "card": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+      "pass": false,
+      "axes": {
+        "clean_card": "fail",
+        "framing": "pass",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "A full hand truck with two stacked cartons is rendered — a major leaked prop the payload explicitly orders left out; figure is not empty-handed. This card DOES carry a correctly drawn thin ground line plus contact shadow (framing pass, confirmed on close crop) — the only clean-card defect here is the prop."
+    },
+    {
+      "card": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+      "pass": false,
+      "axes": {
+        "clean_card": "fail",
+        "framing": "pass",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "A full rake plus a drift of rendered banknotes is drawn — the payload's object-to-leave-out, rendered in full instead of an empty two-hand grip. Ground line and contact shadow ARE correctly present (framing pass)."
+    },
+    {
+      "card": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+      "pass": false,
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "Clean card, fists-up celebrate gesture correctly drawn with no pallet-tower setting leaked; no ground line drawn, shadow ellipse only."
+    },
+    {
+      "card": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+      "pass": false,
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "Clean card, recoil/surprised body language reads clearly with no test-bench setting leaked; no ground line drawn, shadow ellipse only."
+    },
+    {
+      "card": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+      "pass": false,
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "reason": "Clean card, arms-crossed thinking pose correct with no unit/warehouse setting leaked; no ground line drawn, shadow ellipse only."
+    }
+  ],
+  "summary": {
+    "total": 10,
+    "pass": 0,
+    "fail": 10,
+    "fail_reasons": {
+      "framing_no_ground_line": 8,
+      "clean_card_prop_leak": 4,
+      "payload_fidelity_not_empty_handed": 4
+    }
+  }
+}

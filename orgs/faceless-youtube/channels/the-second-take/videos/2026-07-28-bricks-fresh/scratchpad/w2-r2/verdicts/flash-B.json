@@ -1,0 +1,133 @@
+{
+  "verifier": "B",
+  "arm": "flash",
+  "wave": "w2-r2",
+  "cards": [
+    {
+      "card": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "clean_card/payload_fidelity: a stack of two sealed cartons on a wooden pallet is fully rendered behind the figure, scenery the payload's own 'draw none of its setting, props... no scenery, no props' clause orders omitted. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+    },
+    {
+      "card": "fig-brick-foreman--back-to-viewer--7a3b93be",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "Clean neutral pale-grey backdrop, no scenery/props, whole figure in frame. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line as the payload specifies."
+    },
+    {
+      "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "clean_card/payload_fidelity: a red-brown brick is drawn gripped in the figure's hand; the payload requires the figure 'empty-handed and alone, the object... left out'. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+    },
+    {
+      "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "Clean neutral backdrop, hands empty, no props. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+    },
+    {
+      "card": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "clean_card/payload_fidelity: a full wooden plank counter is built as scenery and a pick + shovel are held in both hands, all of which the payload's 'empty-handed and alone... no scenery, no props, no furniture' clause orders omitted. framing: counter/tools obscure the ground plane; no thin ground line visible."
+    },
+    {
+      "card": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "Clean neutral backdrop, hands empty, no props. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+    },
+    {
+      "card": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "clean_card/payload_fidelity: a full garden rake gripped in both hands and a large heaped pile of banknotes are fully rendered as scene props, which the payload orders left out ('empty-handed and alone... no props'). framing: the note-pile occupies the ground plane; no thin ground line visible."
+    },
+    {
+      "card": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "fail",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "clean_card/payload_fidelity: a full four-tier shrink-wrapped pallet tower plus overhead roof-truss structure is built as scenery beneath/around the figure, which the payload's no-scenery clause orders omitted. framing: the figure is small at the top of a 2:3 frame dominated by the built scenery, not a whole-figure reference-sheet composition; no ground line under the figure (it stands on the pallet top, not a studio ground line). style: the shrink-wrap plastic renders with diagonal gradient/sheen highlights, a realistic-texture look outside the locked flat-cel register."
+    },
+    {
+      "card": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "fail",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "clean_card/payload_fidelity: a glowing red test-bench/console with rising smoke wisps is fully rendered beside the figure — the very object the scene has the figure recoiling from — which the payload orders left out ('the object... it acts on left out... no scenery, no props'). framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line. style: the bench's red panel carries a soft glow/bloom halo and the smoke wisps render as soft gradient trails, both outside the locked flat-cel register (cf. style-bible §2b/§3 line-register, no gradient/airbrush)."
+    },
+    {
+      "card": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "verdict": "fail",
+      "notes": "Best clean_card compliance in the set: the elaborate authored 'bare rented unit' scene (breeze-block walls, trestle table, cartons, roller shutter) is correctly omitted entirely, plain neutral backdrop, hands empty. framing: only a soft contact-shadow ellipse under the feet, no distinct thin ground line."
+    }
+  ],
+  "summary": {
+    "pass": 0,
+    "fail": 10,
+    "total": 10,
+    "coverage": "10/10 covered"
+  }
+}

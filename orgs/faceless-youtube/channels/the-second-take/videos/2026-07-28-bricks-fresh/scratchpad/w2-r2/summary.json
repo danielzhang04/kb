@@ -1,0 +1,68 @@
+{
+  "run": "w2-slice re-mint (r2)",
+  "mission": "Re-mint the 10-card W2 character-seed slice through the sanctioned W6 harness, arm PRO then arm FLASH, serially.",
+  "worktree": "C:/Users/danie/kb-worktrees/boss-taste-forensics",
+  "branch": "claude/bricks-taste-forensics",
+  "derivation": {
+    "command": "forge.py batch --kit channels/the-second-take/visual-kit --batch <video>/shots.json --shots L18,L19,L20,L22,L23,L24,L27,L30,L32,L35 --out derive-full.json",
+    "total_items_emitted": 20,
+    "fig_cards_selected": 10,
+    "note": "All 10 fig-* names match the prior 2026-08-18 duel derivation exactly (fig-items.json). Zero hand-authored prompts; forge.py, the skill, and all governing files were not edited.",
+    "fig_items_file": "fig-items.json"
+  },
+  "arms": {
+    "pro": {
+      "engine": "gemini-3-pro-image",
+      "registry_edit": "none needed (registry.json already pinned to gemini-3-pro-image)",
+      "run_id": "rp2",
+      "wave_id": "W02",
+      "workers": 2,
+      "rate_usd": 0.134,
+      "hard_cap_usd": 2.68,
+      "max_provider_attempts": 20,
+      "items_staged": 10,
+      "provider_calls": 10,
+      "cost_usd": 1.34,
+      "retries_used": 0,
+      "parked_items": [],
+      "stalls": [],
+      "provider_errors": [],
+      "output_dir": "pro/",
+      "run_artifacts_dir": "run-pro/"
+    },
+    "flash": {
+      "engine": "gemini-2.5-flash-image",
+      "registry_edit": "targeted single-key text edit (Edit tool) engine: gemini-3-pro-image -> gemini-2.5-flash-image; restored via `git checkout --` immediately after the arm; git diff confirmed clean after restore",
+      "run_id": "rf2",
+      "wave_id": "W02",
+      "workers": 2,
+      "rate_usd": 0.039,
+      "hard_cap_usd": 0.78,
+      "max_provider_attempts": 20,
+      "items_staged": 10,
+      "provider_calls": 10,
+      "cost_usd": 0.39,
+      "retries_used": 0,
+      "parked_items": [],
+      "stalls": [],
+      "provider_errors": [],
+      "output_dir": "flash/",
+      "run_artifacts_dir": "run-flash/"
+    }
+  },
+  "totals": {
+    "items_per_arm": 10,
+    "total_provider_calls": 20,
+    "total_cost_usd": 1.73,
+    "hard_cap_usd": 4.00,
+    "expected_cost_usd": 1.75
+  },
+  "hazard_checks": {
+    "staging_slot_archiving": "Before flash arm, all 10 pro-arm staged PNGs were moved (not deleted) from visual-kit/_staging/ into rp2-out/ (now pro/) before the flash arm ran, so Forge's fixed-name skip-if-exists never fired; 9 unrelated 6c2-wave fig-* files in _staging were verified untouched at start and after.",
+    "registry_restore": "engine key restored byte-identically via `git checkout --`; `git status --short` on registry.json returned empty (diff-clean) after restore.",
+    "max_path": "Run ids kept to 3 chars (rp2/rf2); run dirs created at the worktree root, then moved into scratchpad/w2-r2/ after completion. Longest path observed during the run (~141 chars) stayed well under the 260 limit.",
+    "stall_policy": "Not triggered: every item OK on the first provider attempt in both arms (0 retries, 0 stalls, 0 parked)."
+  },
+  "deviations_from_brief": [],
+  "verification_note": "No scoring/judging performed per brief (generation-only stage). Verification is a separate fresh-eyes stage per W6 protocol."
+}
