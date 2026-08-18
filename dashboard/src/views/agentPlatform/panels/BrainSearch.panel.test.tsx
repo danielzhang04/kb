@@ -75,4 +75,35 @@ describe('BrainSearch panel', () => {
     fireEvent.submit(screen.getByTestId('ap-brainsearch-form'));
     expect((await screen.findByTestId('ap-brainsearch-unavailable')).textContent).toMatch(/search failed/i);
   });
+
+  /**
+   * U12 — the two reasons that used to fall through to the generic fallback. Both mean "the index on
+   * disk cannot be used as-is", which is a REBUILD instruction, not a retry-later one.
+   */
+  it('names the model-mismatch and index-format reasons as rebuild instructions', async () => {
+    for (const reason of ['model-mismatch', 'index-format-error']) {
+      stubFetch({ available: false, reason });
+      render(panel.render());
+      fireEvent.change(screen.getByLabelText('Search the brain'), { target: { value: 'nothing' } });
+      fireEvent.submit(screen.getByTestId('ap-brainsearch-form'));
+      const note = await screen.findByTestId('ap-brainsearch-unavailable');
+      expect(note.textContent, reason).toMatch(/rebuild it/i);
+      expect(note.textContent, reason).not.toMatch(/search failed/i);
+      cleanup();
+    }
+  });
+
+  it('never blames a "brain service" — there is no service, only a per-query local process', async () => {
+    for (const reason of ['index-not-built', 'model-mismatch', 'index-format-error', 'query-failed', 'something-new']) {
+      stubFetch({ available: false, reason });
+      render(panel.render());
+      fireEvent.change(screen.getByLabelText('Search the brain'), { target: { value: 'nothing' } });
+      fireEvent.submit(screen.getByTestId('ap-brainsearch-form'));
+      const note = await screen.findByTestId('ap-brainsearch-unavailable');
+      expect(note.textContent, reason).not.toMatch(/service/i);
+      // An unrecognised reason still gets a stated answer rather than a blank chip.
+      expect((note.textContent ?? '').length, reason).toBeGreaterThan(0);
+      cleanup();
+    }
+  });
 });

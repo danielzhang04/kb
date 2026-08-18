@@ -18,11 +18,17 @@ const PANELS_DIR = join(HERE, 'panels');
 const PANEL_FILES = readdirSync(PANELS_DIR).filter((f) => f.endsWith('.panel.tsx'));
 
 describe('agentPlatform/registry', () => {
-  it('discovers the demo panel without it being listed anywhere', () => {
-    const demo = AGENT_PLATFORM_PANELS.find((p) => p.id === 'demo-placeholder');
-    expect(demo).toBeTruthy();
-    expect(demo?.title).toBe('Demo Panel');
-    expect(demo?.description.length).toBeGreaterThan(0);
+  /**
+   * The zero-edit registration proof. It used to be pinned on a placeholder `Demo Panel`; U12 retired
+   * that file, so the proof now rides on a REAL panel — deliberately one whose id is named nowhere in
+   * `registry.ts` (asserted below), which is the property that actually matters. `hygiene-report` is
+   * the subject because it is the plainest real panel: no session, no picker, one fetch.
+   */
+  it('discovers a real panel without it being listed anywhere', () => {
+    const found = AGENT_PLATFORM_PANELS.find((p) => p.id === 'hygiene-report');
+    expect(found).toBeTruthy();
+    expect(found?.title).toBe('Hygiene Report');
+    expect(found?.description.length).toBeGreaterThan(0);
   });
 
   it('every registered entry conforms to the panel contract', () => {
@@ -34,13 +40,89 @@ describe('agentPlatform/registry', () => {
       expect(panel.title.length).toBeGreaterThan(0);
       expect(typeof panel.description).toBe('string');
       expect(typeof panel.render).toBe('function');
+      // Optional — but a present `order` is a real finite number, never a NaN that sorts at random.
+      if (panel.order !== undefined) {
+        expect(typeof panel.order).toBe('number');
+        expect(Number.isFinite(panel.order)).toBe(true);
+      }
     }
   });
 
-  it('registers ids uniquely and sorts the grid deterministically by id', () => {
+  it('registers ids uniquely and sorts the grid deterministically by order, then id', () => {
     const ids = AGENT_PLATFORM_PANELS.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual([...ids].sort((a, b) => a.localeCompare(b)));
+
+    const expected = [...AGENT_PLATFORM_PANELS]
+      .sort((a, b) => {
+        const oa = a.order ?? Number.POSITIVE_INFINITY;
+        const ob = b.order ?? Number.POSITIVE_INFINITY;
+        return oa !== ob ? oa - ob : a.id.localeCompare(b.id);
+      })
+      .map((p) => p.id);
+    expect(ids).toEqual(expected);
+  });
+
+  /**
+   * U12's curated reading order. Pinned as a PREFIX rather than an equality so a panel added later
+   * (which sorts last by construction) does not red this test — but a reshuffle of the ten curated
+   * ones does. The order is the section's argument about what to look at first: what is running now,
+   * then who is allowed to do what, then the read-only forensics.
+   */
+  it('opens on the curated reading order, not alphabetically by id', () => {
+    const CURATED = [
+      'agent-management',
+      'fleet-graph',
+      'watch-agents-run',
+      'autonomy-ladder',
+      'run-envelope',
+      'brain-search',
+      'context-lifecycle',
+      'model-audit',
+      'proposed-lessons',
+      'hygiene-report',
+    ];
+    const ids = AGENT_PLATFORM_PANELS.map((p) => p.id);
+    expect(ids.slice(0, CURATED.length)).toEqual(CURATED);
+    // …and this is genuinely NOT the alphabetical order, so the field is doing work.
+    expect(CURATED).not.toEqual([...CURATED].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it('sorts an order-less panel AFTER every ordered one, so a new file never displaces the curation', () => {
+    const ordered = AGENT_PLATFORM_PANELS.filter((p) => p.order !== undefined);
+    const unordered = AGENT_PLATFORM_PANELS.filter((p) => p.order === undefined);
+    if (unordered.length === 0) return; // every panel is curated today; the rule still holds below
+    const lastOrdered = AGENT_PLATFORM_PANELS.findIndex((p) => p.id === ordered[ordered.length - 1].id);
+    const firstUnordered = AGENT_PLATFORM_PANELS.findIndex((p) => p.id === unordered[0].id);
+    expect(firstUnordered).toBeGreaterThan(lastOrdered);
+  });
+
+  /**
+   * The heading contract (U12), enforced against the sources rather than the rendered DOM so it holds
+   * for every panel including the ones that need a session, a fetch or a graph to render at all.
+   *
+   * The shell renders the app's h1, the section's h2 and the opened panel's h3 (`ap__body-title`). A
+   * body that opens its own `<h3>` therefore emits a second h3 for one panel — two sibling headings a
+   * screen reader reads as two sections. Bodies start at h4 and nest downward.
+   */
+  it('panel bodies start at h4 — the shell owns h1/h2/h3', () => {
+    const files = [
+      ...readdirSync(PANELS_DIR, { withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.endsWith('.tsx') && !e.name.endsWith('.test.tsx'))
+        .map((e) => join(PANELS_DIR, e.name)),
+      // Helper bodies in sibling directories are part of a panel body just as much as its entry file.
+      ...readdirSync(PANELS_DIR, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .flatMap((dir) =>
+          readdirSync(join(PANELS_DIR, dir.name))
+            .filter((f) => f.endsWith('.tsx') && !f.endsWith('.test.tsx'))
+            .map((f) => join(PANELS_DIR, dir.name, f)),
+        ),
+    ];
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const source = readFileSync(file, 'utf8');
+      expect(source, `${file} opens an <h1>/<h2>/<h3> — the shell owns those levels`).not.toMatch(/<h[123][\s>]/);
+    }
   });
 
   it('registers exactly the *.panel.tsx files present on disk (auto-discovery, not a hand-kept list)', () => {

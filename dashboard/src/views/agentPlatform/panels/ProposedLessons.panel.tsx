@@ -3,8 +3,8 @@
  * This panel cannot accept proposals or write memory: review is deliberately
  * separate from Dream's future trusted intake path.
  */
-import { useEffect, useState } from 'react';
 import type { AgentPlatformPanel } from '../types';
+import { useReadPanel } from '../../../lib/useReadPanel';
 import '../../../styles/views/agentPlatformProposedLessons.css';
 
 type Confidence = 'high' | 'med' | 'low';
@@ -16,32 +16,17 @@ interface ProposalEntry {
   file: string;
 }
 interface ProposalResponse { entries: ProposalEntry[]; }
-type LoadState = 'loading' | 'ready' | 'unavailable';
 
 function ProposedLessonsBody(): React.JSX.Element {
-  const [entries, setEntries] = useState<ProposalEntry[]>([]);
-  const [state, setState] = useState<LoadState>('loading');
+  const { data, state } = useReadPanel<ProposalResponse>('/api/lessons/proposals');
+  // A body that is not the shape we asked for is not evidence of proposals — read it as none.
+  const entries = Array.isArray(data?.entries) ? data.entries : [];
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetch('/api/lessons/proposals')
-      .then((response) => {
-        if (!response.ok) throw new Error(`proposal request failed (${response.status})`);
-        return response.json() as Promise<ProposalResponse>;
-      })
-      .then((data) => {
-        if (!cancelled) {
-          setEntries(Array.isArray(data.entries) ? data.entries : []);
-          setState('ready');
-        }
-      })
-      .catch(() => { if (!cancelled) setState('unavailable'); });
-    return () => { cancelled = true; };
-  }, []);
-
-  if (state === 'loading') return <p className="ap-lessons__note">Reading mined proposals…</p>;
+  // `idle` cannot occur here (the url is a constant), but it is folded into the loading branch so a
+  // future gate on this panel can never fall through to the "no proposals yet" line.
+  if (state === 'loading' || state === 'idle') return <p className="ap-lessons__note">Reading mined proposals…</p>;
   if (state === 'unavailable') {
-    return <p className="ap-lessons__error" data-testid="ap-lessons-unavailable">Proposals are unavailable — the daemon did not answer. Nothing was changed.</p>;
+    return <p className="ap-lessons__error" data-testid="ap-lessons-unavailable">Proposals could not be read just now. Nothing was changed.</p>;
   }
   if (entries.length === 0) {
     return <p className="ap-lessons__empty" data-testid="ap-lessons-empty">No mined proposals yet — run the miner.</p>;
@@ -67,6 +52,7 @@ function ProposedLessonsBody(): React.JSX.Element {
 
 export const panel: AgentPlatformPanel = {
   id: 'proposed-lessons',
+  order: 90,
   title: 'Proposed Lessons',
   description: 'Candidate ADD lessons mined from transcripts; review-only, never written to memory.',
   render: () => <ProposedLessonsBody />,

@@ -110,17 +110,9 @@
   color: var(--fg-primary);
 }
 
-.ap-ladder__tier--T1 {
-  color: var(--tier-t1);
-}
-
-.ap-ladder__tier--T2 {
-  color: var(--tier-t2);
-}
-
-.ap-ladder__tier--T3 {
-  color: var(--tier-t3);
-}
+/* NO TIER RULES HERE (U12). The tier cell renders the SHARED `.mc-badge--t1/t2/t3` chip from
+   `src/styles/app.css` — the same pill the rest of the app uses for a tier — so "T2" cannot look like
+   one thing on this panel and another on an agent row. */
 
 /* Earned verdict — FACT. Full contrast, the opposite weight of the declared chip. */
 .ap-ladder__verdict {

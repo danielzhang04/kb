@@ -24,6 +24,13 @@
  */
 import type { AgentRosterEntry } from '../../../../server/agents/roster';
 import type { Dag } from '../../../../server/dag/graph';
+// U12: the effective-model rule and the two-vocabulary role fold are facts about the roster's fields,
+// not canvas concerns — they moved to one shared module so no second surface can restate them wrongly.
+import { effectiveModelOf, normalizeRole } from '../../../lib/agentPresentation';
+
+// Re-exported so this module stays the single import for everything the fleet canvas needs, and so
+// `normalizeRole`'s existing consumers/tests keep their import path. The IMPLEMENTATION is shared.
+export { FLEET_ROLES, normalizeRole, type FleetRole } from '../../../lib/agentPresentation';
 
 /** One agent on the fleet canvas. */
 export interface FleetNode {
@@ -60,39 +67,6 @@ export interface UnresolvedBuildsOn {
   predecessor: string;
 }
 
-/**
- * The canonical role classes. A roster entry's `role` arrives in EITHER of two live vocabularies and
- * both must land on the same class, or half the fleet renders as "unknown" while its chip reads
- * "worker":
- *   - a DECLARED agent carries its own `agents/<id>.md` frontmatter role — `manage`/`work`/`inspect`/
- *     `scout`/`consolidate`;
- *   - an UNDECLARED agent gets `roleFor()`, which returns a `routines/roles/` FILENAME —
- *     `manager`/`worker`/`inspector`/`scout`.
- * The pairing below mirrors `server/agents/roster.ts:217 executionAssignmentRole`, which normalizes the
- * same two vocabularies at the execution boundary. Presentation mirror only; that function stays the
- * authority for eligibility.
- */
-export const FLEET_ROLES = ['manage', 'work', 'inspect', 'scout', 'consolidate'] as const;
-
-/** Both live vocabularies, folded onto {@link FLEET_ROLES}. */
-const ROLE_ALIASES: Readonly<Record<string, (typeof FLEET_ROLES)[number]>> = {
-  manage: 'manage',
-  manager: 'manage',
-  work: 'work',
-  worker: 'work',
-  inspect: 'inspect',
-  inspector: 'inspect',
-  scout: 'scout',
-  consolidate: 'consolidate',
-  consolidator: 'consolidate',
-};
-
-/** The canonical class name for a role in either vocabulary, or null when the role is unrecognised. */
-export function normalizeRole(role: string | null | undefined): (typeof FLEET_ROLES)[number] | null {
-  const key = typeof role === 'string' ? role.trim().toLowerCase() : '';
-  return ROLE_ALIASES[key] ?? null;
-}
-
 /** An agent's canvas node id. Namespaced so no other canvas object can collide with it. */
 export function fleetNodeId(agentId: string): string {
   return `agent:${agentId}`;
@@ -111,7 +85,7 @@ export function fleetNodes(roster: readonly AgentRosterEntry[] | null | undefine
       declared: entry.declared === true,
       runnerBound: entry.runnerBound === true,
       displayName: entry.displayName || entry.id,
-      model: entry.effective?.model ?? null,
+      model: effectiveModelOf(entry),
     }));
 }
 
@@ -216,37 +190,6 @@ export const FLEET_NODE_GAP_Y = 44;
 export const FLEET_GRID_COLUMNS = 3;
 /** Frame the WHOLE fleet; `maxZoom: 1` stops a two-agent fleet ballooning. */
 export const FLEET_FIT_VIEW = { padding: 0.1, maxZoom: 1, minZoom: 0.25 };
-
-/** The four handle ids every fleet node exposes, one per side. */
-export interface HandlePair { sourceHandle: string; targetHandle: string }
-
-/**
- * Which side of each node an edge should leave from and arrive at.
- *
- * REPLICATED VERBATIM (bar the local position type) from `src/views/WorkflowAgentGraph.tsx:333-348`,
- * which is out of scope for this unit and does not export it. Without it every edge routes top→top:
- * reactflow's `getHandle` falls back to `bounds[0]` when no handle id is given, and a node with four
- * handles per type gets the first one for all of them.
- *
- * U12 EXTRACTION NOTE: the two copies must be lifted into one shared graph helper (e.g.
- * `src/lib/graphHandles.ts`) and imported by both `WorkflowAgentGraph.tsx` and this module.
- */
-export function nearestHandles(
-  source: { x: number; y: number } | undefined,
-  target: { x: number; y: number } | undefined,
-): HandlePair {
-  if (!source || !target) return { sourceHandle: 'source-right', targetHandle: 'target-left' };
-  const dx = target.x - source.x;
-  const dy = target.y - source.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0
-      ? { sourceHandle: 'source-right', targetHandle: 'target-left' }
-      : { sourceHandle: 'source-left', targetHandle: 'target-right' };
-  }
-  return dy >= 0
-    ? { sourceHandle: 'source-bottom', targetHandle: 'target-top' }
-    : { sourceHandle: 'source-top', targetHandle: 'target-bottom' };
-}
 
 /** A stable grid, in roster order — reading order, wrapping every {@link FLEET_GRID_COLUMNS}. */
 export function fleetNodePositions(nodes: readonly FleetNode[]): Map<string, { x: number; y: number }> {

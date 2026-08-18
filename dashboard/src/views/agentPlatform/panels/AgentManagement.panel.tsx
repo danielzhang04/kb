@@ -15,57 +15,58 @@
  * server. Same gate as the Agents view (`views/Agents.tsx`, the `detailTarget?.declared` effect).
  *
  * ── Where the data comes from ──
- * `/api/agents` for the list, and `fetchAgentDetail` — the existing, UNEDITED client in
- * `lib/agentClient.ts` — for the detail. The browser never reads repo files; both are the server's
- * bounded projections of `agents/<id>.md`.
+ * `/api/agents` for the list, and `fetchAgentDetail` — the shared client in `lib/agentClient.ts` — for
+ * the detail. The browser never reads repo files; both are the server's bounded projections of
+ * `agents/<id>.md`.
  *
  * The six declaration fields U3 added (`tools`, `knowledgeSource`, `autonomyTier`, `skills`,
- * `whatItReplaces`, `buildsOn`) are genuinely returned by `server/agents/routes.ts` but are not yet on
- * `AgentDetailDto`'s `declaration` type, so this panel widens the type LOCALLY
- * ({@link LadderDeclaration}) rather than editing the shared client. All six are null for every live
- * agent today, which makes the null path the COMMON path — so the panel both renders an explicit
- * "not declared" per field AND says out loud, on screen, why they are empty.
+ * `whatItReplaces`, `buildsOn`) now live on `AgentDetailDto` itself (U12): the server always sent
+ * them, this panel used to re-declare them locally, and a local widening only ever describes the wire
+ * for its own file. All six are null for every live agent today, which makes the null path the COMMON
+ * path — so the panel both renders an explicit "not declared" per field AND says out loud, on screen,
+ * why they are empty.
+ *
+ * The 404-vs-422-vs-broken distinction likewise comes from the client as a typed
+ * {@link AgentDetailFailure}, instead of this panel wrapping `fetch` to spy on a response the client
+ * was about to discard.
  *
  * ── What it deliberately does not do ──
  * No deep link into the Agents view: no navigation callback reaches a panel, so the panel states the
  * agent id in plain words rather than rendering a dead-looking link. Read-only throughout.
  *
- * House rules honoured: ONE entry file, its OWN stylesheet, `import type` only across the
- * client→server boundary (a runtime import drags `node:fs` into the browser bundle — see
- * `lib/clientImportGraph.test.ts`), and zero edits to any shared file.
+ * House rules honoured: ONE entry file, its OWN stylesheet, headings starting at h4, and `import type`
+ * only across the client→server boundary (a runtime import drags `node:fs` into the browser bundle —
+ * see `lib/clientImportGraph.test.ts`). U4 shipped with zero shared-file edits; U12's integration pass
+ * then moved this panel's two local re-implementations — the declaration type and the effective-model
+ * rule — into the shared client and `lib/agentPresentation.ts`, which is where they belonged.
  */
 import { useEffect, useState } from 'react';
 import type { AgentPlatformPanel } from '../types';
 import type { AgentRosterEntry } from '../../../../server/agents/roster';
 import { ModelBadge } from '../../../components/ModelBadge';
-import { fetchAgentDetail, type AgentDetailDto } from '../../../lib/agentClient';
+import {
+  fetchAgentDetail,
+  isAgentDetailFailure,
+  type AgentDetailDto,
+  type AgentDetailFailureKind,
+} from '../../../lib/agentClient';
+// U12: the "effective model only, never declaredModel" rule now lives in one place for every agent
+// surface — see the rationale there.
+import { effectiveModelOf } from '../../../lib/agentPresentation';
 import '../../../styles/views/agentPlatformAgentManagement.css';
 
-/**
- * The declaration as the SERVER actually sends it. `routes.ts` puts these six fields on the wire;
- * `AgentDetailDto` simply has not been widened to say so, and widening it would be an edit to a
- * shared file this panel is not allowed to make. Local, additive, and pessimistic — every added field
- * is nullable, so nothing here assumes a value exists.
- */
-type LadderDeclaration = NonNullable<AgentDetailDto['declaration']> & {
-  tools: string[] | null;
-  knowledgeSource: string[] | null;
-  autonomyTier: string | null;
-  skills: string[] | null;
-  whatItReplaces: string | null;
-  buildsOn: string[] | null;
-};
+/** The declaration as the client types it — the six U3 fields included (U12). */
+type LadderDeclaration = NonNullable<AgentDetailDto['declaration']>;
 
 /** Load state for either fetch. Mirrors the Agents view's `detailState`, owned panel-locally. */
 type LoadState = 'idle' | 'loading' | 'ready' | 'unavailable';
 
 /**
- * Why a declaration read did not produce a declaration. The three are NOT interchangeable:
- *   `no-declaration` — HTTP 404: the daemon answered correctly, this id has no `agents/<id>.md`.
- *   `invalid`        — HTTP 422: a declaration exists but cannot be used; the server names the fault.
- *   `error`          — anything else (network down, 500): the read genuinely failed.
+ * Why a declaration read did not produce a declaration. The KIND is the client's — see
+ * `AgentDetailFailureKind` — so the panel and any other reader agree on what a 404 means; only the
+ * rendered sentence is this panel's own.
  */
-type DetailFailure = { kind: 'no-declaration' | 'invalid' | 'error'; problem: string | null };
+type DetailFailure = { kind: AgentDetailFailureKind; problem: string | null };
 
 /** How much of the declaration body the detail previews. A profile, never a document dump. */
 const INSTRUCTIONS_PREVIEW = 180;
@@ -97,19 +98,6 @@ function Field({
       </p>
     </div>
   );
-}
-
-/**
- * The model an agent will actually run on: the resolved routing, and ONLY that.
- *
- * Deliberately does not fall back to `declaredModel`. `effectiveForAgent` already resolves
- * declaration-first, and in the one case where the two disagree — a declaration naming a model its
- * runtime refuses — the server drops the unusable pair on purpose and answers with the policy model.
- * Re-surfacing the refused string here would print a model the fleet will never run under a label
- * claiming it is what the agent runs on.
- */
-function modelOf(agent: AgentRosterEntry): string | null {
-  return agent.effective?.model ?? null;
 }
 
 /** Truncate the declaration body to a single scannable line. */
@@ -146,7 +134,7 @@ function AgentDetailCard({
 
       <div className="ap-agentmgmt__detail-head">
         <h4 className="ap-agentmgmt__detail-title">{agent.displayName || agent.id}</h4>
-        <ModelBadge tier={modelOf(agent)} />
+        <ModelBadge tier={effectiveModelOf(agent)} />
         <span
           className={`mc-status-dot ${agent.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
           aria-hidden="true"
@@ -307,45 +295,21 @@ function AgentManagementBody(): React.JSX.Element {
     setFailure(null);
     setDetailState('loading');
 
-    /**
-     * `fetchAgentDetail` throws a bare Error on a non-2xx, which loses the status and the server's
-     * reason. Passing it a wrapping fetch recovers both WITHOUT editing the shared client: the
-     * wrapper only reads the body when the response is already a failure, which is exactly when the
-     * client is about to throw without touching it.
-     */
-    let seen: DetailFailure | null = null;
-    const probe = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const response = await fetch(input, init);
-      if (!response.ok) {
-        let problem: string | null = null;
-        try {
-          // `declaration` is the server's AgentDeclarationProblem OBJECT ({id, source, problem}),
-          // not a sentence — see server/agents/routes.ts's 422 branch.
-          const body = (await response.json()) as { declaration?: { source?: unknown; problem?: unknown } | null } | null;
-          const decl = body?.declaration;
-          if (decl && typeof decl.problem === 'string') {
-            problem = typeof decl.source === 'string' ? `${decl.source}: ${decl.problem}` : decl.problem;
-          }
-        } catch {
-          /* a failure body that is not JSON is still a failure — the status carries the meaning */
-        }
-        seen = {
-          kind: response.status === 404 ? 'no-declaration' : response.status === 422 ? 'invalid' : 'error',
-          problem,
-        };
-      }
-      return response;
-    }) as typeof fetch;
-
-    void fetchAgentDetail(openId, probe)
+    // The status and the server's stated reason arrive on the thrown error itself (U12) — no wrapping
+    // fetch, no second read of a body the client already consumed.
+    void fetchAgentDetail(openId)
       .then((dto) => {
         if (cancelled) return;
         setDetail(dto);
         setDetailState('ready');
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled) return;
-        setFailure(seen ?? { kind: 'error', problem: null });
+        setFailure(
+          isAgentDetailFailure(error)
+            ? { kind: error.kind, problem: error.problemText }
+            : { kind: 'error', problem: null },
+        );
         setDetailState('unavailable');
       });
     return () => {
@@ -359,7 +323,7 @@ function AgentManagementBody(): React.JSX.Element {
         <AgentDetailCard
           agent={open}
           detail={detail}
-          declaration={(detail?.declaration as LadderDeclaration | null) ?? null}
+          declaration={detail?.declaration ?? null}
           state={detailState}
           failure={failure}
           onBack={() => setOpenId(null)}
@@ -416,7 +380,7 @@ function AgentManagementBody(): React.JSX.Element {
                 <span className="ap-agentmgmt__desc">
                   {agent.description ?? <span className="ap-agentmgmt__none">no description</span>}
                 </span>
-                <ModelBadge tier={modelOf(agent)} />
+                <ModelBadge tier={effectiveModelOf(agent)} />
                 <span className="ap-agentmgmt__state">{agent.working ? 'working' : 'idle'}</span>
               </button>
             ))}
@@ -452,7 +416,7 @@ function AgentManagementBody(): React.JSX.Element {
                 <span className="ap-agentmgmt__desc ap-agentmgmt__none">
                   observed via {agent.sources.length > 0 ? agent.sources.join(' + ') : 'the roster union'}
                 </span>
-                <ModelBadge tier={modelOf(agent)} />
+                <ModelBadge tier={effectiveModelOf(agent)} />
                 <span className="ap-agentmgmt__state">{agent.working ? 'working' : 'idle'}</span>
               </div>
             ))}
@@ -465,6 +429,7 @@ function AgentManagementBody(): React.JSX.Element {
 
 export const panel: AgentPlatformPanel = {
   id: 'agent-management',
+  order: 10,
   title: 'Agent Management',
   description: 'Fleet roster with model + status, drilling into role, tools, and the declared ceiling.',
   render: () => <AgentManagementBody />,

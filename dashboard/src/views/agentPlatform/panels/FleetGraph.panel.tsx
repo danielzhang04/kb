@@ -33,7 +33,6 @@ import {
   useNodesState,
   type Edge,
   type Node,
-  type NodeChange,
   type NodeProps,
   type NodeTypes,
   type XYPosition,
@@ -51,11 +50,13 @@ import {
   fleetNodePositions,
   fleetNodes,
   keepDrawableEdges,
-  nearestHandles,
   roleColorClass,
   type FleetEdge,
   type FleetNode,
 } from './FleetGraph';
+// One routing rule for every reactflow graph in the app (U12) — this panel and WorkflowAgentGraph
+// each used to carry a verbatim copy, so a fix to one could silently miss the other.
+import { nearestHandles, rememberNodePositions } from '../../../lib/graphHandles';
 import '../../../styles/views/agentPlatformFleetGraph.css';
 
 interface FleetNodeData {
@@ -143,12 +144,6 @@ function toFlowEdge(edge: FleetEdge, positions: Map<string, XYPosition>): Edge {
     animated: false,
     focusable: false,
   };
-}
-
-function rememberNodePositions(changes: NodeChange[], positions: Map<string, XYPosition>): void {
-  for (const change of changes) {
-    if (change.type === 'position' && change.position) positions.set(change.id, change.position);
-  }
 }
 
 /** One labelled fact in the inspect pane. Absent values say so rather than rendering an empty row. */
@@ -242,11 +237,21 @@ export function FleetGraphBody(): React.JSX.Element {
     return unchanged ? current : projectedNodes;
   }), [projectedNodes, setFlowNodes]);
 
-  // Routed off the LIVE positions, so an edge re-picks its sides after a node is dragged.
+  /**
+   * Routed off the LIVE positions, so an edge re-picks its sides after a node is dragged.
+   *
+   * Seeded from the computed grid FIRST (U12). `flowNodes` is `useNodesState` state and lags
+   * `projectedNodes` by one effect flush, so on the frame the edges first exist it can still be empty
+   * — and an edge whose endpoints are unknown falls back to right→left. That made every arrow route
+   * through the fallback for one frame and then jump, and it is what made the handle-routing test
+   * intermittently read the pre-flush frame. The grid is where each node is about to be anyway, so
+   * seeding with it is not a guess; a real dragged position simply overwrites it below.
+   */
   const flowEdges = useMemo(() => {
-    const livePositions = new Map(flowNodes.map((node) => [node.id, node.position]));
+    const livePositions = new Map<string, XYPosition>(defaultPositions);
+    for (const node of flowNodes) livePositions.set(node.id, node.position);
     return edges.map((edge) => toFlowEdge(edge, livePositions));
-  }, [edges, flowNodes]);
+  }, [edges, flowNodes, defaultPositions]);
 
   if (error) {
     return (
@@ -391,6 +396,7 @@ export function FleetGraphBody(): React.JSX.Element {
 
 export const panel: AgentPlatformPanel = {
   id: 'fleet-graph',
+  order: 20,
   title: 'Fleet Graph',
   description: 'Every agent in the roster, with the card dependencies and declared lineage between them.',
   render: () => <FleetGraphBody />,

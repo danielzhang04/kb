@@ -28,13 +28,11 @@
  * House rules honoured: ONE entry file, its OWN stylesheet, `import type` only across the
  * client→server boundary, and zero edits to any shared file.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { AgentPlatformPanel } from '../types';
 import type { ContextSection, ContextSessionSummary } from '../../../../server/contextLifecycle/routes';
+import { useReadPanel } from '../../../lib/useReadPanel';
 import '../../../styles/views/agentPlatformContextLifecycle.css';
-
-/** Load state for either fetch. Same vocabulary as the Agent Management panel. */
-type LoadState = 'idle' | 'loading' | 'ready' | 'unavailable';
 
 /** The two sections the re-grounding hook lifts, in its emission order. */
 const REGROUNDING_HEADINGS = ['North star', 'Invariants'] as const;
@@ -97,61 +95,16 @@ function RegroundingPreview({ sections }: { sections: ContextSection[] }): React
 }
 
 function ContextLifecycleBody(): React.JSX.Element {
-  const [list, setList] = useState<ListResponse | null>(null);
-  const [listState, setListState] = useState<LoadState>('loading');
   const [openId, setOpenId] = useState<string | null>(null);
-  const [store, setStore] = useState<StoreResponse | null>(null);
-  const [storeState, setStoreState] = useState<LoadState>('idle');
+  // Two reads through the shared hook. A dead daemon is an expected input for a read-only panel: it
+  // names the state, never crashes, and never invents context. With no store open the second url is
+  // null, so nothing is requested and its state is `idle` rather than a spinner over an empty pane.
+  const { data: list, state: listState } = useReadPanel<ListResponse>('/api/context-lifecycle');
+  const { data: store, state: storeState } = useReadPanel<StoreResponse>(
+    openId ? `/api/context-lifecycle/${encodeURIComponent(openId)}` : null,
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetch('/api/context-lifecycle')
-      .then((r) => {
-        if (!r.ok) throw new Error(`listing failed (${r.status})`);
-        return r.json() as Promise<ListResponse>;
-      })
-      .then((body) => {
-        if (cancelled) return;
-        setList(body);
-        setListState('ready');
-      })
-      .catch(() => {
-        // A dead daemon is an expected input for a read-only panel: name the state, never crash.
-        if (!cancelled) setListState('unavailable');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!openId) {
-      setStore(null);
-      setStoreState('idle');
-      return;
-    }
-    let cancelled = false;
-    setStore(null);
-    setStoreState('loading');
-    void fetch(`/api/context-lifecycle/${encodeURIComponent(openId)}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`store read failed (${r.status})`);
-        return r.json() as Promise<StoreResponse>;
-      })
-      .then((body) => {
-        if (cancelled) return;
-        setStore(body);
-        setStoreState('ready');
-      })
-      .catch(() => {
-        if (!cancelled) setStoreState('unavailable');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [openId]);
-
-  if (listState === 'loading') {
+  if (listState === 'loading' || listState === 'idle') {
     return (
       <div className="ap-ctxlife">
         <p className="ap-ctxlife__status" data-testid="ap-ctxlife-loading">
@@ -270,6 +223,7 @@ function ContextLifecycleBody(): React.JSX.Element {
 
 export const panel: AgentPlatformPanel = {
   id: 'context-lifecycle',
+  order: 70,
   title: 'Context Lifecycle',
   description:
     'Per-session context stores the inert SessionStart / PreCompact / PostToolUse hooks would keep.',

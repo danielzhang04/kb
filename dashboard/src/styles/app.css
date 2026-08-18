@@ -940,6 +940,17 @@ button {
   border-color: var(--tier-t3);
 }
 
+/* "Could not check" (U12) — the third state of a check, and the one a UI usually loses. Deliberately
+ * NOT the pass tone and NOT the fail tone: a dashed, muted chip, so an unevaluated rule reads as an
+ * ABSENCE OF EVIDENCE rather than as a clean result. The dash is the signal — it is the only badge in
+ * the system with a broken border, so it cannot be confused with a filled verdict at a glance.
+ * First consumer: the Run Envelope step check (`not-evaluated`). */
+.mc-badge--unevaluated {
+  color: var(--fg-faint);
+  border-color: var(--border-strong);
+  border-style: dashed;
+}
+
 /* Model-weight chips (U16). Same pill geometry as the tier chips — only the token differs — so a row
  * that shows both "T2" and "sonnet" reads as one legend at two altitudes rather than two competing
  * systems. Consumed by src/components/ModelBadge.tsx; U4 adopts it at the call sites. */

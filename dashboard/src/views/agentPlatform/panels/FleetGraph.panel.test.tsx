@@ -25,7 +25,6 @@ import {
   fleetNodeId,
   fleetNodes,
   keepDrawableEdges,
-  nearestHandles,
   roleColorClass,
 } from './FleetGraph';
 import { FleetGraphBody, panel } from './FleetGraph.panel';
@@ -305,20 +304,8 @@ describe('roleColorClass', () => {
   });
 });
 
-describe('nearestHandles', () => {
-  it('picks the facing sides, so no edge falls back to top→top', () => {
-    expect(nearestHandles({ x: 0, y: 0 }, { x: 280, y: 0 }))
-      .toEqual({ sourceHandle: 'source-right', targetHandle: 'target-left' });
-    expect(nearestHandles({ x: 280, y: 0 }, { x: 0, y: 0 }))
-      .toEqual({ sourceHandle: 'source-left', targetHandle: 'target-right' });
-    expect(nearestHandles({ x: 0, y: 0 }, { x: 0, y: 200 }))
-      .toEqual({ sourceHandle: 'source-bottom', targetHandle: 'target-top' });
-    expect(nearestHandles({ x: 0, y: 200 }, { x: 0, y: 0 }))
-      .toEqual({ sourceHandle: 'source-top', targetHandle: 'target-bottom' });
-    expect(nearestHandles(undefined, undefined))
-      .toEqual({ sourceHandle: 'source-right', targetHandle: 'target-left' });
-  });
-});
+// `nearestHandles` moved to `src/lib/graphHandles.ts` (U12) — one routing rule for every reactflow
+// graph in the app. Its unit tests moved with it, to `src/lib/graphHandles.test.ts`.
 
 describe('keepDrawableEdges', () => {
   it('drops any edge whose endpoint is not a drawn node', () => {
@@ -383,6 +370,13 @@ describe('the panel', () => {
     expect(lineage.getAttribute('data-dashed')).toBe('true');
   });
 
+  /**
+   * Handles are asserted on the FIRST frame the edges exist — deliberately, and synchronously after
+   * the first edge appears. Edge routing reads node positions out of `useNodesState`, which lags the
+   * projection by one effect flush; before U12 seeded the routing map from the computed grid, this
+   * frame routed every arrow through the unmeasured right→left fallback and then jumped, which is
+   * both a visible flash and what made this test intermittent.
+   */
   it('routes every edge through facing handles rather than reactflow’s top→top fallback', async () => {
     stubFetch();
     render(<FleetGraphBody />);

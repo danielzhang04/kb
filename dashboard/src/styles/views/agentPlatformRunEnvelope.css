@@ -66,31 +66,35 @@
   color: var(--fg-primary);
 }
 
-.ap-runenv__badge {
-  display: inline-block;
-  padding: 0 var(--space-1);
-  border-radius: 3px;
+/* NO BADGE RULES HERE (U12). The result and verdict chips are the SHARED `.mc-badge*` system in
+   `src/styles/app.css` — a green chip has to mean the same thing in this panel as everywhere else in
+   the app, which a panel-local copy of the geometry could not guarantee. The one state the shared
+   system was missing, `not-evaluated`, was ADDED there as `.mc-badge--unevaluated` rather than kept
+   private here. Only genuinely panel-specific structure lives below. */
+
+/* Subject picker — the transcripts that exist on this machine, in place of a hard-coded session id. */
+.ap-runenv__picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ap-runenv__picker-label {
   font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  border: 1px solid var(--border-strong);
-  color: var(--fg-dim);
-}
-
-.ap-runenv__badge--ok {
-  color: var(--success);
-}
-
-.ap-runenv__badge--error {
-  color: var(--error);
-}
-
-.ap-runenv__badge--pending {
-  color: var(--status-idle);
-}
-
-/* "Could not check" — deliberately NOT the pass green and NOT the fail red: a dashed, muted chip so a
-   not-evaluated rule reads as an absence of evidence rather than as a clean result. */
-.ap-runenv__badge--skipped {
   color: var(--fg-faint);
-  border-style: dashed;
+}
+
+.ap-runenv__picker-select {
+  flex: 1 1 24rem;
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-sunken);
+  color: var(--fg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
 }

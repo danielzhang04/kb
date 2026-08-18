@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
-import { registerTraceRead } from './routes.ts';
+import { registerTraceRead, SESSION_LIST_LIMIT } from './routes.ts';
+import type { SessionListResponse } from './routes.ts';
 
 const REAL_SLICE = fileURLToPath(new URL('./__fixtures__/real-run-slice.jsonl', import.meta.url));
 
@@ -103,6 +104,97 @@ describe('registerTraceRead', () => {
       const res = await app.inject({ method, url: '/api/trace/flat-session' });
       expect(res.statusCode).toBe(404);
     }
+    for (const method of ['POST', 'PUT', 'DELETE'] as const) {
+      const res = await app.inject({ method, url: '/api/trace' });
+      expect(res.statusCode).toBe(404);
+    }
     await app.close();
   });
+});
+
+/**
+ * U12 — the transcript LIST. The panel needs a truthful subject picker, and a hard-coded session id is
+ * a claim about one machine. Every id this route lists must be an id `/api/trace/:sessionId` can then
+ * resolve, or the picker hands the user a guaranteed 404.
+ */
+describe('registerTraceRead — GET /api/trace (session list)', () => {
+  it('lists transcripts at the root AND one project-directory deep, newest first', async () => {
+    const app = await appFor(await fixtureRoot());
+    const res = await app.inject({ method: 'GET', url: '/api/trace' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as SessionListResponse;
+    expect(body.available).toBe(true);
+    expect(body.truncated).toBe(false);
+    expect(body.sessions.map((s) => s.sessionId).sort()).toEqual(['deep-session', 'flat-session']);
+
+    const deep = body.sessions.find((s) => s.sessionId === 'deep-session')!;
+    expect(deep.project).toBe('C--Users-someone-project');
+    expect(body.sessions.find((s) => s.sessionId === 'flat-session')!.project).toBeNull();
+    expect(deep.sizeBytes).toBeGreaterThan(0);
+    expect(Number.isNaN(Date.parse(deep.modifiedAt))).toBe(false);
+
+    // Newest-modified first — a descending mtime order, asserted rather than assumed.
+    const times = body.sessions.map((s) => Date.parse(s.modifiedAt));
+    expect([...times].sort((a, b) => b - a)).toEqual(times);
+    await app.close();
+  });
+
+  it('lists ONLY ids the envelope route can then resolve — a listed id is never a guaranteed 404', async () => {
+    const root = await fixtureRoot();
+    // Noise the walk must ignore: a non-transcript file, and a nested directory two levels deep.
+    await writeFile(join(root, 'notes.txt'), 'not a transcript', 'utf8');
+    await mkdir(join(root, 'proj', 'deeper'), { recursive: true });
+    await writeFile(join(root, 'proj', 'deeper', 'too-deep.jsonl'), '{}\n', 'utf8');
+
+    const app = await appFor(root);
+    const body = (await app.inject({ method: 'GET', url: '/api/trace' })).json() as SessionListResponse;
+    expect(body.sessions.some((s) => s.sessionId === 'notes')).toBe(false);
+    expect(body.sessions.some((s) => s.sessionId === 'too-deep')).toBe(false);
+
+    for (const entry of body.sessions) {
+      const res = await app.inject({ method: 'GET', url: `/api/trace/${entry.sessionId}` });
+      expect(res.statusCode, entry.sessionId).toBe(200);
+    }
+    await app.close();
+  });
+
+  it('carries no transcript content — id, project, mtime and size only', async () => {
+    const app = await appFor(await fixtureRoot());
+    const body = (await app.inject({ method: 'GET', url: '/api/trace' })).json() as SessionListResponse;
+    for (const entry of body.sessions) {
+      expect(Object.keys(entry).sort()).toEqual(['modifiedAt', 'project', 'sessionId', 'sizeBytes']);
+    }
+    // sessionRoot and each entry's `project` DO travel — they're path-derived metadata, not content,
+    // and this route already sits behind the session gate. The guard below is about CONTENT fields
+    // only: nothing that could carry a tool input, a path, or a prompt travels on this route.
+    expect(JSON.stringify(body)).not.toMatch(/tool_use|content|snippet/);
+    await app.close();
+  });
+
+  it('reports an unreadable root as unavailable — never as an error page', async () => {
+    const app = await appFor(join(tmpdir(), `trace-missing-${Date.now()}`));
+    const res = await app.inject({ method: 'GET', url: '/api/trace' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as SessionListResponse;
+    expect(body.available).toBe(false);
+    expect(body.sessions).toEqual([]);
+    await app.close();
+  });
+
+  // Explicit timeout + parallel writes: this is the one case that needs MORE files than the bound, and
+  // ~200 sequential creates is slow enough on Windows to trip the 5s default under a loaded run.
+  it('bounds the walk and DISCLOSES the bound rather than hiding it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'trace-many-'));
+    tmpDirs.push(root);
+    await Promise.all(
+      Array.from({ length: SESSION_LIST_LIMIT + 5 }, (_, i) =>
+        writeFile(join(root, `s${String(i).padStart(4, '0')}.jsonl`), '{}\n', 'utf8'),
+      ),
+    );
+    const app = await appFor(root);
+    const body = (await app.inject({ method: 'GET', url: '/api/trace' })).json() as SessionListResponse;
+    expect(body.sessions).toHaveLength(SESSION_LIST_LIMIT);
+    expect(body.truncated).toBe(true);
+    await app.close();
+  }, 30_000);
 });

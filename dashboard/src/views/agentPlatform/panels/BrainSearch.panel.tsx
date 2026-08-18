@@ -15,6 +15,22 @@ interface BrainResult {
 type SearchResponse = { query: string; k: number; results: BrainResult[] } | { available: false; reason: string };
 type SearchState = 'idle' | 'loading' | 'ready' | 'unavailable';
 
+/**
+ * Every reason `scripts/brain/brain_query.py` can emit, spelled as the thing the operator has to do.
+ *
+ * There is NO "brain service": the CLI is a fresh process per query over a local index file, so a
+ * failure is never "the service is down" and the panel must not say it is. The three index reasons
+ * differ only in WHY the index is unusable — all three end in "rebuild it" — and the fallback names
+ * the failure without inventing a cause.
+ */
+const UNAVAILABLE_REASON: Record<string, string> = {
+  'index-not-built': 'Index not built on this machine — run the indexer.',
+  'model-mismatch': 'The index was built with a different embedding model — rebuild it.',
+  'index-format-error': 'The index is in an unreadable format — rebuild it.',
+};
+
+const UNAVAILABLE_FALLBACK = 'Search failed — nothing was read. Nothing was changed.';
+
 function BrainSearchBody(): React.JSX.Element {
   const [query, setQuery] = useState('');
   const [state, setState] = useState<SearchState>('idle');
@@ -65,7 +81,7 @@ function BrainSearchBody(): React.JSX.Element {
       {state === 'loading' ? <p className="ap-brainsearch__note" data-testid="ap-brainsearch-loading">Searching… Every query starts a fresh process and reloads the embedding model, which measures about 10-20 seconds.</p> : null}
       {state === 'unavailable' ? (
         <p className="ap-brainsearch__unavailable" data-testid="ap-brainsearch-unavailable">
-          {reason === 'index-not-built' ? 'Index not built on this machine — run the indexer.' : 'Search failed. Try again after the local brain service is available.'}
+          {(reason !== null ? UNAVAILABLE_REASON[reason] : undefined) ?? UNAVAILABLE_FALLBACK}
         </p>
       ) : null}
       {state === 'ready' && results.length === 0 ? <p className="ap-brainsearch__note" data-testid="ap-brainsearch-empty">No matching chunks were found.</p> : null}
@@ -90,6 +106,7 @@ function BrainSearchBody(): React.JSX.Element {
 
 export const panel: AgentPlatformPanel = {
   id: 'brain-search',
+  order: 60,
   title: 'Brain Search',
   description: 'Ranked local knowledge-base chunks from the semantic index.',
   render: () => <BrainSearchBody />,

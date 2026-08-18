@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { App } from './App';
 import { invalidateSessionOnGovernedAuthFailure } from './lib/authClient';
+import { AGENT_PLATFORM_PANELS } from './views/agentPlatform/registry';
 
 beforeEach(() => {
   window.sessionStorage.clear();
@@ -237,9 +238,14 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
     expect(btn.getAttribute('aria-current')).toBe('page');
-    // The real section mounts (with its auto-discovered demo tile), not the U3 placeholder.
+    // The real section mounts, with its auto-discovered tiles — not the U3 placeholder. The subject
+    // is a REAL panel (U12 retired the Demo placeholder these assertions used to ride on), and it is
+    // read off the registry so the tile that proves reachability can never become a stale literal.
     const view = screen.getByLabelText('Agent Platform view');
-    expect(within(view).getByText('Demo Panel')).toBeTruthy();
+    const first = AGENT_PLATFORM_PANELS[0];
+    expect(first).toBeTruthy();
+    expect(within(view).getByText(first.title)).toBeTruthy();
+    expect(within(view).getByText(first.description)).toBeTruthy();
   });
 
   it('routes the U3 entity destinations (Agents/Tasks/Projects/Ledgers) to their real views', () => {

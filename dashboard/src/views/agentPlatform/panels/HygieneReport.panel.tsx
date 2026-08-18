@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import type { AgentPlatformPanel } from '../types';
+import { useReadPanel } from '../../../lib/useReadPanel';
 import './HygieneReport.css';
 
 interface Finding { path: string; kind: string; size: number; detail: string; proposal: string }
@@ -7,19 +7,9 @@ interface Report { generated_at: string; root: string; dryRun: true; findings: F
 type Response = { available: true; report: Report } | { available: false; reason: string };
 
 function HygieneReportBody(): React.JSX.Element {
-  const [response, setResponse] = useState<Response | null>(null);
-  const [failed, setFailed] = useState(false);
+  const { data: response, state } = useReadPanel<Response>('/api/hygiene/report');
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetch('/api/hygiene/report')
-      .then((result) => { if (!result.ok) throw new Error(String(result.status)); return result.json() as Promise<Response>; })
-      .then((value) => { if (!cancelled) setResponse(value); })
-      .catch(() => { if (!cancelled) setFailed(true); });
-    return () => { cancelled = true; };
-  }, []);
-
-  if (failed) return <p className="ap-hygiene__empty">Report unavailable — nothing was changed.</p>;
+  if (state === 'unavailable') return <p className="ap-hygiene__empty">Report unavailable — nothing was changed.</p>;
   if (response === null) return <p className="ap-hygiene__empty">Reading hygiene report…</p>;
   if (!response.available) {
     return <p className="ap-hygiene__empty" data-testid="ap-hygiene-not-generated">No report has been generated. Run: <code>python scripts/hygiene_sweep.py</code></p>;
@@ -32,7 +22,8 @@ function HygieneReportBody(): React.JSX.Element {
       <p className="ap-hygiene__summary">{response.report.summary.total} finding{response.report.summary.total === 1 ? '' : 's'} · generated {response.report.generated_at}</p>
       {groups.map(([kind, count]) => (
         <section className="ap-hygiene__group" key={kind}>
-          <h3 className="ap-hygiene__heading">{kind} ({count})</h3>
+          {/* h4: the section shell owns h3 (`ap__body-title`), so a panel body starts one level in. */}
+          <h4 className="ap-hygiene__heading">{kind} ({count})</h4>
           <ul className="ap-hygiene__findings">
             {(grouped.get(kind) ?? []).map((finding) => <li key={`${finding.kind}:${finding.path}:${finding.detail}`} className="ap-hygiene__finding"><code>{finding.path}</code><span>{finding.detail}</span><em>{finding.proposal}</em></li>)}
           </ul>
@@ -44,6 +35,7 @@ function HygieneReportBody(): React.JSX.Element {
 
 export const panel: AgentPlatformPanel = {
   id: 'hygiene-report',
+  order: 100,
   title: 'Hygiene Report',
   description: 'Dry-run candidates for human review; this panel never cleans or deletes.',
   render: () => <HygieneReportBody />,

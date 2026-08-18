@@ -1,17 +1,20 @@
 // @vitest-environment jsdom
 /**
- * Autonomy Ladder panel (Wave-1 U5). Four guarantees are pinned here:
+ * Autonomy Ladder panel (Wave-1 U5). Five guarantees are pinned here:
  *   1. it registers itself by file drop (the registry finds it by id — no shared-file edit);
  *   2. the DECLARED ceiling and the EARNED verdicts render as structurally distinct elements, so a
  *      declaration can never be read as an earned fact;
  *   3. a worker with no graded runs gets an honest "nothing earned" line, never a fabricated verdict,
  *      and a frozen fleet says so;
- *   4. the panel is READ-ONLY on the wire — every fetch it makes is a GET (and there is exactly one).
+ *   4. the panel is READ-ONLY on the wire — every fetch it makes is a GET (and there is exactly one);
+ *   5. (U12) a LOCKED dashboard reads nothing and says so, rather than blaming the daemon for a 401.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, cleanup, within } from '@testing-library/react';
 import { AGENT_PLATFORM_PANELS } from '../registry';
 import { panel } from './AutonomyLadder.panel';
+import { SessionProvider } from '../../../lib/sessionContext';
+import { clearStoredSession, persistSession } from '../../../lib/authClient';
 import type { AutonomyLadderPanel, LadderKeyRow } from '../../../../server/panels/autonomyLadder';
 
 function key(over: Partial<LadderKeyRow> & { worker: string }): LadderKeyRow {
@@ -78,8 +81,21 @@ function stubFetch(payload: AutonomyLadderPanel | 'fail' = PAYLOAD): void {
   );
 }
 
+/** The panel under a FRESH session — the ordinary case every assertion below rides on. */
+function unlocked(): React.JSX.Element {
+  persistSession({ token: 'tok', expiresAt: Date.now() + 3_600_000 });
+  return <SessionProvider>{panel.render()}</SessionProvider>;
+}
+
+/** The panel with no session at all. */
+function locked(): React.JSX.Element {
+  clearStoredSession();
+  return <SessionProvider>{panel.render()}</SessionProvider>;
+}
+
 afterEach(() => {
   cleanup();
+  clearStoredSession();
   vi.unstubAllGlobals();
 });
 
@@ -91,7 +107,7 @@ describe('AutonomyLadder panel', () => {
 
   it('renders the declared ceiling and the earned verdicts as DISTINCT elements', async () => {
     stubFetch();
-    render(panel.render());
+    render(unlocked());
 
     const declared = await screen.findByTestId('ap-ladder-declared-codex-a');
     expect(declared.textContent).toMatch(/declared ceiling \(advisory\)/i);
@@ -109,7 +125,7 @@ describe('AutonomyLadder panel', () => {
 
   it('shows an honest "nothing earned" line for a worker that declares a ceiling but has no grades', async () => {
     stubFetch();
-    render(panel.render());
+    render(unlocked());
 
     expect((await screen.findByTestId('ap-ladder-declared-ladder-architect')).textContent).toContain('T2');
     expect(screen.getByTestId('ap-ladder-noearned-ladder-architect').textContent).toMatch(/no graded runs/i);
@@ -119,12 +135,12 @@ describe('AutonomyLadder panel', () => {
 
   it('tells an EMPTY ledger apart from rows no allow-listed grader authored', async () => {
     stubFetch(body({ gradeRowCount: 0, ledgerRowCount: 0, workers: [] }));
-    render(panel.render());
+    render(unlocked());
     expect((await screen.findByTestId('ap-ladder-no-trusted-rows')).textContent).toMatch(/ledger is empty/i);
     cleanup();
 
     stubFetch(body({ gradeRowCount: 0, ledgerRowCount: 7, trustedGraderCount: 0, workers: [] }));
-    render(panel.render());
+    render(unlocked());
     const note = await screen.findByTestId('ap-ladder-no-trusted-rows');
     expect(note.textContent).toMatch(/7 graded rows exist/i);
     expect(note.textContent).toMatch(/allow-listed grader/i);
@@ -132,19 +148,85 @@ describe('AutonomyLadder panel', () => {
 
   it('banners a frozen fleet', async () => {
     stubFetch(body({ frozen: true, workers: [{ worker: 'codex-a', declaredCeiling: null, earned: [] }] }));
-    render(panel.render());
-    expect((await screen.findByTestId('ap-ladder-frozen')).textContent).toMatch(/queues-for-me/i);
+    render(unlocked());
+    const banner = await screen.findByTestId('ap-ladder-frozen');
+    // Plain words on screen (U12) — the wire value `queues-for-me` is a slug, not English.
+    expect(banner.textContent).toMatch(/queues for me/i);
+    expect(banner.textContent).not.toMatch(/queues-for-me/i);
+  });
+
+  /**
+   * U12 — one verdict-translation policy. The hyphenated enum member is the WIRE value; it stays on
+   * the element (as a class and a `data-verdict`, which is what styling and any machine reader use)
+   * and never reaches the reader as prose.
+   */
+  it('renders verdicts in plain words while keeping the wire value machine-readable', async () => {
+    stubFetch(
+      body({
+        workers: [
+          { worker: 'codex-a', declaredCeiling: 'T1', earned: [EARNED] },
+          { worker: 'codex-b', declaredCeiling: 'T1', earned: [key({ worker: 'codex-b', taskType: 'review', tier: 'T2' })] },
+        ],
+      }),
+    );
+    render(unlocked());
+
+    const queued = await screen.findByTestId('ap-ladder-verdict-codex-b-review-T2');
+    expect(queued.textContent).toBe('queues for me');
+    expect(queued.getAttribute('data-verdict')).toBe('queues-for-me');
+    expect(queued.className).toContain('ap-ladder__verdict--queues-for-me');
+
+    // `autonomous` is already a plain word and is left exactly as it is.
+    const autonomous = screen.getByTestId('ap-ladder-verdict-codex-a-doc-edit-T1');
+    expect(autonomous.textContent).toBe('autonomous');
+    expect(autonomous.getAttribute('data-verdict')).toBe('autonomous');
+  });
+
+  /**
+   * U12 — the tier cell adopts the app's shared chip (`.mc-badge--t1/t2/t3` in `styles/app.css`)
+   * instead of a panel-local `.ap-ladder__tier--T2` colour rule. Same pill everywhere a tier appears.
+   */
+  it('renders the earned tier as the SHARED mc-badge chip, not a panel-local tier colour', async () => {
+    stubFetch(
+      body({
+        workers: [
+          { worker: 'codex-b', declaredCeiling: 'T1', earned: [key({ worker: 'codex-b', taskType: 'review', tier: 'T2' })] },
+        ],
+      }),
+    );
+    render(unlocked());
+
+    const row = await screen.findByTestId('ap-ladder-earned-codex-b-review-T2');
+    const chip = within(row).getByText('T2');
+    expect(chip.className).toContain('mc-badge');
+    expect(chip.className).toContain('mc-badge--t2');
+    expect(row.innerHTML).not.toContain('ap-ladder__tier--');
+  });
+
+  /**
+   * U12 — the honesty fix. `/api/panels/autonomy-ladder` is behind the session pre-handler, so a
+   * locked dashboard 401s; the panel used to report that as "the daemon did not answer", which sends
+   * an operator to check a service that is answering fine.
+   */
+  it('reads NOTHING while locked, and blames the lock rather than the daemon', async () => {
+    stubFetch();
+    render(locked());
+
+    expect(screen.getByTestId('ap-ladder-locked').textContent).toMatch(/unlock the dashboard/i);
+    expect(screen.getByTestId('ap-ladder-locked').textContent).not.toMatch(/daemon/i);
+    expect(screen.queryByTestId('ap-ladder-unavailable')).toBeNull();
+    expect(calls).toHaveLength(0);
   });
 
   it('names the failure instead of blanking when the daemon does not answer', async () => {
     stubFetch('fail');
-    render(panel.render());
+    render(unlocked());
     expect((await screen.findByTestId('ap-ladder-unavailable')).textContent).toMatch(/unavailable/i);
   });
 
   it('is READ-ONLY on the wire: exactly one call, a GET of the panel endpoint', async () => {
     stubFetch();
-    render(panel.render());
+    render(unlocked());
     await screen.findByTestId('ap-ladder-declared-codex-a');
 
     expect(calls).toHaveLength(1);

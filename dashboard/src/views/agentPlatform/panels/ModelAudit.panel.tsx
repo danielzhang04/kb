@@ -31,13 +31,10 @@
  * House rules honoured: ONE entry file, its OWN stylesheet, `import type` only across the
  * client→server boundary, and zero edits to any shared file.
  */
-import { useEffect, useState } from 'react';
 import type { AgentPlatformPanel } from '../types';
 import type { ModelAuditResponse, ModelAuditRow } from '../../../../server/modelAudit/routes';
+import { useReadPanel } from '../../../lib/useReadPanel';
 import './ModelAudit.css';
-
-/** Load state. Same vocabulary as the Context Lifecycle and Agent Management panels. */
-type LoadState = 'loading' | 'ready' | 'unavailable';
 
 /** A one-line gloss per verdict, so the vocabulary never needs the proposal open beside it. */
 const VERDICT_HELP: Record<string, string> = {
@@ -108,31 +105,11 @@ function Row({ row }: { row: ModelAuditRow }): React.JSX.Element {
 }
 
 function ModelAuditBody(): React.JSX.Element {
-  const [data, setData] = useState<ModelAuditResponse | null>(null);
-  const [state, setState] = useState<LoadState>('loading');
+  // A dead daemon is an expected input for a read-only panel: the shared hook names the state, never
+  // crashes, and never invents rows.
+  const { data, state } = useReadPanel<ModelAuditResponse>('/api/model-audit');
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetch('/api/model-audit')
-      .then((r) => {
-        if (!r.ok) throw new Error(`audit read failed (${r.status})`);
-        return r.json() as Promise<ModelAuditResponse>;
-      })
-      .then((body) => {
-        if (cancelled) return;
-        setData(body);
-        setState('ready');
-      })
-      .catch(() => {
-        // A dead daemon is an expected input for a read-only panel: name the state, never crash.
-        if (!cancelled) setState('unavailable');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (state === 'loading') {
+  if (state === 'loading' || state === 'idle') {
     return (
       <div className="ap-modelaudit">
         <p className="ap-modelaudit__status" data-testid="ap-modelaudit-loading">
@@ -203,6 +180,7 @@ function ModelAuditBody(): React.JSX.Element {
 
 export const panel: AgentPlatformPanel = {
   id: 'model-audit',
+  order: 80,
   title: 'Model Audit',
   description:
     'Requested-vs-observed subagent models, as the inert PreToolUse / SubagentStop verify hooks would record them.',

@@ -38,6 +38,6 @@ describe('Proposed Lessons panel', () => {
 
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     render(panel.render());
-    expect((await screen.findByTestId('ap-lessons-unavailable')).textContent).toMatch(/unavailable/i);
+    expect((await screen.findByTestId('ap-lessons-unavailable')).textContent).toMatch(/could not be read/i);
   });
 });

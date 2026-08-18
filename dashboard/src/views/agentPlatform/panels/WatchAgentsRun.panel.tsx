@@ -12,6 +12,7 @@ import '../../../styles/views/agentPlatformWatchAgentsRun.css';
 
 export const panel: AgentPlatformPanel = {
   id: 'watch-agents-run',
+  order: 30,
   title: 'Watch agents run',
   description: 'Live runs, agent by agent: state, model, time working, tools called, latest output.',
   render: () => <WatchAgentsRunBody />,
