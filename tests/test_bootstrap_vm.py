@@ -71,9 +71,31 @@ def test_bootstrap_clones_before_transferring_ops_ownership(tmp_path, monkeypatc
 
     root_ops = ["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/var/lib/kb/ops"]
     clone_index = commands.index(["git", "clone", "--branch", "ops", "--no-checkout", str(tmp_path / "ops.bundle"), "/var/lib/kb/ops"])
+    identity_commands = [
+        ["git", "-C", "/var/lib/kb/ops", "config", "--replace-all", "user.email", "kb-dashboard@agents.local"],
+        ["git", "-C", "/var/lib/kb/ops", "config", "--replace-all", "user.name", "kb-dashboard"],
+    ]
     assert commands.index(root_ops) < clone_index
+    assert commands[clone_index + 1:clone_index + 3] == identity_commands
     assert clone_index < commands.index(["git", "-C", "/var/lib/kb/ops", "sparse-checkout", "set", "--no-cone", *bootstrap_vm.DATA_PATTERNS])
     assert commands.index(["git", "-C", "/var/lib/kb/ops", "update-ref", "refs/kb-outbox/spooled", "HEAD"]) < commands.index(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", bootstrap_vm.STATE_ROOT])
+
+
+def test_bootstrap_reapplies_ops_git_identity_on_rerun(tmp_path, monkeypatch):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *args, **kwargs: None)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, run=run)
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, run=run)
+
+    assert commands.count(["git", "-C", "/var/lib/kb/ops", "config", "--replace-all", "user.email", "kb-dashboard@agents.local"]) == 2
+    assert commands.count(["git", "-C", "/var/lib/kb/ops", "config", "--replace-all", "user.name", "kb-dashboard"]) == 2
 
 
 def test_bootstrap_seeds_the_empty_control_plane_document(tmp_path, monkeypatch):

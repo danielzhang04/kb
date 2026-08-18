@@ -82,6 +82,22 @@ def validate_ops_root(root: Path) -> None:
         raise RuntimeError("ops push remote is not disabled")
 
 
+def validate_ops_git_identity(root: Path, run=subprocess.run) -> None:
+    for key in ("user.email", "user.name"):
+        try:
+            value = run(
+                ["git", "-C", str(root), "config", "--get", key],
+                check=True,
+                text=True,
+                capture_output=True,
+                timeout=COMMAND_TIMEOUT,
+            ).stdout.strip()
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(f"ops git identity is missing: {key}") from error
+        if not value:
+            raise RuntimeError(f"ops git identity is missing: {key}")
+
+
 def validate_outbox_anchor(root: Path, run=subprocess.run) -> None:
     result = run(["git", "show-ref", "--verify", "--quiet", "refs/kb-outbox/spooled"], cwd=root)
     if result.returncode != 0:
@@ -190,6 +206,7 @@ def main() -> int:
     if args.phase == "static":
         validate_environment(dict(os.environ))
         validate_ops_root(args.ops_root)
+        validate_ops_git_identity(args.ops_root)
         validate_releases_root(Path("/opt/kb-releases").stat())
         show, text = read_static_unit(args.unit)
         validate_static_unit(show, text)
