@@ -155,7 +155,9 @@ never into the grades ledger.
   local timezone) alongside the existing `daily|weekly:<day>` forms. No calendar DSL, no
   catch-up-window machinery: the fire rule is the routines rule verbatim — when the
   dispatcher ticks, a cadence fires AT MOST ONCE if an occurrence has passed since its last
-  fire; missed occurrences are skipped, never replayed. (Codex Automations' undocumented
+  fire; missed occurrences are skipped, never replayed. The occurrence window closes at
+  local midnight: an occurrence with no dispatcher tick before day-end is gone (cron
+  granularity is bounded by tick frequency — deliberate, no cross-day ledger reads). (Codex Automations' undocumented
   catch-up/overlap semantics are their open-bug farm — evidence this is the part NOT to
   build.) Dedup key = last-fired occurrence, generalizing the existing per-day dedup.
   Timing stays INSIDE `schedule:` — never sibling YAML keys — because

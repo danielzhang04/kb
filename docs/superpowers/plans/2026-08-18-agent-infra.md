@@ -335,7 +335,7 @@ Plus the **standing-auth re-time canary** (this file): parse a cadence dict, ass
 
 **Interfaces:**
 - Consumes: `GET /api/panels/schedules` shape from Task 8; `useReadPanel` hook (`src/lib/useReadPanel`) like sibling panels; House rules (id `schedules`, `order` = 6 — after loop-status which is 5, headings start `<h4>`, own CSS).
-- Produces: panel rendering per-cadence strips (name · project · schedule · paused/active chip · last-run narration line · next-fire hint) + an "edit in PR" affordance that shows the HEARTBEAT file path + a copyable edited block and POSTs to `/api/schedules/edit` on confirm (the PR link from the response is displayed; copy states "merges by human only"), + a pause button POSTing `/api/schedules/pause`. NO unpause control renders, ever.
+- Produces: panel rendering per-cadence strips (name · project · schedule · paused/active chip · last-run narration line · next-fire hint) + an "edit in PR" affordance that shows the HEARTBEAT file path + a copyable edited block and POSTs to `/api/schedules/edit` on confirm (the PR link from the response is displayed; copy states "merges by human only"), + a pause button POSTing the EXISTING `/api/write/pause-cadence` (body `{name}`, response `{ok:true, path}` — boss ruling: the schedules module owns no pause route; pausing stays the STOP-floor's single write path). NO unpause control renders, ever. Warn visually on sub-hourly cron expressions (they remove the per-day cap).
 
 **SPEC probe:** read two sibling panels (`LoopStatus.panel.tsx` and one with a POST action if any exists — else follow the fetch pattern in `useReadPanel` and the session-token plumbing used by governed writes in the SPA — find with `grep -r sessionToken dashboard/src | head`).
 
