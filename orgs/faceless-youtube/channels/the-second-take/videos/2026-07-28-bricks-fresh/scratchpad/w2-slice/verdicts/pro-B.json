@@ -1,0 +1,116 @@
+{
+  "verifier": "B",
+  "arm": "pro",
+  "cards": [
+    {
+      "card": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop."
+    },
+    {
+      "card": "fig-brick-foreman--back-to-viewer--7a3b93be",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop."
+    },
+    {
+      "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "pass",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "clean_card: the figure grips a red clay brick, an added object the payload explicitly orders left out. payload_fidelity: the figure is not empty-handed as required — it holds the very brick the payload says to leave out instead of performing the lowering motion with an empty hand."
+    },
+    {
+      "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop. payload_fidelity: both arms hang passively at the sides with no fisted hand or hauling motion, so the payload's 'hauling a dust sheet off a pallet stack' bodily act is not depicted at all."
+    },
+    {
+      "card": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop."
+    },
+    {
+      "card": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "pass",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "clean_card: the figure grips a handled rod/cane-like object, an added prop the payload orders left out (hand truck left out, empty-handed and alone). payload_fidelity: the figure is not empty-handed — it is gripping the added handle object rather than performing the walking act empty-handed."
+    },
+    {
+      "card": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "pass",
+        "payload_fidelity": "fail",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "payload_fidelity: the hands are clasped/interlaced passively at the waist with no shaft-gripping or raking/dragging motion toward the body, so the payload's rake-dragging bodily act is not conveyed."
+    },
+    {
+      "card": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+      "axes": {
+        "clean_card": "fail",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "clean_card: a full four-tier shrink-wrapped pallet tower is built and rendered as a physical set under the figure, when the payload explicitly says to draw none of the setting and keep a flat pale-grey studio backdrop only. framing: the figure stands atop the pallet prop with no ground line and no soft contact shadow directly beneath it — the required backdrop-plus-shadow framing is replaced by a built environment."
+    },
+    {
+      "card": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "fail",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": "framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop."
+    },
+    {
+      "card": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+      "axes": {
+        "clean_card": "pass",
+        "framing": "pass",
+        "payload_fidelity": "pass",
+        "style": "pass",
+        "lettering": "pass"
+      },
+      "notes": ""
+    }
+  ]
+}

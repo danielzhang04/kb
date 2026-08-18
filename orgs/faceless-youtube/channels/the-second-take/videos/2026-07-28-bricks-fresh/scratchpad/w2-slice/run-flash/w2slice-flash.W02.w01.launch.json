@@ -1,0 +1,181 @@
+{
+  "schema": "image-gen-worker-dispatch@1",
+  "run_id": "w2slice-flash",
+  "wave_id": "W02",
+  "worker_id": "w01",
+  "worktree": "C:/Users/danie/kb-worktrees/boss-taste-forensics",
+  "org_dir": "C:/Users/danie/kb-worktrees/boss-taste-forensics/orgs/faceless-youtube",
+  "kit_rel": "channels/the-second-take/visual-kit",
+  "forge_path": "C:/Users/danie/kb-worktrees/boss-taste-forensics/orgs/faceless-youtube/.claude/skills/image-generation/scripts/forge.py",
+  "wave_ordinal": 2,
+  "worker_spec": {
+    "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\run-flash\\w2slice-flash.W02.w01.spec.json",
+    "sha256": "1d9b409fd6ad0637b1db770fd5d48c9d4de5e03fa6d5558365dd2273910b9ad6"
+  },
+  "review_store_path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\review.json",
+  "review_store_sha256": "0bab7e1e34de3f9381ad9681110925f44de698a1940a368d8ee1c7a1d26e619b",
+  "assignments": [
+    {
+      "item_ordinal": 1,
+      "partition_ordinal": 1,
+      "shot_id": null,
+      "card_id": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+      "output_name": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+      "staging_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333.png",
+      "promotion_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\assets\\scenes\\fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333.png",
+      "chain_id": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+      "dependency_depth": 0,
+      "references": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\drive-maker\\drive-maker.png",
+          "sha256": "bd13a2c4c9c8583ecdbf099654353da9f53986c1988230dc0c1121acc22ec048"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\expr-deadpan.png",
+          "sha256": "f28e6a95f9f9e3e0829313191fe0c57c93614915409c454277e9814d8c05a96d"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\carry-by-handle.png",
+          "sha256": "8a146578151ae8089f1d0f36ced59280367e25f5cbf79aacbe8284ac7b5a5f98"
+        }
+      ]
+    },
+    {
+      "item_ordinal": 2,
+      "partition_ordinal": 1,
+      "shot_id": null,
+      "card_id": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+      "output_name": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+      "staging_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\fig-drive-maker--action-present--expr-smug--5e51ec13.png",
+      "promotion_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\assets\\scenes\\fig-drive-maker--action-present--expr-smug--5e51ec13.png",
+      "chain_id": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+      "dependency_depth": 0,
+      "references": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\drive-maker\\drive-maker.png",
+          "sha256": "bd13a2c4c9c8583ecdbf099654353da9f53986c1988230dc0c1121acc22ec048"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\expr-smug.png",
+          "sha256": "f0ec3f07674cdbe3d35367f63473505f5ab54e5680e80c236a3f0b5a3015bde3"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\action-present.png",
+          "sha256": "3700c90703eda73310776d78d731dfc6d375701c6e929082b07feec84760105d"
+        }
+      ]
+    },
+    {
+      "item_ordinal": 3,
+      "partition_ordinal": 1,
+      "shot_id": null,
+      "card_id": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+      "output_name": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+      "staging_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1.png",
+      "promotion_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\assets\\scenes\\fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1.png",
+      "chain_id": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+      "dependency_depth": 0,
+      "references": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\brick-foreman\\brick-foreman.png",
+          "sha256": "ac61fbf61d57818d00495d40c72ea242e5aa16381e2caccd05fb00f91640abf7"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\expr-deadpan.png",
+          "sha256": "f28e6a95f9f9e3e0829313191fe0c57c93614915409c454277e9814d8c05a96d"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\action-shrug.png",
+          "sha256": "fc7f501feba4a90ce3421ac19afff7a36b62c4b9fafc9e9802f452cc0aa95ad7"
+        }
+      ]
+    },
+    {
+      "item_ordinal": 4,
+      "partition_ordinal": 1,
+      "shot_id": null,
+      "card_id": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+      "output_name": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+      "staging_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75.png",
+      "promotion_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\assets\\scenes\\fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75.png",
+      "chain_id": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+      "dependency_depth": 0,
+      "references": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\brick-foreman\\brick-foreman.png",
+          "sha256": "ac61fbf61d57818d00495d40c72ea242e5aa16381e2caccd05fb00f91640abf7"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\expr-deadpan.png",
+          "sha256": "f28e6a95f9f9e3e0829313191fe0c57c93614915409c454277e9814d8c05a96d"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\hold-one-hand.png",
+          "sha256": "543d2bda2c48c14d33e0b7b0314231e025999107e1df00082f7834b7473e7e4a"
+        }
+      ]
+    },
+    {
+      "item_ordinal": 5,
+      "partition_ordinal": 1,
+      "shot_id": null,
+      "card_id": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+      "output_name": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+      "staging_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9.png",
+      "promotion_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\assets\\scenes\\fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9.png",
+      "chain_id": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+      "dependency_depth": 0,
+      "references": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\miniscribe-rep\\miniscribe-rep.png",
+          "sha256": "591373d12bcd930736da6eebccf9b6c239caefff952d7c8a788dd185f616e49e"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\expr-surprised.png",
+          "sha256": "7801c2d56e99b45c299ee1bb5380d89affd7ec0b90cdccaf370504f08d83d70d"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\action-recoil.png",
+          "sha256": "b933a1f878fde40ced3ea9e603cfb570af3939fc9bec8e057c4c9023ca5de52f"
+        }
+      ]
+    }
+  ],
+  "item_spec_dir": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\run-flash",
+  "result_path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\run-flash\\w2slice-flash.W02.w01.results.json",
+  "genlog_path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\run-flash\\w2slice-flash.W02.w01.genlog.jsonl",
+  "attempt_lease_path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\run-flash\\w2slice-flash.W02.attempt-lease.json",
+  "billing_halt_path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\run-flash\\w2slice-flash.W02.billing-halt.json",
+  "limits": {
+    "concurrency": 2,
+    "stall_seconds": 240,
+    "stall_reissues": 1,
+    "rate_usd": 0.039,
+    "hard_cap_usd": 0.78,
+    "max_provider_attempts": 20
+  },
+  "prohibitions": [
+    "no-improvisation",
+    "no-force",
+    "no-stamp",
+    "no-promote",
+    "no-manifest-edit",
+    "no-review-store-write",
+    "no-shots-edit"
+  ]
+}

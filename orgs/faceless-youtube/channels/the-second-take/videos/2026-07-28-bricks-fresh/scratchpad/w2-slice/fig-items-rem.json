@@ -1,0 +1,66 @@
+[
+ {
+  "name": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+  "mode": "environment",
+  "aspect": "2:3",
+  "image_size": "1K",
+  "stage_role": "base",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+   "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+    "role": "canonical",
+    "character": "terry-johnson"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+    "role": "expression",
+    "character": "terry-johnson"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-armscrossed.png",
+    "role": "pose",
+    "character": "terry-johnson"
+   }
+  ],
+  "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: alone stage-right in a bare rented unit: unpainted breeze-block walls, a concrete floor holding one trestle table and a single stool, cardboard cartons still flat and stacked against the wall, a roller shutter up on a strip of grey daylight beyond. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+  "delta": "SEED ROLES. The FIRST image is `terry-johnson`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-thinking` expression reference for `terry-johnson` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `terry-johnson` holds in the parent scene, and no other figure's. The THIRD image is the `action-armscrossed` pose reference for `terry-johnson` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: alone stage-right in a bare rented unit: unpainted breeze-block walls, a concrete floor holding one trestle table and a single stool, cardboard cartons still flat and stacked against the wall, a roller shutter up on a strip of grey daylight beyond. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+  "why": "STEP 1 for `terry-johnson` (action-armscrossed / expr-thinking)"
+ },
+ {
+  "name": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+  "mode": "environment",
+  "aspect": "2:3",
+  "image_size": "1K",
+  "stage_role": "base",
+  "seed": [
+   "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+   "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+   "channels/the-second-take/visual-kit/refs/base/action-celebrate.png"
+  ],
+  "seed_roles": [
+   {
+    "path": "channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+    "role": "canonical",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+    "role": "expression",
+    "character": "miniscribe-rep"
+   },
+   {
+    "path": "channels/the-second-take/visual-kit/refs/base/action-celebrate.png",
+    "role": "pose",
+    "character": "miniscribe-rep"
+   }
+  ],
+  "payload": "The whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing small on top of a four-tier tower of shrink-wrapped pallets that rises to the roof trusses, each tier stepped a little wider than the one below it. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+  "delta": "SEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical — identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` — copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-celebrate` pose reference for `miniscribe-rep` — copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing small on top of a four-tier tower of shrink-wrapped pallets that rises to the roof trusses, each tier stepped a little wider than the one below it. Where that description AUTHORS clothing — garments, headwear, footwear — dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure — draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+  "why": "STEP 1 for `miniscribe-rep` (action-celebrate / expr-delighted)"
+ }
+]

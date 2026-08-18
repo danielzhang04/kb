@@ -1,0 +1,50 @@
+{
+  "schema": "image-gen-wave-plan@1",
+  "run_id": "w2f",
+  "wave_id": "W02",
+  "canonical_input": {
+    "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\fig-items-rem.json",
+    "sha256": "011a27c1e7f61c19c9302dd19cf6cac583f99940be14078befcf96ed6835d95f"
+  },
+  "review_store_path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\review.json",
+  "review_store_sha256": "0bab7e1e34de3f9381ad9681110925f44de698a1940a368d8ee1c7a1d26e619b",
+  "concurrency": 2,
+  "workers": [
+    {
+      "worker_id": "w01",
+      "spec": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w01.spec.json",
+      "dispatch": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w01.launch.json",
+      "output_names": [
+        "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153"
+      ],
+      "chain_ids": [
+        "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153"
+      ],
+      "base_chain_ids": [
+        "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153"
+      ],
+      "provider_request_count": 1
+    },
+    {
+      "worker_id": "w02",
+      "spec": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w02.spec.json",
+      "dispatch": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w02.launch.json",
+      "output_names": [
+        "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b"
+      ],
+      "chain_ids": [
+        "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b"
+      ],
+      "base_chain_ids": [
+        "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b"
+      ],
+      "provider_request_count": 1
+    }
+  ],
+  "max_provider_attempts": 8,
+  "hard_cap_usd": 0.312,
+  "commands": [
+    "C:\\Users\\danie\\AppData\\Local\\Programs\\Python\\Python313\\python.exe \"C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\taste-forensics\\wave_worker.py\" --dispatch \"C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w01.launch.json\"",
+    "C:\\Users\\danie\\AppData\\Local\\Programs\\Python\\Python313\\python.exe \"C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\taste-forensics\\wave_worker.py\" --dispatch \"C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w02.launch.json\""
+  ]
+}

@@ -1,0 +1,268 @@
+{
+ "schema": "w2slice-merged-verdicts@1",
+ "strict": {
+  "pro": {
+   "verified": 1,
+   "of": 10,
+   "verified_excl_groundline": 3
+  },
+  "flash": {
+   "verified": 0,
+   "of": 10,
+   "verified_excl_groundline": 2
+  }
+ },
+ "cards": [
+  {
+   "arm": "flash",
+   "card": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:expression",
+    "B:clean_card",
+    "B:framing"
+   ],
+   "notes": [
+    "A: expression: brows read as furrowed/questioning (bleeding the action-shrug pose reference's own quizzical brow shape) rather than expr-deadpan's flat, level, relaxed brow line and neutral mouth.",
+    "B: clean_card: two sealed cardboard cartons on a wooden pallet are fully rendered beside the figure, a scenery/prop element the payload orders left out. framing: only a soft contact-shadow ellipse is visible under the feet, with no distinct thin ground line as the payload requires."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-brick-foreman--back-to-viewer--7a3b93be",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "B: framing: only a soft contact-shadow ellipse is visible under the feet, with no distinct thin ground line as the payload requires."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "B: clean_card: a red-brown brick is drawn gripped in the figure's hand, an object the payload explicitly orders left out. payload_fidelity: the figure is not empty-handed and alone as required — it is shown holding the very brick the scene names. framing: only a soft contact-shadow ellipse is visible under the feet, with no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "B: framing: only a soft contact-shadow ellipse is visible under the feet, with no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "B: clean_card: a pick and a shovel-like tool are fully rendered held in the figure's hands, props the payload orders left out. payload_fidelity: the figure is not empty-handed and alone as required — both hands grip tools named in the scene. framing: only a soft contact-shadow ellipse is visible under the feet, with no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "B:framing"
+   ],
+   "notes": [
+    "A: pose: both arms hang fully relaxed at the sides in a plain neutral standing stance; the carry-by-handle reference holds one arm bent with the hand in a grip shape at waist/hip height, which this card does not replicate at all.",
+    "B: framing: only a soft contact-shadow ellipse is visible under the feet, with no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:expression",
+    "B:clean_card",
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: expression: brows read level/relaxed and the mouth is an open, symmetric, pleasant grin — missing the expr-greedy reference's sharply angled/raised brow and sly asymmetric smirk.",
+    "B: clean_card: a full garden rake and a large heaped pile of banknotes are fully rendered, props the payload orders left out. payload_fidelity: the figure is not empty-handed and alone as required — both hands grip the rake and it stands amid a bank-note pile. framing: only a soft contact-shadow ellipse is visible under the feet/pile, with no distinct thin ground line."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:expression",
+    "B:clean_card",
+    "B:framing",
+    "B:style"
+   ],
+   "notes": [
+    "A: expression: eyes render as wide-open round circles rather than the squinted, upward-crescent closed-eye shape the expr-delighted reference holds.",
+    "B: clean_card: a full four-tier shrink-wrapped pallet tower is built as scenery beneath the figure, a large construction the payload orders left out. framing: the figure is rendered small at the top of the frame while the pallet tower dominates the 2:3 composition, not the whole-figure reference-sheet framing the law calls for. style: the shrink-wrap plastic is rendered with diagonal gradient/sheen highlights, a realistic-texture look outside flat cel at full strength."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "B:clean_card",
+    "B:style"
+   ],
+   "notes": [
+    "A: pose: figure stands nearly upright with feet together and one hand merely lowered toward the prop; missing the action-recoil reference's lean-back weight shift and both hands raised defensively near shoulder height.",
+    "B: clean_card: a glowing test-bench/box prop with rising smoke wisps is fully rendered beside the figure, a scenery/prop element the payload orders left out. style: the bench's red panel has a soft glow/bloom halo bleeding outward, a gradient effect outside flat cel rendering."
+   ]
+  },
+  {
+   "arm": "flash",
+   "card": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:expression",
+    "A:identity",
+    "B:framing"
+   ],
+   "notes": [
+    "A: identity: costume is a casual green t-shirt, khaki trousers and brown belt, not the canonical's white collared dress shirt, black tie and black trousers — the scene text authors no clothing, so the canonical costume should hold unchanged. expression: eyes look forward/centered with knit, concerned brows rather than the expr-thinking reference's sideways gaze and single raised contemplative brow.",
+    "B: framing: only a soft contact-shadow ellipse is visible under the feet, with no distinct thin ground line; note this card correctly omitted its elaborate authored rented-unit scene entirely, the best clean_card compliance in the set."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "B: framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-brick-foreman--back-to-viewer--7a3b93be",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:rig",
+    "B:framing"
+   ],
+   "notes": [
+    "A: rig: a distinct skin-toned ear shape is drawn protruding from beneath the hair on the right side of the head; the rig requires hair/sideburns to fill the ear gap with no ear drawn at all.",
+    "B: framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--16cc9e92",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:clean_card",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "B: clean_card: the figure grips a red clay brick, an added object the payload explicitly orders left out. payload_fidelity: the figure is not empty-handed as required — it holds the very brick the payload says to leave out instead of performing the lowering motion with an empty hand."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-brick-foreman--hold-one-hand--expr-deadpan--ecc1ee75",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "B: framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop. payload_fidelity: both arms hang passively at the sides with no fisted hand or hauling motion, so the payload's 'hauling a dust sheet off a pallet stack' bodily act is not depicted at all."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-drive-maker--action-present--expr-smug--5e51ec13",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:framing"
+   ],
+   "notes": [
+    "B: framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-drive-maker--carry-by-handle--expr-deadpan--f1c1d333",
+   "status": "PARKED",
+   "fail_axes": [
+    "B:clean_card",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "B: clean_card: the figure grips a handled rod/cane-like object, an added prop the payload orders left out (hand truck left out, empty-handed and alone). payload_fidelity: the figure is not empty-handed — it is gripping the added handle object rather than performing the walking act empty-handed."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:pose",
+    "B:payload_fidelity"
+   ],
+   "notes": [
+    "A: pose: hold-both-hands reference shows two hands spread apart gripping an object on either side; card instead shows both hands clasped/interlaced together at waist centerline, a materially different hand and arm placement.",
+    "B: payload_fidelity: the hands are clasped/interlaced passively at the waist with no shaft-gripping or raking/dragging motion toward the body, so the payload's rake-dragging bodily act is not conveyed."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:expression",
+    "B:clean_card",
+    "B:framing"
+   ],
+   "notes": [
+    "A: expression: expr-delighted reference has eyes closed/squinted into crescents from the force of the grin; card renders the eyes fully open and round with visible pupils, a different eye shape than the reference.",
+    "B: clean_card: a full four-tier shrink-wrapped pallet tower is built and rendered as a physical set under the figure, when the payload explicitly says to draw none of the setting and keep a flat pale-grey studio backdrop only. framing: the figure stands atop the pallet prop with no ground line and no soft contact shadow directly beneath it — the required backdrop-plus-shadow framing is replaced by a built environment."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-miniscribe-rep--action-recoil--expr-surprised--b5fa2de9",
+   "status": "PARKED",
+   "fail_axes": [
+    "A:rig",
+    "B:framing"
+   ],
+   "notes": [
+    "A: rig: the raised (screen-left) hand reads as four fanned fingers plus a separate thumb — five digits — instead of the rig's three-fingers-plus-thumb four-digit hand.",
+    "B: framing: only a soft contact-shadow ellipse sits under the feet, no thin ground line is drawn across the backdrop."
+   ]
+  },
+  {
+   "arm": "pro",
+   "card": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+   "status": "VERIFIED",
+   "fail_axes": [],
+   "notes": []
+  }
+ ]
+}

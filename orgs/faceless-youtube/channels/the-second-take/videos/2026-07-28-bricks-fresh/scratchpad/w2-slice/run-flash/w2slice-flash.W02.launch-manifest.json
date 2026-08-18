@@ -1,0 +1,7 @@
+{
+  "schema": "image-gen-wave-launch@1",
+  "commands": [
+    "C:\\Users\\danie\\AppData\\Local\\Programs\\Python\\Python313\\python.exe \"C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\taste-forensics\\wave_worker.py\" --dispatch \"C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\run-flash\\w2slice-flash.W02.w01.launch.json\"",
+    "C:\\Users\\danie\\AppData\\Local\\Programs\\Python\\Python313\\python.exe \"C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\taste-forensics\\wave_worker.py\" --dispatch \"C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\scratchpad\\w2-slice\\run-flash\\w2slice-flash.W02.w02.launch.json\""
+  ]
+}

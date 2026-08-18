@@ -1,0 +1,67 @@
+{
+  "schema": "image-gen-worker-result@1",
+  "run_id": "w2f",
+  "wave_id": "W02",
+  "worker_id": "w01",
+  "status": "complete",
+  "worktree": "C:/Users/danie/kb-worktrees/boss-taste-forensics",
+  "input_spec": {
+    "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w01.spec.json",
+    "sha256": "451c7177bca5ec86c5dc4e29da3aac0f58011e0e5bca606dd40d52410672bd74"
+  },
+  "review_store_sha256": "0bab7e1e34de3f9381ad9681110925f44de698a1940a368d8ee1c7a1d26e619b",
+  "started_at": "2026-08-18T04:27:26.480566Z",
+  "finished_at": "2026-08-18T04:27:38.643181Z",
+  "budget": {
+    "rate_usd": 0.039,
+    "hard_cap_usd": 0.312,
+    "max_provider_attempts": 8,
+    "provider_calls": 1,
+    "billable_outputs": 1,
+    "estimated_spend_usd": 0.039
+  },
+  "items": [
+    {
+      "item_ordinal": 1,
+      "shot_id": null,
+      "card_id": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+      "output_name": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+      "staging_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153.png",
+      "promotion_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\assets\\scenes\\fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153.png",
+      "chain_id": "fig-terry-johnson--action-armscrossed--expr-thinking--5ccd2153",
+      "dependency_depth": 0,
+      "references": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\terry-johnson\\terry-johnson.png",
+          "sha256": "def1c8c082b00d08bc5d482efcc2bb0e4838f4179426bfcd95213771b4d95562"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\expr-thinking.png",
+          "sha256": "53f4e3908d253b14d424b70750d0c5cc47e8a1b64eb0bd8622552e7d9e17c99e"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\action-armscrossed.png",
+          "sha256": "c368ab86dd46e304482f5f7e03b224f584afe968e0a09f7e185425dd9ec25b41"
+        }
+      ],
+      "attempts": [
+        {
+          "attempt_no": 1,
+          "elapsed_s": 12.119,
+          "outcome": "OK",
+          "provider_code": null,
+          "billable": true
+        }
+      ],
+      "final_status": "OK",
+      "staged_sha256": "bd2d38f8390ab428ca131a1458d0d06f9a13fad088d0a8caa778c4c533c97744",
+      "suspected_mechanism_layer": null,
+      "deviation_flags": []
+    }
+  ],
+  "genlog_segment": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w01.genlog.jsonl",
+  "worker_deviation_flags": []
+}

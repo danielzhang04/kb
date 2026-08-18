@@ -1,0 +1,67 @@
+{
+  "schema": "image-gen-worker-result@1",
+  "run_id": "w2f",
+  "wave_id": "W02",
+  "worker_id": "w02",
+  "status": "complete",
+  "worktree": "C:/Users/danie/kb-worktrees/boss-taste-forensics",
+  "input_spec": {
+    "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w02.spec.json",
+    "sha256": "5075487ac1ad78fd2c1c1d755fa6b4562f19bd3e24144d59597bf2f92c951704"
+  },
+  "review_store_sha256": "0bab7e1e34de3f9381ad9681110925f44de698a1940a368d8ee1c7a1d26e619b",
+  "started_at": "2026-08-18T04:27:38.799050Z",
+  "finished_at": "2026-08-18T04:27:53.017709Z",
+  "budget": {
+    "rate_usd": 0.039,
+    "hard_cap_usd": 0.312,
+    "max_provider_attempts": 8,
+    "provider_calls": 1,
+    "billable_outputs": 1,
+    "estimated_spend_usd": 0.039
+  },
+  "items": [
+    {
+      "item_ordinal": 1,
+      "shot_id": null,
+      "card_id": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+      "output_name": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+      "staging_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\_staging\\fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b.png",
+      "promotion_slot": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\videos\\2026-07-28-bricks-fresh\\assets\\scenes\\fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b.png",
+      "chain_id": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+      "dependency_depth": 0,
+      "references": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\miniscribe-rep\\miniscribe-rep.png",
+          "sha256": "591373d12bcd930736da6eebccf9b6c239caefff952d7c8a788dd185f616e49e"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\expr-delighted.png",
+          "sha256": "de4ecceb04a33f3b4d8d7f99274acf1d9f4b3350eff4b2bf66494c8cc987eeb9"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels\\the-second-take\\visual-kit\\refs\\base\\action-celebrate.png",
+          "sha256": "ba191b9e6d0f96ff89510ac2c0f84ebe93872086a90d172d268cfc12c261c00f"
+        }
+      ],
+      "attempts": [
+        {
+          "attempt_no": 1,
+          "elapsed_s": 14.168,
+          "outcome": "OK",
+          "provider_code": null,
+          "billable": true
+        }
+      ],
+      "final_status": "OK",
+      "staged_sha256": "a62305d9efb3f9e56c571ebf98b3dac7ed5281e709e5b05e667885a925ce3d09",
+      "suspected_mechanism_layer": null,
+      "deviation_flags": []
+    }
+  ],
+  "genlog_segment": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\.w2f\\w2f.W02.w02.genlog.jsonl",
+  "worker_deviation_flags": []
+}
