@@ -85,7 +85,7 @@ def test_p1_pin_crowd_face_tier_clauses_reach_the_crowd_payload():
     for span in (
         "DOT EYES, one simple consistent mouth (neutral / smile / downturn only), "
         "NO noses, NO ears, NO teeth",
-        "**EXACT same squat head-to-body proportion as the base rig**",
+        "**EXACT same squat head-to-body proportion as the crowd exemplar seed**",
         "to EVERY crowd figure individually and without exception in a multi-figure group",
         "a single detailed or individuated face anywhere in the group is a rig FAIL",
     ):

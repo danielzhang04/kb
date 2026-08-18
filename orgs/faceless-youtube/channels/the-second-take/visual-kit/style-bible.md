@@ -81,7 +81,7 @@ character-bearing seed (non-identity mode). The wording exempts crowds, so both 
 > tones drawn from the channel's cast head-tone set (e.g. #f5ead6 / #e2b78c / #7a4f33) for the whole
 > group — never one uniform cream, never a tone invented per individual figure — DOT EYES, one simple
 > consistent mouth (neutral / smile / downturn only), NO noses, NO ears, NO teeth, the **EXACT same
-> squat head-to-body proportion as the base rig** — a large round head on a short compact body, NOT
+> squat head-to-body proportion as the crowd exemplar seed** — a large round head on a short compact body, NOT
 > taller/lanky — hands, where visible, are the same four-digit cartoon hand. The seed reference
 > contributes ONLY this head/face/hand simplification, NEVER its own clothing: dress every crowd
 > figure for THIS shot's own scene era and setting, not the seed's period dress, and vary hair/headwear
@@ -90,7 +90,7 @@ character-bearing seed (non-identity mode). The wording exempts crowds, so both 
 > nose, no ears — to EVERY crowd figure individually and without exception in a multi-figure group; a
 > single detailed or individuated face anywhere in the group is a rig FAIL.
 
-The crowd rig differs from the full rig **ONLY in the FACE** — proportion is IDENTICAL to the base rig, and
+The crowd rig differs from the full rig **ONLY in the FACE** — proportion is IDENTICAL to the crowd exemplar's (squat, ~2.7 head-heights face-only; poyais-era standard, ruling 2026-08-17), and
 taller/lankier figures are the standing drift and a review axis (§3). **No prompt ever carries this
 text:** the shot declares `figures.crowd: true` (`visual-grammar.md §2`) and `forge.py` appends the
 clause at gen time. Every crowd-bearing gen seeds the crowd exemplar — **this video's own
