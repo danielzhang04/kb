@@ -222,6 +222,23 @@ function SessionChip(): React.JSX.Element {
   );
 }
 
+/**
+ * The fail-closed server protects every read projection, so an unsigned browser must not mount the
+ * data shell while it waits for a passkey. Keeping this boundary above the shell also means a 401 can
+ * never turn a projection refusal into a rendering error.
+ */
+function SignInView(): React.JSX.Element {
+  return (
+    <main className="mc-main">
+      <section className="code-view" aria-label="Sign in">
+        <h2>Sign in</h2>
+        <p>Unlock this dashboard with your device passkey.</p>
+        <SessionChip />
+      </section>
+    </main>
+  );
+}
+
 function Sidebar({
   active,
   onSelect,
@@ -526,6 +543,11 @@ export function App(): React.JSX.Element {
 }
 
 function AppShell(): React.JSX.Element {
+  const { locked } = useSession();
+  return locked ? <SignInView /> : <AuthenticatedAppShell />;
+}
+
+function AuthenticatedAppShell(): React.JSX.Element {
   // arc-3 — navigation is a STACK, not a single destination. `goTo` (a sidebar click) resets it to a
   // fresh root so the mental model is unchanged; `push` drills into an entity detail and reveals a back
   // affordance. Every existing read site still just reads `view`. See src/nav/stack.ts for why this is
@@ -535,8 +557,8 @@ function AppShell(): React.JSX.Element {
   const view = current.view;
   const [rail, setRail] = useState(false);
   const { session, requireSession } = useSession();
-  // Keep the established locked-shell render while no session exists. Once authenticated, capability
-  // discovery is fail-closed: a Linux daemon that does not expose PTY routes must never get a socket.
+  // This authenticated shell mounts only after AppShell's signed-out gate. Capability discovery is
+  // fail-closed: a Linux daemon that does not expose PTY routes must never get a socket.
   const [ptyEnabled, setPtyEnabled] = useState(true);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The [+ New ▾] menu opens the Composer surface over the current view; `composerKind` pre-seeds its

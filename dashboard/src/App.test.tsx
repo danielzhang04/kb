@@ -14,6 +14,11 @@ import { invalidateSessionOnGovernedAuthFailure } from './lib/authClient';
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  // Most shell tests exercise the authenticated surface, so start with one fresh tab-scoped session.
+  window.sessionStorage.setItem(
+    'kb-dashboard-session-v1',
+    JSON.stringify({ token: 'test-session', expiresAt: Date.now() + 60_000 }),
+  );
   window.localStorage.removeItem('kb-composer-open-refs-v1');
   // Views self-fetch on mount; a never-resolving stub keeps every view on its empty-safe scaffold
   // (and keeps the sidebar approvals-count at 0, so no badge) without real network or state churn.
@@ -93,8 +98,10 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(screen.getByRole('button', { name: 'STOP everything' })).toBeTruthy();
   });
 
-  it('carries exactly ONE unlock affordance: the top-bar lock chip', () => {
+  it('renders the passkey sign-in view before mounting the data shell', () => {
+    window.sessionStorage.clear();
     render(<App />);
+    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy();
     const chip = screen.getByTestId('session-chip') as HTMLButtonElement;
     expect(chip.textContent).toBe('Unlock');
     expect(chip.disabled).toBe(false);
@@ -103,6 +110,23 @@ describe('App shell — entity-first sidebar navigation', () => {
     // so the chip is the ONLY unlock-named button in the app — and locked, it reads as one.
     expect(screen.queryAllByRole('button', { name: /unlock/i }).map((b) => b.textContent))
       .toEqual(['Unlock']);
+    expect(screen.queryByLabelText('Home view')).toBeNull();
+  });
+
+  it('keeps the sign-in view up when every pre-auth projection would reject with 401', () => {
+    window.sessionStorage.clear();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'unauthenticated' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(() => render(<App />)).not.toThrow();
+    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy();
+    expect(screen.queryByLabelText('Home view')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('restores an unexpired tab session after a refresh-sized remount', () => {
@@ -145,6 +169,25 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(sidebar.lastElementChild?.className).toBe('mc-nav');
     // The [+ New] header zone sits inside the sidebar, above the nav list.
     expect(within(sidebar).getByRole('button', { name: 'New' })).toBeTruthy();
+  });
+
+  it('returns to sign-in when the Home index read reports a governed 401', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/index') {
+        return Promise.resolve(new Response(JSON.stringify({ error: 'unauthenticated' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        }));
+      }
+      return new Promise(() => {});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+    expect(screen.getByLabelText('Home view')).toBeTruthy();
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Sign in' })).toBeTruthy());
+    expect(window.sessionStorage.getItem('kb-dashboard-session-v1')).toBeNull();
   });
 
   it('exposes a quiet theme toggle that flips the pinned data-theme and persists the choice', () => {
@@ -244,10 +287,10 @@ describe('App shell — entity-first sidebar navigation', () => {
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
     expect(btn.getAttribute('aria-current')).toBe('page');
-    // The real Terminal view mounts (session-gated: it shows the calm locked line, not the U3 placeholder).
+    // The real authenticated Terminal view mounts, not the U3 placeholder.
     const view = screen.getByLabelText('Terminal view');
     expect(view.textContent ?? '').not.toMatch(/built in U3/i);
-    expect(within(view).getByTestId('terminal-locked')).toBeTruthy();
+    expect(within(view).getByTestId('terminal-tab-add')).toBeTruthy();
   });
 
   it('reads the authenticated runtime capability and disables Terminal when PTY is unavailable', async () => {
