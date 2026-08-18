@@ -547,3 +547,20 @@
 - WORKED (parallelization for a shared SPA): build the dashboard section + a panel-REGISTRATION mechanism FIRST (serial), so every feature panel is a self-contained component added without editing shared nav/routing — this is the collision-avoidance move that lets feature lanes run in parallel. Do a dashboard-wide restyle as a CENTRALIZED theme-token pass (not per-screen rewrites), gated on breaking zero existing tests.
 - LEARNED (Daniel's taste this arc): pushed back HARD on my adversarial instinct to narrow/supervise — he wants an ambitious all-around (function + UI) run and trusts a strong plan + review loop over hand-holding. UI = "inspired, not copied" (adapt DNA: agents-as-a-graph, live run telemetry, model badges, functional-color dark shell — never clone layouts). Prefer ADAPT-EXISTING over net-new (U8 became "reclaim SELECT ECC context-persistence parts, drop the GateGuard that got ECC disabled"). He cut the speculative "per-terminal context object" when I argued it duplicated ECC + was an empty vessel. Business features (CRM/funnel/etc) OUT — he wants the INFRA to build agents of that complexity, not the features.
 - LEARNED (honesty pattern that landed well): repeatedly correcting "net-new" → "already built" earned trust — autonomy graduation gate is BUILT (`promotion.py`/`trust.py`/`dispatch.py`), the run-envelope is captured-but-inert (`trace/render.ts`), ECC ships the context stack but is disabled. The plan leans on SURFACING these (autonomy-ladder view, run-envelope panel, watch-agents-run over the existing live-run-graph) — low build risk, high review value.
+
+## 2026-08-18/19 — Bricks overnight run (boss session, Fable 5)
+- WORKED: forensics-before-fixes settled a "skills got worse" scare in one opus agent — verdict was
+  standard drift (the remembered "perfect 5/5" was an HTTP tally, not a quality verdict); always
+  audit what a remembered score actually measured before re-engineering to beat it.
+- WORKED: boss-as-parallelizer — safe-stop a serial conductor, demand a machine-readable
+  remaining.json manifest, fan out disjoint contiguous partitions (delta chains whole) with
+  per-worker log files and scoped stamp writes; 7 workers, zero content collisions.
+- LEARNED: subagents that "wait for a monitor/notification" on background gens stall silently —
+  notifications don't reach them. Brief "poll directly, never idle-wait, don't end turn while
+  partition work remains" up front; SendMessage resume fixes stragglers.
+- LEARNED: shared stamp stores need schema-strict writes — an old-schema shorthand stamp
+  collaterally downgraded ~17 verified shots (repaired + re-checked same night). Scope every write
+  to your own keys and verify by re-read.
+- LEARNED: forge.py relative --out/--to paths double-nest on this box — absolute paths only.
+- HELD: confirm-design-before-spend — every paid round this session ran only after Daniel's explicit
+  commission/ruling; the 08-18 blowup pattern did not recur.
