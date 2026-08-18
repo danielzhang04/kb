@@ -1,0 +1,96 @@
+/*
+ * Run Envelope panel (Agent Platform, Wave-1 U6) — this panel's OWN stylesheet, imported only by
+ * `views/agentPlatform/panels/RunEnvelope.panel.tsx`. Panel-specific `.ap-runenv…` prefix; no edit to
+ * the section-wide `agentPlatform.css`, which belongs to the grid shell alone.
+ *
+ * Warm Claude-dark tokens only (see src/styles/app.css) — no literal colours.
+ */
+
+.ap-runenv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ap-runenv__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ap-runenv__heading {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--type-section-weight);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.ap-runenv__note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+
+.ap-runenv__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--fg-faint);
+}
+
+.ap-runenv__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+
+.ap-runenv__table th {
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: var(--type-section-weight);
+  color: var(--fg-faint);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-1) var(--space-2);
+}
+
+.ap-runenv__table td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-dim);
+  vertical-align: top;
+}
+
+.ap-runenv__mono {
+  font-family: var(--font-mono);
+  color: var(--fg-primary);
+}
+
+.ap-runenv__badge {
+  display: inline-block;
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  border: 1px solid var(--border-strong);
+  color: var(--fg-dim);
+}
+
+.ap-runenv__badge--ok {
+  color: var(--success);
+}
+
+.ap-runenv__badge--error {
+  color: var(--error);
+}
+
+.ap-runenv__badge--pending {
+  color: var(--status-idle);
+}
+
+/* "Could not check" — deliberately NOT the pass green and NOT the fail red: a dashed, muted chip so a
+   not-evaluated rule reads as an absence of evidence rather than as a clean result. */
+.ap-runenv__badge--skipped {
+  color: var(--fg-faint);
+  border-style: dashed;
+}

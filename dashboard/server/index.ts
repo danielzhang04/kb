@@ -8,6 +8,7 @@ import { registerDag } from './dag/routes.ts';
 import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
+import { registerTraceRead } from './trace/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
@@ -185,6 +186,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerRoutingRead(scope, repoRoot);
     registerAgents(scope, repoRoot);
     registerPanels(scope, repoRoot);
+    registerTraceRead(scope);
     registerWorkflows(scope, surfaceCtx);
   });
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
