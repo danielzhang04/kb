@@ -9,6 +9,11 @@ import { registerRoutingRead } from './routing/routes.ts';
 import { registerAgents } from './agents/routes.ts';
 import { registerPanels } from './panels/routes.ts';
 import { registerTraceRead } from './trace/routes.ts';
+import { registerBrainSearch } from './brain/routes.ts';
+import { registerContextLifecycle } from './contextLifecycle/routes.ts';
+import { registerLessons } from './lessons/routes.ts';
+import { registerHygiene } from './hygiene/routes.ts';
+import { registerModelAudit } from './modelAudit/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
 import { registerWriteSurface, makeSurfaceContext } from './http/surface.ts';
@@ -187,6 +192,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerAgents(scope, repoRoot);
     registerPanels(scope, repoRoot);
     registerTraceRead(scope);
+    registerBrainSearch(scope, { repoRoot });
+    registerContextLifecycle(scope);
+    registerLessons(scope, repoRoot);
+    registerHygiene(scope, repoRoot);
+    registerModelAudit(scope);
     registerWorkflows(scope, surfaceCtx);
   });
   registerWriteSurface(app, surfaceCtx); // U2: governed write surface (origin -> rate-limit -> session -> gate -> audit)
