@@ -55,20 +55,48 @@ class ProductionExportIo:
         return subprocess.run(argv, check=True, capture_output=True, text=True)
 
     def service_cgroup_children(self, unit: str) -> int:
+        if "/" in unit:
+            raise RuntimeError("service unit must not contain '/'")
         result = self.run(["systemctl", "show", "--property=ControlGroup", "--value", unit])
         control_group = result.stdout.strip()
-        if not control_group.startswith("/") or control_group == "/":
-            raise RuntimeError("service cgroup is unavailable")
+
+        def cgroup_processes(service_root: Path) -> int:
+            processes = 0
+            for process_file in set(service_root.glob("**/cgroup.procs")):
+                processes += sum(1 for row in process_file.read_text(encoding="ascii").splitlines() if row.strip())
+            return processes
+
+        def unit_is_down() -> bool:
+            try:
+                state = self.run(["systemctl", "is-active", unit]).stdout.strip()
+            except subprocess.CalledProcessError as error:
+                state = (error.stdout or "").strip()
+            return state in {"inactive", "failed"}
+
         cgroup_root = Path("/sys/fs/cgroup").resolve(strict=True)
-        service_root = (cgroup_root / control_group.lstrip("/")).resolve(strict=True)
+        service_parent = (cgroup_root / "system.slice").resolve(strict=True)
+        if not control_group.startswith("/") or control_group == "/":
+            if not unit_is_down():
+                raise RuntimeError("service cgroup is unavailable")
+            service_root = service_parent / unit
+            try:
+                service_root.stat()
+            except FileNotFoundError:
+                return 0
+            return cgroup_processes(service_root)
+        if not control_group.startswith("/system.slice/") or "/" in control_group.removeprefix("/system.slice/"):
+            raise RuntimeError("service cgroup is outside system.slice")
         try:
-            service_root.relative_to(cgroup_root)
+            service_root = (service_parent / control_group.removeprefix("/system.slice/")).resolve(strict=True)
+        except FileNotFoundError as error:
+            if unit_is_down():
+                return 0
+            raise RuntimeError("service cgroup directory is unavailable") from error
+        try:
+            service_root.relative_to(service_parent)
         except ValueError as error:
-            raise RuntimeError("service cgroup escapes cgroup root") from error
-        processes = 0
-        for process_file in set(service_root.glob("**/cgroup.procs")):
-            processes += sum(1 for row in process_file.read_text(encoding="ascii").splitlines() if row.strip())
-        return processes
+            raise RuntimeError("service cgroup is outside system.slice") from error
+        return cgroup_processes(service_root)
 
     def fsync_file_and_parent(self, path: Path) -> None:
         with path.open("rb") as handle:

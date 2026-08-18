@@ -88,6 +88,31 @@ def fake_export_io(calls: list[str], cgroup_children: int = 0, fail_on: set[str]
     return FakeExportIo()
 
 
+def production_cgroup_export_io(calls, monkeypatch, control_group="", active_state="inactive", is_active_error=False):
+    io = fake_export_io(calls)
+    fake_run = io.run
+    io.systemctl_argvs = []
+
+    def run(argv):
+        if argv[0] == "systemctl":
+            io.systemctl_argvs.append(argv)
+        if argv[:2] == ["systemctl", "show"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=control_group + "\n", stderr="")
+        if argv[:2] == ["systemctl", "is-active"]:
+            if is_active_error or active_state in {"inactive", "failed"}:
+                raise subprocess.CalledProcessError(3, argv, output=active_state + "\n")
+            return subprocess.CompletedProcess(argv, 0, stdout=active_state + "\n", stderr="")
+        return fake_run(argv)
+
+    monkeypatch.setattr(io, "run", run)
+    monkeypatch.setattr(
+        io,
+        "service_cgroup_children",
+        lambda unit: export_tier0.ProductionExportIo.service_cgroup_children(io, unit),
+    )
+    return io
+
+
 def fake_desktop_runner(calls: list[list[str]]):
     def run(argv, **_kwargs):
         calls.append(argv)
@@ -168,6 +193,107 @@ def test_export_stops_all_writers_before_tar_and_restarts_locked(tmp_path):
 def test_export_refuses_to_archive_when_the_stopped_service_cgroup_is_not_empty(tmp_path):
     with pytest.raises(RuntimeError, match="cgroup is not empty"):
         export_tier0.export(tmp_path / "tier0.tar", io=fake_export_io([], cgroup_children=1))
+
+
+def test_export_proceeds_when_stopped_service_has_no_control_group(tmp_path, monkeypatch):
+    calls = []
+    io = production_cgroup_export_io(calls, monkeypatch)
+    (tmp_path / "system.slice").mkdir()
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    export_tier0.export(tmp_path / "tier0.tar", io=io)
+
+    assert calls == ["lock", "systemctl:stop", "tar", "fsync", "systemctl:start", "ready:locked"]
+
+
+def test_service_cgroup_children_rejects_empty_control_group_for_active_service(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch, active_state="active")
+    (tmp_path / "system.slice").mkdir()
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    with pytest.raises(RuntimeError, match="service cgroup is unavailable"):
+        io.service_cgroup_children("kb-dashboard.service")
+    assert ["systemctl", "is-active", "kb-dashboard.service"] in io.systemctl_argvs
+
+
+def test_service_cgroup_children_accepts_missing_cgroup_for_stopped_service(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch, control_group="/system.slice/missing")
+    (tmp_path / "system.slice").mkdir()
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    assert io.service_cgroup_children("kb-dashboard.service") == 0
+
+
+def test_service_cgroup_children_accepts_failed_cgroupless_service(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch, active_state="failed")
+    (tmp_path / "system.slice").mkdir()
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    assert io.service_cgroup_children("kb-dashboard.service") == 0
+
+
+def test_service_cgroup_children_rejects_resolved_path_outside_system_slice(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch, control_group="/system.slice/..")
+    (tmp_path / "system.slice").mkdir()
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    with pytest.raises(RuntimeError, match="service cgroup is outside system.slice"):
+        io.service_cgroup_children("kb-dashboard.service")
+
+
+def test_service_cgroup_children_rejects_unit_containing_a_slash(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch)
+    (tmp_path / "system.slice").mkdir()
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    with pytest.raises(RuntimeError, match="service unit must not contain"):
+        io.service_cgroup_children("kb-dashboard.service/escape")
+    assert io.systemctl_argvs == []
+
+
+def test_service_cgroup_children_rejects_missing_system_slice_layout(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch, control_group="/system.slice/missing")
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    with pytest.raises(FileNotFoundError):
+        io.service_cgroup_children("kb-dashboard.service")
+
+
+def patch_cgroup_root(monkeypatch, root):
+    real_path = Path
+    monkeypatch.setattr(
+        export_tier0,
+        "Path",
+        lambda path, *args: root if path == "/sys/fs/cgroup" else real_path(path, *args),
+    )
+
+
+def test_service_cgroup_children_counts_present_cgroup_for_stopped_service(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch)
+    service_root = tmp_path / "system.slice/kb-dashboard.service"
+    service_root.mkdir(parents=True)
+    (service_root / "cgroup.procs").write_text("123\n", encoding="ascii")
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    assert io.service_cgroup_children("kb-dashboard.service") == 1
+
+
+def test_service_cgroup_children_rejects_missing_cgroup_for_active_service(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch, control_group="/system.slice/missing", active_state="active")
+    (tmp_path / "system.slice").mkdir()
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    with pytest.raises(RuntimeError, match="service cgroup directory is unavailable"):
+        io.service_cgroup_children("kb-dashboard.service")
+
+
+def test_service_cgroup_children_rejects_activating_cgroupless_service(tmp_path, monkeypatch):
+    io = production_cgroup_export_io([], monkeypatch, active_state="activating", is_active_error=True)
+    (tmp_path / "system.slice").mkdir()
+    patch_cgroup_root(monkeypatch, tmp_path)
+
+    with pytest.raises(RuntimeError, match="service cgroup is unavailable"):
+        io.service_cgroup_children("kb-dashboard.service")
 
 
 def test_export_restarts_even_when_stopping_the_service_raises(tmp_path):
