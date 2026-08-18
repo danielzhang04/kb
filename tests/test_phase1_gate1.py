@@ -262,6 +262,23 @@ def test_http_probe_keeps_health_request_headerless_and_adds_bearer_only_when_re
     assert dict(captured[-1][0].header_items()) == {}
     probe_http("https://kb.example.ts.net/api/kb/tree", authorization="session-value", read_body=False, open_url=open_url)
     assert dict(captured[-1][0].header_items()) == {"Authorization": "Bearer session-value"}
+    probe_http(
+        gate1.normalize_base_url("https://kb.example.ts.net:443") + "/api/kb/tree",
+        open_url=open_url,
+    )
+    assert captured[-1][0].full_url == "https://kb.example.ts.net/api/kb/tree"
+
+
+@pytest.mark.parametrize(("value", "expected"), [
+    ("https://h", "https://h"),
+    ("https://h:443", "https://h"),
+    ("https://h:8443", "https://h:8443"),
+    ("http://h", "http://h"),
+    ("http://h:80", "http://h"),
+    ("http://h:8080", "http://h:8080"),
+])
+def test_normalize_base_url_omits_only_default_ports(value, expected):
+    assert gate1.normalize_base_url(value) == expected
 
 
 def test_default_opener_does_not_follow_redirects_or_forward_the_bearer():
@@ -316,6 +333,34 @@ def test_websocket_probe_bytes_have_no_browser_headers_or_credential_until_authe
     authenticated = websocket_request_bytes("kb.example.ts.net:443", "/ws", "session-value", "fixed-key")
     assert b"Origin:" not in authenticated
     assert authenticated.endswith(b"Authorization: Bearer session-value\r\n\r\n")
+
+
+def test_websocket_probe_omits_default_port_from_handshake_authority(monkeypatch):
+    sent = []
+
+    class Connection:
+        def settimeout(self, _timeout):
+            return None
+
+        def sendall(self, request):
+            sent.append(request)
+
+        def recv(self, _size):
+            return b"HTTP/1.1 101 Switching Protocols\r\n\r\n"
+
+        def close(self):
+            return None
+
+    connection = Connection()
+    monkeypatch.setattr(gate1.socket, "create_connection", lambda *_args, **_kwargs: connection)
+    monkeypatch.setattr(
+        gate1.ssl,
+        "create_default_context",
+        lambda: SimpleNamespace(wrap_socket=lambda sock, **_kwargs: sock),
+    )
+    assert gate1.probe_websocket("wss://kb.example.ts.net:443/ws") == 101
+    assert b"Host: kb.example.ts.net\r\n" in sent[-1]
+    assert b"Host: kb.example.ts.net:443\r\n" not in sent[-1]
 
 
 def test_finalize_signs_envelopes_approval_and_final_inventory_digest(tmp_path):
@@ -559,11 +604,11 @@ def test_collect_writes_exact_unsigned_package_without_session_or_tailscale_muta
     ]
     assert all(call[1]["timeout"] == 30 for call in run_calls)
     assert all(call[1]["capture_output"] is True and call[1]["text"] is True for call in run_calls)
-    assert probe_calls[0] == ("https://kb.example.ts.net:443/healthz", None, True)
-    assert probe_calls[1] == ("https://kb.example.ts.net:443/readyz", None, True)
+    assert probe_calls[0] == ("https://kb.example.ts.net/healthz", None, True)
+    assert probe_calls[1] == ("https://kb.example.ts.net/readyz", None, True)
     assert ws_calls == [
-        ("wss://kb.example.ts.net:443/ws", None),
-        ("wss://kb.example.ts.net:443/ws", "ambient-session-value"),
+        ("wss://kb.example.ts.net/ws", None),
+        ("wss://kb.example.ts.net/ws", "ambient-session-value"),
     ]
     package_bytes = b"".join(path.read_bytes() for path in output.iterdir())
     assert b"ambient-session-value" not in package_bytes
