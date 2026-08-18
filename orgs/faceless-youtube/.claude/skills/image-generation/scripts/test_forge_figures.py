@@ -244,16 +244,18 @@ def test_a_scene_prompt_is_bible_head_then_authored_text_then_the_file_suffix_ta
     assert text.count(authored) == 1, text
     assert text.startswith(k.desc_style) and text.endswith(suffix), text
     # era §2b survivors the head voice must still carry (archaeology D1)
-    # P1 PIN — the last two spans are the §2b SATURATION clause in its ea71f99 wording (verified
-    # byte-identical to HEAD). median_sat is the one measured axis that separates Daniel's liked
-    # frames from his disliked ones, so this clause is floor law: P11's warm re-lean is channel-level
-    # and must never be delivered by weakening or re-rolling it.
+    # P1 PIN — the last two spans are the §2b SATURATION clause in its 2026-08-18 wording (verified
+    # byte-identical to HEAD): warm-tinted neutrals plus "cools its LIGHT, never its neutrals" are
+    # floor law, re-rolled by explicit Daniel ruling 2026-08-18. The saturation floor "never drains
+    # to greyscale" is unchanged and remains pinned. median_sat is the one measured axis that
+    # separates Daniel's liked frames from his disliked ones.
     for phrase in ("Draw in the SAME art style as the reference image", "FLAT cel-shaded CARTOON",
                    "an even\nMEDIUM-THICK".replace("\n", " "), "#241a12",
                    "gentle soft cel shading", "No text, no words, no labels",
                    "flat colours laid down at FULL cel strength",
-                   "every fill a real colour, and any grey or neutral clearly TINTED warm or cool, "
-                   "so a cold scene reads COLD-COLOURED and never drains to greyscale"):
+                   "every fill a real colour, and any grey or neutral clearly TINTED WARM, "
+                   "so the frame never drains to greyscale; a genuinely cold scene cools its LIGHT, "
+                   "never its neutrals"):
         assert phrase in text, (phrase, text)
     # a request with no suffix (an ad-hoc gen, a STEP-1 identity card) assembles exactly as before
     step1 = k.prompt_for("environment", "A neutral reference figure.")

@@ -1477,12 +1477,13 @@ def seed_roles_text(seed_roles):
             # its semantic-only red). The tile is the register's chroma AUTHORITY — it measures
             # mean saturation 0.407 with only 16% of its area near-neutral — and "and nothing else"
             # was opting that chroma out, leaving grey the only instruction the prompt could
-            # satisfy. It now grants SATURATION, matched in the new frame's own hues, so a cool
-            # authored palette renders cool-and-coloured instead of drained.
+            # satisfy. It now grants SATURATION and TEMPERATURE, matched in the new frame's own
+            # hues, so a cool authored palette renders cool-and-coloured instead of drained.
             detail = ("the channel's SCENE STYLE TILE — a register sample ONLY. It pins LINE "
                       "WEIGHT, the outline colour (#241a12), the FLAT-CEL RENDER, and PALETTE "
-                      "SATURATION — match how strongly its flat fills are coloured and lay THIS "
-                      "frame's own hues, warm or cool, down at that same strength; a frame drained "
+                      "SATURATION and TEMPERATURE — match how strongly its flat fills are coloured "
+                      "and how warm or cool they are; lay THIS frame's own hues down at that same "
+                      "strength and temperature; a frame drained "
                       "to neutral grey has failed to take the register. Take NOTHING else "
                       "from it — not its content, not its objects, not its layout or camera, and "
                       "NOT the place it depicts. This image is not a location and never appears "
@@ -2333,7 +2334,7 @@ def cmd_batch(k, shots_path, out_path, video_dir=None, shots=None, retry_rebuild
                 and reg_assets.get(STYLE_TILE)):
             tagged_names.append(STYLE_TILE)
             why.append(f"STYLE TILE — cast-free frame; §5 anchor `{STYLE_TILE}` derived "
-                       f"(line register + palette only)")
+                       f"(line register + palette + temperature)")
 
         def _role_of(n):
             # The tile is registered `kind: environment` like every other standing `refs/env/`

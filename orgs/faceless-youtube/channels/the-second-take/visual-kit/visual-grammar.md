@@ -12,7 +12,7 @@ a hold.
 **`global_prompt_suffix`** — fixed channel data, copied verbatim into `shots.json`, appended by `forge.py`
 at the TAIL of every scene generation prompt:
 
-> Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.
+> Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.
 
 The LOOK is stated in exactly TWO voices and nowhere else: `style-bible.md` §2b at the HEAD of the prompt
 and this suffix at its TAIL. `forge.py` injects both. A `still_prompt` describes **CONTENT and nothing
@@ -60,28 +60,21 @@ Record the class by its canonical name from the `shot_class` enum (`shots-schema
 - Non-literal changes the depiction, not the scene's occupancy: symbolic, physicalized-imbalance and ironic-counterpoint shots remain full representative scenes, never the same scene with its people removed.
 - The calibration is `../example-shots.md`: match its depiction THINKING, never clone its content.
 - A shot that merely draws its line's words is a failure → reclassify it.
-- **Choose the beat's subject, not a population:** use people for person, decision, relationship,
-  action, or reaction beats; use an object, place, document, or mechanism when that is the subject.
-  Never add or remove people to satisfy a population target.
-- **Figure bias — concrete presence is the DEFAULT on beats about people, and a figureless frame
-  EARNS its absence.** A beat naming a person, a party, a decision, or an act ("they were raking it
-  in", "the people selling picks and shovels") is staged with the bodies doing it. A symbolic or
-  prop-only frame on such a beat is legal only when the absence is itself the argument, or the
-  subject genuinely is a thing/place/mechanism — and then say so in `notes`. **Figure bias is satisfied
-  by PERFORMANCE, not by population:** the body doing it stands where the beat is, on the seeded tier
-  (§2) — a rear-zone crowd behind an unmanned prop does not stage the line. The failure this
-  corrects is measured, not theoretical: the reset's first fifth ran 29 of 41 frames with no figure
-  of any kind and deleted the sellers from "the people selling picks and shovels", on a channel
-  whose identity is "no on-screen narrator — the SCREEN is a CAST" (`style-bible.md §1`). **A
-  figureless run past ~10s is a self-audit flag** (SKILL step 3c), never a lint failure: taste is
-  the human's call and no rule will ever make it.
+- **The beat's true SUBJECT bears the frame — a person, an object, or a place.** Use people for
+  person, decision, relationship, action, or reaction beats; use an object, place, document, or
+  mechanism where that is the subject, and never add or remove people to hit a population target.
+  **A person-subject is satisfied by PERFORMANCE, not by population:** the body doing it stands where
+  the beat is, on the seeded tier (§2) — a rear-zone crowd behind an unmanned prop does not stage the
+  line, on a channel whose identity is "no on-screen narrator — the SCREEN is a CAST"
+  (`style-bible.md §1`). **A figureless run past ~10s is a self-audit flag** (SKILL step 3c), never a
+  lint failure: taste is the human's call and no rule will ever make it.
 
 **Chain logic:** one idea per FRAME. Consecutive shots on ONE set share a `stage` — the `base` establishes
 it, each `delta` changes exactly ONE physically feasible semantic transformation, **≤2 deltas**, then a re-base or a hard cut. A world,
-setting, subject, or register change is a **hard cut**, never a delta. **Where the beat leaves the
-staging open, DEPARTURE is the default:** prefer the staging that leaves the current place, and let
-lingering there be a choice the beat earns — re-using a place because it is already established is how
-a video collects long single-set runs. **A delta PROMPT is a compact
+setting, subject, or register change is a **hard cut**, never a delta. **Where consecutive beats play on the
+SAME set, the CHAIN is the default:** stage them as one base + deltas rather than re-inventing the
+place each cut. Departure is what a changed place, subject, or register earns; the guard against long
+single-set runs is the ≤2-delta cap and the re-base, not a standing bias against staying. **A delta PROMPT is a compact
 restatement of the held scene, then the change as its FINAL clause** — the base's identity and
 load-bearing facts carried over tightened, never re-invented or paraphrased into different nouns, closing
 on the one change plus "only this changes; everything else exactly as established". A delta regenerates
@@ -143,7 +136,7 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   shot authors a change; an unnamed role carries 1–2 unmistakable signifiers — a role the viewer must
   deduce is a staging failure.
 - **A character reveal lands on the naming moment** — the entrance anchors to the VO line that names
-  them, staged sized to the beat (a big reveal: spotlight / scale / arrival into a held scene; a minor
+  them, staged sized to the beat (a big reveal: spotlight / low angle / scale / arrival into a held scene; a minor
   one: a clean introduction), in its canonical expression unless the beat authors otherwise.
   **Where the naming line is also a branded place's establishing beat**, the plate law and this one
   want the same frame. The resolution: the plate is the place's first CAST-FREE frame, the reveal is
@@ -255,8 +248,9 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
 
 ## 3. Composition — a decision, driven by the payload
 
-Framing and scale are a choice driven by the one thing the viewer must see (the payload) and the
-shot's class. The vantage is not a choice — it is the house eye-level frontal (`style-bible.md` §5).
+Framing, scale, and vantage are a choice driven by the one thing the viewer must see (the payload) and
+the shot's class. Eye-level frontal is the house REST position, not a lock: unchosen, a shot defaults to
+a centered eye-level medium — fine once, deadly on repeat.
 - **No hand/extremity close-ups — framing stays at body scale.** The rig's schematic 4-digit hands do
   not survive macro framing; show a document/signature/object detail at desk scale, the hand incidental.
 

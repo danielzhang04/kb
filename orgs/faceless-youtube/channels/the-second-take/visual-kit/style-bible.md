@@ -52,9 +52,9 @@ tone follows the character's registry `head_tone`). The delta overrides it on ex
 
 > Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even
 > MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL
-> cel strength — every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a
-> cold scene reads COLD-COLOURED and never drains to greyscale — with gentle soft cel shading,
-> rounded friendly shapes, no realistic detail. No text, no words, no labels.
+> cel strength — every fill a real colour, and any grey or neutral clearly TINTED WARM, so the frame
+> never drains to greyscale; a genuinely cold scene cools its LIGHT, never its neutrals — with gentle
+> soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.
 
 For a **new character** the delta supplies only identity-VARYING traits (hair / facial hair, a flat head tone
 (§4), build + outfit) and §2c holds the rig. For an **environment/prop**: describe the scene, palette free.
@@ -166,15 +166,15 @@ the channel color family. Neutral-grey-only is not a palette.
 - **Cast:** the locked 2.5D rig (§1) — flat cel characters + money objects, never photoreal, never the uncanny
   middle. Emotion reads in a legible mouth + brow, restrained by default; **posture is the acting**.
   **Personified institutions** carry ONE identity tag (a flag necktie, a hat, a uniform).
-- **Environments:** *built* but flat — a real setting per scene, composed **edge-to-edge, depth read by
-  overlap and scale, eye-level frontal**, a **committed warm scene palette**, and **light/atmosphere**.
+- **Environments:** *built* but flat — a real setting per scene, composed **edge-to-edge with a fore/mid/
+  background depth read built from overlap and recession**, a **committed warm scene palette**, and **light/atmosphere**.
   **Rich, not sparse:** name the real furniture of the place; no dead air, no parallaxed realism.
   **Diegetic art / artifacts** (a painting, poster, brochure vista, map) render in OUR flat-cel look with
   the `#241a12` outline.
 - **`refs/env/scene-style-tile.png` seeds every cast-free plate/scene gen** — it contributes **line
-  register and palette SATURATION (the strength its flat colours are laid down at, which the new
-  frame matches in its own hues) ONLY, never content, layout, or the place it depicts**; a figure-bearing
-  gen carries its own register in the cast seeds and does NOT take the tile.
+  register, palette saturation AND TEMPERATURE (the strength and warmth its flat colours are laid down
+  at, which the new frame matches in its own hues) ONLY, never content, layout, or the place it
+  depicts**; a figure-bearing gen carries its own register in the cast seeds and does NOT take the tile.
 - **Charts / diegetic lettering:** a hand-drawn **marker / sketch family**, deliberately crude, never corporate
   infographic; no title cards (a chapter turn is a hard cut / palette turn). **Lettering is LOCKED: relaxed
   hand-lettered MARKER CAPITALS with a slight lean and baseline bounce — quick confident handwriting, no letter

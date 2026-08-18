@@ -516,7 +516,7 @@ def test_character_free_place_plate_carries_only_the_style_tile_and_stays_a_plat
                      "plate_parent": None, "expression_change": None,
                      "parent_depth": 0, "lineage": 0,
                      "why": "STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived "
-                            "(line register + palette only); PLATE — place-first frame, bible "
+                            "(line register + palette + temperature); PLATE — place-first frame, bible "
                             "descriptor + style suffix, no content anchor"}], spec
 
 

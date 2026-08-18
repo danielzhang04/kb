@@ -60,10 +60,9 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
 1. **Classify → pick a class** from the grammar's narration→shot-class table; record it as `shot_class`.
 2. **INVENT the shot** against the example-shots bar — **non-literal by default**, literal only for a
    concrete physical action or object. A shot that merely draws its line's words fails → reclassify.
-   **Figure bias:** a beat about people — a person, a party, a decision, an act — is staged WITH the
-   bodies doing it; that is the default, not a preference. A symbolic or prop-only frame on such a beat
-   must EARN its absence (the subject genuinely is a thing/place/mechanism, or the emptiness is itself
-   the argument) and say so in `notes`. Non-literal changes the DEPICTION, never the scene's occupancy:
+   **The beat's true subject bears the frame** — a person, an object, or a place: where the subject is a
+   person, a party, a decision, or an act, the bodies doing it are what stages it; where it is genuinely a
+   thing, place, or mechanism, that is. Non-literal changes the DEPICTION, never the scene's occupancy:
    "the people selling picks and shovels" staged as an unattended stall has deleted the line's subject.
    Full law + the >~10s self-audit flag: `visual-grammar.md §1`.
 3. **Reference figures, poses, and expressions by registry vocabulary NAME, backticked, inline** in the
@@ -108,8 +107,9 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
 
    **Seed-cap displacement (plan at authoring time, not at forge's dry-run):** over `SEED_CAP` (4), forge
    drops ONE seed at a time in priority order — never all at once, never past what the overage requires —
-   and records each drop rather than erroring: (1) the crowd exemplar, when the place plate carries the
-   rear-zone mass (it already holds that mass in pixels; the exemplar only pins proportion); (2) an
+   and records each drop rather than erroring: (1) the crowd exemplar, when the place plate OR the
+   in-chain parent frame carries the rear-zone mass (either already holds that mass in pixels; the
+   exemplar only pins proportion); (2) an
    interaction template, since its contact geometry also lands in the shot's own prose and in the two named
    figures' own STEP-1 cards; (3) a tagged prop, since the prompt already names it by its own backticked
    slug and forge's derived seed is a reinforcement, not its only carrier. **Never displaced, at any step:**
@@ -117,22 +117,16 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    only fits by dropping one of those refuses instead, naming the true bind (figure count against the cap),
    never a locked seed.
 
-   Worked examples, both real act-2 shapes: **(a) crowd + tagged prop** — 2 named cast + crowd + one tagged
-   prop + the place plate = 5 seeds, over cap by 1 — the plate displaces the crowd exemplar → 4, legal, one
-   drop. **(b) crowd + interaction template + derived lettering**, one step further — 2 named cast + an
-   interaction template + crowd + a text-bearing line (the LOCKED lettering exemplar) + the place plate = 6
-   seeds, over cap by 2 — the plate displaces the crowd exemplar (→5), then the interaction template
-   displaces (its geometry survives in prose + both figures' STEP-1s) → 4, legal, two drops. The same shape
-   with a tagged prop in place of the interaction template resolves identically: crowd, then the prop, two
-   drops → 4. A shot still over cap once crowd, interaction, and prop are ALL legally exhausted is restaged
-   — the true bind is figure count against the cap, never a dropped lettering exemplar or place plate.
+   A shot still over cap once crowd, interaction, and prop are ALL legally exhausted is restaged — the
+   true bind is figure count against the cap, never a dropped lettering exemplar or place plate.
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action (a seeded figure's own bodily act is not free scene prose —
    it is the primitive its sentence names, rule 3), what a gesture or highlight targets ("the northern half
-   of South America", not "the continent"), subject scale and stage position (stage-left / centre /
-   stage-right), the committed scene palette, light/atmosphere, and layered depth (fore/mid/background by
-   overlap and scale, filled edge-to-edge). Name concrete elements, not
-   categories; a thin, palette-less prompt renders thin. **Never art style, texture, or line weight** —
+   of South America", not "the continent"), the committed scene palette, light/atmosphere, and a
+   **payload-driven THREE-PLANE read** — what occupies the foreground, the mid, and the background of THIS
+   beat, at what scale, and from where the camera sees them, the payload owning the plane that carries it,
+   in whatever sentence the scene wants. Name concrete elements, not categories; a thin, palette-less
+   prompt renders thin. **Never art style, texture, or line weight** —
    `forge.py` prepends the style bible's §2b descriptor at the HEAD of every scene gen and appends this
    file's `global_prompt_suffix` at its TAIL, so both reach every gen without you, and
    restating them spends the prompt on the look instead of the scene.
@@ -163,8 +157,9 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
 
 A shot list is authored in ACTS, never in one continuous pass. Depiction register decays across a long
 pass: the back half of a one-pass file drifts literal, reuses the same two or three classes, and reaches
-for the same nouns and the same staging. The plan-first / re-read-between-acts shape is what holds the last act
-at the first act's level.
+for the same nouns and the same staging. Once 3a's cast / place / stage plan is locked, the default
+execution is DISJOINT CONTIGUOUS ACT PARTITIONS — every planned `stage` whole inside one partition, never
+split across two — which a coordinator merges in narration order, then ONE whole-file lint + critic pass.
 
 ### 3a — Split + plan (before authoring a single shot)
 - **Split `script.md` into its acts** — the story's own turns (setup / scheme / unraveling / aftermath;

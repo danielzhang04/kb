@@ -48,8 +48,8 @@ EXPECTED_PLATE_COMPOSITION = (
 ERA_STYLE_ONLY = (
     "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an "
     "even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid "
-    "down at FULL cel strength — every fill a real colour, and any grey or neutral clearly TINTED "
-    "warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale — with "
+    "down at FULL cel strength — every fill a real colour, and any grey or neutral clearly TINTED WARM, "
+    "so the frame never drains to greyscale; a genuinely cold scene cools its LIGHT, never its neutrals — with "
     "gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no "
     "words, no labels.")
 ERA_SUFFIX = (
@@ -57,7 +57,7 @@ ERA_SUFFIX = (
     "brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, "
     "rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient "
     "sky/ground + minimal geometry + one foreground depth prop); any in-world lettering "
-    "hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus "
+    "hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus "
     "the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the "
     "last punch element); no photorealism, no on-screen narrator or host face, no unrequested "
     "text, no logos; 16:9.")
@@ -206,6 +206,21 @@ def test_plate_composition_is_exact_once_on_cast_free_place_firsts_including_let
     no_place = _by_name(spec, "N01")
     assert lettered["plate"] is False and lettered["plate_composition"] is True, lettered
     assert not delta.get("plate_composition") and not no_place.get("plate_composition")
+    cast_spec, _ = _run(_doc(
+        {"id": "C01", "place": "cast-office",
+         "still_prompt": f"{CAST} standing at the office desk."}))
+    with tempfile.TemporaryDirectory() as anchored_video:
+        anchor = Path(anchored_video) / "assets" / "scenes" / "A00.png"
+        anchor.parent.mkdir(parents=True)
+        anchor.write_bytes(PNG)
+        anchored_spec, _ = _run(_doc(
+            {"id": "A00", "place": "anchored-office", "source": "library",
+             "still_prompt": "The approved anchored office."},
+            {"id": "A01", "place": "anchored-office", "place_anchor": "assets/scenes/A00.png",
+             "still_prompt": "A cast-free anchored office."}), video=anchored_video)
+    # The clause is only for a cast-free, unanchored place-first request.
+    assert not _by_name(cast_spec, "C01").get("plate_composition")
+    assert not _by_name(anchored_spec, "A01").get("plate_composition")
     k = _kit()
     prompt = k.prompt_for("environment", lettered["delta"],
                           generated_policy=PLATE_COMPOSITION if lettered["plate_composition"] else "")
@@ -254,7 +269,7 @@ def test_the_tiles_role_prose_grants_register_only_and_denies_the_place():
     text = seed_roles_text([{"path": TILE, "role": STYLE_ANCHOR_ROLE,
                              "character": STYLE_TILE}])
     for required in ("SCENE STYLE TILE", "register sample ONLY", "LINE WEIGHT",
-                     "outline colour (#241a12)", "FLAT-CEL RENDER", "PALETTE SATURATION", "Take NOTHING else",
+                     "outline colour (#241a12)", "FLAT-CEL RENDER", "PALETTE SATURATION and TEMPERATURE", "Take NOTHING else",
                      "NOT the place it depicts"):
         assert required in text, (required, text)
     # the generic `environment` prose is the exact opposite instruction and must never appear

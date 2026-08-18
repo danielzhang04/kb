@@ -320,29 +320,27 @@ scene and do not gen a plate: `background.plate` already points at the prior in-
 overlay cutout. **Render handoff:** `render-builder` consumes `assets/scenes/` directly (scenes mode, auto-detected
 via this pass's manifest); a missing scene for an ai-gen/hybrid shot is a render-time hard error.
 
-## Reviewing the run (per ACT batch — generate, review, fix, then the next act)
+## Reviewing the run (parallel wave — generate, review, fix, then the next wave)
 
-Pass 2 runs in **contiguous batches whose COUNT is set by the run's gate cadence** (2–4 act batches on an ordinary
-run, or a different count set by the run's own gate plan — e.g. five gated fifths) — the boundary rule is fixed
-regardless of count: **a slice boundary always falls on a stage boundary, and a held stage never splits.** **Within
-a batch, generate everything first — do not gate mid-batch —
-then run the review round below on that batch and fix its flags before the next batch generates.** One whole-video
-round finds a systemic defect (a bible value off, a bad seed route, palette drift) only after the entire budget is
-spent, and a reviewer's eye decays across a 90-frame round; the act boundary is where systemics get caught cheap.
-Two things carry forward between batches: **(a)** a defect class flagged **≥2** in a batch review → its surgical
-prompt-fix is applied to the NEXT batch's assembled prompts before generating (a suspected bible-value defect is
-still *surfaced*, never self-applied); **(b)** a **verified** frame from an earlier batch is a legal extra seed for a
-scene-continuous shot in a later one, alongside its canonicals.
+Pass 2 defaults to concurrent workers on **DISJOINT, CONTIGUOUS ordered shot partitions**: every stage/delta chain
+stays whole in one partition, with its parent generated before its delta. Each worker keeps its own log and
+partition-scoped manifest; its runner POLLS running work, never idle-waits or ends while its partition remains. A
+returned partition gets the independent fresh-eyes pass below while other partitions run; generating workers NEVER
+stamp. On merge, the coordinator verifies disjointness + complete ordered coverage, merges manifests, and is the ONLY
+scoped stamp writer, after the merge. Carry forward only at the wave boundary: **(a)** a defect class flagged **≥2**
+in a partition review → its surgical prompt-fix is applied to the NEXT wave's assembled prompts (a suspected
+bible-value defect is still *surfaced*, never self-applied); **(b)** a **verified** frame from an earlier wave is a
+legal extra seed for a scene-continuous shot in a later one, alongside its canonicals.
 
 **The rules this review judges by are `style-bible.md` §3 — the exact values the generator
 generated against**; there is no separate reviewer rulebook, and what lives here is the PROCEDURE. This is also the
 ONLY seed-routing gate, so watch for what one-run multi-seeding produces: hands off the character's tone, a weak or
 wrong expression, identity bleed between co-present figures.
 
-**Run ONE fresh-eyes review pass per act batch** (not three concurrent subagent dispatches), given the scene files +
+**Run ONE independent fresh-eyes review pass per returned partition**, given the scene files +
 per shot its `still_prompt`, `vo_text` (the full narrated span — facts often live in the tail) and `shot_class`, plus
 bible **§3**, the **§5 recipe** and the channel's `visual-grammar.md` (`vo_ref` is only the render timing anchor,
-never a fidelity source). **End the pass with an `N/N covered` line** (shots ruled / shots in the batch) — a pass
+never a fidelity source). **End the pass with an `N/N covered` line** (shots ruled / shots in the partition) — a pass
 that stops short reports exactly how short, never silently.
 
 **The verdict rows are machine-emitted, not human-invented.** `build_review_artifact.py` pre-renders one empty
@@ -354,11 +352,11 @@ generated those pixels) — so cost moves from typing the row set to eyeing it, 
 an aggregate "rig holds" sentence stays structurally impossible. **Canonical-vs-candidate comparison images render
 only on named-figure shots**, at **ordinary viewing scale** — the zoomed crop battery is retired (§Seed law).
 
-**The same pass also rules the batch's SEEDING ASSETS — this is what closes the reuse loop, and a run that skips it
-hard-stops on the next batch.** `batch` refuses to seed from ANY asset that lacks an **all-pass, digest-current
+**The same pass also rules the partition's SEEDING ASSETS — this is what closes the reuse loop, and a run that skips it
+hard-stops on the next wave.** `batch` refuses to seed from ANY asset that lacks an **all-pass, digest-current
 review record** in the channel-wide store `<kit>/_staging/review.json` — STEP-1 card, place plate, environment
-reference, prop, crowd exemplar, pose/expression primitive alike; an asset minted in slice N is seedable in
-slice N+1 **only** because that slice's review recorded a verdict for it. (The one exemption stays the named cast
+reference, prop, crowd exemplar, pose/expression primitive alike; an asset minted in one wave is seedable in the
+next **only** because its review recorded a verdict for it. (The one exemption stays the named cast
 member's own canonical — Pass 1, step 1.) The loop, in order:
 
 1. **Build the board with the staging dir**: `py -3 .../build_review_artifact.py --video <video-dir> --out
@@ -373,7 +371,7 @@ member's own canonical — Pass 1, step 1.) The loop, in order:
 2. **The fresh-eyes pass rules those cards too**, on the same three axes, at the same ordinary viewing scale. Its
    scene rulings merge into `assets/_review/merged.json` as always; its ASSET rulings fill in the skeleton's
    verdicts (`"pass"` / `"fail"` per invariant — an asset needs every one to read `pass`).
-3. **The ORCHESTRATOR records them, before the next batch generates**: `py -3 .../stamp_review.py --figures
+3. **The COORDINATOR records them, after merge and before the next wave**: `py -3 .../stamp_review.py --figures
    <figure-verdicts.json> <kit>/_staging`. Same single-writer law as the scene path — `stamp_review.py` is the ONLY
    writer of a verdict anywhere in this pipeline; the board writes only the skeleton, and forge only ever reads.
 
@@ -440,13 +438,13 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
   to dodge a rendering defect is a fidelity VIOLATION dressed as a fix; a fact that still won't render clean after the
   one retry is flagged for the human, never silently removed.
 - **Sequencing replaces self-check — no agent ever clears its own park.** The retry above generates immediately; it
-  is ruled by the **next act batch's fresh-eyes pass**, already running (a final mini-pass rules the last batch's
-  retries, since there is no next batch to piggyback on). **Still flagged by that ruling → STOP:** keep the best
+  is ruled by the **next wave's returned-partition fresh-eyes pass** (a final mini-pass rules the last wave's
+  retries). **Still flagged by that ruling → STOP:** keep the best
   attempt, mark it `flagged` in `assets/scenes/manifest.json` with the reason, surface it in the deliverable. A
   systematic failure (the same invariant missing both times) that looks like a bible value being off → surface a
   proposed fix, never self-apply.
-- **Stamp the gate — generating agents NEVER stamp; the ORCHESTRATOR alone does**, and only after the fresh-eyes
-  pass. It merges the pass's structured verdict into `assets/_review/merged.json` (one ruling per shot id, per-axis
+- **Stamp the gate — generating agents NEVER stamp; the COORDINATOR alone does**, scoped after merge and only after
+  the fresh-eyes pass. It merges the pass's structured verdict into `assets/_review/merged.json` (one ruling per shot id, per-axis
   severities + `why`, plus any lettering shot's `dsg` checklist), then runs `py -3
   .claude/skills/image-generation/scripts/stamp_review.py <video_dir>` — the **ONLY writer** of the render gate's
   verdict. It writes **`review_status` + `parked_reasons`** onto each `scenes/manifest.json` entry in three honest
@@ -455,9 +453,9 @@ flagged ships as-is. **Then fix flagged frames — ONE re-authored retry, then s
   shippable — its defect strings become
   `parked_reasons`, which the gate prints, and the entry hard-errors the render), **`unreviewed`** (no ruling covered
   the shot — hard-errors like a missing scene). Uncovered entries are untouched; it never writes a `verified: true`.
-  **The same orchestrator step also records the batch's SEEDING-ASSET verdicts** (`stamp_review.py --figures
+  **The same coordinator step also records the wave's SEEDING-ASSET verdicts** (`stamp_review.py --figures
   <figure-verdicts.json> <kit>/_staging`, the loop above — the flag name is kept for compatibility; the store is
-  class-agnostic) — run it before the next batch generates, or every asset the next batch would seed from is
+  class-agnostic) — run it before the next wave generates, or every asset the next wave would seed from is
   refused.
 
 ## Prove it by measurement, never by eye

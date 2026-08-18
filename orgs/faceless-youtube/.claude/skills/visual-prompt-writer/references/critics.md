@@ -96,24 +96,29 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    no trace of the shot's named cast nearby; it does not judge the cases lint stays silent on. Where a
 >    shot casts a named character for a beat the VO describes generically, ask: does THIS beat, in THIS
 >    script, actually belong to that named character, or is this a leftover of blanket generic→named
->    substitution rather than a scene-by-scene casting decision? The fix direction for the latter is a
->    cast member the beat genuinely belongs to (an existing one, or a new one planned at step 3a) or a
->    restage as mass action — never a demotion of the beat to rear-zone crowd.
->    (Mechanism: vpw-log.md Phase B3, the bulk
+>    substitution rather than a scene-by-scene casting decision? **The test is identical for a personified
+>    OBJECT:** a canonical entity, `pc-boxy` included, is reused only where that entity AS ACTOR bears the
+>    beat; otherwise the environment, the product itself, or an anonymous bearer doctrine already allows
+>    carries the frame, and a personified prop recurring as a general-purpose mascot (pre-reset it was an
+>    OPENING device) is the finding. The fix direction is a cast member — or an entity — the beat genuinely
+>    belongs to (an existing one, or a new one planned at step 3a) or a restage as mass action, never a
+>    demotion of the beat to rear-zone crowd. (Mechanism: vpw-log.md Phase B3, the bulk
 >    `anon_foreground`→named-cast conversion pass; audit-drift §E7 — L100/L101 cast two specific named leads
 >    for a beat the script only ever calls "the managers.")
 >
 > Plan-level: **Balanced human use** — flag story-bearing people, decisions, or relationships hidden behind objects, or
 > habitual people staged where object, place, document, or mechanism is the subject; impose no share target.
-> Concrete presence is the DEFAULT on beats about people (`visual-grammar.md §1`), so a figureless frame on
-> such a beat is a finding unless the plan says what earned the absence. Report the LONGEST figureless run
-> in the plan, in seconds, whether or not you flag it — on a channel whose screen IS the cast, a 20s
+> The beat's true subject bears the frame (`visual-grammar.md §1`), so a figureless frame where that
+> subject is a person is a finding. Report the LONGEST figureless run in the plan, in seconds, whether or
+> not you flag it — on a channel whose screen IS the cast, a 20s
 > still-life stretch is a plan-level fact the human should see, not a per-shot quibble. **Cadence taste** — flag a slow static hold with no earned progressive
 > reveal, legibility, or gravity reason, a run of conspicuously equal-duration holds, or cuts so rapid the
 > payload cannot be read; impose no bucket, profile, or quota (lint owns the runtime ÷ 4 floor). **Place
-> monotony** — flag a span that keeps re-staging beats in a place it had every reason to leave, where the
-> narration had moved on; departure is the grammar's default and lingering earns its keep (§1 chain logic).
-> Name the span and the beat that should have left; impose no cap or place count. **Stage
+> monotony** — flag a span that keeps re-staging beats in a place the narration had every reason to leave
+> (the chain is the default while a set holds; a changed place, subject, or register is what earns
+> departure — §1 chain logic), and equally a span where vantage, figure scale, depth shape, or palette
+> temperature repeats shot after shot: the repetition across the list is the defect, not any one frame.
+> Name the span and the beat that should have changed; impose no cap, count, or target. **Stage
 > grouping** — the **SEMANTIC call only**: *are these really one held set?* A long-form plan revisiting a setting
 > with zero stage chains is a finding; never demand an arbitrary number. The mechanical caps (one `base`, ≤2 `delta`s,
 > contiguity, delta timing, order) are `lint_shots.py`'s job; do not re-flag them.
