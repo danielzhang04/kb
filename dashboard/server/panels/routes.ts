@@ -11,6 +11,7 @@ import { buildHealthPanel } from './health.ts';
 import { buildUsagePanel } from './usage.ts';
 import { buildAtlasPanel } from './atlas.ts';
 import { buildAutonomyLadderPanel } from './autonomyLadder.ts';
+import { buildLoopStatusPanel } from './loopStatus.ts';
 import type { AtlasWorkerOptions } from './atlas.ts';
 
 /** dashboard/server/panels/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
@@ -33,6 +34,8 @@ export function registerPanels(app: FastifyInstance, repoRoot: string = resolveR
     const override = loadOverride(repoRoot);
     return buildAutonomyLadderPanel(repoRoot, policy, override);
   });
+  // Loop status — the self-improving loops: last run, outcome narration, declared schedule. GET only.
+  app.get('/api/panels/loop-status', async () => buildLoopStatusPanel(repoRoot));
   // Quartermaster — usage rollup (per-model steps, model mix, card/dispatch counts). USD suppressed.
   app.get('/api/panels/usage', async () => buildUsagePanel(repoRoot));
   // Atlas — voice worker mirror: worker /state passthrough (OFFLINE-explicit) + transcript history + cards.

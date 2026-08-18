@@ -64,12 +64,15 @@ describe('agentPlatform/registry', () => {
 
   /**
    * U12's curated reading order. Pinned as a PREFIX rather than an equality so a panel added later
-   * (which sorts last by construction) does not red this test — but a reshuffle of the ten curated
+   * (which sorts last by construction) does not red this test — but a reshuffle of the eleven curated
    * ones does. The order is the section's argument about what to look at first: what is running now,
    * then who is allowed to do what, then the read-only forensics.
    */
   it('opens on the curated reading order, not alphabetically by id', () => {
     const CURATED = [
+      // U-L2 — the loops run on their own overnight; "did they run, and does one need me?" is the
+      // first question of the morning, so the section opens on it.
+      'loop-status',
       'agent-management',
       'fleet-graph',
       'watch-agents-run',
