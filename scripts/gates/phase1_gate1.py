@@ -337,16 +337,20 @@ def normalize_external_serve_endpoint(value: str) -> str:
 def normalize_base_url(value: str) -> str:
     try:
         parsed = urlsplit(value)
-        default_port = 443 if parsed.scheme.lower() == "https" else 80
-        port = parsed.port or default_port
+        scheme = parsed.scheme.lower()
+        default_port = 443 if scheme == "https" else 80
+        port = parsed.port if parsed.port is not None else default_port
     except (TypeError, ValueError) as error:
         raise RuntimeError("base URL must identify one HTTP(S) origin") from error
     if (
-        parsed.scheme.lower() not in {"http", "https"} or parsed.username or parsed.password
+        scheme not in {"http", "https"} or parsed.username or parsed.password
         or parsed.query or parsed.fragment or parsed.path not in {"", "/"} or not parsed.hostname
     ):
         raise RuntimeError("base URL must identify one HTTP(S) origin")
-    return f"{parsed.scheme.lower()}://{parsed.hostname.lower()}:{port}"
+    authority = parsed.hostname.lower()
+    if port != default_port:
+        authority += f":{port}"
+    return f"{scheme}://{authority}"
 
 
 def _serve_handler_proxies(config: dict, external_serve_endpoint: str) -> list[str] | None:
@@ -515,12 +519,11 @@ def probe_websocket(url: str, authorization: str | None = None) -> int:
         parsed = urlsplit(url)
         if parsed.scheme not in {"ws", "wss"} or not parsed.hostname or parsed.username or parsed.password:
             raise RuntimeError("WebSocket URL must identify one ws(s) endpoint")
-        port = parsed.port or (443 if parsed.scheme == "wss" else 80)
+        default_port = 443 if parsed.scheme == "wss" else 80
+        port = parsed.port if parsed.port is not None else default_port
     except ValueError as error:
         raise RuntimeError("WebSocket URL must identify one ws(s) endpoint") from error
-    authority = parsed.hostname if port in {80, 443} else f"{parsed.hostname}:{port}"
-    if parsed.port is not None:
-        authority = f"{parsed.hostname}:{parsed.port}"
+    authority = parsed.hostname if port == default_port else f"{parsed.hostname}:{port}"
     path = parsed.path or "/"
     if parsed.query:
         path += "?" + parsed.query
@@ -661,6 +664,7 @@ def collect_package(
     command = safe_command(command)
     normalized_base = normalize_base_url(base_url)
     normalized_external = normalize_external_serve_endpoint(external_serve_endpoint)
+    normalized_external_base = normalize_base_url(normalized_external)
     if output.exists():
         raise RuntimeError("Gate-1 output directory must not exist")
     started_at = _canonical_now(now)
@@ -713,7 +717,7 @@ def collect_package(
         "health": {"/healthz": health_status, "/readyz": ready_status},
         "routeInventoryCovered": route_inventory_covered(route_raw),
         "confined": (
-            normalized_base == normalized_external
+            normalized_base == normalized_external_base
             and all(confinement[relpath] == 403 for relpath in CONFINEMENT_REFUSED)
             and confinement[CONFINEMENT_ALLOWED] == 200
         ),
