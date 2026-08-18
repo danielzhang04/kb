@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import json
 import os
 import re
 import subprocess
@@ -13,11 +14,61 @@ from pathlib import Path, PurePosixPath
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
 PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
 RP_ORIGIN_PATTERN = re.compile(r"^https://[a-z0-9][a-z0-9.-]*$")
+STATE_ROOT = "/var/lib/kb/state"
+EMPTY_CONTROL_PLANE = b'{"version":1,"nextEventCursor":1,"proposals":[],"runs":[],"stages":[],"attempts":[],"sessions":[],"humanRequests":[],"events":[],"stageGenerations":[],"reviewLoops":[],"reviewReceipts":[],"generationSupersessions":[],"quarantine":[]}\n'
 
 
 def validate_rp_origin(value: str) -> None:
     if RP_ORIGIN_PATTERN.fullmatch(value) is None:
         raise ValueError("dashboard RP origin is invalid")
+
+
+def seed_control_plane(state_root: Path) -> None:
+    control = state_root / "control"
+    control.mkdir(mode=0o700, exist_ok=True)
+    os.chmod(control, 0o700)
+    final = control / "control-plane.json"
+    for stale in control.glob(".control-plane.json.*.tmp"):
+        stale.unlink(missing_ok=True)
+    if final.exists():
+        _validate_control_plane(final)
+        return
+
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".control-plane.json.", suffix=".tmp", dir=control)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(EMPTY_CONTROL_PLANE)
+            output.flush()
+            os.fsync(output.fileno())
+        _fsync_directory(control)
+        try:
+            os.link(temporary, final)
+        except FileExistsError:
+            _validate_control_plane(final)
+            return
+        os.chmod(final, 0o600)
+        _fsync_directory(control)
+    finally:
+        temporary.unlink(missing_ok=True)
+        _fsync_directory(control)
+
+
+def _validate_control_plane(final: Path) -> None:
+    try:
+        json.loads(final.read_bytes())
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise RuntimeError(f"control-plane state is corrupt: {final}; restore or remove it before re-running bootstrap") from error
+
+
+def _fsync_directory(path: Path) -> None:
+    if os.name == "nt":
+        return
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def unit_fragment_source(rp_origin: str | None) -> bytes:
@@ -108,8 +159,14 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run, rp
     run(["systemctl", "disable", "--now", "kb-dashboard.service"], check=False)
     run(["useradd", "--system", "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin", "kb-dashboard"], check=False)
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/opt/kb-releases"], check=True)
-    for path in ("/var/lib/kb/state", "/var/lib/kb/state/outbox/ready", "/var/lib/kb/state/outbox/receipts", "/var/lib/kb/state/outbox/incoming"):
+    for path in (STATE_ROOT, f"{STATE_ROOT}/outbox/ready", f"{STATE_ROOT}/outbox/receipts", f"{STATE_ROOT}/outbox/incoming"):
         run(["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard", path], check=True)
+    run(["install", "-d", "-o", "kb-dashboard", "-g", "kb-dashboard", "-m", "0700", f"{STATE_ROOT}/control"], check=True)
+    state_root = Path(STATE_ROOT)
+    if not state_root.is_dir():
+        raise RuntimeError(f"state root was not created: {state_root}")
+    seed_control_plane(state_root)
+    run(["chown", "kb-dashboard:kb-dashboard", str(state_root / "control/control-plane.json")], check=True)
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0700", "/var/lib/kb-release-staging"], check=True)
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", "/var/lib/kb/ops"], check=True)
     run(["git", "clone", "--branch", "ops", "--no-checkout", str(ops_bundle), "/var/lib/kb/ops"], check=True)
@@ -118,7 +175,7 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, run=subprocess.run, rp
     run(["git", "-C", "/var/lib/kb/ops", "update-ref", "refs/kb-outbox/spooled", "HEAD"], check=True)
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "origin", "disabled://desktop-promotion-only"], check=True)
     run(["git", "-C", "/var/lib/kb/ops", "remote", "set-url", "--push", "origin", "disabled://desktop-promotion-only"], check=True)
-    run(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", "/var/lib/kb/state"], check=True)
+    run(["chown", "-R", "kb-dashboard:kb-dashboard", "/var/lib/kb/ops", STATE_ROOT], check=True)
     if rp_origin is None:
         install_root_validators(release_public_key, run=run)
     else:
