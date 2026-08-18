@@ -1,0 +1,281 @@
+{
+  "engines": [
+    "gemini-3-pro-image",
+    "gemini-2.5-flash-image"
+  ],
+  "image_size": "1K",
+  "rate_usd": {
+    "gemini-3-pro-image": 0.134,
+    "gemini-2.5-flash-image": 0.039
+  },
+  "hard_cap_usd": 2.5,
+  "items": [
+    {
+      "id": "fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+      "output_name": "ab4-fig-drive-maker--hold-both-hands--expr-greedy--12637e2e",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L19",
+      "cast": "drive-maker",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `drive-maker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-greedy` expression reference for `drive-maker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `drive-maker` holds in the parent scene, and no other figure's. The THIRD image is the `hold-both-hands` pose reference for `drive-maker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: planted centre frame with both hands on the shaft of a long garden rake, dragging a knee-deep drift of loose banknotes in toward himself into a growing heap at his boots. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure \u2014 draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
+          "sha256": "bd13a2c4c9c8583ecdbf099654353da9f53986c1988230dc0c1121acc22ec048"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-greedy.png",
+          "sha256": "b9647a4639e8a456667544f2025cc182099c909ad8f303516ace28d4b2bdcdac"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+          "sha256": "8adca7f5d890aa0027fdd9e3fbeff169e6be74240a7a7d5ac99e074e6abafb1a"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    },
+    {
+      "id": "fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+      "output_name": "ab4-fig-brick-foreman--action-shrug--expr-deadpan--1a78cea1",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L23",
+      "cast": "brick-foreman",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `brick-foreman`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `brick-foreman` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `brick-foreman` holds in the parent scene, and no other figure's. The THIRD image is the `action-shrug` pose reference for `brick-foreman` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left and turned square to the viewer, shrugging beside a shoulder-high stack of sealed brown cartons on a wooden pallet. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure \u2014 draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
+          "sha256": "ac61fbf61d57818d00495d40c72ea242e5aa16381e2caccd05fb00f91640abf7"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+          "sha256": "f28e6a95f9f9e3e0829313191fe0c57c93614915409c454277e9814d8c05a96d"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/action-shrug.png",
+          "sha256": "fc7f501feba4a90ce3421ac19afff7a36b62c4b9fafc9e9802f452cc0aa95ad7"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    },
+    {
+      "id": "fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+      "output_name": "ab4-fig-miniscribe-rep--action-celebrate--expr-delighted--d0a1613b",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L35",
+      "cast": "miniscribe-rep",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `miniscribe-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-delighted` expression reference for `miniscribe-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `miniscribe-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-celebrate` pose reference for `miniscribe-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: standing small on top of a four-tier tower of shrink-wrapped pallets that rises to the roof trusses, each tier stepped a little wider than the one below it. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure \u2014 draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/miniscribe-rep/miniscribe-rep.png",
+          "sha256": "591373d12bcd930736da6eebccf9b6c239caefff952d7c8a788dd185f616e49e"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
+          "sha256": "de4ecceb04a33f3b4d8d7f99274acf1d9f4b3350eff4b2bf66494c8cc987eeb9"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/action-celebrate.png",
+          "sha256": "ba191b9e6d0f96ff89510ac2c0f84ebe93872086a90d172d268cfc12c261c00f"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    }
+,
+    {
+      "id": "fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60",
+      "output_name": "ab4-fig-terry-johnson--carry-by-handle--expr-crestfallen--c5210e60",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L47",
+      "cast": "terry-johnson",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `terry-johnson`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-crestfallen` expression reference for `terry-johnson` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `terry-johnson` holds in the parent scene, and no other figure's. The THIRD image is the `carry-by-handle` pose reference for `terry-johnson` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right, stepping out through a glass door onto a car park apron with a document case at his side, his back half turned to the floor behind him. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure \u2014 draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/terry-johnson/terry-johnson.png",
+          "sha256": "def1c8c082b00d08bc5d482efcc2bb0e4838f4179426bfcd95213771b4d95562"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-crestfallen.png",
+          "sha256": "4cf713b0a144bed628c8bbce9c167aba657d69dc7be6ee66fbe03461fe7f9afc"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/carry-by-handle.png",
+          "sha256": "8a146578151ae8089f1d0f36ced59280367e25f5cbf79aacbe8284ac7b5a5f98"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    }
+,
+    {
+      "id": "fig-tv-chef--hold-both-hands--expr-worried--56a59b22",
+      "output_name": "ab4-fig-tv-chef--hold-both-hands--expr-worried--56a59b22",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L60",
+      "cast": "tv-chef",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `tv-chef`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-worried` expression reference for `tv-chef` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `tv-chef` holds in the parent scene, and no other figure's. The THIRD image is the `hold-both-hands` pose reference for `tv-chef` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right, holding a wide white bowl of risotto in both hands out across a steel pass toward the viewer, the surface of the rice smooth and untouched. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure \u2014 draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/tv-chef/tv-chef.png",
+          "sha256": "33f62a9ebbd086458c4331bfbe68826cfe3866267cd00c124577c151c0811646"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-worried.png",
+          "sha256": "adc10ed19fee019600d2daf4068c31c27fe23d5122e2241202c3b7a96287d91c"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/hold-both-hands.png",
+          "sha256": "8adca7f5d890aa0027fdd9e3fbeff169e6be74240a7a7d5ac99e074e6abafb1a"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    }
+,
+    {
+      "id": "fig-qt-wiles--expr-smug--5d92f2c3",
+      "output_name": "ab4-fig-qt-wiles--expr-smug--5d92f2c3",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L69",
+      "cast": "qt-wiles",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `qt-wiles`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-smug` expression reference for `qt-wiles` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `qt-wiles` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: and, joined in at centre frame over a fat unsealed pay envelope, both holding the same plane at a matching eye line and an equal relative head scale. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/qt-wiles/qt-wiles.png",
+          "sha256": "94c742e8cb1aa90a70d7377a1582b1afbe7f689b3493c5a2e2cbb562a8204706"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+          "sha256": "f0ec3f07674cdbe3d35367f63473505f5ab54e5680e80c236a3f0b5a3015bde3"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    }
+,
+    {
+      "id": "fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d",
+      "output_name": "ab4-fig-auditor-rep--action-thumbsup--expr-deadpan--6c7b996d",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L100",
+      "cast": "auditor-rep",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `auditor-rep`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `auditor-rep` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `auditor-rep` holds in the parent scene, and no other figure's. The THIRD image is the `action-thumbsup` pose reference for `auditor-rep` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: crossing the frosted car park away from a glass entrance stage-left with a document case at his side and the boot of a dark saloon open ahead of him, his heavy charcoal overcoat and scarf still on. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure \u2014 draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/auditor-rep/auditor-rep.png",
+          "sha256": "4754e0a98282e733e76336eb8f9723f07c75d440ce9328cfc6ae6ae959bf8a29"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+          "sha256": "f28e6a95f9f9e3e0829313191fe0c57c93614915409c454277e9814d8c05a96d"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/action-thumbsup.png",
+          "sha256": "833f9940e75d6c74536e3f257d2b42171f7fd516c7090179a6a0401938e16378"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    }
+,
+    {
+      "id": "fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6",
+      "output_name": "ab4-fig-line-worker--hold-one-hand--expr-annoyed--39be0ae6",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L173",
+      "cast": "line-worker",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `line-worker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-annoyed` expression reference for `line-worker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `line-worker` holds in the parent scene, and no other figure's. The THIRD image is the `hold-one-hand` pose reference for `line-worker` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-left in a small suburban kitchen at night, lifting a wall telephone handset off its cradle in one hand, his outdoor coat still on over his work clothes. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure \u2014 draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/line-worker/line-worker.png",
+          "sha256": "8ad3a191c5e1561aaacd07c7605eeebb995a16a7f0b782da44b41a1c483f6a31"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
+          "sha256": "68f1cb1bf71cf3898aa8f671962a35698cd5c44becacc5a64c19d52fc47da715"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+          "sha256": "543d2bda2c48c14d33e0b7b0314231e025999107e1df00082f7834b7473e7e4a"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    }
+,
+    {
+      "id": "fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800",
+      "output_name": "ab4-fig-rifenburgh-ceo--hold-one-hand--expr-thinking--49deb800",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L180",
+      "cast": "rifenburgh-ceo",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `rifenburgh-ceo`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-thinking` expression reference for `rifenburgh-ceo` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `rifenburgh-ceo` holds in the parent scene, and no other figure's. The THIRD image is the `hold-one-hand` pose reference for `rifenburgh-ceo` \u2014 copy only body pose, hands and limb placement; ignore identity and costume.\n\nThe whole figure is in frame head to feet, standing or seated exactly as the pose reference shows, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: stage-right in a dim records room, holding a torch out toward a bank of filing cabinets whose drawers stand pulled out at every height like a staircase. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie; and the bodily ACT it gives this figure \u2014 draw the figure performing that act WITHIN the stance the pose reference holds, empty-handed and alone, the object or person it acts on left out. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/rifenburgh-ceo/rifenburgh-ceo.png",
+          "sha256": "d20758210fe88371aad98c282ff511d4ade20b167cab722b387d084f65236499"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+          "sha256": "53f4e3908d253b14d424b70750d0c5cc47e8a1b64eb0bd8622552e7d9e17c99e"
+        },
+        {
+          "role": "pose",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/hold-one-hand.png",
+          "sha256": "543d2bda2c48c14d33e0b7b0314231e025999107e1df00082f7834b7473e7e4a"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    }
+,
+    {
+      "id": "fig-hq-banker--expr-deadpan--55bd2c0a",
+      "output_name": "ab4-fig-hq-banker--expr-deadpan--55bd2c0a",
+      "kind": "step-1-figure-card",
+      "cell": "char-seed",
+      "source_shot_id": "L213",
+      "cast": "hq-banker",
+      "prompt": "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid down at FULL cel strength \u2014 every fill a real colour, and any grey or neutral clearly TINTED warm or cool, so a cold scene reads COLD-COLOURED and never drains to greyscale \u2014 with gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no words, no labels.\n\nEvery FOREGROUND / named / seeded cartoon figure in this image keeps the shared FAMILY RIG exactly as the reference(s): SAME round near-circle head (only slightly taller than wide, NOT an egg/oval), SAME eye style/size/position, NO nose, NO ears, SAME classic cartoon hands \u2014 exactly THREE fingers plus ONE thumb (four digits total, Mickey / Simpsons style, NEVER four fingers, NEVER five digits), SAME even medium-thick dark warm brown-black (#241a12) outline, SAME clean FLAT cel render. Anonymous background / crowd figures instead follow the \u00a72d CROWD-RIG clause when the prompt states it (simplified: dot eyes, one simple mouth) \u2014 do NOT force this full rig onto them. Hold ONLY this form \u2014 costume, pose, expression, head tone, build, and framing are set by the generation delta, not here, except when THIS generation is itself a new-character canonical mint, where the resting expression and resting stance are invariants inherited from the base (\u00a71).\n\nSEED ROLES. The FIRST image is `hq-banker`'s character canonical \u2014 identity, head tone, hair, the pinned costume unless this beat authors a change, and the face's RENDER REGISTER: how eyes, brows and mouth are DRAWN, never which shape they take where another seed carries it. Never the pose. The SECOND image is the `expr-deadpan` expression reference for `hq-banker` \u2014 copy only eye/brow/mouth shape; ignore identity, head tone and hairline; this shape replaces the expression `hq-banker` holds in the parent scene, and no other figure's.\n\nThe whole figure is in frame head to feet, standing squarely at rest, arms relaxed at the sides, facing the viewer, on a thin visible ground line with one soft contact shadow directly beneath it. The scene this card is minted for reads: and, seated on hard chairs at opposite sides of a small bare table in a plain windowless room, both holding the same plane at a matching eye line and an equal relative head scale, neither looking at the other. Where that description AUTHORS clothing \u2014 garments, headwear, footwear \u2014 dress the figure in it for that era, work and setting; where it authors none, the costume the canonical seed pins governs unchanged, and never the rig template's default hoodie, and nothing else from it: with no pose reference seeded, its action is not this card's to draw. Draw none of its setting, props, lettering or other people. Flat solid pale-grey studio backdrop, no scenery, no props, no furniture. This is a reference sheet: the character alone, fully resolved, ready to be placed into a separate scene.",
+      "seeds": [
+        {
+          "role": "canonical",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/hq-banker/hq-banker.png",
+          "sha256": "cef8b798a2eaaad4cc8cf79d86fff7bed20884ec203a01a68a2381061f526a21"
+        },
+        {
+          "role": "expression",
+          "path": "C:\\Users\\danie\\kb-worktrees\\boss-taste-forensics\\orgs\\faceless-youtube\\channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+          "sha256": "f28e6a95f9f9e3e0829313191fe0c57c93614915409c454277e9814d8c05a96d"
+        }
+      ],
+      "aspect_ratio": "2:3"
+    }
+  ]
+}
