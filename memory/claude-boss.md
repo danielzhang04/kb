@@ -564,3 +564,11 @@
 - LEARNED: forge.py relative --out/--to paths double-nest on this box — absolute paths only.
 - HELD: confirm-design-before-spend — every paid round this session ran only after Daniel's explicit
   commission/ruling; the 08-18 blowup pattern did not recur.
+
+## 2026-08-18 — Bricks board iterations + prior-runs pull-up (boss session)
+- WORKED: SendMessage follow-ups to the SAME sonnet board-worker for 4 successive rulings (script spans, W1 trim, W1 removal, state-semantics fix) — context intact, each turn cheap; codex handled the disjoint prior-runs board in parallel. 50/50 codex/claude split held.
+- LEARNED (codex dispatch): the worker's WRITE root is exactly --cwd; a brief writing into kb-worktrees/ from a repo-root dispatch fails "outside writable root". Reads outside --cwd are fine. Fresh dispatch with --cwd at the worktree; never a follow-up (loses cwd).
+- LEARNED (board semantics, Daniel rulings — full text in boss auto-memory image-board-state-semantics): one card one state (quarantine _staging_flagged/_rejected files are superseded attempt snapshots, never merged onto live cards); no registry/base-library section on seed boards; registry.json is CHANNEL-WIDE — filter per video or other videos' cast leaks in (Bolivar/MacGregor appeared on a bricks board). Plus standing: every scene card shows its script span (vo_text) from the shots.json it was GENERATED under (archived runs use the git-era shots file, not current).
+- LEARNED (data hygiene): w2-full/remaining.json "26 deferred" is stale — all 29 listed cards have images on disk; don't trust run-scoped manifests over a disk+review.json parse. Also the 8-hex filename token is NOT a unique content key across characters — dedup by full stem.
+- FRICTION: personal auto-memory MEMORY.md got mojibaked on disk (cp1252 round-trip) — repaired by codepoint; F-encoding applies to memory files too, verify by codepoint scan after external writes.
+- REMAINS: 6c2 section landing on prior-runs board (codex in flight); failed-W2 re-mint wave (failed-cards.json from board worker) incl. action-recoil/surrender primitive re-mint; Daniel's comparison feedback still the gate before scene waves L26+.
