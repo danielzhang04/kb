@@ -7,9 +7,11 @@ import { registerAuthRoutes } from './routes.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
 
 const verifyAssertionMock = vi.hoisted(() => vi.fn());
+const verifyRegistrationMock = vi.hoisted(() => vi.fn());
 vi.mock('./webauthn.ts', async (importOriginal) => ({
   ...await importOriginal<typeof import('./webauthn.ts')>(),
   verifyAssertion: verifyAssertionMock,
+  verifyRegistration: verifyRegistrationMock,
 }));
 
 const SESSION: SessionConfig = {
@@ -46,6 +48,7 @@ describe('auth ceremony routes', () => {
     await app?.close();
     app = undefined;
     verifyAssertionMock.mockReset();
+    verifyRegistrationMock.mockReset();
   });
 
   it('a genuinely unknown ceremonyId is refused as bad-ceremony', async () => {
@@ -96,6 +99,43 @@ describe('auth ceremony routes', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: 'bad-ceremony' });
+  });
+
+  it('returns the verified registration credential transports for provisioning', async () => {
+    ({ app } = buildApp());
+    verifyRegistrationMock.mockResolvedValue({
+      verified: true,
+      registrationInfo: {
+        credential: { id: 'cred-1', publicKey: new Uint8Array([1, 2, 3]), counter: 4, transports: ['internal'] },
+      },
+    });
+    const { ceremonyId } = rememberChallenge('registration-challenge');
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register/verify', payload: { ceremonyId, response: {} },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      verified: true,
+      credential: { id: 'cred-1', publicKey: 'AQID', counter: 4, transports: ['internal'] },
+    });
+  });
+
+  it('omits transports when the verified registration credential does not report them', async () => {
+    ({ app } = buildApp());
+    verifyRegistrationMock.mockResolvedValue({
+      verified: true,
+      registrationInfo: {
+        credential: { id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 },
+      },
+    });
+    const { ceremonyId } = rememberChallenge('registration-challenge');
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register/verify', payload: { ceremonyId, response: {} },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().credential).not.toHaveProperty('transports');
   });
 
   it('a namespaced challenge is consumed (single-use) even though it is refused, so it cannot be retried', async () => {
