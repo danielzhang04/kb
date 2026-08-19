@@ -12,4 +12,4 @@ agent id via `run_suite(..., fleet=True)` / CLI `run <agent-id> --fleet`,
 recording as `eval:<agent-id>:fleet-<card-id>`.
 
 Reserved worker id: **`eval-suite`** — never name a real agent this. Grade
-rows never touch the agent's own promotion streak.
+rows are excluded from autonomy-promotion input.

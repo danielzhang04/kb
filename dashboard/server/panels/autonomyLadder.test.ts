@@ -21,6 +21,7 @@ import {
   readTrustedGrades,
   buildAutonomyLadderPanel,
   EphemeralNamingRegistry,
+  EVAL_WORKER,
   TIERS,
   type GradeRow,
 } from './autonomyLadder.ts';
@@ -290,6 +291,23 @@ describe('readTrustedGrades() — the grader trust anchor', () => {
     const kept = readTrustedGrades(root);
     expect(kept).toHaveLength(3);
     expect(kept.every((r) => r.inspector_id === 'inspector@agents.local')).toBe(true);
+  });
+
+  it('excludes reserved eval-suite rows from the ladder promotion input', () => {
+    const real = rows('T1', Array(3).fill(95));
+    const evalRows = rows('T1', Array(10).fill(95), 'eval-suite').map((r) => ({
+      ...r,
+      task_type: 'eval:demo-agent:smoke',
+    }));
+    const root = tempRepo({ grades: [...real, ...evalRows], graders: REAL_GRADERS });
+
+    expect(status(EVAL_WORKER, 'p', 'eval:demo-agent:smoke', 'T1', evalRows, false)).toBe(Q);
+    expect(readTrustedGrades(root)).toEqual(real);
+    const panel = buildAutonomyLadderPanel(root);
+    expect(panel.gradeRowCount).toBe(3);
+    expect(panel.ledgerRowCount).toBe(13);
+    expect(panel.keys.every((key) => key.worker !== 'eval-suite')).toBe(true);
+    expect(panel.keys.every((key) => !key.taskType.startsWith('eval:'))).toBe(true);
   });
 });
 

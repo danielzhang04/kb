@@ -59,6 +59,8 @@ export type AutonomyVerdict = 'autonomous' | 'queues-for-me';
 
 export const AUTONOMOUS = 'autonomous';
 export const QUEUES_FOR_ME = 'queues-for-me';
+export const EVAL_WORKER = 'eval-suite';
+const RESERVED_EVAL_KEYS = ['task_type', 'card_id', 'kind'] as const;
 
 /** A grade row as it arrives from `ledgers/grades/*.tsv` (all cells strings) or from a typed test. */
 export type GradeRow = Record<string, unknown>;
@@ -148,6 +150,17 @@ function rowKey(row: GradeRow): string {
   return JSON.stringify([row.worker ?? null, row.project ?? null, row.task_type ?? null, row.tier ?? null]);
 }
 
+/** promotion.py:_is_reserved_eval_row — eval evidence is never promotion evidence. */
+export function isReservedEvalRow(row: GradeRow): boolean {
+  if (String(row.worker ?? '') === EVAL_WORKER) return true;
+  return RESERVED_EVAL_KEYS.some((key) => String(row[key] ?? '').startsWith('eval:'));
+}
+
+/** promotion.py:_promotion_rows — the sole row boundary for this projection. */
+export function promotionRows(rows: GradeRow[]): GradeRow[] {
+  return rows.filter((row) => !isReservedEvalRow(row));
+}
+
 /** promotion.py:97-104 — a below-floor run RESETS the streak. Malformed score ⇒ reset (fail closed). */
 export function belowFloor(row: GradeRow, tier: string): boolean {
   const cfg = TIERS[tier];
@@ -197,8 +210,9 @@ export function status(
 ): AutonomyVerdict {
   if (frozen) return QUEUES_FOR_ME;
   if (!(tier in TIERS)) return QUEUES_FOR_ME;
+  if (isReservedEvalRow({ worker, task_type: taskType })) return QUEUES_FOR_ME;
   const key = JSON.stringify([worker ?? null, project ?? null, taskType ?? null, tier ?? null]);
-  const matching = gradesRows.filter((r) => rowKey(r) === key).sort(compareTs);
+  const matching = promotionRows(gradesRows).filter((r) => rowKey(r) === key).sort(compareTs);
   return streakIsAutonomous(matching, tier) ? AUTONOMOUS : QUEUES_FOR_ME;
 }
 
@@ -252,14 +266,16 @@ export function allowedGraders(repoRoot: string): Set<string> {
 }
 
 /**
- * promotion.py:213-219 — every grade row whose `inspector_id` is allow-listed. Empty allow-list ⇒ []
+ * promotion.py:234-240 — every non-reserved grade row whose `inspector_id` is allow-listed. Empty allow-list ⇒ []
  * (fail closed). Reads the shards through the existing generic ledger reader, so `.gitkeep` and the
  * `FROZEN` sentinel are skipped exactly as the python's `*.tsv` glob skips them.
  */
 export function readTrustedGrades(repoRoot: string): GradeRow[] {
   const allowed = allowedGraders(repoRoot);
   if (allowed.size === 0) return [];
-  return readKindRows(repoRoot, 'grades').filter((r) => allowed.has(String(r.inspector_id ?? '')));
+  return promotionRows(readKindRows(repoRoot, 'grades').filter(
+    (r) => allowed.has(String(r.inspector_id ?? '')),
+  ));
 }
 
 /** One earned row: a `(worker, project, task_type, tier)` key with its verdict and track record. */

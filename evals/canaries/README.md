@@ -45,7 +45,7 @@ compares against `expected`.
 
 Rubric-/Inspector-judged canaries (`judge: rubric`) are a **follow-on wave** —
 they will dispatch the Inspector role rather than run a pure Python assert. All
-20 canaries in this seed suite are deterministic.
+21 canaries in this seed suite are deterministic.
 
 ## Immutability & the manifest
 

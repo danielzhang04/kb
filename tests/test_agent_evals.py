@@ -10,6 +10,7 @@ No model calls anywhere in this file (model-judge tier is Task 6).
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -655,6 +656,12 @@ def test_fleet_suite_tamper_refuses_regardless_of_target(tmp_path):
     assert report.passed is False and "manifest" in report.reason.lower()
 
 
+def test_fleet_substitution_refuses_an_id_outside_the_factory_grammar(tmp_path):
+    _fleet_suite(tmp_path)
+    with pytest.raises(ValueError, match="unsafe agent id"):
+        run_suite(tmp_path, "demo-agent'; __import__('os').system('bad')", fleet=True)
+
+
 # --------------------------------------------------------------------------- #
 # Task 6 fold-in 7 — no-worker-commits-on-main (needs a real origin/main ref)   #
 # --------------------------------------------------------------------------- #
@@ -739,21 +746,9 @@ def test_cli_fleet_run_records_under_the_target_agent_id(tmp_path, _no_preamble)
 
 
 # --------------------------------------------------------------------------- #
-# Task 6 fold-in 4 — ladder pin (worker="eval-suite" itself)                   #
+# Task 6 fold-in 4 — ladder exclusion (worker="eval-suite" itself)             #
 # --------------------------------------------------------------------------- #
-def test_eval_suite_worker_can_earn_its_own_namespace_autonomy_pin(tmp_path):
-    """Pins CURRENT `promotion.status()` behavior for `worker='eval-suite'`
-    itself: `status()` is a pure function keyed on `(worker, project, task_type,
-    tier)` with no notion of which worker id "means" an eval runner, so 10
-    trusted, T1-passing rows recorded under `worker='eval-suite'` for a fixed
-    `task_type`/`tier` key DO cross that key's own autonomy bar. This is
-    orthogonal to (and does not weaken) the isolation guarantee above: eval
-    rows can never count toward an agent's OWN task types (worker=<agent-id>) —
-    only toward the reserved `eval-suite`/`eval:<agent>:<card>` key pins here.
-    Whether the dashboard's autonomy ladder should ever surface or ACT on an
-    "eval-suite is autonomous at eval:x:y" verdict is an explicit DEFERRED
-    question — this test only pins the mechanical fact, it does not endorse
-    wiring it into anything."""
+def test_eval_suite_worker_can_never_earn_an_autonomy_streak(tmp_path):
     _smoke_suite(tmp_path)
     record_root = tmp_path / "ledgerhome"
     for _ in range(10):  # T1 window
@@ -764,7 +759,7 @@ def test_eval_suite_worker_can_earn_its_own_namespace_autonomy_pin(tmp_path):
 
     verdict = promotion.status(EVAL_WORKER, "kb", "eval:demo-agent:smoke", "T1", rows,
                                frozen=False)
-    assert verdict == promotion.AUTONOMOUS
+    assert verdict == promotion.QUEUES_FOR_ME
 
     # ...but the SAME rows still never move demo-agent's own key (re-pin of the
     # isolation guarantee, at the exact tier/window this test exercises).
@@ -774,16 +769,51 @@ def test_eval_suite_worker_can_earn_its_own_namespace_autonomy_pin(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# the real committed _fleet suite (blessed, human-witnessed)                   #
+# the committed _fleet behavior, isolated from its deliberately unblessed cards #
 # --------------------------------------------------------------------------- #
-def test_real_fleet_suite_reports_the_retired_parent_environment_card():
-    report = run_suite(REPO_ROOT, "fyt-runner", fleet=True)
-    failures = [(card.id, card.reason) for card in report.cards if not card.passed]
-    assert failures == [(
-        "no-api-key-in-env",
-        "judge error: ValueError('env: parent removed — declare input.env_vars')",
-    )]
-    assert {c.id for c in report.cards} == {
+def _manifested_five_card_fleet_fixture(tmp_path) -> Path:
+    """Copy the five committed cards into a self-contained, freshly blessed suite.
+
+    The real suite deliberately carries unblessed Task-G cards, so this fixture
+    keeps its behavioral coverage independent of the real manifest and its
+    intentional refusal state.
+    """
+    repo = _repo_with_fake_origin_main(tmp_path)
+    shutil.copytree(REPO_ROOT / "agents", repo / "agents")
+    shutil.copytree(REPO_ROOT / "scripts", repo / "scripts",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    (repo / "memory").mkdir()
+    shutil.copy2(REPO_ROOT / "memory" / "fyt-runner.md", repo / "memory" / "fyt-runner.md")
+    (repo / "governance").mkdir()
+    shutil.copy2(REPO_ROOT / "governance" / "budget.yaml", repo / "governance" / "budget.yaml")
+
+    source = REPO_ROOT / "evals" / "agents" / FLEET_SUITE_ID
+    target = suite_dir(repo, FLEET_SUITE_ID)
+    target.mkdir(parents=True)
+    names = {
+        "def-parses-in-roster-shape.md", "memory-file-exists.md", "no-api-key-in-env.md",
+        "no-worker-commits-on-main.md", "cost-under-cap.md", "test_def_parses_in_roster_shape.py",
+    }
+    for name in names:
+        shutil.copy2(source / name, target / name)
+    update_manifest(repo, FLEET_SUITE_ID)
+    return repo
+
+
+def test_manifested_five_card_fleet_fixture_exercises_the_blessed_behavior(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    repo = _manifested_five_card_fleet_fixture(tmp_path)
+    report = run_suite(repo, "fyt-runner", fleet=True)
+    assert report.passed, [(card.id, card.reason) for card in report.cards]
+    assert {card.id for card in report.cards} == {
         "def-parses-in-roster-shape", "memory-file-exists", "no-api-key-in-env",
         "no-worker-commits-on-main", "cost-under-cap"}
-    assert all(c.hermetic for c in report.cards)  # no judge:model card in _fleet
+    assert all(card.hermetic for card in report.cards)
+
+
+def test_real_fleet_suite_refuses_the_deliberately_unblessed_new_cards():
+    report = run_suite(REPO_ROOT, "fyt-runner", fleet=True)
+    assert report.tampered is True
+    assert report.cards == []
+    assert "lesson-appended.md" in report.reason
+    assert "ledgers-cost-row.md" in report.reason
