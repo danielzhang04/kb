@@ -107,6 +107,22 @@ Cutover window is quiescent + Daniel-scheduled; do not start it unprompted.
   top.
 - Rollback = platform `previous` symlink + restic tier-0 + 2-week inert desktop (`dashboard-prod`
   worktree on `claude/dashboard-prod-pin` is the rollback image — EXEMPT from all sweeps for the window).
+- **URL / tailnet name LOCKED (Daniel, 2026-08-19) = `kb.command.ts.net`.** Rename the tailnet
+  `tail82dd4f` → `command` (one-time admin-console rename, Daniel's action — account cred, not ours);
+  machine hostname stays `kb`. "kb" everywhere else (repo, `/var/lib/kb`, `/opt/kb-releases`,
+  `kb-dashboard` unit, `kb-ops-approver` key, org names) is internal codename and is UNCHANGED — the
+  new word lives only at the address layer. No full rebrand. A custom apex domain stays OUT (would
+  require public Funnel, breaks the tailnet-only trust boundary).
+  - WIRING SURFACE (rename `kb.tail82dd4f.ts.net` → `kb.command.ts.net` before Phase 6 deploy /
+    Phase 7 acceptance; fold into Phase 2 re-derivation + Phase 3 config — NOT a Phase-1 blocker):
+    main ~32 refs across `dashboard/server/auth/mode.ts` (+ `mode.test.ts`, `tailnetOperator.test.ts`),
+    `dashboard/server/http/surface.test.ts`, `dashboard/server/security/origin.test.ts`,
+    `tests/test_validate_vm_runtime.py`, `tests/test_bootstrap_vm.py`,
+    `docs/superpowers/specs/2026-08-18-tailnet-trust-mode-design.md`; cloud-migration branch 8 refs in
+    `docs/runbooks/2026-08-18-platform-cutover.md` + `docs/specs/2026-08-18-cutover-end-state.md`.
+    Plus the live VM: re-run `tailscale serve` under the new name so the TLS cert re-issues for
+    `kb.command.ts.net`, and confirm `resolveDaemonPublicOrigin` (activation.ts) yields the new origin.
+    Verify with `git grep -i tail82dd4f` == 0 across both branches after the sweep.
 
 ## Load list
 - `handoffs/2026-08-19-cloud-migration-cutover-phase0-done.md` (this file)
