@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { CARD_QUEUE_DIRS, parseValidatedCard } from '../planeA/cards.ts';
+import { CARD_QUEUE_DIRS, parseValidatedCardTolerant } from '../planeA/cards.ts';
 import { workflowProfileIds } from '../control/environment.ts';
 import { defaultPlatformRoot } from '../runtime/python.ts';
 import { parseWorkflowDef } from '../workflows/defs.ts';
@@ -26,8 +26,15 @@ export function assertSupportedRepositoryData(
     throw new Error(`schema infrastructure error at ${platformRoot}: ${error instanceof Error ? error.message : String(error)}`);
   }
   for (const path of queueCardFiles(repoRoot)) {
-    try { parseValidatedCard(readFileSync(path, 'utf8'), platformRoot); }
+    let unknownKeys: string[];
+    try { ({ unknownKeys } = parseValidatedCardTolerant(readFileSync(path, 'utf8'), platformRoot)); }
     catch (error) { throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`); }
+    // Unknown top-level keys (a not-yet-merged arc's extra metadata on the shared ops branch) are
+    // tolerated at boot — the platform reads only the fields it knows. Logged, never fatal: one
+    // foreign card must not crash the whole platform's start. Runtime claim/execute stays strict.
+    if (unknownKeys.length > 0) {
+      console.warn(`startup: card ${path} carries unknown frontmatter keys (ignored): ${unknownKeys.join(', ')}`);
+    }
   }
   const orgs = join(repoRoot, 'orgs');
   if (!existsSync(orgs)) return;

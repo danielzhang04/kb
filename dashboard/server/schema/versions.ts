@@ -77,3 +77,35 @@ export function assertCardSchema(
     throw new Error(`card schema validation failed: ${detail}`);
   }
 }
+
+/**
+ * Forward-compatible variant of {@link assertCardSchema}. The `ops` branch is written by many
+ * independent tools; a card carrying an unknown top-level key (e.g. a not-yet-merged arc's extra
+ * metadata) is NOT a reason to fail-closed — the platform only reads the fields it knows and the
+ * frontmatter is inert data. So this tolerates `additionalProperties` violations and RETURNS the
+ * offending keys for the caller to log, while still throwing on every STRUCTURAL problem (missing
+ * required field, wrong type, bad enum). The active claim/execute path keeps using the strict
+ * {@link assertCardSchema}; only the boot-time repository scan is forgiving.
+ */
+export function assertCardSchemaTolerant(
+  meta: Record<string, unknown>,
+  version: 0 | 1,
+  platformRoot: string = defaultPlatformRoot(),
+): string[] {
+  const validate = cardValidator(platformRoot);
+  const candidate = version === 0 ? { ...meta, 'schema-version': 1 } : meta;
+  if (validate(candidate)) return [];
+  const unknownKeys: string[] = [];
+  const structural = (validate.errors ?? []).filter((error) => {
+    if (error.keyword === 'additionalProperties' && typeof error.params?.additionalProperty === 'string') {
+      unknownKeys.push(error.params.additionalProperty);
+      return false;
+    }
+    return true;
+  });
+  if (structural.length > 0) {
+    const detail = structural.map((error) => `${error.instancePath || '/'} ${error.message ?? 'is invalid'}`).join('; ');
+    throw new Error(`card schema validation failed: ${detail}`);
+  }
+  return unknownKeys;
+}

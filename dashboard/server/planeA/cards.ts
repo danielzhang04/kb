@@ -12,7 +12,7 @@
  * other block list or indented continuation is a parse error — and it never interprets body text.
  */
 
-import { assertCardSchema, assertSupportedVersion, readCompatibility } from '../schema/versions.ts';
+import { assertCardSchema, assertCardSchemaTolerant, assertSupportedVersion, readCompatibility } from '../schema/versions.ts';
 import { defaultPlatformRoot } from '../runtime/python.ts';
 
 export type CardFieldValue = string | number | boolean | null | string[];
@@ -159,6 +159,26 @@ export function parseValidatedCard(text: string, platformRoot: string = defaultP
   const version = assertSupportedVersion('cards', meta['schema-version'], readCompatibility(platformRoot));
   assertCardSchema(meta, version, platformRoot);
   return { meta: meta as CardMeta, body: parsed.body };
+}
+
+/**
+ * Boot-scan variant of {@link parseValidatedCard}: still strict on frontmatter shape, version, and
+ * structure, but TOLERATES unknown top-level keys (a not-yet-merged arc's extra metadata on the
+ * shared `ops` branch) instead of crashing the platform boot. Returns the tolerated `unknownKeys`
+ * so the startup scan can log them. Runtime claim/execute stays on the strict parseValidatedCard.
+ */
+export function parseValidatedCardTolerant(
+  text: string,
+  platformRoot: string = defaultPlatformRoot(),
+): ParsedCard & { unknownKeys: string[] } {
+  const parsed = parseCardFrontmatter(text);
+  const meta: Record<string, unknown> = { ...parsed.meta };
+  if (meta['schema-version'] !== undefined) {
+    meta['schema-version'] = coerceSchemaVersion(meta['schema-version']);
+  }
+  const version = assertSupportedVersion('cards', meta['schema-version'], readCompatibility(platformRoot));
+  const unknownKeys = assertCardSchemaTolerant(meta, version, platformRoot);
+  return { meta: meta as CardMeta, body: parsed.body, unknownKeys };
 }
 
 /** Group parsed cards by their `state` field. One bucket per state that appears. Generic so the
