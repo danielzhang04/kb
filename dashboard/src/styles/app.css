@@ -90,24 +90,21 @@
  */
 
 :root {
-  /* ---- Color: surfaces (NEUTRAL near-black — field-guide restyle 2026-08-18; never pure black)
-   * The 2026-07-17 SHARPEN pass built a WARM near-black ladder (#1a1815 -> #2d2b27). Daniel's
-   * field-guide ruling drops the warm hue bias from the surfaces themselves: these are the reference's
-   * achromatic editorial greys, and the ladder is deliberately TIGHTER than before (adjacent rungs sit
-   * at ~1.02-1.09:1 rather than ~1.10-1.14:1). That is the point — the reference separates surfaces with
-   * the EDGE, not with a lightness step, so the hairline alpha below is lifted (0.10 -> 0.12) to carry
-   * the work the background delta used to do. The one surviving warmth in the app is --mc-accent. ---- */
-  --bg-sunken: #151512; /* code gutters / inputs / terminal — deepest well */
-  --bg-base: #151512; /* app shell — neutral near-black */
-  --bg-panel: #26261f; /* cards / sidebar / panes — workhorse */
-  --bg-elevated: #26261f; /* popovers / palette / hover — raised surface */
+  color-scheme: dark;
+
+  /* ---- Color: pure-neutral dark scale. All grey tokens have R = G = B. ---- */
+  --bg-sunken: #0f0f0f; /* code gutters / terminal — deepest well */
+  --bg-base: #0f0f0f; /* page */
+  --bg-sidebar: #141414; /* navigation / chrome — intentionally below cards */
+  --bg-panel: #1b1b1b; /* cards / panes */
+  --bg-elevated: #202020; /* controls / sheets / popovers */
 
   /* ---- Color: foreground (neutral off-white / neutral gray) ---- */
-  --fg-primary: #efeee8;
-  --fg-dim: #b4b4ac;
-  --fg-faint: #8d8d85; /* 4.93:1 on the NEW darker --bg-elevated #201f1c (was 4.85:1 at #9a9790/#2d2b27) */
-  --ink: #efeee8;
-  --paper: #151512;
+  --fg-primary: #ebebeb;
+  --fg-dim: #a6a6a6;
+  --fg-faint: #7c7c7c;
+  --ink: #ebebeb;
+  --paper: #0f0f0f;
 
   /* ---- Color: accent — NEUTRAL white/opacity hierarchy (Daniel override 2026-07-17: no decorative
    * accent colour in chrome; terracotta retired). These tokens drive ALL structural chrome (nav
@@ -125,8 +122,8 @@
    * --border / --border-strong are kept as aliases so every existing consumer inherits at once.
    * Field-guide restyle 2026-08-18: both alphas step up (0.10 -> 0.12, 0.16 -> 0.18) because the surface
    * ladder flattened — the edge is now the primary separator, not a secondary one. ---- */
-  --hairline: #484841;
-  --hairline-strong: #686862;
+  --hairline: #2a2a2a;
+  --hairline-strong: #7c7c7c;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -136,9 +133,7 @@
    * --bg-elevated (the badge/pill fill — the hardest surface any of them lands on) and lifted to >=4.5:1
    * where it fell short. Hue families are unchanged; only lightness moved. Untouched values were already
    * over the bar.
-   * FIELD-GUIDE RESTYLE (2026-08-18): not one legend VALUE changed, but --bg-elevated did (#2d2b27 ->
-   * #201f1c), so every ratio below was re-measured against the new surface. All moved UP — the darker
-   * elevated surface is strictly kinder to this palette. The quoted numbers are the new ones. ---- */
+   * The rust failure token is the sole non-neutral color. ---- */
   --error: #c97867; /* rust — the sole hue */
   --warning: var(--error);
   --success: var(--fg-dim);
@@ -231,11 +226,7 @@
    * quiet acknowledgement, never an animation — nothing here moves, only colour and border shift. ---- */
   --transition: 120ms ease-out;
 
-  /* ---- Accent slot. Every place an accent touches (active nav rail, primary button fill, focus
-   * rings, the unlock chip) reads --mc-accent. Landed 2026-08-05: candidate C "warm parchment" from
-   * docs/superpowers/plans/2026-08-05-accent-swatches.md — #d9c7a8 dark / #6b5b41 light, low-chroma
-   * sand deliberately distinct from the saturated amber/tier chips. --mc-accent-fg is the text colour
-   * that sits ON a filled accent; --bg-base is correct in both themes. ---- */
+  /* ---- Accent slot. Inversion is ink on page in both themes. ---- */
   --mc-accent: var(--ink);
   --mc-accent-fg: var(--paper);
 
@@ -255,46 +246,32 @@
   --topbar-h: 44px;
 }
 
-/* Light remap — applies on OS light preference ONLY when no explicit theme is pinned. The
- * [data-theme=...] blocks below have higher specificity (0,2,0 vs 0,1,0) and win regardless. */
-/* Light theme — NEUTRAL PAPER (field-guide restyle 2026-08-18, superseding the "warm cream" surfaces
- * this block carried since 2026-07-17). Same ruling as dark: the surface hue bias is dropped for the
- * reference's achromatic paper greys, while the accent stays warm parchment (--mc-accent) as the single
- * interactive highlight. Semantic status hues are kept untouched. NOTE: dark is the app default —
- * main.tsx pins [data-theme=dark] explicitly so this media query only takes effect for an OS-light user
- * who has NOT chosen a theme; the toggle always wins. */
+/* Light remap — applies on OS light preference ONLY when no explicit theme is pinned. */
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-sunken: #fbfbf8;
-    --bg-base: #fbfbf8;
-    --bg-panel: #f1f1ec;
-    --bg-elevated: #f1f1ec;
+    color-scheme: light;
+    --bg-sunken: #fafafa;
+    --bg-base: #fafafa;
+    --bg-sidebar: #f1f1f1;
+    --bg-panel: #ffffff;
+    --bg-elevated: #f1f1f1;
 
-    --fg-primary: #11110f;
-    --ink: #151512;
-    --paper: #fbfbf8;
-    /* Neutralised from #5c5749 after MEASURING it: 5.00:1 on the new --bg-elevated #f2f2ee, so it clears
-     * the 4.5:1 bar and the reference's value can be taken as-is. (It is a lighter grey than the value it
-     * replaces — the new elevated surface being lighter than the old #f3efe7 is what pays for it.) */
-    --fg-dim: #686862;
-    /* KEPT at the U16 value on purpose. The reference's own faint grey fails 4.5:1 outright, so it is NOT
-     * imported — the legend rule outranks fidelity to the reference. 4.67:1 here (was 4.57:1). */
-    --fg-faint: #8d8d86;
+    --fg-primary: #161616;
+    --ink: #161616;
+    --paper: #fafafa;
+    --fg-dim: #555555;
+    --fg-faint: #767676;
 
     --accent-strong: var(--ink);
-    --accent: #686862;
+    --accent: var(--fg-dim);
     --accent-quiet: var(--bg-elevated);
     --mc-accent: var(--ink);
 
-    /* Light hairline is a dark low-alpha line. Both alphas step up with dark's (0.10 -> 0.11,
-     * 0.16 -> 0.16 unchanged in shape) because the light surface ladder flattened too. */
-    --hairline: #c5c5bf;
-    --hairline-strong: #686862;
+    --hairline: #dcdcdc;
+    --hairline-strong: #767676;
     --border: var(--hairline);
     --border-strong: var(--hairline-strong);
 
-    /* Legend-legibility pass (U16), re-measured 2026-08-18 on light's NEW --bg-elevated #f2f2ee (was
-     * #f3efe7). No legend VALUE changed; every ratio moved up because the new surface is lighter. */
     --error: #a1543f; /* rust — the sole hue */
     --warning: var(--error);
     --success: var(--fg-dim);
@@ -308,32 +285,34 @@
     --tier-t2: var(--fg-dim);
     --tier-t3: var(--error);
 
-    --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
-    --shadow-overlay: 0 25px 80px rgba(30, 25, 20, 0.16);
-    --shadow-sunken: inset 0 1px 2px rgba(60, 50, 40, 0.12);
+    --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.16);
+    --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.12);
   }
 }
 
 /* Explicit theme pin — wins over the media query above. */
 :root[data-theme='light'] {
-  --bg-sunken: #fbfbf8;
-  --bg-base: #fbfbf8;
-  --bg-panel: #f1f1ec;
-  --bg-elevated: #f1f1ec;
+  color-scheme: light;
+  --bg-sunken: #fafafa;
+  --bg-base: #fafafa;
+  --bg-sidebar: #f1f1f1;
+  --bg-panel: #ffffff;
+  --bg-elevated: #f1f1f1;
 
-  --fg-primary: #11110f;
-  --ink: #151512;
-  --paper: #fbfbf8;
-  --fg-dim: #686862;
-  --fg-faint: #8d8d86;
+  --fg-primary: #161616;
+  --ink: #161616;
+  --paper: #fafafa;
+  --fg-dim: #555555;
+  --fg-faint: #767676;
 
   --accent-strong: var(--ink);
-  --accent: #686862;
+  --accent: var(--fg-dim);
   --accent-quiet: var(--bg-elevated);
   --mc-accent: var(--ink);
 
-  --hairline: #c5c5bf;
-  --hairline-strong: #686862;
+  --hairline: #dcdcdc;
+  --hairline-strong: #767676;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -350,30 +329,32 @@
   --tier-t2: var(--fg-dim);
   --tier-t3: var(--error);
 
-  --shadow-elevated: 0 1px 2px rgba(60, 50, 40, 0.1), 0 4px 12px rgba(60, 50, 40, 0.08);
-  --shadow-overlay: 0 25px 80px rgba(30, 25, 20, 0.16);
-  --shadow-sunken: inset 0 1px 2px rgba(60, 50, 40, 0.12);
+  --shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 25px 80px rgba(0, 0, 0, 0.16);
+  --shadow-sunken: inset 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 :root[data-theme='dark'] {
-  --bg-sunken: #151512;
-  --bg-base: #151512;
-  --bg-panel: #26261f;
-  --bg-elevated: #26261f;
+  color-scheme: dark;
+  --bg-sunken: #0f0f0f;
+  --bg-base: #0f0f0f;
+  --bg-sidebar: #141414;
+  --bg-panel: #1b1b1b;
+  --bg-elevated: #202020;
 
-  --fg-primary: #efeee8;
-  --ink: #efeee8;
-  --paper: #151512;
-  --fg-dim: #b4b4ac;
-  --fg-faint: #8d8d85;
+  --fg-primary: #ebebeb;
+  --ink: #ebebeb;
+  --paper: #0f0f0f;
+  --fg-dim: #a6a6a6;
+  --fg-faint: #7c7c7c;
 
   --accent-strong: var(--ink);
   --accent: var(--fg-dim);
   --accent-quiet: var(--bg-elevated);
   --mc-accent: var(--ink);
 
-  --hairline: #484841;
-  --hairline-strong: #686862;
+  --hairline: #2a2a2a;
+  --hairline-strong: #7c7c7c;
   --border: var(--hairline);
   --border-strong: var(--hairline-strong);
 
@@ -407,8 +388,46 @@ body {
   line-height: 1.45;
 }
 
+/* Browser-native controls otherwise retain a light UA surface in dark mode. Keep every app
+ * control on the same token scale; specialised component rules only refine their layout. */
+button,
+input,
+select,
+textarea {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-elevated);
+  color: var(--fg-primary);
+  font: inherit;
+}
+
 button {
-  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--bg-panel);
+  color: var(--fg-faint);
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+select option {
+  background: var(--bg-elevated);
+  color: var(--fg-primary);
 }
 
 /* ---- Numeric utilities ---- */
@@ -465,7 +484,7 @@ button {
 /* ---- Sidebar ---- */
 .mc-sidebar {
   grid-area: sidebar;
-  background: var(--bg-panel);
+  background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;

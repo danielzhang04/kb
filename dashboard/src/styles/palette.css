@@ -64,14 +64,20 @@
 .mc-palette__input {
   flex: 0 0 auto;
   width: 100%;
-  background: var(--bg-sunken);
+  background: var(--bg-elevated);
   color: var(--fg-primary);
-  border: none;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
   padding: var(--space-3) var(--space-4);
   font: inherit;
   font-size: var(--text-md);
-  outline: none;
+}
+
+.mc-palette__input:focus-visible {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
 }
 
 .mc-palette__input::placeholder {
