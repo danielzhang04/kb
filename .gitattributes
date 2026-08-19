@@ -5,6 +5,8 @@
 /skills/curated/** text=auto eol=lf
 /.claude/skills/** text=auto eol=lf
 /.agents/skills/** text=auto eol=lf
+/.claude/kb-kit/** text=auto eol=lf
+/.agents/kb-kit/** text=auto eol=lf
 /kit/** text=auto eol=lf
 
 # Systemd units are templated byte-for-byte during VM bootstrap.
