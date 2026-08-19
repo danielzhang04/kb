@@ -12,9 +12,13 @@ managed from the dashboard. Editing the kit once changes every agent's next run.
 
 **Success condition:** the P6 platform proof — a factory-spawned demo agent receives the
 rendered kit in both runtimes (via the render artifact; the U7/U9 hooks remain INERT until
-Daniel's separate arming ceremony), runs its eval suite into the pinned grades ledger, and
-fires on a committed schedule with narration visible in the dashboard feed, all on the
-isolated display dashboard, with zero API spend.
+Daniel's separate arming ceremony) and runs its eval suite into the pinned grades ledger,
+all on the isolated display dashboard, with zero API spend. Scheduling is proven by the
+cron/dedup/narration test fixtures plus the Schedules panel over the live read-only
+cadences — NOT by committing a demo cadence: coordination writes stay off the work branch
+(branch rules), so the first live scheduled fire happens after merge, when Daniel commits
+a cadence block through the panel's PR flow. (Amended at P6 after the arc goal audit
+flagged the original wording's conflict with the branch rules; Daniel ratifies at review.)
 
 ## Non-goals (YAGNI — ruled out deliberately)
 
