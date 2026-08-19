@@ -249,6 +249,13 @@ describe('buildSchedulesPanel — the projection', () => {
       'orgs/atlas-prep/HEARTBEAT.md',
       'orgs/kb-ops/HEARTBEAT.md',
     ]);
+    expect(Object.keys(panel.files)).toEqual([
+      'HEARTBEAT.md',
+      'orgs/atlas-prep/HEARTBEAT.md',
+      'orgs/faceless-youtube/HEARTBEAT.md',
+      'orgs/kb-ops/HEARTBEAT.md',
+    ]);
+    expect(panel.files['HEARTBEAT.md']).toContain('name: nightly-review');
     // Every declared file path is one the edit route would accept — the panel never offers a target the
     // keyhole refuses.
     for (const c of panel.cadences) expect(HEARTBEAT_RELPATH.test(c.file)).toBe(true);
@@ -301,7 +308,17 @@ describe('buildSchedulesPanel — the projection', () => {
   it('degrades to an empty cadence list on a checkout with no HEARTBEAT at all', () => {
     const panel = buildSchedulesPanel(tempRepo());
     expect(panel.cadences).toEqual([]);
+    expect(panel.files).toEqual({});
     expect(panel.pausedCount).toBe(0);
+  });
+
+  it('returns raw contents for every HEARTBEAT file read, including a declaration with no cadence blocks', () => {
+    const root = tempRepo({ root: [], orgs: { demo: [] } });
+    const panel = buildSchedulesPanel(root);
+    expect(panel.files).toEqual({
+      'HEARTBEAT.md': heartbeat([]),
+      'orgs/demo/HEARTBEAT.md': heartbeat([]),
+    });
   });
 });
 
@@ -354,6 +371,7 @@ describe('GET /api/panels/schedules — read-only', () => {
       expect(body.cadences.map((c) => c.name)).toEqual(['alpha', 'beta']);
       expect(body.cadences[1].paused).toBe(true);
       expect(body.cadences[1].scheduleHint).toBe('cron: */5 * * * *');
+      expect(body).toMatchObject({ files: { 'HEARTBEAT.md': heartbeat([{ name: 'alpha', schedule: 'daily' }]) } });
     } finally {
       tripwire.armed = false;
       await app.close();

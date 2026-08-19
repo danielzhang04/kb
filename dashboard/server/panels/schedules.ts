@@ -36,7 +36,7 @@
  * unpause surface at all, and a test asserts it against the app's LIVE route table — not against this
  * file's source — so a future registration anywhere under `/api/schedules` trips it.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { readKindRows } from '../planeA/ledgers.ts';
@@ -88,6 +88,8 @@ export interface ScheduleRow {
 export interface SchedulesPanel {
   label: 'schedules';
   cadences: ScheduleRow[];
+  /** Raw contents keyed by the repo-relative HEARTBEAT file path each row declares in. */
+  files: Record<string, string>;
   /** How many declared cadences currently carry a pause sentinel. */
   pausedCount: number;
 }
@@ -152,6 +154,27 @@ function heartbeatFileFor(project: string): string {
   return project === SYSTEM_PROJECT ? 'HEARTBEAT.md' : `orgs/${project}/HEARTBEAT.md`;
 }
 
+/** The raw declaration files the shared cadence reader traverses, including a valid file with no blocks. */
+function readHeartbeatFiles(repoRoot: string): Record<string, string> {
+  const paths = ['HEARTBEAT.md'];
+  const orgs = join(repoRoot, 'orgs');
+  if (existsSync(orgs)) {
+    for (const project of readdirSync(orgs)) {
+      if (statSync(join(orgs, project)).isDirectory()) paths.push(`orgs/${project}/HEARTBEAT.md`);
+    }
+  }
+
+  const files: Record<string, string> = {};
+  for (const file of paths) {
+    try {
+      files[file] = readFileSync(join(repoRoot, file), 'utf-8');
+    } catch {
+      // Missing/unreadable declarations are already represented by the cadence reader as no rows.
+    }
+  }
+  return files;
+}
+
 /**
  * The `## Result` narration of card `id`, or null when the card is absent from this checkout or cannot
  * be parsed. Read through the SHARED card reader (`planeA/cards.ts`) the roster, the Atlas panel and the
@@ -185,6 +208,7 @@ function cardNarration(repoRoot: string, id: string): string | null {
 export function buildSchedulesPanel(repoRoot: string): SchedulesPanel {
   const declared = readHeartbeatCadences(repoRoot);
   const rows = readKindRows(repoRoot, 'dispatch');
+  const files = readHeartbeatFiles(repoRoot);
 
   const cadences: ScheduleRow[] = declared.map((c) => {
     const mine = rows.filter((r) => String(r.cadence ?? '') === c.name);
@@ -218,6 +242,7 @@ export function buildSchedulesPanel(repoRoot: string): SchedulesPanel {
   return {
     label: 'schedules',
     cadences,
+    files,
     pausedCount: cadences.filter((c) => c.paused).length,
   };
 }

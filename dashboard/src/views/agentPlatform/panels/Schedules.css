@@ -1,0 +1,69 @@
+.ap-schedules {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ap-schedules__heading,
+.ap-schedules__note,
+.ap-schedules__warning,
+.ap-schedules__status {
+  margin: 0;
+}
+
+.ap-schedules__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ap-schedules__row {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+
+.ap-schedules__identity,
+.ap-schedules__details,
+.ap-schedules__edit-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.ap-schedules__details {
+  color: var(--fg-dim);
+}
+
+.ap-schedules__warning {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.ap-schedules__edit-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ap-schedules__edit-form label,
+.ap-schedules__edit-form textarea {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.ap-schedules__edit-form textarea {
+  min-height: calc(var(--space-12) * 3);
+  width: 100%;
+  font-family: var(--font-mono);
+}
+
+.ap-schedules__note,
+.ap-schedules__last-run { color: var(--fg-faint); }
+
+.ap-schedules__date { font-family: var(--font-mono); }
+.ap-schedules__narration--needs-you { color: var(--warning); font-weight: 600; }

@@ -73,6 +73,7 @@ describe('agentPlatform/registry', () => {
       // U-L2 — the loops run on their own overnight; "did they run, and does one need me?" is the
       // first question of the morning, so the section opens on it.
       'loop-status',
+      'schedules',
       'agent-management',
       'fleet-graph',
       'watch-agents-run',
