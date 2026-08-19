@@ -16,7 +16,10 @@ CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTI
 # REQUIRED — without the host the daemon refuses to start, and asserting it here turns that into one loud
 # ExecStartPre failure instead of a restart loop.
 EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST"}
-OPTIONAL_UNIT_ENV = {"DASHBOARD_DEV_ORIGIN", "DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_TAILNET_OPERATOR"}
+OPTIONAL_UNIT_ENV = {"DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_TAILNET_OPERATOR"}
+# DASHBOARD_DEV_ORIGIN is deliberately NOT optional here: it is a win32-desktop-only convenience, and
+# under tailnet's AMBIENT auth an allowlisted dev origin would grant operator authority to any page served
+# from it. A unit that sets it fails the closed-set check.
 # DASHBOARD_RP_ORIGIN and DASHBOARD_WEBAUTHN_CREDENTIALS are deliberately in NEITHER set. Tailnet mode
 # retires the WebAuthn unit channel, so a unit still carrying them is stale drift and must FAIL the
 # closed-set check rather than be tolerated. With no sanctioned public-key name left, CREDENTIAL_ENV_NAME

@@ -73,6 +73,7 @@ import type { SpendGrant } from './spendGrant.ts';
 import { brandInternalServiceCaller } from '../auth/session.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 import { resolveAuthMode } from '../auth/mode.ts';
+import { resolveDaemonPublicOrigin } from '../security/origin.ts';
 
 export class ActivationError extends Error {}
 
@@ -530,7 +531,10 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   // at launch; it is passed to the engine so a paid stage arms its worker before delivery. Provider keys are
   // resolved server-side from OUTSIDE any worktree — never written into one.
   const paid = buildPaidActionExecution({ stateRoot, worktreeRoot });
-  const paidActionRouteUrl = `${(env.DASHBOARD_RP_ORIGIN ?? env.DASHBOARD_DEV_ORIGIN ?? 'http://127.0.0.1:5317').replace(/\/+$/, '')}${PAID_ACTION_ROUTE_PATH}`;
+  // Mode-aware: the daemon's public origin is the serve host in tailnet mode, the RP origin in win32.
+  // A hardcoded `DASHBOARD_RP_ORIGIN ?? ...` fell through to the loopback fallback in tailnet mode
+  // (where RP_ORIGIN is banned), silently pointing every spend-grant approval link at the wrong host.
+  const paidActionRouteUrl = `${resolveDaemonPublicOrigin(env).replace(/\/+$/, '')}${PAID_ACTION_ROUTE_PATH}`;
   const provisionSpendGrant = createSpendGrantProvisioner({
     grantStore: paid.spendGrantStore,
     routeUrl: paidActionRouteUrl,

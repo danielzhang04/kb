@@ -222,9 +222,16 @@ def test_static_phase_accepts_the_tailnet_unit():
     validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
 
 
-@pytest.mark.parametrize("name", ["DASHBOARD_DEV_ORIGIN", "DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_TAILNET_OPERATOR"])
+@pytest.mark.parametrize("name", ["DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_TAILNET_OPERATOR"])
 def test_static_phase_accepts_the_optional_tailnet_names(name):
     validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT + f"Environment={name}=x\n")
+
+
+def test_static_phase_rejects_dev_origin_under_ambient_tailnet_auth():
+    # A dev origin allowlisted under ambient auth would grant operator authority to any page on it.
+    text = VALID_UNIT_TEXT + "Environment=DASHBOARD_DEV_ORIGIN=http://localhost:4317\n"
+    with pytest.raises(RuntimeError, match="assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
 def test_static_phase_rejects_other_credential_named_unit_environment():
