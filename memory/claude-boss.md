@@ -579,3 +579,12 @@
 - HAZARD: codex sandbox pytest runs leave ACL-poisoned temp dirs the desktop user cannot delete unelevated (hit twice: `.pytest-digest-scan`, `.pytest-ig-scout-verify`); `.pytest-*/` now gitignored in the clone; elevated cleanup owed. And NEVER accept a worker's "tests green" without rerunning in the boss env — diverged twice (missing basetemp dir, then poisoned ACLs).
 - HAZARD: a stopped subagent's transcript can be unrecoverable minutes after stop (SendMessage → "No transcript found") — its in-context analysis died; only its state dump + scratchpad media survived. Persist subagent findings to files the moment they arrive.
 - LEARNED: when Daniel plans to relocate the repo (cloud VM), work in a standalone CLONE, not an attached worktree; and discovery agents must capture per-reel author handles at browse time — the seed digest's creator lines are config-matched, unverified.
+
+## 2026-08-19 — agent-infra arc (boss, agent-platform-w1 worktree)
+- WORKED: research-before-design (SDK + landscape studies) then adversarial review of my own synthesis — it killed 3 of my 5 headline imports as duplication of kb mechanisms (sync_skills, canaries, dream.py). Anti-duplication review of DESIGNS, not just code, is now standing practice.
+- WORKED: copying Claude routines' scheduler shape verbatim (cron string + skip-not-replay + pause) and treating Codex's undocumented catch-up as evidence of what NOT to build.
+- WORKED: platform proof as a first-class phase — it caught a real factory defect (pre-existing suite blocked agent creation) that 4 review rounds missed.
+- FAILED then fixed: my plan pinned a dead workBranch and put calendar fields outside the auth byte-compare; reviewers caught both. Plans deserve the same adversarial pass as code.
+- LESSON: agent-rules.md rule 8 (evals/ human-only) now self-enforces — a codex worker refused a mixed brief touching evals/. Route evals/ edits to Daniel's ceremony from the start; never fold them into agent briefs.
+- LESSON: same-second stalls across multiple agents = machine-wide stream outage; resume every agent via SendMessage from its transcript, zero loss (5 workers, 3 outages this arc).
+- REMAINS: Daniel's rule-8 ratification + fleet env-card re-bless (RED until then, deliberate), card-schema amendment, Wave-2 list in MORNING-REPORT-AGENT-INFRA.md.
