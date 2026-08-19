@@ -624,3 +624,23 @@
 - WORKED: codex terra one-pass publish-ready artifact HTML when brief pins fragment format, size budget with fallback ladder, exact section list, and 'no invented numbers'.
 - FAILED EARLIER, FIXED: subagent transcript greps must use the SPAWNING session dir (agent files land under the session that spawned them, not the newest session dir).
 - REMAINS: suffix/register A/Bs, render-register experiment, 2 canonicals (block acts 2-4), L09 mechanism fix — all gated on Daniel, see handoffs/2026-08-19-bricks-overnight.md.
+
+## 2026-08-19 — cloud-migration cutover (COMPLETE)
+- WORKED: armed platform hot-swap. `require_quiescence` refuses to activate a release over an armed
+  plane (blockers: execution-unlocked,queue-bridge-running,workers-active). Supported drain = `POST
+  /api/control/execution/lock` as the tailnet operator (`curl.exe` THROUGH serve 443, not a raw
+  127.0.0.1 call — auth needs the root-owned serve peer + injected Tailscale-User-Login). Locking fires
+  the latch onChange → stops bridge + zeroes workers → quiescent → deploy → restart → tailnet mode
+  re-arms at boot. No separate re-arm step.
+- WORKED: revert an emergency commit SURGICALLY when it bundled two concerns. The sanitize commit both
+  stripped card keys AND created queue/paused sentinels; a plain `git revert` deleted the sentinels.
+  Fix: `git revert --no-commit`, `git checkout HEAD -- <paths-to-keep>`, then commit only the intended hunks.
+- LESSON: verify the schema BEFORE an emergency strip. Under boot-crash pressure I stripped `autonomy`
+  along with `kit_sha`, but `autonomy: acts-alone` is a VALID enum field — over-stripped 39 cards. Only
+  `kit_sha` (truly absent from schema) needed removing. The real fix was the forward-compat parser
+  (#137), not stripping data. When a boot fails closed on data, prefer making the reader tolerant over
+  mutating the shared record.
+- LESSON: `.ts.net` vanity URLs aren't free — Tailscale only rolls a random name on a free tailnet;
+  custom names need a paid plan; a custom domain would need Funnel (public → strips identity headers →
+  breaks tailnet-trust auth). Don't promise a clean URL before checking the plan tier.
+- REMAINS: Phase 8 only, time-gated ~2026-09-02 — see handoffs/2026-08-19-cloud-migration-cutover-COMPLETE.md.
