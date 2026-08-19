@@ -16,7 +16,7 @@ place, since a law-violating exemplar teaches the violation.
 
 > In 1822, a few hundred people sold everything they owned
 
-**Ideal shot:** wide eye-level dock at dawn; a dense cluster of ordinary emigrant families, anonymous figures on the `crowd-exemplar` rig, held in a planted tableau in the lower third with trunks and bundles at their feet; across the water a radiant golden fantasy skyline dominates the upper two-thirds, one red accent on a single ship pennant.
+**Ideal shot:** wide eye-level dock at dawn; foreground a cropped bollard, mooring rope and stacked trunks frame a small cluster of ordinary emigrant families, anonymous figures on the `crowd-exemplar` rig; midground further families recede smaller in overlapping groups beyond the luggage and gangplank; background the dock remains populated at several distances before a radiant golden fantasy skyline across the water, one red accent on a single ship pennant.
 **Why:** scale is the argument; tiny real people under an impossibly perfect promise reads before the narrator finishes the sentence.
 
 ## 2. Staged interaction (mined, Poyais land grant)

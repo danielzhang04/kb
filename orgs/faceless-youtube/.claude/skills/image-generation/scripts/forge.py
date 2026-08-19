@@ -282,8 +282,8 @@ def assemble_prompt(descriptor, payload, figures_text="", righold="", generated_
     STYLE-ONLY descriptor at the HEAD and the video's `global_prompt_suffix` at the TAIL. That is
     the poyais-era shape, restored 2026-08-05: the era stated style twice, at both ends, on 87% of
     its 117 shots (98% carried `#241a12` inline, 99% carried "flat-cel"/"house style"), and this
-    provider weights the LAST instruction hardest — so the tail is where line weight, the 2-3 colour
-    palette rule and the single-red-accent law actually land. Between 2026-07-30 and 2026-08-04 the
+    provider weights the LAST instruction hardest — so the tail is where line weight, the warm-biased
+    scene palette and the single-red-accent law actually land. Between 2026-07-30 and 2026-08-04 the
     tail voice shrank to 46 lettering-only characters and style became head-only; the register drift
     under investigation dates from exactly there.
 
@@ -1297,8 +1297,8 @@ def cmd_gen(k, reqs, force, image_size=IMAGE_SIZE_DEFAULT, dry=False, gate=True)
         # `prompt_suffix` rides the request exactly as `delta`/`payload` do — it is the video's
         # `global_prompt_suffix`, carried from shots.json by `cmd_batch`. A STEP-1 figure card does
         # not carry one (it is a 2:3 identity card on a plain ground; the suffix's `16:9`,
-        # built-but-flat ENVIRONMENT recipe and "no on-screen narrator or host face" are scene
-        # facts that would fight it), and an ad-hoc `forge gen` request carries none either.
+        # marker-lettering register and "no on-screen narrator or host face" are scene facts that
+        # would fight it), and an ad-hoc `forge gen` request carries none either.
         generated_policy = PLATE_COMPOSITION if r.get("plate_composition") else ""
         text = k.prompt_for(mode, r["delta"], hold=hold, figures=figures,
                             generated_policy=generated_policy,
@@ -1472,9 +1472,9 @@ def seed_roles_text(seed_roles):
             # 2026-08-05 from `ff36f63:.../refs/env/README.md`: "the anchor pins line weight,
             # outline color (#241a12), flat-cel render, and palette discipline, not the content".
             # AMENDED 2026-08-06 (grayscale drift): "palette DISCIPLINE" is a restraint word — it
-            # transfers "few colours", which is what the rest of the prompt already says four times
-            # over (§2b "simple", the authored `Palette:` line, the suffix's "2-3 colour" cap and
-            # its semantic-only red). The tile is the register's chroma AUTHORITY — it measures
+            # transfers "few colours", which is what the rest of the prompt already says three times
+            # over (§2b "simple", the authored `Palette:` line, and its semantic-only red). The tile
+            # is the register's chroma AUTHORITY — it measures
             # mean saturation 0.407 with only 16% of its area near-neutral — and "and nothing else"
             # was opting that chroma out, leaving grey the only instruction the prompt could
             # satisfy. It now grants SATURATION and TEMPERATURE, matched in the new frame's own

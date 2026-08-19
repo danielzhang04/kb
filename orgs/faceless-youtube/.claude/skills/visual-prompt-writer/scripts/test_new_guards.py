@@ -368,9 +368,9 @@ def _spatial(figures, prompt, **extra):
     return hard
 
 
-def test_g9_crowd_requires_a_positive_rear_zone_not_background_prose():
+def test_g9_across_the_counter_is_not_a_positive_rear_zone():
     hard = _spatial({"crowd": True},
-                    "A crowd gathers around the long meeting table in the background-scale tier.")
+                    "A background crowd reaches across the counter toward the display.")
     assert len(hard) == 1 and "positive rear zone" in hard[0], hard
 
 
@@ -378,6 +378,19 @@ def test_g9_crowd_in_a_real_rear_zone_is_silent():
     hard = _spatial({"crowd": True},
                     "A small crowd waits on the far side of the glass partition, clearly behind the leads.")
     assert hard == [], hard
+
+
+def test_g9_pressed_to_camera_phrases_fail_even_without_background_scale_prose():
+    prompts = (
+        "A lobby packed shoulder to shoulder with shouting skaters.",
+        "A packed crowd pressing shoulder to shoulder against the glass.",
+        "Customers crowded three deep against the counter.",
+        "A press of buyers reaches up from the counter.",
+        "Prospectors keep pressing in on the far side.",
+    )
+    for prompt in prompts:
+        hard = _spatial({"crowd": True}, prompt)
+        assert len(hard) == 1 and "pressed-to-camera" in hard[0], (prompt, hard)
 
 
 def test_g9_individually_counted_anonymous_people_cannot_hide_in_crowd():

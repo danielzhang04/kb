@@ -26,9 +26,8 @@ SUFFIX = "hand-lettered marker capitals for any in-world text"
 ERA_SUFFIX = (
     "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm "
     "brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, "
-    "rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient "
-    "sky/ground + minimal geometry + one foreground depth prop); any in-world lettering "
-    "hand-lettered in the marker style, short and legible; locked 2-3 colour scene palette plus "
+    "rounded friendly shapes, no realistic detail; any in-world lettering "
+    "hand-lettered in the marker style, short and legible; warm-biased scene palette plus "
     "the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the "
     "last punch element); no photorealism, no on-screen narrator or host face, no unrequested "
     "text, no logos; 16:9.")
@@ -118,8 +117,8 @@ def test_c2a_an_empty_suffix_hard_fails():
 def test_c2a_the_era_style_suffix_is_silent():
     """RETARGETED 2026-08-05. Style vocabulary in the suffix used to hard-fail under the
     lettering-only doctrine; the era restoration makes it the suffix's JOB. The restored
-    643-char suffix — recipe wording, a hex outline colour, a hex accent, `gentle soft
-    shading`, `flat gradient sky/ground`, `no photorealism` — must lint CLEAN, and it is
+    suffix — a hex outline colour, a hex accent, `gentle soft shading`, the marker lettering
+    register, `no photorealism` — must lint CLEAN, and it is
     the acceptance case for the visual-grammar.md header."""
     hard = []
     L.suffix_one_voice_check(ERA_SUFFIX, hard, _kit_with_suffix(ERA_SUFFIX))
@@ -149,7 +148,7 @@ def test_c2a_an_unreachable_kit_downgrades_to_non_empty_rather_than_inventing_a_
 
 def test_c2a_the_render_technique_ban_still_owns_authored_prose():
     """The C-2 ban no longer runs on the suffix (it guards AUTHORED per-shot prose, and the
-    channel suffix legitimately names `flat gradient sky/ground` and `no photorealism`).
+    channel suffix legitimately names `no realistic detail` and `no photorealism`).
     That ownership move must not weaken the prose side."""
     hard = []
     L.render_technique_check("long-form", _p("the corridor falls into soft focus at the edges"), hard)

@@ -92,9 +92,8 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
    **An `interaction` slug is two-figure geometry, not a pose:** author it only on a fresh two-figure stage
    BASE, never on a solo shot and never on a delta (`visual-grammar.md §2` figure-cap table; lint and forge
    both HARD-refuse the other shapes).
-   **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** A crowd needs a positive rear
-   zone in the PRIMARY scene clause — the far side of a table/shelving, behind glass or a divider, through a
-   doorway — never a co-planar gathering later called "background-scale". **Crowd is for genuine MASSES.**
+   **Declare crowd figures with `"crowd": true` in the shot's `figures` field.** Stage its distance against
+   the single crowd-distance law in `visual-grammar.md` §2. **Crowd is for genuine MASSES.**
    An anonymous individual who BEARS the beat — performs the gag, reacts, decides — is **CAST**, never
    demoted to the rear zone and never staged as the bare `` `base` `` rig (both engines refuse that
    casting by name). It was planned into the cast list at step 3a: resolved to an existing cast member
@@ -122,9 +121,9 @@ file re-admits its drift by copy — the same mechanism that produced the bulk-s
 4. **State the scene facts the beat needs — CONTENT only** — layout, orientation (who faces whom; a
    vehicle points where it travels), the action (a seeded figure's own bodily act is not free scene prose —
    it is the primitive its sentence names, rule 3), what a gesture or highlight targets ("the northern half
-   of South America", not "the continent"), the committed scene palette, light/atmosphere, and a
+   of South America", not "the continent"), framing + scale, the committed scene palette, light/atmosphere, and a
    **payload-driven THREE-PLANE read** — what occupies the foreground, the mid, and the background of THIS
-   beat, at what scale, and from where the camera sees them, the payload owning the plane that carries it,
+   beat, at what scale, and from where the camera sees them,
    in whatever sentence the scene wants. Name concrete elements, not categories; a thin, palette-less
    prompt renders thin. **Never art style, texture, or line weight** —
    `forge.py` prepends the style bible's §2b descriptor at the HEAD of every scene gen and appends this

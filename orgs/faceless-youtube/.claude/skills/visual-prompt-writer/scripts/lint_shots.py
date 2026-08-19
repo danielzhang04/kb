@@ -1280,9 +1280,15 @@ def figures_check(label, objs, hard, soft):
 # ---------------------------------------------------------------------------
 _REAR_ZONE = re.compile(
     r"\bfar\s+side\s+of\b|\bfarther\s+back\b|\bat\s+the\s+rear\s+of\b|"
-    r"\b(?:behind|beyond|through|across)\s+(?:the\s+)?"
-    r"(?:glass|divider|partition|doorway|shelving|shelves|table|counter|barrier|"
-    r"window|corridor|rack|racks)\b",
+    r"\b(?:behind|beyond)\s+(?:the\s+)?(?:shelving|shelves|rack|racks|ropes?|glass|glazing|"
+    r"(?:long|distant|far|receding)\s+(?:counter|counters)|display\s+islands?|creek|water|barriers?)\b|"
+    r"\bthrough\s+(?:the\s+)?(?:doorway|corridor)\b",
+    re.IGNORECASE)
+_REAR_PROXIMITY = re.compile(
+    r"\bpacked\s+shoulder\s+to\s+shoulder\b|"
+    r"\bpress(?:ed|ing|es)?\s+shoulder\s+to\s+shoulder\b|"
+    r"\bcrowded\s+three\s+deep\b|(?<!rear-zone\s)\bpress\s+of\b|"
+    r"\bpressing\s+in\s+on\b",
     re.IGNORECASE)
 _BACKGROUND_CROWD = re.compile(
     r"\bbackground-scale\b|\bbackground\s+crowd\b|\bcrowd\b[^.;:]{0,80}\b"
@@ -1309,18 +1315,24 @@ _PRECISION_DELTA = re.compile(
 
 
 def spatial_tier_check(label, objs, hard):
-    """HARD only on a declared *background* crowd without rear geometry, or with
-    individually countable anonymous actors. Face/orientation and anchor compatibility need a
-    visual/registry-aware critic, so this function intentionally does not guess."""
+    """HARD only on a declared *background* crowd without rear geometry, a crowd stated in
+    pressed-to-camera proximity, or individually countable anonymous actors. Face/orientation
+    and anchor compatibility need a visual/registry-aware critic, so this function does not guess."""
     for pid, sh in objs:
         if not isinstance(sh.get("figures"), dict) or sh["figures"].get("crowd") is not True:
             continue
         prompt = sh.get("still_prompt") or ""
-        if _BACKGROUND_CROWD.search(prompt) and not _REAR_ZONE.search(prompt):
+        if _REAR_PROXIMITY.search(prompt):
+            hard.append(
+                f"[{label}] {pid}: crowd prose stages a pressed-to-camera mass, not a rear zone. "
+                "Make it read smaller through intervening depth and overlap; across-counter or "
+                "pane/divider wording alone is not distance.")
+        elif _BACKGROUND_CROWD.search(prompt) and not _REAR_ZONE.search(prompt):
             hard.append(
                 f"[{label}] {pid}: background crowd has no positive rear zone in the primary scene clause. "
-                "Put the mass on the far side of real geometry (behind glass, shelving, a divider, doorway, "
-                "or table); 'background-scale' after a co-planar gathering is not a mechanism.")
+                "Make it read smaller through intervening depth and overlap; across-counter or "
+                "pane/divider wording alone is not distance, and 'background-scale' after a co-planar "
+                "gathering is not a mechanism.")
         match = _ANON_INDIVIDUAL.search(prompt)
         if match:
             hard.append(
@@ -1460,7 +1472,7 @@ def suffix_one_voice_check(suffix, hard, vdir=None):
     a false positive on correct text.
 
     The C-2 render-technique ban no longer runs on the suffix: it guards AUTHORED per-shot
-    prose, and the channel suffix legitimately names "flat gradient sky/ground" and
+    prose, and the channel suffix legitimately names "no realistic detail" and
     "no photorealism" as fixed, human-approved channel data."""
     suffix = (suffix or "").strip()
     if not suffix:

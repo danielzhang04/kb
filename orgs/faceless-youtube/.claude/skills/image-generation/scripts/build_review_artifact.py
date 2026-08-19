@@ -185,6 +185,8 @@ def owner_literal_by_place(shots):
 
 
 _QUOTE_PAIRS = (("'", "'"), ('"', '"'), ("‘", "’"), ("“", "”"))
+_QUOTED = re.compile("(?<![A-Za-z])['\"‘“][^'\"‘’“”]{1,60}"
+                     "['\"’”]")
 
 
 def _quotes_literal(prompt, literal):
@@ -199,6 +201,13 @@ def _quotes_literal(prompt, literal):
     return any((o + literal + c) in prompt for o, c in _QUOTE_PAIRS)
 
 
+def _has_quoted_literal(prompt):
+    """True when the prompt supplies any quoted lettering value. Reuse the direct matcher after
+    `_QUOTED` separates authored quote pairs from apostrophes in contractions/possessives."""
+    return any(_quotes_literal(prompt, match.group()[1:-1])
+               for match in _QUOTED.finditer(prompt or ""))
+
+
 # ---------- C-12: pre-filtered, machine-emitted verdict rows ----------
 # One EMPTY row per (shot x applicable invariant) a human ticks by eye — never typed, never
 # recalled from memory. `applicable_invariants` is the sole filter; every predicate reads only
@@ -211,6 +220,8 @@ INVARIANTS = {
     "line-register": "Every line reads at the rig outline weight or heavier — nothing finer, no "
                      "hairline/micro-pattern field (slats, lattice, grille, fine grain); skin one "
                      "flat fill (bible §3)",
+    "lettering-register": "Text-bearing frame matches the locked crude-marker exemplar's lettering "
+                          "family, orthogonal to spelling (bible §5)",
     # BOTH halves of the plate law, in ONE row (P5, 2026-08-12). The row used to ask only whether
     # a figure could be stood on the frame, which an empty hangar answers YES to — the exact defect
     # P5 exists to catch would have passed Gate 2 clean on its own review row.
@@ -255,6 +266,8 @@ def applicable_invariants(shot, sid, named, seated, owner_of=None):
                            — a frame can be perfectly flat-cel and still be drawn a whole register
                            thinner than its own cast, which is exactly the 2026-08 drift that had
                            no row to fail on.
+      * lettering-register -> a generated shot whose `still_prompt` supplies a quoted literal;
+                              family match is judged separately from spelling.
       * insertability   -> a generated CAST-FREE frame (no named figure, no declared crowd) — i.e.
                            the plate tier, which must carry its place at working occupancy AND be
                            stood on (both halves in the one row). Read from the same
@@ -281,6 +294,8 @@ def applicable_invariants(shot, sid, named, seated, owner_of=None):
     if shot.get("source", "ai-gen") in GENERATED_SOURCES:
         rows.append(("flat-cel-hazard", INVARIANTS["flat-cel-hazard"]))
         rows.append(("line-register", INVARIANTS["line-register"]))
+        if _has_quoted_literal(shot.get("still_prompt") or ""):
+            rows.append(("lettering-register", INVARIANTS["lettering-register"]))
         if not named and not fig.get("crowd"):
             rows.append(("insertability", INVARIANTS["insertability"]))
     return rows

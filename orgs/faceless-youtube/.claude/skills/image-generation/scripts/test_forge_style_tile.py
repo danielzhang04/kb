@@ -47,17 +47,15 @@ EXPECTED_PLATE_COMPOSITION = (
 # Restored 2026-08-05. These literals are the drift-lock: the doc that drifts fails the test.
 ERA_STYLE_ONLY = (
     "Draw in the SAME art style as the reference image: a clean FLAT cel-shaded CARTOON look, an "
-    "even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, flat colours laid "
-    "down at FULL cel strength — every fill a real colour, and any grey or neutral clearly TINTED WARM, "
-    "so the frame never drains to greyscale; a genuinely cold scene cools its LIGHT, never its neutrals — with "
-    "gentle soft cel shading, rounded friendly shapes, no realistic detail. No text, no "
+    "even MEDIUM-THICK dark warm brown-black (#241a12) outline on everything, simple flat colours with gentle "
+    "soft cel shading, and any grey or neutral clearly TINTED WARM, so the frame never drains to greyscale; "
+    "a genuinely cold scene cools its LIGHT, never its neutrals — rounded friendly shapes, no realistic detail. No text, no "
     "words, no labels.")
 ERA_SUFFIX = (
     "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm "
     "brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, "
-    "rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient "
-    "sky/ground + minimal geometry + one foreground depth prop); any in-world lettering "
-    "hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus "
+    "rounded friendly shapes, no realistic detail; any in-world lettering "
+    "hand-lettered in the marker style, short and legible; warm-biased scene palette plus "
     "the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the "
     "last punch element); no photorealism, no on-screen narrator or host face, no unrequested "
     "text, no logos; 16:9.")
@@ -313,8 +311,8 @@ def test_the_look_is_stated_in_exactly_two_voices_at_the_two_ends():
 def test_the_tail_voice_reaches_every_scene_request_and_no_step1_card():
     """`cmd_batch` copies the file's `global_prompt_suffix` onto every scene request, and
     `prompt_for` appends it after the authored payload. A STEP-1 identity card is 2:3 on a plain
-    ground and takes none of it (the suffix's `16:9` + built-but-flat ENVIRONMENT recipe would
-    fight the card)."""
+    ground and takes none of it (the suffix's `16:9` and scene-only no-host clause would fight
+    the card)."""
     doc = _doc({"id": "T1", "place": "office",
                 "still_prompt": f"{CAST} standing at the office desk."})
     doc["global_prompt_suffix"] = ERA_SUFFIX

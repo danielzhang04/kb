@@ -252,8 +252,8 @@ def test_a_scene_prompt_is_bible_head_then_authored_text_then_the_file_suffix_ta
     for phrase in ("Draw in the SAME art style as the reference image", "FLAT cel-shaded CARTOON",
                    "an even\nMEDIUM-THICK".replace("\n", " "), "#241a12",
                    "gentle soft cel shading", "No text, no words, no labels",
-                   "flat colours laid down at FULL cel strength",
-                   "every fill a real colour, and any grey or neutral clearly TINTED WARM, "
+                   "simple flat colours with gentle soft cel shading",
+                   "any grey or neutral clearly TINTED WARM, "
                    "so the frame never drains to greyscale; a genuinely cold scene cools its LIGHT, "
                    "never its neutrals"):
         assert phrase in text, (phrase, text)

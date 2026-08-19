@@ -5,7 +5,7 @@
   "source_idea_id": "ST-006",
   "generated": "2026-08-06",
   "status": "shots-drafted",
-  "global_prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+  "global_prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; any in-world lettering hand-lettered in the marker style, short and legible; warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
   "long_form": {
     "aspect_ratio": "16:9",
     "shots": [
@@ -30,7 +30,7 @@
         "vo_text": "Home to big hair, Pac-Man, and one",
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "Beyond a chrome rail crossing low across the frame, a roller-rink lobby packed shoulder to shoulder with 1980s skaters in shoulder-padded jumpsuits and white hi-tops. Shot from floor level looking up: foreground the chequer-tile floor and the chrome rail with a cropped ticket-booth corner stage-left, midground the skaters' shoulders and grinning faces turned up and shouting over the music, glowing pink and teal wall panels behind them, background their teased blonde and copper hairdos stacked so high they fill the entire upper third of the frame like a hedge, thickest dead centre where one enormous blonde tower rises past the frame top. Teal-pink-cream palette, flat even rink light.",
+        "still_prompt": "Beyond a chrome rail crossing low across the frame, a roller-rink lobby opens into a long structured view under a tall ceiling. Shot from floor level looking up: foreground the chequer-tile floor, chrome rail and a cropped ticket-booth corner stage-left; midground a broad strip of open floor broken by two receding rows of low vinyl benches, cafe tables and skate racks; background at the far side of the benches, a clearly smaller crowd of 1980s skaters in shoulder-padded jumpsuits and white hi-tops stands in overlapping ranks, grinning and shouting over the music. Warm cream-coral-honey surfaces, restrained teal in the wall-light panels, even amber rink light. Their teased blonde and copper hairdos rise off those small bodies into an uneven skyline that breaks the ceiling line right across the frame, one huge blonde tower highest at dead centre.",
         "figures": {
           "crowd": true
         },
@@ -44,7 +44,7 @@
         "vo_text": "of the funniest corporate scams that you've never heard of.",
         "shot_class": "ironic-counterpoint",
         "source": "ai-gen",
-        "still_prompt": "Seen from a high vantage at the back of a hotel function room, looking down across the crowd toward an empty awards dais: foreground a wall of raised applauding hands and shoulders fills the lower third, midground a velvet rope crossing the room, a pleated gold curtain wall and banquet tables running back through the depth, background the dais itself stage-right under one hard overhead spot -- an oversized display board angled on it, its face completely blank and unlettered, a lectern beside it with nobody behind it. Gold-cream palette against a warm near-black room shadow, dim ambient light against the one hot spot on the empty dais.",
+        "still_prompt": "Seen from a high vantage at the back of a hotel function room, looking down across the crowd toward an empty awards dais: foreground a cropped band of near heads and raised hands along the very bottom edge; midground the applauding crowd on its feet between cream-clothed banquet tables that run back through the depth, a velvet rope and a pleated honey-gold curtain beyond them, the standing figures growing clearly smaller at the far side of the tables. Honey-gold, cream and muted burgundy dominate the room, with warm chestnut shadow and low amber ambient light. In the background, one hard white-gold overhead spot isolates the empty dais stage-right: an oversized display board stands angled on it with its face completely blank and unlettered, beside a lectern with nobody behind it.",
         "figures": {
           "crowd": true
         },
@@ -58,7 +58,7 @@
         "vo_text": "It's 1983, and the personal computer",
         "shot_class": "diegetic-device",
         "source": "ai-gen",
-        "still_prompt": "A suburban high-street electronics shop seen at a receding oblique angle along the empty dawn pavement: foreground the wet paving stretching away toward the shop, midground its half-raised shutter over a window stacked with beige computer cartons under a striped awning, a parked hatchback at the kerb further along stage-right, background the pavement continuing past a cropped lamp post at the frame edge. Cool blue dawn air with one warm amber shop-glow spilling out from under the shutter, blue-taupe-amber palette. Propped in that doorway light, a chalk sandwich board carrying the single chalked line '1983'.",
+        "still_prompt": "A suburban high-street electronics shop seen at a receding oblique angle along the empty dawn pavement: foreground wet paving reflects the shop's amber light; midground a half-raised shutter reveals golden-oak shelving stacked with beige computer cartons behind the window under a striped awning, with a parked hatchback farther along stage-right; background the pavement continues past a cropped lamp post at the frame edge. Warm oak, cream and amber own the shop and the pavement it lights, while a cool blue dawn still holds the sky, the far pavement and the shaded side of the street. Propped in the doorway's warm light, a chalk sandwich board carrying the single chalked line '1983'.",
         "notes": "Diegetic dateline; '1983' is the script's own year, quoted rather than gestured at. Figureless for ~2.5s and earned: the subject is the date and the shopfront, not a person. Oblique receding vantage instead of a dead-on elevation."
       },
       {
@@ -83,7 +83,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "A `prop-beige-pc` unit alone on a lit turntable plinth, front panel to the viewer. Seen from just behind the plinth looking out, as if from the display's own vantage: foreground the plinth edge and warm display light pooling around the unit, midground a full-height plate window crossing the frame, background beyond the glass a packed crowd pressing shoulder to shoulder with palms flat on the pane, faces open and hungry. Cream-teal-amber palette, warm display light on the plinth against flat grey daylight outside.",
+        "still_prompt": "A `prop-beige-pc` unit alone on a lit turntable plinth, front panel to the viewer. Seen from just behind the plinth looking out, as if from the display's own vantage: foreground the plinth edge and warm display light pool around the unit; midground the full-height plate window, a broad pavement strip, a row of parked bicycles and a lamp post crossing it; background at the far side of that street geometry, a queue of hopeful buyers runs back along the shopfront and out of frame at the far end, each rank clearly smaller and more overlapped than the one before it, faces open and hungry. Cream-amber-warm-grey palette, the plinth light dominant, flat cool daylight confined to the street. Far more people out there than the one small machine on the plinth.",
         "notes": "Crowd is a genuine mass; the beat's subject is the wanting, so the crowd carries the authored expression and the machine stays an unpersonified object — the craze belongs to the people pressing at the glass, not to a machine reacting to them. Recast from `pc-boxy` to plain `prop-beige-pc`, matching the same unpersonified-object convention already used for mass/scale beats at L08 and L15."
       },
       {
@@ -94,7 +94,7 @@
         "vo_text": "Anybody with money was buying one,",
         "shot_class": "literal",
         "source": "ai-gen",
-        "still_prompt": "A `prop-beige-pc` unit sits on a shop counter top, front panel turned to the far side. Seen from slightly above the counter, looking down its length toward the till: foreground the counter top and a cropped till corner at the lower-right, midground fistfuls of banknotes thrust across the counter from customers crowded three deep against it, arms eager and impatient, the notes never overlapping the unit, background a pegboard wall of coiled cables and a queue rope running back stage-left. Cream-brown-teal palette, even shop light.",
+        "still_prompt": "A `prop-beige-pc` unit sits on a shop counter top, front panel turned toward the far till. Seen from slightly above the counter, looking down its length: foreground the unit, the warm wood counter and a cropped till corner at the lower-right; midground two receding rows of display tables and boxed peripherals beside the counter; background at the far side of those tables, a clearly smaller crowd gathers around the far till in overlapping ranks, banknotes held out over the heads in front and boxed units already going back the other way, faces eager and impatient. Cream, warm brown and restrained teal surfaces under even amber shop light. Money going one way and boxes the other at the far till, the sold machine waiting alone in the near plane.",
         "figures": {
           "crowd": true
         },
@@ -149,7 +149,7 @@
         "source": "ai-gen",
         "stage": "bedside-table",
         "stage_role": "base",
-        "still_prompt": "`pc-boxy`, `expr-delighted`, on a bedside table stage-right, a `prop-drive` hugged between both stubby arms like a locket, its own screen face dark. Seen from the foot of the bed looking toward the nightstand: foreground the rumpled blanket corner running across the bottom of frame, midground the unmade bed reaching back stage-left, background the bedside table and a curtained window beyond. Warm amber bedside lamp against deep blue night, blue-amber-cream palette.",
+        "still_prompt": "`pc-boxy`, `expr-delighted`, on a walnut bedside table stage-right, a `prop-drive` hugged between both stubby arms like a locket, its own screen face dark. Seen from the foot of the bed looking toward the nightstand: foreground a rumpled honey-cream blanket corner runs across the bottom of frame; midground the unmade bed reaches back stage-left; background the walnut table, cream curtains and a window beyond. Walnut, honey and cream keep every surface in the room warm while the night light stays cool — one warm amber pool from the bedside lamp, deep blue night across everything it does not reach. The lamp's pool lands on the hugged drive and nothing else.",
         "notes": "Memory staged as something held rather than explained."
       },
       {
@@ -217,7 +217,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "`pc-boxy`, `expr-annoyed`, planted low and wide in the near corner stage-left, front panel squared toward the far corner. Facing it in the far corner stage-right, `rival-pc` -- a slate-grey desktop case on the same no-hand boxy form but narrower and a head taller, a pair of stacked vent slots ribbing its front panel above its own cartoon eyes and mouth, `expr-annoyed` to match. Seen ringside from a low angle looking up at both, so the two cases loom: foreground a cropped ring post at the right edge, midground the two machines holding one plane at a matching eye line and equal relative head scale, three slack ropes crossing between them, background a corner stool at each post and, beyond the ropes, a dense crowd roaring with arms up under one hard overhead ring light. Umber-cream-teal palette.",
+        "still_prompt": "`pc-boxy`, `expr-annoyed`, planted low and wide in the near corner stage-left, front panel squared toward the far corner. Facing it in the far corner stage-right, `rival-pc` -- a slate-grey desktop case on the same no-hand boxy form but narrower and a head taller, a pair of stacked vent slots ribbing its front panel above its own cartoon eyes and mouth, `expr-annoyed` to match. Seen ringside from a low angle looking up at both, so the two cases loom: foreground a cropped ring post at the right edge, midground the two machines holding one plane at a matching eye line and equal relative head scale, three slack ropes crossing between them, background a corner stool at each post and, at the far side of the ropes and two banked tiers of ringside seating, a clearly smaller crowd roaring with arms up in overlapping ranks under one hard overhead ring light. Umber-cream-teal palette.",
         "notes": "The public fight staged as a bout so the next cut can leave it for the quiet money. NEW CAST, mint owed at Pass-1: `rival-pc`'s pinned form is stated ONCE here (slate-grey case, same no-hand boxy build as `pc-boxy` but narrower/taller with a stacked-vent front panel as its own shape differentiator, not colour alone) and re-described nowhere else -- mint the canonical from this clause. Neither machine has hands, so the bout is staged as bodies squared off and planted rather than a glove contact; the prior authoring's laced boxing gloves bled a human hand-rig onto a handless character (and cast an unregistered 'rival personified computer' with no canonical at all) -- both are corrected here. Shape differentiator added past the critic's finding #3: colour alone risked the two figures bleeding together on a fresh Pass-1 mint with no reference image yet."
       },
       {
@@ -236,7 +236,7 @@
         "figures": {
           "crowd": true
         },
-        "still_prompt": "`pc-boxy` and `rival-pc` on the canvas inside the three slack ropes as established, the roaring crowd beyond, seen from the same low ringside angle, umber-cream-teal palette under the hard overhead ring light. Only this changes: the two machines have lunged together at centre canvas, front panels locked flat against each other in one straining shoving scrum, stubby arms and legs braced wide; everything else exactly as established.",
+        "still_prompt": "`pc-boxy` and `rival-pc` on the canvas inside the three slack ropes as established, the banked ringside tiers and, at the far side of them, the clearly smaller roaring crowd, seen from the same low ringside angle, umber-cream-teal palette under the hard overhead ring light. The two machines hold the same centre-canvas plane, their front-panel faces at a matching eye-line and the same relative head scale, rival-pc's narrower taller case silhouette still distinct. Only this changes: the two machines have lunged together at centre canvas, front panels locked flat against each other in one straining shoving scrum, stubby arms and legs braced wide; everything else exactly as established.",
         "notes": "Rivalry resolved as one comic collision so the beat lands inside its 3s hold; the shove is body-to-body since neither case has hands to grapple with."
       },
       {
@@ -271,7 +271,7 @@
         "stage_role": "base",
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "`drive-maker`, `expr-smug`, `action-present`, behind a plank counter stage-right, holding a pick and a shovel out across the counter toward the buyers. Seen at a three-quarter angle across the stall rather than square-on: foreground a water butt cropped at the lower-left, midground the counter with drive-maker and the reaching prospectors, background a canvas awning overhead, barrels and coils of rope stacked behind him, a bare brown hillside beyond. A press of grinning prospectors in muddy hats and mud-caked coats reaches up for the tools from the far side of the counter. Ochre-brown-cream palette, hard high sun.",
+        "still_prompt": "`drive-maker`, `expr-smug`, `action-present`, stands behind a plank counter stage-right, holding a pick and a shovel out across it toward the diggings. A wide three-quarter view leaves generous pale sky above the canvas awning and holds the whole supply stall at a muddy creek bend: foreground a tall tool rack and cropped water butt overlap the lower-left; midground the counter, sacks and tin lanterns beside the open creek; background on the far side of the creek, a clearly smaller crowd of hopeful prospectors in muddy hats and mud-caked coats labours in overlapping depth, the nearer line working pans behind reeds and sluice frames while farther figures push wheelbarrows among canvas tents and spoil heaps. Ochre, warm brown, canvas cream and worn green under hard high sun. The held pick and shovel dominate the near plane while the labouring line stays small and receding across the creek.",
         "figures": {
           "crowd": true
         },
@@ -290,7 +290,7 @@
         ],
         "shot_class": "idiom-pun",
         "source": "ai-gen",
-        "still_prompt": "`drive-maker`, `expr-smug`, `action-present`, behind the plank counter as established, the three-quarter stall view, prospectors still pressing in on the far side, ochre-brown-cream palette under hard high sun. Only this changes: a heavy iron money box now stands open on the counter at his elbow, packed to the brim with coin; everything else exactly as established.",
+        "still_prompt": "`drive-maker`, `expr-smug`, `action-present`, remains behind the plank counter stage-right with the pick and shovel held out, in the same wide three-quarter stall view with generous pale sky, tool rack and water butt foreground, counter and open creek midground. On the far side of the creek, the clearly smaller crowd of hopeful prospectors remains in overlapping depth behind reeds and sluice frames, working pans nearer and pushing wheelbarrows among tents and spoil heaps farther back. Ochre, warm brown, canvas cream and worn green under hard high sun. Only this changes: a heavy iron money box now stands open on the counter at his elbow, packed to the brim with coin; everything else exactly as established.",
         "figures": {
           "crowd": true
         },

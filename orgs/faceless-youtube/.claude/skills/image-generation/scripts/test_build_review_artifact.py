@@ -6,7 +6,7 @@ Plain-assert style (this scripts dir has no pytest harness); run with
 
 Covers: `named_figures_by_shot` / `seated_shots` / `canonical_files` (the generic readers of
 `assets/library/manifest.json`, this video's own Pass-1 ledger — never `registry.json`),
-`owner_literal_by_place` / `_quotes_literal`, `applicable_invariants` (the C-12 pre-filter), and
+`owner_literal_by_place` / quoted-literal detection, `applicable_invariants` (the C-12 pre-filter), and
 an end-to-end `collect()` pass over a fabricated tmp video dir proving the filter is driven
 entirely by declared data — arbitrary, never-seen-before cast/pose names still classify
 correctly, which is the "no hardcoded cast/places" requirement made concrete.
@@ -84,10 +84,10 @@ BRA_SRC = Path(bra.__file__)
 # The module-level definitions both files must carry, byte for byte. `lint_shots.py` lives in a
 # sibling SKILL with no import path to this one, so C-7's seated signal is COPIED — and a copy
 # that drifts is exactly how the two halves of one law start disagreeing per shot (M11: the two
-# seated sources). The place-owner signal is NOT in this list any more: F2 landed `place_owner`
-# as a real, lint-enforced field, so this file now reads that field directly instead of copying
-# lint's quoted-literal scan (the deleted `_QUOTED`/`_TRACKABLE_LITERAL` heuristic).
-_MIRRORED_DEFINITIONS = ("_BACKTICK = ", "SEATED_PRIMITIVE = ")
+# seated sources). The place-owner signal is NOT inferred from the quote scan: F2 landed
+# `place_owner` as a real, lint-enforced field. V7 reuses `_QUOTED` only to decide whether the
+# independent lettering-family review row applies to a generated frame.
+_MIRRORED_DEFINITIONS = ("_BACKTICK = ", "SEATED_PRIMITIVE = ", "_QUOTED = ")
 
 
 def _definition_block(source, start):
@@ -149,10 +149,10 @@ def test_owner_literal_by_place_owner_ambiguity_contributes_no_entry():
 
 
 def test_quotes_literal_matches_any_of_the_project_quote_styles():
-    assert bra._quotes_literal("a plaque reads 'Widget Hall' by the door", "Widget Hall")
-    assert bra._quotes_literal('a plaque reads "Widget Hall" by the door', "Widget Hall")
-    assert bra._quotes_literal("a plaque reads ‘Widget Hall’ by the door", "Widget Hall")
-    assert bra._quotes_literal("a plaque reads “Widget Hall” by the door", "Widget Hall")
+    for prompt in ("a plaque reads 'Widget Hall'", 'a plaque reads "Widget Hall"',
+                   "a plaque reads ‘Widget Hall’", "a plaque reads “Widget Hall”"):
+        assert bra._quotes_literal(prompt, "Widget Hall")
+        assert bra._has_quoted_literal(prompt)
 
 
 def test_quotes_literal_false_when_unquoted_or_a_different_literal():
@@ -162,6 +162,8 @@ def test_quotes_literal_false_when_unquoted_or_a_different_literal():
     assert not bra._quotes_literal("a plaque reads 'Acme Corp' by the door", "Widget Hall")
     assert not bra._quotes_literal("", "Widget Hall")
     assert not bra._quotes_literal("a plaque reads 'Widget Hall'", "")
+    assert not bra._has_quoted_literal("a customer's badge beside the manager's desk")
+    assert not bra._has_quoted_literal("an unlettered wall")
 
 
 # --------------------------------------------------------------------------- #
@@ -267,6 +269,18 @@ def test_line_register_fires_wherever_flat_cel_hazard_does_and_nowhere_else():
         assert not any(s == "line-register" for s, _ in rows), reused
 
 
+def test_lettering_register_fires_only_on_generated_text_bearing_frames():
+    rows = bra.applicable_invariants(
+        {"source": "ai-gen", "still_prompt": "A crude sign reads 'BRICKS'."}, "Q01", [], set())
+    assert ("lettering-register", bra.INVARIANTS["lettering-register"]) in rows, rows
+    rows = bra.applicable_invariants(
+        {"source": "ai-gen", "still_prompt": "A blank signboard."}, "Q02", [], set())
+    assert not any(s == "lettering-register" for s, _ in rows), rows
+    rows = bra.applicable_invariants(
+        {"source": "stock", "still_prompt": "A sign reads 'BRICKS'."}, "Q03", [], set())
+    assert not any(s == "lettering-register" for s, _ in rows), rows
+
+
 def test_the_plate_review_row_asks_for_OCCUPANCY_not_only_for_a_place_to_stand():
     """P5 (2026-08-12). The row asked one question — could a figure be stood here — and a cavernous
     empty hangar answers it YES. The defect Daniel named ("a small room with nothing on the
@@ -340,7 +354,7 @@ def test_collect_wires_invariants_and_canon_into_cards_generically():
         # Q01 names cast, so it takes `line-register` (every generated frame) but not
         # `insertability` (plate tier only).
         assert q01_slugs == {"support-contact", "place-owner", "flat-cel-hazard",
-                             "line-register"}, q01_slugs
+                             "line-register", "lettering-register"}, q01_slugs
         assert ("place-owner", "owner cue 'Widget Hall' legible in frame per L-1?") in \
             by_sid["Q01"]["invariants"], by_sid["Q01"]["invariants"]
         assert by_sid["Q01"]["canon"] == [("zeta-clerk", str(canon_path))], by_sid["Q01"]["canon"]

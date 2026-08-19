@@ -1,15 +1,873 @@
 {
-  "figures": {
-    "_staging/fig-brick-foreman--back-to-viewer--7a3b93be.png": {
-      "canonical_sha256": "d9ba9badd5b894c367e7f2e44aa07661a4dea7c4d2dff6a6e00b83ee4b8c6c8f",
-      "expression_sha256": null,
-      "verdicts": {
-        "rig": "fail",
-        "expression-register": "pass",
-        "flat-cel-hazard": "pass"
-      },
-      "reviewer": "fresh-eyes",
-      "date": "2026-08-18"
-    }
+ "figures": {
+  "_staging/fig-auditor-rep--action-present--expr-deadpan.png": {
+   "canonical_sha256": "aecea51e672d8469a44072a40e9bd18c526640377942778329e147d755b48e53",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--action-thumbsup--expr-deadpan.png": {
+   "canonical_sha256": "b686f845be7d8a315720577b5138eba20018d43b78dae6a20bc97ee60617ab8a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--action-walk--expr-deadpan.png": {
+   "canonical_sha256": "37f0a1bb6568dadc931a53d92703eded93705a3f49f67058df71336b957cff60",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--expr-crestfallen.png": {
+   "canonical_sha256": "32d2ff9eaf0c8327611b192d8f5ca2a3fe8978ef7220eecc64f35444869defe2",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--hold-paper-by-sides--expr-caught.png": {
+   "canonical_sha256": "1bc812462b9be558a924adccd1a9868a65578e32e2df073f02bac9ef69607dd5",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-auditor-rep--hold-paper-by-sides--expr-deadpan.png": {
+   "canonical_sha256": "9de301521ec33243a1e5c5ad7081b36094ec9797a80b0a0e8724216644c0cafc",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-base--action-armscrossed--expr-deadpan--l38-3412012a.png": {
+   "canonical_sha256": "22326448df5bdc97481cca27610b7135875241541ef4bd0063fa2d494f453855",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-base--action-recoil--expr-shock--l32-36f3a4e9.png": {
+   "canonical_sha256": "57fe0ab97210577558ba2598dc6163201dcded68be96470d1ff4c37516fef91d",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-base--hold-both-hands--expr-crestfallen--miniscribe-floor-4bd17718.png": {
+   "canonical_sha256": "7f91196f92ae6f5ddebd81a64e61a6d5a243a899ec55c3b7d68229f76ae74ba8",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-base--hold-one-hand--expr-deadpan--l27-d4b1f2ce.png": {
+   "canonical_sha256": "e51a005d59e309c9f994102c9162650acec9155df7ab808036c6131bc07f79b7",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-base--point-at-thing--expr-deadpan--l43-30b903d1.png": {
+   "canonical_sha256": "3ebc9634588bfcf507c3ed26028f5f417a11babd5bb90fdbc8ce968ccc8f6a76",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--action-armscrossed--expr-worried.png": {
+   "canonical_sha256": "06027563cf2c589ee943f6adaac1b5e2f2d0a560215e33f89656894bf6d7c6ac",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png": {
+   "canonical_sha256": "c03601694042e203834c51287739ad2ce9d5f5ccdf8c697c1bfda7f701db085c",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--back-to-viewer--4ff569f7.png": {
+   "canonical_sha256": "247e780c650cf4ea03b21170102366912be083b9a5619f2fddedb39f45f0d138",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--back-to-viewer--7a3b93be.png": {
+   "canonical_sha256": "d9ba9badd5b894c367e7f2e44aa07661a4dea7c4d2dff6a6e00b83ee4b8c6c8f",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--expr-crestfallen.png": {
+   "canonical_sha256": "698148d2e286546374ed3dea7932efdcc74758dab4cb634d4d565122fbd2b614",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--expr-deadpan.png": {
+   "canonical_sha256": "d6fc9cbaaca67305fdedf565cf4ca91f551042e4fe700afc4e7704061f6ec4b5",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--expr-fear-retry1.png": {
+   "canonical_sha256": "82529f099be6d1595a6fefbf254b9ad07863f5348039eb1f98513389f561f487",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--expr-fear.png": {
+   "canonical_sha256": "5c3e97f6110b8ece5ee261bc470552e5405571ebfaa93a34d8c2093ac5674cb5",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--expr-smug.png": {
+   "canonical_sha256": "8cf2cad298052281be0d7c0392e44c67c79e6cda2e476e515d086e2ae92c2a13",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--expr-worried.png": {
+   "canonical_sha256": "612c295ac65166924129fefc1957b22645a0937aab529cc0e4e14adcdeacca9a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--hold-one-hand--expr-smug.png": {
+   "canonical_sha256": "967ebcc1e02b77430c3acffee7400718cc6b321835acdd321b99f4056543a7c4",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--hold-paper-by-sides--expr-caught.png": {
+   "canonical_sha256": "a55a99dd6c84362b6c9550539dd70d4b563c521be93a6b848583fad7b7d0b38a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--sit--expr-smug.png": {
+   "canonical_sha256": "667aacd84968353df30b2fc1dee33faa04aab9751d24e7da7a7915994b0959f0",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-brick-foreman--sit--expr-worried.png": {
+   "canonical_sha256": "db48c38bb686bd3d2399166125a5fe6db6e6d8804cfa649b99f694d3fe97db0d",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png": {
+   "canonical_sha256": "c5c3f91cb73d1c5b59068378ff84ee635455034f58bfb346fa76c834c2ab2602",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png": {
+   "canonical_sha256": "6f3b05314ad93fed51d8a0cf65e4333ce51c3a74894a0e572fcdc030c4accb56",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-hq-banker--action-armscrossed--expr-crestfallen.png": {
+   "canonical_sha256": "89f7f35a80bac7ea8bb6377b11e29733ebbd2535cdec7f6b632355bd0630db01",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-hq-banker--action-armscrossed--expr-deadpan.png": {
+   "canonical_sha256": "58fc5def7bbbe6a53fab65d07c59d595db82677749b22337be6575349fb48a81",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-hq-banker--action-armscrossed--expr-skeptical.png": {
+   "canonical_sha256": "dfa7db911b025758aecd179e2af821e49ee33ff1f8bac504a3e10de9872448c4",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-hq-banker--action-offering--expr-deadpan.png": {
+   "canonical_sha256": "dddf808ee9007b97f5c25575c939312407830f889c2b8576c77b52e900b93af2",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-hq-banker--expr-deadpan.png": {
+   "canonical_sha256": "17b0e10f2e3c3e46957873f57d247b1b25fc11fbddb17e2a09d21366d3ee16ea",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-ibm-suit--action-armscrossed--expr-deadpan-retry1.png": {
+   "canonical_sha256": "7c6ce07ac48a4f01ce0f8edaa37555eeba5a90ee62b350cc2471f9585862c017",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-ibm-suit--action-armscrossed--expr-deadpan.png": {
+   "canonical_sha256": "6dade1dc1f71769f113be4fe4b81ce0b74ee5ea00365f5c525640ded9b8e531c",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-ibm-suit--action-thumbsdown--expr-annoyed.png": {
+   "canonical_sha256": "274667bf4f04768e7fa2e5e28e7727bc9923a6deaf5b9b870dc9d7ca1f667f3b",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-ibm-suit--expr-deadpan.png": {
+   "canonical_sha256": "e33834d7dc68ba445d4ce619fad10e2c7bb7e155057d6a8a5d0682311ad7865a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-ibm-suit--expr-smug.png": {
+   "canonical_sha256": "881b72dd9d4562a26c6c466a9e3e3c9443bcd040aaad1d2e23a96cf5961e0f62",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-celebrate--expr-delighted.png": {
+   "canonical_sha256": "de955784dd09a06975c5a51f839cb2e505138a0346aebf9b21741a1e2541785c",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-celebrate--expr-greedy.png": {
+   "canonical_sha256": "94ac37349b296aa82462cdd8727ac1874a6987081292b4787310771cb445425b",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-offering--expr-pleading.png": {
+   "canonical_sha256": "dfb44c4bba6eeb3ed539d142041abf6273a8a92df9398d6432ef1e8a8ebe4b3a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-powerstance--expr-deadpan.png": {
+   "canonical_sha256": "9476a15f8b6679e44065a78804d3cbfa88e59a888a27d179c047596f82f2bb6d",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-powerstance--expr-delighted.png": {
+   "canonical_sha256": "08709a3a1b907bda51d22c4646e6884c98de41cbaa1c2871fb9b8d039f5e8415",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-powerstance--expr-greedy.png": {
+   "canonical_sha256": "af2d56f0c47546a6e2e0911fdc0ecac8d2a4949aad03cbbd3c7ad8cec9f576f0",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-present--expr-smug.png": {
+   "canonical_sha256": "3adef8ff2b1be74d07951989564daa1532eec8cff3eb5c51d0b13f9f8d396815",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-recoil--expr-shock.png": {
+   "canonical_sha256": "497886e4623c37906716252fe523ad7706903ffd1a1eae3eba13fb852280087a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-salute--expr-delighted.png": {
+   "canonical_sha256": "1f042587e6a309de893943874ecdcd47de80a1dc650c0456b27ded294d764990",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--action-slump--expr-worried.png": {
+   "canonical_sha256": "08511d2499981ecb447b5232f210b3de94c874beffab93ae07f304390fbe8aaf",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--expr-caught.png": {
+   "canonical_sha256": "5c0bd25ee49197343fa3a07738ab5b6fa6905410644490fbf8bd1fcb86eb4797",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--expr-deadpan.png": {
+   "canonical_sha256": "d7756396cae17dd88c165609c42659e9795540011c7a1ee48c50eeb3d01622c4",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--expr-delighted.png": {
+   "canonical_sha256": "fdf436e8920b7b22569b588403fb02cb608e28caf169a5d5e2728b6c11a94851",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--expr-fear.png": {
+   "canonical_sha256": "c0efa5fdfd090389c527784dc64c269f5131ef654a3cb410faea263c971123db",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--expr-smug.png": {
+   "canonical_sha256": "1a0aea1d6648ec85b7fc044b6b0f709e9bb86b8fb5456873a62e577ac5bc65b3",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--hold-both-hands--expr-greedy.png": {
+   "canonical_sha256": "41382381741fbf021421b92754128d9f216cb6aa8e8eb7e2a2a8055b3a904e8c",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--hold-one-hand--expr-delighted.png": {
+   "canonical_sha256": "a67aff4f181b9231eb7c2bb8279c1eb54b6a056e00d9b1ff4af7077340ccc0b4",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep--sit--expr-worried.png": {
+   "canonical_sha256": "adfd4637b818653be1e6aa4e11390f1141c8c62a7c0c98b5fae6ec964908eaf3",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-miniscribe-rep-canonical-v2.png": {
+   "canonical_sha256": "eacb88262baef1406754643dc7e51f59aa1488751f8dd2d4464083e2576385ed",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-accuse--expr-annoyed.png": {
+   "canonical_sha256": "56761ffdf0383954c862f04161b7b6989cf0e65c014de4ff81cb6b05fbf1c974",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-accuse--expr-deadpan.png": {
+   "canonical_sha256": "5ee8ff809f66059a04778e69ba06a064213e9f719661657af82fe41837c85883",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-armscrossed--expr-crestfallen.png": {
+   "canonical_sha256": "f775eed2b7271293ca79d6ff289d50749638fe69e2da1e33b8ddea6c0acf2dfe",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-armscrossed--expr-deadpan.png": {
+   "canonical_sha256": "8ace0951dbc4effa66b56506ab1d56ea59909027ede644d2c726fedc8b603b30",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-powerstance--expr-smug.png": {
+   "canonical_sha256": "adb752df6e77116c4e9314a4090436ae0a1c1386b1fc72ba34a4db6c8fecc197",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-present--expr-delighted.png": {
+   "canonical_sha256": "c686537ab4fb91b590fc975cdb9c0f68ac5d558a48fde821f3a85aef2b69d356",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-recoil--expr-shock.png": {
+   "canonical_sha256": "4d2ec3a64d2ada400db511980760cc3f32beaaf0eec5bae4604f6c802bd710c3",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--action-shrug--expr-confused.png": {
+   "canonical_sha256": "9b057a06f266c226fea7bd04c1b4c35cbce16c9717eebdff0be487a35e6c00c5",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--back-to-viewer--dfb3cd97.png": {
+   "canonical_sha256": "dfac42b6bcce57ca2b1d70886d6ef43df6cf2a0c93a5cc9093d62c583057eb43",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "fail",
+    "expression-register": "pass",
+    "flat-cel-hazard": "pass"
+   },
+   "reviewer": "fresh-eyes (boss-taste-forensics worker, Wave-2 failed-card remint, 2026-08-18): Wave-2 remint, ONE attempt per brief (do-not-retry-again card): rig-correction note added but the generation still rendered a 3/4 PROFILE view instead of true back-to-viewer — a clearly drawn EAR plus one eye/eyebrow are visible on the turned head, a direct 'NO nose, NO ears' (bible sec.1/sec.3) violation, and a different manifestation of the pose's known defect (profile leak vs. the hair-notch form seen on brick-foreman). Mechanism diagnosis: the back-to-viewer pose primitive plus this character's canonical combination is drifting the head into a 3/4 turn under this character's hairstyle/head-angle, exposing rig features the pose is supposed to hide; PARKED per brief, no further retry burned.",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--carry-by-handle--expr-crestfallen.png": {
+   "canonical_sha256": "bf9548c0aefa832066d18471afbda7c6f048d775319b90a897896e2fc832ba67",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--expr-smug.png": {
+   "canonical_sha256": "a741c92a25092d57c301e594faabd45cb61be4bf183a242014c7662c444cdda8",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--point-at-thing--expr-deadpan.png": {
+   "canonical_sha256": "9ceb85b61fc08590bda074e6cb51063f14bf48775142254603590d733d6d9437",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--point-at-thing--expr-smug.png": {
+   "canonical_sha256": "5d7be98c9dac695b967e306556dbd3d4db539e931d4292648939c48e2b0bff80",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--sign-with-pen--expr-smug.png": {
+   "canonical_sha256": "e977cf775cfbb7de101de50615d63c091d2170dea33066fa4f61130ed881deea",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--sit--expr-deadpan.png": {
+   "canonical_sha256": "fb1b35968ec02704824a31be8312c554bf3aef51bc2e5e6b5414abc78815a86b",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--sit--expr-greedy.png": {
+   "canonical_sha256": "e02a54998ecf5ef4104d400ccee57d65ed93e2315a0cd6e595f78ae7319eef12",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-qt-wiles--sit--expr-smug.png": {
+   "canonical_sha256": "fbac61adc547b02adbcbfd465e1847c04cc741c20c9b2e516339340dcceb5d46",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-rifenburgh-ceo--action-armscrossed--expr-deadpan.png": {
+   "canonical_sha256": "57949216cc0265c15b92baf3cc35e3814d21083ea6449d780dff7ee2d79a2f33",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-rifenburgh-ceo--hold-paper-by-sides--expr-shock.png": {
+   "canonical_sha256": "7da8f6c5fc4956cabd3c297dfc3a35972993f817a6682dcf0925abbf02ea299b",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-terry-johnson--action-armscrossed--expr-thinking.png": {
+   "canonical_sha256": "f5bdc8d022fe1f23a1d7f6192eee7c00a08181260aad4b0dc2e5a24e2c64f10a",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-terry-johnson--action-present--expr-delighted.png": {
+   "canonical_sha256": "4748c71d6354fe667ce4bf43932c5f7f88f168347775923107391adac57b0226",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-terry-johnson--carry-by-handle--expr-crestfallen.png": {
+   "canonical_sha256": "307ac57d640b7dd3fff2b9dd79dd7106fd9d143eb2591ec36c6ac08de6a46f88",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
+  },
+  "_staging/fig-terry-johnson--expr-delighted.png": {
+   "canonical_sha256": "172d353ab17e68140972d7111ed43ea8c7b1f4ebfcfd66350ef17a76d34aacc0",
+   "expression_sha256": null,
+   "verdicts": {
+    "rig": "",
+    "expression-register": "",
+    "flat-cel-hazard": ""
+   },
+   "reviewer": "fresh-eyes",
+   "date": "2026-08-18"
   }
+ }
 }

@@ -415,9 +415,12 @@ The pass rules three axes together, per shot, at **ordinary viewing scale**:
    them LETTER-BY-LETTER** against the words the `still_prompt` quotes; a garbled, misspelled or partial render is
    **blocking** (§3 sets which text is legal). Log lettering items as `dsg: [{id, parent, q, verdict:
    pass|fail|skipped, note}]`; **`stamp_review.py` parks any shot carrying a failed item even when the axis
-   severities came back clean**.
+   severities came back clean**. Independently of spelling, every text-bearing generated frame takes the
+   review artifact's lettering-register row: judge family match against the locked crude-marker exemplar (§5).
 3. **Style/taste** — does it read as its `shot_class` at a glance, on-recipe per §5 **AND rich — committed scene
-   palette, layered depth by overlap and scale (§5), light/atmosphere, filled edge-to-edge** — or is it slop: generic, cluttered,
+   palette, layered depth by overlap and scale (§5), light/atmosphere, environments filled edge-to-edge; a
+   standalone prop or artifact keeps its full silhouette and its air unless the crop is the payload
+   (`visual-grammar.md` §3)** — or is it slop: generic, cluttered,
    off-register, drifting to the detailed middle, thin, sparse? **Check expression register per beat** (§3).
 
 Returns a **flagged list keyed by shot id**, one sentence per defect quoting the offending fact. A frame no axis

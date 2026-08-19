@@ -53,7 +53,8 @@ vocabulary) + `example-shots.md` (the depiction bar) · the charter below, verba
 >    written as PROSE on a SEEDED figure, where the registry name is the authoring act? (A crowd-rig
 >    figure is the opposite case — prose is its ONLY expression channel, so beat-fit expression and group
 >    attitude there are correct, and their ABSENCE on a crowd beat whose energy lives in the VO is the
->    finding.) Is absence positive? Is crowd-rig text left in the prompt?
+>    finding.) Is absence positive? Is crowd-rig text left in the prompt, or does its distance fail
+>    `visual-grammar.md` §2's crowd-distance law?
 >    **FORCED ROW — payload ordering, on every shot, stated even when clean.** Lint proves only the
 >    lettering half (a non-delta shot with a quoted literal ends on that literal's clause). Name THIS
 >    shot's payload — the one thing the viewer must take away, lettered or not — and say whether the

@@ -12,7 +12,7 @@ a hold.
 **`global_prompt_suffix`** — fixed channel data, copied verbatim into `shots.json`, appended by `forge.py`
 at the TAIL of every scene generation prompt:
 
-> Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; built-but-flat environment (flat gradient sky/ground + minimal geometry + one foreground depth prop); any in-world lettering hand-lettered in the marker style, short and legible; locked 2-3 colour warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.
+> Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; any in-world lettering hand-lettered in the marker style, short and legible; warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.
 
 The LOOK is stated in exactly TWO voices and nowhere else: `style-bible.md` §2b at the HEAD of the prompt
 and this suffix at its TAIL. `forge.py` injects both. A `still_prompt` describes **CONTENT and nothing
@@ -182,9 +182,11 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
   gen time: `forge.py`'s `shot_cast` never resolves the bare `` `base` `` rig as a figure, and
   `seeding_law_violations` refuses a shot that casts it, by name. Named cast spends a foreground slot
   against the ≤2 cap below.
-  Crowd belongs in a positive rear zone in the
-  PRIMARY scene clause — far side of the real table/shelving, behind a divider, through a doorway — never a
-  co-planar gathering renamed "background-scale" later. The prose still stages crowd figures — where they
+  **When a beat's argument is scale, the background plane carries its own activity: one deep scene
+  with people at more than one distance, never a single populated plane against scenery.**
+  An anonymous crowd belongs in a positive rear zone in the PRIMARY scene clause and must read
+  **SMALLER through intervening depth and overlap**; a pane/divider label alone is not distance.
+  The prose still stages crowd figures — where they
   stand, what they do, what they wear, dressed for the scene's own era and setting, never the exemplar's
   period dress, **and the simple beat-fit expression and group attitude they hold** ("grinning",
   "worried", "deadpan"); that prose is a crowd's only expression channel, and an unauthored crowd renders
@@ -251,6 +253,11 @@ or removing/rearranging most of a seeded object rebase from the pre-transient an
 Framing, scale, and vantage are a choice driven by the one thing the viewer must see (the payload) and
 the shot's class. Eye-level frontal is the house REST position, not a lock: unchosen, a shot defaults to
 a centered eye-level medium — fine once, deadly on repeat.
+- **Scale / character-sizing** — reach for size relationships, not a lineup of equals: a tiny figure
+  under a dominant labelled mass, a face filling the frame, one figure dwarfing another.
+- **Angle / distance** — reach past the eye-level medium: top-down for a map/plan, low for dominance,
+  an extreme close-up on a face or detail, a wide with air for a single graphic idea.
+- **A standalone prop keeps its full silhouette + air unless the crop itself is the payload.**
 - **No hand/extremity close-ups — framing stays at body scale.** The rig's schematic 4-digit hands do
   not survive macro framing; show a document/signature/object detail at desk scale, the hand incidental.
 
