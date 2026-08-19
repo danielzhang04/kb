@@ -192,3 +192,11 @@ State is authoritative as of this section. keep-awake RE-ARMED (supervisor pid 3
   suites, then (boss, unsandboxed) `git add`/`commit` in the clone, `git fetch <clone-path>
   <branch>:<branch>` into the main checkout, `git push origin <branch>`, open PR. Then dispatch S2
   independent adversarial review before calling it merge-ready.
+
+## OVERNIGHT BUILD COMPLETE — 2026-08-19 (all 3 build phases → PR-ready, opus-reviewed, 0 merges)
+- **PR #131** workflow-platform P1 (iteration loops) — opus SHIP.
+- **PR #132** outbox co-writer rework (rebase-onto-head + `--pull-only` + empty-spool) — 49 tests, opus SHIP (ran real ssh-keygen gate; no bypass/no push/no fail-open/no injection).
+- **PR #133** Linux control-plane port (re-derivation, 37 files) — opus SHIP (no win32 regression, credential filter intact, POSIX guard fails closed, no Linux publication path, desktop-survival confirmed); boss tsc re-verified (2 baseline jpeg-js only).
+- **MORNING GATES for Daniel:** (1) merge #131, #132, #133; (2) ratify 3 open rulings (Linux worker-runner out-of-scope / runnerTrigger:false; codex-auth storage no-change; pty_host_launch non-issue); (3) then Phase 3 — his Tailscale console (rename tailnet→`command`, disable key-expiry, always-on ACL) + `DASHBOARD_TAILNET_HOST=kb.command.ts.net` + the 40-ref URL wiring folds onto the port branch pre-deploy.
+- **Phase-3 findings to resolve:** bridge-tick acceptance criterion is unprovable on main (queue bridge emits no success log — add a heartbeat log or use a different liveness signal for Phase 7); `--pull-only` is the downward-sync flag (resolved).
+- Merge order suggestion: #131 (independent) and #132 (independent) any order; #133 (port) independent of both. All three off current main, none conflict.
