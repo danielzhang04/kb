@@ -403,6 +403,15 @@ export async function executeApprovedLaunch(
         if (!stage || !proposalStage) throw new Error(`run projection missing stage '${card.stageId}'`);
         const linked = ctx.controlStore.linkStageCard(sub, stage.stageRef, stage.version, card.cardId);
         if (!linked.ok) throw new Error(linked.detail);
+        const iterationLoop = created.value.iterationLoops.find((loop) =>
+          loop.participants.some((participant) => participant.stageRef === stage.stageId));
+        const iterationParticipant = iterationLoop?.participants.find((participant) => participant.stageRef === stage.stageId);
+        // Every canonical card is linked at launch, but an iteration attempt is executable authority:
+        // while the loop is awaiting its seed, only the declared seed participant owns that authority.
+        // Later participants receive their attempt from execution.ts after activation has persisted the
+        // matching request and running-turn owner. Pre-creating their attempts here would either bypass
+        // that ownership proof or (correctly) trip store.createAttempt's turn-owner guard.
+        if (iterationLoop && iterationParticipant?.participantId !== iterationLoop.activation.seedParticipantId) continue;
         const attempt = ctx.controlStore.createAttempt(sub, stage.stageRef, {
           expectedStageVersion: linked.value.version,
           runtime: proposalStage.worker.runtime,

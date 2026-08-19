@@ -38,10 +38,16 @@ describe('iteration-loop-demo workflow definition (compiled proof)', () => {
     expect(FIXTURE.def.launchParameters).toEqual({ slug: PROOF_SLUG });
     expect(FIXTURE.plan.manager.assignment).toMatchObject({
       agentId: 'fyt-runner',
-      profileId: 'manager:codex:gpt-5.6-sol',
-      runtime: 'codex',
-      model: 'gpt-5.6-sol',
+      profileId: 'manager:claude:claude-fable-5',
+      runtime: 'claude',
+      model: 'claude-fable-5',
     });
+    const terraAssignments = FIXTURE.plan.stages
+      .filter((stage) => stage.assignment?.agentId === 'fyt-story')
+      .map((stage) => stage.assignment);
+    expect(terraAssignments).toHaveLength(4);
+    expect(terraAssignments.every((assignment) => assignment?.profileId === 'worker:codex:gpt-5.6-terra'
+      && assignment.runtime === 'codex' && assignment.model === 'gpt-5.6-terra')).toBe(true);
     expect([...groups]).toEqual([
       ['pair-fix-accept', expect.objectContaining({
         maxCycles: 2,

@@ -8,7 +8,7 @@ profile: scanner
 governedBy: fyt-runner
 manager:
   agentId: fyt-runner
-  profileId: manager:codex:gpt-5.6-sol
+  profileId: manager:claude:claude-fable-5
 parameters: [slug]
 stages:
   - id: pair-producer
