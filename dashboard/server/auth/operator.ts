@@ -47,15 +47,27 @@ export interface OperatorAuth {
 /** Re-exported so callers need one import for "the operator identity" concept. */
 export { OPERATOR_SUBJECT } from './mode.ts';
 
-const attribution = new AsyncLocalStorage<OperatorAttribution>();
+const attribution = new AsyncLocalStorage<OperatorAttribution | undefined>();
 
 /**
  * Bind `value` as the attribution for the remainder of this request's async context. `enterWith` is used
  * (rather than `run`) because a Fastify `preHandler` returns before the handler runs and therefore cannot
  * wrap it in a callback; entering the store marks the current async context, which the handler inherits.
+ *
+ * `enterWith` mutates the current async context, which a keep-alive connection can share across requests,
+ * so a stale value could in principle bleed into a later request that did not rebind. {@link resetAttribution}
+ * closes that: it is called at the top of `http/middleware.ts#resolveSession`, the ONE function every
+ * governed (audit-writing) request traverses, so each request starts from a clean store and the operator
+ * path rebinds. There is therefore no request that both writes an audit row and inherits a prior request's
+ * attribution — which is the invariant the audit stamp relies on.
  */
 export function bindAttribution(value: OperatorAttribution): void {
   attribution.enterWith(value);
+}
+
+/** Clear any inherited attribution at the start of a request (see {@link bindAttribution}). */
+export function resetAttribution(): void {
+  attribution.enterWith(undefined);
 }
 
 /** The attribution bound for the current request, or `undefined` (always so in `win32-desktop` mode). */

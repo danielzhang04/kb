@@ -74,4 +74,20 @@ describe('assertAuthModeBoot', () => {
     expect(() => assertAuthModeBoot({ env: { DASHBOARD_AUTH_MODE: 'x' }, bindHost: '127.0.0.1', platform: 'linux' }))
       .toThrow(AuthModeError);
   });
+
+  it('SECURITY: REFUSES to start when a retired WebAuthn env is still present in tailnet mode', () => {
+    // Defense in depth beyond the python ExecStartPre closed set: if both were set, a passkey unlock
+    // could flip the latch source tailnet->passkey and re-open the two historical repair paths.
+    for (const stale of ['DASHBOARD_RP_ORIGIN', 'DASHBOARD_WEBAUTHN_CREDENTIALS']) {
+      expect(() => assertAuthModeBoot({
+        env: { ...TAILNET, [stale]: 'x' }, bindHost: '127.0.0.1', platform: 'linux',
+      })).toThrow(new RegExp(stale));
+    }
+  });
+
+  it('leaves a retired WebAuthn env untouched in win32-desktop mode (it is that mode\'s own config)', () => {
+    expect(assertAuthModeBoot({
+      env: { DASHBOARD_RP_ORIGIN: 'https://x.ts.net' }, bindHost: '127.0.0.1', platform: 'linux',
+    })).toBe('win32-desktop');
+  });
 });

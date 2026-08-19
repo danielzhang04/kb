@@ -19,7 +19,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { mintSession, verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
-import { bindAttribution } from '../auth/operator.ts';
+import { bindAttribution, resetAttribution } from '../auth/operator.ts';
 import type { OperatorRequestLike } from '../auth/operator.ts';
 import { rateLimit, lockout, rateLimitHook } from '../security/ratelimit.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
@@ -108,6 +108,10 @@ export function resolveSession(
   sessionConfig: SessionConfig,
   presentedToken?: string,
 ): ResolvedSession {
+  // Clear any attribution a keep-alive-shared async context may carry from a prior request BEFORE the
+  // operator path (maybe) rebinds it. This is the single point every governed, audit-writing request
+  // passes through, so it guarantees no request inherits a stale identity. See operator.ts#bindAttribution.
+  resetAttribution();
   const operatorAuth = sessionConfig.operatorAuth;
   if (operatorAuth) {
     const result = operatorAuth.authenticate(req as unknown as OperatorRequestLike);

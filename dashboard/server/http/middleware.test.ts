@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
 import type { FastifyRequest } from 'fastify';
 import { requireSession, resolveSession, sessionToken, verifiedSession } from './middleware.ts';
-import { currentAttribution, OPERATOR_SUBJECT } from '../auth/operator.ts';
+import { bindAttribution, currentAttribution, OPERATOR_SUBJECT } from '../auth/operator.ts';
 import type { OperatorAuth } from '../auth/operator.ts';
 import { mintSession, verifySession } from '../auth/session.ts';
 
@@ -105,5 +105,13 @@ describe('requireSession in tailnet operator mode', () => {
     expect(resolveSession(req, SESSION, minted.token)).toMatchObject({ ok: true, token: minted.token });
     expect(resolveSession(req, SESSION, 'garbage')).toMatchObject({ ok: false, status: 401 });
     expect(resolveSession(req, SESSION)).toMatchObject({ ok: false, status: 401, reason: 'missing session token' });
+  });
+
+  it('SECURITY: resolveSession clears a keep-alive-inherited attribution before a win32 request', () => {
+    // Simulate bleed: a prior tailnet request bound an identity into the shared async context.
+    bindAttribution({ login: 'prior-operator@example.com' });
+    // A subsequent win32-mode request (no operatorAuth) must see a CLEARED store, not the stale identity.
+    resolveSession({ headers: {} } as unknown as FastifyRequest, SESSION, mintSession('operator', SESSION).token);
+    expect(currentAttribution()).toBeUndefined();
   });
 });

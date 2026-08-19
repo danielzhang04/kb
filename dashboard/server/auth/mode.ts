@@ -39,6 +39,9 @@ const TAILNET_HOST_PATTERN = /^[a-z0-9][a-z0-9.-]*$/;
 /** Bind addresses that keep the listener behind the proxy. Anything else exposes ambient-auth routes. */
 const LOOPBACK_BIND = new Set(['127.0.0.1', '::1', 'localhost']);
 
+/** WebAuthn channels retired by tailnet mode; their presence at boot is a misconfiguration. */
+const RETIRED_IN_TAILNET = ['DASHBOARD_RP_ORIGIN', 'DASHBOARD_WEBAUTHN_CREDENTIALS'] as const;
+
 export function resolveAuthMode(env: Record<string, string | undefined> = process.env): AuthMode {
   const raw = env.DASHBOARD_AUTH_MODE?.trim();
   if (!raw) return DEFAULT_AUTH_MODE;
@@ -91,6 +94,14 @@ export function assertAuthModeBoot(options: {
     throw new AuthModeError(
       `tailnet auth mode requires a loopback bind behind tailscale serve; refusing to listen on ${options.bindHost}`,
     );
+  }
+  // Defense in depth beyond the unit's ExecStartPre closed set: the WebAuthn channel is RETIRED in
+  // tailnet mode. If both these were present, a passkey unlock could flip the latch source
+  // tailnet->passkey and re-open the two historical passkey-only repair paths. Refuse to start.
+  for (const retired of RETIRED_IN_TAILNET) {
+    if (env[retired]?.trim()) {
+      throw new AuthModeError(`tailnet auth mode retires ${retired}; remove it from the unit before starting`);
+    }
   }
   resolveTailnetConfig(env);
   return mode;
