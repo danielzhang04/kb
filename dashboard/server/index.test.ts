@@ -72,7 +72,7 @@ describe('server', () => {
     '/api/registry', '/api/registry/skills', '/api/registry/connections',
     '/api/index', '/api/ledgers/slices', '/api/dag', '/api/routing',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
-    '/api/panels/health', '/api/panels/usage', '/api/panels/atlas',
+    '/api/panels/health', '/api/panels/usage', '/api/panels/atlas', '/api/panels/schedules',
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
     '/api/human-inbox', '/api/approvals', '/api/composer/sessions', '/api/composer/sessions/example',
     '/api/control/proposals', '/api/control/execution', '/api/control/runs', '/api/control/runs/example',
@@ -82,6 +82,16 @@ describe('server', () => {
   ])('rejects unauthenticated read %s', async (url) => {
     app = matrixApp();
     const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
+    expect(response.statusCode).toBe(401);
+  });
+
+  // Governed writes composed OUTSIDE the write surface (`registerWriteSurface`) — so `surface.test.ts`'s
+  // own "session-less POST is 401, never 404" matrix cannot see them. They are gated by THIS file's
+  // scope-level `requireSession`, and must prove the same property: gated, not missing.
+  it.each(['/api/schedules/edit'])('rejects unauthenticated write %s (401, never 404)', async (url) => {
+    app = matrixApp();
+    const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });
+    expect(response.statusCode, `${url} should be gated, not missing`).not.toBe(404);
     expect(response.statusCode).toBe(401);
   });
 

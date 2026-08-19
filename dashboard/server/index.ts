@@ -29,6 +29,7 @@ import { startStrandedArchiver } from './write/strandedArchiver.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
 import { assertSupportedRepositoryData } from './schema/startup.ts';
+import { auditFn } from './http/context.ts';
 import type { SurfaceContext } from './http/context.ts';
 import type { RuntimeCapabilities } from './runtime/capabilities.ts';
 import type { VibeSpawner } from './vibe/session.ts';
@@ -190,7 +191,23 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerDag(scope, repoRoot);
     registerRoutingRead(scope, repoRoot);
     registerAgents(scope, repoRoot);
-    registerPanels(scope, repoRoot);
+    // The Schedules panel's governed HEARTBEAT edit (-> work-branch PR, never auto-merged) needs the
+    // SAME one-per-process session config, side-effect runners and audit sink the write surface uses.
+    // Without a session config it fails closed with 503; without an audit sink it fails open and simply
+    // records no row (see panels/schedules.ts). Pausing is NOT here — it is /api/write/pause-cadence.
+    registerPanels(scope, repoRoot, {
+      sessionConfig: surfaceCtx.sessionConfig,
+      durableRepoRoot: surfaceCtx.durableRepoRoot,
+      runGit: surfaceCtx.saveGit,
+      openPr: surfaceCtx.openPr,
+      runPreamble: surfaceCtx.runPreamble,
+      publication: surfaceCtx.coordinationPublication,
+      outboxRoot: surfaceCtx.outboxRoot,
+      audit: auditFn(surfaceCtx),
+      opsGit: surfaceCtx.opsGit,
+      now: surfaceCtx.now,
+      admission: surfaceCtx.admission,
+    });
     registerTraceRead(scope);
     registerBrainSearch(scope, { repoRoot });
     registerContextLifecycle(scope);

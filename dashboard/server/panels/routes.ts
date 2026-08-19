@@ -12,15 +12,33 @@ import { buildUsagePanel } from './usage.ts';
 import { buildAtlasPanel } from './atlas.ts';
 import { buildAutonomyLadderPanel } from './autonomyLadder.ts';
 import { buildLoopStatusPanel } from './loopStatus.ts';
+import { registerSchedulesPanel } from './schedules.ts';
 import type { AtlasWorkerOptions } from './atlas.ts';
+import type { SchedulesRouteOptions } from './schedules.ts';
 
 /** dashboard/server/panels/routes.ts → ../../../ is the repo root. Overridable for tests/config. */
 export function resolveRepoRoot(): string {
   return process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../../', import.meta.url));
 }
 
-/** Register the read-only layer-panel routes on the Fastify app. */
-export function registerPanels(app: FastifyInstance, repoRoot: string = resolveRepoRoot()): void {
+/**
+ * Register the layer-panel routes on the Fastify app.
+ *
+ * All but one are pure reads. The single exception is the Schedules panel, which — beyond its own GET —
+ * carries ONE governed write: `POST /api/schedules/edit`, a HEARTBEAT.md edit routed through
+ * `write/governedSave.ts` to a work branch and a PR a human merges. It lives behind
+ * {@link SchedulesRouteOptions} and FAILS CLOSED until the composition root wires a session config into
+ * it, so this registrar stays safe to call with a bare `(app, repoRoot)` in every test that only wants
+ * the read projections.
+ *
+ * Pausing a cadence is NOT here: `POST /api/write/pause-cadence` (`stop/floor.ts#pauseCadence`) already
+ * owns the `queue/paused/<name>` sentinel write, and unpausing has no endpoint anywhere by design.
+ */
+export function registerPanels(
+  app: FastifyInstance,
+  repoRoot: string = resolveRepoRoot(),
+  schedules: SchedulesRouteOptions = {},
+): void {
   // Sentinel — agent liveness derived from HEARTBEAT cadences / org STATE / ledger recency.
   app.get('/api/panels/health', async () => {
     const policy = loadPolicy(repoRoot);
@@ -36,6 +54,10 @@ export function registerPanels(app: FastifyInstance, repoRoot: string = resolveR
   });
   // Loop status — the self-improving loops: last run, outcome narration, declared schedule. GET only.
   app.get('/api/panels/loop-status', async () => buildLoopStatusPanel(repoRoot));
+  // Schedules — every declared HEARTBEAT cadence with its paused state, last run and next-fire hint,
+  // plus the governed edit/pause writes. The dashboard is the EDITOR, never the owner of a schedule:
+  // edits go out as a PR a human merges, and there is no unpause route anywhere (spec §5).
+  registerSchedulesPanel(app, repoRoot, schedules);
   // Quartermaster — usage rollup (per-model steps, model mix, card/dispatch counts). USD suppressed.
   app.get('/api/panels/usage', async () => buildUsagePanel(repoRoot));
   // Atlas — voice worker mirror: worker /state passthrough (OFFLINE-explicit) + transcript history + cards.
