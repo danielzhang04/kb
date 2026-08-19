@@ -100,7 +100,7 @@ def test_factory_does_not_write_a_draft_without_a_governance_need(tmp_path):
     assert not (tmp_path / "queue" / "drafts").exists()
 
 
-def test_unknown_role_uses_role_default_and_concrete_model(tmp_path):
+def test_unknown_role_uses_role_default_and_concrete_model(tmp_path, capsys):
     from scripts.agent_factory import create_agent
 
     _seed_policy(tmp_path)
@@ -110,6 +110,18 @@ def test_unknown_role_uses_role_default_and_concrete_model(tmp_path):
     assert meta["runtime"] == "claude"
     assert meta["model"] == "claude-sonnet-5"
     assert created.draft is None
+    assert capsys.readouterr().err == (
+        "warning: role 'new-role' has no routing policy row — agent will be "
+        "execution-ineligible in the roster until a role/override exists\n"
+    )
+
+
+def test_known_role_does_not_warn_about_routing(tmp_path, capsys):
+    from scripts.agent_factory import create_agent
+
+    _seed_policy(tmp_path)
+    create_agent(tmp_path, "known-role-agent", role="work")
+    assert capsys.readouterr().err == ""
 
 
 @pytest.mark.parametrize("policy", ["not: [valid", ""])

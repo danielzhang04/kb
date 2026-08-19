@@ -22,6 +22,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import codex_dispatch  # noqa: E402
+from scripts.kit import assemble as kit_assemble  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 HOOK = REPO / "scripts" / "hooks" / "subagent_context_load.js"
@@ -47,6 +48,23 @@ def write_render(repo_root: Path, audience: str, text: str) -> str:
     rendered.mkdir(parents=True, exist_ok=True)
     (rendered / f"{audience}.md").write_text(text, encoding="utf-8", newline="\n")
     return text
+
+
+def write_kit_block(repo_root: Path, body: str = "Shared doctrine.") -> None:
+    kit = repo_root / "kit"
+    kit.mkdir(parents=True, exist_ok=True)
+    (kit / "base.md").write_text(
+        "---\n"
+        "name: base\n"
+        "description: shared doctrine\n"
+        "when: always\n"
+        "audience: all\n"
+        "read_only: true\n"
+        "budget_bytes: 1000\n"
+        "---\n\n"
+        f"{body}\n",
+        encoding="utf-8",
+    )
 
 
 # ── transport 1: codex_dispatch ──────────────────────────────────────────────────────────────────
@@ -213,9 +231,18 @@ def test_head_sha_reads_git_and_survives_a_non_repo(tmp_path):
     assert codex_dispatch.head_sha(tmp_path / "not-a-repo") is None
 
 
-def test_a_missing_render_is_reported_on_stderr(repo, offline, tmp_path, capsys):
-    """A silent bare brief is how a kit stops reaching workers without anyone noticing."""
+def test_a_missing_render_is_assembled_before_dispatch(repo, offline, tmp_path, capsys):
+    write_kit_block(repo)
     _run_main(repo, tmp_path)
+    assert offline["prompt"].startswith("# kb kit (codex)")
+    assert "Shared doctrine." in offline["prompt"]
+    assert "kit render missing" not in capsys.readouterr().err
+
+
+def test_a_broken_kit_dispatches_bare_with_the_missing_render_note(repo, offline, tmp_path, capsys):
+    write_kit_block(repo, body="x" * 1001)
+    _run_main(repo, tmp_path)
+    assert offline["prompt"] == BRIEF
     assert "kit render missing" in capsys.readouterr().err
 
 
@@ -234,15 +261,19 @@ def test_a_present_render_is_not_reported(repo, offline, tmp_path, capsys):
     assert "kit render missing" not in capsys.readouterr().err
 
 
-def test_the_refusal_gates_run_before_any_kit_read(repo, offline, tmp_path, monkeypatch):
-    """STOP / metered-key refusal is the first thing main() does; nothing may read a file first."""
+def test_the_refusal_gates_run_before_any_kit_render_or_read(repo, offline, tmp_path, monkeypatch):
+    """STOP / metered-key refusal is the first thing main() does; nothing may touch a kit first."""
     write_render(repo, "all", RENDER)
     (repo / "STOP").write_text("frozen", encoding="utf-8")
 
     def exploding_build_prompt(*args, **kwargs):
         raise AssertionError("kit was read before the dispatch refusal gates")
 
+    def exploding_assemble(*args, **kwargs):
+        raise AssertionError("kit was rendered before the dispatch refusal gates")
+
     monkeypatch.setattr(codex_dispatch, "build_prompt", exploding_build_prompt)
+    monkeypatch.setattr(kit_assemble, "assemble", exploding_assemble)
     assert _run_main(repo, tmp_path) == 2
     assert "prompt" not in offline
 

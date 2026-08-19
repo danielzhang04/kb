@@ -63,6 +63,10 @@ FLEET_SUITE_ID = "_fleet"    # evals/agents/_fleet/ — golden cards runnable ag
 DEFAULT_TIMEOUT = 120        # seconds, `output-contains`
 PYTEST_TIMEOUT = 600         # seconds, `pytest` judge
 MODEL_TIMEOUT = 180          # seconds, `model` judge (subscription `claude -p`, never live in tests)
+_CLEAN_ENV_VARS = (
+    "APPDATA", "COMSPEC", "HOMEDRIVE", "HOMEPATH", "HOME", "LOCALAPPDATA", "PATH",
+    "PATHEXT", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "WINDIR",
+)
 
 EXIT_OK = canary.EXIT_OK
 EXIT_FAIL = canary.EXIT_FAIL
@@ -162,15 +166,14 @@ def _resolve_contained(repo_root: Path, rel) -> Path | None:
 
 
 def _clean_env() -> dict:
-    """The environment for every judge subprocess: a copy of the real one with
-    ``ANTHROPIC_API_KEY`` popped defensively. Fleet agents must never carry this
-    key (CLAUDE.md hard rule); a judge subprocess must never be the exception,
-    even if something upstream leaked it into this process's own environment.
-    Also forces ``PYTHONDONTWRITEBYTECODE=1`` — judge subprocesses (the pytest
-    judge above all) must never litter a suite directory with `__pycache__`,
-    which would otherwise pollute the very tree the manifest anchors."""
-    env = dict(os.environ)
-    env.pop("ANTHROPIC_API_KEY", None)
+    """The environment for every judge subprocess, with no ambient values.
+
+    A card may add a named parent value through ``input.env_vars`` in the one
+    judge that supports it. Keeping the baseline empty prevents credentials or
+    unrelated process configuration from becoming an accidental inheritance
+    path. ``PYTHONDONTWRITEBYTECODE`` keeps judges from polluting the suite.
+    """
+    env = {name: os.environ[name] for name in _CLEAN_ENV_VARS if name in os.environ}
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
 
@@ -215,19 +218,18 @@ def _judge_file_exists(card: EvalCard, repo_root: Path):
 
 
 def _output_contains_env(card: EvalCard) -> dict:
-    """`input.env` picks the subprocess environment: `"cleaned"` (default) is
-    the defensive `_clean_env()` scrub; `"parent"` passes the REAL ambient
-    environment through untouched (still with `PYTHONDONTWRITEBYTECODE` forced,
-    a hygiene concern unrelated to what the probe is measuring). A card must
-    opt into `"parent"` explicitly — e.g. the fleet's `no-api-key-in-env` probe,
-    which exists to measure the ACTUAL fleet agent environment, not this
-    runner's own scrub (measuring the scrub would make the card vacuous)."""
+    """Return a clean subprocess environment plus named parent values only."""
     mode = str(card.input.get("env", "cleaned")).strip().lower()
     if mode == "parent":
-        env = dict(os.environ)
-        env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
-        return env
-    return _clean_env()
+        raise ValueError("env: parent removed — declare input.env_vars")
+    env_vars = card.input.get("env_vars", [])
+    if not isinstance(env_vars, list) or not all(isinstance(name, str) and name for name in env_vars):
+        raise ValueError("input.env_vars must be a list of non-empty variable names")
+    env = _clean_env()
+    for name in env_vars:
+        if name in os.environ:
+            env[name] = os.environ[name]
+    return env
 
 
 def _judge_output_contains(card: EvalCard, repo_root: Path):
@@ -241,9 +243,17 @@ def _judge_output_contains(card: EvalCard, repo_root: Path):
     # portable python probe without hardcoding a platform-specific launcher.
     resolved = [sys.executable if part == "{python}" else str(part) for part in command]
     timeout = int(card.input.get("timeout") or DEFAULT_TIMEOUT)
+    env = _output_contains_env(card)
+    # A clean subprocess does not inherit the host's Git config. Trust this
+    # checked repository only, so a probe can run a repo-local Git command.
+    env.update({
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "safe.directory",
+        "GIT_CONFIG_VALUE_0": str(repo_root),
+    })
     try:
         res = subprocess.run(resolved, cwd=str(repo_root), capture_output=True, text=True,
-                             timeout=timeout, env=_output_contains_env(card))
+                             timeout=timeout, env=env)
     except (OSError, subprocess.TimeoutExpired) as err:
         return False, f"command failed to run: {err}"
     out = (res.stdout or "") + (res.stderr or "")
@@ -263,9 +273,17 @@ def _judge_pytest(card: EvalCard, repo_root: Path):
     if _resolve_contained(repo_root, test_file) is None:
         return False, f"path escapes repo root or is invalid: {test_file}"
     cmd = [sys.executable, "-m", "pytest", str(test_file), "-q", "-p", "no:cacheprovider"]
+    env = _clean_env()
+    # The clean environment does not inherit the host's Git configuration.
+    # Trust only this checked repository when its own tests invoke Git.
+    env.update({
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "safe.directory",
+        "GIT_CONFIG_VALUE_0": str(repo_root),
+    })
     try:
         res = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True,
-                             timeout=PYTEST_TIMEOUT, env=_clean_env())
+                             timeout=PYTEST_TIMEOUT, env=env)
     except (OSError, subprocess.TimeoutExpired) as err:
         return False, f"pytest failed to run: {err}"
     tail = [ln for ln in (res.stdout or "").splitlines() if ln.strip()]

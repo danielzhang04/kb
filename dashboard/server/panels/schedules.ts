@@ -211,7 +211,9 @@ export function buildSchedulesPanel(repoRoot: string): SchedulesPanel {
   const files = readHeartbeatFiles(repoRoot);
 
   const cadences: ScheduleRow[] = declared.map((c) => {
-    const mine = rows.filter((r) => String(r.cadence ?? '') === c.name);
+    const mine = rows.filter(
+      (r) => String(r.project ?? '') === c.project && String(r.cadence ?? '') === c.name,
+    );
     // The dispatch ledger records a DATE only, so ties break by card id — stable, and never an ordering
     // claim beyond what the data supports.
     let latest: Record<string, string> | null = null;

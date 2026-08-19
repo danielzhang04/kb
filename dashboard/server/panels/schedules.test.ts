@@ -178,7 +178,7 @@ function tempRepo(opts: RepoOpts = {}): string {
   mkdirSync(join(root, 'ledgers', 'dispatch'), { recursive: true });
   if (opts.rows && opts.rows.length > 0) {
     const body = opts.rows
-      .map((r) => [r.cadence, r.card, r.date, r.project ?? 'kb'].join('\t'))
+      .map((r) => [r.cadence, r.card, r.date, r.project ?? 'system'].join('\t'))
       .join('\n');
     writeFileSync(join(root, 'ledgers', 'dispatch', 'dispatcher-2026-08-18.tsv'), `${DISPATCH_HEADER}\n${body}\n`);
   }
@@ -297,12 +297,37 @@ describe('buildSchedulesPanel — the projection', () => {
   it('is honest about a cadence that never ran, and about a run whose card is not in this checkout', () => {
     const root = tempRepo({
       root: [{ name: 'alpha', schedule: 'daily' }, { name: 'beta', schedule: 'daily' }],
-      rows: [{ cadence: 'beta', card: 'cccc0003-3333', date: '2026-08-18' }],
+      rows: [{ cadence: 'beta', card: 'cccc0003-3333', date: '2026-08-18', project: 'system' }],
     });
     const panel = buildSchedulesPanel(root);
     const byName = new Map(panel.cadences.map((c) => [c.name, c]));
     expect(byName.get('alpha')!.lastRun).toBeNull();
     expect(byName.get('beta')!.lastRun).toEqual({ date: '2026-08-18', card: 'cccc0003-3333', narration: null });
+  });
+
+  it('keeps same-named cadences in separate projects joined to their own ledger row', () => {
+    const root = tempRepo({
+      orgs: {
+        alpha: [{ name: 'shared', schedule: 'daily' }],
+        beta: [{ name: 'shared', schedule: 'weekly:sat' }],
+      },
+      rows: [
+        { cadence: 'shared', card: 'alpha0001-1111', date: '2026-08-17', project: 'alpha' },
+        { cadence: 'shared', card: 'beta0002-2222', date: '2026-08-18', project: 'beta' },
+      ],
+      cards: {
+        'alpha0001-1111': ['done', 'done', 'Alpha narration.'],
+        'beta0002-2222': ['done', 'done', 'Beta narration.'],
+      },
+    });
+    const panel = buildSchedulesPanel(root);
+    const byProject = new Map(panel.cadences.map((c) => [c.project, c]));
+    expect(byProject.get('alpha')!.lastRun).toEqual({
+      date: '2026-08-17', card: 'alpha0001-1111', narration: 'Alpha narration.',
+    });
+    expect(byProject.get('beta')!.lastRun).toEqual({
+      date: '2026-08-18', card: 'beta0002-2222', narration: 'Beta narration.',
+    });
   });
 
   it('degrades to an empty cadence list on a checkout with no HEARTBEAT at all', () => {

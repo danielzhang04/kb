@@ -70,6 +70,13 @@ def _default_route(repo_root: Path, role: str, runtime: str | None) -> tuple[str
     ``runtimes.codex.aliases.codex`` is commented "dispatch default").
     """
     policy = load_policy(repo_root)
+    matrix = policy.get("policy") or {}
+    if not isinstance(matrix.get(role), dict):
+        print(
+            f"warning: role '{role}' has no routing policy row — agent will be "
+            "execution-ineligible in the roster until a role/override exists",
+            file=sys.stderr,
+        )
     entry = _policy_entry(policy, role, DEFAULT_TIER) or {}
     policy_runtime = entry.get("runtime")
     explicit = runtime is not None

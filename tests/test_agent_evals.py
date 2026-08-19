@@ -495,27 +495,31 @@ def test_output_contains_expect_empty_fails_on_nonempty_output(tmp_path):
     assert "expected empty output" in report.cards[0].reason
 
 
-def test_output_contains_env_parent_sees_the_real_ambient_environment(tmp_path, monkeypatch):
-    """Task 6 fold-in 6: without `input.env: parent`, `output-contains` always
-    measures this runner's OWN `_clean_env()` scrub — vacuous for a card whose
-    whole point is to inspect the REAL fleet environment. With `env: parent`,
-    a sentinel `ANTHROPIC_API_KEY` in the parent process must be visible to the
-    probe (and cause a FAIL); its absence must make the probe pass."""
+def test_output_contains_env_vars_copies_only_the_declared_parent_values(tmp_path, monkeypatch):
+    """An output probe gets its clean baseline plus its explicit allowlist only."""
     probe_input = {
         "command": [sys.executable, "-c",
-                   "import os,sys; sys.stdout.write('CLEAN' if not "
-                   "os.environ.get('ANTHROPIC_API_KEY') else 'DIRTY')"],
-        "contains": "CLEAN", "env": "parent"}
+                   "import os,sys; sys.stdout.write(os.environ.get('KB_EVAL_ALLOWED', '') + "
+                   "':' + ('present' if 'KB_EVAL_SENTINEL' in os.environ else 'absent'))"],
+        "contains": "allowed:absent", "env_vars": ["KB_EVAL_ALLOWED"]}
     _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
         "smoke", "output-contains", probe_input)})
 
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    clean_report = run_suite(tmp_path, "demo-agent")
-    assert clean_report.passed is True, [c.reason for c in clean_report.cards]
+    monkeypatch.setenv("KB_EVAL_ALLOWED", "allowed")
+    monkeypatch.setenv("KB_EVAL_SENTINEL", "must-not-leak")
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is True, [c.reason for c in report.cards]
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-sentinel-should-be-visible")
-    dirty_report = run_suite(tmp_path, "demo-agent")
-    assert dirty_report.passed is False, [c.reason for c in dirty_report.cards]
+
+def test_output_contains_env_parent_fails_with_the_allowlist_migration(tmp_path):
+    _seed_suite(tmp_path, "demo-agent", {"smoke": _card_text(
+        "smoke", "output-contains",
+        {"command": [sys.executable, "-c", "print('unused')"],
+         "contains": "unused", "env": "parent"})})
+
+    report = run_suite(tmp_path, "demo-agent")
+    assert report.passed is False
+    assert "env: parent removed — declare input.env_vars" in report.cards[0].reason
 
 
 def test_output_contains_env_default_stays_cleaned_even_with_sentinel_set(tmp_path, monkeypatch):
@@ -772,9 +776,13 @@ def test_eval_suite_worker_can_earn_its_own_namespace_autonomy_pin(tmp_path):
 # --------------------------------------------------------------------------- #
 # the real committed _fleet suite (blessed, human-witnessed)                   #
 # --------------------------------------------------------------------------- #
-def test_real_fleet_suite_is_green_against_fyt_runner():
+def test_real_fleet_suite_reports_the_retired_parent_environment_card():
     report = run_suite(REPO_ROOT, "fyt-runner", fleet=True)
-    assert report.passed, (report.reason, [(c.id, c.reason) for c in report.cards])
+    failures = [(card.id, card.reason) for card in report.cards if not card.passed]
+    assert failures == [(
+        "no-api-key-in-env",
+        "judge error: ValueError('env: parent removed — declare input.env_vars')",
+    )]
     assert {c.id for c in report.cards} == {
         "def-parses-in-roster-shape", "memory-file-exists", "no-api-key-in-env",
         "no-worker-commits-on-main", "cost-under-cap"}

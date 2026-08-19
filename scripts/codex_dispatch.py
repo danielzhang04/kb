@@ -642,8 +642,18 @@ def main(argv: list[str] | None = None) -> int:
     prompt_text = build_prompt(brief_text, repo_root, no_kit=no_kit)
     kit_applied = prompt_text != brief_text
     if not no_kit and not kit_applied:
-        # Silent bare briefs are how a kit stops reaching workers without anyone noticing.
-        print("kit render missing — dispatching bare brief; run sync_skills", file=sys.stderr)
+        if (repo_root / "kit").is_dir():
+            try:
+                from scripts.kit.assemble import assemble
+                assemble(repo_root, "codex")
+                prompt_text = build_prompt(brief_text, repo_root)
+                kit_applied = prompt_text != brief_text
+            except Exception:
+                # Silent bare briefs are how a kit stops reaching workers without anyone noticing.
+                print("kit render missing — dispatching bare brief; run sync_skills", file=sys.stderr)
+        else:
+            # Silent bare briefs are how a kit stops reaching workers without anyone noticing.
+            print("kit render missing — dispatching bare brief; run sync_skills", file=sys.stderr)
     rc, timed_out = spawn(prompt_text, model, args.effort, cwd, sandbox, out_file,
                           log_file, follow_up=args.follow_up, timeout=args.timeout,
                           marker=pending)
