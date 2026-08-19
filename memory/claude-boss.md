@@ -588,3 +588,26 @@
 - LESSON: agent-rules.md rule 8 (evals/ human-only) now self-enforces — a codex worker refused a mixed brief touching evals/. Route evals/ edits to Daniel's ceremony from the start; never fold them into agent briefs.
 - LESSON: same-second stalls across multiple agents = machine-wide stream outage; resume every agent via SendMessage from its transcript, zero loss (5 workers, 3 outages this arc).
 - REMAINS: Daniel's rule-8 ratification + fleet env-card re-bless (RED until then, deliberate), card-schema amendment, Wave-2 list in MORNING-REPORT-AGENT-INFRA.md.
+
+## 2026-08-19 — cloud-migration cutover replan + tailnet-trust build (boss session)
+- LESSON (stale handoff trap): the cloud-migration resume-point handoff described a VM stack that a
+  LATER arc (kb-structure Gate-1) had already rebuilt into a different one (immutable platform :4317/
+  serve/443, /var/lib/kb) and DECOMMISSIONED the old (:5317 user unit, ~/kb clone). Never plan a
+  cutover off a handoff alone — probe the live VM (systemctl cat, /opt/kb-releases, /var/lib/kb, ss)
+  + ops history first. Memory-index resume points pointed at handoffs already deleted from ops; the
+  authority is the newest handoff per scope ON ops, not memory.
+- LESSON (security review needs ≥2 + boss reproduction): two opus reviewers of the same auth surface
+  DISAGREED on a CRITICAL — reviewer A found a peer-UID port-collision bypass (bind 127.0.0.2:<tailscaled
+  port>, borrow root's /proc row); reviewer B declared it "sound" having tested only the naive lone-row
+  case that fails closed WITHOUT the fix. Boss traced the code + ran the collision test to confirm A.
+  For exploitable surfaces: dual independent review AND boss reproduces the exploit; a single "sound"
+  is worthless, and a passing test that omits the exploit shape proves nothing.
+- LESSON (network-flaky nights): repeated ENOTFOUND kills + 600s stream-watchdog stalls on background
+  workers. SendMessage-resume recovers from intact transcript every time (build worker resumed 3×, zero
+  loss). Instruct long workers to commit coherent units early+often so a kill costs nothing.
+- LESSON (model fallback under load): workers dispatched model:opus ran 40% of turns on claude-opus-4-8
+  (fallback). Grep the transcript at grading (BOSS.md), down-weight the mixed grade, and boss-verify any
+  security/exploit-critical output independently rather than trusting the tier badge.
+- STATE: cutover replanned (tasklist 10 phases); Phase 0 tailnet-trust always-on auth built + boss-
+  verified + PR #130 (MERGEABLE/CLEAN); cutover spec+runbook rewritten on claude/cloud-migration
+  (3642cd3b). Resume = handoffs/2026-08-19-cloud-migration-cutover-phase0-done.md. Daniel gate: merge #130.
