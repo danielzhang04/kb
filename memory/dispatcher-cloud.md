@@ -546,3 +546,19 @@
 - Queue by state: inbox 17, blocked 10, working 1 (this card), halted 1 (6a6bc3dd still parked in
   working/), done 586, approvals 0, archived 1. No stranded-in-inbox done card this run (clean).
 - Push path: recorded in the run summary.
+
+### 2026-08-19 nightly-review
+- Clean checks: preamble, pyyaml, sync_skills --check all pass (no drift).
+- **Daemon-dir drift UNCHANGED (11 files), so filed NO card.** sync_daemon_dirs (ran main copy,
+  ops still missing the script) is byte-identical to standing card 6a7c0ebf's Evidence (5 main-only
+  + 5 content-differs fyt-*/workflows + 1 ops-only acceptance-run). Prior run refreshes the umbrella
+  card only when the drift CHANGES shape; unchanged = touch nothing. Desktop --sync + back-port-or-
+  prune on acceptance-run.md still owed at the desk.
+- **Cost is NOT $0 again — confirms the standing read_day caveat.** Real spend today = $2.56
+  (boss bricks v2 image regen, gemini-3-pro-image) in ledgers/cost/claude-boss-2026-08-19.tsv.
+  read_day only scraped the headered codex-direct TSV (all subscription $0) and MISSED the boss
+  TSV entirely (different headerless format). Always cat the raw boss TSV last column; budget
+  remaining ~$27.44/$30.
+- Queue by state: inbox 17, blocked 10, working 1 (this card), halted 1 (6a6bc3dd STILL parked in
+  working/ — persistent stray), done 641, approvals 0. No stranded-in-inbox done card this run.
+- Push path: recorded in the run summary.
