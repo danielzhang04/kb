@@ -45,10 +45,29 @@ describe('authorized failed-run route grant', () => {
     } as unknown as SurfaceContext;
   }
 
+  function withSource(source: 'passkey' | 'tailnet' | 'env-override'): SurfaceContext {
+    const ctx = exactContext();
+    const wiring = ctx.executionLatch!.current();
+    (ctx.executionLatch as unknown as { snapshot: () => unknown }).snapshot = () => ({
+      state: 'unlocked', source, unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z',
+    });
+    void wiring;
+    return ctx;
+  }
+
   it('refuses a context whose in-place broker identity differs from the captured wiring', () => {
     const ctx = exactContext();
     ctx.controlBroker = { isRunning: () => false } as unknown as NonNullable<SurfaceContext['controlBroker']>;
     expect(authorizedFailedRunReconciliationGrant(ctx, 'operator')).toBeNull();
+  });
+
+  it('RULING 2: accepts the grant under the tailnet operator identity, not only a passkey unlock', () => {
+    expect(authorizedFailedRunReconciliationGrant(withSource('tailnet'), 'operator')).not.toBeNull();
+    expect(authorizedFailedRunReconciliationGrant(withSource('passkey'), 'operator')).not.toBeNull();
+  });
+
+  it('RULING 2: still refuses a headless env-override arm — break-glass is operator-only', () => {
+    expect(authorizedFailedRunReconciliationGrant(withSource('env-override'), 'operator')).toBeNull();
   });
 
   it('refuses an otherwise exact passkey grant while any fixed run session is live', () => {

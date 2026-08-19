@@ -621,10 +621,20 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   };
 }
 
-/** How an armed latch came to be armed. Distinct values because they mean different things: only
- *  `passkey` proves a human just asserted, and two historical one-off repair paths in `control/routes.ts`
- *  still require exactly that. `tailnet` is armed by deployment posture, not by an act. */
+/** How an armed latch came to be armed. Distinct values because they mean different things: `passkey`
+ *  proves a human just asserted (win32), `tailnet` is the deployment's arm-at-boot operator posture, and
+ *  `env-override` is the headless/testing arm. */
 export type ExecutionUnlockSource = 'passkey' | 'env-override' | 'tailnet';
+
+/**
+ * True when the latch's source represents a genuine, present OPERATOR authorization — a human passkey
+ * unlock (win32) or the pinned tailnet operator identity. Excludes `env-override`, the headless/testing
+ * arm. The two break-glass recovery paths in `control/routes.ts` gate on this: they must stay usable
+ * under EITHER operator auth mode (Daniel, 2026-08-18) but must never be reachable under a headless arm.
+ */
+export function isOperatorUnlockSource(source: ExecutionUnlockSource | null): boolean {
+  return source === 'passkey' || source === 'tailnet';
+}
 
 /** What the lock/unlock routes and the UI see. Never carries the grant or any wiring reference. */
 export interface ExecutionLatchState {
