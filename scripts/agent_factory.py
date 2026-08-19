@@ -16,6 +16,7 @@ if SCRIPTS_DIR not in sys.path:
 
 import cards  # noqa: E402
 from routing import SAFE_DEFAULT, _known_models, _policy_entry, _resolve_alias, load_policy  # noqa: E402
+from agent_definitions import load_agent_definition  # noqa: E402
 
 # Reserved ledger worker identities — never a creatable agent id (grades under
 # these names have a fixed, code-relied-upon meaning; see promotion.status()'s
@@ -109,6 +110,7 @@ def _agent_definition(agent_id: str, role: str, runtime: str, model: str, projec
     project_text = ", ".join(projects)
     return f"""---
 id: {agent_id}
+version: 1
 role: {role}
 runtime: {runtime}
 model: {model}
@@ -292,7 +294,44 @@ def create_agent(
     return CreatedAgent(definition, memory, eval_readme, smoke_eval, draft, adopted_eval_suite)
 
 
-def main() -> int:
+def bump_agent_version(repo_root: Path, agent_id: str) -> int:
+    """Increment only an existing declaration's version field and return it."""
+    if not SAFE_AGENT_ID.fullmatch(agent_id):
+        raise ValueError(f"unsafe agent id: {agent_id!r}")
+    if agent_id in RESERVED_AGENT_IDS:
+        raise ValueError(f"agent id {agent_id!r} is reserved and cannot be bumped")
+    definition = Path(repo_root) / "agents" / f"{agent_id}.md"
+    if not definition.is_file():
+        raise FileNotFoundError(definition)
+    current = load_agent_definition(definition).version
+    next_version = current + 1
+    data = definition.read_bytes()
+    opening = re.match(br"\A---\r?\n", data)
+    if opening is None:
+        raise ValueError(f"{definition}: agent definition has no frontmatter")
+    closing = re.search(br"(?m)^---\r?$", data[opening.end():])
+    if closing is None:
+        raise ValueError(f"{definition}: agent definition frontmatter is not terminated")
+    front_end = opening.end() + closing.start()
+    frontmatter = data[opening.end():front_end]
+    version_line = re.compile(br"(?m)^(version:[ \t]*)([0-9]+)(?=[ \t]*(?:#.*)?\r?$)")
+    match = version_line.search(frontmatter)
+    if match:
+        # Replace the digits and nothing else: comments, whitespace, EOL style,
+        # and every body byte are deliberately retained verbatim.
+        updated = frontmatter[:match.start(2)] + str(next_version).encode("ascii") + frontmatter[match.end(2):]
+    else:
+        id_line = re.compile(br"(?m)^id:[^\r\n]*(?:\r\n|\n|\r|$)")
+        match = id_line.search(frontmatter)
+        newline = b"\r\n" if b"\r\n" in frontmatter else b"\n"
+        insert_at = match.end() if match else 0
+        prefix = b"" if insert_at else newline
+        updated = frontmatter[:insert_at] + prefix + b"version: " + str(next_version).encode("ascii") + newline + frontmatter[insert_at:]
+    definition.write_bytes(data[:opening.end()] + updated + data[front_end:])
+    return next_version
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     new = subparsers.add_parser("new", help="create an agent scaffold")
@@ -303,7 +342,13 @@ def main() -> int:
     new.add_argument("--project", dest="projects", action="append")
     new.add_argument("--grader", action="store_true")
     new.add_argument("--needs-routing-override", action="store_true")
-    args = parser.parse_args()
+    bump = subparsers.add_parser("bump", help="increment only an agent definition's version")
+    bump.add_argument("agent_id")
+    args = parser.parse_args(argv)
+
+    if args.command == "bump":
+        print(f"agents/{args.agent_id}.md: v{bump_agent_version(Path.cwd(), args.agent_id)}")
+        return 0
 
     created = create_agent(
         Path.cwd(), args.agent_id, role=args.role, runtime=args.runtime, model=args.model,

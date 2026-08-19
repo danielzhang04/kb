@@ -38,6 +38,9 @@ export interface AgentDetailResponse {
     skills: string[] | null;
     whatItReplaces: string | null;
     buildsOn: string[] | null;
+    version: number;
+    io: { inputs: unknown; outputs: unknown } | null;
+    defaults: { budgetUsd: string | number | null; maxRetries: string | number | null; escalation: string | number | null } | null;
   };
   codebases: Array<{ project: string; path: string }>;
   workflows: Array<{
@@ -120,6 +123,16 @@ export function readAgentDetail(repoRoot: string, id: string): AgentDetailRespon
       skills: declaration.skills === null || declaration.skills === undefined ? null : [...declaration.skills],
       whatItReplaces: declaration.whatItReplaces ?? null,
       buildsOn: declaration.buildsOn === null || declaration.buildsOn === undefined ? null : [...declaration.buildsOn],
+      version: declaration.version ?? 1,
+      io: declaration.io === null || declaration.io === undefined ? null : {
+        inputs: declaration.io.inputs,
+        outputs: declaration.io.outputs,
+      },
+      defaults: declaration.defaults === null || declaration.defaults === undefined ? null : {
+        budgetUsd: declaration.defaults.budgetUsd,
+        maxRetries: declaration.defaults.maxRetries,
+        escalation: declaration.defaults.escalation,
+      },
     },
     codebases,
     workflows,

@@ -68,6 +68,9 @@ export interface AgentDetailDto {
     skills: string[] | null;
     whatItReplaces: string | null;
     buildsOn: string[] | null;
+    version?: number;
+    io?: { inputs: unknown; outputs: unknown } | null;
+    defaults?: { budgetUsd: string | number | null; maxRetries: string | number | null; escalation: string | number | null } | null;
   } | null;
   codebases: AgentCodebaseFact[];
   workflows: AgentWorkflowFact[];

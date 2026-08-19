@@ -85,11 +85,11 @@ function Field({
 }: {
   label: string;
   testId: string;
-  value: string | string[] | null | undefined;
+  value: string | number | string[] | null | undefined;
   mono?: boolean;
 }): React.JSX.Element {
   const text = Array.isArray(value) ? value.join(', ') : value;
-  const empty = text === null || text === undefined || text.trim() === '';
+  const empty = text === null || text === undefined || (typeof text === 'string' && text.trim() === '');
   return (
     <div className="ap-agentmgmt__field" data-testid={testId}>
       <span className="ap-agentmgmt__label">{label}</span>
@@ -104,6 +104,17 @@ function Field({
 function preview(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > INSTRUCTIONS_PREVIEW ? `${flat.slice(0, INSTRUCTIONS_PREVIEW)}…` : flat;
+}
+
+/** Read-only rendering for free-form schema declarations without assuming their shape. */
+function declarationValue(value: unknown): string | number | null {
+  if (typeof value === 'string' || typeof value === 'number') return value;
+  if (value === null || value === undefined) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
 }
 
 /** The detail card — replaces the list body in place, with its own back affordance. */
@@ -134,6 +145,7 @@ function AgentDetailCard({
 
       <div className="ap-agentmgmt__detail-head">
         <h4 className="ap-agentmgmt__detail-title">{agent.displayName || agent.id}</h4>
+        <span className="mc-num" data-testid="ap-agentmgmt-version">v{declaration?.version ?? agent.version ?? 1}</span>
         <ModelBadge tier={effectiveModelOf(agent)} />
         <span
           className={`mc-status-dot ${agent.working ? 'mc-status-dot--running' : 'mc-status-dot--idle'}`}
@@ -168,6 +180,7 @@ function AgentDetailCard({
         <>
           <div className="ap-agentmgmt__fields">
             <Field label="Role" testId="ap-agentmgmt-role" value={agent.role} mono />
+            <Field label="Definition version" testId="ap-agentmgmt-version-field" value={`v${declaration?.version ?? agent.version ?? 1}`} mono />
             <Field label="What it is for" testId="ap-agentmgmt-description" value={agent.description} />
             <Field label="Tools" testId="ap-agentmgmt-tools" value={declaration?.tools ?? agent.tools ?? null} mono />
             {/* NEVER labelled as a bare tier: this is what the declaration CLAIMS it may do, not a
@@ -196,6 +209,11 @@ function AgentDetailCard({
               mono
             />
             <Field label="Skills" testId="ap-agentmgmt-skills" value={declaration?.skills ?? agent.skills ?? null} mono />
+            <Field label="Inputs schema" testId="ap-agentmgmt-inputs" value={declarationValue(declaration?.io?.inputs)} mono />
+            <Field label="Outputs schema" testId="ap-agentmgmt-outputs" value={declarationValue(declaration?.io?.outputs)} mono />
+            <Field label="Default budget (advisory)" testId="ap-agentmgmt-budget" value={declaration?.defaults?.budgetUsd ?? null} mono />
+            <Field label="Default retries (advisory)" testId="ap-agentmgmt-retries" value={declaration?.defaults?.maxRetries ?? null} mono />
+            <Field label="Default escalation (advisory)" testId="ap-agentmgmt-escalation" value={declaration?.defaults?.escalation ?? null} mono />
           </div>
 
           {/* The empty fields above are the expected reading today, and an operator cannot know that
@@ -377,6 +395,7 @@ function AgentManagementBody(): React.JSX.Element {
                   aria-hidden="true"
                 />
                 <span className="ap-agentmgmt__id">{agent.displayName || agent.id}</span>
+                <span className="mc-num" data-testid={`ap-agentmgmt-version-${agent.id}`}>v{agent.version ?? 1}</span>
                 <span className="ap-agentmgmt__desc">
                   {agent.description ?? <span className="ap-agentmgmt__none">no description</span>}
                 </span>

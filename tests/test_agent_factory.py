@@ -1,5 +1,7 @@
 import hashlib
+import os
 from pathlib import Path
+import subprocess
 
 import pytest
 import yaml
@@ -43,6 +45,7 @@ ROSTER_FIELDS = {
     "id", "role", "runtime", "model", "tools", "knowledge-source",
     "autonomy-tier", "skills", "what-it-replaces", "builds-on",
     "default-profile", "allowed-profiles", "runner-bound", "description", "projects",
+    "version",
 }
 
 
@@ -80,6 +83,7 @@ def test_create_agent_writes_canonical_definition_memory_and_eval_suite(tmp_path
     meta = _frontmatter(created.definition)
     assert meta["id"] == "demo-agent"
     assert meta["model"] == "claude-sonnet-5"
+    assert meta["version"] == 1
     assert meta["kit"] is True
     assert ROSTER_FIELDS <= set(meta)
     assert meta["default-profile"] in meta["allowed-profiles"]
@@ -352,3 +356,104 @@ def test_rollback_after_adoption_leaves_the_suite_intact(tmp_path, monkeypatch):
     assert _hash_tree(suite_dir) == before  # adopted suite untouched by rollback
     assert not (tmp_path / "agents" / "demo-agent.md").exists()
     assert not (tmp_path / "memory").exists()
+
+
+def test_versioning_metadata_parses_with_legacy_defaults_and_freeform_values(tmp_path):
+    from scripts.agent_definitions import load_agent_definition
+
+    definition = tmp_path / "agents" / "agent.md"
+    definition.parent.mkdir()
+    definition.write_text(
+        "---\nid: example\nversion: 3\nio:\n  inputs: {brief: markdown}\n  outputs: [report, citations]\n"
+        "defaults: {budget_usd: 2.5, max_retries: 3, escalation: human-review}\n---\n# example\n",
+        encoding="utf-8",
+    )
+    parsed = load_agent_definition(definition)
+    assert parsed.version == 3
+    assert parsed.io == {"inputs": {"brief": "markdown"}, "outputs": ["report", "citations"]}
+    assert parsed.defaults == {"budget_usd": 2.5, "max_retries": 3, "escalation": "human-review"}
+
+    definition.write_text("---\nid: example\n---\n# legacy\n", encoding="utf-8")
+    assert load_agent_definition(definition).version == 1
+    assert load_agent_definition(definition).io is None
+    assert load_agent_definition(definition).defaults is None
+
+
+def test_definition_loader_refuses_a_symlinked_direct_child(tmp_path):
+    from scripts.agent_definitions import load_agent_definition
+
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text("---\nversion: 4\n---\n", encoding="utf-8")
+    link = agents / "demo-agent.md"
+    try:
+        link.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"symlink creation unavailable: {error}")
+
+    with pytest.raises(ValueError, match="linked or escapes"):
+        load_agent_definition(link)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="junctions are Windows reparse points")
+def test_definition_loader_refuses_a_junctioned_agents_component(tmp_path):
+    from scripts.agent_definitions import load_agent_definition
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "demo-agent.md").write_text("---\nversion: 4\n---\n", encoding="utf-8")
+    junction = tmp_path / "agents"
+    completed = subprocess.run(
+        ["cmd.exe", "/d", "/c", f'mklink /J "{junction}" "{outside}"'],
+        text=True, capture_output=True, check=False,
+    )
+    if completed.returncode != 0 or not junction.exists():
+        pytest.skip(f"junction creation unavailable: {completed.stderr or completed.stdout}")
+
+    with pytest.raises(ValueError, match="linked or escapes"):
+        load_agent_definition(junction / "demo-agent.md")
+
+
+def test_bump_cli_increments_only_version(tmp_path, monkeypatch, capsys):
+    from scripts.agent_factory import main
+
+    definition = tmp_path / "agents" / "demo-agent.md"
+    definition.parent.mkdir()
+    original = "---\nid: demo-agent\nrole: work\n---\n# same body\n"
+    definition.write_text(original, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["bump", "demo-agent"]) == 0
+    assert capsys.readouterr().out == "agents/demo-agent.md: v2\n"
+    assert definition.read_text(encoding="utf-8") == original.replace("id: demo-agent\n", "id: demo-agent\nversion: 2\n")
+
+
+@pytest.mark.parametrize("line_ending", [b"\n", b"\r\n", b"\n\r\n\n"], ids=["lf", "crlf", "mixed"])
+def test_bump_replaces_only_version_digits_and_preserves_all_other_bytes(tmp_path, line_ending):
+    from scripts.agent_factory import bump_agent_version
+
+    definition = tmp_path / "agents" / "demo-agent.md"
+    definition.parent.mkdir()
+    parts = [b"---", b"id: demo-agent", b"version: 7  # preserve", b"role: work", b"---", b"body  \t"]
+    original = line_ending.join(parts) + line_ending
+    definition.write_bytes(original)
+
+    assert bump_agent_version(tmp_path, "demo-agent") == 8
+    assert definition.read_bytes() == original.replace(b"version: 7", b"version: 8", 1)
+
+
+def test_bump_cli_refuses_reserved_id(tmp_path, monkeypatch):
+    from scripts.agent_factory import main
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError, match="reserved"):
+        main(["bump", "eval-suite"])
+
+
+def test_bump_cli_refuses_missing_definition(tmp_path, monkeypatch):
+    from scripts.agent_factory import main
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(FileNotFoundError):
+        main(["bump", "missing-agent"])

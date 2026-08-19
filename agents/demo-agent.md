@@ -1,5 +1,6 @@
 ---
 id: demo-agent
+version: 1
 role: demo
 runtime: claude
 model: claude-sonnet-5

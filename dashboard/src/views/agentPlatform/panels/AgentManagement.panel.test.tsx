@@ -214,6 +214,7 @@ describe('AgentManagement panel', () => {
 
     // The roster already carries a one-line description — the list renders it rather than discarding it.
     expect(within(screen.getByTestId('ap-agentmgmt-row-alpha-agent')).getByText('Ships dashboard slices.')).toBeTruthy();
+    expect(screen.getByTestId('ap-agentmgmt-version-alpha-agent').textContent).toBe('v1');
   });
 
   it('badges the RESOLVED model only — never a declared model the runtime refused', async () => {
@@ -259,6 +260,8 @@ describe('AgentManagement panel', () => {
     expect(body.getByTestId('ap-agentmgmt-builds-on').textContent).toContain('alpha-agent');
     expect(body.getByTestId('ap-agentmgmt-knowledge').textContent).toContain('governance/risk-tiers.md');
     expect(body.getByTestId('ap-agentmgmt-skills').textContent).toContain('code-review');
+    expect(body.getByTestId('ap-agentmgmt-version').textContent).toBe('v1');
+    expect(body.getByTestId('ap-agentmgmt-version-field').textContent).toContain('v1');
 
     // Deep linking is not this panel's to own — it says so in plain words instead of faking a link.
     expect(body.getByTestId('ap-agentmgmt-deeplink').textContent).toContain('ladder-architect');

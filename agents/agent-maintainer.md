@@ -1,5 +1,6 @@
 ---
 id: agent-maintainer
+version: 1
 role: manage
 runtime: claude
 model: claude-opus-5

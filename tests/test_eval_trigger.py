@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from scripts import agent_evals
-from scripts.eval_trigger import EvalTriggerError, affected_suites, main
+from scripts.eval_trigger import EvalTriggerError, affected_suites, definition_version_drift, main
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -134,6 +134,70 @@ def test_single_agent_def_change_maps_to_one_suite(tmp_path):
     mapping = affected_suites(repo, "HEAD~1..HEAD")
     assert set(mapping) == {"demo-agent"}
     assert mapping["demo-agent"] == ["agents/demo-agent.md"]
+
+
+def test_definition_version_drift_warns_only_when_content_changed_without_bump(tmp_path, capsys):
+    repo = _init_repo(tmp_path)
+    (repo / "agents").mkdir()
+    definition = repo / "agents" / "demo-agent.md"
+    definition.write_text("---\nid: demo-agent\nversion: 1\nrole: work\n---\n# before\n", encoding="utf-8")
+    _commit_all(repo, "base")
+
+    definition.write_text("---\nid: demo-agent\nversion: 1\nrole: work\n---\n# changed behavior\n", encoding="utf-8")
+    _commit_all(repo, "changed without bump")
+    assert definition_version_drift(repo, "HEAD~1..HEAD") == [
+        "def changed without version bump: agents/demo-agent.md (v1)",
+    ]
+    assert main(["--repo", str(repo), "--range", "HEAD~1..HEAD"]) == 0
+    assert "WARNING: def changed without version bump: agents/demo-agent.md (v1)" in capsys.readouterr().out
+
+    definition.write_text("---\nid: demo-agent\nversion: 2\nrole: work\n---\n# bumped behavior\n", encoding="utf-8")
+    _commit_all(repo, "changed with bump")
+    assert definition_version_drift(repo, "HEAD~1..HEAD") == []
+
+
+def test_definition_version_drift_ignores_eol_and_trailing_whitespace_only_changes(tmp_path):
+    repo = _init_repo(tmp_path)
+    definition = repo / "agents" / "demo-agent.md"
+    definition.parent.mkdir()
+    definition.write_bytes(b"---\nid: demo-agent\nversion: 2\nrole: work\n---\n# body\n")
+    _commit_all(repo, "base")
+
+    definition.write_bytes(b"---\r\nid: demo-agent  \r\nversion: 2\r\nrole: work\t\r\n---\r\n# body  \r\n")
+    _commit_all(repo, "normalization only")
+    assert definition_version_drift(repo, "HEAD~1..HEAD") == []
+
+
+def test_definition_version_drift_warns_on_a_version_regression(tmp_path):
+    repo = _init_repo(tmp_path)
+    definition = repo / "agents" / "demo-agent.md"
+    definition.parent.mkdir()
+    definition.write_text("---\nid: demo-agent\nversion: 3\nrole: work\n---\n# before\n", encoding="utf-8")
+    _commit_all(repo, "base")
+
+    definition.write_text("---\nid: demo-agent\nversion: 2\nrole: inspect\n---\n# after\n", encoding="utf-8")
+    _commit_all(repo, "regression")
+    assert definition_version_drift(repo, "HEAD~1..HEAD") == [
+        "def changed without version bump: agents/demo-agent.md (v2)",
+    ]
+
+
+def test_definition_version_drift_uses_merge_base_for_three_dot_ranges(tmp_path):
+    repo = _init_repo(tmp_path)
+    definition = repo / "agents" / "demo-agent.md"
+    definition.parent.mkdir()
+    definition.write_text("---\nid: demo-agent\nversion: 1\nrole: work\n---\n# base\n", encoding="utf-8")
+    _commit_all(repo, "base")
+    _git(repo, "checkout", "-b", "feature")
+    definition.write_text("---\nid: demo-agent\nversion: 1\nrole: inspect\n---\n# feature\n", encoding="utf-8")
+    _commit_all(repo, "feature change")
+    _git(repo, "checkout", "master")
+    (repo / "README.md").write_text("main only\n", encoding="utf-8")
+    _commit_all(repo, "main change")
+
+    assert definition_version_drift(repo, "master...feature") == [
+        "def changed without version bump: agents/demo-agent.md (v1)",
+    ]
 
 
 def test_invalid_agent_def_id_is_filtered_out_of_the_mapping(tmp_path):

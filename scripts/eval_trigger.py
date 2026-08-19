@@ -50,6 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # `py -3 -m scripts.ev
 
 import agent_evals  # noqa: E402
 import preamble  # noqa: E402
+from agent_definitions import parse_agent_definition  # noqa: E402
 
 _AGENT_DEF_RE = re.compile(r"^agents/([^/]+)\.md$")
 _SUITE_DIR_RE = re.compile(r"^evals/agents/([^/]+)/")
@@ -134,6 +135,79 @@ def affected_suites(repo_root: Path, git_range: str) -> dict[str, list[str]]:
     return mapping
 
 
+def _range_refs(repo_root: Path, git_range: str) -> tuple[str, str] | None:
+    """Return the comparison endpoints for the ordinary A..B / A...B forms."""
+    separator = "..." if "..." in git_range else ".." if ".." in git_range else None
+    if separator is None:
+        return None
+    left, right = git_range.split(separator, 1)
+    left, right = left or "HEAD^", right or "HEAD"
+    if separator == "..":
+        return left, right
+    try:
+        merge_base = subprocess.run(["git", "merge-base", left, right], cwd=str(repo_root),
+                                    capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    base = merge_base.stdout.strip()
+    return (base, right) if merge_base.returncode == 0 and base else None
+
+
+def _definition_at(repo_root: Path, rev: str, path: str):
+    try:
+        res = subprocess.run(["git", "show", f"{rev}:{path}"], cwd=str(repo_root),
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if res.returncode != 0:
+        return None
+    try:
+        return parse_agent_definition(res.stdout), res.stdout
+    except ValueError:
+        return None
+
+
+def _normalised_non_version_content(text: str) -> str:
+    """Ignore the frontmatter's version field plus EOL/trailing-space churn."""
+    lines = text.splitlines()
+    in_frontmatter = bool(lines and lines[0] == "---")
+    out: list[str] = []
+    for line in lines:
+        if in_frontmatter and line == "---" and out:
+            in_frontmatter = False
+            out.append(line.rstrip())
+        elif in_frontmatter and re.fullmatch(r"version:[^\r\n]*", line):
+            continue
+        else:
+            out.append(line.rstrip())
+    return "\n".join(out)
+
+
+def definition_version_drift(repo_root: Path, git_range: str) -> list[str]:
+    """Definitions changed in this range without a version increment (report-only)."""
+    refs = _range_refs(repo_root, git_range)
+    if refs is None:
+        return []
+    before, after = refs
+    warnings: list[str] = []
+    for path in _changed_paths(repo_root, git_range):
+        if not _AGENT_DEF_RE.match(path):
+            continue
+        old = _definition_at(repo_root, before, path)
+        new = _definition_at(repo_root, after, path)
+        # New/deleted/unparseable declarations already have their own review signals;
+        # drift is only meaningful when a comparable definition changed in place.
+        if old is not None and new is not None:
+            old_meta, old_text = old
+            new_meta, new_text = new
+            if (
+                _normalised_non_version_content(old_text) != _normalised_non_version_content(new_text)
+                and new_meta.version <= old_meta.version
+            ):
+                warnings.append(f"def changed without version bump: {path} (v{new_meta.version})")
+    return warnings
+
+
 # --------------------------------------------------------------------------- #
 # safe execution — the exit-0 law applies to EVERY suite run, individually     #
 # --------------------------------------------------------------------------- #
@@ -151,12 +225,15 @@ def _safe_run_suite(repo_root: Path, suite_id: str, *, fleet: bool) -> "agent_ev
 # --------------------------------------------------------------------------- #
 # CLI                                                                          #
 # --------------------------------------------------------------------------- #
-def _render_mapping(mapping: dict[str, list[str]]) -> str:
+def _render_mapping(mapping: dict[str, list[str]], warnings: list[str] | None = None) -> str:
     if not mapping:
-        return "eval_trigger: no affected suites in range"
-    lines = ["affected suites:"]
-    for suite_id in sorted(mapping):
-        lines.append(f"  {suite_id}: {', '.join(mapping[suite_id])}")
+        lines = ["eval_trigger: no affected suites in range"]
+    else:
+        lines = ["affected suites:"]
+        for suite_id in sorted(mapping):
+            lines.append(f"  {suite_id}: {', '.join(mapping[suite_id])}")
+    for warning in warnings or []:
+        lines.append(f"WARNING: {warning}")
     return "\n".join(lines)
 
 
@@ -271,7 +348,11 @@ def main(argv=None) -> int:
         print(f"eval_trigger: {err}", file=sys.stderr)
         mapping = {}
 
-    print(_render_mapping(mapping))
+    try:
+        drift_warnings = definition_version_drift(repo_root, args.git_range)
+    except EvalTriggerError:
+        drift_warnings = []
+    print(_render_mapping(mapping, drift_warnings))
 
     if args.run:
         own_reports: dict[str, agent_evals.SuiteReport] = {}

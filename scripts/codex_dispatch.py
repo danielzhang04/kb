@@ -24,6 +24,7 @@ import cards       # noqa: E402
 import ledger      # noqa: E402
 import preamble    # noqa: E402
 import routing     # noqa: E402
+from agent_definitions import load_agent_definition  # noqa: E402
 
 STATE_ROOT = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "kb-codex-dispatch"
 WRITER = "codex-direct"
@@ -38,6 +39,7 @@ KIT_AUDIENCES = ("codex", "all")
 #: Same ceiling the U9 hook reads its copy under (readCappedFile): a rendered kit is doctrine, and
 #: anything past this is a generator bug, not a prompt — refuse it rather than mail it to a worker.
 MAX_KIT_BYTES = 256 * 1024
+SAFE_AGENT_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
 def codex_bin() -> str:
@@ -157,6 +159,23 @@ def stamp_kit(card: cards.Card, repo_root: Path) -> None:
     sha = head_sha(repo_root)
     if sha:
         card.meta["kit_sha"] = sha
+
+
+def pinned_agent_version(repo_root: Path, agent_id: str | None) -> str | None:
+    """Read the declared version before spawn, or leave provenance absent."""
+    if not agent_id or not SAFE_AGENT_ID.fullmatch(agent_id):
+        return None
+    try:
+        version = load_agent_definition(repo_root / "agents" / f"{agent_id}.md").version
+    except (OSError, ValueError):
+        return None
+    return f"{agent_id}@v{version}"
+
+
+def stamp_agent_version(card: cards.Card, version: str | None) -> None:
+    """Stamp the immutable version value observed before the worker was spawned."""
+    if version is not None:
+        card.meta["agent_version"] = version
 
 
 def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
@@ -548,6 +567,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--worktree", action="store_true")
     ap.add_argument("--project", default="kb-ops")
     ap.add_argument("--label", default="codex-dispatch")
+    ap.add_argument("--agent", default=None,
+                    help="declared agent id to pin on the post-hoc dispatch record")
     ap.add_argument("--repo-root", default=None, help="tests only")
     ap.add_argument("--no-kit", action="store_true",
                     help="dispatch the brief bare, without the rendered kit prefix")
@@ -654,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             # Silent bare briefs are how a kit stops reaching workers without anyone noticing.
             print("kit render missing — dispatching bare brief; run sync_skills", file=sys.stderr)
+    agent_version = pinned_agent_version(repo_root, args.agent)
     rc, timed_out = spawn(prompt_text, model, args.effort, cwd, sandbox, out_file,
                           log_file, follow_up=args.follow_up, timeout=args.timeout,
                           marker=pending)
@@ -668,6 +690,7 @@ def main(argv: list[str] | None = None) -> int:
                                 brief_text, result_text, log_file)
     if kit_applied:
         stamp_kit(card, repo_root)
+    stamp_agent_version(card, agent_version)
     thread_id = card.meta.get("workflow")
     # so an unpinned --follow-up keeps this model; a resume whose log never named
     # the thread is still the session the caller asked to resume
