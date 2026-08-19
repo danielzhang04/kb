@@ -4,11 +4,13 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 import yaml
 import scripts.agent_maintainer as maintainer
+import scripts.agent_evals as agent_evals
 
 from scripts.agent_maintainer import (
     MAX_BYTES_PER_FILE,
@@ -45,6 +47,63 @@ def _draft(root: Path, target: str = "agents/demo-agent.md", evidence: str = "ev
     return ProposalDraft(ProposalPayload(target, evidence, "Take a narrow action."), root)
 
 
+def _eval_card(card_id: str, judge: str, inputs: dict) -> str:
+    lines = [
+        "---", f"id: {card_id}", "capability: forecast", f"judge: {judge}",
+        'rubric_version: "1"', "k: 1", "source: curated", "immutable: true", "tier: T1", "input:",
+    ]
+    lines += [f"  {key}: {json.dumps(value)}" for key, value in inputs.items()]
+    return "\n".join(lines + ["---", f"# {card_id}", ""])
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def _forecast_repo(tmp_path: Path, *, bless_own: bool = True) -> Path:
+    repo = tmp_path / "forecast-repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "test")
+    _git(repo, "config", "core.autocrlf", "false")
+    (repo / "agents").mkdir()
+    (repo / "agents" / "demo-agent.md").write_text("before\n", encoding="utf-8")
+    (repo / "memory").mkdir()
+    (repo / "memory" / "demo-agent.md").write_text("memory\n", encoding="utf-8")
+
+    own = agent_evals.suite_dir(repo, "demo-agent")
+    own.mkdir(parents=True)
+    (own / "test_sees_patch.py").write_text(
+        "from pathlib import Path\n\n\ndef test_sees_patch():\n"
+        "    assert 'Proposed maintainer note' in Path('agents/demo-agent.md').read_text()\n",
+        encoding="utf-8")
+    (own / "sees-patch.md").write_text(_eval_card("sees-patch", "pytest", {
+        "test_file": "evals/agents/demo-agent/test_sees_patch.py"}), encoding="utf-8")
+    if bless_own:
+        agent_evals.update_manifest(repo, "demo-agent")
+
+    fleet = agent_evals.suite_dir(repo, agent_evals.FLEET_SUITE_ID)
+    fleet.mkdir(parents=True)
+    (fleet / "memory-file.md").write_text(_eval_card("memory-file", "file-exists", {
+        "path": "memory/{agent_id}.md",
+    }), encoding="utf-8")
+    agent_evals.update_manifest(repo, agent_evals.FLEET_SUITE_ID)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "fixture")
+    return repo
+
+
+def _forecast_result(repo: Path):
+    """Use the actual eval-report producer; do not inject a hand-made draft."""
+    sources = _empty_sources(repo / "sources")
+    (sources["eval_reports"] / "nightly.md").write_text(
+        "## demo-agent\n\n| card | verdict | hermetic | reason |\n"
+        "|---|---|---|---|\n| smoke | FAIL | yes | fixture failure |\n",
+        encoding="utf-8")
+    return run_fire(repo, sources, forecast=True)
+
+
 def test_fixture_fire_returns_evidence_cited_draft_and_never_writes(tmp_path):
     before = {path.relative_to(FIXTURES): path.read_bytes() for path in FIXTURES.rglob("*") if path.is_file()}
 
@@ -58,6 +117,98 @@ def test_fixture_fire_returns_evidence_cited_draft_and_never_writes(tmp_path):
     assert "## Evidence" in draft.diff_or_card_body
     after = {path.relative_to(FIXTURES): path.read_bytes() for path in FIXTURES.rglob("*") if path.is_file()}
     assert after == before
+
+
+def test_real_producer_builds_a_git_style_diff_and_forecasts_it_without_real_ledger_rows(tmp_path):
+    repo = _forecast_repo(tmp_path)
+
+    result = _forecast_result(repo)
+
+    draft = result.proposals[0]
+    assert draft.eval_forecast == {
+        "agent_id": "demo-agent", "cards_run": 2, "passed": 2, "failed": 0,
+        "status": "completed", "reason": None,
+    }
+    assert draft.unified_diff.startswith("diff --git a/agents/demo-agent.md b/agents/demo-agent.md\n")
+    assert "| demo-agent | 2 | 2 | 0 | completed |" in draft.diff_or_card_body
+    assert (repo / "agents" / "demo-agent.md").read_text(encoding="utf-8") == "before\n"
+    assert not (repo / "ledgers").exists()
+    scratch = repo / "state" / "scratch"
+    assert scratch.is_dir() and list(scratch.iterdir()) == []
+    worktrees = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=repo,
+                              check=True, capture_output=True, text=True).stdout
+    assert not any(Path(line.removeprefix("worktree ")).parent == scratch
+                   for line in worktrees.splitlines() if line.startswith("worktree "))
+
+
+def test_unblessed_suite_is_attached_as_a_report_only_forecast_refusal(tmp_path):
+    repo = _forecast_repo(tmp_path, bless_own=False)
+
+    result = _forecast_result(repo)
+
+    draft = result.proposals[0]
+    assert draft.eval_forecast == {
+        "agent_id": "demo-agent", "cards_run": 1, "passed": 1, "failed": 0,
+        "status": "refused", "reason": "unblessed manifest",
+    }
+    assert result.parked is False
+    assert "refused (unblessed manifest)" in draft.diff_or_card_body
+
+
+def test_forecast_rejects_bad_patch_and_always_removes_its_temporary_worktree(tmp_path):
+    repo = _forecast_repo(tmp_path)
+    draft = ProposalDraft(ProposalPayload(
+        "agents/demo-agent.md", "fixture evidence", "Update the note.",
+        "diff --git a/agents/demo-agent.md b/agents/demo-agent.md\n"
+        "--- a/agents/demo-agent.md\n+++ b/agents/demo-agent.md\n@@ -1 +1 @@\n-wrong\n+after\n"), repo)
+
+    result = maintainer._forecast_draft(draft, repo)
+
+    assert result.eval_forecast["status"] == "error"
+    scratch = repo / "state" / "scratch"
+    assert scratch.is_dir() and list(scratch.iterdir()) == []
+    worktrees = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=repo,
+                              check=True, capture_output=True, text=True).stdout
+    assert not any(Path(line.removeprefix("worktree ")).parent == scratch
+                   for line in worktrees.splitlines() if line.startswith("worktree "))
+
+
+def test_one_component_strip_bypass_is_refused_before_forecast_worktree_creation(tmp_path, monkeypatch):
+    draft = ProposalDraft(ProposalPayload(
+        "agents/demo-agent.md", "evidence", "unsafe",
+        "diff --git a/agents/demo-agent.md b/agents/demo-agent.md\n"
+        "--- a/agents/demo-agent.md\n"
+        "+++ a/b/agents/demo-agent.md\n"), tmp_path)
+    created = False
+
+    def no_scratch(*_args):
+        nonlocal created
+        created = True
+        raise AssertionError("forecast scratch must not be created")
+
+    monkeypatch.setattr(maintainer, "_forecast_scratch_parent", no_scratch)
+    result = maintainer._forecast_draft(draft, tmp_path)
+
+    assert result.eval_forecast == {
+        "agent_id": "demo-agent", "cards_run": 0, "passed": 0, "failed": 0,
+        "status": "refused", "reason": "patch header must start with exactly b/",
+    }
+    assert created is False
+
+
+@pytest.mark.parametrize("patch", [
+    "diff --git a/agents/demo-agent.md b/agents/demo-agent.md\n--- a/agents/demo-agent.md\n+++ b/agents/demo-agent.md\n"
+    "diff --git a/agents/second-agent.md b/agents/second-agent.md\n--- a/agents/second-agent.md\n+++ b/agents/second-agent.md\n",
+    "diff --git a/agents/demo-agent.md b/agents/demo-agent.md\n--- a/agents/demo-agent.md\n+++ b/agents/demo-agent.md\nrename from agents/demo-agent.md\n",
+], ids=["multi-file", "rename-header"])
+def test_forecast_rejects_multi_file_and_rename_patches_before_worktree(tmp_path, monkeypatch, patch):
+    draft = ProposalDraft(ProposalPayload("agents/demo-agent.md", "evidence", "unsafe", patch), tmp_path)
+    monkeypatch.setattr(maintainer, "_forecast_scratch_parent",
+                        lambda *_: pytest.fail("worktree must not be created"))
+
+    forecast = maintainer._forecast_draft(draft, tmp_path).eval_forecast
+
+    assert forecast["status"] == "refused"
 
 
 @pytest.mark.parametrize("target", [
@@ -301,3 +452,117 @@ def test_cli_prints_json():
     payload = json.loads(completed.stdout)
     assert payload["proposals"]
     assert payload["parked"] is False
+
+
+def test_card_only_draft_is_honestly_skipped_as_no_diff(tmp_path):
+    draft = _draft(tmp_path)
+
+    forecast = maintainer._forecast_draft(draft, tmp_path).eval_forecast
+
+    assert forecast["status"] == "skipped"
+    assert forecast["reason"] == "no diff"
+
+
+def test_output_contains_is_never_executed_during_forecast(tmp_path):
+    repo = _forecast_repo(tmp_path)
+    sentinel = tmp_path / "malicious-command-ran"
+    own = agent_evals.suite_dir(repo, "demo-agent")
+    (own / "sees-patch.md").write_text(_eval_card("sees-patch", "output-contains", {
+        "command": [sys.executable, "-c", f"from pathlib import Path; Path({str(sentinel)!r}).write_text('bad')"],
+        "expect_empty": True,
+    }), encoding="utf-8")
+    agent_evals.update_manifest(repo, "demo-agent")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "malicious fixture")
+
+    forecast = _forecast_result(repo).proposals[0].eval_forecast
+
+    assert forecast["status"] == "skipped"
+    assert forecast["reason"] == "not forecast-safe"
+    assert not sentinel.exists()
+
+
+def test_forecast_pytest_is_root_pinned_and_runs_once(tmp_path, monkeypatch):
+    repo = _forecast_repo(tmp_path)
+    observed = []
+    real_run = maintainer.subprocess.run
+
+    def inspect_run(command, *args, **kwargs):
+        if command[:3] == [sys.executable, "-m", "pytest"]:
+            observed.append((command, kwargs))
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(maintainer.subprocess, "run", inspect_run)
+    forecast = _forecast_result(repo).proposals[0].eval_forecast
+
+    assert forecast["status"] == "completed"
+    command, kwargs = observed[0]
+    assert command.count("--rootdir") == 1
+    assert Path(command[command.index("--rootdir") + 1]) == Path(kwargs["cwd"])
+    assert Path(kwargs["cwd"]).name.startswith("forecast-")
+
+
+def test_forecast_failure_is_recorded_and_later_proposals_keep_order(tmp_path, monkeypatch):
+    sources = _empty_sources(tmp_path / "sources")
+    (tmp_path / "agents").mkdir()
+    for agent in ("demo-agent", "second-agent"):
+        (tmp_path / "agents" / f"{agent}.md").write_text("before\n", encoding="utf-8")
+    (sources["eval_reports"] / "nightly.md").write_text(
+        "## demo-agent\n| card | verdict | hermetic | reason |\n|---|---|---|---|\n| one | FAIL | yes | one |\n\n"
+        "## second-agent\n| card | verdict | hermetic | reason |\n|---|---|---|---|\n| two | FAIL | yes | two |\n",
+        encoding="utf-8")
+    calls = []
+
+    def explode_once(draft, _root, **_kwargs):
+        calls.append(draft.target_path)
+        if draft.target_path == "agents/demo-agent.md":
+            raise RuntimeError("boom")
+        return maintainer._forecast_report("completed", None, "second-agent")
+
+    monkeypatch.setattr(maintainer, "_run_forecast", explode_once)
+    result = run_fire(tmp_path, sources, forecast=True)
+
+    assert [draft.target_path for draft in result.proposals] == ["agents/demo-agent.md", "agents/second-agent.md"]
+    assert calls == ["agents/demo-agent.md", "agents/second-agent.md"]
+    assert result.proposals[0].eval_forecast["status"] == "error"
+    assert result.proposals[1].eval_forecast["status"] == "completed"
+
+
+def test_forecast_cleanup_rmtree_precedes_prune_when_git_remove_fails(tmp_path, monkeypatch):
+    worktree = tmp_path / "state" / "scratch" / "forecast-stale"
+    worktree.mkdir(parents=True)
+    calls = []
+
+    class Result:
+        def __init__(self, returncode):
+            self.returncode = returncode
+
+    def failed_remove(_root, args, **_kwargs):
+        calls.append((args, worktree.exists()))
+        if args[1] == "remove":
+            return Result(1)
+        assert not worktree.exists()
+        return Result(0)
+
+    monkeypatch.setattr(maintainer, "_git", failed_remove)
+    maintainer._remove_forecast_worktree(tmp_path, worktree)
+
+    assert calls == [(["worktree", "remove", "--force", str(worktree)], True),
+                     (["worktree", "prune"], False)]
+
+
+def test_stale_lease_sweep_only_removes_aged_forecast_directories(tmp_path, monkeypatch):
+    scratch = tmp_path / "state" / "scratch"
+    old_forecast = scratch / "forecast-old"
+    fresh_forecast = scratch / "forecast-fresh"
+    unrelated = scratch / "other-worker"
+    for path in (old_forecast, fresh_forecast, unrelated):
+        path.mkdir(parents=True)
+    old_time = time.time() - maintainer.FORECAST_STALE_LEASE_SECONDS - 1
+    os.utime(old_forecast, (old_time, old_time))
+    removed = []
+    monkeypatch.setattr(maintainer, "_remove_forecast_worktree", lambda _root, path: removed.append(path))
+
+    maintainer._sweep_stale_forecast_leases(tmp_path)
+
+    assert removed == [old_forecast]

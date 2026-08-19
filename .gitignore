@@ -28,3 +28,4 @@ dashboard/dist/
 # every git worktree. A copy inside the repo only ever means a test pointed its stateRoot here.
 naming.json
 kit/.rendered/
+state/scratch/
