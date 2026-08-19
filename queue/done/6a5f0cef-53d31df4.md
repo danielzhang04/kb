@@ -15,6 +15,7 @@ role: work
 session-id: null
 runtime: claude
 model: claude-sonnet-5
+autonomy: acts-alone
 assurance_class: acts-alone
 ---
 
