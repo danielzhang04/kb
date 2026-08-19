@@ -150,6 +150,12 @@ export function requireSession(sessionConfig: SessionConfig) {
  * derived client address IFF the app configures `trustProxy` — this app does not, so it is the socket).
  * The per-verified-owner limiter inside the vibe module (which correctly keys on the verified owner)
  * is unaffected.
+ *
+ * NOTE (tailnet mode): behind `tailscale serve` every request's socket peer is 127.0.0.1, so all
+ * requests share ONE throttle bucket. With the operator pinned to a single principal that is only a
+ * self-DoS ceiling, not a security gap, so it is left as-is. If `trustProxy` is ever enabled to key the
+ * limiter on the real client (via X-Forwarded-For), it MUST be for rate-limiting ONLY — never for auth:
+ * the auth boundary is the loopback peer-owner proof (peerUid.ts), which no forwarded header can satisfy.
  */
 export function rateLimitKey(req: FastifyRequest): string {
   const peer = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
