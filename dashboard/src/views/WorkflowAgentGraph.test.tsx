@@ -19,8 +19,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { WorkflowDefEntry } from './WorkflowDetail';
+import { participantStageKey, type AgentRunOverlay, type IterationGraphEdge, type IterationParticipantOverlay } from '../control/runGraph';
+import type { UseSseResult } from '../lib/sseClient';
 import {
   AGENT_GRID_COLUMNS,
   AGENT_NODE_GAP_X,
@@ -57,12 +59,14 @@ vi.mock('reactflow', async () => {
     sourceHandle?: string;
     targetHandle?: string;
     ariaLabel?: string;
+    className?: string;
+    label?: string;
   };
   return {
     Background: () => null,
     Controls: () => null,
     Handle: () => null,
-    MarkerType: { ArrowClosed: 'arrowclosed' },
+    MarkerType: { Arrow: 'arrow', ArrowClosed: 'arrowclosed' },
     Panel: ({ children }: { children: React.ReactNode }) => <div data-testid="reactflow-panel">{children}</div>,
     Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
     ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -93,6 +97,9 @@ vi.mock('reactflow', async () => {
           data-source={edge.source}
           data-target={edge.target}
           data-marker-end={String(Boolean(edge.markerEnd))}
+          data-marker-type={(edge.markerEnd as { type?: string } | undefined)?.type}
+          data-class-name={edge.className}
+          data-label={edge.label}
           data-source-handle={edge.sourceHandle}
           data-target-handle={edge.targetHandle}
           aria-label={edge.ariaLabel}
@@ -188,10 +195,57 @@ const options = (over: Partial<WorkflowAssignmentOptions> = {}): WorkflowAssignm
   ...over,
 });
 
+const participant = (over: Partial<IterationParticipantOverlay> & Pick<IterationParticipantOverlay, 'stageId' | 'iterationGroupId' | 'participantId'>): IterationParticipantOverlay => ({
+  key: participantStageKey(over.stageId, over.iterationGroupId, over.participantId),
+  stageRef: `ref-${over.stageId}`,
+  iterationLoopRef: `loop-${over.iterationGroupId}`,
+  role: 'contributor',
+  perspectiveSummary: 'Protect the reader perspective.',
+  mandate: 'Produce the smallest correct revision.',
+  cyclesUsed: 1,
+  maxCycles: 3,
+  cycleUnit: 'judge verdicts',
+  turnOwner: false,
+  loopState: 'awaiting-turn',
+  parked: false,
+  activeGenerationRefs: ['generation-1'],
+  requests: [],
+  receipts: [],
+  ...over,
+});
+
+const runningOverlay = (participantStages: IterationParticipantOverlay[]): {
+  runRef: string;
+  iterationEdges: IterationGraphEdge[];
+  sse: UseSseResult;
+  overlays: Record<string, AgentRunOverlay>;
+} => ({
+  runRef: 'run-1',
+  iterationEdges: [],
+  sse: { last: null, count: 0 } as UseSseResult,
+  overlays: {
+    alpha: { state: 'running' as const, openGate: false, attemptRef: null, participantStages: participantStages.filter((row) => ['research', 'review'].includes(row.stageId)) },
+    beta: { state: 'ready' as const, openGate: false, attemptRef: null, participantStages: participantStages.filter((row) => row.stageId === 'draft') },
+  },
+});
+
 const groupsByKey = (workflow: WorkflowDefEntry) =>
   Object.fromEntries(agentGroups(workflow).map((group) => [group.key, group.stages.map((stage) => stage.id)]));
 
 describe('grouping steps under the agent that governs them', () => {
+  it('derives a distinct participant-stage row for each loop role when one agent owns multiple stages', () => {
+    const rows = [
+      { key: participantStageKey('research', 'draft-loop', 'producer'), stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer', role: 'contributor' },
+      { key: participantStageKey('review', 'review-loop', 'judge'), stageId: 'review', iterationGroupId: 'review-loop', participantId: 'judge', role: 'judge' },
+    ] as IterationParticipantOverlay[];
+    const groups = agentGroups(entry(), rows);
+    expect(groups.filter((group) => group.key === 'alpha')).toHaveLength(1);
+    expect(groups.find((group) => group.key === 'alpha')?.participantStages.map((row) => [row.key, row.role])).toEqual([
+      [participantStageKey('research', 'draft-loop', 'producer'), 'contributor'],
+      [participantStageKey('review', 'review-loop', 'judge'), 'judge'],
+    ]);
+  });
+
   /** THE PIN for "show each AGENT, not each SKILL": fourteen steps become four cards. */
   it('collapses the fourteen-step pipeline into one card per agent, steps in pipeline order', () => {
     const groups = agentGroups(videoRun());
@@ -513,10 +567,11 @@ describe('the running overlay', () => {
       entry={entry()}
       runOverlay={{
         runRef: 'run-1',
+        iterationEdges: [],
         sse: { last: null, count: 0 },
         overlays: {
-          alpha: { state: 'running', openGate: true, attemptRef: 'attempt-alpha' },
-          beta: { state: 'blocked', openGate: false, attemptRef: null },
+          alpha: { state: 'running', openGate: true, attemptRef: 'attempt-alpha', participantStages: [] },
+          beta: { state: 'blocked', openGate: false, attemptRef: null, participantStages: [] },
         },
         onOpenPanel,
       }}
@@ -528,7 +583,7 @@ describe('the running overlay', () => {
     expect(screen.queryByTestId('mini-tail-attempt-beta')).toBeNull();
     expect(alpha.querySelector('[data-testid$="-override"]')).toBeNull();
     fireEvent.click(alpha.querySelector('header')!);
-    expect(onOpenPanel).toHaveBeenCalledWith('alpha');
+    expect(onOpenPanel).toHaveBeenCalledWith({ agentId: 'alpha' });
   });
 
   it('keeps the definition card output unchanged when no overlay is supplied', () => {
@@ -537,6 +592,183 @@ describe('the running overlay', () => {
     expect(alpha.textContent).not.toContain('gate open');
     expect(alpha.querySelector('.v-agent-state')).toBeNull();
     expect(alpha.querySelector('[data-testid$="-override"]')).toBeTruthy();
+  });
+
+  it('renders participant role cycle bound and current turn owner on agent cards', () => {
+    const producer = participant({
+      stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer',
+      role: 'contributor', cyclesUsed: 2, maxCycles: 4, turnOwner: true, turnOwnerParticipantId: 'producer',
+    });
+    const judge = participant({
+      stageId: 'draft', iterationGroupId: 'draft-loop', participantId: 'judge',
+      role: 'judge', cyclesUsed: 2, maxCycles: 4, turnOwnerParticipantId: 'producer',
+    });
+    const ownerless = participant({
+      stageId: 'review', iterationGroupId: 'appeal-loop', participantId: 'mediator', role: 'mediator',
+    });
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={runningOverlay([producer, judge, ownerless])} />);
+
+    expect(screen.getByTestId(`iteration-participant-${producer.key}`).textContent).toMatch(/contributor.*cycle 2\/4.*your turn/i);
+    expect(screen.getByTestId(`iteration-participant-${judge.key}`).textContent).toMatch(/judge.*cycle 2\/4.*turn: producer/i);
+    expect(screen.getByTestId(`iteration-participant-${ownerless.key}`).textContent).toMatch(/mediator.*no turn owner/i);
+  });
+
+  it('renders distinct per-stage participant rows for multiple loop stages owned by one agent', () => {
+    const producer = participant({
+      stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer', role: 'contributor', cyclesUsed: 1, maxCycles: 3,
+    });
+    const judge = participant({
+      stageId: 'review', iterationGroupId: 'appeal-loop', participantId: 'judge', role: 'judge', cyclesUsed: 4, maxCycles: 5,
+    });
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={runningOverlay([producer, judge])} />);
+
+    const alpha = screen.getByTestId('workflow-agent-node-alpha');
+    expect(within(alpha).getAllByTestId(/^iteration-participant-/)).toHaveLength(2);
+    expect(screen.getByTestId(`iteration-participant-${producer.key}`).textContent).toMatch(/research.*draft-loop.*cycle 1\/3/i);
+    expect(screen.getByTestId(`iteration-participant-${judge.key}`).textContent).toMatch(/review.*appeal-loop.*cycle 4\/5/i);
+  });
+
+  it('renders the last semantic verdict and a visible parked gate chip', () => {
+    const parked = participant({
+      stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer',
+      lastVerdict: 'fail', loopState: 'awaiting-park-gate', parked: true, parkReason: 'exhausted',
+      gateKind: 'iteration-park', gateState: 'open', interventionRef: 'request-park',
+    });
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={runningOverlay([parked])} />);
+
+    const row = screen.getByTestId(`iteration-participant-${parked.key}`);
+    expect(row.textContent).toMatch(/last verdict: fail/i);
+    expect(within(row).getByText(/parked: exhausted/i).classList.contains('v-iteration-park-chip')).toBe(true);
+  });
+
+  it('renders iteration routes with a class and marker distinct from DAG handoffs', () => {
+    const producer = participant({
+      stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer',
+      loopState: 'awaiting-park-gate', parked: true, parkReason: 'exhausted', gateKind: 'iteration-park', gateState: 'open',
+    });
+    const judge = participant({ stageId: 'draft', iterationGroupId: 'draft-loop', participantId: 'judge', role: 'judge' });
+    const overlay = runningOverlay([producer, judge]);
+    overlay.iterationEdges = [{
+      kind: 'iteration-route', id: 'iteration-route:loop-draft-loop:review', iterationLoopRef: 'loop-draft-loop',
+      iterationGroupId: 'draft-loop', routeId: 'review',
+      route: { routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['research'] },
+      sourceStageId: 'research', targetStageId: 'draft', sourceParticipantStageKey: producer.key, targetParticipantStageKey: judge.key,
+    }];
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={overlay} />);
+
+    const iteration = screen.getByTestId('reactflow-edge-iteration-route:loop-draft-loop:review');
+    const handoff = screen.getByTestId('reactflow-edge-handoff-alpha~beta');
+    expect(iteration.dataset.className).toContain('v-workflow-iteration-route');
+    expect(iteration.dataset.className).toContain('v-workflow-iteration-route--parked');
+    expect(iteration.dataset.markerType).not.toBe(handoff.dataset.markerType);
+    expect(iteration.dataset.label).toBe('parked · exhausted');
+    expect(iteration.getAttribute('aria-label')).toContain('parked: exhausted');
+    expect(iteration.dataset.source).toBe('agent:alpha');
+    expect(iteration.dataset.target).toBe('agent:beta');
+  });
+
+  it('opens loop detail with the exact participant-stage scope needed for its detail', () => {
+    const onOpenPanel = vi.fn();
+    const row = participant({
+      stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer',
+      mandate: 'Revise the draft.', perspectiveSummary: 'Defend factual accuracy.',
+      receipts: [{ receiptRef: 'receipt-1', canonicalCommit: 'commit-2' } as IterationParticipantOverlay['receipts'][number]],
+      unresolvedResidue: { failureReason: 'No artifact changed.' } as IterationParticipantOverlay['unresolvedResidue'],
+    });
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={{ ...runningOverlay([row]), onOpenPanel }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /open draft-loop producer loop detail/i }));
+    expect(onOpenPanel).toHaveBeenCalledWith({ agentId: 'alpha', participantStageKey: row.key });
+  });
+
+  it('does not label an exhausted or declined group as complete', () => {
+    const exhausted = participant({
+      stageId: 'research', iterationGroupId: 'exhausted-loop', participantId: 'producer', loopState: 'exhausted', parkReason: 'exhausted',
+    });
+    const declined = participant({
+      stageId: 'review', iterationGroupId: 'declined-loop', participantId: 'judge', role: 'judge', loopState: 'declined', parkReason: 'no-progress',
+    });
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={runningOverlay([exhausted, declined])} />);
+
+    const exhaustedRow = screen.getByTestId(`iteration-participant-${exhausted.key}`);
+    const declinedRow = screen.getByTestId(`iteration-participant-${declined.key}`);
+    expect(exhaustedRow.textContent).toContain('exhausted');
+    expect(declinedRow.textContent).toContain('declined');
+    expect(`${exhaustedRow.textContent} ${declinedRow.textContent}`).not.toMatch(/complete/i);
+    expect(declinedRow.textContent).not.toMatch(/parked/i);
+    expect(declinedRow.querySelector('.v-iteration-declined-chip')?.textContent).toBe('declined');
+  });
+
+  it('does not paint resolved park evidence as a live parked row or edge', () => {
+    const producer = participant({
+      stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer',
+      loopState: 'passed', parked: false, parkReason: 'exhausted', gateKind: 'iteration-park', gateState: 'resolved',
+      unresolvedResidue: { failureReason: 'Retained evidence.' } as IterationParticipantOverlay['unresolvedResidue'],
+    });
+    const judge = participant({ stageId: 'draft', iterationGroupId: 'draft-loop', participantId: 'judge', role: 'judge', loopState: 'passed' });
+    const overlay = runningOverlay([producer, judge]);
+    overlay.iterationEdges = [{
+      kind: 'iteration-route', id: 'iteration-route:resolved:review', iterationLoopRef: producer.iterationLoopRef,
+      iterationGroupId: 'draft-loop', routeId: 'review',
+      route: { routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['research'] },
+      sourceStageId: 'research', targetStageId: 'draft', sourceParticipantStageKey: producer.key, targetParticipantStageKey: judge.key,
+    }];
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={overlay} />);
+
+    expect(screen.getByTestId(`iteration-participant-${producer.key}`).textContent).not.toMatch(/parked/i);
+    const route = screen.getByTestId('reactflow-edge-iteration-route:resolved:review');
+    expect(route.dataset.className).not.toContain('--parked');
+    expect(route.dataset.label).toBeUndefined();
+  });
+
+  it('renders declined as a terminal chip and edge label, never as parked', () => {
+    const producer = participant({
+      stageId: 'research', iterationGroupId: 'draft-loop', participantId: 'producer',
+      loopState: 'declined', parked: false, parkReason: 'no-progress', gateKind: 'iteration-park', gateState: 'resolved',
+    });
+    const judge = participant({ stageId: 'draft', iterationGroupId: 'draft-loop', participantId: 'judge', role: 'judge', loopState: 'declined' });
+    const overlay = runningOverlay([producer, judge]);
+    overlay.iterationEdges = [{
+      kind: 'iteration-route', id: 'iteration-route:declined:review', iterationLoopRef: producer.iterationLoopRef,
+      iterationGroupId: 'draft-loop', routeId: 'review',
+      route: { routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['research'] },
+      sourceStageId: 'research', targetStageId: 'draft', sourceParticipantStageKey: producer.key, targetParticipantStageKey: judge.key,
+    }];
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={overlay} />);
+
+    const row = screen.getByTestId(`iteration-participant-${producer.key}`);
+    expect(row.textContent).not.toMatch(/parked/i);
+    expect(row.querySelector('.v-iteration-declined-chip')?.textContent).toBe('declined');
+    const route = screen.getByTestId('reactflow-edge-iteration-route:declined:review');
+    expect(route.dataset.label).toBe('declined');
+    expect(route.dataset.className).toContain('v-workflow-iteration-route--declined');
+    expect(route.getAttribute('aria-label')).not.toMatch(/parked/i);
+  });
+
+  it('shows a same-agent iteration route as a visible participant-row self-loop marker', () => {
+    const producer = participant({
+      stageId: 'research', iterationGroupId: 'same-agent-loop', participantId: 'producer',
+      loopState: 'awaiting-park-gate', parked: true, parkReason: 'exhausted', gateKind: 'iteration-park', gateState: 'open',
+    });
+    const judge = participant({
+      stageId: 'review', iterationGroupId: 'same-agent-loop', participantId: 'judge', role: 'judge',
+      loopState: 'awaiting-park-gate', parked: true, parkReason: 'exhausted', gateKind: 'iteration-park', gateState: 'open',
+    });
+    const overlay = runningOverlay([producer, judge]);
+    overlay.iterationEdges = [{
+      kind: 'iteration-route', id: 'iteration-route:same-agent:review', iterationLoopRef: producer.iterationLoopRef,
+      iterationGroupId: 'same-agent-loop', routeId: 'review',
+      route: { routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['research'] },
+      sourceStageId: 'research', targetStageId: 'review', sourceParticipantStageKey: producer.key, targetParticipantStageKey: judge.key,
+    }];
+    render(<WorkflowAgentGraph entry={entry()} runOverlay={overlay} />);
+
+    expect(screen.queryByTestId('reactflow-edge-iteration-route:same-agent:review')).toBeNull();
+    const row = screen.getByTestId(`iteration-participant-${producer.key}`);
+    const marker = within(row).getByTestId('iteration-self-route-iteration-route:same-agent:review');
+    expect(marker.textContent).toMatch(/review.*judge.*parked: exhausted/i);
+    expect(marker.className).toContain('v-workflow-agent__iteration-self-route--parked');
+    expect(row.querySelector('.v-iteration-park-chip')?.textContent).toMatch(/parked: exhausted/i);
   });
 });
 
@@ -658,5 +890,17 @@ describe('the canvas height contract (the invisible-graph regression)', () => {
     const rule = /\.v-workflow-agent\s*\{([^}]*)\}/.exec(css);
     const width = /width\s*:\s*([\d.]+)rem/.exec(rule?.[1] ?? '');
     expect(Number(width?.[1]) * 16).toBe(AGENT_NODE_WIDTH);
+  });
+
+  it('declares every iteration route, chip, card-row, and panel selector used by the markup', () => {
+    for (const selector of [
+      '.v-workflow-iteration-route', '.v-workflow-iteration-route--parked', '.v-workflow-iteration-route--declined',
+      '.v-iteration-park-chip', '.v-iteration-declined-chip', '.v-workflow-agent__iterations',
+      '.v-workflow-agent__iteration', '.v-workflow-agent__iteration-self-route',
+      '.v-agent-work-panel__iterations', '.v-agent-work-panel__iteration', '.v-agent-work-panel__residue',
+    ]) {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expect(css).toMatch(new RegExp(`${escaped}(?=[\\s,{.:#>+~])`));
+    }
   });
 });

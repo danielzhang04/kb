@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_ATTEMPT_BUDGET, DEFAULT_BUDGET } from './activation.ts';
 import type { ExecutionProfile } from './policy.ts';
-import { canonicalStageResultHash } from './execution.ts';
+import { canonicalStageResultHash, iterationResultOperationKey } from './execution.ts';
 import {
   ExecutionAdapterError,
   createCuratedSkillResolver,
@@ -33,6 +33,16 @@ function canonicalJson(value: unknown): string {
 
 function documentFingerprint(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+}
+
+function legacyNonIterationResultHash(result: Parameters<typeof canonicalStageResultHash>[0]): string {
+  const payload = {
+    summary: result.summary,
+    artifacts: [...result.artifacts].map(({ path, digest }) => ({ path, digest })).sort((a, b) => a.path.localeCompare(b.path)),
+    changed: [...result.changed].map(({ path, digest }) => ({ path, digest })).sort((a, b) => a.path.localeCompare(b.path)),
+    checkpoints: [...result.checkpoints].sort(),
+  };
+  return createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex');
 }
 
 afterEach(() => {
@@ -547,7 +557,7 @@ describe('file accounting adapter', () => {
   });
 });
 
-function canonicalInput() {
+function legacyReviewCanonicalInput() {
   const canonical = {
     summary: 'stage complete',
     artifacts: [{ path: 'dashboard/server/result.txt', digest: 'a'.repeat(64) }],
@@ -583,7 +593,7 @@ function canonicalInput() {
 }
 
 function nonReviewCanonicalInput() {
-  const reviewed = canonicalInput();
+  const reviewed = legacyReviewCanonicalInput();
   const {
     reviewOutcome: _reviewOutcome,
     reviewContract: _reviewContract,
@@ -599,28 +609,76 @@ function nonReviewCanonicalInput() {
   return { ...input, resultHash: canonicalStageResultHash(canonical) };
 }
 
-describe('file result integrator', () => {
-  it('commits, durably looks up, and exactly replays a canonical result', async () => {
-    const stateRoot = temporaryRoot();
-    const first = createFileResultIntegrator({ stateRoot, now: () => new Date('2026-07-18T12:00:00.000Z') });
-    const input = canonicalInput();
-    expect(await first.lookup(input)).toBeNull();
-    expect(await first.integrate(input)).toEqual({ status: 'integrated', resultHash: input.resultHash, durability: 'inactive' });
+function iterationCanonicalInput() {
+  const legacy = legacyReviewCanonicalInput();
+  const request = {
+    schema: 'kb.iteration-request/v1' as const, requestRef: 'request-1', iterationLoopRef: 'loop-1',
+    stepId: 'review', routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge',
+    kind: 'review' as const, cycle: 1, inputGenerationRefs: ['generation-1'], baseCommit: 'b'.repeat(40),
+    artifactHashes: { draft: 'd'.repeat(64) }, criteria: [{ id: 'criterion-1', description: 'must pass' }],
+    unresolvedFindingRefs: [], preservedInvariants: [], nextAcceptanceCheck: 'Apply criterion-1.', instructions: 'Review the draft.',
+  };
+  const iterationContract = {
+    request,
+    iterationGroup: {
+      iterationGroupId: 'draft-loop', participants: [
+        { participantId: 'producer', stageRef: 'subject', role: 'contributor' as const, perspective: 'Create.', mandate: 'Create.' },
+        { participantId: 'judge', stageRef: 'stage-1', role: 'judge' as const, perspective: 'Judge.', mandate: 'Judge.' },
+      ],
+      routes: [{ routeId: 'to-judge', senderParticipantId: 'producer', recipientParticipantId: 'judge', requestKinds: ['review' as const], baseResolutionStageIds: ['subject'] }],
+      activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'review',
+      schedule: [{ stepId: 'review', routeId: 'to-judge', cycle: 'current' as const }], artifacts: ['draft'],
+      criteria: request.criteria, maxCycles: 2, cycleUnit: 'One verdict.', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' as const }],
+    },
+  };
+  const iterationOutcome = {
+    schema: 'kb.iteration-outcome/v1' as const, requestRef: request.requestRef, iterationLoopRef: request.iterationLoopRef,
+    participantId: 'judge', cycle: 1, verdict: 'pass' as const, inputGenerationRefs: [...request.inputGenerationRefs],
+    criteria: [{ criterionId: 'criterion-1', verdict: 'pass' as const, findingIds: [] }], findings: [],
+    positions: [], recordedDissent: [], summary: 'checker passed',
+  };
+  const { reviewOutcome: _reviewOutcome, reviewContract: _reviewContract, resultHash: _resultHash, ...base } = legacy;
+  const canonical = {
+    summary: base.summary, artifacts: base.artifacts, changed: base.changed, checkpoints: base.checkpoints, iterationOutcome,
+  };
+  return {
+    ...base,
+    operationKey: iterationResultOperationKey(base.runRef, base.stageId, request.requestRef),
+    canonicalCardRef: null,
+    iterationContract,
+    iterationOutcome,
+    resultHash: canonicalStageResultHash(canonical),
+  };
+}
 
-    const restarted = createFileResultIntegrator({ stateRoot });
-    expect(await restarted.lookup(input)).toEqual({
-      resultHash: input.resultHash,
-      summary: input.summary,
-      artifacts: input.artifacts,
-      changed: input.changed,
-      checkpoints: input.checkpoints,
-      reviewOutcome: input.reviewOutcome,
-      durability: 'inactive',
-      attemptBaseCommit: null,
-      integrationCommit: null,
+function canonicalInput() {
+  return iterationCanonicalInput();
+}
+
+describe('file result integrator', () => {
+  it('writes and replays only iteration contract and outcome properties after cutover', async () => {
+    const legacyRoot = temporaryRoot();
+    const legacyIntegrator = createFileResultIntegrator({ stateRoot: legacyRoot });
+    const legacy = legacyReviewCanonicalInput();
+    await expect(legacyIntegrator.integrate(legacy as never)).rejects.toThrow(/current schema/i);
+
+    const genericRoot = temporaryRoot();
+    const genericIntegrator = createFileResultIntegrator({ stateRoot: genericRoot });
+    const generic = iterationCanonicalInput();
+    await expect(genericIntegrator.integrate(generic)).resolves.toMatchObject({ status: 'integrated' });
+    const document = JSON.parse(readFileSync(join(genericRoot, 'control', 'execution-results.json'), 'utf8')) as {
+      results: Array<Record<string, unknown> & { result: Record<string, unknown> }>;
+    };
+    expect(document.results[0]).toHaveProperty('iterationContract');
+    expect(document.results[0]).not.toHaveProperty('reviewContract');
+    expect(document.results[0].result).toHaveProperty('iterationOutcome');
+    expect(document.results[0].result).not.toHaveProperty('reviewOutcome');
+    await expect(genericIntegrator.lookup(generic)).resolves.toMatchObject({
+      iterationOutcome: expect.objectContaining({ schema: 'kb.iteration-outcome/v1', verdict: 'pass' }),
     });
-    expect(await restarted.integrate(input)).toEqual({ status: 'replayed', resultHash: input.resultHash, durability: 'inactive' });
+    await expect(genericIntegrator.integrate(generic)).resolves.toMatchObject({ status: 'replayed' });
   });
+
 
   it('refuses a mismatched hash, payload replay, and lookup identity', async () => {
     const stateRoot = temporaryRoot();
@@ -632,61 +690,7 @@ describe('file result integrator', () => {
     await expect(integrator.lookup({ ...input, stageId: 'other-stage' })).rejects.toThrow('lookup identity differs');
   });
 
-  it('rejects malformed or secret-bearing review outcomes before persisting and while replaying', async () => {
-    const stateRoot = temporaryRoot();
-    const integrator = createFileResultIntegrator({ stateRoot });
-    const input = canonicalInput();
-    await expect(integrator.integrate({
-      ...input,
-      reviewOutcome: { ...input.reviewOutcome, criteria: [] },
-    })).rejects.toThrow('invalid review outcome');
-    await expect(integrator.integrate({
-      ...input,
-      reviewOutcome: { ...input.reviewOutcome, summary: 'sk-abcdefghijklmnopqrstuvwxyz1234567890' },
-    })).rejects.toThrow('invalid review outcome');
 
-    await integrator.integrate(input);
-    const path = join(stateRoot, 'control', 'execution-results.json');
-    const stored = JSON.parse(readFileSync(path, 'utf8')) as { results: Array<{ result: { reviewOutcome: { summary: string } } }> };
-    stored.results[0].result.reviewOutcome.summary = 'sk-abcdefghijklmnopqrstuvwxyz1234567890';
-    writeFileSync(path, JSON.stringify(stored), 'utf8');
-    await expect(createFileResultIntegrator({ stateRoot }).lookup(input)).rejects.toThrow('invalid review outcome');
-  });
-
-  it('accepts legacy non-review receipts while preserving current explicit-null replay', async () => {
-    const stateRoot = temporaryRoot();
-    const integrator = createFileResultIntegrator({ stateRoot });
-    const input = nonReviewCanonicalInput();
-    await expect(integrator.integrate(input)).resolves.toMatchObject({ status: 'integrated' });
-    await expect(integrator.integrate(input)).resolves.toMatchObject({ status: 'replayed' });
-
-    const path = join(stateRoot, 'control', 'execution-results.json');
-    const stored = JSON.parse(readFileSync(path, 'utf8')) as {
-      results: Array<Record<string, unknown> & {
-        fingerprint: string;
-        result: Parameters<typeof canonicalStageResultHash>[0] & { resultHash: string };
-      }>;
-    };
-    const record = stored.results[0];
-    delete record.reviewContract;
-    record.result.resultHash = canonicalStageResultHash(record.result, 'legacy-non-review');
-    const legacyResultHash = record.result.resultHash;
-    const { fingerprint: _fingerprint, integratedAt: _integratedAt, ...legacyFingerprintInput } = record;
-    record.fingerprint = documentFingerprint(legacyFingerprintInput);
-    writeFileSync(path, JSON.stringify(stored), 'utf8');
-
-    const restarted = createFileResultIntegrator({ stateRoot });
-    await expect(restarted.lookup(input)).resolves.toMatchObject({
-      summary: input.summary,
-      resultHash: legacyResultHash,
-    });
-    await expect(restarted.integrate(input)).resolves.toMatchObject({
-      status: 'replayed',
-      resultHash: legacyResultHash,
-    });
-    const replayed = JSON.parse(readFileSync(path, 'utf8')) as { results: Array<{ reviewContract?: unknown }> };
-    expect(replayed.results[0]).not.toHaveProperty('reviewContract');
-  });
 
   it('rejects a legacy hash on a current explicit-null non-review receipt', async () => {
     const stateRoot = temporaryRoot();
@@ -701,7 +705,7 @@ describe('file result integrator', () => {
       }>;
     };
     const record = stored.results[0];
-    record.result.resultHash = canonicalStageResultHash(record.result, 'legacy-non-review');
+    record.result.resultHash = legacyNonIterationResultHash(record.result);
     const { fingerprint: _fingerprint, integratedAt: _integratedAt, ...fingerprintInput } = record;
     record.fingerprint = documentFingerprint(fingerprintInput);
     writeFileSync(path, JSON.stringify(stored), 'utf8');
@@ -710,50 +714,7 @@ describe('file result integrator', () => {
       .rejects.toThrow('stored canonical result hash does not match its payload');
   });
 
-  it('rejects a legacy review outcome whose immutable review contract is absent', async () => {
-    const stateRoot = temporaryRoot();
-    const integrator = createFileResultIntegrator({ stateRoot });
-    const input = canonicalInput();
-    await integrator.integrate(input);
-    const path = join(stateRoot, 'control', 'execution-results.json');
-    const stored = JSON.parse(readFileSync(path, 'utf8')) as { results: Array<Record<string, unknown>> };
-    delete stored.results[0].reviewContract;
-    writeFileSync(path, JSON.stringify(stored), 'utf8');
 
-    await expect(createFileResultIntegrator({ stateRoot }).lookup(input))
-      .rejects.toThrow('canonical result review contract is absent');
-  });
-
-  it('persists a later generation separately without reusing the g1 card identity', async () => {
-    const stateRoot = temporaryRoot();
-    const integrator = createFileResultIntegrator({ stateRoot });
-    const first = canonicalInput();
-    const second = {
-      ...first,
-      operationKey: 'result:run-1:stage-1:g2',
-      canonicalCardRef: null,
-      reviewOutcome: {
-        schema: 'kb.review-outcome/v1' as const,
-        decision: 'fail' as const,
-        summary: 'checker found a defect',
-        criteria: [{ criterionId: 'criterion-1', verdict: 'fail' as const, findingIds: ['finding-1'] }],
-        findings: [{
-          id: 'finding-1', criterionId: 'criterion-1', severity: 'blocking' as const,
-          summary: 'defect', evidencePaths: ['dashboard/server/result.txt'],
-        }],
-      },
-    };
-    second.resultHash = canonicalStageResultHash({
-      summary: second.summary,
-      artifacts: second.artifacts,
-      changed: second.changed,
-      checkpoints: second.checkpoints,
-      reviewOutcome: second.reviewOutcome,
-    });
-    expect(await integrator.integrate(first)).toMatchObject({ status: 'integrated' });
-    expect(await integrator.integrate(second)).toMatchObject({ status: 'integrated', resultHash: second.resultHash });
-    expect(await integrator.lookup(second)).toMatchObject({ reviewOutcome: second.reviewOutcome });
-  });
 });
 
 describe('curated skill and closed adapter factories', () => {

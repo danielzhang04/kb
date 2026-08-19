@@ -310,7 +310,7 @@ function managedProfile(profiles: readonly ExecutionProfile[], spec: ManagedStar
 }
 
 function defaultResolveBaseCommit(repoRoot: string): string {
-  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8', windowsHide: true }).trim();
   if (!FULL_COMMIT.test(head)) throw new ActivationError('git rev-parse HEAD did not yield a full immutable commit id');
   return head;
 }
@@ -383,7 +383,10 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const budget = options.budget ?? DEFAULT_BUDGET;
   const attemptBudget = options.attemptBudget ?? DEFAULT_ATTEMPT_BUDGET;
   assertAttemptBudgetFitsWindow(attemptBudget, budget);
-  const maxConcurrency = options.maxConcurrency ?? 1;
+  // Keep legacy definitions at one worker per run while leaving enough server-owned headroom for a
+  // definition that explicitly proves independent sibling work (the iteration-loop demo declares 2).
+  const maxConcurrency = options.maxConcurrency ?? 2;
+  const defaultRunConcurrency = options.maxConcurrency ?? 1;
   const baseCommit = options.baseCommit ?? deps.resolveBaseCommit(repoRoot);
 
   const policy = deps.loadPolicy(repoRoot, project, [...refs]);
@@ -553,6 +556,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     assignedAgents,
     worktreeRoot,
     maxConcurrency,
+    defaultRunConcurrency,
     budget,
     attemptBudget,
     worktrees,

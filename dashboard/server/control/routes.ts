@@ -18,7 +18,7 @@ import {
 } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import { loadExecutionProfiles, loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
-import type { ControlResult, HumanRequest, JsonObject, ProposalDecision, Run, RunDetail } from './types.ts';
+import type { ControlResult, HumanRequest, JsonObject, ProposalDecision, Run, RunDetail, RunDetailDto } from './types.ts';
 import {
   AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF,
   AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF,
@@ -159,12 +159,25 @@ function humanRequestDisplay(
   return { ...request, ...display, ...askForHumanRequest(request, display.displayName) };
 }
 
-/** The `/api/control/runs/:runRef` DTO: the run and each of its requests carry the run's display identity. */
-function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope: ReadScope): RunDetail {
+/** The `/api/control/runs/:runRef` DTO: display identity plus lossless, auditable iteration state. */
+function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope: ReadScope): RunDetailDto {
+  const requestByRef = new Map(detail.iterationRequests.map((request) => [request.requestRef, request]));
   return {
     ...detail,
     run: runDisplay(ctx, detail.run, workflowRefIndex(ctx, sub, scope)),
     humanRequests: detail.humanRequests.map((request) => humanRequestDisplay(ctx, request, detail.run.title)),
+    iterationLoops: detail.iterationLoops.map((loop) => {
+      const residue = loop.unresolvedResidue;
+      if (!residue?.attemptedRequestRef) return loop;
+      const attemptedRequest = requestByRef.get(residue.attemptedRequestRef);
+      return {
+        ...loop,
+        unresolvedResidue: {
+          ...residue,
+          ...(attemptedRequest ? { attemptedRequestCycle: attemptedRequest.cycle } : {}),
+        },
+      };
+    }),
   };
 }
 
@@ -1388,12 +1401,18 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const found = ctx.controlStore.getHumanRequest(sub, requestRef, runScope);
     if (!found.ok) return sendResult(reply, found);
     const existing = found.value;
-    // A completion gate has review-lineage CAS requirements. It may only be resolved by the
-    // dedicated route below, never by this generic Human Request mutation.
+    // Specialized iteration gates have lineage and exact-artifact CAS requirements. Completion and
+    // iteration-park requests cannot fall through; a minted intervention remains a generic request.
     const requestRun = ctx.controlStore.getRun(sub, existing.runRef, runScope);
     if (!requestRun.ok) return sendResult(reply, requestRun);
-    if (requestRun.value.reviewReceipts.some((receipt) => receipt.completionRequestRef === requestRef)) {
-      return reply.code(409).send({ error: 'review-completion-gate-reserved' });
+    const genericIterationGate = existing.kind !== 'intervention' && (existing.gateKind === 'iteration-park'
+      || requestRun.value.iterationLoops?.some((loop) =>
+        loop.completionGateRef === requestRef || loop.interventionRef === requestRef));
+    if (genericIterationGate) {
+      return reply.code(409).send({
+        error: 'iteration-gate-reserved', gateKind: existing.gateKind ?? 'completion',
+        resolveUrl: `/api/control/iteration-gates/${requestRef}/resolve`,
+      });
     }
     if (existing.state === 'open') {
       if (existing.revision !== integer(body.expectedRevision)) return reply.code(409).send({ error: 'request-revision-changed' });
@@ -1442,96 +1461,130 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return sendResult(reply, responded);
   });
 
-  /** Resolve a completion gate with server-bound review lineage; callers never supply internal refs. */
-  scope.post('/api/control/review-completion-gates/:requestRef/resolve', { preHandler }, async (req, reply) => {
+  const resolveIterationGateRoute = async (
+    req: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const body = record(req.body);
     const requestRef = (req.params as { requestRef: string }).requestRef;
-    // The run tab submits a gate through EITHER this route or the generic respond route above,
-    // picked by whether the request is a completion gate. Both therefore carry the operator's scope,
-    // or half the Inbox's gates would still dead-end on an engine-owned run.
     const runScope = readScope(req);
     const request = ctx.controlStore.getHumanRequest(sub, requestRef, runScope);
     if (!request.ok) return sendResult(reply, request);
     const run = ctx.controlStore.getRun(sub, request.value.runRef, runScope);
     if (!run.ok) return sendResult(reply, run);
-    const receipts = run.value.reviewReceipts.filter((receipt) => receipt.completionRequestRef === requestRef);
-    if (receipts.length !== 1) return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
-    const receipt = receipts[0];
-    const loops = run.value.reviewLoops.filter((loop) => loop.reviewStageRef === receipt.reviewStageRef
-      && loop.subjectStageRef === receipt.subjectStageRef && loop.activeReceiptRef === receipt.reviewReceiptRef);
-    const reviewStages = run.value.stages.filter((stage) => stage.stageRef === receipt.reviewStageRef);
-    const subjectStages = run.value.stages.filter((stage) => stage.stageRef === receipt.subjectStageRef);
-    if (loops.length !== 1 || reviewStages.length !== 1 || subjectStages.length !== 1
-      || request.value.stageRef !== reviewStages[0].stageRef || request.value.runRef !== receipt.runRef) {
-      return reply.code(409).send({ error: 'review-completion-gate-linkage-ambiguous' });
+    const loops = run.value.iterationLoops.filter((loop) =>
+      loop.completionGateRef === requestRef || loop.interventionRef === requestRef);
+    if (loops.length !== 1) {
+      return reply.code(409).send({ error: 'iteration-gate-linkage-ambiguous' });
     }
-    const decision = string(body.decision) as 'approved' | 'rejected' | 'changes-requested';
-    if (!['approved', 'rejected', 'changes-requested'].includes(decision)) {
-      return reply.code(400).send({ error: 'invalid-review-completion-gate-decision' });
+    const loop = loops[0];
+    const gateKind = request.value.gateKind ?? null;
+    const parkGate = gateKind === 'iteration-park';
+    const receipt = parkGate && loop.parkReason === 'no-progress'
+      ? null
+      : loop.lastReceiptRef === undefined ? null
+        : run.value.iterationReceipts.find((candidate) => candidate.receiptRef === loop.lastReceiptRef) ?? null;
+    if (parkGate && !['exhausted', 'no-progress', 'parked'].includes(loop.parkReason ?? '')) {
+      return reply.code(409).send({ error: 'iteration-gate-reason-mismatch' });
+    }
+    if ((!parkGate && (request.value.kind !== 'approval' || receipt === null))
+      || (parkGate && loop.state === 'awaiting-park-gate' && loop.parkReason === 'no-progress'
+        && receipt === null && !loop.unresolvedResidue?.attemptedRequestRef)) {
+      return reply.code(409).send({ error: 'iteration-gate-linkage-ambiguous' });
+    }
+    const decision = string(body.decision) as 'approved' | 'declined' | 'rejected' | 'changes-requested';
+    if (parkGate && !['approved', 'declined'].includes(decision)) {
+      return reply.code(400).send({ error: 'invalid-iteration-park-decision', detail: 'Approve or decline; more work requires a separate relaunch.' });
+    }
+    if (!parkGate && !['approved', 'rejected', 'changes-requested'].includes(decision)) {
+      return reply.code(400).send({ error: 'invalid-iteration-completion-decision' });
+    }
+    const replay = request.value.state === 'resolved' && request.value.response !== null;
+    const expectedLoopVersion = replay ? loop.version - 1 : loop.version;
+    const exposedReceiptVersion = receipt?.version ?? null;
+    const expectedReceiptVersion = exposedReceiptVersion === null ? null
+      : replay ? exposedReceiptVersion - 1 : exposedReceiptVersion;
+    const suppliedGenerationRefs = Array.isArray(body.expectedGenerationRefs)
+      && body.expectedGenerationRefs.every((value) => typeof value === 'string')
+      ? body.expectedGenerationRefs as string[] : null;
+    const expectedGateKind = body.expectedGateKind;
+    const expectedParkReason = body.expectedParkReason;
+    const expectedGateRef = string(body.expectedGateRef);
+    const suppliedLoopVersion = integer(body.expectedLoopVersion);
+    // Receipt version is exposed read-only for audit. This adapter derives the receipt CAS from that
+    // authoritative read while the caller binds the gate, reason, loop version, and exact generation set.
+    const suppliedReceiptVersion = expectedReceiptVersion;
+    const expectedGenerations = suppliedGenerationRefs;
+    const exactGenerationSet = expectedGenerations !== null
+      && expectedGenerations.length === loop.activeGenerationRefs.length
+      && expectedGenerations.every((value, index) => value === loop.activeGenerationRefs[index]);
+    if (expectedGateRef !== requestRef || expectedGateKind !== gateKind || expectedParkReason !== (loop.parkReason ?? null)
+      || integer(body.expectedRequestRevision) !== request.value.revision || suppliedLoopVersion !== expectedLoopVersion
+      || suppliedReceiptVersion !== expectedReceiptVersion || !exactGenerationSet) {
+      return reply.code(409).send({ error: 'iteration-gate-cas-mismatch', detail: 'The displayed gate or artifact set changed; reload before deciding.' });
     }
     if (request.value.state === 'open') {
-      if (request.value.revision !== integer(body.expectedRequestRevision)) {
-        return reply.code(409).send({ error: 'request-revision-changed' });
-      }
       try {
         await auditFn(ctx)(ctx.repoRoot, {
-          // `owner` is the ACTOR; `runOwnerSubject` names whose run it is (they differ cross-subject).
-          action: 'control-review-completion-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',
+          action: 'control-iteration-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',
           result: `authorized:${decision}`,
           detail: {
             requestRef, runRef: request.value.runRef, runOwnerSubject: run.value.ownerSubject,
-            requestRevision: request.value.revision,
-            reviewReceiptRef: receipt.reviewReceiptRef, receiptVersion: receipt.version,
-            reviewLoopRef: loops[0].reviewLoopRef, loopVersion: loops[0].version,
-            reviewStageRef: reviewStages[0].stageRef, reviewStageVersion: reviewStages[0].version,
-            subjectStageRef: subjectStages[0].stageRef, subjectStageVersion: subjectStages[0].version, decision,
+            requestRevision: request.value.revision, gateKind, parkReason: loop.parkReason ?? null,
+            iterationLoopRef: loop.iterationLoopRef, loopVersion: expectedLoopVersion,
+            receiptRef: receipt?.receiptRef ?? null, receiptVersion: expectedReceiptVersion,
+            generationRefs: [...loop.activeGenerationRefs], decision,
           },
         }, { runGit: ctx.opsGit, now: ctx.now });
       } catch {
-        return reply.code(500).send({ error: 'review-completion-gate-audit-required' });
+        return reply.code(500).send({ error: 'iteration-gate-audit-required' });
       }
     }
-    // A replay sees the post-transition versions. The store fingerprints the pre-transition CAS
-    // tuple, so recover that exact immutable predecessor only from a recorded resolution. Fresh
-    // requests always use the current tuple above and therefore retain normal CAS protection.
-    const replay = request.value.state === 'resolved' && request.value.response !== null;
-    if (replay && integer(body.expectedRequestRevision) !== request.value.response!.requestRevision) {
-      return reply.code(409).send({ error: 'request-revision-changed' });
-    }
-    if (replay && (receipt.version < 2 || loops[0].version < 2 || subjectStages[0].version < 2)) {
-      return reply.code(409).send({ error: 'review-completion-gate-replay-lineage-invalid' });
-    }
-    const resolved = ctx.controlStore.resolveReviewCompletionGate(sub, requestRef, {
-      expectedRequestRevision: replay ? request.value.response!.requestRevision : integer(body.expectedRequestRevision),
-      expectedReceiptVersion: replay ? receipt.version - 1 : receipt.version,
-      expectedLoopVersion: replay ? loops[0].version - 1 : loops[0].version,
-      expectedReviewStageVersion: reviewStages[0].version,
-      expectedSubjectStageVersion: replay ? subjectStages[0].version - 1 : subjectStages[0].version,
+    const resolved = ctx.controlStore.resolveIterationGate(sub, requestRef, {
+      expectedRequestRevision: request.value.revision,
+      expectedReceiptVersion,
+      expectedLoopVersion,
       decision,
-      idempotencyKey: string(body.idempotencyKey),
+      operationKey: string(body.idempotencyKey),
       response: body.response == null ? null : string(body.response),
     }, runScope);
     if (!resolved.ok) return sendResult(reply, resolved);
     if (!resolved.replayed) {
-      ctx.controlStore.appendEvent(sub, resolved.value.request.runRef, {
-        kind: 'governance', source: 'human', stageRef: resolved.value.reviewStage.stageRef,
+      ctx.controlStore.appendEvent(run.value.ownerSubject, request.value.runRef, {
+        kind: 'governance', source: 'human', stageRef: request.value.stageRef,
         status: decision === 'approved' ? 'success' : 'waiting',
-        summary: decision === 'approved'
-          ? `Review completion gate approved at revision ${resolved.value.request.revision}`
-          : `Review completion gate ${decision}; run parked with intervention`,
+        summary: parkGate
+          ? `Iteration park gate ${decision}; separate relaunch is the only continuation path`
+          : `Iteration completion gate ${decision}; participant scheduling remains stopped`,
       }, runScope);
-      // Same rule as the generic respond route: a fresh decision that leaves no unaccepted boundary
-      // resumes the run. A `rejected`/`changes-requested` gate mints its own intervention inside the
-      // store call above, so it fails the all-boundaries-accepted predicate and starts nothing.
+    }
+    let failedRun: Run | null = null;
+    if (parkGate && resolved.value.loop.state === 'declined') {
+      const currentRun = ctx.controlStore.getRun(sub, request.value.runRef, runScope);
+      if (!currentRun.ok) return sendResult(reply, currentRun);
+      if (currentRun.value.run.state === 'failed') failedRun = currentRun.value.run;
+      else {
+        const failed = ctx.controlStore.transitionRun(currentRun.value.ownerSubject, request.value.runRef, currentRun.value.run.version, 'failed');
+        if (!failed.ok) return sendResult(reply, failed);
+        failedRun = failed.value;
+      }
+    } else if (decision === 'approved' && !resolved.replayed) {
       resumeRunAfterBoundaryAccepted(ctx, {
-        actorSubject: sub, runRef: resolved.value.request.runRef, answeredTitle: resolved.value.request.title,
-        scope: runScope,
+        actorSubject: sub, runRef: request.value.runRef, answeredTitle: request.value.title, scope: runScope,
       });
     }
-    return sendResult(reply, resolved);
-  });
+    const value = failedRun ? { ...resolved.value, run: failedRun } : resolved.value;
+    if (parkGate) {
+      return reply.send({ ok: true, value, replayed: resolved.replayed ?? false,
+        continuation: { kind: 'separate-relaunch', detail: 'Further work requires a separate operator relaunch with new run lineage.' } });
+    }
+    return reply.send({ ok: true, value, replayed: resolved.replayed ?? false });
+  };
+
+  scope.post('/api/control/iteration-gates/:requestRef/resolve', { preHandler }, async (req, reply) =>
+    resolveIterationGateRoute(req, reply));
 
   // ── RETENTION ──────────────────────────────────────────────────────────────────────────────────────
   // All four routes carry the operator's scope (ruling 3). RunDetail's "Stored data" → "Review archiving"

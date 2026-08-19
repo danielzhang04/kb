@@ -99,7 +99,7 @@ export function drainVibeProcesses(): number {
  * billing.
  */
 export const defaultVibeSpawner: VibeSpawner = (args, cwd) => {
-  const child = spawnChildProcess('claude', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawnChildProcess('claude', args, { cwd, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   return {
     onStdout(cb) {
       child.stdout?.on('data', (b: Buffer) => cb(b.toString('utf-8')));

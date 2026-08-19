@@ -129,6 +129,7 @@ describe('control proposal routes', () => {
   let token: string;
   let routingWrites: Array<{ cardId: string; runtime: string; model: string }>;
   let auditRows: Array<Record<string, unknown>>;
+  let stateRoot: string;
 
   beforeEach(async () => {
     let id = 0;
@@ -151,10 +152,12 @@ describe('control proposal routes', () => {
     token = mintSession('operator', SESSION).token;
     routingWrites = [];
     auditRows = [];
+    stateRoot = mkdtempSync(join(tmpdir(), 'control-routes-state-'));
     let headReads = 0;
     app = Fastify();
     registerWriteSurface(app, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
+      stateRoot,
       sessionConfig: SESSION,
       allowedOrigins: [ORIGIN],
       credentials: () => [],
@@ -181,7 +184,53 @@ describe('control proposal routes', () => {
     await app.ready();
   });
 
-  afterEach(async () => app.close());
+  afterEach(async () => { await app.close(); rmSync(stateRoot, { recursive: true, force: true }); });
+
+  it('launch passes the exact compiler-owned iteration group snapshot to createRun', async () => {
+    const iterationGroups: NonNullable<PlanProposal['iterationGroups']> = [{
+      iterationGroupId: 'verify-report', goal: 'Accept the verification result.',
+      participants: [
+        { participantId: 'verifier', stageRef: 'verify', role: 'contributor', perspective: 'Produce evidence.', mandate: 'Run focused tests.' },
+        { participantId: 'reporter', stageRef: 'report', role: 'judge', perspective: 'Assess evidence.', mandate: 'Check the report.' },
+      ],
+      routes: [
+        { routeId: 'to-report', senderParticipantId: 'verifier', recipientParticipantId: 'reporter', requestKinds: ['review'], baseResolutionStageIds: ['verify'] },
+        { routeId: 'to-verify', senderParticipantId: 'reporter', recipientParticipantId: 'verifier', requestKinds: ['rework'], baseResolutionStageIds: ['report'] },
+      ],
+      activation: { seedParticipantId: 'verifier', seedArtifactIds: ['verification'] }, initialStepId: 'review',
+      schedule: [
+        { stepId: 'review', routeId: 'to-report', after: { stepId: 'rework', participantId: 'verifier', verdict: 'fulfilled' }, cycle: 'next' },
+        { stepId: 'rework', routeId: 'to-verify', after: { stepId: 'review', participantId: 'reporter', verdict: 'fail' }, cycle: 'current' },
+      ],
+      artifacts: ['verification'], criteria: [{ id: 'green', description: 'Focused tests are green.' }],
+      maxCycles: 2, cycleUnit: 'One verification and report verdict.', terminalAuthorities: [{ participantId: 'reporter', verdict: 'pass' }],
+    }];
+    const snapshot: PlanProposal = {
+      ...structuredClone(proposal), iterationGroups: structuredClone(iterationGroups),
+      stages: proposal.stages.map((stage) => stage.id === 'verify'
+        ? { ...structuredClone(stage), artifacts: [{ id: 'verification', path: 'dashboard/server/control/verification.txt', description: 'Verification evidence.' }] }
+        : structuredClone(stage)),
+    };
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'iteration-launch', sourceTurnId: 'iteration-launch-turn', title: snapshot.title,
+      snapshot: snapshot as unknown as JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
+      expectedHash: stored.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-iteration-launch',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const createRun = vi.spyOn(controlStore, 'createRun');
+    const launched = await app.inject({
+      method: 'POST', url: `/api/control/proposals/${stored.value.proposalRef}/revisions/1/launch`, headers: headers(token),
+      payload: { expectedHash: stored.value.hash, idempotencyKey: 'launch-iteration-snapshot' },
+    });
+    // This surface's narrow subprocess stub intentionally does not emulate the workflow-card batch
+    // publisher; the assertion is on the launch/store boundary immediately before that later seam.
+    expect(launched.statusCode, launched.body).toBe(500);
+    expect(createRun).toHaveBeenCalledOnce();
+    expect(createRun.mock.calls[0]?.[1].iterationGroups).toEqual(iterationGroups);
+  });
 
   it('refuses every non-exact historical reconciliation body before any audit, proposal, or filesystem runner', async () => {
     const base = {
@@ -208,36 +257,88 @@ describe('control proposal routes', () => {
     expect(routingWrites).toEqual([]);
   });
 
-  function mockCompletionGate() {
-    const request = {
-      requestRef: 'request-gate', runRef: 'run-gate', stageRef: 'stage-review', kind: 'approval', revision: 1, state: 'open',
-      title: 'Review gate', prompt: 'Approve the review.', response: null, createdAt: '2026-07-18T12:00:00.000Z', updatedAt: '2026-07-18T12:00:00.000Z',
+
+  function iterationGateFixture(reason: 'exhausted' | 'no-progress' | 'parked', suffix = reason) {
+    const requestRef = `request-iteration-${suffix}`;
+    const loopRef = `loop-iteration-${suffix}`;
+    const iterationRequest = {
+      schema: 'kb.iteration-request/v1', requestRef: `turn-${suffix}`, iterationLoopRef: loopRef,
+      stepId: 'review-step', routeId: 'author-to-judge', senderParticipantId: 'author', recipientParticipantId: 'judge',
+      kind: 'review', cycle: 2, inputGenerationRefs: [`generation-${suffix}`], baseCommit: 'a'.repeat(40),
+      artifactHashes: { draft: 'b'.repeat(64) }, criteria: [{ id: 'grounded', description: 'Grounded.' }],
+      unresolvedFindingRefs: ['finding-open'], preservedInvariants: ['Keep citations.'],
+      nextAcceptanceCheck: 'Recheck grounding.', instructions: 'Review the draft.',
     };
-    const receipt = {
-      reviewReceiptRef: 'receipt-gate', runRef: 'run-gate', reviewStageRef: 'stage-review', subjectStageRef: 'stage-subject',
-      subjectGenerationRef: 'generation-1', subjectResultHash: 'a'.repeat(64), checkerAttemptRef: 'attempt-check', outcome: {}, outcomeHash: 'b'.repeat(64), operationKey: 'review-outcome:run-gate:check:g1',
-      state: 'awaiting-completion-gate', completionRequestRef: request.requestRef, interventionRequestRef: null, version: 7,
-      createdAt: '2026-07-18T12:00:00.000Z', finalizedAt: null,
+    const attemptedOutcome = {
+      schema: 'kb.iteration-outcome/v1', requestRef: iterationRequest.requestRef, iterationLoopRef: loopRef,
+      participantId: 'judge', cycle: 2, verdict: 'fail', inputGenerationRefs: [...iterationRequest.inputGenerationRefs],
+      criteria: [{ criterionId: 'grounded', verdict: 'fail', findingIds: ['finding-open'] }],
+      findings: [{ findingId: 'finding-open', criterionId: 'grounded', severity: 'blocking', summary: 'Citation missing.', evidencePaths: ['draft.md'] }],
+      positions: [{ positionId: 'judge-position', participantId: 'judge', summary: 'Not grounded.', generationRefs: [...iterationRequest.inputGenerationRefs] }],
+      recordedDissent: [{ dissentId: 'author-dissent', participantId: 'author', positionId: 'judge-position', summary: 'Source is sufficient.' }],
+      summary: 'The draft still needs a citation.',
+    };
+    const receipt = reason === 'no-progress' ? null : {
+      ...attemptedOutcome, schema: 'kb.iteration-receipt/v1', receiptRef: `receipt-${suffix}`,
+      outcomeHash: 'c'.repeat(64), outputGenerationRefs: [], baseCommit: 'a'.repeat(40), canonicalCommit: 'd'.repeat(40),
+      createdAt: '2026-08-13T12:00:00.000Z', completionRequestRef: null, interventionRequestRef: requestRef,
+      // Deliberately unrelated to the park reason: the route must read this CAS value, never infer it.
+      version: 17,
+    };
+    const request = {
+      requestRef, runRef: 'run-iteration', stageRef: 'stage-judge', kind: 'approval', gateKind: 'iteration-park',
+      revision: 3, state: 'open', title: 'Iteration parked', prompt: 'Approve exact parked artifacts or decline. Separate relaunch is the only continuation.',
+      response: null, createdAt: '2026-08-13T12:00:00.000Z', updatedAt: '2026-08-13T12:00:00.000Z',
     };
     const loop = {
-      reviewLoopRef: 'loop-gate', runRef: 'run-gate', reviewStageRef: 'stage-review', subjectStageRef: 'stage-subject',
-      maxCreatorReworks: 1, reviewDefinitionHash: 'c'.repeat(64), reworksUsed: 0, state: 'awaiting-gate', activeGenerationRef: 'generation-1',
-      acceptedGenerationRef: null, activeReceiptRef: receipt.reviewReceiptRef, interventionRequestRef: null, version: 8,
-      createdAt: '2026-07-18T12:00:00.000Z', updatedAt: '2026-07-18T12:00:00.000Z',
+      iterationLoopRef: loopRef, runRef: 'run-iteration', definitionHash: 'e'.repeat(64), iterationGroupId: 'draft-loop',
+      goal: 'Publish a grounded draft.', participants: [
+        { participantId: 'author', stageRef: 'author', role: 'contributor', perspective: 'Clarity.', mandate: 'Write the draft.' },
+        { participantId: 'judge', stageRef: 'judge', role: 'judge', perspective: 'Evidence.', mandate: 'Verify grounding.' },
+      ], routes: [
+        { routeId: 'author-to-judge', senderParticipantId: 'author', recipientParticipantId: 'judge', requestKinds: ['review'], baseResolutionStageIds: ['author'] },
+        { routeId: 'judge-to-author', senderParticipantId: 'judge', recipientParticipantId: 'author', requestKinds: ['rework'], baseResolutionStageIds: ['judge'] },
+      ], activation: { seedParticipantId: 'author', seedArtifactIds: ['draft'] }, initialStepId: 'review-step',
+      schedule: [{ stepId: 'review-step', routeId: 'author-to-judge', cycle: 'next' }], artifacts: ['draft'],
+      criteria: [{ id: 'grounded', description: 'Grounded.' }], maxCycles: 2, cycleUnit: 'One author and judge round.',
+      terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }], cyclesUsed: 1, state: 'awaiting-park-gate',
+      activeGenerationRefs: [`generation-${suffix}`], acceptedGenerationRefs: ['generation-accepted'], lastReceiptRef: receipt?.receiptRef,
+      interventionRef: requestRef, parkReason: reason, unresolvedResidue: {
+        unresolvedFindings: attemptedOutcome.findings, positions: attemptedOutcome.positions, recordedDissent: attemptedOutcome.recordedDissent,
+        requestRefs: [iterationRequest.requestRef], receiptRefs: receipt ? [receipt.receiptRef] : [],
+        activeGenerationRefs: [`generation-${suffix}`], acceptedGenerationRefs: ['generation-accepted'], nextRouteId: 'judge-to-author',
+        cycleUnit: 'One author and judge round.', cyclesUsed: 1, maxCycles: 2,
+        ...(reason === 'no-progress' ? {
+          attemptedRequestRef: iterationRequest.requestRef, attemptedOutcome,
+          artifactSnapshots: [{ path: 'draft.md', regularFile: true, size: 12, sha256: 'f'.repeat(64), afterRegularFile: true, afterSize: 12, afterSha256: 'f'.repeat(64), byteIdentical: true }],
+          failureReason: 'required output draft.md was byte-identical',
+        } : {}),
+      }, version: 6, createdAt: '2026-08-13T12:00:00.000Z', updatedAt: '2026-08-13T12:00:00.000Z',
     };
-    const reviewStage = { stageRef: 'stage-review', runRef: 'run-gate', stageId: 'check', title: 'Check', version: 9 };
-    const subjectStage = { stageRef: 'stage-subject', runRef: 'run-gate', stageId: 'build', title: 'Build', version: 10 };
-    const detail = { run: { runRef: 'run-gate' }, stages: [reviewStage, subjectStage], attempts: [], sessions: [], humanRequests: [request], reviewLoops: [loop], reviewReceipts: [receipt] };
-    vi.spyOn(controlStore, 'getHumanRequest').mockReturnValue({ ok: true, value: request } as never);
-    vi.spyOn(controlStore, 'getRun').mockReturnValue({ ok: true, value: detail } as never);
-    const resolve = vi.spyOn(controlStore, 'resolveReviewCompletionGate').mockImplementation((_subject, _requestRef, input) => ({
-      ok: true,
-      value: {
-        request: { ...request, state: 'resolved', response: { decision: input.decision }, revision: 2 }, receipt, loop,
-        reviewStage, subjectStage, interventionRequest: input.decision === 'approved' ? null : { requestRef: 'intervention-1' },
+    return { request, loop, iterationRequest, receipt };
+  }
+
+  function mockIterationGate(reason: 'exhausted' | 'no-progress' | 'parked') {
+    const fixture = iterationGateFixture(reason);
+    const detail = {
+      ownerSubject: 'operator',
+      run: { runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
+        proposalHash: '9'.repeat(64), publicationState: 'published', state: 'waiting-human', version: 11, managerSessionRef: null,
+        managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '' },
+      stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
+      iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
+    };
+    const getHumanRequest = vi.spyOn(controlStore, 'getHumanRequest').mockReturnValue({ ok: true, value: fixture.request } as never);
+    const getRun = vi.spyOn(controlStore, 'getRun').mockReturnValue({ ok: true, value: detail } as never);
+    const resolve = vi.spyOn(controlStore, 'resolveIterationGate').mockImplementation((_subject, _requestRef, input) => ({
+      ok: true, value: {
+        loop: { ...fixture.loop, state: input.decision === 'approved' ? 'passed' : 'declined', acceptedGenerationRefs: input.decision === 'approved' ? [...fixture.loop.activeGenerationRefs] : [] },
+        receipt: fixture.receipt, receiptVersion: fixture.receipt?.version ?? null,
+        gate: { ...fixture.request, state: 'resolved', response: { decision: input.decision === 'approved' ? 'approved' : 'rejected' } }, interventionRequest: null,
       },
     } as never));
-    return { request, resolve };
+    const failRun = vi.spyOn(controlStore, 'transitionRun').mockReturnValue({ ok: true, value: { ...detail.run, state: 'failed', version: 12 } } as never);
+    return { ...fixture, detail, getHumanRequest, getRun, resolve, failRun };
   }
 
   /** `owner` is whose run it is: 'operator' for an SPA launch, 'dashboard-engine' for a bridge launch. */
@@ -399,108 +500,145 @@ describe('control proposal routes', () => {
   }
 
   /** A real store-backed gate, used to lock the HTTP replay fingerprint rather than a mocked resolver. */
-  function seedStatefulCompletionGate() {
-    const assignment = {
-      agentId: 'fyt-verifier', declarationPath: 'agents/fyt-verifier.md', declarationHash: 'c'.repeat(64),
-      profileId: 'claude:worker', runtime: 'claude' as const, model: 'claude-sonnet-5',
+
+  /** A generic-only completion gate: its participant stage has no legacy `review` contract to project. */
+  function seedGenericCompletionGate() {
+    const group: NonNullable<PlanProposal['iterationGroups']>[number] = {
+      iterationGroupId: 'generic-completion-loop', goal: 'Accept the generic draft.',
+      participants: [
+        { participantId: 'generic-author', stageRef: 'generic-build', role: 'contributor', perspective: 'Draft.', mandate: 'Write the draft.' },
+        { participantId: 'generic-critic', stageRef: 'generic-check', role: 'judge', perspective: 'Quality.', mandate: 'Check the draft.' },
+      ],
+      routes: [
+        { routeId: 'generic-to-critic', senderParticipantId: 'generic-author', recipientParticipantId: 'generic-critic', requestKinds: ['review'], baseResolutionStageIds: ['generic-build'] },
+        { routeId: 'generic-to-author', senderParticipantId: 'generic-critic', recipientParticipantId: 'generic-author', requestKinds: ['rework'], baseResolutionStageIds: ['generic-check'] },
+      ],
+      activation: { seedParticipantId: 'generic-author', seedArtifactIds: ['generic-artifact'] },
+      initialStepId: 'generic-review',
+      schedule: [
+        { stepId: 'generic-review', routeId: 'generic-to-critic', after: { stepId: 'generic-rework', participantId: 'generic-author', verdict: 'fulfilled' }, cycle: 'next' },
+        { stepId: 'generic-rework', routeId: 'generic-to-author', after: { stepId: 'generic-review', participantId: 'generic-critic', verdict: 'fail' }, cycle: 'current' },
+      ],
+      artifacts: ['generic-artifact'], criteria: [{ id: 'generic-ready', description: 'The draft is ready.' }],
+      maxCycles: 2, cycleUnit: 'One generic draft and critique.',
+      terminalAuthorities: [{ participantId: 'generic-critic', verdict: 'pass' }],
+      completionGate: { id: 'generic-approval', kind: 'approval', prompt: 'Approve the generic result.', requiresReview: 'pass' },
     };
-    const review = { subjectStageId: 'build', maxCreatorReworks: 1, criteria: [{ id: 'grounded', description: 'Grounded.' }] };
-    const gate = { id: 'approve-check', kind: 'approval' as const, prompt: 'Approve the checker result.', requiresReview: 'pass' as const };
     const proposal = controlStore.createProposalRevision('operator', {
-      sourceComposerRef: 'stateful-gate', sourceTurnId: 'stateful-gate-turn', title: 'Stateful completion gate',
+      sourceComposerRef: 'generic-completion', sourceTurnId: 'generic-completion-turn', title: 'Generic completion gate',
       snapshot: {
-        schema: 'kb.plan-proposal/v1', manager: {}, stages: [
-          { id: 'build', title: 'Build', dependsOn: [] },
-          { id: 'check', title: 'Check', action: 'review:source-grounding', dependsOn: ['build'], assignment, workflowProfile: 'checker-readonly', review, completionGate: gate },
+        schema: 'kb.plan-proposal/v1', manager: {}, iterationGroups: [structuredClone(group)], stages: [
+          { id: 'generic-build', title: 'Generic build', dependsOn: [], artifacts: [{ id: 'generic-artifact', path: 'generic.md' }] },
+          { id: 'generic-check', title: 'Generic check', dependsOn: ['generic-build'], artifacts: [] },
         ],
-      } as unknown as import('./types.ts').JsonObject,
+      } as unknown as JsonObject,
     });
     if (!proposal.ok) throw new Error(proposal.detail);
-    const approved = controlStore.decideProposal('operator', proposal.value.proposalRef, 1, {
-      expectedHash: proposal.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-stateful-gate',
+    const approved = controlStore.decideProposal('operator', proposal.value.proposalRef, proposal.value.revision, {
+      expectedHash: proposal.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-generic-completion',
     });
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
-      title: 'Stateful completion gate', proposalRef: proposal.value.proposalRef, proposalRevision: 1, expectedProposalHash: proposal.value.hash,
-      managerRuntime: 'claude', managerModel: 'claude-sonnet-5', idempotencyKey: 'launch-stateful-gate',
-      stages: [
-        { stageId: 'build', title: 'Build', dependsOn: [] },
-        { stageId: 'check', title: 'Check', dependsOn: ['build'], assignment, workflowProfile: 'checker-readonly', review, completionGate: gate },
+      title: 'Generic completion gate', proposalRef: proposal.value.proposalRef, proposalRevision: proposal.value.revision,
+      expectedProposalHash: proposal.value.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'launch-generic-completion', iterationGroups: [structuredClone(group)], stages: [
+        { stageId: 'generic-build', title: 'Generic build', dependsOn: [] },
+        { stageId: 'generic-check', title: 'Generic check', dependsOn: ['generic-build'] },
       ],
     });
     if (!created.ok) throw new Error(created.detail);
     let detail = controlStore.getRun('operator', created.value.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
-    let subject = detail.value.stages.find((stage) => stage.stageId === 'build');
-    let checker = detail.value.stages.find((stage) => stage.stageId === 'check');
-    if (!subject || !checker) throw new Error('stateful review stages missing');
-    const linked = controlStore.linkStageCard('operator', subject.stageRef, subject.version, 'card-stateful-build');
+    let build = detail.value.stages.find((stage) => stage.stageId === 'generic-build');
+    if (!build) throw new Error('generic build stage missing');
+    const linked = controlStore.linkStageCard('operator', build.stageRef, build.version, 'card-generic-build');
     if (!linked.ok) throw new Error(linked.detail);
-    const creator = controlStore.createAttempt('operator', subject.stageRef, { expectedStageVersion: linked.value.version, runtime: 'codex', model: 'gpt-5.6-sol' });
-    if (!creator.ok) throw new Error(creator.detail);
-    const creatorStarting = controlStore.transitionAttempt('operator', creator.value.attemptRef, creator.value.version, 'starting');
-    if (!creatorStarting.ok) throw new Error(creatorStarting.detail);
-    const creatorRunning = controlStore.transitionAttempt('operator', creator.value.attemptRef, creatorStarting.value.version, 'running');
-    if (!creatorRunning.ok) throw new Error(creatorRunning.detail);
-    const creatorSucceeded = controlStore.transitionAttempt('operator', creator.value.attemptRef, creatorRunning.value.version, 'succeeded');
-    if (!creatorSucceeded.ok) throw new Error(creatorSucceeded.detail);
+    const attempt = controlStore.createAttempt('operator', build.stageRef, { expectedStageVersion: linked.value.version, runtime: 'codex', model: 'fixed' });
+    if (!attempt.ok) throw new Error(attempt.detail);
+    let currentAttempt = attempt.value;
+    for (const state of ['starting', 'running', 'succeeded'] as const) {
+      const transitioned = controlStore.transitionAttempt('operator', currentAttempt.attemptRef, currentAttempt.version, state);
+      if (!transitioned.ok) throw new Error(transitioned.detail);
+      currentAttempt = transitioned.value;
+    }
     detail = controlStore.getRun('operator', created.value.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
-    subject = detail.value.stages.find((stage) => stage.stageId === 'build');
-    if (!subject) throw new Error('stateful subject disappeared');
-    const generation = controlStore.recordStageGeneration('operator', subject.stageRef, {
-      expectedStageVersion: subject.version, expectedAttemptVersion: creatorSucceeded.value.version, expectedGeneration: 1,
-      operationKey: `result:${created.value.run.runRef}:build`, resultHash: 'd'.repeat(64), resultCardRef: 'card-stateful-build', baseCommit: 'b'.repeat(40), canonicalCommit: 'a'.repeat(40),
+    build = detail.value.stages.find((stage) => stage.stageRef === build!.stageRef);
+    if (!build) throw new Error('generic build stage disappeared');
+    const generation = controlStore.recordStageGeneration('operator', build.stageRef, {
+      expectedStageVersion: build.version, expectedAttemptVersion: currentAttempt.version, expectedGeneration: 1,
+      operationKey: `result:${created.value.run.runRef}:generic-build`, resultHash: 'd'.repeat(64), resultCardRef: 'card-generic-build',
+      baseCommit: 'b'.repeat(40), canonicalCommit: 'a'.repeat(40),
     });
     if (!generation.ok) throw new Error(generation.detail);
     detail = controlStore.getRun('operator', created.value.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
-    subject = detail.value.stages.find((stage) => stage.stageId === 'build'); checker = detail.value.stages.find((stage) => stage.stageId === 'check');
-    if (!subject || !checker) throw new Error('stateful post-generation stages missing');
-    const subjectRunning = controlStore.transitionStage('operator', subject.stageRef, subject.version, 'running');
-    if (!subjectRunning.ok) throw new Error(subjectRunning.detail);
-    const subjectSucceeded = controlStore.transitionStage('operator', subject.stageRef, subjectRunning.value.version, 'succeeded');
-    if (!subjectSucceeded.ok) throw new Error(subjectSucceeded.detail);
-    const checkerAttempt = controlStore.createAttempt('operator', checker.stageRef, {
-      expectedStageVersion: checker.version, runtime: assignment.runtime, model: assignment.model,
-      reviewSubjectGenerationRef: generation.value.generationRef, reviewSubjectResultHash: 'd'.repeat(64), reviewSubjectCanonicalCommit: 'a'.repeat(40),
-    });
-    if (!checkerAttempt.ok) throw new Error(checkerAttempt.detail);
-    const checkerStarting = controlStore.transitionAttempt('operator', checkerAttempt.value.attemptRef, checkerAttempt.value.version, 'starting');
-    if (!checkerStarting.ok) throw new Error(checkerStarting.detail);
-    const checkerRunning = controlStore.transitionAttempt('operator', checkerAttempt.value.attemptRef, checkerStarting.value.version, 'running');
-    if (!checkerRunning.ok) throw new Error(checkerRunning.detail);
-    const checkerSucceeded = controlStore.transitionAttempt('operator', checkerAttempt.value.attemptRef, checkerRunning.value.version, 'succeeded');
-    if (!checkerSucceeded.ok) throw new Error(checkerSucceeded.detail);
-    const checkerReady = controlStore.transitionStage('operator', checker.stageRef, checker.version + 1, 'ready');
-    if (!checkerReady.ok) throw new Error(checkerReady.detail);
-    const checkerActive = controlStore.transitionStage('operator', checker.stageRef, checkerReady.value.version, 'running');
-    if (!checkerActive.ok) throw new Error(checkerActive.detail);
-    const checkerDone = controlStore.transitionStage('operator', checker.stageRef, checkerActive.value.version, 'succeeded');
-    if (!checkerDone.ok) throw new Error(checkerDone.detail);
+    build = detail.value.stages.find((stage) => stage.stageRef === build!.stageRef);
+    if (!build) throw new Error('generic committed build stage missing');
+    const running = controlStore.transitionStage('operator', build.stageRef, build.version, 'running');
+    if (!running.ok) throw new Error(running.detail);
+    const succeeded = controlStore.transitionStage('operator', running.value.stageRef, running.value.version, 'succeeded');
+    if (!succeeded.ok) throw new Error(succeeded.detail);
     detail = controlStore.getRun('operator', created.value.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
-    checker = detail.value.stages.find((stage) => stage.stageId === 'check');
-    const loop = detail.value.reviewLoops[0];
-    if (!checker || !loop) throw new Error('stateful review loop missing');
-    const receipt = controlStore.recordReviewReceipt('operator', checker.stageRef, {
-      expectedReviewStageVersion: checker.version, expectedCheckerAttemptVersion: checkerSucceeded.value.version, expectedLoopVersion: loop.version,
-      subjectGenerationRef: generation.value.generationRef, subjectResultHash: 'd'.repeat(64), checkerAttemptRef: checkerSucceeded.value.attemptRef,
-      outcome: JSON.stringify({ schema: 'kb.review-outcome/v1', decision: 'pass', summary: 'Passed.', criteria: [{ criterionId: 'grounded', verdict: 'pass', findingIds: [] }], findings: [] }),
-      operationKey: `review-outcome:${created.value.run.runRef}:check:g1`,
+    let loop = detail.value.iterationLoops[0];
+    if (!loop) throw new Error('generic iteration loop missing');
+    const activated = controlStore.activateIterationLoop('operator', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, seedGenerationRefs: [generation.value.generationRef],
+      artifactGenerationRefs: { 'generic-artifact': generation.value.generationRef },
+      operationKey: `iteration-activate:${created.value.run.runRef}:generic-completion-loop:c1`,
+    });
+    if (!activated.ok) throw new Error(activated.detail);
+    const turn = controlStore.recordIterationRequest('operator', loop.iterationLoopRef, {
+      expectedLoopVersion: activated.value.version, routeId: 'generic-to-critic', kind: 'review',
+      inputGenerationRefs: [generation.value.generationRef], baseCommit: generation.value.canonicalCommit!,
+      artifactHashes: { 'generic-artifact': generation.value.resultHash! }, unresolvedFindingRefs: [], preservedInvariants: [],
+      nextAcceptanceCheck: 'Apply generic-ready.', instructions: 'Check the generic draft.',
+      operationKey: `iteration-request:${created.value.run.runRef}:generic:c1`,
+    });
+    if (!turn.ok) throw new Error(turn.detail);
+    detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    let critic = detail.value.stages.find((stage) => stage.stageId === 'generic-check')!;
+    const criticAttempt = controlStore.createAttempt('operator', critic.stageRef, {
+      expectedStageVersion: critic.version, runtime: 'codex', model: 'fixed',
+    });
+    if (!criticAttempt.ok) throw new Error(criticAttempt.detail);
+    let currentCriticAttempt = criticAttempt.value;
+    for (const state of ['starting', 'running', 'succeeded'] as const) {
+      const transitioned = controlStore.transitionAttempt('operator', currentCriticAttempt.attemptRef, currentCriticAttempt.version, state);
+      if (!transitioned.ok) throw new Error(transitioned.detail);
+      currentCriticAttempt = transitioned.value;
+    }
+    detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    critic = detail.value.stages.find((stage) => stage.stageRef === critic.stageRef)!;
+    const criticRunning = controlStore.transitionStage('operator', critic.stageRef, critic.version, 'running');
+    if (!criticRunning.ok) throw new Error(criticRunning.detail);
+    const criticSucceeded = controlStore.transitionStage('operator', critic.stageRef, criticRunning.value.version, 'succeeded');
+    if (!criticSucceeded.ok) throw new Error(criticSucceeded.detail);
+    detail = controlStore.getRun('operator', created.value.run.runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    loop = detail.value.iterationLoops[0]!;
+    const receipt = controlStore.recordIterationReceipt('operator', loop.iterationLoopRef, {
+      expectedLoopVersion: loop.version, requestRef: turn.value.requestRef,
+      outcome: {
+        schema: 'kb.iteration-outcome/v1', requestRef: turn.value.requestRef, iterationLoopRef: loop.iterationLoopRef,
+        participantId: 'generic-critic', cycle: turn.value.cycle, verdict: 'pass', inputGenerationRefs: [...turn.value.inputGenerationRefs],
+        criteria: [{ criterionId: 'generic-ready', verdict: 'pass', findingIds: [] }], findings: [], positions: [], recordedDissent: [],
+        summary: 'The generic draft passed.',
+      },
+      outputGenerationRefs: [], baseCommit: generation.value.baseCommit!, canonicalCommit: generation.value.canonicalCommit!,
+      participantAttemptRef: currentCriticAttempt.attemptRef, operationKey: `iteration-receipt:${created.value.run.runRef}:generic:c1:pass`,
     });
     if (!receipt.ok) throw new Error(receipt.detail);
     detail = controlStore.getRun('operator', created.value.run.runRef);
     if (!detail.ok) throw new Error(detail.detail);
-    checker = detail.value.stages.find((stage) => stage.stageId === 'check');
-    const currentLoop = detail.value.reviewLoops[0];
-    if (!checker || !currentLoop) throw new Error('stateful gate attachment missing');
-    const attached = controlStore.attachReviewCompletionGate('operator', receipt.value.reviewReceiptRef, {
-      expectedReceiptVersion: receipt.value.version, expectedLoopVersion: currentLoop.version, expectedReviewStageVersion: checker.version,
-      idempotencyKey: `review-gate:${created.value.run.runRef}:check:g1`,
-    });
-    if (!attached.ok) throw new Error(attached.detail);
-    return attached.value.request;
+    loop = detail.value.iterationLoops[0]!;
+    const gate = detail.value.humanRequests.find((request) => request.requestRef === loop.completionGateRef);
+    if (!gate) throw new Error('generic completion gate missing');
+    expect(detail.value).not.toHaveProperty('reviewReceipts');
+    return { runRef: created.value.run.runRef, gate, loop, receipt: detail.value.iterationReceipts[0]! };
   }
 
   it('imports only a completed visible assistant proposal and returns a hash-bound diff', async () => {
@@ -516,79 +654,237 @@ describe('control proposal routes', () => {
     expect(response.json().value.hash).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it('resolves an approved review completion gate through the dedicated audited route', async () => {
-    const { request, resolve } = mockCompletionGate();
+  it('returns not found for the removed review completion gate endpoint', async () => {
     const response = await app.inject({
-      method: 'POST', url: `/api/control/review-completion-gates/${request.requestRef}/resolve`, headers: headers(token),
+      method: 'POST', url: '/api/control/review-completion-gates/request-removed/resolve', headers: headers(token),
       payload: { expectedRequestRevision: 1, decision: 'approved', idempotencyKey: 'human:request-gate:1:approved', response: 'Approved.' },
     });
-    expect(response.statusCode, response.body).toBe(200);
-    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({
-      expectedRequestRevision: 1, expectedReceiptVersion: 7, expectedLoopVersion: 8,
-      expectedReviewStageVersion: 9, expectedSubjectStageVersion: 10, decision: 'approved',
-    // The operator's scope rides along on this mutation too — the run tab submits gates through this
-    // route as well as the generic respond route, so both had to be widened together.
-    }), 'all-subjects');
+    expect(response.statusCode, response.body).toBe(404);
   });
 
-  it.each(['rejected', 'changes-requested'] as const)('parks a %s completion decision through the dedicated route', async (decision) => {
-    const { request, resolve } = mockCompletionGate();
-    const response = await app.inject({
-      method: 'POST', url: `/api/control/review-completion-gates/${request.requestRef}/resolve`, headers: headers(token),
-      payload: { expectedRequestRevision: 1, decision, idempotencyKey: `human:request-gate:1:${decision}` },
-    });
-    expect(response.statusCode, response.body).toBe(200);
-    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({ decision }), 'all-subjects');
-  });
 
-  it('rejects a stale completion-gate request revision before audit or resolution', async () => {
-    const { request, resolve } = mockCompletionGate();
-    const response = await app.inject({
-      method: 'POST', url: `/api/control/review-completion-gates/${request.requestRef}/resolve`, headers: headers(token),
-      payload: { expectedRequestRevision: 0, decision: 'approved', idempotencyKey: 'human:request-gate:0:approved' },
-    });
-    expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ error: 'request-revision-changed' });
-    expect(resolve).not.toHaveBeenCalled();
-  });
 
   it('never lets a reserved completion request through generic respond', async () => {
-    const { request, resolve } = mockCompletionGate();
+    const { gate: request } = seedGenericCompletionGate();
     const response = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
       payload: { expectedRevision: 1, decision: 'approved', idempotencyKey: 'generic-bypass' },
     });
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ error: 'review-completion-gate-reserved' });
+    expect(response.json()).toMatchObject({ error: 'iteration-gate-reserved' });
+  });
+
+
+
+  it('returns participants routes cycles turn owner verdict lineage and full residue in run detail', async () => {
+    const seeded = seedActivatableRun(false, '-iteration-dto');
+    const fixture = mockIterationGate('no-progress');
+    fixture.detail.run = seeded.run as unknown as typeof fixture.detail.run;
+    fixture.detail.stages = seeded.stages as typeof fixture.detail.stages;
+    fixture.request.runRef = seeded.run.runRef;
+    fixture.loop.runRef = seeded.run.runRef;
+    const { request, loop, iterationRequest, receipt } = fixture;
+    const response = await app.inject({
+      method: 'GET', url: `/api/control/runs/${request.runRef}`, headers: headers(token),
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true, value: {
+      iterationLoops: [{
+        iterationLoopRef: loop.iterationLoopRef, participants: loop.participants, routes: loop.routes,
+        cyclesUsed: 1, maxCycles: 2, cycleUnit: loop.cycleUnit, state: 'awaiting-park-gate', parkReason: 'no-progress',
+        activeGenerationRefs: loop.activeGenerationRefs, acceptedGenerationRefs: loop.acceptedGenerationRefs,
+        unresolvedResidue: {
+          unresolvedFindings: loop.unresolvedResidue.unresolvedFindings, positions: loop.unresolvedResidue.positions,
+          recordedDissent: loop.unresolvedResidue.recordedDissent, requestRefs: [iterationRequest.requestRef], receiptRefs: [],
+          attemptedRequestRef: iterationRequest.requestRef, attemptedRequestCycle: 2,
+          attemptedOutcome: loop.unresolvedResidue.attemptedOutcome, artifactSnapshots: loop.unresolvedResidue.artifactSnapshots,
+          failureReason: loop.unresolvedResidue.failureReason, cyclesUsed: 1, maxCycles: 2,
+        },
+      }],
+      iterationRequests: [expect.objectContaining({ requestRef: iterationRequest.requestRef, cycle: 2, inputGenerationRefs: iterationRequest.inputGenerationRefs })],
+      iterationReceipts: receipt ? [expect.objectContaining({ receiptRef: receipt.receiptRef, baseCommit: receipt.baseCommit, canonicalCommit: receipt.canonicalCommit })] : [],
+      humanRequests: [expect.objectContaining({ requestRef: request.requestRef, gateKind: 'iteration-park', state: 'open' })],
+    } });
+  });
+
+  it('approves only the exact iteration-park artifact set with matching gate reason and loop versions', async () => {
+    const { request, loop, receipt, resolve } = mockIterationGate('no-progress');
+    loop.activeGenerationRefs = ['generation-no-progress-a', 'generation-no-progress-b'];
+    const exact = {
+      expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
+      expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
+      expectedReceiptVersion: receipt?.version ?? null, expectedGenerationRefs: [...loop.activeGenerationRefs],
+      decision: 'approved', idempotencyKey: 'approve-exact-no-progress', response: 'Approve this displayed set.',
+    };
+    for (const stale of [
+      { ...exact, expectedGateKind: 'completion' },
+      { ...exact, expectedParkReason: 'exhausted' },
+      { ...exact, expectedLoopVersion: loop.version - 1 },
+      { ...exact, expectedGenerationRefs: ['generation-changed'] },
+      { ...exact, expectedGenerationRefs: [...exact.expectedGenerationRefs].reverse() },
+      { ...exact, expectedGenerationRefs: [exact.expectedGenerationRefs[0], exact.expectedGenerationRefs[0]] },
+      { ...exact, expectedGenerationRefs: [...exact.expectedGenerationRefs, 'generation-superset'] },
+      { ...exact, expectedGenerationRefs: exact.expectedGenerationRefs.slice(0, 1) },
+    ]) {
+      const response = await app.inject({
+        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token), payload: stale,
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'iteration-gate-cas-mismatch' });
+    }
+    const approved = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token), payload: exact,
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed', acceptedGenerationRefs: loop.activeGenerationRefs } },
+      continuation: { kind: 'separate-relaunch' } });
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, {
+      expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
+      decision: 'approved', operationKey: exact.idempotencyKey, response: exact.response,
+    }, 'all-subjects');
+  });
+
+  it('declines an exhausted or no-progress iteration-park gate and makes the run unable to succeed', async () => {
+    const { request, loop, receipt, resolve, failRun } = mockIterationGate('exhausted');
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: {
+        expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'exhausted',
+        expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: receipt?.version ?? null,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'declined', idempotencyKey: 'decline-exhausted',
+      },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'declined' }, run: { state: 'failed' } },
+      continuation: { kind: 'separate-relaunch' } });
+    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({ decision: 'declined' }), 'all-subjects');
+    expect(failRun).toHaveBeenCalledWith('operator', request.runRef, 11, 'failed');
+  });
+
+  it('rejects changes-requested and stale approval for an iteration-park gate', async () => {
+    const { request, loop } = mockIterationGate('no-progress');
+    const base = {
+      expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
+      expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], idempotencyKey: 'invalid-park-decision',
+    };
+    const changes = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: { ...base, decision: 'changes-requested' },
+    });
+    expect(changes.statusCode, changes.body).toBe(400);
+    expect(changes.json()).toMatchObject({ error: 'invalid-iteration-park-decision' });
+    const stale = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: { ...base, expectedRequestRevision: request.revision - 1, decision: 'approved' },
+    });
+    expect(stale.statusCode, stale.body).toBe(409);
+  });
+
+  it('resolves an explicit participant park through the same exact-set gate contract', async () => {
+    const { request, loop, receipt, resolve } = mockIterationGate('parked');
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: {
+        expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'parked',
+        expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-explicit-park',
+      },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed' } },
+      continuation: { kind: 'separate-relaunch' } });
+    expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, expect.objectContaining({
+      expectedReceiptVersion: receipt?.version, decision: 'approved',
+    }), 'all-subjects');
+  });
+
+
+  it('preserves the optional post-acceptance completion gate and withholds downstream release', async () => {
+    const { runRef, gate: request } = seedGenericCompletionGate();
+    const detail = controlStore.getRun('operator', runRef);
+    if (!detail.ok) throw new Error(detail.detail);
+    const loop = detail.value.iterationLoops.find((candidate) => candidate.completionGateRef === request.requestRef)!;
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: {
+        expectedGateRef: request.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'changes-requested', idempotencyKey: 'completion-still-intervenes',
+      },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'parked' }, interventionRequest: { kind: 'intervention', state: 'open' } } });
+    const after = controlStore.getRun('operator', runRef);
+    expect(after).toMatchObject({ ok: true, value: {
+      iterationLoops: [expect.objectContaining({ state: 'parked' })],
+      humanRequests: expect.arrayContaining([expect.objectContaining({ kind: 'intervention', state: 'open' })]),
+    } });
+    expect(after.ok && after.value.iterationLoops[0]?.turnOwnerParticipantId).toBeUndefined();
+  });
+
+  it('resolves a non-legacy completion gate through the real generic store transition', async () => {
+    const { runRef, gate, loop, receipt } = seedGenericCompletionGate();
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
+      payload: {
+        expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-generic-completion-route',
+      },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true, value: {
+      loop: { iterationLoopRef: loop.iterationLoopRef, state: 'passed' },
+      receipt: { receiptRef: receipt.receiptRef, version: receipt.version + 1 },
+      gate: { requestRef: gate.requestRef, state: 'resolved' },
+    } });
+    expect(controlStore.getRun('operator', runRef)).toMatchObject({ ok: true, value: {
+      iterationLoops: [{ iterationLoopRef: loop.iterationLoopRef, state: 'passed' }],
+    } });
+  });
+
+  it('rejects a real completion gate then answers its minted intervention through generic respond', async () => {
+    const { runRef, gate, loop } = seedGenericCompletionGate();
+    const rejected = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
+      payload: {
+        expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected', idempotencyKey: 'reject-generic-completion-route',
+      },
+    });
+    expect(rejected.statusCode, rejected.body).toBe(200);
+    const intervention = rejected.json().value.interventionRequest;
+    expect(intervention).toMatchObject({ kind: 'intervention', state: 'open' });
+    const answered = await app.inject({
+      method: 'POST', url: `/api/control/human-requests/${intervention.requestRef}/respond`, headers: headers(token),
+      payload: { expectedRevision: intervention.revision, decision: 'approved', idempotencyKey: 'answer-generic-completion-intervention' },
+    });
+    expect(answered.statusCode, answered.body).toBe(200);
+    expect(answered.json()).toMatchObject({ ok: true, value: { requestRef: intervention.requestRef, state: 'resolved', response: { decision: 'approved' } } });
+    const after = controlStore.getRun('operator', runRef);
+    expect(after).toMatchObject({ ok: true, value: {
+      iterationLoops: [{ state: 'parked', interventionRef: intervention.requestRef }],
+      humanRequests: expect.arrayContaining([expect.objectContaining({
+        requestRef: intervention.requestRef, state: 'resolved', response: expect.objectContaining({ decision: 'approved' }),
+      })]),
+    } });
+    expect(after.ok && after.value.humanRequests.filter((request) => request.state === 'open')).toEqual([]);
+  });
+
+  it('does not let the generic intervention endpoint bypass the iteration gate contract', async () => {
+    const { request, resolve } = mockIterationGate('no-progress');
+    const response = await app.inject({
+      method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
+      payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'generic-iteration-bypass' },
+    });
+    expect(response.statusCode, response.body).toBe(409);
+    expect(response.json()).toMatchObject({ error: 'iteration-gate-reserved', gateKind: 'iteration-park' });
     expect(resolve).not.toHaveBeenCalled();
   });
 
-  it.each(['approved', 'changes-requested'] as const)('replays an identical stateful completion-gate %s POST', async (decision) => {
-    const request = seedStatefulCompletionGate();
-    const payload = {
-      expectedRequestRevision: request.revision, decision,
-      idempotencyKey: `http-replay:${request.requestRef}:${decision}`, response: `same ${decision} body`,
-    };
-    const url = `/api/control/review-completion-gates/${request.requestRef}/resolve`;
-    const first = await app.inject({ method: 'POST', url, headers: headers(token), payload });
-    expect(first.statusCode, first.body).toBe(200);
-    const replay = await app.inject({ method: 'POST', url, headers: headers(token), payload });
-    expect(replay.statusCode, replay.body).toBe(200);
-    expect(replay.json()).toMatchObject({ ok: true, replayed: true });
-  });
-
-  it('rejects stateful completion-gate replay attempts with a changed key or body', async () => {
-    const request = seedStatefulCompletionGate();
-    const url = `/api/control/review-completion-gates/${request.requestRef}/resolve`;
-    const payload = { expectedRequestRevision: request.revision, decision: 'approved', idempotencyKey: 'http-replay-original', response: 'original body' };
-    expect((await app.inject({ method: 'POST', url, headers: headers(token), payload })).statusCode).toBe(200);
-    const changedKey = await app.inject({ method: 'POST', url, headers: headers(token), payload: { ...payload, idempotencyKey: 'http-replay-changed-key' } });
-    expect(changedKey.statusCode).toBe(409);
-    const changedBody = await app.inject({ method: 'POST', url, headers: headers(token), payload: { ...payload, response: 'changed body' } });
-    expect(changedBody.statusCode).toBe(409);
-    const changedRevision = await app.inject({ method: 'POST', url, headers: headers(token), payload: { ...payload, expectedRequestRevision: 99 } });
-    expect(changedRevision.statusCode).toBe(409);
-  });
 
   it('binds approval to the exact stored hash and rejects stale replay', async () => {
     const imported = await app.inject({
@@ -1743,108 +2039,8 @@ describe('control proposal routes', () => {
    * read stay real (which is the whole point — the resume predicate reads post-resolve state), while the
    * receipt/loop pair the route validates is supplied here.
    */
-  function spliceCompletionGate(detail: { run: { runRef: string }; stages: Array<{ stageRef: string; stageId: string }> }, requestRef: string, owner = 'operator') {
-    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
-    const subjectStage = detail.stages.find((stage) => stage.stageId === 'verify');
-    if (!reviewStage || !subjectStage) throw new Error('splice stages missing');
-    const receipt = {
-      reviewReceiptRef: 'receipt-splice', runRef: detail.run.runRef, reviewStageRef: reviewStage.stageRef,
-      subjectStageRef: subjectStage.stageRef, subjectGenerationRef: 'generation-1', subjectResultHash: 'a'.repeat(64),
-      checkerAttemptRef: 'attempt-check', outcome: {}, outcomeHash: 'b'.repeat(64),
-      operationKey: `review-outcome:${detail.run.runRef}:report:g1`, state: 'awaiting-completion-gate',
-      completionRequestRef: requestRef, interventionRequestRef: null, version: 7,
-      createdAt: '2026-08-11T12:00:00.000Z', finalizedAt: null,
-    };
-    const loop = {
-      reviewLoopRef: 'loop-splice', runRef: detail.run.runRef, reviewStageRef: reviewStage.stageRef,
-      subjectStageRef: subjectStage.stageRef, maxCreatorReworks: 1, reviewDefinitionHash: 'c'.repeat(64),
-      reworksUsed: 0, state: 'awaiting-gate', activeGenerationRef: 'generation-1', acceptedGenerationRef: null,
-      activeReceiptRef: receipt.reviewReceiptRef, interventionRequestRef: null, version: 8,
-      createdAt: '2026-08-11T12:00:00.000Z', updatedAt: '2026-08-11T12:00:00.000Z',
-    };
-    const realGetRun = controlStore.getRun.bind(controlStore);
-    vi.spyOn(controlStore, 'getRun').mockImplementation(((subjectId: string, runRef: string, scope?: never) => {
-      const found = realGetRun(subjectId, runRef, scope);
-      if (!found.ok || found.value.run.runRef !== detail.run.runRef) return found;
-      return { ...found, value: { ...found.value, reviewReceipts: [receipt], reviewLoops: [loop] } };
-    }) as never);
-    vi.spyOn(controlStore, 'resolveReviewCompletionGate').mockImplementation(((
-      subjectId: string,
-      gateRequestRef: string,
-      input: { expectedRequestRevision: number; decision: string; idempotencyKey: string; response: string | null },
-      scope?: never,
-    ) => {
-      const responded = controlStore.respondHumanRequest(subjectId, gateRequestRef, {
-        expectedRevision: input.expectedRequestRevision,
-        decision: input.decision as 'approved',
-        idempotencyKey: input.idempotencyKey,
-        response: input.response,
-      }, scope);
-      if (!responded.ok) return responded;
-      return {
-        ok: true,
-        replayed: responded.replayed ?? false,
-        value: {
-          request: responded.value, receipt, loop, reviewStage, subjectStage,
-          interventionRequest: input.decision === 'approved' ? null : { requestRef: 'intervention-splice' },
-        },
-      };
-    }) as never);
-    return { receipt, loop, reviewStage, owner };
-  }
 
-  it('resumes the run when an approved completion gate clears its last boundary', async () => {
-    const detail = seedActivatableRun(false);
-    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
-    if (!reviewStage) throw new Error('review stage missing');
-    const gate = seedOpenBoundary(detail.run.runRef, 'operator', {
-      kind: 'approval', title: 'Approve the checker result', stageRef: reviewStage.stageRef,
-    });
-    spliceCompletionGate(detail, gate.requestRef);
-    const wired = await activatedApp();
-    try {
-      const resolved = await wired.activated.inject({
-        method: 'POST', url: `/api/control/review-completion-gates/${gate.requestRef}/resolve`,
-        headers: headers(token),
-        payload: {
-          expectedRequestRevision: gate.revision, decision: 'approved',
-          idempotencyKey: `gate:${gate.requestRef}:approved`, response: 'Approved.',
-        },
-      });
-      expect(resolved.statusCode, resolved.body).toBe(200);
-      await vi.waitFor(() => expect(wired.runAutomatic).toHaveBeenCalledTimes(1));
-      expect(wired.runAutomatic).toHaveBeenCalledWith(expect.objectContaining({
-        subject: 'operator', runRef: detail.run.runRef,
-      }));
-    } finally {
-      await wired.activated.close();
-    }
-  });
 
-  it('leaves a completion-gate approval parked while the daemon is locked', async () => {
-    const detail = seedActivatableRun(false);
-    const reviewStage = detail.stages.find((stage) => stage.stageId === 'report');
-    if (!reviewStage) throw new Error('review stage missing');
-    const gate = seedOpenBoundary(detail.run.runRef, 'operator', {
-      kind: 'approval', title: 'Approve the checker result', stageRef: reviewStage.stageRef,
-    });
-    spliceCompletionGate(detail, gate.requestRef);
-    const resolved = await app.inject({
-      method: 'POST', url: `/api/control/review-completion-gates/${gate.requestRef}/resolve`,
-      headers: headers(token),
-      payload: {
-        expectedRequestRevision: gate.revision, decision: 'approved',
-        idempotencyKey: `gate:${gate.requestRef}:approved`, response: 'Approved.',
-      },
-    });
-    expect(resolved.statusCode, resolved.body).toBe(200);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(controlStore.getRun('operator', detail.run.runRef)).toMatchObject({
-      ok: true, value: { run: { state: 'waiting-human', version: detail.run.version } },
-    });
-    expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, autoResumeInput(detail.run)))
-      .toMatchObject({ ok: true, value: null });
-  });
 
   /**
    * The lock is keyed by the RUN (its owner + ref), not by whoever called. Keyed by the caller, an
