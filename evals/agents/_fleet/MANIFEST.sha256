@@ -8,6 +8,6 @@
 dcb4f2a3977132e2b5757302866004169722409d43b65819204deb392aca2810  cost-under-cap.md
 225f09adaba175ed5dd77532b70506544dd40e0f7d7e4503f631d43e1ff80cbf  def-parses-in-roster-shape.md
 aeede011ea23279acb3cc6313e22b0de5531eccef5bebf0458022725ee39b162  memory-file-exists.md
-31d0a320b45772a7f4a4c40522a54939f435d956b15351debb3a3993d848b2aa  no-api-key-in-env.md
+889b3bc264f49f0f6a4b0dc01dd01d190b422c63b1e1e60a46e592b5f56a32ad  no-api-key-in-env.md
 807e6092731f5de53f2b0dbcfb5df8ad501a927273c27302930075c8e6bd521b  no-worker-commits-on-main.md
 211d73e3aff64a38c64a1f77b74348dd6e61ae6f782cb25711ea0abf3202e3f6  test_def_parses_in_roster_shape.py
