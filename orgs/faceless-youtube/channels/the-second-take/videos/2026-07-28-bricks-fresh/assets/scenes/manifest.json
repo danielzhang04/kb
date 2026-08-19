@@ -4,6 +4,669 @@
  "notes": "",
  "shots": [
   {
+   "shot_id": "L21",
+   "file": "assets/scenes/L21.png",
+   "technique": "(b) Seeded composition -- named cast drive-maker, prop-drive via STEP-1 figure card, in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--hold-both-hands--expr-smug--a53aa722.png",
+     "role": "figure",
+     "character": "drive-maker"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c, after STEP-1 drive-maker figure cards stamped clean. `drive-maker` STEP-1 fig-drive-maker--hold-both-hands--expr-smug--a53aa722 REUSED"
+  },
+  {
+   "shot_id": "L22",
+   "file": "assets/scenes/L22.png",
+   "technique": "(b) Seeded composition -- named cast drive-maker, prop-drive via STEP-1 figure card, in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-offering--expr-smug--67d56515.png",
+     "role": "figure",
+     "character": "drive-maker"
+    },
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c, after STEP-1 drive-maker figure cards stamped clean. `drive-maker` STEP-1 fig-drive-maker--action-offering--expr-smug--67d56515 REUSED"
+  },
+  {
+   "shot_id": "L01",
+   "file": "assets/scenes/L01.png",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). no cast — the scene composes from the place"
+  },
+  {
+   "shot_id": "L02",
+   "file": "assets/scenes/L02.png",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
+   "seeds": [
+    {
+     "path": "_staging/L01.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). no cast — the scene composes from the place"
+  },
+  {
+   "shot_id": "L03",
+   "file": "assets/scenes/L03.png",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd), ONE sanctioned content retry",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L02.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": "fidelity FAIL: original gen omitted the load-bearing anomaly fact (an oversized rust-red block shadow beneath the carton) entirely -- no shadow rendered. Surgically rewrote the shadow clause to state the anomaly explicitly (boldly rendered, dramatically oversized, single most eye-catching shape). Verified clean after retry.",
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c. First retry (L03-fresh-retry1) discarded -- contaminated, seeded off a stale pre-wave assets/scenes/L02.png (roller-rink v2-era content) due to a promotion race; second retry (L03-fresh-retry2) generated cleanly after the race was closed. sha256 of shipped frame available on disk."
+  },
+  {
+   "shot_id": "L04",
+   "file": "assets/scenes/L04.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/base/expr-deadpan.png",
+     "role": "expression",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L05",
+   "file": "assets/scenes/L05.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L04.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L06",
+   "file": "assets/scenes/L06.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L05.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 2,
+   "lineage": 2,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L07",
+   "file": "assets/scenes/L07.png",
+   "technique": "(b) Seeded composition -- named cast prop-beige-pc in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+     "role": "prop",
+     "character": "prop-beige-pc"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). no cast — the scene composes from the place"
+  },
+  {
+   "shot_id": "L08",
+   "file": "assets/scenes/L08.png",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
+   "seeds": [
+    {
+     "path": "_staging/L07.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). no cast — the scene composes from the place"
+  },
+  {
+   "shot_id": "L09",
+   "file": "assets/scenes/L09.png",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd), ONE sanctioned content retry -- PARKED",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": true,
+   "review_status": "parked",
+   "parked_reasons": [
+    "rig: HIGH",
+    "Crowd rendered with individuated detailed faces (varied hair colors/styles beyond 2-3 silhouette bound, visible noses, distinct features) instead of the crowd rig (dot eyes, no nose, simple uniform mouth) -- both original gen and the one sanctioned retry (explicit rig-clause reinforcement in prompt) show the same defect. PARKED; mechanism surfaced as shots_json/provider_limitation (dense foreground-scale + emotionally individuating language resists rig collapse), not self-applied."
+   ],
+   "retry_cause": "rig FAIL: dense foreground-scale crowd with 'eager buyers, expectant expressions' individuated far beyond crowd-rig bound. Surgically rewrote the crowd clause to explicitly restate dot-eyes/no-nose/<=3-silhouette rig discipline as an authored fact. Retry landed materially the same defect (still >3 hair colors, still individuated faces) -- retry FAILED.",
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "PARKED after exhausting the one sanctioned retry. suspected_mechanism_layer=shots_json/provider_limitation: this shot's crowd is rendered large/close (near-foreground scale) and described with emotional individuating language ('eager buyers with expectant expressions'), which the engine resists collapsing to the flat crowd rig even when the rig clause is explicitly restated in-prompt -- contrast with L01/L07-08/L16-17 in this same wave, whose crowds stayed distant/small-scale and held rig cleanly. Compositional fix (push crowd smaller/further, or drop the individuating language) is a VPW authoring change, not a forge prompt patch; flagged for human/VPW review, not self-applied. Best-of-two attempt kept (the retry) despite still failing."
+  },
+  {
+   "shot_id": "L10",
+   "file": "assets/scenes/L10.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy, prop-drive in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/base/expr-thinking.png",
+     "role": "expression",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L11",
+   "file": "assets/scenes/L11.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy, prop-drive in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L10.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L12",
+   "file": "assets/scenes/L12.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy, prop-drive in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L11.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 2,
+   "lineage": 2,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L13",
+   "file": "assets/scenes/L13.png",
+   "technique": "(b) Seeded composition -- named cast prop-drive, scene-style-tile in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+  },
+  {
+   "shot_id": "L14",
+   "file": "assets/scenes/L14.png",
+   "technique": "(b) Seeded composition -- named cast prop-drive, scene-style-tile in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L13.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+  },
+  {
+   "shot_id": "L15",
+   "file": "assets/scenes/L15.png",
+   "technique": "(b) Seeded composition -- named cast scene-style-tile in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L14.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 2,
+   "lineage": 2,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+  },
+  {
+   "shot_id": "L16",
+   "file": "assets/scenes/L16.png",
+   "technique": "(b) Seeded composition -- named cast prop-beige-pc, prop-drive in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
+     "role": "prop",
+     "character": "prop-beige-pc"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). no cast — the scene composes from the place"
+  },
+  {
+   "shot_id": "L17",
+   "file": "assets/scenes/L17.png",
+   "technique": "(c) Character-free scene -- cast-free composition (crowd)",
+   "seeds": [
+    {
+     "path": "_staging/L16.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+     "role": "crowd",
+     "character": null
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). no cast — the scene composes from the place"
+  },
+  {
+   "shot_id": "L18",
+   "file": "assets/scenes/L18.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy, rival-pc in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+     "role": "canonical",
+     "character": "rival-pc"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/base/expr-smug.png",
+     "role": "expression",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/base/expr-skeptical.png",
+     "role": "expression",
+     "character": "rival-pc"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L19",
+   "file": "assets/scenes/L19.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy, rival-pc in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L18.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+     "role": "canonical",
+     "character": "rival-pc"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L20",
+   "file": "assets/scenes/L20.png",
+   "technique": "(b) Seeded composition -- named cast pc-boxy, prop-drive, rival-pc in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L19.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
+     "role": "canonical",
+     "character": "pc-boxy"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
+     "role": "canonical",
+     "character": "rival-pc"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+     "role": "prop",
+     "character": "prop-drive"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 2,
+   "lineage": 2,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). `pc-boxy` no_hands -> canonical; `rival-pc` no_hands -> canonical"
+  },
+  {
+   "shot_id": "L23",
+   "file": "assets/scenes/L23.png",
+   "technique": "(b) Seeded composition -- named cast lettering-marker-italic, scene-style-tile in composed environment",
+   "seeds": [
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
+     "role": "environment",
+     "character": "lettering-marker-italic"
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 0,
+   "lineage": 0,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived; STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+  },
+  {
+   "shot_id": "L24",
+   "file": "assets/scenes/L24.png",
+   "technique": "(b) Seeded composition -- named cast scene-style-tile in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L23.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 1,
+   "lineage": 1,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+  },
+  {
+   "shot_id": "L25",
+   "file": "assets/scenes/L25.png",
+   "technique": "(b) Seeded composition -- named cast scene-style-tile in composed environment",
+   "seeds": [
+    {
+     "path": "_staging/L24.png",
+     "role": "parent",
+     "character": null
+    },
+    {
+     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
+     "role": "style-anchor",
+     "character": "scene-style-tile"
+    }
+   ],
+   "flagged": false,
+   "review_status": "verified",
+   "parked_reasons": [],
+   "retry_cause": null,
+   "parent_depth": 2,
+   "lineage": 2,
+   "notes": "fresh-gen wave 2026-08-19: regenerated under shots.json c094d26c (FULL clean VPW re-run). STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature)"
+  },
+  {
    "shot_id": "L26",
    "file": "assets/scenes/L26.png",
    "technique": "(c) Character-free scene — place plate root, zero-seed under bible descriptor + style suffix",
@@ -732,626 +1395,6 @@
    "parent_depth": 0,
    "lineage": 0,
    "notes": "WARM-NEUTRALS DOCTRINE REMINT (2026-08-18, commit 33676421) -- regenerated against the current style-bible (S2b warm-tinted neutrals, S5 fore/mid/background depth read) seeding the reminted scene-style-tile + lettering-marker-italic; warm-retry (defect: content, exact-replace on the palette/light span, changed_spans: 1) -- first attempt read grey-teal (measured R-B -1.4), retry corrected to warm (measured R-B +40.2); lettering ink verified by Pillow colour-distance sampling against locked #241a12 (302px match, 0px near the red #d7402b accent -- an initial by-eye misread of the small preview was retracted by measurement); promoted from _staging/L86-warmretry.png (sha256 2a2b1bd9ab81823821db75a197bf984264d24464d4b1d485985dcf4c8bf73333, verified match on copy: True); old pixels archived at scratchpad/plate-regen/old/L86.png; fresh-eyes doctrine review in scratchpad/plate-regen/progress.md."
-  },
-  {
-   "shot_id": "L01",
-   "file": "assets/scenes/L01.png",
-   "technique": "(b) Seeded composition -- locked character(s) in composed environment",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-     "role": "canonical",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
-     "role": "expression",
-     "character": "pc-boxy"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). `pc-boxy` canonical + `expr-delighted` seeded directly, no pose primitive. Round-1 clean, no retry needed. sha256=de3bff31d5630813a98a06dd74cd1476a895d676ef0573693f7f93ff948e526f."
-  },
-  {
-   "shot_id": "L02",
-   "file": "assets/scenes/L02.png",
-   "technique": "(c) Character-free scene -- cast-free composition (crowd) -- v2 doctrine regen",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json."
-  },
-  {
-   "shot_id": "L06",
-   "file": "assets/scenes/L06.png",
-   "technique": "(b) Seeded composition -- locked prop in composed environment (crowd) -- v2 doctrine regen",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
-     "role": "prop",
-     "character": "prop-beige-pc"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json."
-  },
-  {
-   "shot_id": "L09",
-   "file": "assets/scenes/L09.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": "r1 defect (fidelity: unrequested 'CLOSED' sign on the shutter, not authored anywhere in still_prompt) fixed by exact replace -- from: \"midground a shuttered shop door at the near end with a dense line of grinning figures\" -> to: \"midground a bare unlettered shuttered shop door, no sign, no text, no lettering anywhere on the shutter, at the near end with a dense line of grinning figures\" (changed_spans: 1)",
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). RETRY overlay `L09-fix-w2` (forge-retry-overlay@2, defect: content); promoted from _staging/L09-fix-w2.png to canonical assets/scenes/L09.png. sha256=a22a148da86d8aaf6a127182f738d0c59bb0fd015cce5670a7512f83af106452."
-  },
-  {
-   "shot_id": "L18",
-   "file": "assets/scenes/L18.png",
-   "technique": "(d) One-shot single-character",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979.png",
-     "role": "figure",
-     "character": "drive-maker"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "`drive-maker` STEP-1 fig-drive-maker--carry-by-handle--expr-deadpan--3cdb4979 REUSED",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L19",
-   "file": "assets/scenes/L19.png",
-   "technique": "(d) One-shot single-character",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--hold-both-hands--expr-greedy--14b7da15.png",
-     "role": "figure",
-     "character": "drive-maker"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "`drive-maker` STEP-1 fig-drive-maker--hold-both-hands--expr-greedy--14b7da15 REUSED",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L20",
-   "file": "assets/scenes/L20.png",
-   "technique": "(b) Seeded composition -- locked character(s) in composed environment (crowd) [supply-stall stage BASE] -- v2 doctrine regen, STEP-1 figure re-minted (costume-digest change)",
-   "seeds": [
-    {
-     "path": "_staging/fig-drive-maker--action-present--expr-smug--eedf2a89.png",
-     "role": "figure",
-     "character": "drive-maker"
-    },
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L21",
-   "file": "assets/scenes/L21.png",
-   "technique": "(e) Seeded delta-chain -- supply-stall delta -- v2 doctrine regen, parent is the FRESH same-wave L20 (discarded a stale-parent-contaminated first attempt)",
-   "seeds": [
-    {
-     "path": "_staging/L20.png",
-     "role": "parent",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/drive-maker/drive-maker.png",
-     "role": "canonical",
-     "character": "drive-maker"
-    },
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L23",
-   "file": "assets/scenes/L23.png",
-   "technique": "(e) Seeded delta-chain — packing-bay base",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--action-shrug--expr-deadpan--7be06d45.png",
-     "role": "figure",
-     "character": "brick-foreman"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "`brick-foreman` STEP-1 fig-brick-foreman--action-shrug--expr-deadpan--7be06d45 REUSED",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L24",
-   "file": "assets/scenes/L24.png",
-   "technique": "(e) Seeded delta-chain — packing-bay delta",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L23.png",
-     "role": "parent",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
-     "role": "canonical",
-     "character": "brick-foreman"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "`brick-foreman` delta -> parent + canonical",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L25",
-   "file": "assets/scenes/L25.png",
-   "technique": "(e) Seeded delta-chain — packing-bay delta (lettering)",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L24.png",
-     "role": "parent",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/brick-foreman/brick-foreman.png",
-     "role": "canonical",
-     "character": "brick-foreman"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-     "role": "environment",
-     "character": "lettering-marker-italic"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "`brick-foreman` delta -> parent + canonical; LETTERING — text-bearing prompt; §5 exemplar `lettering-marker-italic` derived",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L10",
-   "file": "assets/scenes/L10.png",
-   "technique": "(d) One-shot single-character — pc-boxy at desk with prop-drive",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-     "role": "canonical",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/base/expr-talking.png",
-     "role": "expression",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
-     "role": "prop",
-     "character": "prop-drive"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "why: `pc-boxy` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L10.png",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L11",
-   "file": "assets/scenes/L11.png",
-   "technique": "(b) Seeded composition -- locked character in composed environment [bedside-table stage BASE] -- v2 doctrine regen",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-     "role": "canonical",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/base/expr-delighted.png",
-     "role": "expression",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
-     "role": "prop",
-     "character": "prop-drive"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L12",
-   "file": "assets/scenes/L12.png",
-   "technique": "(e) Seeded delta-chain — in-chain parent + held canonical [bedside-table stage DELTA]",
-   "seeds": [
-    {
-     "path": "_staging/L11.png",
-     "role": "parent",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-     "role": "canonical",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
-     "role": "prop",
-     "character": "prop-drive"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "why: `pc-boxy` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L12.png",
-   "parent_depth": 1,
-   "lineage": 1
-  },
-  {
-   "shot_id": "L13",
-   "file": "assets/scenes/L13.png",
-   "technique": "(c) Character-free scene — cast-free composition, prop-drive blown up, scene-style-tile seeded",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
-     "role": "prop",
-     "character": "prop-drive"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
-     "role": "style-anchor",
-     "character": "scene-style-tile"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "why: STYLE TILE — cast-free frame; §5 anchor `scene-style-tile` derived (line register + palette + temperature); worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L13.png",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L14",
-   "file": "assets/scenes/L14.png",
-   "technique": "(b) Seeded composition — locked character in composed environment (standalone base, re-authored no-grip action)",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-     "role": "canonical",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/base/expr-caught.png",
-     "role": "expression",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
-     "role": "prop",
-     "character": "prop-drive"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "why: `pc-boxy` no_hands -> canonical; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L14.png",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L15",
-   "file": "assets/scenes/L15.png",
-   "technique": "(c) Character-free scene — crowd-bearing composition (no cast, crowd exemplar + props)",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
-     "role": "prop",
-     "character": "prop-beige-pc"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
-     "role": "prop",
-     "character": "prop-drive"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "why: no cast — the scene composes from the place; worker B regen 2026-08-18 doctrine re-author (2026-08-18 doctrine; wB-batch-spec.json); staged -> placed assets/scenes/L15.png",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L03",
-   "file": "assets/scenes/L03.png",
-   "technique": "(c) Character-free scene -- cast-free composition (crowd) -- v2 doctrine regen, ONE sanctioned content retry",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": "rig FAIL: bald near-foreground crowd heads drew a `C`-shaped ear mark + nose bump at extreme close crop (bible S3 no-nose/no-ears); surgically rewrote the 'foreground a cropped band of near heads...' clause to state flat/featureless cheeks explicitly at that crop scale. Verified clean after retry (ear/nose gone, 4-digit hands confirmed).",
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame; ONE sanctioned content retry applied and verified clean."
-  },
-  {
-   "shot_id": "L04",
-   "file": "assets/scenes/L04.png",
-   "technique": "(c) Character-free scene -- cast-free composition (lettering + style tile) -- v2 doctrine regen",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/lettering-marker-italic.png",
-     "role": "environment",
-     "character": "lettering-marker-italic"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/scene-style-tile.png",
-     "role": "style-anchor",
-     "character": "scene-style-tile"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json."
-  },
-  {
-   "shot_id": "L05",
-   "file": "assets/scenes/L05.png",
-   "technique": "(b) Seeded composition -- locked character(s) in composed environment",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-     "role": "canonical",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/base/expr-surprised.png",
-     "role": "expression",
-     "character": "pc-boxy"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). `pc-boxy` canonical + `expr-surprised` seeded directly. Round-1 clean, no retry needed. sha256=a7ddce096386fa8e891456e2ecf577d21c44cb6887476a82f4045d13d906c2b1."
-  },
-  {
-   "shot_id": "L07",
-   "file": "assets/scenes/L07.png",
-   "technique": "(b) Seeded composition -- locked prop in composed environment (crowd) -- v2 doctrine regen, ONE sanctioned content retry",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
-     "role": "prop",
-     "character": "prop-beige-pc"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": "fidelity+rig FAIL: crowd rendered at near-named-cast scale filling both frame flanks (violated 'clearly smaller crowd... at the far side') with individuated angry brows/open-shout mouths per figure (violated crowd-rig uniform-simple-face invariant); surgically rewrote the 'background at the far side of those tables...' clause with explicit relative-scale anchor (roughly a third the counter unit's height, packed into one tight distant knot, never spreading to the side edges) and explicit uniform-face restatement, dropping the mood adjective that was driving individuated expressions. Verified clean after retry.",
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame; ONE sanctioned content retry applied and verified clean."
-  },
-  {
-   "shot_id": "L08",
-   "file": "assets/scenes/L08.png",
-   "technique": "(c) Character-free scene -- cast-free composition",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/env/prop-beige-pc.png",
-     "role": "prop",
-     "character": "prop-beige-pc"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "parent_depth": 0,
-   "lineage": 0,
-   "notes": "Regen under 2026-08-18 Act-1 re-author (worker A, wave 2). `prop-beige-pc` match-prop canonical + crowd-exemplar seeded (four flying units, matching the shot's established design). Round-1 clean, no retry needed. sha256=be7c05dc2f606933874cf81b03d1c96104e3e90fbd1072379e1cdf51cd19c201."
-  },
-  {
-   "shot_id": "L22",
-   "file": "assets/scenes/L22.png",
-   "technique": "(d) One-shot single-character",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/_staging/fig-brick-foreman--back-to-viewer--4ff569f7.png",
-     "role": "figure",
-     "character": "brick-foreman"
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "`brick-foreman` STEP-1 fig-brick-foreman--back-to-viewer--4ff569f7 REUSED",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L16",
-   "file": "assets/scenes/L16.png",
-   "technique": "(b) Seeded composition -- locked characters in composed environment [pc-ring stage BASE] -- v2 doctrine regen",
-   "seeds": [
-    {
-     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-     "role": "canonical",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
-     "role": "canonical",
-     "character": "rival-pc"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/base/expr-annoyed.png",
-     "role": "expression",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
-   "parent_depth": 0,
-   "lineage": 0
-  },
-  {
-   "shot_id": "L17",
-   "file": "assets/scenes/L17.png",
-   "technique": "(e) Seeded delta-chain -- in-chain parent + held canonicals [pc-ring stage DELTA] -- v2 doctrine regen, parent is the FRESH same-wave L16",
-   "seeds": [
-    {
-     "path": "_staging/L16.png",
-     "role": "parent",
-     "character": null
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/pc-boxy/pc-boxy.png",
-     "role": "canonical",
-     "character": "pc-boxy"
-    },
-    {
-     "path": "channels/the-second-take/visual-kit/refs/rival-pc/rival-pc.png",
-     "role": "canonical",
-     "character": "rival-pc"
-    },
-    {
-     "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
-     "role": "crowd",
-     "character": null
-    }
-   ],
-   "flagged": false,
-   "review_status": "verified",
-   "parked_reasons": [],
-   "retry_cause": null,
-   "notes": "scene-regen-w3 2026-08-19: superseded pre-doctrine (f8aa5e52) frame under the freshly re-authored shots.json.",
-   "parent_depth": 1,
-   "lineage": 1
   }
  ]
 }

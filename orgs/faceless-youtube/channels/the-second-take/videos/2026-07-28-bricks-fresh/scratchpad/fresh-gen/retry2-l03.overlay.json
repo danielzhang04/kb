@@ -1,0 +1,16 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L03",
+      "name": "L03-fresh-retry2",
+      "defect": "content",
+      "replace": {
+        "from": "but the rust-red block shadow beneath it is far too heavy and square for the compact package",
+        "to": "but beneath it sits an unmistakable, boldly rendered solid rust-red (#d7402b) square block shadow \u2014 dramatically oversized, several times larger and heavier than the small cream carton casting it, the single most eye-catching shape on the kiosk"
+      }
+    }
+  ]
+}

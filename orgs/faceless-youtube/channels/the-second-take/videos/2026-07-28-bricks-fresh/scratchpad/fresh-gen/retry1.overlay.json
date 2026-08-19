@@ -1,0 +1,26 @@
+{
+  "schema": "faceless-youtube/forge-retry-overlay@2",
+  "video_slug": "2026-07-28-bricks-fresh",
+  "entries": [
+    {
+      "kind": "scene",
+      "shot": "L03",
+      "name": "L03-fresh-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "but the rust-red block shadow beneath it is far too heavy and square for the compact package",
+        "to": "but beneath it sits an unmistakable, boldly rendered solid rust-red (#d7402b) square block shadow — dramatically oversized, several times larger and heavier than the small cream carton casting it, the single most eye-catching shape on the kiosk"
+      }
+    },
+    {
+      "kind": "scene",
+      "shot": "L09",
+      "name": "L09-fresh-retry1",
+      "defect": "content",
+      "replace": {
+        "from": "Eager buyers with expectant expressions pack the ramp",
+        "to": "Eager buyers — every single one drawn on the identical simplified flat crowd rig: dot eyes only, no nose, no ears, one simple mouth, at most three repeating hair silhouettes and at most three repeating flat head tones for the whole mass, never an individually detailed or realistic face — pack the ramp"
+      }
+    }
+  ]
+}

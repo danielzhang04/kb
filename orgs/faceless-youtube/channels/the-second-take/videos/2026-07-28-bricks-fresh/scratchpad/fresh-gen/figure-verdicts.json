@@ -1,0 +1,26 @@
+{
+  "figures": {
+    "_staging/fig-drive-maker--hold-both-hands--expr-smug--a53aa722.png": {
+      "canonical_sha256": "65e41d511d666cb9f55a6caf4e539ea9a1bcbd5fc9a71b6be45b118418a04c14",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "fidelity": "pass",
+        "style": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-19"
+    },
+    "_staging/fig-drive-maker--action-offering--expr-smug--67d56515.png": {
+      "canonical_sha256": "08c4aa3aa6bfdabc2a06fcea440f29aebdebe421505f026379a3e0175170809c",
+      "expression_sha256": null,
+      "verdicts": {
+        "rig": "pass",
+        "fidelity": "pass",
+        "style": "pass"
+      },
+      "reviewer": "fresh-eyes",
+      "date": "2026-08-19"
+    }
+  }
+}

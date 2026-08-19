@@ -1,330 +1,203 @@
 [
- {
-  "id": "L28",
-  "worst": "clean",
-  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L29",
-  "worst": "clean",
-  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L33",
-  "worst": "clean",
-  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L38",
-  "worst": "clean",
-  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L44",
-  "worst": "clean",
-  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L46",
-  "worst": "clean",
-  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L169",
-  "worst": "clean",
-  "why": "G4 slice: two disjoint sonnet verifiers (A rig/identity/pose, B style/palette/composition/place-continuity), merged any-fail-fails; all axes pass",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L34",
-  "worst": "HIGH",
-  "why": "delta_discipline: canonical-expression leak PERSISTS on `miniscribe-rep` after P9 - on a beat whose prose authors NO expression change (\"everything else exactly as established\"), his eyes went from closed happy-squint to wide open with pupils and his mouth from open grin to small closed smile; `ibm-suit` resolved the identical spec correctly. Measured vs the verified parent L33: miniscribe-rep face interior 43.70% changed, ibm-suit head 10.21%, place regions 3.28-3.82%, authored roller-door delta 50.67%. P9 DID fix the hair half of the 6c2 leak (hair core 37.58% -> 6.51%) but not the expression half (face interior 29.79% -> 43.70%). Candidate frame left at visual-kit/_staging/L34.png, NOT promoted. Not re-rolled: the 6c2 record's standing diagnosis is that place, ibm-suit and the authored delta are all correct and a fresh roll risks all three to fix one face, and P9's seed-role expression-authority prose is already present in the assembled prompt, so the gap is spec-side, not a generator lottery."
- },
- {
-  "id": "L39",
-  "worst": "HIGH",
-  "why": "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--hold-both-hands--expr-greedy--b1cd8a27` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
- },
- {
-  "id": "L48",
-  "worst": "HIGH",
-  "why": "NOT GENERATED in the G4 slice - forge held it at gen time because its STEP-1 card `fig-miniscribe-rep--action-slump--expr-worried--def769f5` is PARKED on pose (the card came back in the canonical's default upright stance; one sanctioned P10 `defect: pose` retry with an explicit corrective posture instruction did not move the body, and a fresh verifier pair confirmed the second fail). Mechanism: the 9a re-author stripped the ACT WORDS out of this shot's figure sentence, so `beat_clause` carried no act text into the card payload and the pose reference alone did not transfer the posture - see task-9c-report.md. This row previously carried a STALE 6c2-era status against a frame that does not exist in this checkout; re-stamped honestly by the G4 run."
- },
- {
-  "id": "L84",
-  "worst": "clean",
-  "why": "W24 boss adjudication 2026-08-14: chair count is non-story-bearing set dressing; the authored numeral was dropped. All other authored place elements pass w23-A; no_figures and lettering pass w23-A; composition/register axes pass w23-B.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L114",
-  "worst": "clean",
-  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L198",
-  "worst": "clean",
-  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L65",
-  "worst": "clean",
-  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L112",
-  "worst": "clean",
-  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421): identity/rig n/a (cast-free); fidelity matches every authored place fact (furniture, lettering verbatim, foreground depth prop); style/taste clean -- committed warm-biased 2-3 colour palette, fore/mid/background depth read, no grey-teal drift (Pillow R-B measurement confirms warm bias). See scratchpad/plate-regen/progress.md.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L86",
-  "worst": "clean",
-  "why": "Fresh-eyes doctrine review 2026-08-18 (warm-neutrals remint, commit 33676421), after one sanctioned retry: identity/rig n/a (cast-free); fidelity matches every authored place fact (racking, pallets, lane paint, roof lights, MINISCRIBE lettering verbatim in locked ink -- confirmed by Pillow colour-distance sampling, not by eye); style/taste clean -- warm-biased palette (measured R-B +40.2, up from -1.4 pre-retry), fore/mid/background depth read, no grey-teal drift on the dominant surfaces. See scratchpad/plate-regen/progress.md.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L10",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Fresh-eyes review (2026-08-18 doctrine regen, staged frame): pc-boxy expr-talking on-model, both stub arms handless (one holding panel open, one at drive bay), prop-drive seated+lit in bay with red accent stud, mug foreground/keyboard midground/coiled cable+lamp background per prompt, cream-teal-umber palette, warm raking lamp light. Line register even throughout. Clean on all 3 axes."
- },
- {
-  "id": "L12",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Fresh-eyes review (2026-08-18 doctrine regen, staged frame): delta on L11 parent \u2014 held set (bed/curtains/nightstand/lamp) preserved pixel-consistent, lamp now reads as dark unlit silhouette in the same position, room gone deep blue, drive alone keeps its warm amber glow (glow visibly lighting pc-boxy's hands/face). Chain continuity holds. Clean on all 3 axes."
- },
- {
-  "id": "L13",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Fresh-eyes review (2026-08-18 doctrine regen, staged frame): character-free prop-drive scale-up (style-tile seeded), all 3 named drawer contents present (buff folders upright, biscuit tin of photos, leaning cassette stack), low three-quarter up-angle towers the cabinet past frame top, rug foreground cropped, cream-buff-teal palette, even frontal light. No stray text/character. Clean on all 3 axes."
- },
- {
-  "id": "L14",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Fresh-eyes review (2026-08-18 doctrine regen, staged frame): today's re-authored action (both stub arms flat-pressing the second drawer to close it, no grip verb) rendered correctly \u2014 both arms end in rounded stubs, no fingers (the twice-parked prior defect on the OLD 'shoving' authoring is gone under the re-authored verb). pc-boxy expr-caught matches the beat, drawer content still peeking mid-close (folders/photo) which is what makes the 'caught' gag legible, cabinet cream-buff-maroon palette and towering low-angle vantage match L13's established look. Clean on all 3 axes."
- },
- {
-  "id": "L15",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Fresh-eyes review (2026-08-18 doctrine regen, staged frame): crowd-exemplar-seeded showroom crowd now reads on the squat crowd-rig proportion (large round heads vs visible short torsos, matching the exemplar), simplified dot-eye/one-mouth faces throughout, no individuated hood/headwear silhouette anywhere in the group (the prior parked defect is gone) \u2014 hair/headwear bounded to a small repeating set. 8 prop-beige-pc units in the receding double row each seated with one prop-drive, near-plinth corner cropped foreground per prompt, chrome barrier + cheerful crowd at the aisle end, cream-teal-umber palette, flat ceiling light. Clean on all 3 axes."
- },
- {
-  "id": "L01",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Regen under 2026-08-18 re-authored prompt (worker A). pc-boxy expr-delighted correctly planted centre on the walnut table, arms out; lava lamp stage-left, boombox stage-right, blank picture-rail wall, mustard shag + cropped couch-arm foreground all present; red accent on power stud. Rig/identity match pc-boxy canonical. Vantage reads closer to eye-level than the authored 'enthroned from shag level' but camera framing/vantage is an explicitly exempted axis (bible \u00a73 'never checked' list) -- not a fidelity fail."
- },
- {
-  "id": "L05",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Regen under 2026-08-18 re-authored prompt (worker A). pc-boxy expr-surprised (wide eyes, open mouth) sits in the straw-packed crate, stubby arms over the rim, red tape strip on the crate front; steel shelving stage-left, leaning carton stack stage-right, bare bulb pooling light straight down all present. Identity/rig matches pc-boxy canonical."
- },
- {
-  "id": "L08",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "Regen under 2026-08-18 re-authored prompt (worker A). Four prop-beige-pc units sailing overhead trailing polystyrene chunks (the payload) over a ducking, wide-eyed crowd; one shelf swept bare, wire basket tipped on the floor. Crowd rig holds within tone/hair bound. End-cap crop landed lower-left rather than the authored lower-right -- camera framing/composition is an explicitly exempted axis (bible \u00a73), not flagged; every load-bearing fact (units flying, bare shelf, tipped basket, ducking crowd) is present."
- },
- {
-  "id": "L09",
-  "f": "clean",
-  "s": "clean",
-  "r": "clean",
-  "worst": "clean",
-  "why": "RETRY-1 landed clean: round-1 rendered an unrequested 'CLOSED' sign on the shutter door (not authored anywhere in still_prompt); retry made the shutter explicitly bare/unlettered and it now renders as plain metal, no text. Queue of hooded grinning figures in bulky coats on stools/sleeping bags, sodium lamp amber pool, cropped rubbish bin, night-blue palette all correct."
- },
- {
-  "id": "L18",
-  "worst": "clean",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean",
-  "why": "wC fresh-eyes: fresh regen post drive-maker remint (retry #1 fixed pose: carry-by-handle now shows correct bent-arm gripping stance on the hand truck handle, replacing the first attempt's arms-at-sides failure). Rig/costume/expression clean, composition matches still_prompt (bollard, breeze-block wall, half-down shutter, pallet stack, warm bulb)."
- },
- {
-  "id": "L19",
-  "worst": "clean",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean",
-  "why": "wC fresh-eyes: fresh regen post drive-maker remint (retry #1 fixed pose: hold-both-hands now shows both arms bent forward gripping the rake shaft, replacing the first attempt's arms-at-sides failure). Greedy expression reads correctly. Minor non-blocking note: camera vantage reads closer to eye-level/three-quarter than the authored 'seen from above' bird's-eye, but all load-bearing facts (rake, money drift, bay) are present and the read is unchanged."
- },
- {
-  "id": "L22",
-  "worst": "clean",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean",
-  "why": "wC fresh-eyes: blocker cleared \u2014 fig-brick-foreman--back-to-viewer re-minted clean post brick-foreman remint, first-attempt PASS (no retry needed). Composition matches (receding shutter row, one lit bay, kerb puddle, low grey sky)."
- },
- {
-  "id": "L23",
-  "worst": "clean",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean",
-  "why": "wC fresh-eyes: packing-bay chain BASE, fresh regen post brick-foreman remint, fig-brick-foreman--action-shrug--expr-deadpan first-attempt PASS. Shrug pose, deadpan expression, cream-shirt/tie costume all correct; trestle+wall establish the held set for L24/L25."
- },
- {
-  "id": "L24",
-  "worst": "clean",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean",
-  "why": "wC fresh-eyes: packing-bay delta, re-seeded off the CORRECTED fresh L23 (the first attempt this run had accidentally chained off a stale pre-remint L23 and was discarded/regenerated). Held wall/bracket/trestle continuity correct; brick with visible frog-hollow, chest-height, second carton stage-right per changed_elements."
- },
- {
-  "id": "L25",
-  "worst": "clean",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean",
-  "why": "wC fresh-eyes: packing-bay delta, re-seeded off the CORRECTED fresh L24. DSG-lite: 'HARD DRIVE' stencil transcribed letter-by-letter, correct spelling, marker-hand style, legible \u2014 PASS. Minor non-blocking note: box reads with flaps up/open rather than visibly taped shut while the brick is still being lowered into it, an inherent tension in the authored delta (same held pose + 'taped shut' in one beat); the load-bearing label fact is unambiguous and correct.",
-  "dsg": [
-   {
-    "id": "d1",
-    "parent": "carton label",
-    "q": "does the carton read exactly 'HARD DRIVE'?",
-    "verdict": "pass",
-    "note": "H-A-R-D DRIVE, correct spelling, legible marker-hand lettering"
-   }
-  ]
- },
- {
-  "id": "L02",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3): cast-free crowd-only shot, identity/rig n/a for named cast. Crop-checked crowd faces (30-62% width band): dot eyes, uniform simple smile, NO nose/ear marks, bounded 2-3 hair silhouettes + head tones, squat crowd proportion matches exemplar. Fidelity matches every still_prompt fact (chrome rail, chequer floor, ticket-booth corner, benches/tables/skate racks, blonde tower dead-centre breaking ceiling line). Style: warm cream-coral-honey palette (vs prior wave's saturated pink/teal), genuine negative-space floor foreground, crowd reads clearly smaller behind bench/table geometry -- the targeted v2 scale-staging fix visibly landed (compared against old/L02.png).",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L04",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3): character-free plate, no crowd. DSG: '1983' chalk-board text transcribed letter-by-letter, matches still_prompt verbatim, legible marker hand. Fidelity: half-raised shutter, golden-oak shelving with beige computer cartons, striped awning, parked hatchback stage-right, wet paving reflections all present. Style: warm oak/cream/amber shop interior against a genuinely cool dawn sky/street -- correct 'motivated cool = light only' application (exterior daylight cools, interior stays warm). Line register even, flat cel throughout.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L06",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3): cast-free, prop-beige-pc on plinth seeded correctly (design matches canonical). Crowd queue reads distinctly small and receding behind real street geometry (bike racks, lamp post, plate window) -- textbook v2 scale-staging fix, compared favorably to the doctrine target. Palette warm cream-amber display light, cool daylight correctly confined to the exterior street only. No text.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L11",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3): single-character bedside shot, pc-boxy identity/expr-delighted/prop-drive all seeded correctly and match canonicals -- no_hands rig honored (stubby wrap-arms, no fingers drawn). Fidelity: drive hugged like a locket, screen dark, amber lamp pool lands only on the hugged drive, rest of room in deep blue night -- matches still_prompt exactly. Palette: warm walnut/honey/cream interior vs correctly motivated cool night through the window -- clean light-only cool application. No crowd, no text.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L16",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3): pc-ring stage BASE. pc-boxy + rival-pc both identity-match their canonicals (rival-pc's narrower/taller slate-grey silhouette with stacked vents distinct and consistent), expr-annoyed shape correctly applied to pc-boxy only. Crowd reads clearly smaller than the two named machines, banked ringside tiers correctly recede; crowd faces carry more expressive open-mouth/brow rendering than the minimal \u00a73 vocabulary states, but uniformly across the whole group (no individuated figure) and consistent with this stage's own prior-verified baseline (compared old/L16.png) -- judged a non-blocking style note, not a rig fail. Umber-cream-teal palette matches; single hard overhead ring light is the only cool-adjacent element and it's a motivated light source. Count = 2 named + crowd, correct.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L17",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3): pc-ring stage DELTA, seeded off the FRESH same-wave L16 frame (confirmed by mtime, not the pre-doctrine stale staging copy). Held set inherited correctly -- same ring, ropes, banked tiers, crowd, lighting, palette as the new L16. Only the authored change landed: the two machines now locked in a straining front-panel-to-front-panel shoving scrum at centre canvas, stubby arms/legs braced wide, same matching eye-line and relative head scale preserved. No new defects introduced beyond the L16-inherited crowd expressiveness note (see L16).",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L20",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3): supply-stall BASE, regenerated a second time after the STEP-1 figure fig-drive-maker--action-present--expr-smug--eedf2a89 was reviewed+stamped (first attempt was correctly HELD by forge's C-6 gate pending that record). drive-maker identity/costume/pose/expression match the approved STEP-1 card exactly. Crowd of prospectors reads clearly smaller and receding behind real creek/reed/tent geometry -- the v2 scale-staging fix is present. Ochre/warm-brown/canvas-cream/worn-green palette under hard high sun, no unmotivated cool. Held pick+shovel dominate the near plane per the still_prompt's stated compositional intent.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L21",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3): supply-stall DELTA, regenerated after the parent L20 landed fresh in this same wave (the first live L21 had accidentally seeded a STALE pre-doctrine L20 staging file while the live L20 request was held for figure review -- discarded, never reviewed/promoted, regenerated clean off the correct fresh parent, confirmed by mtime). Held set (stall, counter, tool rack, water butt, creek, crowd, palette) inherited pixel-identical from the new L20. Only the authored change landed: an open iron money box packed with coin now sits on the counter at drive-maker's elbow; everything else exactly as established.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L03",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3), post-retry: ONE sanctioned content retry applied after the first attempt showed a rig FAIL -- bald near-foreground crowd heads (bottom-edge crop) carried a drawn C-shaped ear mark and a small nose bump, visible on crop-check. Retry surgically restated the foreground-band clause to force flat/featureless cheeks at that crop scale; re-crop-checked the retry frame at 2x and 5x zoom -- ear/nose gone, dot eyes + simple mouth only, 4-digit hands confirmed (thumb + 3 fingers) on the raised near hands. Fidelity: cropped near-heads band, receding banquet tables shrinking correctly with distance, velvet rope + honey-gold curtain, blank unlettered display board + empty lectern all present exactly as authored. Palette: honey-gold/cream/muted-burgundy, warm chestnut shadow, no unmotivated cool.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- },
- {
-  "id": "L07",
-  "worst": "clean",
-  "why": "Fresh-eyes v2-doctrine review 2026-08-19 (scene-regen-w3), post-retry: ONE sanctioned content retry applied after the first attempt showed a compound FAIL -- crowd rendered at near-named-cast scale filling both frame flanks (violating the still_prompt's 'clearly smaller crowd... at the far side of those tables') with individuated angry brows and open-shout mouths per figure (violating the crowd-rig uniform-simple-face invariant). Retry surgically restated the background clause with an explicit relative-scale anchor and explicit uniform-face restatement, dropping the mood adjective that was driving per-figure expressiveness while keeping the load-bearing money/boxes fact intact. Re-crop-checked the retry frame: crowd now reads distinctly smaller/farther, faces uniform (dot eyes, closed/small-open mouth, no brows), bounded head-tone variety. prop-beige-pc canonical match preserved in the near plane throughout.",
-  "r": "clean",
-  "f": "clean",
-  "s": "clean"
- }
+  {
+    "id": "L01",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L02",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L04",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L05",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L06",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L07",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L08",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L10",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L11",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L12",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L13",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L14",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L15",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L16",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L17",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L18",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L19",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L20",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L21",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L22",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L23",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L24",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L25",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L03",
+    "f": "clean",
+    "s": "clean",
+    "r": "clean",
+    "worst": "clean",
+    "why": "fresh-eyes pass: scale-staging/air/warm-balance on axis with taste ground truth; crowd/named-cast rig holds; load-bearing facts present."
+  },
+  {
+    "id": "L09",
+    "f": "clean",
+    "s": "clean",
+    "r": "HIGH",
+    "worst": "HIGH",
+    "why": "Crowd rendered with individuated detailed faces (varied hair colors/styles beyond 2-3 silhouette bound, visible noses, distinct features) instead of the crowd rig (dot eyes, no nose, simple uniform mouth) -- both original gen and the one sanctioned retry (explicit rig-clause reinforcement in prompt) show the same defect. PARKED; mechanism surfaced as shots_json/provider_limitation (dense foreground-scale + emotionally individuating language resists rig collapse), not self-applied.",
+    "dsg": []
+  }
 ]

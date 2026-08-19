@@ -1,0 +1,44 @@
+[
+  {
+    "name": "L03-fresh-retry2",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is the in-chain parent scene \u2014 preserve its held set and existing composition, and take each held figure's STANCE and EXPRESSION (eye/brow/mouth) from its pixels \u2014 shape and register both \u2014 unless this request also seeds a pose or expression reference for that figure; a held face is inherited here, never re-invented and never re-read off the canonical. The SECOND image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself.\n\nThe skylit mall keeps its curved concourse, sunken planter, oak kiosks, balcony rails, and buoyant shoppers across both levels. One blank cream computer carton now occupies the near kiosk, but beneath it sits an unmistakable, boldly rendered solid rust-red (#d7402b) square block shadow \u2014 dramatically oversized, several times larger and heavier than the small cream carton casting it, the single most eye-catching shape on the kiosk; only this changes; everything else exactly as established.",
+    "payload": "The skylit mall keeps its curved concourse, sunken planter, oak kiosks, balcony rails, and buoyant shoppers across both levels. One blank cream computer carton now occupies the near kiosk, but beneath it sits an unmistakable, boldly rendered solid rust-red (#d7402b) square block shadow \u2014 dramatically oversized, several times larger and heavier than the small cream carton casting it, the single most eye-catching shape on the kiosk; only this changes; everything else exactly as established.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; any in-world lettering hand-lettered in the marker style, short and legible; warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L02.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/scenes/L02.png",
+        "role": "parent",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "delta",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 1,
+    "lineage": 1,
+    "why": "no cast \u2014 the scene composes from the place; RETRY overlay from `L03`",
+    "retry_authority": {
+      "kind": "replace",
+      "changed_spans": 1,
+      "from": "but the rust-red block shadow beneath it is far too heavy and square for the compact package",
+      "to": "but beneath it sits an unmistakable, boldly rendered solid rust-red (#d7402b) square block shadow \u2014 dramatically oversized, several times larger and heavier than the small cream carton casting it, the single most eye-catching shape on the kiosk"
+    }
+  }
+]

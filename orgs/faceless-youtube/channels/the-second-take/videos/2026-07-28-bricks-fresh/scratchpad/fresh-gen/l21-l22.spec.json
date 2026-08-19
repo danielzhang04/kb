@@ -1,0 +1,78 @@
+[
+  {
+    "name": "L21",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set. The SECOND image is the `prop-drive` prop canonical \u2014 preserve that object's design.\n\n`drive-maker`, `hold-both-hands`, `expr-smug`, stands beneath the hoist beam on a loading-ramp landing, carrying one `prop-drive` level at chest height and turning three-quarter toward the dock. Timber posts rise past him to clerestory windows and a tall freight door, while the ramp rail stays below his shoulders and restrained coin stacks collect on the dock scale; cream, brown, rust, and muted teal hold under amber lamps.",
+    "payload": "`drive-maker`, `hold-both-hands`, `expr-smug`, stands beneath the hoist beam on a loading-ramp landing, carrying one `prop-drive` level at chest height and turning three-quarter toward the dock. Timber posts rise past him to clerestory windows and a tall freight door, while the ramp rail stays below his shoulders and restrained coin stacks collect on the dock scale; cream, brown, rust, and muted teal hold under amber lamps.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; any in-world lettering hand-lettered in the marker style, short and legible; warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-drive-maker--hold-both-hands--expr-smug--a53aa722.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--hold-both-hands--expr-smug--a53aa722.png",
+        "role": "figure",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "figures": null,
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--hold-both-hands--expr-smug--a53aa722 REUSED"
+  },
+  {
+    "name": "L22",
+    "mode": "environment",
+    "aspect": "16:9",
+    "delta": "SEED ROLES. The FIRST image is `drive-maker`'s complete STEP-1 figure \u2014 carry that figure's identity, costume, pose, hands and expression exactly, and take nothing else from the card: its blank ground is not this frame's set. The SECOND image is the crowd exemplar \u2014 use its anonymous crowd proportion, face tier and the bounded 2-3 flat head-tone set it repeats; take nothing of its dress, period or setting, which each scene authors for itself. The THIRD image is the `prop-drive` prop canonical \u2014 preserve that object's design.\n\n`drive-maker`, `action-offering`, `expr-smug`, works beneath the middle awning of a timber market arcade, offering one `prop-drive` across a corner counter. A ramp climbs behind the stall toward stacked shovel heads and hanging pick blades under the rafters, while hopeful buyers with simple grins gather at the arcade entrance and beside the outer posts; cream canvas, tobacco timber, rust metal, and muted teal sit in warm market light.",
+    "payload": "`drive-maker`, `action-offering`, `expr-smug`, works beneath the middle awning of a timber market arcade, offering one `prop-drive` across a corner counter. A ramp climbs behind the stall toward stacked shovel heads and hanging pick blades under the rafters, while hopeful buyers with simple grins gather at the arcade entrance and beside the outer posts; cream canvas, tobacco timber, rust metal, and muted teal sit in warm market light.",
+    "prompt_suffix": "Clean flat 2.5D vector cartoon in The Second Take house style: even medium-thick dark warm brown-black (#241a12) outline on everything, flat cel colours with gentle soft shading, rounded friendly shapes, no realistic detail; any in-world lettering hand-lettered in the marker style, short and legible; warm-biased scene palette plus the single red accent #d7402b used only semantically (alarm / prohibition / ownership / the last punch element); no photorealism, no on-screen narrator or host face, no unrequested text, no logos; 16:9.",
+    "seed": [
+      "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-offering--expr-smug--67d56515.png",
+      "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+      "channels/the-second-take/visual-kit/refs/env/prop-drive.png"
+    ],
+    "seed_roles": [
+      {
+        "path": "channels/the-second-take/visual-kit/_staging/fig-drive-maker--action-offering--expr-smug--67d56515.png",
+        "role": "figure",
+        "character": "drive-maker"
+      },
+      {
+        "path": "channels/the-second-take/videos/2026-07-28-bricks-fresh/assets/library/crowd-exemplar.png",
+        "role": "crowd",
+        "character": null
+      },
+      {
+        "path": "channels/the-second-take/visual-kit/refs/env/prop-drive.png",
+        "role": "prop",
+        "character": "prop-drive"
+      }
+    ],
+    "figures": {
+      "crowd": true
+    },
+    "stage_role": "base",
+    "assets_omitted": null,
+    "plate": false,
+    "delta_primitives": null,
+    "plate_parent": null,
+    "expression_change": null,
+    "parent_depth": 0,
+    "lineage": 0,
+    "why": "`drive-maker` STEP-1 fig-drive-maker--action-offering--expr-smug--67d56515 REUSED"
+  }
+]
