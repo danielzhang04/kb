@@ -1,0 +1,47 @@
+---
+id: 6a85e944-bbebfb0f
+project: kb-ops
+action: codex-dispatch
+target: C:\Users\danie\kb-clones\bricks-arc
+risk-tier: T1
+owner: codex-worker
+claim-token: 944ac303eb8f648c
+state: done
+approval: null
+workflow: 01a01b12-8cf7-7543-a740-ee89321ff758
+depends-on: []
+variant-group: null
+role: work
+session-id: 6a85e80d-f60bb640
+runtime: codex
+model: gpt-5.6-sol
+execution-controller: terminal
+---
+
+## Work order
+
+\# Brief: VPW full run — act partition authoring leg (A4)
+
+You are a codex authoring worker on the kb fleet, one partition leg of a multi-leg FULL visual-prompt-writer run. SKILL-NATIVE: execute the skill's documented authoring flow (.claude/skills/visual-prompt-writer/SKILL.md, Steps 2-3 as they apply to authoring shots under an already-locked central plan). UTF-8. Read-only git allowed. Never commit.
+
+WORKING ROOT: C:/Users/danie/kb-clones/bricks-arc/orgs/faceless-youtube (video: channels/the-second-take/videos/2026-07-28-bricks-fresh)
+
+THE LOCK (binding, read first): scratchpad/vpw2/plan.md + scratchpad/vpw2/partitions.json — the run's locked central plan (cast/place/stage assignments, chains, density, peaks, closed cast declaration). You may NOT invent cast slugs, stages, or places beyond the lock; a genuine need = write it to scratchpad/vpw2/flagged-A4.md and author the beat with locked assets anyway.
+
+YOUR SCOPE: author act A4 ONLY — the shot range partitions.json assigns it. Full per-shot authoring per the skill: id, duration, vo_ref/vo_text derivation from script.md as the skill specifies, shot_class, notes, and the still_prompt under CURRENT doctrine (visual-grammar.md + style-bible.md as they stand: payload-driven framing+scale+vantage, three-plane reads, chain-as-default on held sets — base before delta with ≤2 one-change deltas, subject-driven figure choice, crowds small/receding behind real geometry at the squat crowd-rig standard, committed warm-biased palette with cool only as motivated LIGHT, negative space per the payload, no unrequested lettering, seeded-figure entrances are bases).
+
+OUTPUT: scratchpad/vpw2/fragment-A4.json — a JSON object {"shots": [...]} with your act's shots in narration order, schema-identical to the current shots.json long_form.shots entries (inspect it for the exact field shape; your prompts are NEW, only the schema is copied). Write incrementally (flush after every ~5 shots). Also append progress lines to scratchpad/vpw2/vpw-log.md per the skill's log convention, prefixed [A4].
+
+DO NOT: touch shots.json, other acts' fragments, doctrine files, or anything outside your two output files + the shared log. Do not run the whole-file lint (the merge leg owns it); you MAY run lint_shots.py in any per-fragment/advisory mode if the tool supports it.
+
+Final message: shot count authored, stage/chain list, flagged items, self-check notes (rear-zone present on crowd shots? entrances as bases? palette words warm-first?). Nothing else.
+
+## Result
+
+Shot count authored: 0.
+
+Stage/chain list: None; A4 assignments are absent from the lock.
+
+Flagged items: `partitions.json` is empty/in-progress; `plan.md` ends after A2. Recorded in `flagged-A4.md`.
+
+Self-check: Crowd rear-zones, entrances-as-bases, and warm-first palette are not applicable because authoring did not begin.
