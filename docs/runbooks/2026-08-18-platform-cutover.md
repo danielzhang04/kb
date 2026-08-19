@@ -66,7 +66,7 @@ $WorktreeRoot    = 'C:\Users\danie\kb-worktrees'
 $LocalDashState  = Join-Path $env:LOCALAPPDATA 'kb-dashboard'
 $LocalDispState  = Join-Path $env:LOCALAPPDATA 'kb-codex-dispatch'
 $VM              = 'kb@100.89.73.118'          # tailnet address; not public
-$PlatformUrl     = 'https://kb.tail82dd4f.ts.net'
+$PlatformUrl     = 'https://kb.command.ts.net'
 $CutoverRoot     = 'C:\Users\danie\kb-backups\cutover-2026-08-18'
 $Stage           = Join-Path $CutoverRoot 'state'
 New-Item -ItemType Directory -Force -Path $CutoverRoot | Out-Null
@@ -81,7 +81,7 @@ ssh $VM 'systemctl is-active kb-dashboard.service; cat /opt/kb-releases/current/
 ```
 
 Expected: `active`, a 40-hex VERSION, `{"ok":true,"quiescent":true,"blockers":[]}`, and
-`https://kb.tail82dd4f.ts.net (tailnet only) |-- / proxy http://127.0.0.1:4317`.
+`https://kb.command.ts.net (tailnet only) |-- / proxy http://127.0.0.1:4317`.
 A `quiescent:false` or non-empty `blockers` **stops the window** — see §6.4 (outbox
 `DirtyIndexError` recovery) before continuing.
 
@@ -863,7 +863,7 @@ ssh $VM 'sudo systemctl start kb-dashboard.service && sleep 5 && systemctl is-ac
 
 ## 5. Acceptance over 443
 
-All browser work happens at **`https://kb.tail82dd4f.ts.net`** directly over the tailnet.
+All browser work happens at **`https://kb.command.ts.net`** directly over the tailnet.
 **No SSH tunnel, ever.** Under `DASHBOARD_AUTH_MODE=tailnet` the operator's identity *is* the
 `tailscale serve` proxy's identity headers; a tunnel bypasses the proxy, so a tunnelled request is
 not an operator request — and it is the one shape that could make an unaudited action look audited.
@@ -872,7 +872,7 @@ not an operator request — and it is the one shape that could make an unaudited
 
 **[HUMAN — Daniel]** In his own browser, over the tailnet:
 
-1. Open `https://kb.tail82dd4f.ts.net`. It must render the dashboard directly — no sign-in view, no
+1. Open `https://kb.command.ts.net`. It must render the dashboard directly — no sign-in view, no
    passkey prompt, no unlock control. That absence *is* the tailnet mode working.
 2. Confirm the migrated control plane is visible — the parked runs from §1.2 and their open human
    requests are present. **Do not answer any of them yet** (§3.4 warning: they are live triggers).
@@ -1038,7 +1038,7 @@ Required: execution armed without any human action, and a **queue-bridge tick wi
 `ActiveEnterTimestamp`**. Record the reboot→responsive wall clock as an operational number (recovery
 time), not as a cost of ceremony — there is no ceremony left.
 
-Then confirm in the browser that `https://kb.tail82dd4f.ts.net` is reachable and the posture reads
+Then confirm in the browser that `https://kb.command.ts.net` is reachable and the posture reads
 armed. Also confirm `tailscale serve` came back on its own; if it did not, that is a finding, not a
 footnote — and under tailnet auth it is a **total loss of operator access**, not an inconvenience.
 

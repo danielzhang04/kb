@@ -272,15 +272,15 @@ describe('resolveAllowedOrigins', () => {
 });
 
 describe('resolveAllowedOrigins in tailnet mode', () => {
-  const TAILNET = { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net' };
+  const TAILNET = { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.command.ts.net' };
 
   it('derives the allowlist from the tailscale serve host', () => {
-    expect(resolveAllowedOrigins(TAILNET)).toEqual(['https://kb.tail82dd4f.ts.net']);
+    expect(resolveAllowedOrigins(TAILNET)).toEqual(['https://kb.command.ts.net']);
   });
 
   it('IGNORES a stale DASHBOARD_RP_ORIGIN — the WebAuthn RP origin leaves the unit in this mode', () => {
     expect(resolveAllowedOrigins({ ...TAILNET, DASHBOARD_RP_ORIGIN: 'https://old.example.ts.net' }))
-      .toEqual(['https://kb.tail82dd4f.ts.net']);
+      .toEqual(['https://kb.command.ts.net']);
   });
 
   it('stays fail-closed (empty) when the serve host is unset', () => {
@@ -291,14 +291,14 @@ describe('resolveAllowedOrigins in tailnet mode', () => {
     // Under ambient auth, an allowlisted dev origin would hand operator authority to any page served
     // from it. The tailnet allowlist is the serve host and nothing else.
     expect(resolveAllowedOrigins({ ...TAILNET, DASHBOARD_DEV_ORIGIN: 'http://localhost:4317' }))
-      .toEqual(['https://kb.tail82dd4f.ts.net']);
+      .toEqual(['https://kb.command.ts.net']);
   });
 });
 
 describe('resolveDaemonPublicOrigin', () => {
   it('uses the serve host in tailnet mode — a spend-grant link must not point at the loopback fallback', () => {
-    expect(resolveDaemonPublicOrigin({ DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.tail82dd4f.ts.net' }))
-      .toBe('https://kb.tail82dd4f.ts.net');
+    expect(resolveDaemonPublicOrigin({ DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.command.ts.net' }))
+      .toBe('https://kb.command.ts.net');
   });
 
   it('uses the RP origin (then the dev origin) in win32-desktop mode', () => {

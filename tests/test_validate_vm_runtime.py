@@ -17,7 +17,7 @@ Environment=KB_COORDINATION_PUBLICATION=outbox
 Environment=KB_VM_RUNTIME=1
 Environment=GIT_CONFIG_GLOBAL=/dev/null
 Environment=DASHBOARD_AUTH_MODE=tailnet
-Environment=DASHBOARD_TAILNET_HOST=kb.tail82dd4f.ts.net
+Environment=DASHBOARD_TAILNET_HOST=kb.command.ts.net
 Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com
 """
 
@@ -25,16 +25,16 @@ Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com
 @pytest.mark.parametrize(
     "value",
     [
-        "https://kb.tail82dd4f.ts.net",
-        "kb.tail82dd4f.ts.net/path",
-        "KB.tail82dd4f.ts.net",
-        "kb.tail82dd4f.ts.net:8443",
+        "https://kb.command.ts.net",
+        "kb.command.ts.net/path",
+        "KB.command.ts.net",
+        "kb.command.ts.net:8443",
         "",
     ],
 )
 def test_effective_unit_rejects_invalid_tailnet_hosts(value):
     text = VALID_UNIT_TEXT.replace(
-        "Environment=DASHBOARD_TAILNET_HOST=kb.tail82dd4f.ts.net\n",
+        "Environment=DASHBOARD_TAILNET_HOST=kb.command.ts.net\n",
         f"Environment=DASHBOARD_TAILNET_HOST={value}\n",
     )
     with pytest.raises(RuntimeError, match="tailnet host"):
